@@ -1,8 +1,26 @@
 # Rota Certa
 
-APK Android para analisar prints de chamadas de corrida e recomendar se a corrida faz sentido pelos raios configurados.
+APK Android para analisar prints de chamadas de corrida e avisar se o destino final do passageiro fica dentro ou fora da area desejada pelo motorista.
 
 O app apenas analisa e recomenda. Ele nao clica em outros aplicativos, nao aceita corrida sozinho e nao burla plataformas.
+
+## Objetivo principal
+
+A regra central do Rota Certa e simples:
+
+- O motorista configura uma casa, localidade alternativa ou alfinete.
+- O motorista define um raio maximo, por exemplo 10 km.
+- O app le o print por OCR e tenta identificar o destino final do passageiro.
+- O app calcula a distancia em linha reta entre o destino final e o ponto configurado.
+- Se o destino final estiver dentro do raio, mostra VERDE / Dentro da area.
+- Se o destino final passar do raio, mesmo por pouco, mostra VERMELHO / Fora da area.
+
+Exemplo:
+
+- Ponto configurado: casa do motorista.
+- Raio: 10 km.
+- Destino final a 8,7 km: VERDE.
+- Destino final a 10,1 km: VERMELHO.
 
 ## MVP
 
@@ -11,20 +29,20 @@ O app apenas analisa e recomenda. Ele nao clica em outros aplicativos, nao aceit
 - OCR local com ML Kit Text Recognition
 - Selecao de print pela galeria
 - Deteccao da cidade/pais pela localizacao do aparelho
-- Configuracao de endereco da casa, localidade alternativa e raios em km
+- Configuracao de casa, alfinete/localidade alternativa e raios em km
 - Opcao de digitar local manualmente ou preencher pela localizacao GPS atual
 - Salvamento de coordenadas GPS para calculo de raio mais preciso
-- Palavras-chave desejadas e evitadas
 - Historico local das analises
 - Sem backend
 
 ## Regras de decisao
 
-- Se o embarque estiver ate o raio configurado da casa: `Boa corrida`.
-- Se o embarque estiver ate o raio configurado da localidade alternativa: `Boa corrida`.
-- Se o embarque nao for identificado com confianca: `Dados insuficientes`.
-- Se o embarque estiver fora dos dois raios: `Fora do raio`.
-- Se encontrar palavra-chave evitada: `Fora do raio`.
+- Se o destino final nao for identificado: `Dados insuficientes`.
+- Se o destino final for identificado, mas nao tiver coordenada confiavel: `Dados insuficientes`.
+- Se o destino final estiver ate o raio configurado da casa: `VERDE - Dentro da area`.
+- Se o destino final estiver ate o raio configurado do alfinete/localidade alternativa: `VERDE - Dentro da area`.
+- Se o destino final estiver acima dos raios configurados: `VERMELHO - Fora da area`.
+- Palavras evitadas continuam como filtro opcional auxiliar.
 
 ## Configuracao de localizacao
 
@@ -52,14 +70,12 @@ Quando a opcao de GPS e usada, o app salva latitude e longitude junto com o ende
 
 ## Como gerar APK
 
-1. Abra o projeto no Android Studio.
-2. Aguarde o sync do Gradle.
-3. Conecte um celular ou use emulador.
-4. Rode `app` em modo debug.
-5. Para APK debug, use:
+O projeto possui workflow do GitHub Actions para gerar o APK debug automaticamente.
+
+Tambem e possivel gerar localmente com Gradle:
 
 ```bash
-./gradlew assembleDebug
+gradle assembleDebug
 ```
 
 O APK fica em:
@@ -67,8 +83,6 @@ O APK fica em:
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
-
-Se o projeto for aberto sem Gradle Wrapper, use o Gradle do Android Studio ou gere o wrapper pelo proprio Android Studio.
 
 ## Proximas etapas
 
