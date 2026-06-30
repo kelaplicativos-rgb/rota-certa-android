@@ -84,6 +84,8 @@ O APK fica em:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Workflow: Android APK.
+
 ## Proximas etapas
 
 1. Testar com 2 ou 3 prints reais.
