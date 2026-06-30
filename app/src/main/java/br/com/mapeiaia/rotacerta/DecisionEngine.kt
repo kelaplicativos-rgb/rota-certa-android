@@ -10,34 +10,34 @@ class DecisionEngine {
     fun decide(
         fields: RideFields,
         settings: AppSettings,
-        pickupCoordinate: Coordinate?,
+        destinationCoordinate: Coordinate?,
         homeCoordinate: Coordinate?,
         alternativeCoordinate: Coordinate?,
         fullText: String,
     ): AnalysisResult {
-        if (fields.pickup.isNullOrBlank()) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o embarque.")
+        if (fields.destination.isNullOrBlank()) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
         }
 
         if (hasAvoidedKeyword(fullText, settings.avoidedKeywords)) {
-            return result(fields, fullText, Recommendation.OutsideRadius, "Encontrou palavra ou bairro evitado.")
+            return result(fields, fullText, Recommendation.OutsideRadius, "Encontrou palavra ou bairro evitado no print.")
         }
 
-        if (pickupCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Embarque identificado, mas sem coordenada confiavel.")
+        if (destinationCoordinate == null) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
         }
 
-        val distanceToHome = homeCoordinate?.let { haversineKm(pickupCoordinate, it) }
-        val distanceToAlternative = alternativeCoordinate?.let { haversineKm(pickupCoordinate, it) }
+        val distanceToHome = homeCoordinate?.let { haversineKm(destinationCoordinate, it) }
+        val distanceToAlternative = alternativeCoordinate?.let { haversineKm(destinationCoordinate, it) }
 
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
         val reason = when {
-            insideHome -> "Embarque dentro do raio da casa."
-            insideAlternative -> "Embarque dentro do raio da localidade alternativa."
-            else -> "Embarque fora dos raios configurados."
+            insideHome -> "Destino final dentro do raio da casa."
+            insideAlternative -> "Destino final dentro do raio do alfinete/localidade."
+            else -> "Destino final fora dos raios configurados."
         }
 
         return result(
