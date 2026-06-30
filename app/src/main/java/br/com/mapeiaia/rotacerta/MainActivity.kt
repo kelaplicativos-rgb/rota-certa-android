@@ -1,0 +1,277 @@
+package br.com.mapeiaia.rotacerta
+
+import android.Manifest
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                RotaCertaApp()
+            }
+        }
+    }
+}
+
+@Composable
+fun RotaCertaApp() {
+    val context = LocalContext.current
+    val repository = remember { SettingsRepository(context) }
+    val settings by repository.settings.collectAsState(initial = AppSettings())
+    val history by repository.analyses.collectAsState(initial = emptyList())
+    val ocrService = remember { OcrService(context) }
+    val locationService = remember { DeviceLocationService(context) }
+    val geocodingService = remember { GeocodingService(context) }
+    val parser = remember { RideTextParser() }
+    val decisionEngine = remember { DecisionEngine() }
+    val scope = rememberCoroutineScope()
+
+    var tab by remember { mutableStateOf("analise") }
+    var extractedText by remember { mutableStateOf("") }
+    var lastResult by remember { mutableStateOf<AnalysisResult?>(null) }
+    var region by remember { mutableStateOf(DeviceRegion()) }
+    var status by remember { mutableStateOf("Pronto para analisar um print.") }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate != null) {
+                region = geocodingService.reverseGeocode(coordinate)
+            }
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            status = "Lendo print com OCR..."
+            extractedText = ocrService.extractText(uri)
+            val fields = parser.parse(extractedText)
+            val pickupCoordinate = fields.pickup?.let { geocodingService.geocode(it, region) }
+            val homeCoordinate = geocodingService.geocode(settings.homeAddress, region)
+            val alternativeCoordinate = geocodingService.geocode(settings.alternativeAddress, region)
+            val result = decisionEngine.decide(
+                fields = fields,
+                settings = settings,
+                pickupCoordinate = pickupCoordinate,
+                homeCoordinate = homeCoordinate,
+                alternativeCoordinate = alternativeCoordinate,
+                fullText = extractedText,
+            )
+            repository.addAnalysis(result)
+            lastResult = result
+            status = "Analise concluida."
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+        )
+    }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(selected = tab == "analise", onClick = { tab = "analise" }, label = { Text("Analise") }, icon = {})
+                NavigationBarItem(selected = tab == "config", onClick = { tab = "config" }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == "historico", onClick = { tab = "historico" }, label = { Text("Historico") }, icon = {})
+            }
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text("Rota Certa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(deviceRegionLabel(region), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(16.dp))
+
+            when (tab) {
+                "analise" -> AnalysisScreen(
+                    status = status,
+                    extractedText = extractedText,
+                    result = lastResult,
+                    onPickImage = {
+                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                )
+                "config" -> SettingsScreen(
+                    settings = settings,
+                    onSave = { scope.launch { repository.saveSettings(it) } },
+                )
+                "historico" -> HistoryScreen(history)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalysisScreen(
+    status: String,
+    extractedText: String,
+    result: AnalysisResult?,
+    onPickImage: () -> Unit,
+) {
+    Button(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
+        Text("Selecionar print da galeria")
+    }
+    Spacer(Modifier.height(12.dp))
+    Text(status)
+    result?.let { ResultCard(it) }
+    Spacer(Modifier.height(12.dp))
+    Text("Texto extraido", fontWeight = FontWeight.Bold)
+    Text(extractedText.ifBlank { "Nenhum print analisado ainda." })
+}
+
+@Composable
+private fun ResultCard(result: AnalysisResult) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(recommendationLabel(result.recommendation), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(result.reason)
+            Text("Embarque: ${result.fields.pickup ?: "nao identificado"}")
+            Text("Destino: ${result.fields.destination ?: "nao identificado"}")
+            Text("Valor: ${result.fields.fare ?: "nao identificado"}")
+            Text("Distancia no app: ${result.fields.distance ?: "nao identificada"}")
+            Text("Tempo: ${result.fields.time ?: "nao identificado"}")
+            result.pickupToHomeKm?.let { Text("Ate casa: ${formatKm(it)}") }
+            result.pickupToAlternativeKm?.let { Text("Ate localidade alternativa: ${formatKm(it)}") }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(settings: AppSettings, onSave: (AppSettings) -> Unit) {
+    var draft by remember(settings) { mutableStateOf(settings) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = draft.homeAddress,
+            onValueChange = { draft = draft.copy(homeAddress = it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Endereco da casa") },
+        )
+        OutlinedTextField(
+            value = draft.alternativeAddress,
+            onValueChange = { draft = draft.copy(alternativeAddress = it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Localidade alternativa") },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+                value = draft.homeRadiusKm.toString(),
+                onValueChange = { draft = draft.copy(homeRadiusKm = it.toDoubleOrNull() ?: draft.homeRadiusKm) },
+                modifier = Modifier.weight(1f),
+                label = { Text("Raio casa km") },
+            )
+            OutlinedTextField(
+                value = draft.alternativeRadiusKm.toString(),
+                onValueChange = { draft = draft.copy(alternativeRadiusKm = it.toDoubleOrNull() ?: draft.alternativeRadiusKm) },
+                modifier = Modifier.weight(1f),
+                label = { Text("Raio local km") },
+            )
+        }
+        OutlinedTextField(
+            value = draft.desiredKeywords,
+            onValueChange = { draft = draft.copy(desiredKeywords = it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Bairros/palavras desejados") },
+        )
+        OutlinedTextField(
+            value = draft.avoidedKeywords,
+            onValueChange = { draft = draft.copy(avoidedKeywords = it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Bairros/palavras evitados") },
+        )
+        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Salvar configuracoes")
+        }
+    }
+}
+
+@Composable
+private fun HistoryScreen(history: List<AnalysisResult>) {
+    if (history.isEmpty()) {
+        Text("Nenhuma analise salva ainda.")
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        history.forEach { result ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(recommendationLabel(result.recommendation), fontWeight = FontWeight.Bold)
+                    Text(formatDate(result.createdAtMillis))
+                    Text(result.fields.pickup ?: "Embarque nao identificado")
+                    Text(result.reason)
+                }
+            }
+        }
+    }
+}
+
+private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
+    Recommendation.GoodRide -> "Boa corrida"
+    Recommendation.OutsideRadius -> "Fora do raio"
+    Recommendation.InsufficientData -> "Dados insuficientes"
+}
+
+private fun deviceRegionLabel(region: DeviceRegion): String =
+    listOf(region.city, region.country).filter { it.isNotBlank() }.joinToString(" - ").ifBlank {
+        "Cidade e pais serao detectados pela localizacao."
+    }
+
+private fun formatKm(value: Double): String = String.format(Locale("pt", "BR"), "%.1f km", value)
+
+private fun formatDate(value: Long): String =
+    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(Date(value))
