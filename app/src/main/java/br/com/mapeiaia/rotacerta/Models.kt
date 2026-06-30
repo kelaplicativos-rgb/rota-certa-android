@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 data class AppSettings(
     val homeAddress: String = "",
     val alternativeAddress: String = "",
-    val homeRadiusKm: Double = 5.0,
+    val homeRadiusKm: Double = 10.0,
     val alternativeRadiusKm: Double = 10.0,
     val desiredKeywords: String = "",
     val avoidedKeywords: String = "",
