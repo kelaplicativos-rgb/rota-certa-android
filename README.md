@@ -77,3 +77,5 @@ Se o projeto for aberto sem Gradle Wrapper, use o Gradle do Android Studio ou ge
 3. Adicionar monitoramento automatico da pasta Screenshots.
 4. Avaliar MediaProjection para leitura em tempo real.
 5. Avaliar API de rotas para distancia real em vez de linha reta.
+
+Build artifact trigger: 2026-06-30 22:50 UTC.
