@@ -12,6 +12,8 @@ O app apenas analisa e recomenda. Ele nao clica em outros aplicativos, nao aceit
 - Selecao de print pela galeria
 - Deteccao da cidade/pais pela localizacao do aparelho
 - Configuracao de endereco da casa, localidade alternativa e raios em km
+- Opcao de digitar local manualmente ou preencher pela localizacao GPS atual
+- Salvamento de coordenadas GPS para calculo de raio mais preciso
 - Palavras-chave desejadas e evitadas
 - Historico local das analises
 - Sem backend
@@ -24,9 +26,18 @@ O app apenas analisa e recomenda. Ele nao clica em outros aplicativos, nao aceit
 - Se o embarque estiver fora dos dois raios: `Fora do raio`.
 - Se encontrar palavra-chave evitada: `Fora do raio`.
 
+## Configuracao de localizacao
+
+Na aba `Config`, o usuario pode escolher entre duas formas de configurar a casa e a localidade alternativa:
+
+1. Digitar o endereco manualmente.
+2. Tocar em `Usar GPS atual` / `Usar GPS` para preencher o endereco aproximado com a localizacao atual do aparelho.
+
+Quando a opcao de GPS e usada, o app salva latitude e longitude junto com o endereco aproximado. Na analise da corrida, essas coordenadas salvas sao priorizadas em relacao ao texto digitado, deixando o calculo de raio mais confiavel.
+
 ## Permissoes Android
 
-- `ACCESS_FINE_LOCATION` e `ACCESS_COARSE_LOCATION`: detectar cidade/pais do usuario e calcular regioes com mais contexto.
+- `ACCESS_FINE_LOCATION` e `ACCESS_COARSE_LOCATION`: detectar cidade/pais do usuario, preencher localidade por GPS quando solicitado e calcular regioes com mais contexto.
 - `INTERNET`: permitir geocoding do Android quando o provedor do aparelho precisar consultar rede.
 - `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`: compatibilidade com leitura de imagens, embora o Photo Picker moderno normalmente nao exija permissao ampla de armazenamento.
 
