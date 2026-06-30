@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -91,8 +92,8 @@ fun RotaCertaApp() {
             extractedText = ocrService.extractText(uri)
             val fields = parser.parse(extractedText)
             val pickupCoordinate = fields.pickup?.let { geocodingService.geocode(it, region) }
-            val homeCoordinate = geocodingService.geocode(settings.homeAddress, region)
-            val alternativeCoordinate = geocodingService.geocode(settings.alternativeAddress, region)
+            val homeCoordinate = settings.homeCoordinate ?: geocodingService.geocode(settings.homeAddress, region)
+            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodingService.geocode(settings.alternativeAddress, region)
             val result = decisionEngine.decide(
                 fields = fields,
                 settings = settings,
@@ -148,6 +149,7 @@ fun RotaCertaApp() {
                 "config" -> SettingsScreen(
                     settings = settings,
                     onSave = { scope.launch { repository.saveSettings(it) } },
+                    onRegionDetected = { detectedRegion -> region = detectedRegion },
                 )
                 "historico" -> HistoryScreen(history)
             }
@@ -191,22 +193,110 @@ private fun ResultCard(result: AnalysisResult) {
 }
 
 @Composable
-private fun SettingsScreen(settings: AppSettings, onSave: (AppSettings) -> Unit) {
+private fun SettingsScreen(
+    settings: AppSettings,
+    onSave: (AppSettings) -> Unit,
+    onRegionDetected: (DeviceRegion) -> Unit,
+) {
+    val context = LocalContext.current
+    val locationService = remember { DeviceLocationService(context) }
+    val gpsAddressResolver = remember { GpsAddressResolver(context) }
+    val scope = rememberCoroutineScope()
+
     var draft by remember(settings) { mutableStateOf(settings) }
+    var gpsStatus by remember { mutableStateOf("") }
+    var pendingLocationTarget by remember { mutableStateOf<LocationTarget?>(null) }
+
+    fun captureGps(target: LocationTarget) {
+        scope.launch {
+            gpsStatus = "Buscando sinal de GPS..."
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                gpsStatus = "Nao consegui captar o GPS. Autorize a localizacao e tente novamente."
+                return@launch
+            }
+
+            val resolved = gpsAddressResolver.resolve(coordinate)
+            if (resolved.region.city.isNotBlank() || resolved.region.country.isNotBlank()) {
+                onRegionDetected(resolved.region)
+            }
+
+            val address = resolved.addressLine.ifBlank { formatCoordinate(coordinate) }
+            draft = when (target) {
+                LocationTarget.Home -> draft.copy(
+                    homeAddress = address,
+                    homeCoordinate = coordinate,
+                )
+                LocationTarget.Alternative -> draft.copy(
+                    alternativeAddress = address,
+                    alternativeCoordinate = coordinate,
+                )
+            }
+            gpsStatus = "GPS preenchido. Confira e toque em Salvar configuracoes."
+        }
+    }
+
+    val gpsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        val target = pendingLocationTarget
+        pendingLocationTarget = null
+        if (target != null) captureGps(target)
+    }
+
+    fun requestGps(target: LocationTarget) {
+        pendingLocationTarget = target
+        gpsPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+        )
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
             value = draft.homeAddress,
-            onValueChange = { draft = draft.copy(homeAddress = it) },
+            onValueChange = { draft = draft.copy(homeAddress = it, homeCoordinate = null) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Endereco da casa") },
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { requestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) {
+                Text("Usar GPS atual")
+            }
+            OutlinedButton(
+                onClick = { draft = draft.copy(homeCoordinate = null) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Digitar")
+            }
+        }
+        draft.homeCoordinate?.let {
+            Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+        }
+
         OutlinedTextField(
             value = draft.alternativeAddress,
-            onValueChange = { draft = draft.copy(alternativeAddress = it) },
+            onValueChange = { draft = draft.copy(alternativeAddress = it, alternativeCoordinate = null) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Localidade alternativa") },
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { requestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) {
+                Text("Usar GPS")
+            }
+            OutlinedButton(
+                onClick = { draft = draft.copy(alternativeCoordinate = null) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Digitar")
+            }
+        }
+        draft.alternativeCoordinate?.let {
+            Text("GPS local salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 value = draft.homeRadiusKm.toString(),
@@ -233,6 +323,9 @@ private fun SettingsScreen(settings: AppSettings, onSave: (AppSettings) -> Unit)
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Bairros/palavras evitados") },
         )
+        if (gpsStatus.isNotBlank()) {
+            Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
+        }
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
             Text("Salvar configuracoes")
         }
@@ -260,6 +353,11 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
     }
 }
 
+private enum class LocationTarget {
+    Home,
+    Alternative,
+}
+
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
     Recommendation.GoodRide -> "Boa corrida"
     Recommendation.OutsideRadius -> "Fora do raio"
@@ -272,6 +370,9 @@ private fun deviceRegionLabel(region: DeviceRegion): String =
     }
 
 private fun formatKm(value: Double): String = String.format(Locale("pt", "BR"), "%.1f km", value)
+
+private fun formatCoordinate(coordinate: Coordinate): String =
+    String.format(Locale("pt", "BR"), "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
 
 private fun formatDate(value: Long): String =
     SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(Date(value))
