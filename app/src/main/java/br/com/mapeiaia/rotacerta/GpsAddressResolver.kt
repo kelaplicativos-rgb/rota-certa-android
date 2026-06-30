@@ -6,7 +6,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-// Used only after the user taps the GPS button in Config and grants location permission.
 data class GpsAddressResult(
     val addressLine: String,
     val region: DeviceRegion,
@@ -30,7 +29,9 @@ class GpsAddressResolver(private val context: Context) {
         ).filter { it.isNotBlank() }.joinToString(", ")
 
         val line = address?.getAddressLine(0)?.takeIf { it.isNotBlank() }
-            ?: fallback.ifBlank { formatCoordinate(coordinate) }
+            ?: fallback.ifBlank {
+                String.format(Locale("pt", "BR"), "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+            }
 
         GpsAddressResult(
             addressLine = line,
