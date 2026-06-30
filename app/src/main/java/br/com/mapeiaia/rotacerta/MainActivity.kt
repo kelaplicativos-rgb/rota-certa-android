@@ -91,13 +91,13 @@ fun RotaCertaApp() {
             status = "Lendo print com OCR..."
             extractedText = ocrService.extractText(uri)
             val fields = parser.parse(extractedText)
-            val pickupCoordinate = fields.pickup?.let { geocodingService.geocode(it, region) }
+            val destinationCoordinate = fields.destination?.let { geocodingService.geocode(it, region) }
             val homeCoordinate = settings.homeCoordinate ?: geocodingService.geocode(settings.homeAddress, region)
             val alternativeCoordinate = settings.alternativeCoordinate ?: geocodingService.geocode(settings.alternativeAddress, region)
             val result = decisionEngine.decide(
                 fields = fields,
                 settings = settings,
-                pickupCoordinate = pickupCoordinate,
+                destinationCoordinate = destinationCoordinate,
                 homeCoordinate = homeCoordinate,
                 alternativeCoordinate = alternativeCoordinate,
                 fullText = extractedText,
@@ -135,6 +135,7 @@ fun RotaCertaApp() {
         ) {
             Text("Rota Certa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(deviceRegionLabel(region), style = MaterialTheme.typography.bodyMedium)
+            Text("Regra principal: destino final dentro ou fora do raio.", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
 
             when (tab) {
@@ -181,13 +182,13 @@ private fun ResultCard(result: AnalysisResult) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(recommendationLabel(result.recommendation), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(result.reason)
+            Text("Destino final: ${result.fields.destination ?: "nao identificado"}")
             Text("Embarque: ${result.fields.pickup ?: "nao identificado"}")
-            Text("Destino: ${result.fields.destination ?: "nao identificado"}")
             Text("Valor: ${result.fields.fare ?: "nao identificado"}")
             Text("Distancia no app: ${result.fields.distance ?: "nao identificada"}")
             Text("Tempo: ${result.fields.time ?: "nao identificado"}")
-            result.pickupToHomeKm?.let { Text("Ate casa: ${formatKm(it)}") }
-            result.pickupToAlternativeKm?.let { Text("Ate localidade alternativa: ${formatKm(it)}") }
+            result.pickupToHomeKm?.let { Text("Destino ate casa: ${formatKm(it)}") }
+            result.pickupToAlternativeKm?.let { Text("Destino ate alfinete/localidade: ${formatKm(it)}") }
         }
     }
 }
@@ -255,11 +256,12 @@ private fun SettingsScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Configure o ponto que o destino final precisa ficar perto.", fontWeight = FontWeight.Bold)
         OutlinedTextField(
             value = draft.homeAddress,
             onValueChange = { draft = draft.copy(homeAddress = it, homeCoordinate = null) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Endereco da casa") },
+            label = { Text("Casa / ponto principal") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = { requestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) {
@@ -280,7 +282,7 @@ private fun SettingsScreen(
             value = draft.alternativeAddress,
             onValueChange = { draft = draft.copy(alternativeAddress = it, alternativeCoordinate = null) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Localidade alternativa") },
+            label = { Text("Alfinete / localidade alternativa") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = { requestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) {
@@ -294,7 +296,7 @@ private fun SettingsScreen(
             }
         }
         draft.alternativeCoordinate?.let {
-            Text("GPS local salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+            Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -308,7 +310,7 @@ private fun SettingsScreen(
                 value = draft.alternativeRadiusKm.toString(),
                 onValueChange = { draft = draft.copy(alternativeRadiusKm = it.toDoubleOrNull() ?: draft.alternativeRadiusKm) },
                 modifier = Modifier.weight(1f),
-                label = { Text("Raio local km") },
+                label = { Text("Raio alfinete km") },
             )
         }
         OutlinedTextField(
@@ -345,7 +347,7 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
                 Column(Modifier.padding(12.dp)) {
                     Text(recommendationLabel(result.recommendation), fontWeight = FontWeight.Bold)
                     Text(formatDate(result.createdAtMillis))
-                    Text(result.fields.pickup ?: "Embarque nao identificado")
+                    Text(result.fields.destination ?: "Destino final nao identificado")
                     Text(result.reason)
                 }
             }
@@ -359,8 +361,8 @@ private enum class LocationTarget {
 }
 
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
-    Recommendation.GoodRide -> "Boa corrida"
-    Recommendation.OutsideRadius -> "Fora do raio"
+    Recommendation.GoodRide -> "VERDE - Dentro da area"
+    Recommendation.OutsideRadius -> "VERMELHO - Fora da area"
     Recommendation.InsufficientData -> "Dados insuficientes"
 }
 
