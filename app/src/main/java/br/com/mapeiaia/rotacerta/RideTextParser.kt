@@ -28,27 +28,36 @@ class RideTextParser {
         "condomínio",
         "shopping",
         "terminal",
+        "estacao",
+        "estação",
+        "comercial",
     )
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
     private val streetTypeSuffixes = listOf(" rua", " r.", " avenida", " av.", " travessa", " estrada", " rodovia", " alameda")
 
-    fun parse(text: String): RideFields {
+    fun parse(text: String, packageName: String? = null): RideFields =
+        parseWithMetadata(text, packageName).fields
+
+    fun parseWithMetadata(text: String, packageName: String? = null): RideParseResult {
         val rawLines = text
             .lines()
             .map { it.normalizeOcrWhitespace().trim() }
             .filter { it.length >= 2 || markerOnlyRegex.matches(it) }
 
-        val lines = isolatePrimaryRideLines(rawLines)
+        val appKind = RideAppKind.fromPackage(packageName) ?: inferRideAppKind(text)
+        val appScopedLines = appKind?.let { isolateAppPrimaryRideLines(rawLines, it) } ?: rawLines
+        val lines = isolatePrimaryRideLines(appScopedLines)
         val scopedText = lines.joinToString("\n")
+
+        val appLayout = appKind?.let { parseAppSpecificLayout(it, lines) }
+        if (appLayout != null) {
+            return resultWithCommonFields(appLayout, lines, scopedText, appKind.parserName)
+        }
 
         val knownLayout = parseKnownRideAppLayout(lines)
         if (knownLayout != null) {
-            return knownLayout.copy(
-                fare = findFare(lines, scopedText),
-                distance = distanceRegex.find(scopedText)?.value?.trim(),
-                time = timeRegex.find(scopedText)?.value?.trim(),
-            )
+            return resultWithCommonFields(knownLayout, lines, scopedText, "generic-known-layout")
         }
 
         val addresses = findAddressCandidates(lines)
@@ -57,13 +66,102 @@ class RideTextParser {
             !it.equals(pickup, ignoreCase = true)
         }
 
-        return RideFields(
-            pickup = pickup,
-            destination = destination,
-            fare = findFare(lines, scopedText),
-            distance = distanceRegex.find(scopedText)?.value?.trim(),
-            time = timeRegex.find(scopedText)?.value?.trim(),
+        return RideParseResult(
+            fields = RideFields(
+                pickup = pickup,
+                destination = destination,
+                fare = findFare(lines, scopedText),
+                distance = distanceRegex.find(scopedText)?.value?.trim(),
+                time = timeRegex.find(scopedText)?.value?.trim(),
+            ),
+            parserName = appKind?.parserName ?: "generic-address-candidates",
         )
+    }
+
+    private fun resultWithCommonFields(fields: RideFields, lines: List<String>, scopedText: String, parserName: String): RideParseResult =
+        RideParseResult(
+            fields = fields.copy(
+                fare = fields.fare ?: findFare(lines, scopedText),
+                distance = fields.distance ?: distanceRegex.find(scopedText)?.value?.trim(),
+                time = fields.time ?: timeRegex.find(scopedText)?.value?.trim(),
+            ),
+            parserName = parserName,
+        )
+
+    private fun parseAppSpecificLayout(appKind: RideAppKind, lines: List<String>): RideFields? = when (appKind) {
+        RideAppKind.NinetyNine -> parseNinetyNineLayout(lines)
+        RideAppKind.Uber -> parseUberLayout(lines)
+        RideAppKind.InDrive -> parseInDriveLayout(lines)
+    }
+
+    private fun parseNinetyNineLayout(lines: List<String>): RideFields? {
+        val routeLayout = parseRouteStepLayout(lines)
+        if (!routeLayout?.destination.isNullOrBlank()) return routeLayout
+
+        val addresses = findAddressCandidates(linesBeforeActions(lines))
+        if (addresses.size < 2) return null
+        return RideFields(
+            pickup = addresses.firstOrNull(),
+            destination = addresses.lastOrNull(),
+        )
+    }
+
+    private fun parseUberLayout(lines: List<String>): RideFields? =
+        parseRouteStepLayout(linesBeforeActions(lines))
+            ?: parseMapPointLayout(linesBeforeActions(lines))
+            ?: parseStackedAddressLayout(linesBeforeActions(lines))
+
+    private fun parseInDriveLayout(lines: List<String>): RideFields? {
+        val rideLines = linesBeforeActions(lines)
+        return parseMapPointLayout(rideLines)
+            ?: parseStackedAddressLayout(rideLines)
+            ?: parseRouteStepLayout(rideLines)
+    }
+
+    private fun isolateAppPrimaryRideLines(lines: List<String>, appKind: RideAppKind): List<String> = when (appKind) {
+        RideAppKind.InDrive -> isolateInDrivePrimaryOffer(lines)
+        RideAppKind.NinetyNine -> isolateNinetyNinePrimaryOffer(lines)
+        RideAppKind.Uber -> linesBeforeActions(lines)
+    }
+
+    private fun isolateInDrivePrimaryOffer(lines: List<String>): List<String> {
+        val mapPointIndexes = findMapPointAddressIndexes(lines)
+        if (mapPointIndexes.size >= 2) {
+            return lines.subList(0, addressBlockEndExclusive(lines, mapPointIndexes.last()))
+        }
+        return linesBeforeActions(lines)
+    }
+
+    private fun isolateNinetyNinePrimaryOffer(lines: List<String>): List<String> {
+        val actionIndex = lines.indexOfFirst { isActionLine(it) }
+        if (actionIndex > 0) return lines.take(actionIndex)
+        return lines
+    }
+
+    private fun linesBeforeActions(lines: List<String>): List<String> {
+        val actionIndex = lines.indexOfFirst { isActionLine(it) }
+        return if (actionIndex > 0) lines.take(actionIndex) else lines
+    }
+
+    private fun isActionLine(line: String): Boolean {
+        val normalized = line.lowercase().trim()
+        return normalized.startsWith("aceitar") ||
+            normalized.startsWith("selecionar") ||
+            normalized.startsWith("ofereça") ||
+            normalized.startsWith("ofereca") ||
+            normalized == "fechar" ||
+            normalized.contains("sua tarifa")
+    }
+
+    private fun inferRideAppKind(text: String): RideAppKind? {
+        val normalized = text.lowercase()
+        return when {
+            normalized.contains("uberx") || normalized.contains("viagem longa") || normalized.contains("exclusivo") -> RideAppKind.Uber
+            normalized.contains("negocia") || normalized.contains("perfil premium") || normalized.contains("perfil essencial") -> RideAppKind.NinetyNine
+            normalized.contains("ofereça sua tarifa") || normalized.contains("ofereca sua tarifa") || normalized.contains("aceitar por") -> RideAppKind.InDrive
+            normalized.contains("pedido de viagem") -> RideAppKind.InDrive
+            else -> null
+        }
     }
 
     private fun isolatePrimaryRideLines(lines: List<String>): List<String> {
@@ -334,8 +432,28 @@ class RideTextParser {
             .replace('\u202F', ' ')
             .replace(Regex("""\s+"""), " ")
 
+    private enum class RideAppKind(val parserName: String) {
+        NinetyNine("99-card-template"),
+        Uber("uber-trip-card"),
+        InDrive("indrive-order-card");
+
+        companion object {
+            fun fromPackage(packageName: String?): RideAppKind? = when (packageName?.lowercase()) {
+                "com.app99.driver" -> NinetyNine
+                "com.ubercab.driver" -> Uber
+                "sinet.startup.indriver" -> InDrive
+                else -> null
+            }
+        }
+    }
+
     private data class AddressCandidate(
         val label: Char,
         val address: String,
     )
 }
+
+data class RideParseResult(
+    val fields: RideFields,
+    val parserName: String,
+)
