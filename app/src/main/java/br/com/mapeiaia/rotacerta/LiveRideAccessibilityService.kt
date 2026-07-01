@@ -500,7 +500,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             overlayParams = params
         }
         view.text = formatBubbleDistanceKm(distanceKm)
-        view.textSize = if ((distanceKm ?: 0.0) >= 100.0) 11f else 14f
+        view.textSize = bubbleTextSizeSp(view.text.toString())
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color.argb(currentSettings))
@@ -516,6 +516,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
         }
         return "${compactValue}km"
+    }
+
+    private fun bubbleTextSizeSp(text: String): Float = when {
+        text.isBlank() -> 14f
+        text.length <= 4 -> 18f
+        text.length <= 5 -> 17f
+        text.length <= 6 -> 15f
+        else -> 13f
     }
 
     private fun removeOverlay() {
