@@ -15,6 +15,11 @@ data class AppSettings(
     val alternativeCoordinate: Coordinate? = null,
     val bubbleOpacity: Double = 1.0,
     val bubbleDarkMode: Boolean = false,
+    val restrictToSelectedRideApps: Boolean = false,
+    val monitor99: Boolean = true,
+    val monitorUber: Boolean = true,
+    val monitorInDrive: Boolean = true,
+    val extraMonitoredPackages: String = "",
 )
 
 @Serializable
