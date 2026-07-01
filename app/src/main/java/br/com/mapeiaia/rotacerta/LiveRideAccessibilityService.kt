@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.Display
@@ -18,6 +19,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.TextView
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +38,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val screenshotInProgress = AtomicBoolean(false)
     private var analyzeJob: Job? = null
-    private var overlayView: View? = null
+    private var overlayView: TextView? = null
     private var overlayParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var lastTextHash: Int? = null
@@ -169,10 +171,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val hasTripMetric = normalized.contains("km") || normalized.contains("min") || normalized.contains("minuto")
         val hasAddressSignal = listOf("rua", "r.", "avenida", "av.", "travessa", "bairro", "jardim", "cidade", "parque", "tatuape", "tatuapé")
             .any { normalized.contains(it) }
-        val hasRideSignal = listOf("pedido de viagem", "aceitar", "corrida", "corridas", "tarifa", "perfil premium", "preço justo", "exclusivo", "uber", "dinheiro", "viagem longa")
-            .any { normalized.contains(it) }
+        val hasRideSignal = listOf(
+            "pedido de viagem",
+            "pedidos de viagem",
+            "aceitar",
+            "aceitar por",
+            "corrida",
+            "corridas",
+            "tarifa",
+            "perfil premium",
+            "preço justo",
+            "preco justo",
+            "exclusivo",
+            "uber",
+            "dinheiro",
+            "viagem longa",
+            "ofereça sua tarifa",
+            "ofereca sua tarifa",
+            "pix",
+        ).any { normalized.contains(it) }
+        val hasMapPointSignal = Regex("""(?m)^\s*[ab]\s+""", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
-        return hasMoney && hasTripMetric && (hasAddressSignal || hasRideSignal)
+        return hasMoney && (hasTripMetric || hasRideSignal) && (hasAddressSignal || hasRideSignal || hasMapPointSignal)
     }
 
     private suspend fun analyzeLiveText(text: String) {
@@ -204,11 +224,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
             repository.addAnalysis(result)
             showOverlay(
-                when (result.recommendation) {
+                color = when (result.recommendation) {
                     Recommendation.GoodRide -> RadarColor.Green
                     Recommendation.OutsideRadius -> RadarColor.Red
                     Recommendation.InsufficientData -> RadarColor.Yellow
                 },
+                distanceKm = result.nearestConfiguredDistanceKm(),
             )
         } catch (_: Exception) {
             showOverlay(RadarColor.Yellow)
@@ -228,21 +249,41 @@ class LiveRideAccessibilityService : AccessibilityService() {
             null
         }
 
-    private fun showOverlay(color: RadarColor) {
+    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
+        listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
+
+    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
         val manager = windowManager ?: return
-        val view = overlayView ?: View(this).also { newView ->
+        val view = overlayView ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
             newView.contentDescription = "Rota Certa"
+            newView.gravity = Gravity.CENTER
+            newView.includeFontPadding = false
+            newView.setTextColor(Color.BLACK)
+            newView.setTypeface(Typeface.DEFAULT_BOLD)
+            newView.setOnClickListener { openApp() }
             newView.setOnTouchListener(BubbleTouchListener())
             overlayView = newView
             overlayParams = params
             manager.addView(newView, params)
         }
+        view.text = formatBubbleDistanceKm(distanceKm)
+        view.textSize = if ((distanceKm ?: 0.0) >= 100.0) 11f else 14f
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color.argb(currentSettings))
             setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
         }
+    }
+
+    private fun formatBubbleDistanceKm(distanceKm: Double?): String {
+        if (distanceKm == null) return ""
+        val compactValue = if (distanceKm >= 10.0) {
+            distanceKm.roundToInt().toString()
+        } else {
+            String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
+        }
+        return "${compactValue}km"
     }
 
     private fun removeOverlay() {
@@ -253,8 +294,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun overlayLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
-        dp(58),
-        dp(58),
+        dp(66),
+        dp(66),
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
@@ -307,7 +348,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
                         .apply()
                     if (!moved) {
                         view.performClick()
-                        openApp()
                     }
                     return true
                 }
