@@ -13,7 +13,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Rota Certa"
+        android:label="@string/app_name"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
@@ -27,5 +27,17 @@
             android:name=".RadarService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".LiveRideAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/rota_certa_accessibility" />
+        </service>
     </application>
 </manifest>
