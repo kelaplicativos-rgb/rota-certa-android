@@ -44,6 +44,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var lastSnapshotHash: Int? = null
     private var lastAnalyzedHash: Int? = null
+    private var lastDiagnosticSignature: String? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var serviceReady = false
@@ -80,6 +81,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch {
             currentSettings = repository.settings.first()
             showOverlay(RadarColor.Default)
+            recordDiagnostic(
+                stage = "service_connected",
+                reason = "Servico de acessibilidade conectado; bolinha pronta em amarelo.",
+            )
             startContinuousScan()
         }
     }
@@ -88,7 +93,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || event == null) return
         activePackageName = event.packageName?.toString()
         if (!shouldScanPackage(activePackageName)) {
-            resetToDefault()
+            resetToDefault(reason = scanBlockReason(activePackageName))
             return
         }
         scheduleVisibleTextAnalysis(delayMs = 80L)
@@ -115,7 +120,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     scheduleVisibleTextAnalysis(delayMs = 0L)
                     requestScreenshotAnalysis()
                 } else {
-                    resetToDefault()
+                    resetToDefault(reason = "Janela atual nao permitida para leitura.", record = false)
                 }
                 delay(SCAN_LOOP_MS)
             }
@@ -150,17 +155,32 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
                                     processRideText(ocrService.extractText(bitmap))
                                 }
+                            }.onFailure { error ->
+                                recordDiagnostic(
+                                    stage = "screenshot_ocr_error",
+                                    reason = "Falha ao ler texto do print da tela.",
+                                    error = error,
+                                )
                             }
                             screenshotInProgress.set(false)
                         }
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        recordDiagnostic(
+                            stage = "screenshot_failed",
+                            reason = "Android recusou o print da acessibilidade. Codigo: $errorCode.",
+                        )
                         screenshotInProgress.set(false)
                     }
                 },
             )
-        }.onFailure {
+        }.onFailure { error ->
+            recordDiagnostic(
+                stage = "screenshot_request_error",
+                reason = "Nao consegui solicitar print da tela pela acessibilidade.",
+                error = error,
+            )
             screenshotInProgress.set(false)
         }
     }
@@ -192,7 +212,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || !shouldScanCurrentWindow()) return
         val snapshotText = text.trim()
         if (snapshotText.isBlank()) {
-            resetToDefault()
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.")
             return
         }
 
@@ -201,11 +221,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
             showOverlay(RadarColor.Default)
+            recordDiagnostic(
+                stage = "screen_changed",
+                reason = "A imagem/texto da tela mudou; bolinha voltou para amarelo ate concluir nova leitura.",
+                text = snapshotText,
+            )
         }
 
         val fields = parser.parse(snapshotText)
         if (!looksLikeRideOffer(snapshotText, fields)) {
-            resetToDefault()
+            resetToDefault(
+                reason = rideOfferRejectReason(fields),
+                text = snapshotText,
+                fields = fields,
+            )
             return
         }
 
@@ -283,20 +312,43 @@ class LiveRideAccessibilityService : AccessibilityService() {
             repository.addAnalysis(result)
             if (snapshotHash != lastSnapshotHash || !shouldScanCurrentWindow()) {
                 showOverlay(RadarColor.Default)
+                recordDiagnostic(
+                    stage = "screen_changed_after_analysis",
+                    reason = "A tela mudou antes de aplicar a decisao; mantive a bolinha amarela.",
+                    text = text,
+                    fields = fields,
+                    result = result,
+                )
                 return
             }
 
             lastAnalyzedHash = snapshotHash
+            val radarColor = when (result.recommendation) {
+                Recommendation.GoodRide -> RadarColor.Green
+                Recommendation.OutsideRadius -> RadarColor.Red
+                Recommendation.InsufficientData -> RadarColor.Default
+            }
             showOverlay(
-                color = when (result.recommendation) {
-                    Recommendation.GoodRide -> RadarColor.Green
-                    Recommendation.OutsideRadius -> RadarColor.Red
-                    Recommendation.InsufficientData -> RadarColor.Default
-                },
+                color = radarColor,
                 distanceKm = result.nearestConfiguredDistanceKm(),
             )
-        } catch (_: Exception) {
+            recordDiagnostic(
+                stage = "analysis_result",
+                color = radarColor,
+                reason = result.reason,
+                text = text,
+                fields = fields,
+                result = result,
+            )
+        } catch (error: Exception) {
             showOverlay(RadarColor.Default)
+            recordDiagnostic(
+                stage = "analysis_error",
+                reason = "Erro durante analise do destino final; mantive a bolinha amarela.",
+                text = text,
+                fields = fields,
+                error = error,
+            )
         } finally {
             analyzing = false
         }
@@ -316,10 +368,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
         listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
 
-    private fun resetToDefault() {
+    private fun resetToDefault(
+        reason: String,
+        text: String? = null,
+        fields: RideFields? = null,
+        record: Boolean = true,
+    ) {
         lastSnapshotHash = null
         lastAnalyzedHash = null
         showOverlay(RadarColor.Default)
+        if (record) {
+            recordDiagnostic(
+                stage = "default",
+                reason = reason,
+                text = text,
+                fields = fields,
+            )
+        }
     }
 
     private fun shouldScanCurrentWindow(): Boolean {
@@ -348,6 +413,62 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .map { it.trim().lowercase(Locale.ROOT) }
             .filter { it.isNotBlank() }
         return packages
+    }
+
+    private fun scanBlockReason(packageName: String?): String {
+        val normalized = packageName?.lowercase(Locale.ROOT)
+        if (normalized.isNullOrBlank()) return "Pacote ativo nao informado pelo Android."
+        if (normalized == this.packageName) return "Rota Certa esta em primeiro plano; leitura pausada."
+        if (normalized in IGNORED_PACKAGES) return "Pacote ignorado para evitar leitura fora do card: $normalized."
+        if (currentSettings.restrictToSelectedRideApps && normalized !in selectedRidePackages(currentSettings)) {
+            return "Modo restrito ligado; pacote nao selecionado: $normalized."
+        }
+        return "Pacote permitido: $normalized."
+    }
+
+    private fun rideOfferRejectReason(fields: RideFields): String = when {
+        fields.destination.isNullOrBlank() -> "Destino final nao identificado no texto lido."
+        else -> "Destino foi lido, mas a tela nao parece um card de corrida aceito pelo filtro."
+    }
+
+    private fun recordDiagnostic(
+        stage: String,
+        color: RadarColor = RadarColor.Default,
+        reason: String,
+        text: String? = null,
+        fields: RideFields? = null,
+        result: AnalysisResult? = null,
+        error: Throwable? = null,
+    ) {
+        val settings = currentSettings
+        val hash = text?.snapshotHash()
+        val signature = listOf(stage, color.diagnosticLabel, reason, activePackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
+        if (signature == lastDiagnosticSignature) return
+        lastDiagnosticSignature = signature
+
+        val diagnostic = LiveDiagnostic(
+            createdAtMillis = System.currentTimeMillis(),
+            appVersionName = BuildConfig.VERSION_NAME,
+            appVersionCode = BuildConfig.VERSION_CODE,
+            packageName = activePackageName,
+            stage = stage,
+            bubbleColor = color.diagnosticLabel,
+            reason = reason,
+            restrictToSelectedRideApps = settings.restrictToSelectedRideApps,
+            selectedPackages = selectedRidePackages(settings).toList().sorted(),
+            textLength = text?.length ?: 0,
+            textHash = hash,
+            textPreview = text?.trim().orEmpty().take(DIAGNOSTIC_TEXT_LIMIT),
+            pickup = fields?.pickup ?: result?.fields?.pickup,
+            destination = fields?.destination ?: result?.fields?.destination,
+            recommendation = result?.recommendation,
+            homeDistanceKm = result?.pickupToHomeKm,
+            alternativeDistanceKm = result?.pickupToAlternativeKm,
+            error = error?.let { "${it::class.java.simpleName}: ${it.message.orEmpty()}" },
+        )
+        scope.launch {
+            runCatching { repository.saveDiagnostic(diagnostic) }
+        }
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
@@ -486,10 +607,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private enum class RadarColor(
         private val normalArgb: Int,
         private val darkArgb: Int,
+        val diagnosticLabel: String,
     ) {
-        Default(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4)),
-        Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59)),
-        Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29));
+        Default(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4), "amarelo"),
+        Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59), "verde"),
+        Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29), "vermelho");
 
         fun argb(settings: AppSettings): Int {
             val base = if (settings.bubbleDarkMode) darkArgb else normalArgb
@@ -501,6 +623,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private companion object {
         const val SCAN_LOOP_MS = 850L
         const val SCREENSHOT_INTERVAL_MS = 650L
+        const val DIAGNOSTIC_TEXT_LIMIT = 1200
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_BUBBLE_X = "bubble_x"
         const val KEY_BUBBLE_Y = "bubble_y"
