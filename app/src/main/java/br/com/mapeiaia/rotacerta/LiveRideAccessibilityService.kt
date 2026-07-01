@@ -44,6 +44,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var lastSnapshotHash: Int? = null
     private var lastAnalyzedHash: Int? = null
+    private var lastSavedReadHash: Int? = null
     private var lastDiagnosticSignature: String? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
@@ -232,8 +233,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val fields = parser.parse(snapshotText)
         if (!looksLikeRideOffer(snapshotText, fields)) {
+            val reason = rideOfferRejectReason(fields)
+            saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
             resetToDefault(
-                reason = rideOfferRejectReason(fields),
+                reason = reason,
                 text = snapshotText,
                 fields = fields,
             )
@@ -242,6 +245,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         if (snapshotHash == lastAnalyzedHash || analyzing) return
         analyzeLiveText(snapshotText, fields, snapshotHash)
+    }
+
+    private suspend fun saveCapturedReadToHistory(text: String, fields: RideFields, snapshotHash: Int, reason: String) {
+        if (snapshotHash == lastSavedReadHash) return
+        lastSavedReadHash = snapshotHash
+        repository.addAnalysis(
+            AnalysisResult(
+                createdAtMillis = System.currentTimeMillis(),
+                extractedText = text,
+                fields = fields,
+                recommendation = Recommendation.InsufficientData,
+                reason = "Leitura capturada: $reason",
+            ),
+        )
     }
 
     private fun looksLikeRideOffer(text: String, fields: RideFields): Boolean {
@@ -312,6 +329,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
 
             repository.addAnalysis(result)
+            lastSavedReadHash = snapshotHash
             if (!shouldScanCurrentWindow() && !isPassiveDiagnosticPackage(currentWindowPackageName())) {
                 showOverlay(RadarColor.Default)
                 recordDiagnostic(
