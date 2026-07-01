@@ -21,6 +21,8 @@ class SettingsRepository(private val context: Context) {
     private val desiredKeywords = stringPreferencesKey("desired_keywords")
     private val avoidedKeywords = stringPreferencesKey("avoided_keywords")
     private val googleMapsApiKey = stringPreferencesKey("google_maps_api_key")
+    private val homeCoordinate = stringPreferencesKey("home_coordinate")
+    private val alternativeCoordinate = stringPreferencesKey("alternative_coordinate")
     private val history = stringPreferencesKey("history")
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -33,6 +35,8 @@ class SettingsRepository(private val context: Context) {
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
             avoidedKeywords = prefs[avoidedKeywords].orEmpty(),
             googleMapsApiKey = prefs[googleMapsApiKey].orEmpty(),
+            homeCoordinate = decodeCoordinate(prefs[homeCoordinate]),
+            alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
         )
     }
 
@@ -50,6 +54,8 @@ class SettingsRepository(private val context: Context) {
             prefs[desiredKeywords] = settings.desiredKeywords
             prefs[avoidedKeywords] = settings.avoidedKeywords
             prefs[googleMapsApiKey] = settings.googleMapsApiKey.trim()
+            settings.homeCoordinate?.let { prefs[homeCoordinate] = json.encodeToString(it) } ?: prefs.remove(homeCoordinate)
+            settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
         }
     }
 
@@ -60,4 +66,7 @@ class SettingsRepository(private val context: Context) {
             prefs[history] = json.encodeToString((listOf(result) + current).take(50))
         }
     }
+
+    private fun decodeCoordinate(value: String?): Coordinate? =
+        runCatching { json.decodeFromString<Coordinate>(value.orEmpty()) }.getOrNull()
 }
