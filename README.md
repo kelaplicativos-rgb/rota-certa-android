@@ -17,28 +17,32 @@ A regra central do Rota Certa e simples:
 - Se o destino final passar do raio, mesmo por pouco, mostra VERMELHO / Fora da area.
 - Se nao houver leitura confiavel, mostra AMARELO / Dados insuficientes.
 
-Exemplo:
+## Operacao principal
 
-- Ponto configurado: casa do motorista.
-- Raio: 10 km.
-- Destino final a 8,7 km: VERDE.
-- Destino final a 10,1 km: VERMELHO.
+A aba `Analise` agora e focada em uso real durante a corrida:
 
-## Leitura ao vivo
+- botao `ON - leitura ao vivo ativa` quando a acessibilidade esta liberada;
+- botao `OFF - permitir acessibilidade` quando o acesso ainda esta negado;
+- ajuste rapido do raio por barra;
+- preferencias da bolinha: transparencia e cor mais escura;
+- ultimo resultado detectado pela leitura ao vivo.
 
-Na aba `Analise`, toque em `Ativar leitura ao vivo` e ative `Rota Certa - leitura ao vivo` nas configuracoes de Acessibilidade do Android.
+As opcoes de selecionar print manualmente e radar por print foram retiradas da tela principal para evitar confusao.
 
-Com o servico ativo, o app faz varredura rapida da tela:
+## Bolinha
 
-- tenta ler textos expostos pela acessibilidade;
-- tira screenshot pelo proprio Servico de Acessibilidade em Android compatível;
-- roda OCR local com ML Kit;
-- mostra uma bolinha por cima da tela:
-  - verde: dentro do raio;
-  - vermelho: fora do raio;
-  - amarelo: lendo ou dados insuficientes.
+Com o servico ativo, o app mostra uma bolinha por cima da tela:
 
-A leitura por print/manual e o radar por print continuam como segunda opcao.
+- verde: dentro do raio;
+- vermelho: fora do raio;
+- amarelo: lendo ou dados insuficientes.
+
+A bolinha tambem permite:
+
+- tocar para abrir o Rota Certa diretamente;
+- arrastar para escolher a melhor posicao;
+- ajustar transparencia;
+- usar cor normal ou mais escura.
 
 ## Raio rapido
 
@@ -55,7 +59,6 @@ Na aba `Analise`, use `Raio rapido` para alterar o raio da casa e do alfinete se
 - OCR local com ML Kit Text Recognition
 - Leitura ao vivo por Servico de Acessibilidade
 - OCR por screenshot de acessibilidade quando o card nao expõe texto suficiente
-- Selecao de print pela galeria
 - Deteccao da cidade/pais pela localizacao do aparelho
 - Configuracao de casa, alfinete/localidade alternativa e raios em km
 - Opcao de digitar local manualmente ou preencher pela localizacao GPS atual
@@ -90,7 +93,7 @@ Na aba `Config`, o campo `Chave Google Maps API` e necessario para decisao verde
 
 Com chave configurada, o app usa:
 
-- `Geocoding API` para transformar o destino final extraido da tela/print em latitude/longitude.
+- `Geocoding API` para transformar o destino final extraido da tela em latitude/longitude.
 - `Routes API` para calcular a distancia real de carro entre o destino final e a casa/alfinete.
 
 Para usar:
@@ -104,9 +107,7 @@ Para usar:
 
 - `ACCESS_FINE_LOCATION` e `ACCESS_COARSE_LOCATION`: detectar cidade/pais do usuario, preencher localidade por GPS quando solicitado e calcular regioes com mais contexto.
 - `INTERNET`: permitir chamadas ao Google Maps.
-- `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`: compatibilidade com leitura de imagens e radar por print.
-- `SYSTEM_ALERT_WINDOW`: bolinha do radar por print.
-- Servico de Acessibilidade: leitura ao vivo da tela e bolinha de decisao.
+- Servico de Acessibilidade: leitura ao vivo da tela, OCR por screenshot e bolinha de decisao.
 
 ## Limitacoes importantes
 
