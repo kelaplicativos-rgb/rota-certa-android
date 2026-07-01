@@ -42,7 +42,7 @@ class RideTextParserTest {
     }
 
     @Test
-    fun returnsInsufficientDataWhenGoogleMapsKeyIsMissing() {
+    fun recommendsRideWithApproximateDistanceWhenGoogleMapsKeyIsMissing() {
         val result = DecisionEngine().decide(
             fields = RideFields(destination = "Avenida Brasil"),
             settings = AppSettings(homeRadiusKm = 5.0),
@@ -52,11 +52,12 @@ class RideTextParserTest {
             fullText = "Avenida Brasil",
         )
 
-        assertEquals(Recommendation.InsufficientData, result.recommendation)
+        assertEquals(Recommendation.GoodRide, result.recommendation)
+        assertTrue(result.pickupToHomeKm != null && result.pickupToHomeKm < 5.0)
     }
 
     @Test
-    fun returnsInsufficientDataWhenGoogleMapsRouteIsMissing() {
+    fun recommendsRideWithApproximateDistanceWhenGoogleMapsRouteIsMissing() {
         val result = DecisionEngine().decide(
             fields = RideFields(destination = "Avenida Brasil"),
             settings = AppSettings(homeRadiusKm = 5.0, googleMapsApiKey = "key"),
@@ -66,7 +67,8 @@ class RideTextParserTest {
             fullText = "Avenida Brasil",
         )
 
-        assertEquals(Recommendation.InsufficientData, result.recommendation)
+        assertEquals(Recommendation.GoodRide, result.recommendation)
+        assertTrue(result.pickupToHomeKm != null && result.pickupToHomeKm < 5.0)
     }
 
     @Test
