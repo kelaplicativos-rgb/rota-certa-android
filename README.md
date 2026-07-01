@@ -32,6 +32,7 @@ Exemplo:
 - Configuracao de casa, alfinete/localidade alternativa e raios em km
 - Opcao de digitar local manualmente ou preencher pela localizacao GPS atual
 - Salvamento de coordenadas GPS para calculo de raio mais preciso
+- Google Maps Geocoding API opcional para localizar enderecos com mais confiabilidade
 - Historico local das analises
 - Sem backend
 
@@ -53,17 +54,32 @@ Na aba `Config`, o usuario pode escolher entre duas formas de configurar a casa 
 
 Quando a opcao de GPS e usada, o app salva latitude e longitude junto com o endereco aproximado. Na analise da corrida, essas coordenadas salvas sao priorizadas em relacao ao texto digitado, deixando o calculo de raio mais confiavel.
 
+## Google Maps API
+
+Na aba `Config`, o campo `Chave Google Maps API` e opcional, mas recomendado.
+
+Com chave configurada, o app usa a Google Maps Geocoding API para transformar o destino final extraido do print em latitude/longitude. Se a chave estiver vazia ou a chamada falhar, o app cai no geocoder do Android como fallback.
+
+Para usar:
+
+1. Crie uma chave no Google Cloud / Google Maps Platform.
+2. Ative a `Geocoding API`.
+3. Cole a chave no campo `Chave Google Maps API` dentro do app.
+4. Toque em `Salvar configuracoes`.
+
+Em uma versao futura, a `Routes API` pode ser adicionada para calcular distancia real por rua em vez de distancia em linha reta.
+
 ## Permissoes Android
 
 - `ACCESS_FINE_LOCATION` e `ACCESS_COARSE_LOCATION`: detectar cidade/pais do usuario, preencher localidade por GPS quando solicitado e calcular regioes com mais contexto.
-- `INTERNET`: permitir geocoding do Android quando o provedor do aparelho precisar consultar rede.
+- `INTERNET`: permitir geocoding do Android quando o provedor do aparelho precisar consultar rede e permitir chamadas opcionais ao Google Maps.
 - `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`: compatibilidade com leitura de imagens, embora o Photo Picker moderno normalmente nao exija permissao ampla de armazenamento.
 
 ## Limitacoes importantes
 
 - OCR pode errar textos pequenos, cortados, com baixa resolucao ou sobrepostos.
 - Apps de corrida mudam layout; o parser precisa evoluir com prints reais.
-- Geocoding por texto pode confundir ruas iguais em cidades diferentes; por isso o app usa cidade/pais detectados como contexto.
+- Sem chave Google Maps, o geocoding por texto pode confundir ruas iguais em cidades diferentes.
 - Distancia inicial e calculada em linha reta. Distancia por rota real exige API de mapas/rotas.
 - Monitoramento automatico de screenshots e captura de tela via MediaProjection ficam para etapas futuras.
 - Servico de Acessibilidade, se usado no futuro, deve ser limitado a leitura de texto visivel e com consentimento claro do usuario.
@@ -107,4 +123,4 @@ Workflow: Android APK.
 2. Ajustar o parser para os layouts dos apps usados.
 3. Adicionar monitoramento automatico da pasta Screenshots.
 4. Avaliar MediaProjection para leitura em tempo real.
-5. Avaliar API de rotas para distancia real em vez de linha reta.
+5. Avaliar Routes API para distancia real em vez de linha reta.
