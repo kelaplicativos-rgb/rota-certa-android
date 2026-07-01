@@ -74,4 +74,41 @@ class RideAppSpecificParserTest {
         assertEquals("Rua Coelho Lisboa, 419 (Cidade Mae do Ceu, Sao Paulo - SP)", result.fields.destination)
         assertEquals("R$ 29", result.fields.fare)
     }
+
+    @Test
+    fun parsesInDriveDiagnosticWithLooseAddressesBeforeMapOcr() {
+        val text = """
+            Pedido de viagem
+            Sarah
+            5.0
+            (119)
+            11 min.
+            R$ 2,2/km
+            ~1,7 km
+            R$ 15
+            Rua Gaspar Guterres 129 (Jardim Nossa Sra. do Carmo)
+            Rua Rodrigues Seixas, 341 (Cidade Lider, Sao Paulo - SP)
+            Rua Rafael Fernandes, 63 (Cidade Lider, Sao Paulo - SP)
+            Aceitar por R$ 15
+            Ofereca sua tarifa
+            R$ 17
+            R$ 18
+            R$ 20
+            R$ 21
+            Fechar
+            Pedido de viagem
+            R$ 15
+            1,7 km
+            A Rua Gaspar Guterres 129 (Jardim Nossa Sra. do Carmo)
+            B Rua Rafael Fernandes, 63
+            Aceitar por R$ 15
+        """.trimIndent()
+
+        val result = RideTextParser().parseWithMetadata(text, "sinet.startup.inDriver")
+
+        assertEquals("indrive-order-card", result.parserName)
+        assertEquals("Rua Gaspar Guterres 129 (Jardim Nossa Sra. do Carmo)", result.fields.pickup)
+        assertEquals("Rua Rafael Fernandes, 63 (Cidade Lider, Sao Paulo - SP)", result.fields.destination)
+        assertEquals("R$ 15", result.fields.fare)
+    }
 }
