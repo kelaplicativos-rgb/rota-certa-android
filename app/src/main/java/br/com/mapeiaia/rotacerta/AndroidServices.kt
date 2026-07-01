@@ -46,16 +46,36 @@ class DeviceLocationService(private val context: Context) {
 class GeocodingService(private val context: Context) {
     private val geocoder = Geocoder(context, Locale("pt", "BR"))
 
-    suspend fun geocode(query: String, region: DeviceRegion): Coordinate? = withContext(Dispatchers.IO) {
+    suspend fun geocode(
+        query: String,
+        region: DeviceRegion,
+        biasCoordinate: Coordinate? = null,
+    ): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext null
-        val scopedQuery = listOf(query, region.city, region.country)
-            .filter { it.isNotBlank() }
-            .joinToString(", ")
+
+        buildGeocodeQueries(query, region).firstNotNullOfOrNull { scopedQuery ->
+            androidGeocode(scopedQuery, biasCoordinate)
+        }
+    }
+
+    private fun androidGeocode(scopedQuery: String, biasCoordinate: Coordinate?): Coordinate? {
         @Suppress("DEPRECATION")
-        val address = runCatching { geocoder.getFromLocationName(scopedQuery, 1)?.firstOrNull() }
-            .getOrNull()
-            ?: return@withContext null
-        Coordinate(address.latitude, address.longitude)
+        val address = runCatching {
+            if (biasCoordinate != null) {
+                geocoder.getFromLocationName(
+                    scopedQuery,
+                    1,
+                    biasCoordinate.latitude - GEOCODE_BIAS_DEGREES,
+                    biasCoordinate.longitude - GEOCODE_BIAS_DEGREES,
+                    biasCoordinate.latitude + GEOCODE_BIAS_DEGREES,
+                    biasCoordinate.longitude + GEOCODE_BIAS_DEGREES,
+                )?.firstOrNull()
+            } else {
+                geocoder.getFromLocationName(scopedQuery, 1)?.firstOrNull()
+            }
+        }.getOrNull() ?: return null
+
+        return Coordinate(address.latitude, address.longitude)
     }
 
     suspend fun reverseGeocode(coordinate: Coordinate): DeviceRegion = withContext(Dispatchers.IO) {
@@ -69,4 +89,30 @@ class GeocodingService(private val context: Context) {
             country = address?.countryName.orEmpty(),
         )
     }
+
+    private companion object {
+        const val GEOCODE_BIAS_DEGREES = 0.8
+    }
 }
+
+internal fun buildGeocodeQueries(query: String, region: DeviceRegion): List<String> {
+    val cleanQuery = query.cleanGeocodeQuery()
+    val city = region.city.cleanGeocodeQuery()
+    val country = region.country.cleanGeocodeQuery().ifBlank { "Brasil" }
+
+    return listOf(
+        listOf(cleanQuery, city, country).filter { it.isNotBlank() }.joinToString(", "),
+        listOf(cleanQuery, country).filter { it.isNotBlank() }.joinToString(", "),
+        "$cleanQuery, Brasil",
+        cleanQuery,
+    )
+        .map { it.replace(Regex("""\s+"""), " ").trim().trim(',') }
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
+internal fun String.cleanGeocodeQuery(): String =
+    replace('…', ' ')
+        .replace(Regex("""\.{2,}"""), " ")
+        .replace(Regex("""\s+"""), " ")
+        .trim()

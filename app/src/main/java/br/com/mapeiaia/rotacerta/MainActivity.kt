@@ -140,9 +140,13 @@ fun RotaCertaApp() {
         }
     }
 
-    suspend fun geocodeBest(query: String): Coordinate? =
-        googleMapsService.geocode(query, region, settings.googleMapsApiKey)
-            ?: geocodingService.geocode(query, region)
+    suspend fun geocodeBest(
+        query: String,
+        activeRegion: DeviceRegion = region,
+        biasCoordinate: Coordinate? = null,
+    ): Coordinate? =
+        googleMapsService.geocode(query, activeRegion, settings.googleMapsApiKey, biasCoordinate)
+            ?: geocodingService.geocode(query, activeRegion, biasCoordinate)
 
     suspend fun routeDistanceKm(origin: Coordinate?, destination: Coordinate?): Double? =
         if (origin != null && destination != null && settings.googleMapsApiKey.isNotBlank()) {
@@ -155,11 +159,17 @@ fun RotaCertaApp() {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             status = "Lendo print com OCR..."
+            val deviceCoordinate = locationService.currentCoordinate()
+            val activeRegion = if (region.city.isBlank() && region.country.isBlank() && deviceCoordinate != null) {
+                geocodingService.reverseGeocode(deviceCoordinate).also { region = it }
+            } else {
+                region
+            }
             val extractedText = ocrService.extractText(uri)
             val fields = parser.parse(extractedText)
-            val destinationCoordinate = fields.destination?.let { geocodeBest(it) }
-            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress)
-            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress)
+            val destinationCoordinate = fields.destination?.let { geocodeBest(it, activeRegion, deviceCoordinate) }
+            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress, activeRegion, deviceCoordinate)
+            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress, activeRegion, deviceCoordinate)
             status = "Calculando distancia no Google Maps..."
             val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate)
             val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate)

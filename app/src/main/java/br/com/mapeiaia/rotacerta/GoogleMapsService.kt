@@ -18,26 +18,43 @@ class GoogleMapsService {
     private val geocodeCache = mutableMapOf<String, Coordinate?>()
     private val routeCache = mutableMapOf<String, Double?>()
 
-    suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
+    suspend fun geocode(
+        query: String,
+        region: DeviceRegion,
+        apiKey: String,
+        biasCoordinate: Coordinate? = null,
+    ): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank() || apiKey.isBlank()) return@withContext null
 
-        val scopedQuery = listOf(query, region.city, region.country.ifBlank { "Brasil" })
-            .filter { it.isNotBlank() }
-            .joinToString(", ")
-        val cacheKey = scopedQuery.lowercase()
-        geocodeCache[cacheKey]?.let { return@withContext it }
+        buildGeocodeQueries(query, region).firstNotNullOfOrNull { scopedQuery ->
+            val cacheKey = listOf(scopedQuery, biasCoordinate?.cacheKey().orEmpty()).joinToString("|").lowercase()
+            if (geocodeCache.containsKey(cacheKey)) return@firstNotNullOfOrNull geocodeCache[cacheKey]
 
+            val coordinate = googleGeocode(scopedQuery, apiKey, biasCoordinate)
+            geocodeCache[cacheKey] = coordinate
+            coordinate
+        }
+    }
+
+    private fun googleGeocode(scopedQuery: String, apiKey: String, biasCoordinate: Coordinate?): Coordinate? {
         val encodedAddress = URLEncoder.encode(scopedQuery, "UTF-8")
         val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
+        val bounds = biasCoordinate?.let {
+            val value = "${it.latitude - GEOCODE_BIAS_DEGREES},${it.longitude - GEOCODE_BIAS_DEGREES}|" +
+                "${it.latitude + GEOCODE_BIAS_DEGREES},${it.longitude + GEOCODE_BIAS_DEGREES}"
+            "&bounds=${URLEncoder.encode(value, "UTF-8")}"
+        }.orEmpty()
         val url = URL(
             "https://maps.googleapis.com/maps/api/geocode/json" +
                 "?address=$encodedAddress" +
                 "&region=br" +
+                "&components=${URLEncoder.encode("country:BR", "UTF-8")}" +
                 "&language=pt-BR" +
+                bounds +
                 "&key=$encodedKey",
         )
 
-        val coordinate = runCatching {
+        return runCatching {
             val connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 3500
@@ -52,9 +69,6 @@ class GoogleMapsService {
                 connection.disconnect()
             }
         }.getOrNull()
-
-        geocodeCache[cacheKey] = coordinate
-        coordinate
     }
 
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? = withContext(Dispatchers.IO) {
@@ -130,4 +144,11 @@ class GoogleMapsService {
             ?: return null
         return distanceMeters / 1000.0
     }
+
+    private companion object {
+        const val GEOCODE_BIAS_DEGREES = 0.8
+    }
 }
+
+private fun Coordinate.cacheKey(): String =
+    String.format(Locale.US, "%.6f,%.6f", latitude, longitude)

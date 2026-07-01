@@ -200,4 +200,85 @@ class RideTextParserTest {
         assertEquals("Avenida Adélia Chohfi, 655, São Rafael, São Paulo", fields.destination)
         assertEquals("R$ 13,48", fields.fare)
     }
+
+    @Test
+    fun parsesNinetyNineCardWithWrappedJardimDestination() {
+        val text = """
+            Negocia Dinheiro
+            R$8,93
+            R$1,60/km
+            4,70 181 corridas
+            Perfil Premium
+            6min (1km)
+            Estação Exemplo monotrilho., Av.
+            Modelo, 15.000 - Jardim Orig...
+            12min (4,5km)
+            Rua Exemplo Verde, 491 , Jardim
+            Destino
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Estação Exemplo monotrilho., Av. Modelo, 15.000 - Jardim Orig", fields.pickup)
+        assertEquals("Rua Exemplo Verde, 491 , Jardim Destino", fields.destination)
+    }
+
+    @Test
+    fun parsesNinetyNineCardWithRiskBadgeStopAndParqueDestination() {
+        val text = """
+            Dinheiro
+            R$8,40
+            R$1,95/km
+            R$1,73 Tarifa base dinâmica incl.
+            4,96 409 corridas
+            Perfil Essencial
+            4min (208m) Área de risco
+            Avenida Exemplo Norte, 2550, Cidade
+            Teste
+            1 parada(s)
+            12min (4,1km)
+            Rua Exemplo Azul, 317 , Parque Sao
+            Destino
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Avenida Exemplo Norte, 2550, Cidade Teste", fields.pickup)
+        assertEquals("Rua Exemplo Azul, 317 , Parque Sao Destino", fields.destination)
+    }
+
+    @Test
+    fun parsesNinetyNineCardWithWrappedVilaDestination() {
+        val text = """
+            Pop Expresso Prioritário
+            R$14,47
+            R$1,96/km
+            R$2,37 Tarifa Expresso inclusa
+            R$1,73 Tarifa base dinâmica incl.
+            5,00 36 corridas
+            Perfil Premium
+            5min (929m)
+            Rua Exemplo Principal, 222 , Cidade
+            Origem
+            18min (6,4km)
+            Rua Exemplo Final, 96 ,
+            Vila Destino
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Rua Exemplo Principal, 222 , Cidade Origem", fields.pickup)
+        assertEquals("Rua Exemplo Final, 96 , Vila Destino", fields.destination)
+    }
+
+    @Test
+    fun buildsBrazilScopedGeocodeQueriesWhenRegionIsMissing() {
+        val queries = buildGeocodeQueries(
+            query = "Rua Exemplo Verde, 491, Jardim Destino",
+            region = DeviceRegion(),
+        )
+
+        assertEquals("Rua Exemplo Verde, 491, Jardim Destino, Brasil", queries.first())
+        assertTrue(queries.contains("Rua Exemplo Verde, 491, Jardim Destino"))
+    }
 }
