@@ -92,7 +92,7 @@ class RideTextParserTest {
 
         val fields = RideTextParser().parse(text)
 
-        assertEquals("A Rua Lagoa Bonita 42(Jardim Imperador (Zona Leste))", fields.pickup)
+        assertEquals("Rua Lagoa Bonita 42(Jardim Imperador (Zona Leste))", fields.pickup)
         assertEquals("Rua Moysés Zunta 189 (Parque Savoi City)", fields.destination)
     }
 }
