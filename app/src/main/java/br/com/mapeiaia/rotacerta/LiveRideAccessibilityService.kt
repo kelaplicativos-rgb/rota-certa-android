@@ -253,11 +253,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
             lastAnalyzedHash = snapshotHash
             showOverlay(
-                when (result.recommendation) {
+                color = when (result.recommendation) {
                     Recommendation.GoodRide -> RadarColor.Green
                     Recommendation.OutsideRadius -> RadarColor.Red
                     Recommendation.InsufficientData -> RadarColor.Default
                 },
+                distanceKm = result.nearestConfiguredDistanceKm(),
             )
         } catch (_: Exception) {
             showOverlay(RadarColor.Default)
@@ -277,13 +278,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             null
         }
 
+    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
+        listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
+
     private fun resetToDefault() {
         lastSnapshotHash = null
         lastAnalyzedHash = null
         showOverlay(RadarColor.Default)
     }
 
-    private fun showOverlay(color: RadarColor) {
+    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
         val manager = windowManager ?: return
         val view = overlayView ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
@@ -298,12 +302,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
             overlayParams = params
             manager.addView(newView, params)
         }
-        view.text = ""
+        view.text = formatBubbleDistanceKm(distanceKm)
+        view.textSize = if ((distanceKm ?: 0.0) >= 100.0) 11f else 14f
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color.argb(currentSettings))
             setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
         }
+    }
+
+    private fun formatBubbleDistanceKm(distanceKm: Double?): String {
+        if (distanceKm == null) return ""
+        val compactValue = if (distanceKm >= 10.0) {
+            distanceKm.roundToInt().toString()
+        } else {
+            String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
+        }
+        return "${compactValue}km"
     }
 
     private fun removeOverlay() {
@@ -401,7 +416,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         private val normalArgb: Int,
         private val darkArgb: Int,
     ) {
-        Default(Color.rgb(128, 128, 128), Color.rgb(64, 64, 64)),
+        Default(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4)),
         Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59)),
         Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29));
 
