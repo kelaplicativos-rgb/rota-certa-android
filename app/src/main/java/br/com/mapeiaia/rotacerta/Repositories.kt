@@ -26,7 +26,13 @@ class SettingsRepository(private val context: Context) {
     private val alternativeCoordinate = stringPreferencesKey("alternative_coordinate")
     private val bubbleOpacity = doublePreferencesKey("bubble_opacity")
     private val bubbleDarkMode = booleanPreferencesKey("bubble_dark_mode")
+    private val restrictToSelectedRideApps = booleanPreferencesKey("restrict_to_selected_ride_apps")
+    private val monitor99 = booleanPreferencesKey("monitor_99")
+    private val monitorUber = booleanPreferencesKey("monitor_uber")
+    private val monitorInDrive = booleanPreferencesKey("monitor_indrive")
+    private val extraMonitoredPackages = stringPreferencesKey("extra_monitored_packages")
     private val history = stringPreferencesKey("history")
+    private val liveDiagnostic = stringPreferencesKey("live_diagnostic")
     private val json = Json { ignoreUnknownKeys = true }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -43,12 +49,21 @@ class SettingsRepository(private val context: Context) {
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
             bubbleOpacity = prefs[bubbleOpacity] ?: 1.0,
             bubbleDarkMode = prefs[bubbleDarkMode] ?: false,
+            restrictToSelectedRideApps = prefs[restrictToSelectedRideApps] ?: false,
+            monitor99 = prefs[monitor99] ?: true,
+            monitorUber = prefs[monitorUber] ?: true,
+            monitorInDrive = prefs[monitorInDrive] ?: true,
+            extraMonitoredPackages = prefs[extraMonitoredPackages].orEmpty(),
         )
     }
 
     val analyses: Flow<List<AnalysisResult>> = context.dataStore.data.map { prefs ->
         runCatching { json.decodeFromString<List<AnalysisResult>>(prefs[history].orEmpty()) }
             .getOrDefault(emptyList())
+    }
+
+    val diagnostic: Flow<LiveDiagnostic?> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<LiveDiagnostic>(prefs[liveDiagnostic].orEmpty()) }.getOrNull()
     }
 
     suspend fun saveSettings(settings: AppSettings) {
@@ -61,6 +76,11 @@ class SettingsRepository(private val context: Context) {
             prefs[avoidedKeywords] = settings.avoidedKeywords
             prefs[bubbleOpacity] = settings.bubbleOpacity.coerceIn(0.25, 1.0)
             prefs[bubbleDarkMode] = settings.bubbleDarkMode
+            prefs[restrictToSelectedRideApps] = settings.restrictToSelectedRideApps
+            prefs[monitor99] = settings.monitor99
+            prefs[monitorUber] = settings.monitorUber
+            prefs[monitorInDrive] = settings.monitorInDrive
+            prefs[extraMonitoredPackages] = settings.extraMonitoredPackages.trim()
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
@@ -76,6 +96,12 @@ class SettingsRepository(private val context: Context) {
             val current = runCatching { json.decodeFromString<List<AnalysisResult>>(prefs[history].orEmpty()) }
                 .getOrDefault(emptyList())
             prefs[history] = json.encodeToString((listOf(result) + current).take(50))
+        }
+    }
+
+    suspend fun saveDiagnostic(diagnostic: LiveDiagnostic) {
+        context.dataStore.edit { prefs ->
+            prefs[liveDiagnostic] = json.encodeToString(diagnostic)
         }
     }
 
