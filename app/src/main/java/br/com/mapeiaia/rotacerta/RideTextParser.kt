@@ -4,8 +4,10 @@ class RideTextParser {
     private val fareRegex = Regex("""R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})?""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
+    private val routeStepRegex = Regex("""\b\d{1,3}\s*min\s*\(\s*\d+(?:[,.]\d+)?\s*(?:m|km)\s*\)""", RegexOption.IGNORE_CASE)
     private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
     private val mapPointRegex = Regex("""^[AB]\s+(.+)""", RegexOption.IGNORE_CASE)
+    private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
     private val addressWords = listOf(
         "rua",
         "avenida",
@@ -30,7 +32,16 @@ class RideTextParser {
         val lines = text
             .lines()
             .map { it.trim() }
-            .filter { it.length >= 2 }
+            .filter { it.length >= 2 || markerOnlyRegex.matches(it) }
+
+        val knownLayout = parseKnownRideAppLayout(lines)
+        if (knownLayout != null) {
+            return knownLayout.copy(
+                fare = fareRegex.find(text)?.value?.trim(),
+                distance = distanceRegex.find(text)?.value?.trim(),
+                time = timeRegex.find(text)?.value?.trim(),
+            )
+        }
 
         val addresses = findAddressCandidates(lines)
         val pickup = findAddressAfterMarker(lines, pickupMarkers) ?: addresses.firstOrNull()
@@ -44,6 +55,51 @@ class RideTextParser {
             fare = fareRegex.find(text)?.value?.trim(),
             distance = distanceRegex.find(text)?.value?.trim(),
             time = timeRegex.find(text)?.value?.trim(),
+        )
+    }
+
+    private fun parseKnownRideAppLayout(lines: List<String>): RideFields? =
+        parseMapPointLayout(lines) ?: parseRouteStepLayout(lines)
+
+    private fun parseMapPointLayout(lines: List<String>): RideFields? {
+        val candidates = mutableListOf<AddressCandidate>()
+
+        lines.forEachIndexed { index, line ->
+            val inlineMarker = mapPointRegex.find(line)
+            if (inlineMarker != null) {
+                val address = buildAddressBlock(lines, index, line)
+                if (address != null) candidates += AddressCandidate(line.first().uppercaseChar(), address)
+                return@forEachIndexed
+            }
+
+            if (markerOnlyRegex.matches(line)) {
+                val address = buildAddressBlock(lines, index + 1, lines.getOrNull(index + 1).orEmpty())
+                if (address != null) candidates += AddressCandidate(line.uppercase().first(), address)
+            }
+        }
+
+        if (candidates.isEmpty()) return null
+
+        return RideFields(
+            pickup = candidates.firstOrNull { it.label == 'A' }?.address ?: candidates.firstOrNull()?.address,
+            destination = candidates.lastOrNull { it.label == 'B' }?.address ?: candidates.lastOrNull()?.address,
+        )
+    }
+
+    private fun parseRouteStepLayout(lines: List<String>): RideFields? {
+        val candidates = mutableListOf<String>()
+
+        lines.forEachIndexed { index, line ->
+            if (!routeStepRegex.containsMatchIn(line)) return@forEachIndexed
+            val startIndex = nextAddressLineIndex(lines, index + 1) ?: return@forEachIndexed
+            buildAddressBlock(lines, startIndex, lines[startIndex])?.let { candidates += it }
+        }
+
+        if (candidates.isEmpty()) return null
+
+        return RideFields(
+            pickup = candidates.firstOrNull(),
+            destination = candidates.lastOrNull(),
         )
     }
 
@@ -77,23 +133,35 @@ class RideTextParser {
         val candidates = mutableListOf<String>()
 
         lines.forEachIndexed { index, rawLine ->
-            val firstLine = cleanAddressLine(rawLine)
-            if (!looksLikeAddress(firstLine)) return@forEachIndexed
-
-            val parts = mutableListOf(firstLine)
-            var nextIndex = index + 1
-            while (nextIndex < lines.size && parts.size < 4) {
-                val next = cleanAddressLine(lines[nextIndex])
-                if (!isAddressContinuation(next, parts.last())) break
-                parts += next
-                nextIndex += 1
-            }
-
-            candidates += parts.joinToString(" ").replace(Regex("""\s+"""), " ").trim()
+            buildAddressBlock(lines, index, rawLine)?.let { candidates += it }
         }
 
         return candidates.distinct()
     }
+
+    private fun buildAddressBlock(lines: List<String>, startIndex: Int, rawFirstLine: String): String? {
+        if (startIndex !in lines.indices) return null
+
+        val firstLine = cleanAddressLine(rawFirstLine)
+        if (!looksLikeAddress(firstLine)) return null
+
+        val parts = mutableListOf(firstLine)
+        var nextIndex = startIndex + 1
+        while (nextIndex < lines.size && parts.size < 4) {
+            val next = cleanAddressLine(lines[nextIndex])
+            if (!isAddressContinuation(next, parts.last())) break
+            parts += next
+            nextIndex += 1
+        }
+
+        return parts.joinToString(" ").replace(Regex("""\s+"""), " ").trim()
+    }
+
+    private fun nextAddressLineIndex(lines: List<String>, startIndex: Int): Int? =
+        (startIndex until lines.size).firstOrNull { index ->
+            val candidate = cleanAddressLine(lines[index])
+            candidate.isNotBlank() && !isNoise(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
+        }
 
     private fun cleanAddressLine(value: String): String =
         mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
@@ -101,6 +169,7 @@ class RideTextParser {
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
         if (value.length < 2 || isNoise(value) || roadCodeRegex.matches(value)) return false
         if (value.equals("A", ignoreCase = true) || value.equals("B", ignoreCase = true)) return false
+        if (mapPointRegex.find(value) != null) return false
 
         val normalized = value.lowercase()
         val previous = previousLine.trim()
@@ -148,4 +217,9 @@ class RideTextParser {
             normalized.contains("preco") ||
             normalized.contains("tarifa")
     }
+
+    private data class AddressCandidate(
+        val label: Char,
+        val address: String,
+    )
 }
