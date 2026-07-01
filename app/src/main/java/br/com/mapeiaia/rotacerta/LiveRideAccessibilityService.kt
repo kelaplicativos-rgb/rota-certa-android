@@ -27,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -73,6 +74,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceReady = true
+        scope.launch {
+            repository.settings.collect { currentSettings = it }
+        }
         scope.launch {
             currentSettings = repository.settings.first()
             showOverlay(RadarColor.Default)
@@ -326,7 +330,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun shouldScanPackage(packageName: String?): Boolean {
         val normalized = packageName?.lowercase(Locale.ROOT) ?: return true
         if (normalized == this.packageName) return false
-        return normalized !in IGNORED_PACKAGES
+        if (normalized in IGNORED_PACKAGES) return false
+
+        val settings = currentSettings
+        if (!settings.restrictToSelectedRideApps) return true
+
+        return normalized in selectedRidePackages(settings)
+    }
+
+    private fun selectedRidePackages(settings: AppSettings): Set<String> {
+        val packages = mutableSetOf<String>()
+        if (settings.monitor99) packages += PACKAGE_99_DRIVER
+        if (settings.monitorUber) packages += PACKAGE_UBER_DRIVER
+        if (settings.monitorInDrive) packages += PACKAGE_INDRIVE_DRIVER
+        packages += settings.extraMonitoredPackages
+            .split(Regex("[,;\\s]+"))
+            .map { it.trim().lowercase(Locale.ROOT) }
+            .filter { it.isNotBlank() }
+        return packages
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
@@ -483,6 +504,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_BUBBLE_X = "bubble_x"
         const val KEY_BUBBLE_Y = "bubble_y"
+        const val PACKAGE_99_DRIVER = "com.app99.driver"
+        const val PACKAGE_UBER_DRIVER = "com.ubercab.driver"
+        const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
         val IGNORED_PACKAGES = setOf(
             "com.android.settings",
             "com.google.android.apps.maps",
