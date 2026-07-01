@@ -124,7 +124,10 @@ class RideTextParser {
     private fun looksLikeAddress(value: String): Boolean {
         if (isNoise(value) || roadCodeRegex.matches(value)) return false
         val normalized = value.lowercase()
-        return addressWords.any { normalized.contains(it) } || Regex("""\b\d{1,5}\b""").containsMatchIn(value)
+        val hasAddressWord = addressWords.any { normalized.contains(it) }
+        val hasAddressNumber = Regex("""\b\d{1,5}\b""").containsMatchIn(value) &&
+            listOf(",", "-", "(", ")").any { value.contains(it) }
+        return hasAddressWord || hasAddressNumber
     }
 
     private fun isNoise(value: String): Boolean {
