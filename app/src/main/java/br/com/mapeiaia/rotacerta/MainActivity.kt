@@ -159,6 +159,7 @@ fun RotaCertaApp() {
                 "analise" -> AnalysisScreen(
                     status = status,
                     result = lastResult,
+                    settings = settings,
                     onPickImage = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
@@ -178,6 +179,7 @@ fun RotaCertaApp() {
 private fun AnalysisScreen(
     status: String,
     result: AnalysisResult?,
+    settings: AppSettings,
     onPickImage: () -> Unit,
 ) {
     Button(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
@@ -185,21 +187,33 @@ private fun AnalysisScreen(
     }
     Spacer(Modifier.height(12.dp))
     Text(status)
-    result?.let { ResultCard(it) }
+    result?.let { ResultCard(it, settings) }
 }
 
 @Composable
-private fun ResultCard(result: AnalysisResult) {
+private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
+    val radiusInfo = resultRadiusInfo(result, settings)
+
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(recommendationLabel(result.recommendation), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(result.reason)
-            Text("Destino final: ${result.fields.destination ?: "nao identificado"}")
-            Text("Valor: ${result.fields.fare ?: "nao identificado"}")
-            Text("Distancia no app: ${result.fields.distance ?: "nao identificada"}")
-            Text("Tempo: ${result.fields.time ?: "nao identificado"}")
-            result.pickupToHomeKm?.let { Text("Destino ate casa: ${formatKm(it)}") }
-            result.pickupToAlternativeKm?.let { Text("Destino ate alfinete/localidade: ${formatKm(it)}") }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Destino final:", fontWeight = FontWeight.Bold)
+                Text(formatDestination(result.fields.destination))
+            }
+
+            radiusInfo?.let {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("${it.label}:", fontWeight = FontWeight.Bold)
+                    Text("${formatKm(it.distanceKm)} de ${formatKm(it.radiusKm)} permitidos")
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Decisao:", fontWeight = FontWeight.Bold)
+                Text(decisionActionLabel(result.recommendation))
+            }
         }
     }
 }
@@ -382,10 +396,48 @@ private enum class LocationTarget {
     Alternative,
 }
 
+private data class RadiusInfo(
+    val label: String,
+    val distanceKm: Double,
+    val radiusKm: Double,
+)
+
+private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): RadiusInfo? {
+    val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia ate casa", it, settings.homeRadiusKm) }
+    val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia ate alfinete", it, settings.alternativeRadiusKm) }
+
+    return when {
+        result.recommendation == Recommendation.GoodRide && homeInfo != null && homeInfo.distanceKm <= homeInfo.radiusKm -> homeInfo
+        result.recommendation == Recommendation.GoodRide && alternativeInfo != null && alternativeInfo.distanceKm <= alternativeInfo.radiusKm -> alternativeInfo
+        homeInfo != null -> homeInfo
+        else -> alternativeInfo
+    }
+}
+
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
     Recommendation.GoodRide -> "VERDE - Dentro da area"
     Recommendation.OutsideRadius -> "VERMELHO - Fora da area"
     Recommendation.InsufficientData -> "Dados insuficientes"
+}
+
+private fun decisionActionLabel(recommendation: Recommendation): String = when (recommendation) {
+    Recommendation.GoodRide -> "Aceitar"
+    Recommendation.OutsideRadius -> "Recusar"
+    Recommendation.InsufficientData -> "Revisar"
+}
+
+private fun formatDestination(value: String?): String {
+    val destination = value?.trim().orEmpty()
+    if (destination.isBlank()) return "nao identificado"
+
+    val parenthesizedNeighborhood = Regex("""^(.+?)\s*\((.+)\)$""").find(destination)
+    return if (parenthesizedNeighborhood != null) {
+        val street = parenthesizedNeighborhood.groupValues[1].trim()
+        val neighborhood = parenthesizedNeighborhood.groupValues[2].trim()
+        "$street\n$neighborhood"
+    } else {
+        destination
+    }
 }
 
 private fun deviceRegionLabel(region: DeviceRegion): String =
