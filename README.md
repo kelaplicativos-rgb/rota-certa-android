@@ -11,7 +11,8 @@ A regra central do Rota Certa e simples:
 - O motorista configura uma casa, localidade alternativa ou alfinete.
 - O motorista define um raio maximo, por exemplo 10 km.
 - O app le o print por OCR e tenta identificar o destino final do passageiro.
-- O app calcula a distancia em linha reta entre o destino final e o ponto configurado.
+- Com Google Maps configurado, o app localiza o destino pela Geocoding API e calcula distancia por rota de carro pela Routes API.
+- Sem Google Maps configurado, o app usa geocoding Android e distancia em linha reta como fallback.
 - Se o destino final estiver dentro do raio, mostra VERDE / Dentro da area.
 - Se o destino final passar do raio, mesmo por pouco, mostra VERMELHO / Fora da area.
 
@@ -33,6 +34,7 @@ Exemplo:
 - Opcao de digitar local manualmente ou preencher pela localizacao GPS atual
 - Salvamento de coordenadas GPS para calculo de raio mais preciso
 - Google Maps Geocoding API opcional para localizar enderecos com mais confiabilidade
+- Google Maps Routes API opcional para distancia real por rota de carro
 - Historico local das analises
 - Sem backend
 
@@ -58,16 +60,19 @@ Quando a opcao de GPS e usada, o app salva latitude e longitude junto com o ende
 
 Na aba `Config`, o campo `Chave Google Maps API` e opcional, mas recomendado.
 
-Com chave configurada, o app usa a Google Maps Geocoding API para transformar o destino final extraido do print em latitude/longitude. Se a chave estiver vazia ou a chamada falhar, o app cai no geocoder do Android como fallback.
+Com chave configurada, o app usa:
+
+- `Geocoding API` para transformar o destino final extraido do print em latitude/longitude.
+- `Routes API` para calcular a distancia real de carro entre o destino final e a casa/alfinete.
+
+Se a chave estiver vazia ou a chamada falhar, o app cai no geocoder do Android e na distancia em linha reta como fallback.
 
 Para usar:
 
 1. Crie uma chave no Google Cloud / Google Maps Platform.
-2. Ative a `Geocoding API`.
+2. Ative a `Geocoding API` e a `Routes API`.
 3. Cole a chave no campo `Chave Google Maps API` dentro do app.
 4. Toque em `Salvar configuracoes`.
-
-Em uma versao futura, a `Routes API` pode ser adicionada para calcular distancia real por rua em vez de distancia em linha reta.
 
 ## Permissoes Android
 
@@ -80,7 +85,7 @@ Em uma versao futura, a `Routes API` pode ser adicionada para calcular distancia
 - OCR pode errar textos pequenos, cortados, com baixa resolucao ou sobrepostos.
 - Apps de corrida mudam layout; o parser precisa evoluir com prints reais.
 - Sem chave Google Maps, o geocoding por texto pode confundir ruas iguais em cidades diferentes.
-- Distancia inicial e calculada em linha reta. Distancia por rota real exige API de mapas/rotas.
+- Com chave Google Maps, a precisao depende da qualidade do endereco extraido do print e da resposta das APIs.
 - Monitoramento automatico de screenshots e captura de tela via MediaProjection ficam para etapas futuras.
 - Servico de Acessibilidade, se usado no futuro, deve ser limitado a leitura de texto visivel e com consentimento claro do usuario.
 
@@ -123,4 +128,4 @@ Workflow: Android APK.
 2. Ajustar o parser para os layouts dos apps usados.
 3. Adicionar monitoramento automatico da pasta Screenshots.
 4. Avaliar MediaProjection para leitura em tempo real.
-5. Avaliar Routes API para distancia real em vez de linha reta.
+5. Avaliar backend proprio para proteger a chave Google em versao publica.
