@@ -158,4 +158,46 @@ class RideTextParserTest {
         assertEquals("Av. Mateo Bei, 1974 (Jardim Tiete, São Paulo - SP)", fields.pickup)
         assertEquals("Av. Maria Luiza Americano, 2673 (Cidade Líder, São Paulo - SP)", fields.destination)
     }
+
+    @Test
+    fun parsesOnlyFirstCompleteRideWhenOfferListHasManyAddresses() {
+        val text = """
+            Pedidos de viagem
+            R$ 1,6/km ~3,7 km
+            R$ 29
+            Rua Baltazar Vidal 95 (Jardim Nossa Sra. do Carmo)
+            Rua Coelho Lisboa, 419 (Cidade Mãe do Céu, São Paulo - SP)
+            PIX
+            R$ 2/km ~4,0 km
+            R$ 37 Preço justo
+            Rua Agave Dragão 81 (Jardim Santa Adelia)
+            Rua Azevedo Soares, 1500 (Tatuapé, São Paulo - SP)
+            PIX
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Rua Baltazar Vidal 95 (Jardim Nossa Sra. do Carmo)", fields.pickup)
+        assertEquals("Rua Coelho Lisboa, 419 (Cidade Mãe do Céu, São Paulo - SP)", fields.destination)
+        assertEquals("R$ 29", fields.fare)
+    }
+
+    @Test
+    fun parsesUberCardWithAbbreviatedRuaAsOneRide() {
+        val text = """
+            UberX
+            R$ 13,48
+            7 min (2.0 km)
+            R. Augusto Ferreira Ramos, Jardim Tiete, São Paulo
+            15 minutos (4.8 km)
+            Avenida Adélia Chohfi, 655, São Rafael, São Paulo
+            Selecionar
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("R. Augusto Ferreira Ramos, Jardim Tiete, São Paulo", fields.pickup)
+        assertEquals("Avenida Adélia Chohfi, 655, São Rafael, São Paulo", fields.destination)
+        assertEquals("R$ 13,48", fields.fare)
+    }
 }
