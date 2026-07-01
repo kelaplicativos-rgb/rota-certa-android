@@ -205,14 +205,14 @@ class RideTextParser {
     private fun nextAddressLineIndex(lines: List<String>, startIndex: Int): Int? =
         (startIndex until lines.size).firstOrNull { index ->
             val candidate = cleanAddressLine(lines[index])
-            candidate.isNotBlank() && !isNoise(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
+            candidate.isNotBlank() && !isNoise(candidate) && !isRideMarker(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
         }
 
     private fun cleanAddressLine(value: String): String =
         mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
 
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
-        if (value.length < 2 || isNoise(value) || roadCodeRegex.matches(value)) return false
+        if (value.length < 2 || isNoise(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
         if (value.equals("A", ignoreCase = true) || value.equals("B", ignoreCase = true)) return false
         if (mapPointRegex.find(value) != null) return false
 
@@ -237,7 +237,7 @@ class RideTextParser {
     }
 
     private fun looksLikeAddress(value: String): Boolean {
-        if (isNoise(value) || roadCodeRegex.matches(value)) return false
+        if (isNoise(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
         val normalized = value.lowercase()
         val hasAddressWord = addressWords.any { normalized.contains(it) }
         val hasAddressNumber = Regex("""\b\d{1,5}\b""").containsMatchIn(value) &&
@@ -263,6 +263,11 @@ class RideTextParser {
             normalized.contains("preço") ||
             normalized.contains("preco") ||
             normalized.contains("tarifa")
+    }
+
+    private fun isRideMarker(value: String): Boolean {
+        val normalized = value.lowercase().trim().trimEnd(':', '-', '—')
+        return pickupMarkers.any { normalized == it } || destinationMarkers.any { normalized == it }
     }
 
     private data class AddressCandidate(
