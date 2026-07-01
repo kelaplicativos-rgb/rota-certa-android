@@ -93,7 +93,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || event == null) return
         activePackageName = event.packageName?.toString()
         if (!shouldScanPackage(activePackageName)) {
-            resetToDefault(reason = scanBlockReason(activePackageName))
+            val shouldRecordDiagnostic = activePackageName?.lowercase(Locale.ROOT) != this.packageName
+            resetToDefault(reason = scanBlockReason(activePackageName), record = shouldRecordDiagnostic)
             return
         }
         scheduleVisibleTextAnalysis(delayMs = 80L)
