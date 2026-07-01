@@ -323,9 +323,9 @@ class RideTextParserTest {
             Ponto de referencia
             R$ 13 O Preço justo
             A Rua Exemplo Um, 177
-            (Bairro Um)
+            (Cidade Um)
             B Rua Exemplo Dois, 175
-            (Bairro Dois,
+            (Cidade Dois,
             São Paulo - SP)
             Aceitar por R$ 13
             Ofereça sua tarifa
@@ -335,8 +335,8 @@ class RideTextParserTest {
 
         val fields = RideTextParser().parse(text)
 
-        assertEquals("Rua Exemplo Um, 177 (Bairro Um)", fields.pickup)
-        assertEquals("Rua Exemplo Dois, 175 (Bairro Dois, São Paulo - SP)", fields.destination)
+        assertEquals("Rua Exemplo Um, 177 (Cidade Um)", fields.pickup)
+        assertEquals("Rua Exemplo Dois, 175 (Cidade Dois, São Paulo - SP)", fields.destination)
         assertEquals("R$ 13", fields.fare)
         assertEquals("2,5 km", fields.distance)
         assertEquals("1 min", fields.time)
