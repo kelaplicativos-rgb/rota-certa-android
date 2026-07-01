@@ -36,7 +36,7 @@ class RideTextParser {
     fun parse(text: String): RideFields {
         val rawLines = text
             .lines()
-            .map { it.trim() }
+            .map { it.normalizeOcrWhitespace().trim() }
             .filter { it.length >= 2 || markerOnlyRegex.matches(it) }
 
         val lines = isolatePrimaryRideLines(rawLines)
@@ -98,11 +98,17 @@ class RideTextParser {
     private fun findFare(lines: List<String>, scopedText: String): String? {
         val primaryFareLine = lines.firstOrNull { isPrimaryFareLine(it) }
         return primaryFareLine?.let { primaryFareRegex.find(it)?.value?.trim() }
-            ?: fareRegex.find(scopedText)?.value?.trim()
+            ?: fareRegex.findAll(scopedText)
+                .firstOrNull { match ->
+                    val tail = scopedText.substring(match.range.last + 1).trimStart().take(3)
+                    !tail.startsWith("/km", ignoreCase = true)
+                }
+                ?.value
+                ?.trim()
     }
 
     private fun parseKnownRideAppLayout(lines: List<String>): RideFields? =
-        parseMapPointLayout(lines) ?: parseRouteStepLayout(lines)
+        parseMapPointLayout(lines) ?: parseRouteStepLayout(lines) ?: parseStackedAddressLayout(lines)
 
     private fun parseMapPointLayout(lines: List<String>): RideFields? {
         val candidates = mutableListOf<AddressCandidate>()
@@ -153,6 +159,24 @@ class RideTextParser {
             destination = candidates.lastOrNull(),
         )
     }
+
+    private fun parseStackedAddressLayout(lines: List<String>): RideFields? {
+        val candidates = findStandaloneAddressCandidates(lines)
+        if (candidates.size < 2) return null
+
+        return RideFields(
+            pickup = candidates.firstOrNull(),
+            destination = candidates.lastOrNull(),
+        )
+    }
+
+    private fun findStandaloneAddressCandidates(lines: List<String>): List<String> =
+        lines
+            .asSequence()
+            .map { cleanAddressLine(it) }
+            .filter { it.length >= 8 && !isRideMarker(it) && !markerOnlyRegex.matches(it) && looksLikeAddress(it) }
+            .distinct()
+            .toList()
 
     private fun findAddressAfterMarker(lines: List<String>, markers: List<String>): String? {
         lines.forEachIndexed { index, line ->
@@ -275,6 +299,11 @@ class RideTextParser {
         val normalized = value.lowercase().trim().trimEnd(':', '-', '—')
         return pickupMarkers.any { normalized == it } || destinationMarkers.any { normalized == it }
     }
+
+    private fun String.normalizeOcrWhitespace(): String =
+        replace('\u00A0', ' ')
+            .replace('\u202F', ' ')
+            .replace(Regex("""\s+"""), " ")
 
     private data class AddressCandidate(
         val label: Char,
