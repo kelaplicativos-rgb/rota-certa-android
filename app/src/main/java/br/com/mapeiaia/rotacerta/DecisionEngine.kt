@@ -14,6 +14,8 @@ class DecisionEngine {
         homeCoordinate: Coordinate?,
         alternativeCoordinate: Coordinate?,
         fullText: String,
+        homeDistanceKm: Double? = null,
+        alternativeDistanceKm: Double? = null,
     ): AnalysisResult {
         if (fields.destination.isNullOrBlank()) {
             return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
@@ -27,8 +29,8 @@ class DecisionEngine {
             return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
         }
 
-        val distanceToHome = homeCoordinate?.let { haversineKm(destinationCoordinate, it) }
-        val distanceToAlternative = alternativeCoordinate?.let { haversineKm(destinationCoordinate, it) }
+        val distanceToHome = homeDistanceKm ?: homeCoordinate?.let { haversineKm(destinationCoordinate, it) }
+        val distanceToAlternative = alternativeDistanceKm ?: alternativeCoordinate?.let { haversineKm(destinationCoordinate, it) }
 
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
