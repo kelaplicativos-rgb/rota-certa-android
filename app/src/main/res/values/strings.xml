@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Rota Certa</string>
+    <string name="accessibility_service_label">Rota Certa - leitura ao vivo</string>
+    <string name="accessibility_service_description">Le a tela de apps de corrida quando ativado para identificar o destino final e mostrar uma bolinha verde, vermelha ou amarela.</string>
+</resources>
