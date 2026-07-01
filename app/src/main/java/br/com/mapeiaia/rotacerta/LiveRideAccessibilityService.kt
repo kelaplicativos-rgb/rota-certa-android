@@ -45,6 +45,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastAnalyzedHash: Int? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
+    private var serviceReady = false
     private var analyzing = false
     private var currentSettings = AppSettings()
 
@@ -66,12 +67,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
         decisionEngine = DecisionEngine()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
-        showOverlay(RadarColor.Default)
-        startContinuousScan()
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        serviceReady = true
+        scope.launch {
+            currentSettings = repository.settings.first()
+            showOverlay(RadarColor.Default)
+            startContinuousScan()
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.packageName == packageName) return
+        if (!serviceReady || event == null || event.packageName == packageName) return
         scheduleVisibleTextAnalysis(delayMs = 80L)
         requestScreenshotAnalysis()
     }
@@ -79,16 +88,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        serviceReady = false
+        screenshotInProgress.set(false)
+        analyzeJob?.cancel()
         removeOverlay()
         scope.cancel()
         super.onDestroy()
     }
 
     private fun startContinuousScan() {
-        if (continuousScanStarted) return
+        if (continuousScanStarted || !serviceReady) return
         continuousScanStarted = true
         scope.launch {
-            while (true) {
+            while (serviceReady) {
                 scheduleVisibleTextAnalysis(delayMs = 0L)
                 requestScreenshotAnalysis()
                 delay(SCAN_LOOP_MS)
@@ -97,6 +109,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun scheduleVisibleTextAnalysis(delayMs: Long) {
+        if (!serviceReady) return
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
@@ -105,31 +118,35 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun requestScreenshotAnalysis() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (!serviceReady || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val now = System.currentTimeMillis()
         if (now - lastScreenshotMillis < SCREENSHOT_INTERVAL_MS) return
         if (!screenshotInProgress.compareAndSet(false, true)) return
         lastScreenshotMillis = now
 
-        takeScreenshot(
-            Display.DEFAULT_DISPLAY,
-            mainExecutor,
-            object : TakeScreenshotCallback {
-                override fun onSuccess(screenshot: ScreenshotResult) {
-                    scope.launch {
-                        runCatching {
-                            val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
-                            processRideText(ocrService.extractText(bitmap))
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            runCatching {
+                                val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
+                                processRideText(ocrService.extractText(bitmap))
+                            }
+                            screenshotInProgress.set(false)
                         }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
                         screenshotInProgress.set(false)
                     }
-                }
-
-                override fun onFailure(errorCode: Int) {
-                    screenshotInProgress.set(false)
-                }
-            },
-        )
+                },
+            )
+        }.onFailure {
+            screenshotInProgress.set(false)
+        }
     }
 
     private fun collectVisibleText(): String {
@@ -150,11 +167,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
         node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { lines += it }
 
         for (index in 0 until node.childCount) {
-            collectNodeText(node.getChild(index), lines)
+            collectNodeText(runCatching { node.getChild(index) }.getOrNull(), lines)
         }
     }
 
     private suspend fun processRideText(text: String) {
+        if (!serviceReady) return
         val snapshotText = text.trim()
         if (snapshotText.isBlank()) {
             resetToDefault()
@@ -221,7 +239,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun analyzeLiveText(text: String, fields: RideFields, snapshotHash: Int) {
-        if (analyzing) return
+        if (!serviceReady || analyzing) return
         analyzing = true
         currentSettings = repository.settings.first()
 
@@ -288,6 +306,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
+        if (!serviceReady) return
         val manager = windowManager ?: return
         val view = overlayView ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
@@ -298,9 +317,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             newView.setTypeface(Typeface.DEFAULT_BOLD)
             newView.setOnClickListener { openApp() }
             newView.setOnTouchListener(BubbleTouchListener())
+            val added = runCatching { manager.addView(newView, params) }.isSuccess
+            if (!added) {
+                overlayView = null
+                overlayParams = null
+                return
+            }
             overlayView = newView
             overlayParams = params
-            manager.addView(newView, params)
         }
         view.text = formatBubbleDistanceKm(distanceKm)
         view.textSize = if ((distanceKm ?: 0.0) >= 100.0) 11f else 14f
@@ -341,10 +365,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun openApp() {
-        startActivity(
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        )
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+        }
     }
 
     private inner class BubbleTouchListener : View.OnTouchListener {
