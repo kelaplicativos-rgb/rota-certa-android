@@ -135,8 +135,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun scheduleVisibleTextAnalysis(delayMs: Long) {
-        if (!serviceReady || !shouldScanCurrentWindow()) return
-        analyzeJob?.cancel()
+        if (!serviceReady || !shouldScanCurrentWindow() || analyzing) return
+        if (analyzeJob?.isActive == true) return
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
             processRideText(collectVisibleText(), TextSource.Accessibility)
