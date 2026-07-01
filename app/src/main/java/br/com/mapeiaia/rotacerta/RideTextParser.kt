@@ -45,7 +45,7 @@ class RideTextParser {
         val knownLayout = parseKnownRideAppLayout(lines)
         if (knownLayout != null) {
             return knownLayout.copy(
-                fare = fareRegex.find(scopedText)?.value?.trim(),
+                fare = findFare(lines, scopedText),
                 distance = distanceRegex.find(scopedText)?.value?.trim(),
                 time = timeRegex.find(scopedText)?.value?.trim(),
             )
@@ -60,7 +60,7 @@ class RideTextParser {
         return RideFields(
             pickup = pickup,
             destination = destination,
-            fare = fareRegex.find(scopedText)?.value?.trim(),
+            fare = findFare(lines, scopedText),
             distance = distanceRegex.find(scopedText)?.value?.trim(),
             time = timeRegex.find(scopedText)?.value?.trim(),
         )
@@ -93,6 +93,12 @@ class RideTextParser {
             !normalized.contains("tarifa") &&
             !normalized.contains("inclu") &&
             !normalized.contains("ofere")
+    }
+
+    private fun findFare(lines: List<String>, scopedText: String): String? {
+        val primaryFareLine = lines.firstOrNull { isPrimaryFareLine(it) }
+        return primaryFareLine?.let { primaryFareRegex.find(it)?.value?.trim() }
+            ?: fareRegex.find(scopedText)?.value?.trim()
     }
 
     private fun parseKnownRideAppLayout(lines: List<String>): RideFields? =
