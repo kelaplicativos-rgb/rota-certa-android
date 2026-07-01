@@ -41,8 +41,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var overlayView: TextView? = null
     private var overlayParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
-    private var lastTextHash: Int? = null
-    private var lastAnalysisMillis: Long = 0L
+    private var lastSnapshotHash: Int? = null
+    private var lastAnalyzedHash: Int? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var analyzing = false
@@ -66,6 +66,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         decisionEngine = DecisionEngine()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+        showOverlay(RadarColor.Default)
         startContinuousScan()
     }
 
@@ -154,57 +155,79 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun processRideText(text: String) {
-        if (!looksLikeRideOffer(text)) return
+        val snapshotText = text.trim()
+        if (snapshotText.isBlank()) {
+            resetToDefault()
+            return
+        }
 
-        val now = System.currentTimeMillis()
-        val hash = text.normalizedHash()
-        if (hash == lastTextHash && now - lastAnalysisMillis < DUPLICATE_WINDOW_MS) return
-        lastTextHash = hash
-        lastAnalysisMillis = now
+        val snapshotHash = snapshotText.snapshotHash()
+        if (snapshotHash != lastSnapshotHash) {
+            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            showOverlay(RadarColor.Default)
+        }
 
-        analyzeLiveText(text)
+        val fields = parser.parse(snapshotText)
+        if (!looksLikeRideOffer(snapshotText, fields)) {
+            resetToDefault()
+            return
+        }
+
+        if (snapshotHash == lastAnalyzedHash || analyzing) return
+        analyzeLiveText(snapshotText, fields, snapshotHash)
     }
 
-    private fun looksLikeRideOffer(text: String): Boolean {
+    private fun looksLikeRideOffer(text: String, fields: RideFields): Boolean {
+        val destination = fields.destination?.lowercase(Locale.ROOT).orEmpty()
+        if (destination.isBlank()) return false
+
         val normalized = text.lowercase(Locale.ROOT)
-        val hasMoney = normalized.contains("r$")
-        val hasTripMetric = normalized.contains("km") || normalized.contains("min") || normalized.contains("minuto")
-        val hasAddressSignal = listOf("rua", "r.", "avenida", "av.", "travessa", "bairro", "jardim", "cidade", "parque", "tatuape", "tatuapé")
-            .any { normalized.contains(it) }
-        val hasRideSignal = listOf(
+        val hasDestinationAddressSignal = listOf(
+            "rua",
+            "r.",
+            "avenida",
+            "av.",
+            "travessa",
+            "bairro",
+            "jardim",
+            "cidade",
+            "parque",
+            "tatuape",
+            "tatuapé",
+        ).any { destination.contains(it) } || Regex("""\b\d{1,5}\b""").containsMatchIn(destination)
+        val hasRideCardSignal = listOf(
             "pedido de viagem",
             "pedidos de viagem",
             "aceitar",
             "aceitar por",
-            "corrida",
-            "corridas",
-            "tarifa",
+            "selecionar",
+            "negocia",
             "perfil premium",
-            "preço justo",
-            "preco justo",
+            "perfil essencial",
+            "uberx",
+            "pop expresso",
             "exclusivo",
-            "uber",
-            "dinheiro",
             "viagem longa",
+            "radar de viagens",
             "ofereça sua tarifa",
             "ofereca sua tarifa",
-            "pix",
+            "preço justo",
+            "preco justo",
         ).any { normalized.contains(it) }
         val hasMapPointSignal = Regex("""(?m)^\s*[ab]\s+""", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
-        return hasMoney && (hasTripMetric || hasRideSignal) && (hasAddressSignal || hasRideSignal || hasMapPointSignal)
+        return hasDestinationAddressSignal && (hasRideCardSignal || hasMapPointSignal)
     }
 
-    private suspend fun analyzeLiveText(text: String) {
+    private suspend fun analyzeLiveText(text: String, fields: RideFields, snapshotHash: Int) {
         if (analyzing) return
         analyzing = true
         currentSettings = repository.settings.first()
-        showOverlay(RadarColor.Yellow)
 
         try {
             val settings = currentSettings
             val region = DeviceRegion(country = "Brasil")
-            val fields = parser.parse(text)
             val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
             val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress, region, settings)
             val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress, region, settings)
@@ -223,16 +246,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
 
             repository.addAnalysis(result)
+            if (snapshotHash != lastSnapshotHash) {
+                showOverlay(RadarColor.Default)
+                return
+            }
+
+            lastAnalyzedHash = snapshotHash
             showOverlay(
-                color = when (result.recommendation) {
+                when (result.recommendation) {
                     Recommendation.GoodRide -> RadarColor.Green
                     Recommendation.OutsideRadius -> RadarColor.Red
-                    Recommendation.InsufficientData -> RadarColor.Yellow
+                    Recommendation.InsufficientData -> RadarColor.Default
                 },
-                distanceKm = result.nearestConfiguredDistanceKm(),
             )
         } catch (_: Exception) {
-            showOverlay(RadarColor.Yellow)
+            showOverlay(RadarColor.Default)
         } finally {
             analyzing = false
         }
@@ -249,10 +277,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
             null
         }
 
-    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
-        listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
+    private fun resetToDefault() {
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        showOverlay(RadarColor.Default)
+    }
 
-    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
+    private fun showOverlay(color: RadarColor) {
         val manager = windowManager ?: return
         val view = overlayView ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
@@ -267,23 +298,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
             overlayParams = params
             manager.addView(newView, params)
         }
-        view.text = formatBubbleDistanceKm(distanceKm)
-        view.textSize = if ((distanceKm ?: 0.0) >= 100.0) 11f else 14f
+        view.text = ""
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color.argb(currentSettings))
             setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
         }
-    }
-
-    private fun formatBubbleDistanceKm(distanceKm: Double?): String {
-        if (distanceKm == null) return ""
-        val compactValue = if (distanceKm >= 10.0) {
-            distanceKm.roundToInt().toString()
-        } else {
-            String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
-        }
-        return "${compactValue}km"
     }
 
     private fun removeOverlay() {
@@ -370,19 +390,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun String.normalizedHash(): Int =
-        lowercase(Locale.ROOT)
-            .replace(Regex("""\s+"""), " ")
-            .trim()
+    private fun String.snapshotHash(): Int =
+        lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
             .hashCode()
 
     private enum class RadarColor(
         private val normalArgb: Int,
         private val darkArgb: Int,
     ) {
+        Default(Color.rgb(128, 128, 128), Color.rgb(64, 64, 64)),
         Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59)),
-        Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29)),
-        Yellow(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4));
+        Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29));
 
         fun argb(settings: AppSettings): Int {
             val base = if (settings.bubbleDarkMode) darkArgb else normalArgb
@@ -394,7 +415,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private companion object {
         const val SCAN_LOOP_MS = 850L
         const val SCREENSHOT_INTERVAL_MS = 650L
-        const val DUPLICATE_WINDOW_MS = 2500L
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_BUBBLE_X = "bubble_x"
         const val KEY_BUBBLE_Y = "bubble_y"
