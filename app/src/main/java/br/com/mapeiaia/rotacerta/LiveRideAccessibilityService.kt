@@ -51,6 +51,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var analyzing = false
     private var activePackageName: String? = null
     private var currentSettings = AppSettings()
+    private var currentRadarColor = RadarColor.Default
+    private var currentDistanceKm: Double? = null
 
     private lateinit var repository: SettingsRepository
     private lateinit var geocodingService: GeocodingService
@@ -221,10 +223,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (snapshotHash != lastSnapshotHash) {
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
-            showOverlay(RadarColor.Default)
             recordDiagnostic(
                 stage = "screen_changed",
-                reason = "A imagem/texto da tela mudou; bolinha voltou para amarelo ate concluir nova leitura.",
+                reason = "A imagem/texto da tela mudou; mantendo a bolinha atual ate concluir a nova leitura.",
                 text = snapshotText,
             )
         }
@@ -311,11 +312,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
 
             repository.addAnalysis(result)
-            if (snapshotHash != lastSnapshotHash || !shouldScanCurrentWindow()) {
+            if (!shouldScanCurrentWindow() && !isPassiveDiagnosticPackage(currentWindowPackageName())) {
                 showOverlay(RadarColor.Default)
                 recordDiagnostic(
-                    stage = "screen_changed_after_analysis",
-                    reason = "A tela mudou antes de aplicar a decisao; mantive a bolinha amarela.",
+                    stage = "window_changed_after_analysis",
+                    reason = "A tela saiu do app permitido antes de aplicar a decisao.",
                     text = text,
                     fields = fields,
                     result = result,
@@ -323,7 +324,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 return
             }
 
-            lastAnalyzedHash = snapshotHash
+            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
             val radarColor = when (result.recommendation) {
                 Recommendation.GoodRide -> RadarColor.Green
                 Recommendation.OutsideRadius -> RadarColor.Red
@@ -436,7 +437,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun recordDiagnostic(
         stage: String,
-        color: RadarColor = RadarColor.Default,
+        color: RadarColor? = null,
         reason: String,
         text: String? = null,
         fields: RideFields? = null,
@@ -446,8 +447,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (stage != "service_connected" && isPassiveDiagnosticPackage(activePackageName)) return
 
         val settings = currentSettings
+        val diagnosticColor = color ?: currentRadarColor
         val hash = text?.snapshotHash()
-        val signature = listOf(stage, color.diagnosticLabel, reason, activePackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
+        val signature = listOf(stage, diagnosticColor.diagnosticLabel, reason, activePackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
         if (signature == lastDiagnosticSignature) return
         lastDiagnosticSignature = signature
 
@@ -457,7 +459,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             appVersionCode = BuildConfig.VERSION_CODE,
             packageName = activePackageName,
             stage = stage,
-            bubbleColor = color.diagnosticLabel,
+            bubbleColor = diagnosticColor.diagnosticLabel,
             reason = reason,
             restrictToSelectedRideApps = settings.restrictToSelectedRideApps,
             selectedPackages = selectedRidePackages(settings).toList().sorted(),
@@ -484,6 +486,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
         if (!serviceReady) return
         val manager = windowManager ?: return
+        currentRadarColor = color
+        currentDistanceKm = distanceKm
         val view = overlayView ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
             newView.contentDescription = "Rota Certa"
@@ -502,7 +506,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             overlayView = newView
             overlayParams = params
         }
-        view.text = formatBubbleDistanceKm(distanceKm)
+        view.text = formatBubbleDistanceKm(currentDistanceKm)
         view.textSize = bubbleTextSizeSp(view.text.toString())
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
