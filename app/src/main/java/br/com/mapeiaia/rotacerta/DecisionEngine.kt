@@ -17,12 +17,13 @@ class DecisionEngine {
         homeDistanceKm: Double? = null,
         alternativeDistanceKm: Double? = null,
     ): AnalysisResult {
-        if (fields.destination.isNullOrBlank()) {
+        val destinationText = fields.destination.orEmpty()
+        if (destinationText.isBlank()) {
             return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
         }
 
-        if (hasAvoidedKeyword(fullText, settings.avoidedKeywords)) {
-            return result(fields, fullText, Recommendation.OutsideRadius, "Encontrou palavra ou bairro evitado no print.")
+        if (hasAvoidedKeyword(destinationText, settings.avoidedKeywords)) {
+            return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
         }
 
         if (settings.googleMapsApiKey.isBlank()) {
