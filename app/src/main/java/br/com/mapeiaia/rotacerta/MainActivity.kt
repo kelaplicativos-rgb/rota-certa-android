@@ -82,7 +82,7 @@ fun RotaCertaApp() {
     var region by remember { mutableStateOf(DeviceRegion()) }
     var status by remember { mutableStateOf("Pronto para analisar um print.") }
     var radarEnabled by remember { mutableStateOf(false) }
-    var radarStatus by remember { mutableStateOf("Radar desligado.") }
+    var radarStatus by remember { mutableStateOf("Radar por print desligado.") }
 
     val radarPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -90,16 +90,16 @@ fun RotaCertaApp() {
         if (hasAllRadarPermissions(context)) {
             startRadarService(context)
             radarEnabled = true
-            radarStatus = "Radar ativo: print novo mostra bolinha amarela, depois verde ou vermelha."
+            radarStatus = "Radar por print ativo: print novo mostra bolinha amarela, depois verde ou vermelha."
         } else {
             radarEnabled = false
-            radarStatus = "Permita acesso as imagens e notificacoes para usar o radar."
+            radarStatus = "Permita acesso as imagens e notificacoes para usar o radar por print."
         }
     }
 
     fun enableRadar() {
         if (!Settings.canDrawOverlays(context)) {
-            radarStatus = "Libere 'aparecer sobre outros apps' e toque em Ativar radar novamente."
+            radarStatus = "Libere 'aparecer sobre outros apps' e toque em Ativar radar por print novamente."
             context.startActivity(
                 Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -120,13 +120,13 @@ fun RotaCertaApp() {
 
         startRadarService(context)
         radarEnabled = true
-        radarStatus = "Radar ativo: aguardando novo print da galeria."
+        radarStatus = "Radar por print ativo: aguardando novo print da galeria."
     }
 
     fun disableRadar() {
         stopRadarService(context)
         radarEnabled = false
-        radarStatus = "Radar desligado."
+        radarStatus = "Radar por print desligado."
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -219,6 +219,9 @@ fun RotaCertaApp() {
                     onPickImage = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
+                    onOpenAccessibilitySettings = {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
                     onToggleRadar = {
                         if (radarEnabled) disableRadar() else enableRadar()
                     },
@@ -242,16 +245,25 @@ private fun AnalysisScreen(
     radarEnabled: Boolean,
     radarStatus: String,
     onPickImage: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
     onToggleRadar: () -> Unit,
 ) {
-    Button(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
-        Text("Selecionar print da galeria")
+    Button(onClick = onOpenAccessibilitySettings, modifier = Modifier.fillMaxWidth()) {
+        Text("Ativar leitura ao vivo")
     }
+    Text(
+        "Nas configuracoes, ative 'Rota Certa - leitura ao vivo'. Ela le a tela da corrida e mostra a bolinha automaticamente.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     Spacer(Modifier.height(10.dp))
     OutlinedButton(onClick = onToggleRadar, modifier = Modifier.fillMaxWidth()) {
-        Text(if (radarEnabled) "Parar radar" else "Ativar radar")
+        Text(if (radarEnabled) "Parar radar por print" else "Ativar radar por print")
     }
     Text(radarStatus, style = MaterialTheme.typography.bodySmall)
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
+        Text("Selecionar print manualmente")
+    }
     Spacer(Modifier.height(12.dp))
     Text(status)
     result?.let { ResultCard(it, settings) }
