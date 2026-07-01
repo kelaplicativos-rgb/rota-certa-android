@@ -93,7 +93,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || event == null) return
         activePackageName = event.packageName?.toString()
         if (!shouldScanPackage(activePackageName)) {
-            resetToDefault(reason = scanBlockReason(activePackageName), record = !isPassiveDiagnosticPackage(activePackageName))
+            if (isPassiveDiagnosticPackage(activePackageName)) return
+            resetToDefault(reason = scanBlockReason(activePackageName), record = true)
             return
         }
         scheduleVisibleTextAnalysis(delayMs = 80L)
@@ -119,7 +120,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 if (shouldScanCurrentWindow()) {
                     scheduleVisibleTextAnalysis(delayMs = 0L)
                     requestScreenshotAnalysis()
-                } else {
+                } else if (!isPassiveDiagnosticPackage(currentWindowPackageName())) {
                     resetToDefault(reason = "Janela atual nao permitida para leitura.", record = false)
                 }
                 delay(SCAN_LOOP_MS)
@@ -387,14 +388,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun shouldScanCurrentWindow(): Boolean {
-        val rootPackageName = rootInActiveWindow?.packageName?.toString()
-        return shouldScanPackage(rootPackageName ?: activePackageName)
-    }
+    private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
+
+    private fun currentWindowPackageName(): String? =
+        rootInActiveWindow?.packageName?.toString() ?: activePackageName
 
     private fun shouldScanPackage(packageName: String?): Boolean {
         val normalized = packageName?.lowercase(Locale.ROOT) ?: return true
         if (normalized == this.packageName) return false
+        if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
 
         val settings = currentSettings
@@ -419,6 +421,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val normalized = packageName?.lowercase(Locale.ROOT)
         if (normalized.isNullOrBlank()) return "Pacote ativo nao informado pelo Android."
         if (normalized == this.packageName) return "Rota Certa esta em primeiro plano; leitura pausada."
+        if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return "Pacote passivo ignorado sem apagar a ultima decisao: $normalized."
         if (normalized in IGNORED_PACKAGES) return "Pacote ignorado para evitar leitura fora do card: $normalized."
         if (currentSettings.restrictToSelectedRideApps && normalized !in selectedRidePackages(currentSettings)) {
             return "Modo restrito ligado; pacote nao selecionado: $normalized."
