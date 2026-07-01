@@ -646,7 +646,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val IGNORED_PACKAGES = setOf(
             "com.android.settings",
             "com.android.systemui",
-            "com.google.android.apps.maps",
             "com.google.android.inputmethod.latin",
             "com.openai.chatgpt",
             "com.samsung.android.app.settings",
@@ -655,6 +654,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val PASSIVE_DIAGNOSTIC_PACKAGES = setOf(
             "com.android.launcher",
             "com.android.systemui",
+            "com.google.android.apps.maps",
             "com.google.android.apps.nexuslauncher",
             "com.google.android.inputmethod.latin",
             "com.openai.chatgpt",
