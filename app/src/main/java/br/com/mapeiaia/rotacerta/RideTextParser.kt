@@ -24,6 +24,7 @@ class RideTextParser {
     )
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
+    private val streetTypeSuffixes = listOf(" rua", " avenida", " av.", " travessa", " estrada", " rodovia", " alameda")
 
     fun parse(text: String): RideFields {
         val lines = text
@@ -100,13 +101,17 @@ class RideTextParser {
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
         if (value.length < 2 || isNoise(value) || roadCodeRegex.matches(value)) return false
         if (value.equals("A", ignoreCase = true) || value.equals("B", ignoreCase = true)) return false
-        if (looksLikeAddress(value)) return false
 
         val normalized = value.lowercase()
         val previous = previousLine.trim()
+        val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
+        val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
+
+        if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
 
         return previous.endsWith(",") ||
+            previousEndsWithStreetType ||
             previousHasOpenParenthesis ||
             normalized.startsWith("da ") ||
             normalized.startsWith("de ") ||
