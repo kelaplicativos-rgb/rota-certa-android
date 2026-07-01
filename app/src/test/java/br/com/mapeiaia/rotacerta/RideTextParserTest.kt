@@ -183,6 +183,27 @@ class RideTextParserTest {
     }
 
     @Test
+    fun parsesInDriveSingleOfferWithMapMarkersAndFareActions() {
+        val text = """
+            Pedido de viagem
+            R$ 1,6/km ~3,7 km
+            R$ 29
+            A Rua Baltazar Vidal 95 (Jardim Nossa Sra. do Carmo)
+            B Rua Coelho Lisboa, 419 (Cidade Mãe do Céu, São Paulo - SP)
+            PIX
+            Aceitar por R$ 29
+            Ofereça sua tarifa
+            Fechar
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Rua Baltazar Vidal 95 (Jardim Nossa Sra. do Carmo)", fields.pickup)
+        assertEquals("Rua Coelho Lisboa, 419 (Cidade Mãe do Céu, São Paulo - SP)", fields.destination)
+        assertEquals("R$ 29", fields.fare)
+    }
+
+    @Test
     fun parsesUberCardWithAbbreviatedRuaAsOneRide() {
         val text = """
             UberX
