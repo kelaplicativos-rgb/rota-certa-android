@@ -63,8 +63,8 @@ class GoogleMapsService {
         val distanceKm = runCatching {
             val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 3500
-                readTimeout = 3500
+                connectTimeout = ROUTE_TIMEOUT_MS
+                readTimeout = ROUTE_TIMEOUT_MS
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("X-Goog-Api-Key", apiKey.trim())
@@ -96,11 +96,11 @@ class GoogleMapsService {
         val defaultCity = if (alreadyHasCity) null else "São Paulo, SP"
 
         return buildList {
-            add(cleanQuery)
-            add(listOf(cleanQuery, regionCity, country).filterNotNull().joinToString(", "))
+            if (regionCity != null && !alreadyHasCity) add("$cleanQuery, $regionCity, $country")
             defaultCity?.let { add("$cleanQuery, $it, $country") }
             if (!alreadyHasCity) add("$cleanQuery, São Paulo - SP, $country")
             add("$cleanQuery, $country")
+            add(cleanQuery)
         }
             .map { it.trim().replace(Regex("""\s+"""), " ") }
             .filter { it.isNotBlank() }
@@ -121,8 +121,8 @@ class GoogleMapsService {
         return runCatching {
             val connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 3500
-                readTimeout = 3500
+                connectTimeout = GEOCODE_TIMEOUT_MS
+                readTimeout = GEOCODE_TIMEOUT_MS
             }
 
             try {
@@ -158,5 +158,10 @@ class GoogleMapsService {
             ?.intOrNull
             ?: return null
         return distanceMeters / 1000.0
+    }
+
+    private companion object {
+        const val GEOCODE_TIMEOUT_MS = 900
+        const val ROUTE_TIMEOUT_MS = 900
     }
 }
