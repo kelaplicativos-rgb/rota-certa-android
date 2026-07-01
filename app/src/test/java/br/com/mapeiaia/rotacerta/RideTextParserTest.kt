@@ -102,6 +102,28 @@ class RideTextParserTest {
     }
 
     @Test
+    fun ignoresAvoidedKeywordOutsideFinalDestination() {
+        val result = DecisionEngine().decide(
+            fields = RideFields(
+                pickup = "Rua Evanyr Prado Venturini, Jardim Tiete",
+                destination = "Rua A-65, Sao Mateus",
+            ),
+            settings = AppSettings(
+                homeRadiusKm = 5.0,
+                avoidedKeywords = "Jardim Tiete",
+                googleMapsApiKey = "key",
+            ),
+            destinationCoordinate = Coordinate(-23.6000, -46.4800),
+            homeCoordinate = Coordinate(-23.6010, -46.4810),
+            alternativeCoordinate = null,
+            fullText = "Rua Evanyr Prado Venturini, Jardim Tiete\nRua A-65, Sao Mateus",
+            homeDistanceKm = 3.0,
+        )
+
+        assertEquals(Recommendation.GoodRide, result.recommendation)
+    }
+
+    @Test
     fun joinsWrappedDestinationNeighborhoodFromOcr() {
         val text = """
             Dinheiro
