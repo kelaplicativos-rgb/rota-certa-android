@@ -163,7 +163,62 @@ private fun AnalysisScreen(
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val locationService = remember { DeviceLocationService(context) }
+    val gpsAddressResolver = remember { GpsAddressResolver(context) }
+    val scope = rememberCoroutineScope()
+
     var quickSettings by remember(settings) { mutableStateOf(settings) }
+    var homeStatus by remember { mutableStateOf("") }
+    var pendingHomeGps by remember { mutableStateOf(false) }
+
+    fun saveQuickSettings(updated: AppSettings) {
+        quickSettings = updated
+        onSaveSettings(updated)
+    }
+
+    fun captureHomeGps() {
+        scope.launch {
+            homeStatus = "Buscando sinal de GPS..."
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                homeStatus = "Nao consegui captar o GPS. Autorize a localizacao e tente novamente."
+                return@launch
+            }
+
+            val resolved = gpsAddressResolver.resolve(coordinate)
+            val address = resolved.addressLine.ifBlank { formatCoordinate(coordinate) }
+            saveQuickSettings(
+                quickSettings.copy(
+                    homeAddress = address,
+                    homeCoordinate = coordinate,
+                ),
+            )
+            homeStatus = "GPS casa salvo: ${formatCoordinate(coordinate)}"
+        }
+    }
+
+    val homeGpsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        if (!pendingHomeGps) return@rememberLauncherForActivityResult
+        pendingHomeGps = false
+        if (permissions.values.any { it }) {
+            captureHomeGps()
+        } else {
+            homeStatus = "Localizacao negada. Autorize o GPS para salvar a casa atual."
+        }
+    }
+
+    fun requestHomeGps() {
+        pendingHomeGps = true
+        homeGpsPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+        )
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,6 +237,46 @@ private fun AnalysisScreen(
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Home", fontWeight = FontWeight.Bold)
+            Text("Configure o ponto que o destino final precisa ficar perto.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(
+                value = quickSettings.homeAddress,
+                onValueChange = { quickSettings = quickSettings.copy(homeAddress = it, homeCoordinate = null) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Casa / ponto principal") },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { requestHomeGps() }, modifier = Modifier.weight(1f)) {
+                    Text("Usar GPS atual")
+                }
+                OutlinedButton(
+                    onClick = {
+                        quickSettings = quickSettings.copy(homeCoordinate = null)
+                        homeStatus = "Digite o endereco e toque em Salvar home."
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Digitar")
+                }
+            }
+            quickSettings.homeCoordinate?.let {
+                Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+            }
+            if (homeStatus.isNotBlank()) {
+                Text(homeStatus, style = MaterialTheme.typography.bodySmall)
+            }
+            Button(
+                onClick = { saveQuickSettings(quickSettings) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Salvar home")
+            }
         }
     }
 
