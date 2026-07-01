@@ -25,21 +25,38 @@ class DecisionEngine {
             return result(fields, fullText, Recommendation.OutsideRadius, "Encontrou palavra ou bairro evitado no print.")
         }
 
+        if (settings.googleMapsApiKey.isBlank()) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Configure a chave Google Maps para calcular a distancia real do destino final.")
+        }
+
         if (destinationCoordinate == null) {
             return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
         }
 
-        val distanceToHome = homeDistanceKm ?: homeCoordinate?.let { haversineKm(destinationCoordinate, it) }
-        val distanceToAlternative = alternativeDistanceKm ?: alternativeCoordinate?.let { haversineKm(destinationCoordinate, it) }
+        if (homeCoordinate == null && alternativeCoordinate == null) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Configure a casa ou o alfinete com coordenada confiavel.")
+        }
+
+        val distanceToHome = homeCoordinate?.let { homeDistanceKm }
+        val distanceToAlternative = alternativeCoordinate?.let { alternativeDistanceKm }
+
+        if (distanceToHome == null && distanceToAlternative == null) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.InsufficientData,
+                reason = "Nao foi possivel calcular a rota pelo Google Maps.",
+            )
+        }
 
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
         val reason = when {
-            insideHome -> "Destino final dentro do raio da casa."
-            insideAlternative -> "Destino final dentro do raio do alfinete/localidade."
-            else -> "Destino final fora dos raios configurados."
+            insideHome -> "Destino final dentro do raio da casa pelo Google Maps."
+            insideAlternative -> "Destino final dentro do raio do alfinete pelo Google Maps."
+            else -> "Destino final fora dos raios configurados pelo Google Maps."
         }
 
         return result(
@@ -78,6 +95,7 @@ class DecisionEngine {
         pickupToAlternativeKm = pickupToAlternativeKm,
     )
 
+    @Suppress("unused")
     private fun haversineKm(a: Coordinate, b: Coordinate): Double {
         val earthRadiusKm = 6371.0
         val dLat = Math.toRadians(b.latitude - a.latitude)
