@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -17,7 +18,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class LiveRideAccessibilityService : AccessibilityService() {
@@ -42,7 +42,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         googleMapsService = GoogleMapsService()
         parser = RideTextParser()
         decisionEngine = DecisionEngine()
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
