@@ -44,11 +44,21 @@ object RideScreenTextClassifier {
         "galeria",
     )
 
-    fun shouldIgnore(text: String): Boolean {
+    fun ignoreReason(text: String): String? {
         val normalized = text.normalizedForMatch()
+        if (looksLikeUberIdleScreen(normalized)) {
+            return "Tela inicial/offline do Uber detectada; nenhum card de chamada ativo."
+        }
+
         val viewerHits = viewerShellKeywords.count { normalized.contains(it) }
-        return viewerHits >= 2 && !hasRideEvidence(text)
+        if (viewerHits >= 2 && !hasRideEvidence(text)) {
+            return "Tela de visualizador/galeria detectada sem texto de card de corrida."
+        }
+
+        return null
     }
+
+    fun shouldIgnore(text: String): Boolean = ignoreReason(text) != null
 
     fun looksLikeRideCard(text: String): Boolean {
         if (shouldIgnore(text)) return false
@@ -67,6 +77,27 @@ object RideScreenTextClassifier {
             hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
                 hasRouteSignal && hasAddressSignal
             )
+    }
+
+    private fun looksLikeUberIdleScreen(normalized: String): Boolean {
+        val hasOfferAction = listOf("aceitar", "uberx", "viagem longa", "exclusivo").any { normalized.contains(it) }
+        if (hasOfferAction) return false
+
+        val hasOfflineSignal = normalized.contains("voce esta offline") ||
+            normalized.contains("nao e possivel ficar offline")
+        val hasHomeSignals = listOf(
+            "pagina inicial",
+            "pesquisar locais",
+            "recursos de seguranca",
+            "tendencias de ganhos",
+            "preferencias",
+            "agenda de viagens",
+            "ver tempo ao volante",
+            "registro de viagens",
+        ).count { normalized.contains(it) }
+        val hasZeroEarnings = normalized.contains("r$ 0,00") || normalized.contains("r$ 0.00")
+
+        return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings)
     }
 
     private fun String.normalizedForMatch(): String =
