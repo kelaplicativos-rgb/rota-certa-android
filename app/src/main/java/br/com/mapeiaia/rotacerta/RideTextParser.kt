@@ -9,7 +9,7 @@ class RideTextParser {
         """\b\d{1,3}\s*(?:minutos|minuto|min)\s*\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:km|m)\s*\)""",
         RegexOption.IGNORE_CASE,
     )
-    private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$"")
+    private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
     private val mapPointRegex = Regex("""^[AB]\s+(.+)""", RegexOption.IGNORE_CASE)
     private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
     private val addressWords = listOf(
