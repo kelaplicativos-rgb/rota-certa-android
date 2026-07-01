@@ -200,4 +200,28 @@ class RideTextParserTest {
         assertEquals("Avenida Adélia Chohfi, 655, São Rafael, São Paulo", fields.destination)
         assertEquals("R$ 13,48", fields.fare)
     }
+
+    @Test
+    fun parsesNinetyNineCardWhenOcrDropsPickupDistanceNumber() {
+        val text = """
+            Negocia - Dinheiro
+            R$8,93
+            R$1,60/km
+            4,70 181 corridas
+            Perfil Premium
+            6min (km)
+            Estacao Sao Mateus monotrilho., Av.
+            Sapopemba, 15.000 - Jardim Adut...
+            12min (4,5km)
+            Rua Palmeira Bacaba, 491 , Jardim
+            Elba
+            R$9,38 R$9,82 R$10,27
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Estacao Sao Mateus monotrilho., Av. Sapopemba, 15.000 - Jardim Adut...", fields.pickup)
+        assertEquals("Rua Palmeira Bacaba, 491 , Jardim Elba", fields.destination)
+        assertEquals("R$8,93", fields.fare)
+    }
 }
