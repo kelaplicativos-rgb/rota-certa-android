@@ -13,6 +13,8 @@ data class AppSettings(
     val googleMapsApiKey: String = "",
     val homeCoordinate: Coordinate? = null,
     val alternativeCoordinate: Coordinate? = null,
+    val bubbleOpacity: Double = 1.0,
+    val bubbleDarkMode: Boolean = false,
 )
 
 @Serializable
