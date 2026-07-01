@@ -26,17 +26,25 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle
-        run: |
-          curl -L https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /tmp
-          echo "/tmp/gradle-8.10.2/bin" >> "$GITHUB_PATH"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
 
-      - name: Verify Google Maps secret
+      - name: Check Google Maps secret
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
-          test -n "$GOOGLE_MAPS_API_KEY"
+          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
+            echo "GOOGLE_MAPS_API_KEY secret is empty. APK will still build; configure the key inside the app."
+          else
+            echo "GOOGLE_MAPS_API_KEY secret found."
+          fi
+
+      - name: Run unit tests
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
 
       - name: Build debug APK
         env:
