@@ -59,3 +59,25 @@ data class AnalysisResult(
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
 )
+
+@Serializable
+data class LiveDiagnostic(
+    val createdAtMillis: Long = 0L,
+    val appVersionName: String = "",
+    val appVersionCode: Int = 0,
+    val packageName: String? = null,
+    val stage: String = "",
+    val bubbleColor: String = "amarelo",
+    val reason: String = "",
+    val restrictToSelectedRideApps: Boolean = false,
+    val selectedPackages: List<String> = emptyList(),
+    val textLength: Int = 0,
+    val textHash: Int? = null,
+    val textPreview: String = "",
+    val pickup: String? = null,
+    val destination: String? = null,
+    val recommendation: Recommendation? = null,
+    val homeDistanceKm: Double? = null,
+    val alternativeDistanceKm: Double? = null,
+    val error: String? = null,
+)
