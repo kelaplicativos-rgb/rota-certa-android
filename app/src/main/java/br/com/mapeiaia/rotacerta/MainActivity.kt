@@ -160,7 +160,7 @@ fun RotaCertaApp() {
             val destinationCoordinate = fields.destination?.let { geocodeBest(it) }
             val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress)
             val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress)
-            status = "Calculando distancia..."
+            status = "Calculando distancia no Google Maps..."
             val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate)
             val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate)
             val result = decisionEngine.decide(
@@ -425,7 +425,7 @@ private fun SettingsScreen(
             visualTransformation = PasswordVisualTransformation(),
         )
         Text(
-            "Opcional, mas recomendado: usa Google Maps para localizar o destino e calcular rota real.",
+            "Obrigatorio para verde/vermelho: usa Google Maps para localizar o destino e calcular a rota real.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
@@ -482,8 +482,8 @@ private data class RadiusInfo(
 )
 
 private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): RadiusInfo? {
-    val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia ate casa", it, settings.homeRadiusKm) }
-    val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia ate alfinete", it, settings.alternativeRadiusKm) }
+    val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia Google Maps ate casa", it, settings.homeRadiusKm) }
+    val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia Google Maps ate alfinete", it, settings.alternativeRadiusKm) }
 
     return when {
         result.recommendation == Recommendation.GoodRide && homeInfo != null && homeInfo.distanceKm <= homeInfo.radiusKm -> homeInfo
