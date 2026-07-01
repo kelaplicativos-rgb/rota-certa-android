@@ -93,8 +93,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || event == null) return
         activePackageName = event.packageName?.toString()
         if (!shouldScanPackage(activePackageName)) {
-            val shouldRecordDiagnostic = activePackageName?.lowercase(Locale.ROOT) != this.packageName
-            resetToDefault(reason = scanBlockReason(activePackageName), record = shouldRecordDiagnostic)
+            resetToDefault(reason = scanBlockReason(activePackageName), record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
         scheduleVisibleTextAnalysis(delayMs = 80L)
@@ -213,7 +212,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || !shouldScanCurrentWindow()) return
         val snapshotText = text.trim()
         if (snapshotText.isBlank()) {
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.")
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
 
@@ -441,6 +440,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         result: AnalysisResult? = null,
         error: Throwable? = null,
     ) {
+        if (stage != "service_connected" && isPassiveDiagnosticPackage(activePackageName)) return
+
         val settings = currentSettings
         val hash = text?.snapshotHash()
         val signature = listOf(stage, color.diagnosticLabel, reason, activePackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
@@ -470,6 +471,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch {
             runCatching { repository.saveDiagnostic(diagnostic) }
         }
+    }
+
+    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean {
+        val normalized = packageName?.lowercase(Locale.ROOT) ?: return false
+        return normalized == this.packageName || normalized in PASSIVE_DIAGNOSTIC_PACKAGES
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
@@ -634,6 +640,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val IGNORED_PACKAGES = setOf(
             "com.android.settings",
             "com.google.android.apps.maps",
+            "com.samsung.android.app.settings",
+        )
+        val PASSIVE_DIAGNOSTIC_PACKAGES = setOf(
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+            "com.android.settings",
             "com.samsung.android.app.settings",
         )
     }
