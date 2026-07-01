@@ -28,11 +28,11 @@ class RideTextParserTest {
     }
 
     @Test
-    fun returnsInsufficientDataWhenPickupIsMissing() {
+    fun returnsInsufficientDataWhenDestinationIsMissing() {
         val result = DecisionEngine().decide(
             fields = RideFields(fare = "R$ 10,00"),
             settings = AppSettings(),
-            pickupCoordinate = null,
+            destinationCoordinate = null,
             homeCoordinate = null,
             alternativeCoordinate = null,
             fullText = "R$ 10,00",
@@ -42,17 +42,57 @@ class RideTextParserTest {
     }
 
     @Test
-    fun recommendsRideInsideHomeRadius() {
+    fun recommendsRideWhenDestinationIsInsideHomeRadius() {
         val result = DecisionEngine().decide(
-            fields = RideFields(pickup = "Rua das Flores"),
+            fields = RideFields(destination = "Avenida Brasil"),
             settings = AppSettings(homeRadiusKm = 5.0),
-            pickupCoordinate = Coordinate(-23.5505, -46.6333),
+            destinationCoordinate = Coordinate(-23.5505, -46.6333),
             homeCoordinate = Coordinate(-23.5510, -46.6340),
             alternativeCoordinate = null,
-            fullText = "Rua das Flores",
+            fullText = "Avenida Brasil",
         )
 
         assertEquals(Recommendation.GoodRide, result.recommendation)
         assertTrue(result.pickupToHomeKm != null && result.pickupToHomeKm < 1.0)
+    }
+
+    @Test
+    fun joinsWrappedDestinationNeighborhoodFromOcr() {
+        val text = """
+            Dinheiro
+            R$9,00
+            R$3,88/km
+            3min (462m)
+            Comercial Esperança, Avenida
+            Sapopemba, 13309 - Jardim Aduto
+            5min (1,9km)
+            Rua Augustin Luberti, 1053, Fazenda
+            da Juta
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Comercial Esperança, Avenida Sapopemba, 13309 - Jardim Aduto", fields.pickup)
+        assertEquals("Rua Augustin Luberti, 1053, Fazenda da Juta", fields.destination)
+        assertEquals("R$9,00", fields.fare)
+        assertEquals("1,9km", fields.distance)
+        assertEquals("3min", fields.time)
+    }
+
+    @Test
+    fun joinsWrappedMapPointAddressFromOcr() {
+        val text = """
+            Pedido de viagem
+            R$ 14
+            A Rua Lagoa Bonita 42(Jardim
+            Imperador (Zona Leste))
+            B Rua Moysés Zunta 189 (Parque
+            Savoi City)
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("A Rua Lagoa Bonita 42(Jardim Imperador (Zona Leste))", fields.pickup)
+        assertEquals("Rua Moysés Zunta 189 (Parque Savoi City)", fields.destination)
     }
 }
