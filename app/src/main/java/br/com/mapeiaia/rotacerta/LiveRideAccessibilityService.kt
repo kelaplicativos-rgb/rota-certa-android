@@ -47,6 +47,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var continuousScanStarted = false
     private var serviceReady = false
     private var analyzing = false
+    private var activePackageName: String? = null
     private var currentSettings = AppSettings()
 
     private lateinit var repository: SettingsRepository
@@ -80,7 +81,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!serviceReady || event == null || event.packageName == packageName) return
+        if (!serviceReady || event == null) return
+        activePackageName = event.packageName?.toString()
+        if (!shouldScanPackage(activePackageName)) {
+            resetToDefault()
+            return
+        }
         scheduleVisibleTextAnalysis(delayMs = 80L)
         requestScreenshotAnalysis()
     }
@@ -101,15 +107,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         continuousScanStarted = true
         scope.launch {
             while (serviceReady) {
-                scheduleVisibleTextAnalysis(delayMs = 0L)
-                requestScreenshotAnalysis()
+                if (shouldScanCurrentWindow()) {
+                    scheduleVisibleTextAnalysis(delayMs = 0L)
+                    requestScreenshotAnalysis()
+                } else {
+                    resetToDefault()
+                }
                 delay(SCAN_LOOP_MS)
             }
         }
     }
 
     private fun scheduleVisibleTextAnalysis(delayMs: Long) {
-        if (!serviceReady) return
+        if (!serviceReady || !shouldScanCurrentWindow()) return
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
@@ -118,7 +128,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun requestScreenshotAnalysis() {
-        if (!serviceReady || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (!serviceReady || !shouldScanCurrentWindow() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val now = System.currentTimeMillis()
         if (now - lastScreenshotMillis < SCREENSHOT_INTERVAL_MS) return
         if (!screenshotInProgress.compareAndSet(false, true)) return
@@ -132,8 +142,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
                             runCatching {
-                                val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
-                                processRideText(ocrService.extractText(bitmap))
+                                if (shouldScanCurrentWindow()) {
+                                    val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
+                                    processRideText(ocrService.extractText(bitmap))
+                                }
                             }
                             screenshotInProgress.set(false)
                         }
@@ -150,6 +162,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun collectVisibleText(): String {
+        if (!shouldScanCurrentWindow()) return ""
         val root = rootInActiveWindow ?: return ""
         val lines = mutableListOf<String>()
         collectNodeText(root, lines)
@@ -172,7 +185,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun processRideText(text: String) {
-        if (!serviceReady) return
+        if (!serviceReady || !shouldScanCurrentWindow()) return
         val snapshotText = text.trim()
         if (snapshotText.isBlank()) {
             resetToDefault()
@@ -239,7 +252,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun analyzeLiveText(text: String, fields: RideFields, snapshotHash: Int) {
-        if (!serviceReady || analyzing) return
+        if (!serviceReady || !shouldScanCurrentWindow() || analyzing) return
         analyzing = true
         currentSettings = repository.settings.first()
 
@@ -264,7 +277,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
 
             repository.addAnalysis(result)
-            if (snapshotHash != lastSnapshotHash) {
+            if (snapshotHash != lastSnapshotHash || !shouldScanCurrentWindow()) {
                 showOverlay(RadarColor.Default)
                 return
             }
@@ -303,6 +316,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastSnapshotHash = null
         lastAnalyzedHash = null
         showOverlay(RadarColor.Default)
+    }
+
+    private fun shouldScanCurrentWindow(): Boolean {
+        val rootPackageName = rootInActiveWindow?.packageName?.toString()
+        return shouldScanPackage(rootPackageName ?: activePackageName)
+    }
+
+    private fun shouldScanPackage(packageName: String?): Boolean {
+        val normalized = packageName?.lowercase(Locale.ROOT) ?: return true
+        if (normalized == this.packageName) return false
+        return normalized !in IGNORED_PACKAGES
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
@@ -459,5 +483,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_BUBBLE_X = "bubble_x"
         const val KEY_BUBBLE_Y = "bubble_y"
+        val IGNORED_PACKAGES = setOf(
+            "com.android.settings",
+            "com.google.android.apps.maps",
+            "com.samsung.android.app.settings",
+        )
     }
 }
