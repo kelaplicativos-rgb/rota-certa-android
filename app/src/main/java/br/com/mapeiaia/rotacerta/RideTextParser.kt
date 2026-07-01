@@ -5,7 +5,10 @@ class RideTextParser {
     private val primaryFareRegex = Regex("""^R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?(?:\s|$)""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
-    private val routeStepRegex = Regex("""\b\d{1,3}\s*min\s*\(\s*\d+(?:[,.]\d+)?\s*(?:m|km)\s*\)""", RegexOption.IGNORE_CASE)
+    private val routeStepRegex = Regex(
+        """\b\d{1,3}\s*(?:min|minuto|minutos)\s*\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:m|km)\s*\)""",
+        RegexOption.IGNORE_CASE,
+    )
     private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
     private val mapPointRegex = Regex("""^[AB]\s+(.+)""", RegexOption.IGNORE_CASE)
     private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
@@ -130,6 +133,14 @@ class RideTextParser {
         }
 
         if (candidates.isEmpty()) return null
+
+        if (candidates.size == 1) {
+            val addresses = findAddressCandidates(lines)
+            return RideFields(
+                pickup = addresses.firstOrNull(),
+                destination = addresses.asReversed().firstOrNull { !it.equals(addresses.firstOrNull(), ignoreCase = true) },
+            )
+        }
 
         return RideFields(
             pickup = candidates.firstOrNull(),
