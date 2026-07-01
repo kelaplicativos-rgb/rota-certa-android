@@ -277,20 +277,20 @@ class RideTextParserTest {
             Bruno
             4.85
             (41)
-            5 min.
-            R$ 1,7/km
+            5 min.
+            R$ 1,7/km
             ~3,0 km
-            R$ 26
+            R$ 26
             R. Zacarias Alves de Melo, 108 (Jardim Ibitirama)
             Cr.P.Conv Talitha Kumi (Rua General Bagnuolo - Quinta da Paineira, São Paulo - SP)
             Rua Cônego Antônio Dias Pequeno, 475 (Jardim Tietê, São Paulo - State of São Paulo)
             PIX
-            Aceitar por R$ 26
+            Aceitar por R$ 26
             Ofereça sua tarifa
-            R$ 29
-            R$ 32
-            R$ 34
-            R$ 37
+            R$ 29
+            R$ 32
+            R$ 34
+            R$ 37
             Fechar
         """.trimIndent()
 
@@ -301,5 +301,44 @@ class RideTextParserTest {
         assertEquals("R$ 26", fields.fare)
         assertEquals("3,0 km", fields.distance)
         assertEquals("5 min", fields.time)
+    }
+
+    @Test
+    fun parsesInDriveDiagnosticWhenMapLabelsAppearBeforeOfferAddresses() {
+        val text = """
+            17:31
+            Passageiro Teste
+            * 5.0
+            (30)
+            1 min.
+            Pedido de viagem
+            Offline
+            Mapa 9 min
+            2,5 km
+            A
+            PIX
+            B
+            R$ 15
+            R$ 2,3/km ~2,5 km
+            Ponto de referencia
+            R$ 13 O Preço justo
+            A Rua Exemplo Um, 177
+            (Bairro Um)
+            B Rua Exemplo Dois, 175
+            (Bairro Dois,
+            São Paulo - SP)
+            Aceitar por R$ 13
+            Ofereça sua tarifa
+            R$ 16
+            R$ 17
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Rua Exemplo Um, 177 (Bairro Um)", fields.pickup)
+        assertEquals("Rua Exemplo Dois, 175 (Bairro Dois, São Paulo - SP)", fields.destination)
+        assertEquals("R$ 13", fields.fare)
+        assertEquals("2,5 km", fields.distance)
+        assertEquals("1 min", fields.time)
     }
 }
