@@ -18,7 +18,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
-import android.view.accessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.annotation.RequiresApi
