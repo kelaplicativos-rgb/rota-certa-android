@@ -510,20 +510,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun formatBubbleDistanceKm(distanceKm: Double?): String {
         if (distanceKm == null) return ""
-        val compactValue = if (distanceKm >= 10.0) {
-            distanceKm.roundToInt().toString()
-        } else {
-            String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
-        }
-        return "${compactValue}km"
+        return "${String.format(Locale("pt", "BR"), "%.2f", distanceKm)}km"
     }
 
     private fun bubbleTextSizeSp(text: String): Float = when {
         text.isBlank() -> 14f
-        text.length <= 4 -> 18f
-        text.length <= 5 -> 17f
-        text.length <= 6 -> 15f
-        else -> 13f
+        text.length <= 6 -> 16f
+        text.length <= 7 -> 14f
+        else -> 12f
     }
 
     private fun removeOverlay() {
@@ -534,8 +528,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun overlayLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
-        dp(66),
-        dp(66),
+        dp(72),
+        dp(72),
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
