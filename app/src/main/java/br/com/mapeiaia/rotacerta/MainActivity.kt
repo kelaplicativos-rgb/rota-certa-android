@@ -69,7 +69,6 @@ fun RotaCertaApp() {
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf("analise") }
-    var extractedText by remember { mutableStateOf("") }
     var lastResult by remember { mutableStateOf<AnalysisResult?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var status by remember { mutableStateOf("Pronto para analisar um print.") }
@@ -89,7 +88,7 @@ fun RotaCertaApp() {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             status = "Lendo print com OCR..."
-            extractedText = ocrService.extractText(uri)
+            val extractedText = ocrService.extractText(uri)
             val fields = parser.parse(extractedText)
             val destinationCoordinate = fields.destination?.let { geocodingService.geocode(it, region) }
             val homeCoordinate = settings.homeCoordinate ?: geocodingService.geocode(settings.homeAddress, region)
@@ -141,7 +140,6 @@ fun RotaCertaApp() {
             when (tab) {
                 "analise" -> AnalysisScreen(
                     status = status,
-                    extractedText = extractedText,
                     result = lastResult,
                     onPickImage = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -161,7 +159,6 @@ fun RotaCertaApp() {
 @Composable
 private fun AnalysisScreen(
     status: String,
-    extractedText: String,
     result: AnalysisResult?,
     onPickImage: () -> Unit,
 ) {
@@ -171,9 +168,6 @@ private fun AnalysisScreen(
     Spacer(Modifier.height(12.dp))
     Text(status)
     result?.let { ResultCard(it) }
-    Spacer(Modifier.height(12.dp))
-    Text("Texto extraido", fontWeight = FontWeight.Bold)
-    Text(extractedText.ifBlank { "Nenhum print analisado ainda." })
 }
 
 @Composable
@@ -183,7 +177,6 @@ private fun ResultCard(result: AnalysisResult) {
             Text(recommendationLabel(result.recommendation), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(result.reason)
             Text("Destino final: ${result.fields.destination ?: "nao identificado"}")
-            Text("Embarque: ${result.fields.pickup ?: "nao identificado"}")
             Text("Valor: ${result.fields.fare ?: "nao identificado"}")
             Text("Distancia no app: ${result.fields.distance ?: "nao identificada"}")
             Text("Tempo: ${result.fields.time ?: "nao identificado"}")
