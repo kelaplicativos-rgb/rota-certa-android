@@ -10,6 +10,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.database.ContentObserver
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -69,7 +70,7 @@ class RadarService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, notification())
+        startAsForeground()
         showOverlay(RadarColor.Yellow)
         registerScreenshotObserver()
         return START_STICKY
@@ -191,12 +192,12 @@ class RadarService : Service() {
                     }
 
                     if (dateAdded < serviceStartSeconds - 3L) return@use null
-                    if (!isScreenshot(name, path)) continue
-
-                    return@use ScreenshotImage(
-                        id = id,
-                        uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
-                    )
+                    if (isScreenshot(name, path)) {
+                        return@use ScreenshotImage(
+                            id = id,
+                            uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
+                        )
+                    }
                 }
                 null
             }
@@ -254,6 +255,15 @@ class RadarService : Service() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun startAsForeground() {
+        val notification = notification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
 
     private fun notification(): Notification {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
