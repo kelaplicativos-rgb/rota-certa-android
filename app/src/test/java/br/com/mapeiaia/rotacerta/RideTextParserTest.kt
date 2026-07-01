@@ -269,4 +269,37 @@ class RideTextParserTest {
         assertEquals("Rua Palmeira Bacaba, 491 , Jardim Elba", fields.destination)
         assertEquals("R$8,93", fields.fare)
     }
+
+    @Test
+    fun parsesInDriveStackedAddressesFromLiveDiagnostic() {
+        val text = """
+            Pedido de viagem
+            Bruno
+            4.85
+            (41)
+            5 min.
+            R$ 1,7/km
+            ~3,0 km
+            R$ 26
+            R. Zacarias Alves de Melo, 108 (Jardim Ibitirama)
+            Cr.P.Conv Talitha Kumi (Rua General Bagnuolo - Quinta da Paineira, São Paulo - SP)
+            Rua Cônego Antônio Dias Pequeno, 475 (Jardim Tietê, São Paulo - State of São Paulo)
+            PIX
+            Aceitar por R$ 26
+            Ofereça sua tarifa
+            R$ 29
+            R$ 32
+            R$ 34
+            R$ 37
+            Fechar
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("R. Zacarias Alves de Melo, 108 (Jardim Ibitirama)", fields.pickup)
+        assertEquals("Rua Cônego Antônio Dias Pequeno, 475 (Jardim Tietê, São Paulo - State of São Paulo)", fields.destination)
+        assertEquals("R$ 26", fields.fare)
+        assertEquals("3,0 km", fields.distance)
+        assertEquals("5 min", fields.time)
+    }
 }
