@@ -374,6 +374,11 @@ private fun SettingsScreen(
     var gpsStatus by remember { mutableStateOf("") }
     var pendingLocationTarget by remember { mutableStateOf<LocationTarget?>(null) }
 
+    fun saveDraft(updated: AppSettings) {
+        draft = updated
+        onSave(updated)
+    }
+
     fun captureGps(target: LocationTarget) {
         scope.launch {
             gpsStatus = "Buscando sinal de GPS..."
@@ -488,6 +493,7 @@ private fun SettingsScreen(
             "Opcional: Google Maps melhora a precisao por rota real. Sem chave, o app usa distancia aproximada quando houver coordenadas confiaveis.",
             style = MaterialTheme.typography.bodySmall,
         )
+        MonitoredAppsCard(settings = draft, onChange = ::saveDraft)
         OutlinedTextField(
             value = draft.desiredKeywords,
             onValueChange = { draft = draft.copy(desiredKeywords = it) },
@@ -506,6 +512,64 @@ private fun SettingsScreen(
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
             Text("Salvar configuracoes")
         }
+    }
+}
+
+@Composable
+private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Apps monitorados", fontWeight = FontWeight.Bold)
+            SettingsSwitchRow(
+                label = "Ler somente apps selecionados",
+                checked = settings.restrictToSelectedRideApps,
+                onCheckedChange = { onChange(settings.copy(restrictToSelectedRideApps = it)) },
+            )
+            Text(
+                if (settings.restrictToSelectedRideApps) {
+                    "Modo restrito: a bolinha so analisa os apps marcados abaixo. Outros apps voltam para amarelo."
+                } else {
+                    "Modo livre: a bolinha analisa cards detectados e ignora Maps e Configuracoes."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            SettingsSwitchRow(
+                label = "99 Motorista",
+                checked = settings.monitor99,
+                onCheckedChange = { onChange(settings.copy(monitor99 = it)) },
+            )
+            SettingsSwitchRow(
+                label = "Uber Driver",
+                checked = settings.monitorUber,
+                onCheckedChange = { onChange(settings.copy(monitorUber = it)) },
+            )
+            SettingsSwitchRow(
+                label = "inDrive",
+                checked = settings.monitorInDrive,
+                onCheckedChange = { onChange(settings.copy(monitorInDrive = it)) },
+            )
+            OutlinedTextField(
+                value = settings.extraMonitoredPackages,
+                onValueChange = { onChange(settings.copy(extraMonitoredPackages = it)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Pacote extra permitido") },
+            )
+            Text(
+                "Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
