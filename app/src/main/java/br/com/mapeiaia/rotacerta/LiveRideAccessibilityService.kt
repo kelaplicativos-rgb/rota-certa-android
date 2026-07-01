@@ -231,11 +231,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun showOverlay(color: RadarColor) {
         val manager = windowManager ?: return
         val view = overlayView ?: View(this).also { newView ->
+            val params = overlayLayoutParams()
             newView.contentDescription = "Rota Certa"
             newView.setOnTouchListener(BubbleTouchListener())
             overlayView = newView
-            overlayParams = overlayLayoutParams()
-            manager.addView(newView, overlayParams)
+            overlayParams = params
+            manager.addView(newView, params)
         }
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
