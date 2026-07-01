@@ -20,6 +20,7 @@ class SettingsRepository(private val context: Context) {
     private val alternativeRadiusKm = doublePreferencesKey("alternative_radius_km")
     private val desiredKeywords = stringPreferencesKey("desired_keywords")
     private val avoidedKeywords = stringPreferencesKey("avoided_keywords")
+    private val googleMapsApiKey = stringPreferencesKey("google_maps_api_key")
     private val history = stringPreferencesKey("history")
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -27,10 +28,11 @@ class SettingsRepository(private val context: Context) {
         AppSettings(
             homeAddress = prefs[homeAddress].orEmpty(),
             alternativeAddress = prefs[alternativeAddress].orEmpty(),
-            homeRadiusKm = prefs[homeRadiusKm] ?: 5.0,
+            homeRadiusKm = prefs[homeRadiusKm] ?: 10.0,
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
             avoidedKeywords = prefs[avoidedKeywords].orEmpty(),
+            googleMapsApiKey = prefs[googleMapsApiKey].orEmpty(),
         )
     }
 
@@ -47,6 +49,7 @@ class SettingsRepository(private val context: Context) {
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
             prefs[avoidedKeywords] = settings.avoidedKeywords
+            prefs[googleMapsApiKey] = settings.googleMapsApiKey.trim()
         }
     }
 
