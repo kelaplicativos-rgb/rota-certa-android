@@ -71,7 +71,7 @@ class RideTextParser {
 
         val primaryFareIndexes = lines.indices.filter { isPrimaryFareLine(lines[it]) }
         if (primaryFareIndexes.size >= 2) {
-            val start = primaryFareIndexes.first()
+            val start = 0
             val end = primaryFareIndexes[1]
             return lines.subList(start, end)
         }
