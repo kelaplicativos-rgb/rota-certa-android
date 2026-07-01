@@ -510,14 +510,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun formatBubbleDistanceKm(distanceKm: Double?): String {
         if (distanceKm == null) return ""
-        return "${String.format(Locale("pt", "BR"), "%.2f", distanceKm)}km"
+        return when {
+            distanceKm < 1.0 -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
+            else -> distanceKm.roundToInt().coerceAtMost(99).toString()
+        }
     }
 
     private fun bubbleTextSizeSp(text: String): Float = when {
         text.isBlank() -> 14f
-        text.length <= 6 -> 16f
-        text.length <= 7 -> 14f
-        else -> 12f
+        text.length <= 1 -> 25f
+        text.length <= 2 -> 23f
+        text.length <= 3 -> 20f
+        else -> 18f
     }
 
     private fun removeOverlay() {
@@ -528,8 +532,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun overlayLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
-        dp(72),
-        dp(72),
+        dp(66),
+        dp(66),
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
@@ -641,15 +645,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
         val IGNORED_PACKAGES = setOf(
             "com.android.settings",
+            "com.android.systemui",
             "com.google.android.apps.maps",
+            "com.google.android.inputmethod.latin",
+            "com.openai.chatgpt",
             "com.samsung.android.app.settings",
+            "com.samsung.android.honeyboard",
         )
         val PASSIVE_DIAGNOSTIC_PACKAGES = setOf(
             "com.android.launcher",
+            "com.android.systemui",
             "com.google.android.apps.nexuslauncher",
+            "com.google.android.inputmethod.latin",
+            "com.openai.chatgpt",
             "com.sec.android.app.launcher",
             "com.android.settings",
             "com.samsung.android.app.settings",
+            "com.samsung.android.honeyboard",
         )
     }
 }
