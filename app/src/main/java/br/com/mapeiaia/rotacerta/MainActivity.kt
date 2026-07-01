@@ -516,7 +516,8 @@ private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): Rad
 }
 
 private fun isLiveAccessibilityEnabled(context: Context): Boolean {
-    val expectedService = ComponentName(context, LiveRideAccessibilityService::class.java).flattenToString()
+    val component = ComponentName(context, LiveRideAccessibilityService::class.java)
+    val expectedServices = setOf(component.flattenToString(), component.flattenToShortString())
     val enabledServices = Settings.Secure.getString(
         context.contentResolver,
         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
@@ -524,7 +525,7 @@ private fun isLiveAccessibilityEnabled(context: Context): Boolean {
 
     return enabledServices
         .split(':')
-        .any { it.equals(expectedService, ignoreCase = true) }
+        .any { service -> expectedServices.any { it.equals(service, ignoreCase = true) } }
 }
 
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
