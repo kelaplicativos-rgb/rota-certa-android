@@ -51,6 +51,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var serviceReady = false
     private var analyzing = false
     private var activePackageName: String? = null
+    private var lastTextPackageName: String? = null
+    private var lastAccessibilityText: String = ""
+    private var lastOcrText: String = ""
     private var currentSettings = AppSettings()
     private var currentRadarColor = RadarColor.Default
     private var currentDistanceKm: Double? = null
@@ -136,7 +139,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
-            processRideText(collectVisibleText())
+            processRideText(collectVisibleText(), TextSource.Accessibility)
         }
     }
 
@@ -157,7 +160,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             runCatching {
                                 if (shouldScanCurrentWindow()) {
                                     val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
-                                    processRideText(ocrService.extractText(bitmap))
+                                    processRideText(ocrService.extractText(bitmap), TextSource.Ocr)
                                 }
                             }.onFailure { error ->
                                 recordDiagnostic(
@@ -212,9 +215,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun processRideText(text: String) {
+    private suspend fun processRideText(text: String, source: TextSource) {
         if (!serviceReady || !shouldScanCurrentWindow()) return
-        val snapshotText = text.trim()
+        val packageName = currentWindowPackageName()
+        rememberSourceText(packageName, source, text)
+        val snapshotText = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
         if (snapshotText.isBlank()) {
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
             return
@@ -237,7 +242,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             )
         }
 
-        val fields = parser.parse(snapshotText)
+        val parseResult = parser.parseWithMetadata(snapshotText, packageName)
+        val fields = parseResult.fields
         if (!looksLikeRideOffer(snapshotText, fields)) {
             val reason = rideOfferRejectReason(fields)
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
@@ -251,6 +257,30 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         if (snapshotHash == lastAnalyzedHash || analyzing) return
         analyzeLiveText(snapshotText, fields, snapshotHash)
+    }
+
+    private fun rememberSourceText(packageName: String?, source: TextSource, text: String) {
+        val normalizedPackage = packageName?.lowercase(Locale.ROOT)
+        if (normalizedPackage != lastTextPackageName) {
+            lastTextPackageName = normalizedPackage
+            lastAccessibilityText = ""
+            lastOcrText = ""
+        }
+
+        when (source) {
+            TextSource.Accessibility -> lastAccessibilityText = text.trim()
+            TextSource.Ocr -> lastOcrText = text.trim()
+        }
+    }
+
+    private fun mergeRideTexts(accessibilityText: String, ocrText: String): String {
+        val lines = linkedSetOf<String>()
+        listOf(accessibilityText, ocrText)
+            .flatMap { it.lines() }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .forEach { lines += it }
+        return lines.joinToString("\n")
     }
 
     private suspend fun saveCapturedReadToHistory(text: String, fields: RideFields, snapshotHash: Int, reason: String) {
@@ -651,6 +681,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .filter { it.isNotBlank() }
             .joinToString("\n")
             .hashCode()
+
+    private enum class TextSource {
+        Accessibility,
+        Ocr,
+    }
 
     private enum class RadarColor(
         private val normalArgb: Int,
