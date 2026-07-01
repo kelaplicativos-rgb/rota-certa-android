@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -64,6 +65,7 @@ fun RotaCertaApp() {
     val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
+    val googleMapsService = remember { GoogleMapsService() }
     val parser = remember { RideTextParser() }
     val decisionEngine = remember { DecisionEngine() }
     val scope = rememberCoroutineScope()
@@ -84,15 +86,19 @@ fun RotaCertaApp() {
         }
     }
 
+    suspend fun geocodeBest(query: String): Coordinate? =
+        googleMapsService.geocode(query, region, settings.googleMapsApiKey)
+            ?: geocodingService.geocode(query, region)
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             status = "Lendo print com OCR..."
             val extractedText = ocrService.extractText(uri)
             val fields = parser.parse(extractedText)
-            val destinationCoordinate = fields.destination?.let { geocodingService.geocode(it, region) }
-            val homeCoordinate = settings.homeCoordinate ?: geocodingService.geocode(settings.homeAddress, region)
-            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodingService.geocode(settings.alternativeAddress, region)
+            val destinationCoordinate = fields.destination?.let { geocodeBest(it) }
+            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress)
+            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress)
             val result = decisionEngine.decide(
                 fields = fields,
                 settings = settings,
@@ -306,6 +312,17 @@ private fun SettingsScreen(
                 label = { Text("Raio alfinete km") },
             )
         }
+        OutlinedTextField(
+            value = draft.googleMapsApiKey,
+            onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Chave Google Maps API") },
+            visualTransformation = PasswordVisualTransformation(),
+        )
+        Text(
+            "Opcional, mas recomendado: usa Google Maps para localizar o destino com mais precisao.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         OutlinedTextField(
             value = draft.desiredKeywords,
             onValueChange = { draft = draft.copy(desiredKeywords = it) },
