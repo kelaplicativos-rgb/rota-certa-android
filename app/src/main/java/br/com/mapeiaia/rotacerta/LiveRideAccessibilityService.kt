@@ -221,6 +221,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
 
         val snapshotHash = snapshotText.snapshotHash()
+        if (RideScreenTextClassifier.shouldIgnore(snapshotText)) {
+            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            return
+        }
+
         if (snapshotHash != lastSnapshotHash) {
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
@@ -262,6 +268,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun looksLikeRideOffer(text: String, fields: RideFields): Boolean {
+        if (!RideScreenTextClassifier.looksLikeRideCard(text)) return false
+
         val destination = fields.destination?.lowercase(Locale.ROOT).orEmpty()
         if (destination.isBlank()) return false
 
