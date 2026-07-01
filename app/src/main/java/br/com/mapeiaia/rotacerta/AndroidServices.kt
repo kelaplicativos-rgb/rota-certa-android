@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.location.Geocoder
 import android.net.Uri
 import androidx.core.content.ContextCompat
@@ -20,6 +21,12 @@ import java.util.Locale
 class OcrService(private val context: Context) {
     suspend fun extractText(uri: Uri): String = withContext(Dispatchers.Default) {
         val image = InputImage.fromFilePath(context, uri)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(image).await().text
+    }
+
+    suspend fun extractText(bitmap: Bitmap): String = withContext(Dispatchers.Default) {
+        val image = InputImage.fromBitmap(bitmap, 0)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         recognizer.process(image).await().text
     }
