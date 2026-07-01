@@ -31,6 +31,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -216,6 +218,7 @@ fun RotaCertaApp() {
                     settings = settings,
                     radarEnabled = radarEnabled,
                     radarStatus = radarStatus,
+                    onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onPickImage = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
@@ -244,10 +247,31 @@ private fun AnalysisScreen(
     settings: AppSettings,
     radarEnabled: Boolean,
     radarStatus: String,
+    onSaveSettings: (AppSettings) -> Unit,
     onPickImage: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onToggleRadar: () -> Unit,
 ) {
+    var quickSettings by remember(settings) { mutableStateOf(settings) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Raio rapido", fontWeight = FontWeight.Bold)
+            RadiusSlider(
+                label = "Casa",
+                value = quickSettings.homeRadiusKm,
+                onValueChange = { quickSettings = quickSettings.copy(homeRadiusKm = it) },
+                onValueChangeFinished = { onSaveSettings(quickSettings) },
+            )
+            RadiusSlider(
+                label = "Alfinete",
+                value = quickSettings.alternativeRadiusKm,
+                onValueChange = { quickSettings = quickSettings.copy(alternativeRadiusKm = it) },
+                onValueChangeFinished = { onSaveSettings(quickSettings) },
+            )
+        }
+    }
+    Spacer(Modifier.height(10.dp))
     Button(onClick = onOpenAccessibilitySettings, modifier = Modifier.fillMaxWidth()) {
         Text("Ativar leitura ao vivo")
     }
@@ -403,20 +427,18 @@ private fun SettingsScreen(
             Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                value = draft.homeRadiusKm.toString(),
-                onValueChange = { draft = draft.copy(homeRadiusKm = it.toDoubleOrNull() ?: draft.homeRadiusKm) },
-                modifier = Modifier.weight(1f),
-                label = { Text("Raio casa km") },
-            )
-            OutlinedTextField(
-                value = draft.alternativeRadiusKm.toString(),
-                onValueChange = { draft = draft.copy(alternativeRadiusKm = it.toDoubleOrNull() ?: draft.alternativeRadiusKm) },
-                modifier = Modifier.weight(1f),
-                label = { Text("Raio alfinete km") },
-            )
-        }
+        RadiusSlider(
+            label = "Raio casa",
+            value = draft.homeRadiusKm,
+            onValueChange = { draft = draft.copy(homeRadiusKm = it) },
+            onValueChangeFinished = { onSave(draft) },
+        )
+        RadiusSlider(
+            label = "Raio alfinete",
+            value = draft.alternativeRadiusKm,
+            onValueChange = { draft = draft.copy(alternativeRadiusKm = it) },
+            onValueChangeFinished = { onSave(draft) },
+        )
         OutlinedTextField(
             value = draft.googleMapsApiKey,
             onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
@@ -446,6 +468,35 @@ private fun SettingsScreen(
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
             Text("Salvar configuracoes")
         }
+    }
+}
+
+@Composable
+private fun RadiusSlider(
+    label: String,
+    value: Double,
+    onValueChange: (Double) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    val safeValue = value.coerceIn(1.0, 30.0)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label)
+            Text(formatKm(safeValue), fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = safeValue.toFloat(),
+            onValueChange = { rawValue ->
+                val rounded = (rawValue * 2f).roundToInt() / 2.0
+                onValueChange(rounded.coerceIn(1.0, 30.0))
+            },
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = 1f..30f,
+            steps = 57,
+        )
     }
 }
 
