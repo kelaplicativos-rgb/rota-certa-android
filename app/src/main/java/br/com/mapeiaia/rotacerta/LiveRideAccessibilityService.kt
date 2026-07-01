@@ -18,6 +18,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.annotation.RequiresApi
@@ -417,6 +418,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (normalized == this.packageName) return false
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
+        if (normalized in SCREEN_READER_PACKAGES) return true
 
         val settings = currentSettings
         if (!settings.restrictToSelectedRideApps) return true
@@ -442,6 +444,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (normalized == this.packageName) return "Rota Certa esta em primeiro plano; leitura pausada."
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return "Pacote passivo ignorado sem apagar a ultima decisao: $normalized."
         if (normalized in IGNORED_PACKAGES) return "Pacote ignorado para evitar leitura fora do card: $normalized."
+        if (normalized in SCREEN_READER_PACKAGES) return "Pacote de foto/arquivo permitido para leitura de tela: $normalized."
         if (currentSettings.restrictToSelectedRideApps && normalized !in selectedRidePackages(currentSettings)) {
             return "Modo restrito ligado; pacote nao selecionado: $normalized."
         }
@@ -668,6 +671,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val PACKAGE_99_DRIVER = "com.app99.driver"
         const val PACKAGE_UBER_DRIVER = "com.ubercab.driver"
         const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
+        val SCREEN_READER_PACKAGES = setOf(
+            "com.google.android.apps.photos",
+            "com.google.android.apps.docs",
+            "com.google.android.apps.nbu.files",
+            "com.android.documentsui",
+            "com.sec.android.gallery3d",
+            "com.samsung.android.gallery3d",
+            "com.miui.gallery",
+            "com.simplemobiletools.gallery",
+        )
         val IGNORED_PACKAGES = setOf(
             "com.android.settings",
             "com.android.systemui",
