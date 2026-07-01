@@ -1,11 +1,14 @@
 package br.com.mapeiaia.rotacerta
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -73,6 +76,7 @@ fun RotaCertaApp() {
     val repository = remember { SettingsRepository(context) }
     val settings by repository.settings.collectAsState(initial = AppSettings())
     val history by repository.analyses.collectAsState(initial = emptyList())
+    val diagnostic by repository.diagnostic.collectAsState(initial = null)
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
     val scope = rememberCoroutineScope()
@@ -136,6 +140,7 @@ fun RotaCertaApp() {
                 "analise" -> AnalysisScreen(
                     settings = settings,
                     latestResult = history.firstOrNull(),
+                    diagnostic = diagnostic,
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onOpenAccessibilitySettings = {
@@ -158,6 +163,7 @@ fun RotaCertaApp() {
 private fun AnalysisScreen(
     settings: AppSettings,
     latestResult: AnalysisResult?,
+    diagnostic: LiveDiagnostic?,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
@@ -239,6 +245,9 @@ private fun AnalysisScreen(
             )
         }
     }
+
+    Spacer(Modifier.height(10.dp))
+    DiagnosticCard(diagnostic)
 
     Spacer(Modifier.height(10.dp))
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -328,6 +337,37 @@ private fun AnalysisScreen(
     latestResult?.let {
         Spacer(Modifier.height(12.dp))
         ResultCard(it, settings)
+    }
+}
+
+@Composable
+private fun DiagnosticCard(diagnostic: LiveDiagnostic?) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Diagnostico", fontWeight = FontWeight.Bold)
+            if (diagnostic == null) {
+                Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
+                return@Column
+            }
+            Text("Cor: ${diagnostic.bubbleColor}")
+            Text("Etapa: ${diagnostic.stage}")
+            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
+            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
+            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
+                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Rota Certa diagnostico", diagnostic.toShareText()))
+                    Toast.makeText(context, "Diagnostico copiado", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Copiar diagnostico")
+            }
+        }
     }
 }
 
@@ -697,6 +737,28 @@ private fun decisionActionLabel(recommendation: Recommendation): String = when (
     Recommendation.GoodRide -> "Aceitar"
     Recommendation.OutsideRadius -> "Recusar"
     Recommendation.InsufficientData -> "Revisar"
+}
+
+private fun LiveDiagnostic.toShareText(): String = buildString {
+    appendLine("ROTA CERTA DIAGNOSTICO")
+    appendLine("Versao: $appVersionName ($appVersionCode)")
+    appendLine("Data: ${formatDate(createdAtMillis)}")
+    appendLine("Pacote: ${packageName ?: "nao informado"}")
+    appendLine("Etapa: $stage")
+    appendLine("Cor: $bubbleColor")
+    appendLine("Motivo: $reason")
+    appendLine("Modo restrito: $restrictToSelectedRideApps")
+    appendLine("Pacotes selecionados: ${selectedPackages.joinToString(", ").ifBlank { "nenhum" }}")
+    appendLine("Destino: ${destination ?: "nao identificado"}")
+    appendLine("Embarque: ${pickup ?: "nao identificado"}")
+    appendLine("Recomendacao: ${recommendation ?: "sem decisao"}")
+    appendLine("Distancia casa: ${homeDistanceKm?.let(::formatKm) ?: "nao calculada"}")
+    appendLine("Distancia alfinete: ${alternativeDistanceKm?.let(::formatKm) ?: "nao calculada"}")
+    appendLine("Texto tamanho: $textLength")
+    appendLine("Texto hash: ${textHash ?: "sem hash"}")
+    appendLine("Erro: ${error ?: "nenhum"}")
+    appendLine("--- TEXTO LIDO ---")
+    appendLine(textPreview.ifBlank { "sem texto" })
 }
 
 private fun formatDestination(value: String?): String {
