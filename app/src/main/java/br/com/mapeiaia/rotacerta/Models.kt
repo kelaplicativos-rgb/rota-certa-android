@@ -10,6 +10,7 @@ data class AppSettings(
     val alternativeRadiusKm: Double = 10.0,
     val desiredKeywords: String = "",
     val avoidedKeywords: String = "",
+    val googleMapsApiKey: String = "",
     val homeCoordinate: Coordinate? = null,
     val alternativeCoordinate: Coordinate? = null,
 )
