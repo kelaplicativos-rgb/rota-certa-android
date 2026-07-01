@@ -69,6 +69,12 @@ class RideTextParser {
     private fun isolatePrimaryRideLines(lines: List<String>): List<String> {
         if (lines.size < 4) return lines
 
+        val mapPointAddressIndexes = findMapPointAddressIndexes(lines)
+        if (mapPointAddressIndexes.size >= 2) {
+            val end = addressBlockEndExclusive(lines, mapPointAddressIndexes.last())
+            return lines.subList(0, end)
+        }
+
         val primaryFareIndexes = lines.indices.filter { isPrimaryFareLine(lines[it]) }
         if (primaryFareIndexes.size >= 2) {
             val start = 0
@@ -86,6 +92,25 @@ class RideTextParser {
         return lines
     }
 
+    private fun findMapPointAddressIndexes(lines: List<String>): List<Int> =
+        lines.indices.filter { index ->
+            val address = mapPointRegex.find(lines[index])?.groupValues?.getOrNull(1)?.trim()
+            !address.isNullOrBlank() && looksLikeAddress(address)
+        }
+
+    private fun addressBlockEndExclusive(lines: List<String>, startIndex: Int): Int {
+        if (startIndex !in lines.indices) return lines.size
+        var end = startIndex + 1
+        var previous = cleanAddressLine(lines[startIndex])
+        while (end < lines.size) {
+            val next = cleanAddressLine(lines[end])
+            if (!isAddressContinuation(next, previous)) break
+            previous = next
+            end += 1
+        }
+        return end.coerceAtMost(lines.size)
+    }
+
     private fun isPrimaryFareLine(line: String): Boolean {
         val normalized = line.lowercase()
         return primaryFareRegex.containsMatchIn(line) &&
@@ -96,7 +121,11 @@ class RideTextParser {
     }
 
     private fun findFare(lines: List<String>, scopedText: String): String? {
-        val primaryFareLine = lines.firstOrNull { isPrimaryFareLine(it) }
+        val firstMapPointAddressIndex = findMapPointAddressIndexes(lines).firstOrNull()
+        val fareBeforeMapPoint = firstMapPointAddressIndex?.let { index ->
+            lines.take(index).asReversed().firstOrNull { isPrimaryFareLine(it) }
+        }
+        val primaryFareLine = fareBeforeMapPoint ?: lines.firstOrNull { isPrimaryFareLine(it) }
         return primaryFareLine?.let { primaryFareRegex.find(it)?.value?.trim() }
             ?: fareRegex.findAll(scopedText)
                 .firstOrNull { match ->
