@@ -1,17 +1,14 @@
 package br.com.mapeiaia.rotacerta
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,9 +29,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,7 +46,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,68 +69,17 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RotaCertaApp() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val repository = remember { SettingsRepository(context) }
     val settings by repository.settings.collectAsState(initial = AppSettings())
     val history by repository.analyses.collectAsState(initial = emptyList())
-    val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
-    val googleMapsService = remember { GoogleMapsService() }
-    val parser = remember { RideTextParser() }
-    val decisionEngine = remember { DecisionEngine() }
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf("analise") }
-    var lastResult by remember { mutableStateOf<AnalysisResult?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
-    var status by remember { mutableStateOf("Pronto para analisar um print.") }
-    var radarEnabled by remember { mutableStateOf(false) }
-    var radarStatus by remember { mutableStateOf("Radar por print desligado.") }
-
-    val radarPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) {
-        if (hasAllRadarPermissions(context)) {
-            startRadarService(context)
-            radarEnabled = true
-            radarStatus = "Radar por print ativo: print novo mostra bolinha amarela, depois verde ou vermelha."
-        } else {
-            radarEnabled = false
-            radarStatus = "Permita acesso as imagens e notificacoes para usar o radar por print."
-        }
-    }
-
-    fun enableRadar() {
-        if (!Settings.canDrawOverlays(context)) {
-            radarStatus = "Libere 'aparecer sobre outros apps' e toque em Ativar radar por print novamente."
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${context.packageName}"),
-                ),
-            )
-            return
-        }
-
-        val missingPermissions = radarPermissions().filter {
-            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
-
-        if (missingPermissions.isNotEmpty()) {
-            radarPermissionLauncher.launch(missingPermissions)
-            return
-        }
-
-        startRadarService(context)
-        radarEnabled = true
-        radarStatus = "Radar por print ativo: aguardando novo print da galeria."
-    }
-
-    fun disableRadar() {
-        stopRadarService(context)
-        radarEnabled = false
-        radarStatus = "Radar por print desligado."
-    }
+    var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -142,45 +92,6 @@ fun RotaCertaApp() {
         }
     }
 
-    suspend fun geocodeBest(query: String): Coordinate? =
-        googleMapsService.geocode(query, region, settings.googleMapsApiKey)
-            ?: geocodingService.geocode(query, region)
-
-    suspend fun routeDistanceKm(origin: Coordinate?, destination: Coordinate?): Double? =
-        if (origin != null && destination != null && settings.googleMapsApiKey.isNotBlank()) {
-            googleMapsService.drivingDistanceKm(origin, destination, settings.googleMapsApiKey)
-        } else {
-            null
-        }
-
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            status = "Lendo print com OCR..."
-            val extractedText = ocrService.extractText(uri)
-            val fields = parser.parse(extractedText)
-            val destinationCoordinate = fields.destination?.let { geocodeBest(it) }
-            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress)
-            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress)
-            status = "Calculando distancia no Google Maps..."
-            val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate)
-            val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate)
-            val result = decisionEngine.decide(
-                fields = fields,
-                settings = settings,
-                destinationCoordinate = destinationCoordinate,
-                homeCoordinate = homeCoordinate,
-                alternativeCoordinate = alternativeCoordinate,
-                fullText = extractedText,
-                homeDistanceKm = homeDistanceKm,
-                alternativeDistanceKm = alternativeDistanceKm,
-            )
-            repository.addAnalysis(result)
-            lastResult = result
-            status = "Analise concluida."
-        }
-    }
-
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
             arrayOf(
@@ -188,6 +99,16 @@ fun RotaCertaApp() {
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             ),
         )
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                liveEnabled = isLiveAccessibilityEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -213,21 +134,14 @@ fun RotaCertaApp() {
 
             when (tab) {
                 "analise" -> AnalysisScreen(
-                    status = status,
-                    result = lastResult,
                     settings = settings,
-                    radarEnabled = radarEnabled,
-                    radarStatus = radarStatus,
+                    latestResult = history.firstOrNull(),
+                    liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
-                    onPickImage = {
-                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
-                    onToggleRadar = {
-                        if (radarEnabled) disableRadar() else enableRadar()
-                    },
+                    onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
                 )
                 "config" -> SettingsScreen(
                     settings = settings,
@@ -242,18 +156,36 @@ fun RotaCertaApp() {
 
 @Composable
 private fun AnalysisScreen(
-    status: String,
-    result: AnalysisResult?,
     settings: AppSettings,
-    radarEnabled: Boolean,
-    radarStatus: String,
+    latestResult: AnalysisResult?,
+    liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
-    onPickImage: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
-    onToggleRadar: () -> Unit,
+    onRefreshLiveState: () -> Unit,
 ) {
     var quickSettings by remember(settings) { mutableStateOf(settings) }
 
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Leitura ao vivo", fontWeight = FontWeight.Bold)
+            Button(onClick = onOpenAccessibilitySettings, modifier = Modifier.fillMaxWidth()) {
+                Text(if (liveEnabled) "ON - leitura ao vivo ativa" else "OFF - permitir acessibilidade")
+            }
+            OutlinedButton(onClick = onRefreshLiveState, modifier = Modifier.fillMaxWidth()) {
+                Text("Atualizar status")
+            }
+            Text(
+                if (liveEnabled) {
+                    "Operando. Quando a corrida tocar, a bolinha informa verde, vermelho ou amarelo."
+                } else {
+                    "Acesso negado. Ative 'Rota Certa - leitura ao vivo' nas configuracoes de Acessibilidade."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Raio rapido", fontWeight = FontWeight.Bold)
@@ -271,26 +203,37 @@ private fun AnalysisScreen(
             )
         }
     }
+
     Spacer(Modifier.height(10.dp))
-    Button(onClick = onOpenAccessibilitySettings, modifier = Modifier.fillMaxWidth()) {
-        Text("Ativar leitura ao vivo")
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Bolinha", fontWeight = FontWeight.Bold)
+            BubbleOpacitySlider(
+                value = quickSettings.bubbleOpacity,
+                onValueChange = { quickSettings = quickSettings.copy(bubbleOpacity = it) },
+                onValueChangeFinished = { onSaveSettings(quickSettings) },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Cor mais escura")
+                Switch(
+                    checked = quickSettings.bubbleDarkMode,
+                    onCheckedChange = {
+                        quickSettings = quickSettings.copy(bubbleDarkMode = it)
+                        onSaveSettings(quickSettings.copy(bubbleDarkMode = it))
+                    },
+                )
+            }
+            Text("Toque na bolinha para abrir o Rota Certa. Arraste para mudar a posicao.", style = MaterialTheme.typography.bodySmall)
+        }
     }
-    Text(
-        "Nas configuracoes, ative 'Rota Certa - leitura ao vivo'. Ela le a tela da corrida e mostra a bolinha automaticamente.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = onToggleRadar, modifier = Modifier.fillMaxWidth()) {
-        Text(if (radarEnabled) "Parar radar por print" else "Ativar radar por print")
+
+    latestResult?.let {
+        Spacer(Modifier.height(12.dp))
+        ResultCard(it, settings)
     }
-    Text(radarStatus, style = MaterialTheme.typography.bodySmall)
-    Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
-        Text("Selecionar print manualmente")
-    }
-    Spacer(Modifier.height(12.dp))
-    Text(status)
-    result?.let { ResultCard(it, settings) }
 }
 
 @Composable
@@ -501,6 +444,34 @@ private fun RadiusSlider(
 }
 
 @Composable
+private fun BubbleOpacitySlider(
+    value: Double,
+    onValueChange: (Double) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    val safeValue = value.coerceIn(0.25, 1.0)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Transparencia")
+            Text("${(safeValue * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = safeValue.toFloat(),
+            onValueChange = { rawValue ->
+                val rounded = (rawValue * 20f).roundToInt() / 20.0
+                onValueChange(rounded.coerceIn(0.25, 1.0))
+            },
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = 0.25f..1f,
+            steps = 14,
+        )
+    }
+}
+
+@Composable
 private fun HistoryScreen(history: List<AnalysisResult>) {
     if (history.isEmpty()) {
         Text("Nenhuma analise salva ainda.")
@@ -544,6 +515,18 @@ private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): Rad
     }
 }
 
+private fun isLiveAccessibilityEnabled(context: Context): Boolean {
+    val expectedService = ComponentName(context, LiveRideAccessibilityService::class.java).flattenToString()
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+    ).orEmpty()
+
+    return enabledServices
+        .split(':')
+        .any { it.equals(expectedService, ignoreCase = true) }
+}
+
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
     Recommendation.GoodRide -> "VERDE - Dentro da area"
     Recommendation.OutsideRadius -> "VERMELHO - Fora da area"
@@ -568,30 +551,6 @@ private fun formatDestination(value: String?): String {
     } else {
         destination
     }
-}
-
-private fun startRadarService(context: Context) {
-    ContextCompat.startForegroundService(
-        context,
-        Intent(context, RadarService::class.java).setAction(RadarService.ACTION_START),
-    )
-}
-
-private fun stopRadarService(context: Context) {
-    context.startService(Intent(context, RadarService::class.java).setAction(RadarService.ACTION_STOP))
-}
-
-private fun radarPermissions(): Array<String> = buildList {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        add(Manifest.permission.READ_MEDIA_IMAGES)
-        add(Manifest.permission.POST_NOTIFICATIONS)
-    } else {
-        add(Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
-}.toTypedArray()
-
-private fun hasAllRadarPermissions(context: Context): Boolean = radarPermissions().all {
-    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
 }
 
 private fun deviceRegionLabel(region: DeviceRegion): String =
