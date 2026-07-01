@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.ScreenshotResult
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -11,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.Display
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -26,18 +29,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class LiveRideAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val screenshotInProgress = AtomicBoolean(false)
     private var analyzeJob: Job? = null
     private var overlayView: View? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var lastTextHash: Int? = null
     private var lastAnalysisMillis: Long = 0L
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var analyzing = false
+    private var currentSettings = AppSettings()
 
     private lateinit var repository: SettingsRepository
     private lateinit var geocodingService: GeocodingService
@@ -45,6 +52,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var ocrService: OcrService
     private lateinit var parser: RideTextParser
     private lateinit var decisionEngine: DecisionEngine
+    private lateinit var bubblePrefs: SharedPreferences
 
     override fun onCreate() {
         super.onCreate()
@@ -55,6 +63,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         parser = RideTextParser()
         decisionEngine = DecisionEngine()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
         startContinuousScan()
     }
 
@@ -169,10 +178,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private suspend fun analyzeLiveText(text: String) {
         if (analyzing) return
         analyzing = true
+        currentSettings = repository.settings.first()
         showOverlay(RadarColor.Yellow)
 
         try {
-            val settings = repository.settings.first()
+            val settings = currentSettings
             val region = DeviceRegion(country = "Brasil")
             val fields = parser.parse(text)
             val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
@@ -221,13 +231,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun showOverlay(color: RadarColor) {
         val manager = windowManager ?: return
         val view = overlayView ?: View(this).also { newView ->
+            newView.contentDescription = "Rota Certa"
+            newView.setOnTouchListener(BubbleTouchListener())
             overlayView = newView
-            manager.addView(newView, overlayLayoutParams())
+            overlayParams = overlayLayoutParams()
+            manager.addView(newView, overlayParams)
         }
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(color.argb)
-            setStroke(dp(3), Color.WHITE)
+            setColor(color.argb(currentSettings))
+            setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
         }
     }
 
@@ -235,6 +248,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val view = overlayView ?: return
         runCatching { windowManager?.removeView(view) }
         overlayView = null
+        overlayParams = null
     }
 
     private fun overlayLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
@@ -244,9 +258,62 @@ class LiveRideAccessibilityService : AccessibilityService() {
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        gravity = Gravity.TOP or Gravity.END
-        x = dp(18)
-        y = dp(90)
+        gravity = Gravity.TOP or Gravity.START
+        x = bubblePrefs.getInt(KEY_BUBBLE_X, dp(18))
+        y = bubblePrefs.getInt(KEY_BUBBLE_Y, dp(90))
+    }
+
+    private fun openApp() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+    }
+
+    private inner class BubbleTouchListener : View.OnTouchListener {
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var startX = 0
+        private var startY = 0
+        private var moved = false
+
+        override fun onTouch(view: View, event: MotionEvent): Boolean {
+            val params = overlayParams ?: return false
+            val manager = windowManager ?: return false
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = params.x
+                    startY = params.y
+                    moved = false
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.rawX - downRawX
+                    val deltaY = event.rawY - downRawY
+                    if (abs(deltaX) > dp(4) || abs(deltaY) > dp(4)) moved = true
+                    params.x = (startX + deltaX).roundToInt().coerceAtLeast(0)
+                    params.y = (startY + deltaY).roundToInt().coerceAtLeast(0)
+                    runCatching { manager.updateViewLayout(view, params) }
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    bubblePrefs.edit()
+                        .putInt(KEY_BUBBLE_X, params.x)
+                        .putInt(KEY_BUBBLE_Y, params.y)
+                        .apply()
+                    if (!moved) {
+                        view.performClick()
+                        openApp()
+                    }
+                    return true
+                }
+            }
+
+            return false
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -268,15 +335,27 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .trim()
             .hashCode()
 
-    private enum class RadarColor(val argb: Int) {
-        Green(Color.rgb(46, 204, 113)),
-        Red(Color.rgb(231, 76, 60)),
-        Yellow(Color.rgb(241, 196, 15)),
+    private enum class RadarColor(
+        private val normalArgb: Int,
+        private val darkArgb: Int,
+    ) {
+        Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59)),
+        Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29)),
+        Yellow(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4));
+
+        fun argb(settings: AppSettings): Int {
+            val base = if (settings.bubbleDarkMode) darkArgb else normalArgb
+            val alpha = (settings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt()
+            return Color.argb(alpha, Color.red(base), Color.green(base), Color.blue(base))
+        }
     }
 
     private companion object {
         const val SCAN_LOOP_MS = 850L
         const val SCREENSHOT_INTERVAL_MS = 650L
         const val DUPLICATE_WINDOW_MS = 2500L
+        const val BUBBLE_PREFS = "rota_certa_bubble"
+        const val KEY_BUBBLE_X = "bubble_x"
+        const val KEY_BUBBLE_Y = "bubble_y"
     }
 }
