@@ -4,9 +4,9 @@ class RideTextParser {
     private val fareRegex = Regex("""R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?""", RegexOption.IGNORE_CASE)
     private val primaryFareRegex = Regex("""^R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?(?:\s|$)""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
-    private val timeRegex = Regex("""\b\d{1,3}\s*(?:min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
+    private val timeRegex = Regex("""\b\d{1,3}\s*(?:minutos|minuto|min)\b""", RegexOption.IGNORE_CASE)
     private val routeStepRegex = Regex(
-        """\b\d{1,3}\s*(?:min|minuto|minutos)\s*\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:m|km)\s*\)""",
+        """\b\d{1,3}\s*(?:minutos|minuto|min)\s*\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:km|m)\s*\)""",
         RegexOption.IGNORE_CASE,
     )
     private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
@@ -227,6 +227,7 @@ class RideTextParser {
         return previous.endsWith(",") ||
             previousEndsWithStreetType ||
             previousHasOpenParenthesis ||
+            normalized.startsWith("(") ||
             normalized.startsWith("da ") ||
             normalized.startsWith("de ") ||
             normalized.startsWith("do ") ||
