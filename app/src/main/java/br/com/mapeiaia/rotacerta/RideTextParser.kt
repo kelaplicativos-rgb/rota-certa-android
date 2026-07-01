@@ -6,6 +6,7 @@ class RideTextParser {
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
     private val routeStepRegex = Regex("""\b\d{1,3}\s*min\s*\(\s*\d+(?:[,.]\d+)?\s*(?:m|km)\s*\)""", RegexOption.IGNORE_CASE)
+    private val stopMarkerRegex = Regex("""^\d+\s*parada\(s\).*""", RegexOption.IGNORE_CASE)
     private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
     private val mapPointRegex = Regex("""^[AB]\s+(.+)""", RegexOption.IGNORE_CASE)
     private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
@@ -29,6 +30,23 @@ class RideTextParser {
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
     private val streetTypeSuffixes = listOf(" rua", " r.", " avenida", " av.", " travessa", " estrada", " rodovia", " alameda")
+    private val wrappedNeighborhoodSuffixes = listOf(
+        " bairro",
+        " cidade",
+        " jardim",
+        " jd",
+        " parque",
+        " pq",
+        " vila",
+        " vl",
+        " conjunto",
+        " residencial",
+        " fazenda",
+        " sao",
+        " são",
+        " santa",
+        " santo",
+    )
 
     fun parse(text: String): RideFields {
         val rawLines = text
@@ -198,7 +216,7 @@ class RideTextParser {
         }
 
     private fun cleanAddressLine(value: String): String =
-        mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
+        (mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()).cleanGeocodeQuery()
 
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
         if (value.length < 2 || isNoise(value) || roadCodeRegex.matches(value)) return false
@@ -210,11 +228,13 @@ class RideTextParser {
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
+        val previousEndsWithWrappedNeighborhood = wrappedNeighborhoodSuffixes.any { previousNormalized.endsWith(it) }
 
-        if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
+        if (looksLikeAddress(value) && !previousEndsWithStreetType && !previousEndsWithWrappedNeighborhood) return false
 
         return previous.endsWith(",") ||
             previousEndsWithStreetType ||
+            previousEndsWithWrappedNeighborhood ||
             previousHasOpenParenthesis ||
             normalized.startsWith("da ") ||
             normalized.startsWith("de ") ||
@@ -238,6 +258,12 @@ class RideTextParser {
         return fareRegex.containsMatchIn(value) ||
             distanceRegex.containsMatchIn(value) ||
             timeRegex.containsMatchIn(value) ||
+            stopMarkerRegex.matches(value) ||
+            normalized.contains("area de risco") ||
+            normalized.contains("área de risco") ||
+            normalized.contains("perfil ") ||
+            normalized.contains("corridas") ||
+            normalized.contains("corrida") ||
             normalized.contains("pix") ||
             normalized.contains("cartao") ||
             normalized.contains("cartão") ||
