@@ -31,7 +31,7 @@ class RideTextParserTest {
     fun returnsInsufficientDataWhenDestinationIsMissing() {
         val result = DecisionEngine().decide(
             fields = RideFields(fare = "R$ 10,00"),
-            settings = AppSettings(),
+            settings = AppSettings(googleMapsApiKey = "key"),
             destinationCoordinate = null,
             homeCoordinate = null,
             alternativeCoordinate = null,
@@ -42,7 +42,7 @@ class RideTextParserTest {
     }
 
     @Test
-    fun recommendsRideWhenDestinationIsInsideHomeRadius() {
+    fun returnsInsufficientDataWhenGoogleMapsKeyIsMissing() {
         val result = DecisionEngine().decide(
             fields = RideFields(destination = "Avenida Brasil"),
             settings = AppSettings(homeRadiusKm = 5.0),
@@ -52,8 +52,53 @@ class RideTextParserTest {
             fullText = "Avenida Brasil",
         )
 
+        assertEquals(Recommendation.InsufficientData, result.recommendation)
+    }
+
+    @Test
+    fun returnsInsufficientDataWhenGoogleMapsRouteIsMissing() {
+        val result = DecisionEngine().decide(
+            fields = RideFields(destination = "Avenida Brasil"),
+            settings = AppSettings(homeRadiusKm = 5.0, googleMapsApiKey = "key"),
+            destinationCoordinate = Coordinate(-23.5505, -46.6333),
+            homeCoordinate = Coordinate(-23.5510, -46.6340),
+            alternativeCoordinate = null,
+            fullText = "Avenida Brasil",
+        )
+
+        assertEquals(Recommendation.InsufficientData, result.recommendation)
+    }
+
+    @Test
+    fun recommendsRideWhenGoogleMapsRouteDistanceIsInsideHomeRadius() {
+        val result = DecisionEngine().decide(
+            fields = RideFields(destination = "Avenida Brasil"),
+            settings = AppSettings(homeRadiusKm = 5.0, googleMapsApiKey = "key"),
+            destinationCoordinate = Coordinate(-23.5505, -46.6333),
+            homeCoordinate = Coordinate(-23.5510, -46.6340),
+            alternativeCoordinate = null,
+            fullText = "Avenida Brasil",
+            homeDistanceKm = 3.7,
+        )
+
         assertEquals(Recommendation.GoodRide, result.recommendation)
-        assertTrue(result.pickupToHomeKm != null && result.pickupToHomeKm < 1.0)
+        assertEquals(3.7, result.pickupToHomeKm ?: 0.0, 0.01)
+    }
+
+    @Test
+    fun rejectsRideWhenGoogleMapsRouteDistanceIsOutsideHomeRadius() {
+        val result = DecisionEngine().decide(
+            fields = RideFields(destination = "Avenida Brasil"),
+            settings = AppSettings(homeRadiusKm = 5.0, googleMapsApiKey = "key"),
+            destinationCoordinate = Coordinate(-23.5505, -46.6333),
+            homeCoordinate = Coordinate(-23.5510, -46.6340),
+            alternativeCoordinate = null,
+            fullText = "Avenida Brasil",
+            homeDistanceKm = 38.4,
+        )
+
+        assertEquals(Recommendation.OutsideRadius, result.recommendation)
+        assertTrue(result.pickupToHomeKm != null && result.pickupToHomeKm > 5.0)
     }
 
     @Test
