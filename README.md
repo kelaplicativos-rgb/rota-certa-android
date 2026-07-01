@@ -68,9 +68,24 @@ Quando a opcao de GPS e usada, o app salva latitude e longitude junto com o ende
 - Monitoramento automatico de screenshots e captura de tela via MediaProjection ficam para etapas futuras.
 - Servico de Acessibilidade, se usado no futuro, deve ser limitado a leitura de texto visivel e com consentimento claro do usuario.
 
-## Como gerar APK
+## Como gerar APK pelo celular
 
-O projeto possui workflow do GitHub Actions para gerar o APK debug automaticamente.
+O projeto possui workflow do GitHub Actions para gerar o APK debug automaticamente, sem computador.
+
+1. Abra o repositorio no navegador do celular.
+2. Entre em `Actions`.
+3. Toque em `Android APK`.
+4. Toque em `Run workflow`.
+5. Confirme em `Run workflow` novamente.
+6. Aguarde a execucao terminar com sucesso.
+7. Abra a execucao finalizada.
+8. Baixe o artefato `rota-certa-debug-apk`.
+9. Extraia o ZIP baixado.
+10. Instale o arquivo `rota-certa-debug.apk` no Android.
+
+Se o Android bloquear a instalacao, permita instalacao de apps desconhecidos para o navegador ou gerenciador de arquivos usado.
+
+## Como gerar APK pelo computador
 
 Tambem e possivel gerar localmente com Gradle:
 
