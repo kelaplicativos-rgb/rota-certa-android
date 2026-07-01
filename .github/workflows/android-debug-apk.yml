@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,7 +28,15 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Verify Google Maps secret
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          test -n "$GOOGLE_MAPS_API_KEY"
+
       - name: Build debug APK
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
