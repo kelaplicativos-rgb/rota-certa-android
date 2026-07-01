@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -23,6 +24,8 @@ class SettingsRepository(private val context: Context) {
     private val googleMapsApiKey = stringPreferencesKey("google_maps_api_key")
     private val homeCoordinate = stringPreferencesKey("home_coordinate")
     private val alternativeCoordinate = stringPreferencesKey("alternative_coordinate")
+    private val bubbleOpacity = doublePreferencesKey("bubble_opacity")
+    private val bubbleDarkMode = booleanPreferencesKey("bubble_dark_mode")
     private val history = stringPreferencesKey("history")
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -38,6 +41,8 @@ class SettingsRepository(private val context: Context) {
                 ?: BuildConfig.GOOGLE_MAPS_API_KEY,
             homeCoordinate = decodeCoordinate(prefs[homeCoordinate]),
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
+            bubbleOpacity = prefs[bubbleOpacity] ?: 1.0,
+            bubbleDarkMode = prefs[bubbleDarkMode] ?: false,
         )
     }
 
@@ -54,6 +59,8 @@ class SettingsRepository(private val context: Context) {
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
             prefs[avoidedKeywords] = settings.avoidedKeywords
+            prefs[bubbleOpacity] = settings.bubbleOpacity.coerceIn(0.25, 1.0)
+            prefs[bubbleDarkMode] = settings.bubbleDarkMode
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
