@@ -90,6 +90,13 @@ fun RotaCertaApp() {
         googleMapsService.geocode(query, region, settings.googleMapsApiKey)
             ?: geocodingService.geocode(query, region)
 
+    suspend fun routeDistanceKm(origin: Coordinate?, destination: Coordinate?): Double? =
+        if (origin != null && destination != null && settings.googleMapsApiKey.isNotBlank()) {
+            googleMapsService.drivingDistanceKm(origin, destination, settings.googleMapsApiKey)
+        } else {
+            null
+        }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -99,6 +106,9 @@ fun RotaCertaApp() {
             val destinationCoordinate = fields.destination?.let { geocodeBest(it) }
             val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress)
             val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress)
+            status = "Calculando distancia..."
+            val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate)
+            val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate)
             val result = decisionEngine.decide(
                 fields = fields,
                 settings = settings,
@@ -106,6 +116,8 @@ fun RotaCertaApp() {
                 homeCoordinate = homeCoordinate,
                 alternativeCoordinate = alternativeCoordinate,
                 fullText = extractedText,
+                homeDistanceKm = homeDistanceKm,
+                alternativeDistanceKm = alternativeDistanceKm,
             )
             repository.addAnalysis(result)
             lastResult = result
@@ -320,7 +332,7 @@ private fun SettingsScreen(
             visualTransformation = PasswordVisualTransformation(),
         )
         Text(
-            "Opcional, mas recomendado: usa Google Maps para localizar o destino com mais precisao.",
+            "Opcional, mas recomendado: usa Google Maps para localizar o destino e calcular rota real.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
