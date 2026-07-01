@@ -1,7 +1,8 @@
 package br.com.mapeiaia.rotacerta
 
 class RideTextParser {
-    private val fareRegex = Regex("""R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})?""", RegexOption.IGNORE_CASE)
+    private val fareRegex = Regex("""R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?""", RegexOption.IGNORE_CASE)
+    private val primaryFareRegex = Regex("""^R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?(?:\s|$)""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
     private val routeStepRegex = Regex("""\b\d{1,3}\s*min\s*\(\s*\d+(?:[,.]\d+)?\s*(?:m|km)\s*\)""", RegexOption.IGNORE_CASE)
@@ -10,6 +11,7 @@ class RideTextParser {
     private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
     private val addressWords = listOf(
         "rua",
+        "r.",
         "avenida",
         "av.",
         "rodovia",
@@ -26,20 +28,23 @@ class RideTextParser {
     )
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
-    private val streetTypeSuffixes = listOf(" rua", " avenida", " av.", " travessa", " estrada", " rodovia", " alameda")
+    private val streetTypeSuffixes = listOf(" rua", " r.", " avenida", " av.", " travessa", " estrada", " rodovia", " alameda")
 
     fun parse(text: String): RideFields {
-        val lines = text
+        val rawLines = text
             .lines()
             .map { it.trim() }
             .filter { it.length >= 2 || markerOnlyRegex.matches(it) }
 
+        val lines = isolatePrimaryRideLines(rawLines)
+        val scopedText = lines.joinToString("\n")
+
         val knownLayout = parseKnownRideAppLayout(lines)
         if (knownLayout != null) {
             return knownLayout.copy(
-                fare = fareRegex.find(text)?.value?.trim(),
-                distance = distanceRegex.find(text)?.value?.trim(),
-                time = timeRegex.find(text)?.value?.trim(),
+                fare = fareRegex.find(scopedText)?.value?.trim(),
+                distance = distanceRegex.find(scopedText)?.value?.trim(),
+                time = timeRegex.find(scopedText)?.value?.trim(),
             )
         }
 
@@ -52,10 +57,39 @@ class RideTextParser {
         return RideFields(
             pickup = pickup,
             destination = destination,
-            fare = fareRegex.find(text)?.value?.trim(),
-            distance = distanceRegex.find(text)?.value?.trim(),
-            time = timeRegex.find(text)?.value?.trim(),
+            fare = fareRegex.find(scopedText)?.value?.trim(),
+            distance = distanceRegex.find(scopedText)?.value?.trim(),
+            time = timeRegex.find(scopedText)?.value?.trim(),
         )
+    }
+
+    private fun isolatePrimaryRideLines(lines: List<String>): List<String> {
+        if (lines.size < 4) return lines
+
+        val primaryFareIndexes = lines.indices.filter { isPrimaryFareLine(lines[it]) }
+        if (primaryFareIndexes.size >= 2) {
+            val start = primaryFareIndexes.first()
+            val end = primaryFareIndexes[1]
+            return lines.subList(start, end)
+        }
+
+        val routeStepIndexes = lines.indices.filter { routeStepRegex.containsMatchIn(lines[it]) }
+        if (routeStepIndexes.size > 2) {
+            val start = primaryFareIndexes.firstOrNull()?.takeIf { it < routeStepIndexes[0] } ?: routeStepIndexes[0]
+            val end = routeStepIndexes[2]
+            return lines.subList(start, end)
+        }
+
+        return lines
+    }
+
+    private fun isPrimaryFareLine(line: String): Boolean {
+        val normalized = line.lowercase()
+        return primaryFareRegex.containsMatchIn(line) &&
+            !normalized.contains("/km") &&
+            !normalized.contains("tarifa") &&
+            !normalized.contains("inclu") &&
+            !normalized.contains("ofere")
     }
 
     private fun parseKnownRideAppLayout(lines: List<String>): RideFields? =
