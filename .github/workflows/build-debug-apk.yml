@@ -32,7 +32,15 @@ jobs:
           unzip -q /tmp/gradle.zip -d /tmp
           echo "/tmp/gradle-8.10.2/bin" >> "$GITHUB_PATH"
 
+      - name: Verify Google Maps secret
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          test -n "$GOOGLE_MAPS_API_KEY"
+
       - name: Build debug APK
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
