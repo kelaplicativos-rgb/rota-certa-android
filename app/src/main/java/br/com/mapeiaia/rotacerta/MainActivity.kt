@@ -485,7 +485,7 @@ private fun SettingsScreen(
             visualTransformation = PasswordVisualTransformation(),
         )
         Text(
-            "Obrigatorio para verde/vermelho: usa Google Maps para localizar o destino e calcular a rota real.",
+            "Opcional: Google Maps melhora a precisao por rota real. Sem chave, o app usa distancia aproximada quando houver coordenadas confiaveis.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
@@ -599,8 +599,8 @@ private data class RadiusInfo(
 )
 
 private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): RadiusInfo? {
-    val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia Google Maps ate casa", it, settings.homeRadiusKm) }
-    val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia Google Maps ate alfinete", it, settings.alternativeRadiusKm) }
+    val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia ate casa", it, settings.homeRadiusKm) }
+    val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia ate alfinete", it, settings.alternativeRadiusKm) }
 
     return when {
         result.recommendation == Recommendation.GoodRide && homeInfo != null && homeInfo.distanceKm <= homeInfo.radiusKm -> homeInfo
