@@ -1,7 +1,13 @@
 package br.com.mapeiaia.rotacerta
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,6 +81,53 @@ fun RotaCertaApp() {
     var lastResult by remember { mutableStateOf<AnalysisResult?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var status by remember { mutableStateOf("Pronto para analisar um print.") }
+    var radarEnabled by remember { mutableStateOf(false) }
+    var radarStatus by remember { mutableStateOf("Radar desligado.") }
+
+    val radarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        if (hasAllRadarPermissions(context)) {
+            startRadarService(context)
+            radarEnabled = true
+            radarStatus = "Radar ativo: print novo mostra bolinha amarela, depois verde ou vermelha."
+        } else {
+            radarEnabled = false
+            radarStatus = "Permita acesso as imagens e notificacoes para usar o radar."
+        }
+    }
+
+    fun enableRadar() {
+        if (!Settings.canDrawOverlays(context)) {
+            radarStatus = "Libere 'aparecer sobre outros apps' e toque em Ativar radar novamente."
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}"),
+                ),
+            )
+            return
+        }
+
+        val missingPermissions = radarPermissions().filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+
+        if (missingPermissions.isNotEmpty()) {
+            radarPermissionLauncher.launch(missingPermissions)
+            return
+        }
+
+        startRadarService(context)
+        radarEnabled = true
+        radarStatus = "Radar ativo: aguardando novo print da galeria."
+    }
+
+    fun disableRadar() {
+        stopRadarService(context)
+        radarEnabled = false
+        radarStatus = "Radar desligado."
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -160,8 +214,13 @@ fun RotaCertaApp() {
                     status = status,
                     result = lastResult,
                     settings = settings,
+                    radarEnabled = radarEnabled,
+                    radarStatus = radarStatus,
                     onPickImage = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    onToggleRadar = {
+                        if (radarEnabled) disableRadar() else enableRadar()
                     },
                 )
                 "config" -> SettingsScreen(
@@ -180,11 +239,19 @@ private fun AnalysisScreen(
     status: String,
     result: AnalysisResult?,
     settings: AppSettings,
+    radarEnabled: Boolean,
+    radarStatus: String,
     onPickImage: () -> Unit,
+    onToggleRadar: () -> Unit,
 ) {
     Button(onClick = onPickImage, modifier = Modifier.fillMaxWidth()) {
         Text("Selecionar print da galeria")
     }
+    Spacer(Modifier.height(10.dp))
+    OutlinedButton(onClick = onToggleRadar, modifier = Modifier.fillMaxWidth()) {
+        Text(if (radarEnabled) "Parar radar" else "Ativar radar")
+    }
+    Text(radarStatus, style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(12.dp))
     Text(status)
     result?.let { ResultCard(it, settings) }
@@ -438,6 +505,30 @@ private fun formatDestination(value: String?): String {
     } else {
         destination
     }
+}
+
+private fun startRadarService(context: Context) {
+    ContextCompat.startForegroundService(
+        context,
+        Intent(context, RadarService::class.java).setAction(RadarService.ACTION_START),
+    )
+}
+
+private fun stopRadarService(context: Context) {
+    context.startService(Intent(context, RadarService::class.java).setAction(RadarService.ACTION_STOP))
+}
+
+private fun radarPermissions(): Array<String> = buildList {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        add(Manifest.permission.READ_MEDIA_IMAGES)
+        add(Manifest.permission.POST_NOTIFICATIONS)
+    } else {
+        add(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+}.toTypedArray()
+
+private fun hasAllRadarPermissions(context: Context): Boolean = radarPermissions().all {
+    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
 }
 
 private fun deviceRegionLabel(region: DeviceRegion): String =
