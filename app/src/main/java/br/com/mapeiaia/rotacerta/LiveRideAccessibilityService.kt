@@ -324,8 +324,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun shouldScanPackage(packageName: String?): Boolean {
-        val normalized = packageName?.lowercase(Locale.ROOT) ?: return false
-        return normalized in SUPPORTED_RIDE_PACKAGES
+        val normalized = packageName?.lowercase(Locale.ROOT) ?: return true
+        if (normalized == this.packageName) return false
+        return normalized !in IGNORED_PACKAGES
     }
 
     private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
@@ -482,10 +483,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_BUBBLE_X = "bubble_x"
         const val KEY_BUBBLE_Y = "bubble_y"
-        val SUPPORTED_RIDE_PACKAGES = setOf(
-            "com.app99.driver",
-            "com.ubercab.driver",
-            "sinet.startup.indriver",
+        val IGNORED_PACKAGES = setOf(
+            "com.android.settings",
+            "com.google.android.apps.maps",
+            "com.samsung.android.app.settings",
         )
     }
 }
