@@ -21,40 +21,19 @@ class GoogleMapsService {
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank() || apiKey.isBlank()) return@withContext null
 
-        val scopedQuery = listOf(query, region.city, region.country.ifBlank { "Brasil" })
-            .filter { it.isNotBlank() }
-            .joinToString(", ")
-        val cacheKey = scopedQuery.lowercase()
-        geocodeCache[cacheKey]?.let { return@withContext it }
-
-        val encodedAddress = URLEncoder.encode(scopedQuery, "UTF-8")
-        val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
-        val url = URL(
-            "https://maps.googleapis.com/maps/api/geocode/json" +
-                "?address=$encodedAddress" +
-                "&region=br" +
-                "&language=pt-BR" +
-                "&key=$encodedKey",
-        )
-
-        val coordinate = runCatching {
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3500
-                readTimeout = 3500
+        geocodeQueries(query, region).forEach { scopedQuery ->
+            val cacheKey = scopedQuery.lowercase(Locale.ROOT)
+            if (geocodeCache.containsKey(cacheKey)) {
+                geocodeCache[cacheKey]?.let { return@withContext it }
+                return@forEach
             }
 
-            try {
-                if (connection.responseCode !in 200..299) return@runCatching null
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                parseCoordinate(body)
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
+            val coordinate = requestGeocode(scopedQuery, apiKey)
+            geocodeCache[cacheKey] = coordinate
+            if (coordinate != null) return@withContext coordinate
+        }
 
-        geocodeCache[cacheKey] = coordinate
-        coordinate
+        null
     }
 
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? = withContext(Dispatchers.IO) {
@@ -104,6 +83,56 @@ class GoogleMapsService {
 
         routeCache[cacheKey] = distanceKm
         distanceKm
+    }
+
+    private fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
+        val cleanQuery = query.trim().replace(Regex("""\s+"""), " ")
+        if (cleanQuery.isBlank()) return emptyList()
+
+        val country = region.country.ifBlank { "Brasil" }
+        val regionCity = region.city.takeIf { it.isNotBlank() }
+        val alreadyHasCity = cleanQuery.contains("sao paulo", ignoreCase = true) ||
+            cleanQuery.contains("são paulo", ignoreCase = true)
+        val defaultCity = if (alreadyHasCity) null else "São Paulo, SP"
+
+        return buildList {
+            add(cleanQuery)
+            add(listOf(cleanQuery, regionCity, country).filterNotNull().joinToString(", "))
+            defaultCity?.let { add("$cleanQuery, $it, $country") }
+            if (!alreadyHasCity) add("$cleanQuery, São Paulo - SP, $country")
+            add("$cleanQuery, $country")
+        }
+            .map { it.trim().replace(Regex("""\s+"""), " ") }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+    }
+
+    private fun requestGeocode(scopedQuery: String, apiKey: String): Coordinate? {
+        val encodedAddress = URLEncoder.encode(scopedQuery, "UTF-8")
+        val encodedKey = URLEncoder.encode(apiKey.trim(), "UTF-8")
+        val url = URL(
+            "https://maps.googleapis.com/maps/api/geocode/json" +
+                "?address=$encodedAddress" +
+                "&region=br" +
+                "&language=pt-BR" +
+                "&key=$encodedKey",
+        )
+
+        return runCatching {
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 3500
+                readTimeout = 3500
+            }
+
+            try {
+                if (connection.responseCode !in 200..299) return@runCatching null
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                parseCoordinate(body)
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrNull()
     }
 
     private fun parseCoordinate(body: String): Coordinate? {
