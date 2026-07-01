@@ -95,4 +95,22 @@ class RideTextParserTest {
         assertEquals("Rua Lagoa Bonita 42(Jardim Imperador (Zona Leste))", fields.pickup)
         assertEquals("Rua Moysés Zunta 189 (Parque Savoi City)", fields.destination)
     }
+
+    @Test
+    fun parsesSeparatedMapPointMarkersFromOcr() {
+        val text = """
+            Pedido de viagem
+            A
+            Av. Mateo Bei, 1974 (Jardim Tiete,
+            São Paulo - SP)
+            B
+            Av. Maria Luiza Americano, 2673
+            (Cidade Líder, São Paulo - SP)
+        """.trimIndent()
+
+        val fields = RideTextParser().parse(text)
+
+        assertEquals("Av. Mateo Bei, 1974 (Jardim Tiete, São Paulo - SP)", fields.pickup)
+        assertEquals("Av. Maria Luiza Americano, 2673 (Cidade Líder, São Paulo - SP)", fields.destination)
+    }
 }
