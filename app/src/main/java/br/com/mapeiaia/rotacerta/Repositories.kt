@@ -34,7 +34,8 @@ class SettingsRepository(private val context: Context) {
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
             avoidedKeywords = prefs[avoidedKeywords].orEmpty(),
-            googleMapsApiKey = prefs[googleMapsApiKey].orEmpty(),
+            googleMapsApiKey = prefs[googleMapsApiKey]?.takeIf { it.isNotBlank() }
+                ?: BuildConfig.GOOGLE_MAPS_API_KEY,
             homeCoordinate = decodeCoordinate(prefs[homeCoordinate]),
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
         )
@@ -53,7 +54,11 @@ class SettingsRepository(private val context: Context) {
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
             prefs[avoidedKeywords] = settings.avoidedKeywords
-            prefs[googleMapsApiKey] = settings.googleMapsApiKey.trim()
+            if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
+                prefs.remove(googleMapsApiKey)
+            } else {
+                prefs[googleMapsApiKey] = settings.googleMapsApiKey.trim()
+            }
             settings.homeCoordinate?.let { prefs[homeCoordinate] = json.encodeToString(it) } ?: prefs.remove(homeCoordinate)
             settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
         }
