@@ -106,6 +106,29 @@ class RideScreenTextClassifierTest {
     }
 
     @Test
+    fun ignoresGpsNavigationScreenWithoutRideOffer() {
+        val text = """
+            Google Maps
+            Pesquisar aqui
+            Rotas
+            Iniciar
+            Visão geral
+            Tráfego
+            Rua Gaspar Guterres
+            Avenida Itaquera
+            5 min
+            1,7 km
+        """.trimIndent()
+
+        assertEquals(
+            "Navegador/GPS detectado sem card de chamada ativo.",
+            RideScreenTextClassifier.ignoreReason(text),
+        )
+        assertTrue(RideScreenTextClassifier.shouldIgnore(text))
+        assertFalse(RideScreenTextClassifier.looksLikeRideCard(text))
+    }
+
+    @Test
     fun acceptsInDriverTextWithoutParenthesizedRouteSteps() {
         val text = """
             Pedido de viagem
