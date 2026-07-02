@@ -23,6 +23,58 @@ class RideScreenTextClassifierTest {
     }
 
     @Test
+    fun ignoresAndroidSystemShadeMixedWithUberMapNoise() {
+        val text = """
+            GigU
+            Ativado
+            Redução de brilho extra
+            Desativado
+            KillApps
+            Baxa
+            CCleaner
+            Editar atalhos
+            21:05
+            1-5 min
+            Guarulhos
+            GRU |Área de espera
+            motorista parceiro
+            R$ 0,00
+            A 1-3 min
+            HOJE
+            A 1-4 Itaquaquecet
+        """.trimIndent()
+
+        assertEquals(
+            "Tela do sistema/atalhos Android detectada; nenhum card de chamada ativo.",
+            RideScreenTextClassifier.ignoreReason(text),
+        )
+        assertTrue(RideScreenTextClassifier.shouldIgnore(text))
+        assertFalse(RideScreenTextClassifier.looksLikeRideCard(text))
+    }
+
+    @Test
+    fun ignoresNinetyNineSettingsMenu() {
+        val text = """
+            21:07 99
+            Configurar solicitações
+            Preferências de serviços
+            Ferramentas de aceitação
+            Definir meu destino
+            Status da solicitação
+            Teste de status
+            Eventos futuros
+            Desconectar
+        """.trimIndent()
+
+        assertEquals(
+            "Menu/configuracoes da 99 detectado; nenhum card de chamada ativo.",
+            RideScreenTextClassifier.ignoreReason(text),
+        )
+        assertTrue(RideScreenTextClassifier.shouldIgnore(text))
+        assertFalse(RideScreenTextClassifier.looksLikeRideCard(text))
+    }
+
+    @Test
     fun ignoresUberIdleHomeScreen() {
         val text = """
             COMEÇAR
@@ -46,7 +98,7 @@ class RideScreenTextClassifierTest {
         """.trimIndent()
 
         assertEquals(
-            "Tela inicial/offline do Uber detectada; nenhum card de chamada ativo.",
+            "Tela inicial/offline/area de espera do Uber detectada; nenhum card de chamada ativo.",
             RideScreenTextClassifier.ignoreReason(text),
         )
         assertTrue(RideScreenTextClassifier.shouldIgnore(text))
