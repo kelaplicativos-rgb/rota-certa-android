@@ -156,10 +156,16 @@ Se o Android bloquear a instalacao, permita instalacao de apps desconhecidos par
 
 ## Como gerar APK pelo computador
 
-Tambem e possivel gerar localmente com Gradle:
+Tambem e possivel gerar localmente com o Gradle do projeto:
 
 ```bash
-gradle assembleDebug
+sh ./gradlew assembleDebug
+```
+
+Para rodar os testes unitarios antes do APK:
+
+```bash
+sh ./gradlew testDebugUnitTest
 ```
 
 O APK fica em:
@@ -172,6 +178,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 1. Testar a leitura ao vivo dentro dos apps 99 Motorista, Uber Driver e inDrive.
 2. Ajustar parser com novos prints reais quando algum layout mudar.
-3. Adicionar a divulgacao e consentimento de Acessibilidade antes de publicar na Play Store.
-4. Criar workflow de AAB release assinado.
-5. Avaliar backend proprio para proteger a chave Google em versao publica.
+3. Melhorar a tela de modelos com listagem, exclusao e reprocessamento de prints.
+4. Adicionar a divulgacao e consentimento de Acessibilidade antes de publicar na Play Store.
+5. Criar workflow de AAB release assinado.
+6. Avaliar backend proprio para proteger a chave Google em versao publica.

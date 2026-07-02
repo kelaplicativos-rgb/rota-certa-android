@@ -129,6 +129,14 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun removeCardTemplate(templateId: String) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<RideCardTemplate>>(prefs[rideCardTemplates].orEmpty()) }
+                .getOrDefault(emptyList())
+            prefs[rideCardTemplates] = json.encodeToString(current.filterNot { it.id == templateId })
+        }
+    }
+
     suspend fun addCapturedScreen(screen: CapturedRideScreen) {
         if (screen.textPreview.isBlank()) return
         context.dataStore.edit { prefs ->

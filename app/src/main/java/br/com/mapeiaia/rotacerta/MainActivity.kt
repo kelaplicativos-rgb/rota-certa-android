@@ -102,6 +102,13 @@ fun RotaCertaApp() {
         }
     }
 
+    fun deleteCardModel(template: RideCardTemplate) {
+        scope.launch {
+            repository.removeCardTemplate(template.id)
+            Toast.makeText(context, "Modelo removido: ${template.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -119,9 +126,7 @@ fun RotaCertaApp() {
             unreadTemplatePrints = 0
             templateStatus = "Lendo ${uris.size} print(s)..."
             var failures = 0
-            val knownTemplates = cardTemplates.mapNotNull { template ->
-                template.sampleHash?.let { hash -> template.packageName.orEmpty() to hash }
-            }.toMutableSet()
+            var imported = 0
 
             uris.forEach { uri ->
                 val extractedText = runCatching { ocrService.extractText(uri) }.getOrDefault("")
@@ -130,13 +135,17 @@ fun RotaCertaApp() {
                     failures += 1
                 } else {
                     val template = RideCardTemplateMatcher.createTemplate(packageName, extractedText)
-                    template.sampleHash?.let { knownTemplates += template.packageName.orEmpty() to it }
                     repository.addCardTemplate(template)
+                    imported += 1
                 }
             }
 
             unreadTemplatePrints = failures
-            templateStatus = "Modelos cadastrados: ${knownTemplates.size}"
+            templateStatus = when {
+                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
+                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
+                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
+            }
         }
     }
 
@@ -197,6 +206,7 @@ fun RotaCertaApp() {
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onRegisterRideCard = ::registerRideCard,
+                    onDeleteCardModel = ::deleteCardModel,
                     onPickCardModels = { cardModelPicker.launch("image/*") },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -225,6 +235,7 @@ private fun AnalysisScreen(
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
     onRegisterRideCard: (String?, String) -> Unit,
+    onDeleteCardModel: (RideCardTemplate) -> Unit,
     onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
@@ -312,6 +323,7 @@ private fun AnalysisScreen(
         templateStatus = templateStatus,
         unreadTemplatePrints = unreadTemplatePrints,
         onPickCardModels = onPickCardModels,
+        onDeleteCardModel = onDeleteCardModel,
     )
 
     Spacer(Modifier.height(10.dp))
@@ -412,6 +424,7 @@ private fun CardModelsCard(
     templateStatus: String,
     unreadTemplatePrints: Int,
     onPickCardModels: () -> Unit,
+    onDeleteCardModel: (RideCardTemplate) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -423,6 +436,21 @@ private fun CardModelsCard(
             Text(templateStatus, style = MaterialTheme.typography.bodySmall)
             if (unreadTemplatePrints > 0) {
                 Text("Prints sem leitura: $unreadTemplatePrints", style = MaterialTheme.typography.bodySmall)
+            }
+            if (cardTemplates.isEmpty()) {
+                Text("Nenhum modelo cadastrado ainda.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                cardTemplates.forEach { template ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(template.name, fontWeight = FontWeight.Bold)
+                            Text(template.packageName ?: "app nao identificado", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedButton(onClick = { onDeleteCardModel(template) }) {
+                            Text("Apagar")
+                        }
+                    }
+                }
             }
         }
     }

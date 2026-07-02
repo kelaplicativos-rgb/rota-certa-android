@@ -7,7 +7,7 @@ import kotlin.math.max
 object RideCardTemplateMatcher {
     const val UBER_PACKAGE = "com.ubercab.driver"
     const val NINETY_NINE_PACKAGE = "com.app99.driver"
-    const val INDRIVE_PACKAGE = "sinet.startup.inDriver"
+    const val INDRIVE_PACKAGE = "sinet.startup.indriver"
 
     private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
