@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -58,4 +58,19 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-# Keeps the debug APK workflow active after 99 diagnostic publishing.
+      - name: Record latest APK run link
+        run: |
+          set -euo pipefail
+          mkdir -p .github
+          {
+            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Artifact: rota-certa-debug-apk"
+            echo "Commit: ${GITHUB_SHA}"
+          } > .github/latest-debug-apk-run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/latest-debug-apk-run.txt
+          git commit -m "Record latest debug APK run" || exit 0
+          git push
+
+# Keeps the debug APK workflow active and records the latest artifact run.
