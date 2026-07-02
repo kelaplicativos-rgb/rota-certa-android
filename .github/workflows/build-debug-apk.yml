@@ -41,6 +41,21 @@ jobs:
             echo "GOOGLE_MAPS_API_KEY secret found."
           fi
 
+      - name: Record debug APK run start
+        run: |
+          set -euo pipefail
+          mkdir -p .github
+          {
+            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Artifact: pending"
+            echo "Commit: ${GITHUB_SHA}"
+          } > .github/latest-debug-apk-run.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/latest-debug-apk-run.txt
+          git commit -m "Record debug APK run start" || exit 0
+          git push
+
       - name: Run unit tests
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
