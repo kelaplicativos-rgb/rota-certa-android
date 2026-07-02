@@ -33,3 +33,5 @@ jobs:
           git add -A
           git commit -m "Ignore zero fare before 99 map addresses"
           git push origin HEAD:main
+
+# trigger after workflow registration
