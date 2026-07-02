@@ -77,6 +77,7 @@ fun RotaCertaApp() {
     val settings by repository.settings.collectAsState(initial = AppSettings())
     val history by repository.analyses.collectAsState(initial = emptyList())
     val diagnostic by repository.diagnostic.collectAsState(initial = null)
+    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
     val scope = rememberCoroutineScope()
@@ -84,6 +85,18 @@ fun RotaCertaApp() {
     var tab by remember { mutableStateOf("analise") }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
+
+    fun registerRideCard(packageName: String?, text: String) {
+        if (text.isBlank()) {
+            Toast.makeText(context, "Nao ha texto lido para cadastrar", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            val template = RideCardTemplateMatcher.createTemplate(packageName, text)
+            repository.addCardTemplate(template)
+            Toast.makeText(context, "Card cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -133,7 +146,7 @@ fun RotaCertaApp() {
         ) {
             Text("Rota Certa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(deviceRegionLabel(region), style = MaterialTheme.typography.bodyMedium)
-            Text("Regra principal: destino final dentro ou fora do raio.", style = MaterialTheme.typography.bodySmall)
+            Text("Regra principal: farol so decide quando reconhecer card cadastrado.", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
 
             when (tab) {
@@ -141,8 +154,10 @@ fun RotaCertaApp() {
                     settings = settings,
                     latestResult = history.firstOrNull(),
                     diagnostic = diagnostic,
+                    cardTemplates = cardTemplates,
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
+                    onRegisterRideCard = ::registerRideCard,
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
@@ -164,8 +179,10 @@ private fun AnalysisScreen(
     settings: AppSettings,
     latestResult: AnalysisResult?,
     diagnostic: LiveDiagnostic?,
+    cardTemplates: List<RideCardTemplate>,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
+    onRegisterRideCard: (String?, String) -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
 ) {
@@ -237,7 +254,7 @@ private fun AnalysisScreen(
             }
             Text(
                 if (liveEnabled) {
-                    "Operando. Quando a corrida tocar, a bolinha informa verde, vermelho ou amarelo."
+                    "Operando. Verde/vermelho so aparecem quando a tela bater com card cadastrado."
                 } else {
                     "Acesso negado. Ative 'Rota Certa - leitura ao vivo' nas configuracoes de Acessibilidade."
                 },
@@ -247,7 +264,11 @@ private fun AnalysisScreen(
     }
 
     Spacer(Modifier.height(10.dp))
-    DiagnosticCard(diagnostic)
+    DiagnosticCard(
+        diagnostic = diagnostic,
+        cardTemplates = cardTemplates,
+        onRegisterRideCard = onRegisterRideCard,
+    )
 
     Spacer(Modifier.height(10.dp))
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -280,10 +301,7 @@ private fun AnalysisScreen(
             if (homeStatus.isNotBlank()) {
                 Text(homeStatus, style = MaterialTheme.typography.bodySmall)
             }
-            Button(
-                onClick = { saveQuickSettings(quickSettings) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            Button(onClick = { saveQuickSettings(quickSettings) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Salvar home")
             }
         }
@@ -317,10 +335,7 @@ private fun AnalysisScreen(
                 onValueChange = { quickSettings = quickSettings.copy(bubbleOpacity = it) },
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Cor mais escura")
                 Switch(
                     checked = quickSettings.bubbleDarkMode,
@@ -341,11 +356,16 @@ private fun AnalysisScreen(
 }
 
 @Composable
-private fun DiagnosticCard(diagnostic: LiveDiagnostic?) {
+private fun DiagnosticCard(
+    diagnostic: LiveDiagnostic?,
+    cardTemplates: List<RideCardTemplate>,
+    onRegisterRideCard: (String?, String) -> Unit,
+) {
     val context = LocalContext.current
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Diagnostico", fontWeight = FontWeight.Bold)
+            Text("Cards cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
             if (diagnostic == null) {
                 Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
                 return@Column
@@ -353,6 +373,7 @@ private fun DiagnosticCard(diagnostic: LiveDiagnostic?) {
             Text("Cor: ${diagnostic.bubbleColor}")
             Text("Etapa: ${diagnostic.stage}")
             Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
+            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
             Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
             diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
                 Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
@@ -367,6 +388,13 @@ private fun DiagnosticCard(diagnostic: LiveDiagnostic?) {
             ) {
                 Text("Copiar diagnostico")
             }
+            OutlinedButton(
+                enabled = diagnostic.textPreview.isNotBlank(),
+                onClick = { onRegisterRideCard(diagnostic.packageName, diagnostic.textPreview) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Cadastrar esta tela como card")
+            }
         }
     }
 }
@@ -374,23 +402,19 @@ private fun DiagnosticCard(diagnostic: LiveDiagnostic?) {
 @Composable
 private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
     val radiusInfo = resultRadiusInfo(result, settings)
-
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(recommendationLabel(result.recommendation), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Destino final:", fontWeight = FontWeight.Bold)
                 Text(formatDestination(result.fields.destination))
             }
-
             radiusInfo?.let {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("${it.label}:", fontWeight = FontWeight.Bold)
                     Text("${formatKm(it.distanceKm)} de ${formatKm(it.radiusKm)} permitidos")
                 }
             }
-
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Decisao:", fontWeight = FontWeight.Bold)
                 Text(decisionActionLabel(result.recommendation))
@@ -427,22 +451,12 @@ private fun SettingsScreen(
                 gpsStatus = "Nao consegui captar o GPS. Autorize a localizacao e tente novamente."
                 return@launch
             }
-
             val resolved = gpsAddressResolver.resolve(coordinate)
-            if (resolved.region.city.isNotBlank() || resolved.region.country.isNotBlank()) {
-                onRegionDetected(resolved.region)
-            }
-
+            if (resolved.region.city.isNotBlank() || resolved.region.country.isNotBlank()) onRegionDetected(resolved.region)
             val address = resolved.addressLine.ifBlank { formatCoordinate(coordinate) }
             draft = when (target) {
-                LocationTarget.Home -> draft.copy(
-                    homeAddress = address,
-                    homeCoordinate = coordinate,
-                )
-                LocationTarget.Alternative -> draft.copy(
-                    alternativeAddress = address,
-                    alternativeCoordinate = coordinate,
-                )
+                LocationTarget.Home -> draft.copy(homeAddress = address, homeCoordinate = coordinate)
+                LocationTarget.Alternative -> draft.copy(alternativeAddress = address, alternativeCoordinate = coordinate)
             }
             gpsStatus = "GPS preenchido. Confira e toque em Salvar configuracoes."
         }
@@ -458,12 +472,7 @@ private fun SettingsScreen(
 
     fun requestGps(target: LocationTarget) {
         pendingLocationTarget = target
-        gpsPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-            ),
-        )
+        gpsPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -475,19 +484,10 @@ private fun SettingsScreen(
             label = { Text("Casa / ponto principal") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { requestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) {
-                Text("Usar GPS atual")
-            }
-            OutlinedButton(
-                onClick = { draft = draft.copy(homeCoordinate = null) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Digitar")
-            }
+            Button(onClick = { requestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) { Text("Usar GPS atual") }
+            OutlinedButton(onClick = { draft = draft.copy(homeCoordinate = null) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
         }
-        draft.homeCoordinate?.let {
-            Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
-        }
+        draft.homeCoordinate?.let { Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
 
         OutlinedTextField(
             value = draft.alternativeAddress,
@@ -496,32 +496,13 @@ private fun SettingsScreen(
             label = { Text("Alfinete / localidade alternativa") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { requestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) {
-                Text("Usar GPS")
-            }
-            OutlinedButton(
-                onClick = { draft = draft.copy(alternativeCoordinate = null) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Digitar")
-            }
+            Button(onClick = { requestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) { Text("Usar GPS") }
+            OutlinedButton(onClick = { draft = draft.copy(alternativeCoordinate = null) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
         }
-        draft.alternativeCoordinate?.let {
-            Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
-        }
+        draft.alternativeCoordinate?.let { Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
 
-        RadiusSlider(
-            label = "Raio casa",
-            value = draft.homeRadiusKm,
-            onValueChange = { draft = draft.copy(homeRadiusKm = it) },
-            onValueChangeFinished = { onSave(draft) },
-        )
-        RadiusSlider(
-            label = "Raio alfinete",
-            value = draft.alternativeRadiusKm,
-            onValueChange = { draft = draft.copy(alternativeRadiusKm = it) },
-            onValueChangeFinished = { onSave(draft) },
-        )
+        RadiusSlider("Raio casa", draft.homeRadiusKm, { draft = draft.copy(homeRadiusKm = it) }, { onSave(draft) })
+        RadiusSlider("Raio alfinete", draft.alternativeRadiusKm, { draft = draft.copy(alternativeRadiusKm = it) }, { onSave(draft) })
         OutlinedTextField(
             value = draft.googleMapsApiKey,
             onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
@@ -546,12 +527,8 @@ private fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Bairros/palavras evitados") },
         )
-        if (gpsStatus.isNotBlank()) {
-            Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
-        }
-        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Salvar configuracoes")
-        }
+        if (gpsStatus.isNotBlank()) Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
+        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
     }
 }
 
@@ -561,6 +538,15 @@ private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> 
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Apps monitorados", fontWeight = FontWeight.Bold)
             SettingsSwitchRow(
+                label = "Exigir card cadastrado para farol",
+                checked = settings.requireRegisteredRideCard,
+                onCheckedChange = { onChange(settings.copy(requireRegisteredRideCard = it)) },
+            )
+            Text(
+                "Ligado: telas desconhecidas ficam amarelas e viram amostra. Desligado: usa o classificador antigo.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            SettingsSwitchRow(
                 label = "Ler somente apps selecionados",
                 checked = settings.restrictToSelectedRideApps,
                 onCheckedChange = { onChange(settings.copy(restrictToSelectedRideApps = it)) },
@@ -569,72 +555,43 @@ private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> 
                 if (settings.restrictToSelectedRideApps) {
                     "Modo restrito: a bolinha so analisa os apps marcados abaixo. Outros apps voltam para amarelo."
                 } else {
-                    "Modo livre: a bolinha analisa cards detectados e ignora Maps e Configuracoes."
+                    "Modo livre: a bolinha analisa somente cards cadastrados e ignora telas passivas."
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
-            SettingsSwitchRow(
-                label = "99 Motorista",
-                checked = settings.monitor99,
-                onCheckedChange = { onChange(settings.copy(monitor99 = it)) },
-            )
-            SettingsSwitchRow(
-                label = "Uber Driver",
-                checked = settings.monitorUber,
-                onCheckedChange = { onChange(settings.copy(monitorUber = it)) },
-            )
-            SettingsSwitchRow(
-                label = "inDrive",
-                checked = settings.monitorInDrive,
-                onCheckedChange = { onChange(settings.copy(monitorInDrive = it)) },
-            )
+            SettingsSwitchRow("99 Motorista", settings.monitor99) { onChange(settings.copy(monitor99 = it)) }
+            SettingsSwitchRow("Uber Driver", settings.monitorUber) { onChange(settings.copy(monitorUber = it)) }
+            SettingsSwitchRow("inDrive", settings.monitorInDrive) { onChange(settings.copy(monitorInDrive = it)) }
             OutlinedTextField(
                 value = settings.extraMonitoredPackages,
                 onValueChange = { onChange(settings.copy(extraMonitoredPackages = it)) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Pacote extra permitido") },
             )
-            Text(
-                "Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text("Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
 private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
 @Composable
-private fun RadiusSlider(
-    label: String,
-    value: Double,
-    onValueChange: (Double) -> Unit,
-    onValueChangeFinished: () -> Unit,
-) {
+private fun RadiusSlider(label: String, value: Double, onValueChange: (Double) -> Unit, onValueChangeFinished: () -> Unit) {
     val safeValue = value.coerceIn(1.0, 30.0)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label)
             Text(formatKm(safeValue), fontWeight = FontWeight.Bold)
         }
         Slider(
             value = safeValue.toFloat(),
-            onValueChange = { rawValue ->
-                val rounded = (rawValue * 2f).roundToInt() / 2.0
-                onValueChange(rounded.coerceIn(1.0, 30.0))
-            },
+            onValueChange = { rawValue -> onValueChange(((rawValue * 2f).roundToInt() / 2.0).coerceIn(1.0, 30.0)) },
             onValueChangeFinished = onValueChangeFinished,
             valueRange = 1f..30f,
             steps = 57,
@@ -643,26 +600,16 @@ private fun RadiusSlider(
 }
 
 @Composable
-private fun BubbleOpacitySlider(
-    value: Double,
-    onValueChange: (Double) -> Unit,
-    onValueChangeFinished: () -> Unit,
-) {
+private fun BubbleOpacitySlider(value: Double, onValueChange: (Double) -> Unit, onValueChangeFinished: () -> Unit) {
     val safeValue = value.coerceIn(0.25, 1.0)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Transparencia")
             Text("${(safeValue * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
         }
         Slider(
             value = safeValue.toFloat(),
-            onValueChange = { rawValue ->
-                val rounded = (rawValue * 20f).roundToInt() / 20.0
-                onValueChange(rounded.coerceIn(0.25, 1.0))
-            },
+            onValueChange = { rawValue -> onValueChange(((rawValue * 20f).roundToInt() / 20.0).coerceIn(0.25, 1.0)) },
             onValueChangeFinished = onValueChangeFinished,
             valueRange = 0.25f..1f,
             steps = 14,
@@ -676,7 +623,6 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
         Text("Nenhuma analise salva ainda.")
         return
     }
-
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         history.forEach { result ->
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -691,21 +637,13 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
     }
 }
 
-private enum class LocationTarget {
-    Home,
-    Alternative,
-}
+private enum class LocationTarget { Home, Alternative }
 
-private data class RadiusInfo(
-    val label: String,
-    val distanceKm: Double,
-    val radiusKm: Double,
-)
+private data class RadiusInfo(val label: String, val distanceKm: Double, val radiusKm: Double)
 
 private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): RadiusInfo? {
     val homeInfo = result.pickupToHomeKm?.let { RadiusInfo("Distancia ate casa", it, settings.homeRadiusKm) }
     val alternativeInfo = result.pickupToAlternativeKm?.let { RadiusInfo("Distancia ate alfinete", it, settings.alternativeRadiusKm) }
-
     return when {
         result.recommendation == Recommendation.GoodRide && homeInfo != null && homeInfo.distanceKm <= homeInfo.radiusKm -> homeInfo
         result.recommendation == Recommendation.GoodRide && alternativeInfo != null && alternativeInfo.distanceKm <= alternativeInfo.radiusKm -> alternativeInfo
@@ -717,14 +655,8 @@ private fun resultRadiusInfo(result: AnalysisResult, settings: AppSettings): Rad
 private fun isLiveAccessibilityEnabled(context: Context): Boolean {
     val component = ComponentName(context, LiveRideAccessibilityService::class.java)
     val expectedServices = setOf(component.flattenToString(), component.flattenToShortString())
-    val enabledServices = Settings.Secure.getString(
-        context.contentResolver,
-        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-    ).orEmpty()
-
-    return enabledServices
-        .split(':')
-        .any { service -> expectedServices.any { it.equals(service, ignoreCase = true) } }
+    val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+    return enabledServices.split(':').any { service -> expectedServices.any { it.equals(service, ignoreCase = true) } }
 }
 
 private fun recommendationLabel(recommendation: Recommendation): String = when (recommendation) {
@@ -748,6 +680,8 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
     appendLine("Cor: $bubbleColor")
     appendLine("Motivo: $reason")
     appendLine("Modo restrito: $restrictToSelectedRideApps")
+    appendLine("Card cadastrado obrigatorio: $registeredCardRequired")
+    appendLine("Card reconhecido: ${registeredCardMatched ?: "nenhum"}")
     appendLine("Pacotes selecionados: ${selectedPackages.joinToString(", ").ifBlank { "nenhum" }}")
     appendLine("Destino: ${destination ?: "nao identificado"}")
     appendLine("Embarque: ${pickup ?: "nao identificado"}")
@@ -764,7 +698,6 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
 private fun formatDestination(value: String?): String {
     val destination = value?.trim().orEmpty()
     if (destination.isBlank()) return "nao identificado"
-
     val parenthesizedNeighborhood = Regex("""^(.+?)\s*\((.+)\)$""").find(destination)
     return if (parenthesizedNeighborhood != null) {
         val street = parenthesizedNeighborhood.groupValues[1].trim()
@@ -776,9 +709,7 @@ private fun formatDestination(value: String?): String {
 }
 
 private fun deviceRegionLabel(region: DeviceRegion): String =
-    listOf(region.city, region.country).filter { it.isNotBlank() }.joinToString(" - ").ifBlank {
-        "Cidade e pais serao detectados pela localizacao."
-    }
+    listOf(region.city, region.country).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Cidade e pais serao detectados pela localizacao." }
 
 private fun formatKm(value: Double): String = String.format(Locale("pt", "BR"), "%.1f km", value)
 
