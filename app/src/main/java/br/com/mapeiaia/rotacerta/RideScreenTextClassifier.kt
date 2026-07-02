@@ -4,18 +4,20 @@ import java.text.Normalizer
 import java.util.Locale
 
 object RideScreenTextClassifier {
-    private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
+    private val fareToken = String(byteArrayOf(0x52, 0x24), Charsets.UTF_8)
+    private val fareTokenRegex = Regex.escape(fareToken)
+    private val fareMatcher = Regex("BRL".replace("BRL", fareTokenRegex) + """\s*\d""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val routeStepRegex = Regex(
-        """\b\d{1,3}\s*(?:min|minuto|minutos)\.?\s*(?:\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:m|km)\s*\))?""",
+        """\b(?:\d{1,2}\s*h(?:\s*e)?\s*)?\d{1,3}\s*(?:min|minuto|minutos)\.?\s*(?:\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:m|km)\s*\))?""",
         RegexOption.IGNORE_CASE,
     )
     private val addressRegex = Regex(
-        """(?:\b(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque)\b|\b(?:r|av)\.)""",
+        """(?:\b(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque|vila|terminal|estacao|metro)\b|\b(?:r|av)\.)""",
         RegexOption.IGNORE_CASE,
     )
     private val mapAddressMarkerRegex = Regex(
-        """(?m)^\s*[ab]\s+(?:(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque)\b|\b(?:r|av)\.|[\wÀ-ÿ]+\s*,?\s*\d{1,5})""",
+        """(?m)^\s*[ab]\s+(?:(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque|vila|terminal|estacao|metro)\b|\b(?:r|av)\.|[\wÀ-ÿ]+\s*,?\s*\d{1,5})""",
         RegexOption.IGNORE_CASE,
     )
     private val rideKeywords = listOf(
@@ -25,18 +27,25 @@ object RideScreenTextClassifier {
         "pedido de viagem",
         "pedidos de viagem",
         "viagem longa",
+        "radar de viagens",
         "uber",
         "uberx",
         "dinheiro",
         "pix",
+        "parada",
         "parada(s)",
         "ofereca sua tarifa",
         "negocia",
+        "perfil premium",
+        "perfil essencial",
+        "pop expresso",
+        "prioritario",
+        "area de risco",
         "exclusivo",
+        "verificado",
         "preco justo",
     )
     private val viewerShellKeywords = listOf(
-        "files by google",
         "editar",
         "pesquisar na imagem",
         "navegar para cima",
@@ -44,7 +53,6 @@ object RideScreenTextClassifier {
         "adicionar a pasta",
         "com estrela",
         "mais opcoes",
-        "google fotos",
         "galeria",
     )
 
@@ -80,15 +88,13 @@ object RideScreenTextClassifier {
 
     private fun hasRideEvidence(text: String): Boolean {
         val normalized = text.normalizedForMatch()
-        val hasMoney = moneyRegex.containsMatchIn(text)
+        val hasFareAmount = fareMatcher.containsMatchIn(text)
         val hasRideKeyword = rideKeywords.any { normalized.contains(it) }
         val hasRouteSignal = routeStepRegex.containsMatchIn(text) || distanceRegex.containsMatchIn(text)
         val hasAddressSignal = addressRegex.containsMatchIn(normalized) || mapAddressMarkerRegex.containsMatchIn(text)
 
-        return hasMoney && (
-            hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
-                hasRouteSignal && hasAddressSignal
-            )
+        return hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
+            hasFareAmount && hasRouteSignal && hasAddressSignal
     }
 
     private fun looksLikeAndroidSystemShade(normalized: String): Boolean {
@@ -138,24 +144,21 @@ object RideScreenTextClassifier {
             "ver tempo ao volante",
             "registro de viagens",
         ).count { normalized.contains(it) }
-        val hasZeroEarnings = normalized.contains("r$ 0,00") || normalized.contains("r$ 0.00")
+        val zeroFarePrefix = fareToken.lowercase(Locale.ROOT)
+        val hasZeroEarnings = normalized.contains(zeroFarePrefix + " 0,00") ||
+            normalized.contains(zeroFarePrefix + " 0.00")
 
         return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings) || (hasWaitingAreaSignal && hasZeroEarnings)
     }
 
     private fun looksLikeNavigationScreen(normalized: String): Boolean {
         val navigationHits = listOf(
-            "google maps",
-            "waze",
-            "rotas",
             "iniciar",
             "visao geral",
             "pesquisar aqui",
             "pesquisar no mapa",
             "sua localizacao",
-            "trafego",
             "evitar pedagios",
-            "calcular rota",
             "recentralizar",
             "tempo restante",
             "chegada",
