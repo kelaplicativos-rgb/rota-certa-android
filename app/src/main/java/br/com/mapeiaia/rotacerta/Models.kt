@@ -20,6 +20,7 @@ data class AppSettings(
     val monitorUber: Boolean = true,
     val monitorInDrive: Boolean = true,
     val extraMonitoredPackages: String = "",
+    val requireRegisteredRideCard: Boolean = true,
 )
 
 @Serializable
@@ -41,6 +42,28 @@ data class RideFields(
     val fare: String? = null,
     val distance: String? = null,
     val time: String? = null,
+)
+
+@Serializable
+data class RideCardTemplate(
+    val id: String,
+    val name: String,
+    val packageName: String? = null,
+    val requiredFeatures: List<String> = emptyList(),
+    val sampleHash: Int? = null,
+    val createdAtMillis: Long = 0L,
+)
+
+@Serializable
+data class CapturedRideScreen(
+    val createdAtMillis: Long = 0L,
+    val packageName: String? = null,
+    val textHash: Int? = null,
+    val textPreview: String = "",
+    val parserName: String = "",
+    val pickup: String? = null,
+    val destination: String? = null,
+    val fare: String? = null,
 )
 
 enum class Recommendation {
@@ -71,6 +94,8 @@ data class LiveDiagnostic(
     val reason: String = "",
     val restrictToSelectedRideApps: Boolean = false,
     val selectedPackages: List<String> = emptyList(),
+    val registeredCardRequired: Boolean = true,
+    val registeredCardMatched: String? = null,
     val textLength: Int = 0,
     val textHash: Int? = null,
     val textPreview: String = "",
