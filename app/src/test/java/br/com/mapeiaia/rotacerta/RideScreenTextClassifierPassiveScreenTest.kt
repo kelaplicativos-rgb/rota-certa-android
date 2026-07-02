@@ -43,4 +43,45 @@ class RideScreenTextClassifierPassiveScreenTest {
         assertEquals(false, RideScreenTextClassifier.shouldIgnore(text))
         assertEquals(true, RideScreenTextClassifier.looksLikeRideCard(text))
     }
+
+    @Test
+    fun ignoresPureUberOfflineHomeScreen() {
+        val text = """
+            COMEÇAR
+            Página inicial
+            R$ 0,00
+            Pesquisar locais
+            Recursos de segurança
+            Não é possível ficar offline
+            Preferências
+            Agenda de viagens
+            Você está offline
+            Ver tempo ao volante
+            Registro de viagens
+        """.trimIndent()
+
+        assertTrue(RideScreenTextClassifier.shouldIgnore(text))
+        assertEquals(false, RideScreenTextClassifier.looksLikeRideCard(text))
+    }
+
+    @Test
+    fun keepsUberOptionalOpportunityScreenEligible() {
+        val text = """
+            COMEÇAR
+            Página inicial
+            R$ 0,00
+            Tendências de ganhos
+            Você está offline
+            Conteúdo
+            +R$ 1,50
+            +R$ 2
+            1-10 min
+            1-6 min
+            1-4 min
+            Arena Exemplo
+        """.trimIndent()
+
+        assertEquals(false, RideScreenTextClassifier.shouldIgnore(text))
+        assertEquals(true, RideScreenTextClassifier.looksLikeRideCard(text))
+    }
 }
