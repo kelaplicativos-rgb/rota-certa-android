@@ -421,11 +421,13 @@ class RideTextParser {
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
+        val previousEndsWithConnector = listOf(" da", " de", " do", " das", " dos").any { previousNormalized.endsWith(it) }
 
         if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
 
         return previous.endsWith(",") ||
             previousEndsWithStreetType ||
+            previousEndsWithConnector ||
             previousHasOpenParenthesis ||
             normalized.startsWith("(") ||
             normalized.startsWith("da ") ||
