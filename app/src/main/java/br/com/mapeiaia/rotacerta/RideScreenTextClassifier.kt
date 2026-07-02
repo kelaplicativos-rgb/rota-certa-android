@@ -56,6 +56,9 @@ object RideScreenTextClassifier {
         if (looksLikeNinetyNineSettingsMenu(normalized)) {
             return "Menu/configuracoes da 99 detectado; nenhum card de chamada ativo."
         }
+        if (looksLikeNinetyNinePassiveScreen(normalized)) {
+            return "Tela inicial/busca/abastece da 99 detectada; nenhum card de chamada ativo."
+        }
         if (looksLikeUberIdleScreen(normalized)) {
             return "Tela inicial/offline/area de espera do Uber detectada; nenhum card de chamada ativo."
         }
@@ -117,6 +120,32 @@ object RideScreenTextClassifier {
         ).count { normalized.contains(it) }
         val hasOfferAction = normalized.contains("selecionar") || normalized.contains("aceitar")
         return menuHits >= 3 && !hasOfferAction
+    }
+
+    private fun looksLikeNinetyNinePassiveScreen(normalized: String): Boolean {
+        val hasOfferAction = listOf(
+            "aceitar",
+            "negocia",
+            "perfil premium",
+            "perfil essencial",
+            "pedido de viagem",
+            "pedidos de viagem",
+        ).any { normalized.contains(it) }
+        if (hasOfferAction) return false
+
+        val passiveHits = listOf(
+            "99 abastece",
+            "solicitacoes",
+            "solicitacao",
+            "buscando",
+            "posto",
+            "rede rp",
+            "mais >",
+        ).count { normalized.contains(it) }
+        val hasFuelPriceSignal = Regex("""r\$\s*\d+[,.]\d{2}\s+r\$\s*\d+[,.]\d{2}""").containsMatchIn(normalized)
+        val hasFuelOrHomeSignal = normalized.contains("99 abastece") || hasFuelPriceSignal
+
+        return passiveHits >= 2 && hasFuelOrHomeSignal
     }
 
     private fun looksLikeUberIdleScreen(normalized: String): Boolean {
