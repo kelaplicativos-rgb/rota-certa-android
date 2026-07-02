@@ -58,4 +58,4 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-# Keeps the debug APK workflow active after stabilization publishing.
+# Keeps the debug APK workflow active after 99 diagnostic publishing.
