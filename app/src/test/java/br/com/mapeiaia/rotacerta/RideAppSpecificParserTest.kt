@@ -29,6 +29,37 @@ class RideAppSpecificParserTest {
     }
 
     @Test
+    fun parsesNinetyNineDiagnosticCardWithPromoBlockAndZeroBalance() {
+        val text = """
+            12:27 99
+            APOPEMBA
+            VANNI NASCO
+            R$0,00
+            Av. Afons de Sampaio e so
+            M
+            FAÇA UMA
+            GRANA EXTRA
+            Indicando um motora que
+            parou de correr com a 99
+            O 50,,ll 79
+            Av. Aricanduva
+            Carregando..
+            Gorid eta
+            R$ 29,99
+            R$2.03km
+            X
+            k
+        """.trimIndent()
+
+        val result = RideTextParser().parseWithMetadata(text, "com.app99.driver")
+
+        assertEquals("99-card-template", result.parserName)
+        assertEquals("Av. Afons de Sampaio e so", result.fields.pickup)
+        assertEquals("Av. Aricanduva", result.fields.destination)
+        assertEquals("R$ 29,99", result.fields.fare)
+    }
+
+    @Test
     fun parsesUberCardUsingPackage() {
         val text = """
             UberX

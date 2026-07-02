@@ -216,7 +216,7 @@ class RideTextParser {
             return lines.subList(0, end)
         }
 
-        val primaryFareIndexes = lines.indices.filter { isPrimaryFareLine(lines[it]) }
+        val primaryFareIndexes = lines.indices.filter { isPrimaryFareLine(lines[it]) && !isZeroFareLine(lines[it]) }
         if (primaryFareIndexes.size >= 2) {
             val start = 0
             val end = primaryFareIndexes[1]
@@ -266,16 +266,23 @@ class RideTextParser {
         val fareBeforeMapPoint = firstMapPointAddressIndex?.let { index ->
             lines.take(index).asReversed().firstOrNull { isPrimaryFareLine(it) }
         }
-        val primaryFareLine = fareBeforeMapPoint ?: lines.firstOrNull { isPrimaryFareLine(it) }
+        val primaryFareLine = fareBeforeMapPoint ?: lines.firstOrNull { isPrimaryFareLine(it) && !isZeroFareLine(it) }
+            ?: lines.firstOrNull { isPrimaryFareLine(it) }
         return primaryFareLine?.let { primaryFareRegex.find(it)?.value?.trim() }
             ?: fareRegex.findAll(scopedText)
                 .firstOrNull { match ->
                     val tail = scopedText.substring(match.range.last + 1).trimStart().take(3)
-                    !tail.startsWith("/km", ignoreCase = true)
+                    !tail.startsWith("/km", ignoreCase = true) && !isZeroFareValue(match.value)
                 }
                 ?.value
                 ?.trim()
     }
+
+    private fun isZeroFareLine(line: String): Boolean =
+        primaryFareRegex.find(line)?.value?.let(::isZeroFareValue) == true
+
+    private fun isZeroFareValue(value: String): Boolean =
+        value.replace(" ", "").lowercase() in setOf("r$0", "r$0,0", "r$0,00")
 
     private fun parseKnownRideAppLayout(lines: List<String>): RideFields? =
         parseMapPointLayout(lines) ?: parseRouteStepLayout(lines) ?: parseStackedAddressLayout(lines)
@@ -408,8 +415,12 @@ class RideTextParser {
             candidate.isNotBlank() && !isNoise(candidate) && !isRideMarker(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
         }
 
-    private fun cleanAddressLine(value: String): String =
-        mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
+    private fun cleanAddressLine(value: String): String {
+        val address = mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
+        return address
+            .replace(Regex("""\s+(?:fa[cç]a uma|grana extra|indicando um motora|parou de correr|carregando)\b.*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
 
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
         if (value.length < 2 || isNoise(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
@@ -451,6 +462,12 @@ class RideTextParser {
             distanceRegex.containsMatchIn(value) ||
             timeRegex.containsMatchIn(value) ||
             normalized.contains("pix") ||
+            normalized.contains("faça uma") ||
+            normalized.contains("faca uma") ||
+            normalized.contains("grana extra") ||
+            normalized.contains("indicando um motora") ||
+            normalized.contains("parou de correr") ||
+            normalized.contains("carregando") ||
             normalized.contains("cartao") ||
             normalized.contains("cartão") ||
             normalized.contains("dinheiro") ||

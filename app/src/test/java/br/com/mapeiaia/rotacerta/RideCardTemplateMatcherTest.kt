@@ -73,4 +73,33 @@ class RideCardTemplateMatcherTest {
 
         assertNull(RideCardTemplateMatcher.match(sample, "com.app99.driver", listOf(template)))
     }
+
+    @Test
+    fun matchesSameNinetyNinePackageByStructuralRideFeaturesWhenPromoTextChanges() {
+        val model = """
+            Perfil Essencial
+            R$ 12,40
+            5min (1,9km)
+            Rua Exemplo, 10
+            Avenida Modelo, 200
+            Selecionar
+        """.trimIndent()
+        val liveCard = """
+            99
+            R$0,00
+            Av. Afons de Sampaio e so
+            FAÇA UMA GRANA EXTRA
+            Av. Aricanduva
+            R$ 29,99
+            R$2.03km
+        """.trimIndent()
+
+        val template = RideCardTemplateMatcher.createTemplate("com.app99.driver", model)
+        val match = RideCardTemplateMatcher.match(liveCard, "com.app99.driver", listOf(template))
+
+        assertNotNull(match)
+        assertTrue(match!!.matchedFeatures.contains("valor em reais"))
+        assertTrue(match.matchedFeatures.contains("distancia em km"))
+        assertTrue(match.matchedFeatures.contains("endereco"))
+    }
 }

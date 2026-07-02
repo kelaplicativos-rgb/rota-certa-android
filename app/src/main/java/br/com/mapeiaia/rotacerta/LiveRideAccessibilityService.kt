@@ -272,7 +272,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent(
             "parser.name=${parseResult.parserName} pickup=${fields.pickup.diagnosticValue()} destination=${fields.destination.diagnosticValue()} fare=${fields.fare.orEmpty()}",
         )
-        if (!looksLikeRideOffer(snapshotText, fields)) {
+        if (!looksLikeRideOffer(snapshotText, fields, packageName)) {
             val reason = rideOfferRejectReason(fields)
             traceEvent("classifier.ride_offer=false reason=$reason")
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
@@ -361,7 +361,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun looksLikeRideOffer(text: String, fields: RideFields): Boolean {
+    private fun looksLikeRideOffer(text: String, fields: RideFields, packageName: String?): Boolean {
         if (!RideScreenTextClassifier.looksLikeRideCard(text)) return false
         val destination = fields.destination?.lowercase(Locale.ROOT).orEmpty()
         if (destination.isBlank()) return false
@@ -378,7 +378,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "radar de viagens", "ofereça sua tarifa", "ofereca sua tarifa", "preço justo", "preco justo",
         ).any { normalized.contains(it) }
         val hasMapPointSignal = Regex("""(?m)^\s*[ab]\s+""", RegexOption.IGNORE_CASE).containsMatchIn(text)
-        return hasDestinationAddressSignal && (hasRideCardSignal || hasMapPointSignal)
+        val normalizedPackage = packageName?.lowercase(Locale.ROOT).orEmpty()
+        val hasPositiveFare = fields.fare?.let {
+            Regex("""^R\$\s*(?!0+(?:[,.]0{1,2})?\b)\d""", RegexOption.IGNORE_CASE).containsMatchIn(it)
+        } == true
+        val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&
+            hasPositiveFare &&
+            Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        return hasDestinationAddressSignal && (hasRideCardSignal || hasMapPointSignal || hasNinetyNinePackageSignal)
     }
 
     private suspend fun analyzeLiveText(

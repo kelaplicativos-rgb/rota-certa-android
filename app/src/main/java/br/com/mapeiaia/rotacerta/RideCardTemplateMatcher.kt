@@ -84,7 +84,11 @@ object RideCardTemplateMatcher {
                 val score = matched.size.toDouble() / max(required.size, 1)
                 RideCardTemplateMatch(template = template, score = score, matchedFeatures = matched.toList().sorted())
             }
-            .filter { match -> match.score >= MIN_SCORE && match.matchedFeatures.size >= MIN_FEATURES }
+            .filter { match ->
+                val samePackage = match.template.packageName?.equals(normalizedPackage, ignoreCase = true) == true
+                val structuralMatch = samePackage && structuralFeatures.all { it in match.matchedFeatures }
+                structuralMatch || (match.score >= MIN_SCORE && match.matchedFeatures.size >= MIN_FEATURES)
+            }
             .maxByOrNull { it.score }
     }
 
@@ -122,6 +126,8 @@ object RideCardTemplateMatcher {
             .replace(Regex("""\p{Mn}+"""), "")
             .replace(Regex("""\s+"""), " ")
             .trim()
+
+    private val structuralFeatures = setOf("valor em reais", "distancia em km", "endereco")
 
     private const val MIN_SCORE = 0.72
     private const val MIN_FEATURES = 3
