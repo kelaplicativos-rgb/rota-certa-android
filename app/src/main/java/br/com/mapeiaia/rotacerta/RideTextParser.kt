@@ -113,9 +113,52 @@ class RideTextParser {
 
     private fun parseInDriveLayout(lines: List<String>): RideFields? {
         val rideLines = linesBeforeActions(lines)
-        return parseMapPointLayout(rideLines)
+        return parseInDriveFirstOfferAddressBlock(rideLines)
+            ?: parseMapPointLayout(rideLines)
             ?: parseStackedAddressLayout(rideLines)
             ?: parseRouteStepLayout(rideLines)
+    }
+
+    private fun parseInDriveFirstOfferAddressBlock(lines: List<String>): RideFields? {
+        val fareIndex = lines.indexOfFirst { isPrimaryFareLine(it) }
+        if (fareIndex < 0) return null
+
+        val addresses = mutableListOf<String>()
+        var started = false
+        for (index in fareIndex + 1 until lines.size) {
+            val line = lines[index]
+            if (isActionLine(line) || isInDriveOfferBoundary(line)) {
+                if (started) break
+                continue
+            }
+
+            val address = buildAddressBlock(lines, index, line)
+            if (address != null) {
+                started = true
+                if (addresses.none { it.equals(address, ignoreCase = true) }) addresses += address
+                continue
+            }
+
+            if (started) break
+        }
+
+        if (addresses.size < 2) return null
+        return RideFields(
+            pickup = addresses.first(),
+            destination = addresses.last { !it.equals(addresses.first(), ignoreCase = true) },
+        )
+    }
+
+    private fun isInDriveOfferBoundary(line: String): Boolean {
+        val normalized = line.lowercase().trim()
+        return normalized == "pix" ||
+            normalized == "dinheiro" ||
+            normalized.contains("preço justo") ||
+            normalized.contains("preco justo") ||
+            normalized.contains("reclamar") ||
+            normalized.contains("ocultar") ||
+            normalized.contains("escolher no mapa") ||
+            normalized.contains("pedido de viagem")
     }
 
     private fun isolateAppPrimaryRideLines(lines: List<String>, appKind: RideAppKind): List<String> = when (appKind) {
