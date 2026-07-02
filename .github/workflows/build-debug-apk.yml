@@ -73,4 +73,4 @@ jobs:
           git commit -m "Record latest debug APK run" || exit 0
           git push
 
-# Keeps the debug APK workflow active and records the latest artifact run.
+# Keeps the debug APK workflow active after 99 parser fixes.
