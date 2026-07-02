@@ -31,8 +31,11 @@ class SettingsRepository(private val context: Context) {
     private val monitorUber = booleanPreferencesKey("monitor_uber")
     private val monitorInDrive = booleanPreferencesKey("monitor_indrive")
     private val extraMonitoredPackages = stringPreferencesKey("extra_monitored_packages")
+    private val requireRegisteredRideCard = booleanPreferencesKey("require_registered_ride_card")
     private val history = stringPreferencesKey("history")
     private val liveDiagnostic = stringPreferencesKey("live_diagnostic")
+    private val rideCardTemplates = stringPreferencesKey("ride_card_templates")
+    private val capturedRideScreens = stringPreferencesKey("captured_ride_screens")
     private val json = Json { ignoreUnknownKeys = true }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -54,6 +57,7 @@ class SettingsRepository(private val context: Context) {
             monitorUber = prefs[monitorUber] ?: true,
             monitorInDrive = prefs[monitorInDrive] ?: true,
             extraMonitoredPackages = prefs[extraMonitoredPackages].orEmpty(),
+            requireRegisteredRideCard = prefs[requireRegisteredRideCard] ?: true,
         )
     }
 
@@ -64,6 +68,16 @@ class SettingsRepository(private val context: Context) {
 
     val diagnostic: Flow<LiveDiagnostic?> = context.dataStore.data.map { prefs ->
         runCatching { json.decodeFromString<LiveDiagnostic>(prefs[liveDiagnostic].orEmpty()) }.getOrNull()
+    }
+
+    val cardTemplates: Flow<List<RideCardTemplate>> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<List<RideCardTemplate>>(prefs[rideCardTemplates].orEmpty()) }
+            .getOrDefault(emptyList())
+    }
+
+    val capturedScreens: Flow<List<CapturedRideScreen>> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<List<CapturedRideScreen>>(prefs[capturedRideScreens].orEmpty()) }
+            .getOrDefault(emptyList())
     }
 
     suspend fun saveSettings(settings: AppSettings) {
@@ -81,6 +95,7 @@ class SettingsRepository(private val context: Context) {
             prefs[monitorUber] = settings.monitorUber
             prefs[monitorInDrive] = settings.monitorInDrive
             prefs[extraMonitoredPackages] = settings.extraMonitoredPackages.trim()
+            prefs[requireRegisteredRideCard] = settings.requireRegisteredRideCard
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
@@ -102,6 +117,25 @@ class SettingsRepository(private val context: Context) {
     suspend fun saveDiagnostic(diagnostic: LiveDiagnostic) {
         context.dataStore.edit { prefs ->
             prefs[liveDiagnostic] = json.encodeToString(diagnostic)
+        }
+    }
+
+    suspend fun addCardTemplate(template: RideCardTemplate) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<RideCardTemplate>>(prefs[rideCardTemplates].orEmpty()) }
+                .getOrDefault(emptyList())
+            val updated = listOf(template) + current.filterNot { it.id == template.id || it.sampleHash == template.sampleHash }
+            prefs[rideCardTemplates] = json.encodeToString(updated.take(30))
+        }
+    }
+
+    suspend fun addCapturedScreen(screen: CapturedRideScreen) {
+        if (screen.textPreview.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<CapturedRideScreen>>(prefs[capturedRideScreens].orEmpty()) }
+                .getOrDefault(emptyList())
+            val updated = listOf(screen) + current.filterNot { it.textHash == screen.textHash && it.packageName == screen.packageName }
+            prefs[capturedRideScreens] = json.encodeToString(updated.take(20))
         }
     }
 
