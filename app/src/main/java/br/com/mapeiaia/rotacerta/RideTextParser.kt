@@ -418,7 +418,9 @@ class RideTextParser {
     private fun cleanAddressLine(value: String): String {
         val address = mapPointRegex.find(value)?.groupValues?.getOrNull(1)?.trim() ?: value.trim()
         return address
+            .replace(Regex("""\bconectar\b""", RegexOption.IGNORE_CASE), " ")
             .replace(Regex("""\s+(?:fa[cç]a uma|grana extra|indicando um motora|parou de correr|carregando)\b.*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+"""), " ")
             .trim()
     }
 
@@ -461,6 +463,7 @@ class RideTextParser {
         return fareRegex.containsMatchIn(value) ||
             distanceRegex.containsMatchIn(value) ||
             timeRegex.containsMatchIn(value) ||
+            normalized.contains("r$") ||
             normalized.contains("pix") ||
             normalized.contains("faça uma") ||
             normalized.contains("faca uma") ||
@@ -468,6 +471,7 @@ class RideTextParser {
             normalized.contains("indicando um motora") ||
             normalized.contains("parou de correr") ||
             normalized.contains("carregando") ||
+            normalized.contains("conectar") ||
             normalized.contains("cartao") ||
             normalized.contains("cartão") ||
             normalized.contains("dinheiro") ||
