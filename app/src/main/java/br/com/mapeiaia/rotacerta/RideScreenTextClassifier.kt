@@ -53,6 +53,9 @@ object RideScreenTextClassifier {
         if (looksLikeAndroidSystemShade(normalized)) {
             return "Tela do sistema/atalhos Android detectada; nenhum card de chamada ativo."
         }
+        if (looksLikeNinetyNineSettingsMenu(normalized)) {
+            return "Menu/configuracoes da 99 detectado; nenhum card de chamada ativo."
+        }
         if (looksLikeUberIdleScreen(normalized)) {
             return "Tela inicial/offline/area de espera do Uber detectada; nenhum card de chamada ativo."
         }
@@ -96,6 +99,21 @@ object RideScreenTextClassifier {
             "baxa",
         ).count { normalized.contains(it) }
         return systemHits >= 2
+    }
+
+    private fun looksLikeNinetyNineSettingsMenu(normalized: String): Boolean {
+        val menuHits = listOf(
+            "configurar solicitacoes",
+            "preferencias de servicos",
+            "ferramentas de aceitacao",
+            "definir meu destino",
+            "status da solicitacao",
+            "teste de status",
+            "eventos futuros",
+            "desconectar",
+        ).count { normalized.contains(it) }
+        val hasOfferAction = normalized.contains("selecionar") || normalized.contains("aceitar")
+        return menuHits >= 3 && !hasOfferAction
     }
 
     private fun looksLikeUberIdleScreen(normalized: String): Boolean {
