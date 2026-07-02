@@ -5,6 +5,8 @@ import java.util.Locale
 
 object RideScreenTextClassifier {
     private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
+    private val uberBonusRegex = Regex("""\+\s*r\$\s*\d""", RegexOption.IGNORE_CASE)
+    private val uberTimeRangeRegex = Regex("""\b\d{1,2}\s*-\s*\d{1,2}\s*min\b""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val routeStepRegex = Regex(
         """\b\d{1,3}\s*(?:min|minuto|minutos)\.?\s*(?:\(\s*(?:\d+(?:[,.]\d+)?\s*)?(?:m|km)\s*\))?""",
@@ -87,10 +89,12 @@ object RideScreenTextClassifier {
         val hasRideKeyword = rideKeywords.any { normalized.contains(it) }
         val hasRouteSignal = routeStepRegex.containsMatchIn(text) || distanceRegex.containsMatchIn(text)
         val hasAddressSignal = addressRegex.containsMatchIn(normalized) || mapAddressMarkerRegex.containsMatchIn(text)
+        val hasUberOptionalOpportunity = looksLikeUberOptionalOpportunity(normalized)
 
         return hasMoney && (
             hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
-                hasRouteSignal && hasAddressSignal
+                hasRouteSignal && hasAddressSignal ||
+                hasUberOptionalOpportunity
             )
     }
 
@@ -150,7 +154,7 @@ object RideScreenTextClassifier {
 
     private fun looksLikeUberIdleScreen(normalized: String): Boolean {
         val hasOfferAction = listOf("aceitar", "uberx", "viagem longa", "exclusivo").any { normalized.contains(it) }
-        if (hasOfferAction) return false
+        if (hasOfferAction || looksLikeUberOptionalOpportunity(normalized)) return false
 
         val hasOfflineSignal = normalized.contains("voce esta offline") ||
             normalized.contains("nao e possivel ficar offline")
@@ -170,6 +174,19 @@ object RideScreenTextClassifier {
         val hasZeroEarnings = normalized.contains("r$ 0,00") || normalized.contains("r$ 0.00")
 
         return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings) || (hasWaitingAreaSignal && hasZeroEarnings)
+    }
+
+    private fun looksLikeUberOptionalOpportunity(normalized: String): Boolean {
+        val hasBonus = uberBonusRegex.containsMatchIn(normalized)
+        val hasTimeRange = uberTimeRangeRegex.containsMatchIn(normalized)
+        val opportunityHits = listOf(
+            "começar",
+            "comecar",
+            "tendencias de ganhos",
+            "radar de viagens",
+            "conteudo",
+        ).count { normalized.contains(it) }
+        return (hasBonus && hasTimeRange) || (hasBonus && opportunityHits >= 1) || (hasTimeRange && opportunityHits >= 2)
     }
 
     private fun looksLikeNavigationScreen(normalized: String): Boolean {
