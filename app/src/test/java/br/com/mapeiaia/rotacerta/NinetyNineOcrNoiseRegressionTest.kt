@@ -32,8 +32,8 @@ class NinetyNineOcrNoiseRegressionTest {
 
         assertEquals("Av. Afons", fields.pickup)
         assertEquals("R. Oratório Unidade Básic de Saúde - Jardim S", fields.destination)
-        assertEquals("R$ 29,99", fields.fare)
-        assertFalse(fields.pickup.orEmpty().contains("R$"))
+        assertEquals("R${'$'} 29,99", fields.fare)
+        assertFalse(fields.pickup.orEmpty().contains("R${'$'}"))
         assertFalse(fields.destination.orEmpty().contains("Conectar", ignoreCase = true))
     }
 }
