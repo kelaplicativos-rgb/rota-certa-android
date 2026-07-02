@@ -252,8 +252,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
             traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
             lastSnapshotHash = snapshotHash
-            lastAnalyzedHash = null
-            resetToDefault(reason = reason, text = snapshotText, record = !isPassiveDiagnosticPackage(activePackageName))
+            preserveCurrentDecisionForIgnoredScreen(reason = reason, text = snapshotText)
             return
         }
 
@@ -489,6 +488,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (record) {
             recordDiagnostic(stage = "default", reason = reason, text = text, fields = fields)
         }
+    }
+
+    private fun preserveCurrentDecisionForIgnoredScreen(reason: String, text: String) {
+        recordDiagnostic(
+            stage = "ignored_screen",
+            reason = "$reason Mantive a bolinha atual sem salvar como leitura de corrida.",
+            text = text,
+        )
     }
 
     private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
