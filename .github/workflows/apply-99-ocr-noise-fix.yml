@@ -1,0 +1,39 @@
+name: Apply 99 OCR Noise Fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-99-ocr-noise-fix.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  apply:
+    name: Apply 99 OCR noise fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Patch parser/classifier and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          perl -0pi -e 's/(fa\[cç\]a uma\|grana extra\|indicando um motora\|parou de correr\|carregando)/$1|conectar/' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          perl -0pi -e 's/(normalized\.contains\("pix"\) \|\|\n)/$1            normalized.contains("r$") ||\n            normalized.contains("conectar") ||\n/' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          perl -0pi -e 's/val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&\n            hasPositiveFare &&\n            Regex\("""\\b\\d\+\(\?:\[,.\]\\d\+\)\?\\s\*km\\b""", RegexOption\.IGNORE_CASE\)\.containsMatchIn\(text\)/val hasNinetyNineTextSignal = normalizedPackage == PACKAGE_99_DRIVER ||\n            Regex("""(?:^|\\s)99(?:\\s|$)""", RegexOption.IGNORE_CASE).containsMatchIn(text)\n        val hasNinetyNinePackageSignal = hasNinetyNineTextSignal \&\&\n            hasPositiveFare \&\&\n            Regex("""\\b\\d+(?:[,.]\\d+)?\\s*km\\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)/' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -F 'normalized.contains("r$")' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          grep -F 'normalized.contains("conectar")' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          grep -F 'val hasNinetyNineTextSignal' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          rm -f .github/workflows/apply-99-ocr-noise-fix.yml
+          git add -A
+          git commit -m "Handle 99 OCR noise in ride cards"
+          git push origin HEAD:main
