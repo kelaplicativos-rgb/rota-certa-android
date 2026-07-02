@@ -264,7 +264,7 @@ class RideTextParser {
     private fun findFare(lines: List<String>, scopedText: String): String? {
         val firstMapPointAddressIndex = findMapPointAddressIndexes(lines).firstOrNull()
         val fareBeforeMapPoint = firstMapPointAddressIndex?.let { index ->
-            lines.take(index).asReversed().firstOrNull { isPrimaryFareLine(it) }
+            lines.take(index).asReversed().firstOrNull { isPrimaryFareLine(it) && !isZeroFareLine(it) }
         }
         val primaryFareLine = fareBeforeMapPoint ?: lines.firstOrNull { isPrimaryFareLine(it) && !isZeroFareLine(it) }
             ?: lines.firstOrNull { isPrimaryFareLine(it) }
