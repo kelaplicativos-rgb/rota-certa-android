@@ -59,6 +59,9 @@ object RideScreenTextClassifier {
         if (looksLikeUberIdleScreen(normalized)) {
             return "Tela inicial/offline/area de espera do Uber detectada; nenhum card de chamada ativo."
         }
+        if (looksLikeNavigationScreen(normalized) && !hasRideEvidence(text)) {
+            return "Navegador/GPS detectado sem card de chamada ativo."
+        }
 
         val viewerHits = viewerShellKeywords.count { normalized.contains(it) }
         if (viewerHits >= 2 && !hasRideEvidence(text)) {
@@ -138,6 +141,34 @@ object RideScreenTextClassifier {
         val hasZeroEarnings = normalized.contains("r$ 0,00") || normalized.contains("r$ 0.00")
 
         return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings) || (hasWaitingAreaSignal && hasZeroEarnings)
+    }
+
+    private fun looksLikeNavigationScreen(normalized: String): Boolean {
+        val navigationHits = listOf(
+            "google maps",
+            "waze",
+            "rotas",
+            "iniciar",
+            "visao geral",
+            "pesquisar aqui",
+            "pesquisar no mapa",
+            "sua localizacao",
+            "trafego",
+            "evitar pedagios",
+            "calcular rota",
+            "recentralizar",
+            "tempo restante",
+            "chegada",
+        ).count { normalized.contains(it) }
+        val mapOnlyHits = listOf(
+            "mapa",
+            "satellite",
+            "satelite",
+            "camadas",
+            "postos",
+            "restaurantes",
+        ).count { normalized.contains(it) }
+        return navigationHits >= 2 || (navigationHits >= 1 && mapOnlyHits >= 2)
     }
 
     private fun String.normalizedForMatch(): String =
