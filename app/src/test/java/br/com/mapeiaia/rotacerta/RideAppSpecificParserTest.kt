@@ -111,4 +111,47 @@ class RideAppSpecificParserTest {
         assertEquals("Rua Rafael Fernandes, 63 (Cidade Lider, Sao Paulo - SP)", result.fields.destination)
         assertEquals("R$ 15", result.fields.fare)
     }
+
+    @Test
+    fun parsesFirstInDriveOfferWhenFeedContainsSeveralOrders() {
+        val text = """
+            Nova notificação
+            Resolva esses problemas para evitar perder as melhores solicitações
+            Amanda Xavier
+            4.85
+            (3)
+            58 seg.
+            R$ 1,6/km
+            ~2,4 km
+            R$ 15
+            Rua Guilherme da Cruz, 16 (Jardim Helian, São Paulo - SP)
+            Rua Sabiá da Praia, 191 (Colônia (Zona Leste), São Paulo - SP)
+            PIX
+            Reclamar
+            Ocultar
+            Escolher no mapa
+            Leandro
+            4.84
+            (1474)
+            10 min.
+            R$ 2/km
+            ~3,3 km
+            R$ 11
+            Preço justo
+            Rua Isidoro de Lara 265 (Itaquera)
+            Rua Águas de Março, 49 (Conjunto Residencial José Bonifácio, São Paulo - SP)
+            Pedido de viagem
+            R$ 15
+            A Rua Guilherme da Cruz, 16
+            B Rua Sabiá da Praia, 191 (Colônia (Zona Leste), São Paulo - SP)
+            Aceitar por R$ 15
+        """.trimIndent()
+
+        val result = RideTextParser().parseWithMetadata(text, "sinet.startup.inDriver")
+
+        assertEquals("indrive-order-card", result.parserName)
+        assertEquals("Rua Guilherme da Cruz, 16 (Jardim Helian, São Paulo - SP)", result.fields.pickup)
+        assertEquals("Rua Sabiá da Praia, 191 (Colônia (Zona Leste), São Paulo - SP)", result.fields.destination)
+        assertEquals("R$ 15", result.fields.fare)
+    }
 }
