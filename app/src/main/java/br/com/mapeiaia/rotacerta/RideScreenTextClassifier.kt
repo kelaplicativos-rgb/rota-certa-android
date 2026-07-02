@@ -14,6 +14,10 @@ object RideScreenTextClassifier {
         """\b(?:rua|r\.|avenida|av\.|rodovia|estrada|travessa|alameda|praca|bairro)\b""",
         RegexOption.IGNORE_CASE,
     )
+    private val mapAddressMarkerRegex = Regex(
+        """(?m)^\s*[ab]\s+(?:rua|r\.|avenida|av\.|rodovia|estrada|travessa|alameda|praca|bairro|[\wÀ-ÿ]+\s*,?\s*\d{1,5})\b""",
+        RegexOption.IGNORE_CASE,
+    )
     private val rideKeywords = listOf(
         "aceitar",
         "corrida",
@@ -46,8 +50,11 @@ object RideScreenTextClassifier {
 
     fun ignoreReason(text: String): String? {
         val normalized = text.normalizedForMatch()
+        if (looksLikeAndroidSystemShade(normalized)) {
+            return "Tela do sistema/atalhos Android detectada; nenhum card de chamada ativo."
+        }
         if (looksLikeUberIdleScreen(normalized)) {
-            return "Tela inicial/offline do Uber detectada; nenhum card de chamada ativo."
+            return "Tela inicial/offline/area de espera do Uber detectada; nenhum card de chamada ativo."
         }
 
         val viewerHits = viewerShellKeywords.count { normalized.contains(it) }
@@ -70,13 +77,25 @@ object RideScreenTextClassifier {
         val hasMoney = moneyRegex.containsMatchIn(text)
         val hasRideKeyword = rideKeywords.any { normalized.contains(it) }
         val hasRouteSignal = routeStepRegex.containsMatchIn(text) || distanceRegex.containsMatchIn(text)
-        val hasAddressSignal = addressRegex.containsMatchIn(normalized) ||
-            Regex("""(?m)^\s*[ab]\s+.+""", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        val hasAddressSignal = addressRegex.containsMatchIn(normalized) || mapAddressMarkerRegex.containsMatchIn(text)
 
         return hasMoney && (
             hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
                 hasRouteSignal && hasAddressSignal
             )
+    }
+
+    private fun looksLikeAndroidSystemShade(normalized: String): Boolean {
+        val systemHits = listOf(
+            "ativado",
+            "desativado",
+            "reducao de brilho extra",
+            "editar atalhos",
+            "killapps",
+            "ccleaner",
+            "baxa",
+        ).count { normalized.contains(it) }
+        return systemHits >= 2
     }
 
     private fun looksLikeUberIdleScreen(normalized: String): Boolean {
@@ -85,6 +104,9 @@ object RideScreenTextClassifier {
 
         val hasOfflineSignal = normalized.contains("voce esta offline") ||
             normalized.contains("nao e possivel ficar offline")
+        val hasWaitingAreaSignal = normalized.contains("area de espera") ||
+            normalized.contains("motorista parceiro") ||
+            normalized.contains("gru")
         val hasHomeSignals = listOf(
             "pagina inicial",
             "pesquisar locais",
@@ -97,7 +119,7 @@ object RideScreenTextClassifier {
         ).count { normalized.contains(it) }
         val hasZeroEarnings = normalized.contains("r$ 0,00") || normalized.contains("r$ 0.00")
 
-        return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings)
+        return hasOfflineSignal || (hasHomeSignals >= 3 && hasZeroEarnings) || (hasWaitingAreaSignal && hasZeroEarnings)
     }
 
     private fun String.normalizedForMatch(): String =
