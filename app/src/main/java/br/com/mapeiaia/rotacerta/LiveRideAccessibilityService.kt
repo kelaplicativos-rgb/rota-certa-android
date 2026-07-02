@@ -38,6 +38,7 @@ import kotlin.math.roundToInt
 class LiveRideAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val screenshotInProgress = AtomicBoolean(false)
+    private val diagnosticEvents = mutableListOf<String>()
     private var analyzeJob: Job? = null
     private var overlayView: TextView? = null
     private var overlayParams: WindowManager.LayoutParams? = null
@@ -46,7 +47,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastAnalyzedHash: Int? = null
     private var lastSavedReadHash: Int? = null
     private var lastDiagnosticSignature: String? = null
-    private val diagnosticEvents = mutableListOf<String>()
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var serviceReady = false
@@ -56,6 +56,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastAccessibilityText: String = ""
     private var lastOcrText: String = ""
     private var currentSettings = AppSettings()
+    private var currentCardTemplates = emptyList<RideCardTemplate>()
     private var currentRadarColor = RadarColor.Default
     private var currentDistanceKm: Double? = null
 
@@ -84,11 +85,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         serviceReady = true
         traceEvent("service.onServiceConnected ready=true")
-        scope.launch {
-            repository.settings.collect { currentSettings = it }
-        }
+        scope.launch { repository.settings.collect { currentSettings = it } }
+        scope.launch { repository.cardTemplates.collect { currentCardTemplates = it } }
         scope.launch {
             currentSettings = repository.settings.first()
+            currentCardTemplates = repository.cardTemplates.first()
             showOverlay(RadarColor.Default)
             recordDiagnostic(
                 stage = "service_connected",
@@ -170,7 +171,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         lastScreenshotMillis = now
         traceEvent("screenshot.request started")
-
         runCatching {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
@@ -223,19 +223,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return ""
         val lines = mutableListOf<String>()
         collectNodeText(root, lines)
-        return lines
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString("\n")
+        return lines.map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString("\n")
     }
 
     private fun collectNodeText(node: AccessibilityNodeInfo?, lines: MutableList<String>) {
         if (node == null) return
-
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let { lines += it }
         node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { lines += it }
-
         for (index in 0 until node.childCount) {
             collectNodeText(runCatching { node.getChild(index) }.getOrNull(), lines)
         }
@@ -255,10 +249,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val snapshotHash = snapshotText.snapshotHash()
         traceEvent("process.snapshot length=${snapshotText.length} hash=$snapshotHash")
-        if (RideScreenTextClassifier.shouldIgnore(snapshotText)) {
-            traceEvent("classifier.ignore=true hash=$snapshotHash")
+        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
+            traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
+            resetToDefault(reason = reason, text = snapshotText, record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
 
@@ -281,13 +276,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
             val reason = rideOfferRejectReason(fields)
             traceEvent("classifier.ride_offer=false reason=$reason")
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
-            resetToDefault(
-                reason = reason,
-                text = snapshotText,
-                fields = fields,
-            )
+            resetToDefault(reason = reason, text = snapshotText, fields = fields)
             return
         }
+
+        val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
+        if (currentSettings.requireRegisteredRideCard && cardMatch == null) {
+            val reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado. Salvei a amostra; cadastre o modelo para liberar o farol."
+            traceEvent("card_model.missing package=${packageName.orEmpty()} templates=${currentCardTemplates.size}")
+            saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
+            saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
+            resetToDefault(reason = reason, text = snapshotText, fields = fields)
+            return
+        }
+        traceEvent("card_model.match name=${cardMatch?.template?.name ?: "disabled"} score=${cardMatch?.score ?: 0.0}")
 
         if (snapshotHash == lastAnalyzedHash) {
             traceEvent("analysis.skip duplicate_hash=$snapshotHash")
@@ -297,7 +299,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             traceEvent("analysis.skip analyzing=true")
             return
         }
-        analyzeLiveText(snapshotText, fields, snapshotHash)
+        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch)
     }
 
     private fun rememberSourceText(packageName: String?, source: TextSource, text: String) {
@@ -308,7 +310,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             lastAccessibilityText = ""
             lastOcrText = ""
         }
-
         when (source) {
             TextSource.Accessibility -> lastAccessibilityText = text.trim()
             TextSource.Ocr -> lastOcrText = text.trim()
@@ -339,56 +340,57 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
+    private suspend fun saveCapturedCardScreen(
+        text: String,
+        fields: RideFields,
+        snapshotHash: Int,
+        parserName: String,
+        packageName: String?,
+    ) {
+        repository.addCapturedScreen(
+            CapturedRideScreen(
+                createdAtMillis = System.currentTimeMillis(),
+                packageName = packageName?.lowercase(Locale.ROOT),
+                textHash = snapshotHash,
+                textPreview = text.trim().take(DIAGNOSTIC_TEXT_LIMIT),
+                parserName = parserName,
+                pickup = fields.pickup,
+                destination = fields.destination,
+                fare = fields.fare,
+            ),
+        )
+    }
+
     private fun looksLikeRideOffer(text: String, fields: RideFields): Boolean {
         if (!RideScreenTextClassifier.looksLikeRideCard(text)) return false
-
         val destination = fields.destination?.lowercase(Locale.ROOT).orEmpty()
         if (destination.isBlank()) return false
+        val pickup = fields.pickup?.lowercase(Locale.ROOT).orEmpty()
+        if (pickup.isNotBlank() && pickup == destination) return false
 
         val normalized = text.lowercase(Locale.ROOT)
         val hasDestinationAddressSignal = listOf(
-            "rua",
-            "r.",
-            "avenida",
-            "av.",
-            "travessa",
-            "bairro",
-            "jardim",
-            "cidade",
-            "parque",
-            "tatuape",
-            "tatuapé",
+            "rua", "r.", "avenida", "av.", "travessa", "bairro", "jardim", "cidade", "parque", "tatuape", "tatuapé",
         ).any { destination.contains(it) } || Regex("""\b\d{1,5}\b""").containsMatchIn(destination)
         val hasRideCardSignal = listOf(
-            "pedido de viagem",
-            "pedidos de viagem",
-            "aceitar",
-            "aceitar por",
-            "selecionar",
-            "negocia",
-            "perfil premium",
-            "perfil essencial",
-            "uberx",
-            "pop expresso",
-            "exclusivo",
-            "viagem longa",
-            "radar de viagens",
-            "ofereça sua tarifa",
-            "ofereca sua tarifa",
-            "preço justo",
-            "preco justo",
+            "pedido de viagem", "pedidos de viagem", "aceitar", "aceitar por", "selecionar", "negocia",
+            "perfil premium", "perfil essencial", "uberx", "pop expresso", "exclusivo", "viagem longa",
+            "radar de viagens", "ofereça sua tarifa", "ofereca sua tarifa", "preço justo", "preco justo",
         ).any { normalized.contains(it) }
         val hasMapPointSignal = Regex("""(?m)^\s*[ab]\s+""", RegexOption.IGNORE_CASE).containsMatchIn(text)
-
         return hasDestinationAddressSignal && (hasRideCardSignal || hasMapPointSignal)
     }
 
-    private suspend fun analyzeLiveText(text: String, fields: RideFields, snapshotHash: Int) {
+    private suspend fun analyzeLiveText(
+        text: String,
+        fields: RideFields,
+        snapshotHash: Int,
+        cardMatch: RideCardTemplateMatch?,
+    ) {
         if (!serviceReady || !shouldScanCurrentWindow() || analyzing) return
         analyzing = true
         traceEvent("analysis.start hash=$snapshotHash destination=${fields.destination.diagnosticValue()}")
         currentSettings = repository.settings.first()
-
         try {
             val settings = currentSettings
             val region = DeviceRegion(country = "Brasil")
@@ -412,7 +414,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 alternativeDistanceKm = alternativeDistanceKm,
             )
             traceEvent("decision.result recommendation=${result.recommendation} reason=${result.reason}")
-
             repository.addAnalysis(result)
             lastSavedReadHash = snapshotHash
             if (!shouldScanCurrentWindow() && !isPassiveDiagnosticPackage(currentWindowPackageName())) {
@@ -423,6 +424,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     text = text,
                     fields = fields,
                     result = result,
+                    cardTemplateMatch = cardMatch,
                 )
                 return
             }
@@ -434,10 +436,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 Recommendation.InsufficientData -> RadarColor.Default
             }
             traceEvent("overlay.apply color=${radarColor.diagnosticLabel} distance=${result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
-            showOverlay(
-                color = radarColor,
-                distanceKm = result.nearestConfiguredDistanceKm(),
-            )
+            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
             recordDiagnostic(
                 stage = "analysis_result",
                 color = radarColor,
@@ -445,6 +444,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 text = text,
                 fields = fields,
                 result = result,
+                cardTemplateMatch = cardMatch,
             )
         } catch (error: Exception) {
             traceEvent("analysis.error ${error::class.java.simpleName}: ${error.message.orEmpty()}")
@@ -455,6 +455,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 text = text,
                 fields = fields,
                 error = error,
+                cardTemplateMatch = cardMatch,
             )
         } finally {
             analyzing = false
@@ -486,12 +487,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastAnalyzedHash = null
         showOverlay(RadarColor.Default)
         if (record) {
-            recordDiagnostic(
-                stage = "default",
-                reason = reason,
-                text = text,
-                fields = fields,
-            )
+            recordDiagnostic(stage = "default", reason = reason, text = text, fields = fields)
         }
     }
 
@@ -506,10 +502,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
         if (normalized in SCREEN_READER_PACKAGES) return true
-
         val settings = currentSettings
         if (!settings.restrictToSelectedRideApps) return true
-
         return normalized in selectedRidePackages(settings)
     }
 
@@ -540,6 +534,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun rideOfferRejectReason(fields: RideFields): String = when {
         fields.destination.isNullOrBlank() -> "Destino final nao identificado no texto lido."
+        !fields.pickup.isNullOrBlank() && fields.pickup.equals(fields.destination, ignoreCase = true) ->
+            "Destino final igual ao embarque; aguardando leitura mais completa."
         else -> "Destino foi lido, mas a tela nao parece um card de corrida aceito pelo filtro."
     }
 
@@ -551,9 +547,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         fields: RideFields? = null,
         result: AnalysisResult? = null,
         error: Throwable? = null,
+        cardTemplateMatch: RideCardTemplateMatch? = null,
     ) {
         if (stage != "service_connected" && isPassiveDiagnosticPackage(activePackageName)) return
-
         val settings = currentSettings
         val diagnosticColor = color ?: currentRadarColor
         val hash = text?.snapshotHash()
@@ -571,6 +567,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             reason = reason.withDiagnosticEvents(),
             restrictToSelectedRideApps = settings.restrictToSelectedRideApps,
             selectedPackages = selectedRidePackages(settings).toList().sorted(),
+            registeredCardRequired = settings.requireRegisteredRideCard,
+            registeredCardMatched = cardTemplateMatch?.template?.name,
             textLength = text?.length ?: 0,
             textHash = hash,
             textPreview = text?.trim().orEmpty().take(DIAGNOSTIC_TEXT_LIMIT),
@@ -581,17 +579,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
             alternativeDistanceKm = result?.pickupToAlternativeKm,
             error = error?.let { "${it::class.java.simpleName}: ${it.message.orEmpty()}" },
         )
-        scope.launch {
-            runCatching { repository.saveDiagnostic(diagnostic) }
-        }
+        scope.launch { runCatching { repository.saveDiagnostic(diagnostic) } }
     }
 
     private fun traceEvent(message: String) {
-        val event = "${System.currentTimeMillis()} $message"
-        diagnosticEvents += event
-        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) {
-            diagnosticEvents.removeAt(0)
-        }
+        diagnosticEvents += "${System.currentTimeMillis()} $message"
+        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) diagnosticEvents.removeAt(0)
     }
 
     private fun String.withDiagnosticEvents(): String {
@@ -604,10 +597,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun String?.diagnosticValue(maxLength: Int = 80): String =
-        this?.replace(Regex("""\s+"""), " ")
-            ?.trim()
-            ?.take(maxLength)
-            ?: "null"
+        this?.replace(Regex("""\s+"""), " ")?.trim()?.take(maxLength) ?: "null"
 
     private fun formatDiagnosticKm(value: Double): String =
         String.format(Locale("pt", "BR"), "%.1fkm", value)
@@ -631,12 +621,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             newView.setTypeface(Typeface.DEFAULT_BOLD)
             newView.setOnClickListener { openApp() }
             newView.setOnTouchListener(BubbleTouchListener())
-            val added = runCatching { manager.addView(newView, params) }.isSuccess
-            if (!added) {
-                overlayView = null
-                overlayParams = null
-                return
-            }
+            if (!runCatching { manager.addView(newView, params) }.isSuccess) return
             overlayView = newView
             overlayParams = params
         }
@@ -649,12 +634,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun formatBubbleDistanceKm(distanceKm: Double?): String {
-        if (distanceKm == null) return ""
-        return when {
-            distanceKm < 1.0 -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
-            else -> distanceKm.roundToInt().coerceAtMost(99).toString()
-        }
+    private fun formatBubbleDistanceKm(distanceKm: Double?): String = when {
+        distanceKm == null -> ""
+        distanceKm < 1.0 -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
+        else -> distanceKm.roundToInt().coerceAtMost(99).toString()
     }
 
     private fun bubbleTextSizeSp(text: String): Float = when {
@@ -703,7 +686,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         override fun onTouch(view: View, event: MotionEvent): Boolean {
             val params = overlayParams ?: return false
             val manager = windowManager ?: return false
-
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = event.rawX
@@ -723,17 +705,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
-                    bubblePrefs.edit()
-                        .putInt(KEY_BUBBLE_X, params.x)
-                        .putInt(KEY_BUBBLE_Y, params.y)
-                        .apply()
-                    if (!moved) {
-                        view.performClick()
-                    }
+                    bubblePrefs.edit().putInt(KEY_BUBBLE_X, params.x).putInt(KEY_BUBBLE_Y, params.y).apply()
+                    if (!moved) view.performClick()
                     return true
                 }
             }
-
             return false
         }
     }
@@ -752,16 +728,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun String.snapshotHash(): Int =
-        lines()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .joinToString("\n")
-            .hashCode()
+        lines().map { it.trim() }.filter { it.isNotBlank() }.joinToString("\n").hashCode()
 
-    private enum class TextSource {
-        Accessibility,
-        Ocr,
-    }
+    private enum class TextSource { Accessibility, Ocr }
 
     private enum class RadarColor(
         private val normalArgb: Int,
@@ -801,6 +770,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "com.simplemobiletools.gallery",
         )
         val IGNORED_PACKAGES = setOf(
+            "android",
             "com.android.settings",
             "com.android.systemui",
             "com.google.android.inputmethod.latin",
@@ -812,6 +782,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "com.android.launcher",
             "com.android.systemui",
             "com.google.android.apps.maps",
+            "com.waze",
             "com.google.android.apps.nexuslauncher",
             "com.google.android.inputmethod.latin",
             "com.openai.chatgpt",
