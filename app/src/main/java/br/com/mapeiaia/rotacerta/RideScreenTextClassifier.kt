@@ -11,11 +11,11 @@ object RideScreenTextClassifier {
         RegexOption.IGNORE_CASE,
     )
     private val addressRegex = Regex(
-        """\b(?:rua|r\.|avenida|av\.|rodovia|estrada|travessa|alameda|praca|bairro)\b""",
+        """(?:\b(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque)\b|\b(?:r|av)\.)""",
         RegexOption.IGNORE_CASE,
     )
     private val mapAddressMarkerRegex = Regex(
-        """(?m)^\s*[ab]\s+(?:rua|r\.|avenida|av\.|rodovia|estrada|travessa|alameda|praca|bairro|[\wÀ-ÿ]+\s*,?\s*\d{1,5})\b""",
+        """(?m)^\s*[ab]\s+(?:(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|bairro|jardim|cidade|parque)\b|\b(?:r|av)\.|[\wÀ-ÿ]+\s*,?\s*\d{1,5})""",
         RegexOption.IGNORE_CASE,
     )
     private val rideKeywords = listOf(
