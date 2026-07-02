@@ -37,3 +37,5 @@ jobs:
           git add -A
           git commit -m "Handle 99 OCR noise in ride cards"
           git push origin HEAD:main
+
+# trigger after registration
