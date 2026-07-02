@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.location.Geocoder
 import android.net.Uri
 import androidx.core.content.ContextCompat
@@ -26,9 +27,46 @@ class OcrService(private val context: Context) {
     }
 
     suspend fun extractText(bitmap: Bitmap): String = withContext(Dispatchers.Default) {
-        val image = InputImage.fromBitmap(bitmap, 0)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        recognizer.process(image).await().text
+        val texts = buildBitmapVariants(bitmap).mapNotNull { candidate ->
+            runCatching { recognizer.process(InputImage.fromBitmap(candidate, 0)).await().text }.getOrNull()
+        }
+        mergeOcrTexts(texts)
+    }
+
+    private fun buildBitmapVariants(bitmap: Bitmap): List<Bitmap> {
+        val cropTop = (bitmap.height * 0.22f).toInt().coerceIn(0, bitmap.height - 1)
+        val lowerScreen = Bitmap.createBitmap(bitmap, 0, cropTop, bitmap.width, bitmap.height - cropTop)
+        return listOf(bitmap, lowerScreen, invertBitmap(bitmap), invertBitmap(lowerScreen))
+    }
+
+    private fun invertBitmap(source: Bitmap): Bitmap {
+        val output = source.copy(Bitmap.Config.ARGB_8888, true)
+        val width = output.width
+        val height = output.height
+        val pixels = IntArray(width * height)
+        output.getPixels(pixels, 0, width, 0, 0, width, height)
+        for (index in pixels.indices) {
+            val color = pixels[index]
+            pixels[index] = Color.argb(
+                Color.alpha(color),
+                255 - Color.red(color),
+                255 - Color.green(color),
+                255 - Color.blue(color),
+            )
+        }
+        output.setPixels(pixels, 0, width, 0, 0, width, height)
+        return output
+    }
+
+    private fun mergeOcrTexts(texts: List<String>): String {
+        val lines = linkedSetOf<String>()
+        texts
+            .flatMap { it.lines() }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .forEach { lines += it }
+        return lines.joinToString("\n")
     }
 }
 
