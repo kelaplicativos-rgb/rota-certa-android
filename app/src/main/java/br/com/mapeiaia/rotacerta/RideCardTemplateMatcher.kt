@@ -5,6 +5,10 @@ import java.util.Locale
 import kotlin.math.max
 
 object RideCardTemplateMatcher {
+    const val UBER_PACKAGE = "com.ubercab.driver"
+    const val NINETY_NINE_PACKAGE = "com.app99.driver"
+    const val INDRIVE_PACKAGE = "sinet.startup.inDriver"
+
     private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:seg|min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
@@ -35,6 +39,20 @@ object RideCardTemplateMatcher {
         "dinheiro",
         "pix",
     )
+
+    private val uberPackagePhrases = listOf("uberx", "exclusivo", "viagem longa", "radar de viagens", "pop expresso")
+    private val ninetyNinePackagePhrases = listOf("negocia", "perfil premium", "perfil essencial")
+    private val inDrivePackagePhrases = listOf("pedido de viagem", "ofereca sua tarifa", "ofereça sua tarifa", "preco justo", "preço justo")
+
+    fun inferPackageName(text: String): String? {
+        val normalized = text.normalizedForCardMatch()
+        return when {
+            uberPackagePhrases.any { normalized.contains(it.normalizedForCardMatch()) } -> UBER_PACKAGE
+            ninetyNinePackagePhrases.any { normalized.contains(it.normalizedForCardMatch()) } -> NINETY_NINE_PACKAGE
+            inDrivePackagePhrases.any { normalized.contains(it.normalizedForCardMatch()) } -> INDRIVE_PACKAGE
+            else -> null
+        }
+    }
 
     fun createTemplate(packageName: String?, text: String, name: String? = null): RideCardTemplate {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }

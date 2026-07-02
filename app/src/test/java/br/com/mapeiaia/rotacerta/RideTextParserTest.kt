@@ -341,4 +341,56 @@ class RideTextParserTest {
         assertEquals("2,5 km", fields.distance)
         assertEquals("1 min", fields.time)
     }
+
+    @Test
+    fun infersUberTemplatePackageFromSyntheticText() {
+        val packageName = RideCardTemplateMatcher.inferPackageName(
+            """
+                UberX
+                Exclusivo
+                R$ 22,10
+                Viagem longa
+            """.trimIndent(),
+        )
+
+        assertEquals(RideCardTemplateMatcher.UBER_PACKAGE, packageName)
+    }
+
+    @Test
+    fun infersNinetyNineTemplatePackageFromSyntheticText() {
+        val packageName = RideCardTemplateMatcher.inferPackageName(
+            """
+                Negocia
+                Perfil Premium
+                R$ 18,00
+            """.trimIndent(),
+        )
+
+        assertEquals(RideCardTemplateMatcher.NINETY_NINE_PACKAGE, packageName)
+    }
+
+    @Test
+    fun infersInDriveTemplatePackageFromSyntheticText() {
+        val packageName = RideCardTemplateMatcher.inferPackageName(
+            """
+                Pedido de viagem
+                Ofereça sua tarifa
+                Preço justo
+            """.trimIndent(),
+        )
+
+        assertEquals(RideCardTemplateMatcher.INDRIVE_PACKAGE, packageName)
+    }
+
+    @Test
+    fun createsTemplateFromSyntheticTextWithoutPublishingRealPrintData() {
+        val template = RideCardTemplateMatcher.createTemplate(
+            packageName = RideCardTemplateMatcher.UBER_PACKAGE,
+            text = "UberX\nExclusivo\nRua Exemplo, 123",
+        )
+
+        assertEquals(RideCardTemplateMatcher.UBER_PACKAGE, template.packageName)
+        assertTrue(template.requiredFeatures.contains("uberx"))
+        assertTrue(template.requiredFeatures.contains("exclusivo"))
+    }
 }

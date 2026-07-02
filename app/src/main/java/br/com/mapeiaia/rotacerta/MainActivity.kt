@@ -78,6 +78,7 @@ fun RotaCertaApp() {
     val history by repository.analyses.collectAsState(initial = emptyList())
     val diagnostic by repository.diagnostic.collectAsState(initial = null)
     val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
+    val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
     val scope = rememberCoroutineScope()
@@ -85,6 +86,8 @@ fun RotaCertaApp() {
     var tab by remember { mutableStateOf("analise") }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
+    var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${cardTemplates.size}") }
+    var unreadTemplatePrints by remember { mutableStateOf(0) }
 
     fun registerRideCard(packageName: String?, text: String) {
         if (text.isBlank()) {
@@ -92,9 +95,10 @@ fun RotaCertaApp() {
             return
         }
         scope.launch {
-            val template = RideCardTemplateMatcher.createTemplate(packageName, text)
+            val inferredPackageName = packageName ?: RideCardTemplateMatcher.inferPackageName(text)
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackageName, text)
             repository.addCardTemplate(template)
-            Toast.makeText(context, "Card cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Modelo cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -106,6 +110,39 @@ fun RotaCertaApp() {
             if (coordinate != null) {
                 region = geocodingService.reverseGeocode(coordinate)
             }
+        }
+    }
+
+    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            unreadTemplatePrints = 0
+            templateStatus = "Lendo ${uris.size} print(s)..."
+            var failures = 0
+            val knownTemplates = cardTemplates.mapNotNull { template ->
+                template.sampleHash?.let { hash -> template.packageName.orEmpty() to hash }
+            }.toMutableSet()
+
+            uris.forEach { uri ->
+                val extractedText = runCatching { ocrService.extractText(uri) }.getOrDefault("")
+                val packageName = RideCardTemplateMatcher.inferPackageName(extractedText)
+                if (extractedText.isBlank() || packageName == null) {
+                    failures += 1
+                } else {
+                    val template = RideCardTemplateMatcher.createTemplate(packageName, extractedText)
+                    template.sampleHash?.let { knownTemplates += template.packageName.orEmpty() to it }
+                    repository.addCardTemplate(template)
+                }
+            }
+
+            unreadTemplatePrints = failures
+            templateStatus = "Modelos cadastrados: ${knownTemplates.size}"
+        }
+    }
+
+    LaunchedEffect(cardTemplates.size) {
+        if (!templateStatus.startsWith("Lendo ")) {
+            templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
         }
     }
 
@@ -155,9 +192,12 @@ fun RotaCertaApp() {
                     latestResult = history.firstOrNull(),
                     diagnostic = diagnostic,
                     cardTemplates = cardTemplates,
+                    templateStatus = templateStatus,
+                    unreadTemplatePrints = unreadTemplatePrints,
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onRegisterRideCard = ::registerRideCard,
+                    onPickCardModels = { cardModelPicker.launch("image/*") },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
@@ -180,9 +220,12 @@ private fun AnalysisScreen(
     latestResult: AnalysisResult?,
     diagnostic: LiveDiagnostic?,
     cardTemplates: List<RideCardTemplate>,
+    templateStatus: String,
+    unreadTemplatePrints: Int,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
     onRegisterRideCard: (String?, String) -> Unit,
+    onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
 ) {
@@ -262,6 +305,14 @@ private fun AnalysisScreen(
             )
         }
     }
+
+    Spacer(Modifier.height(10.dp))
+    CardModelsCard(
+        cardTemplates = cardTemplates,
+        templateStatus = templateStatus,
+        unreadTemplatePrints = unreadTemplatePrints,
+        onPickCardModels = onPickCardModels,
+    )
 
     Spacer(Modifier.height(10.dp))
     DiagnosticCard(
@@ -356,6 +407,28 @@ private fun AnalysisScreen(
 }
 
 @Composable
+private fun CardModelsCard(
+    cardTemplates: List<RideCardTemplate>,
+    templateStatus: String,
+    unreadTemplatePrints: Int,
+    onPickCardModels: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Modelos de cards", fontWeight = FontWeight.Bold)
+            Text("Modelos cadastrados: ${cardTemplates.size}")
+            Button(onClick = onPickCardModels, modifier = Modifier.fillMaxWidth()) {
+                Text("Anexar modelos de cards (prints)")
+            }
+            Text(templateStatus, style = MaterialTheme.typography.bodySmall)
+            if (unreadTemplatePrints > 0) {
+                Text("Prints sem leitura: $unreadTemplatePrints", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
 private fun DiagnosticCard(
     diagnostic: LiveDiagnostic?,
     cardTemplates: List<RideCardTemplate>,
@@ -393,7 +466,7 @@ private fun DiagnosticCard(
                 onClick = { onRegisterRideCard(diagnostic.packageName, diagnostic.textPreview) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Cadastrar esta tela como card")
+                Text("Cadastrar texto lido como modelo")
             }
         }
     }
