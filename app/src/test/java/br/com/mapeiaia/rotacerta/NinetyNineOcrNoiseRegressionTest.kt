@@ -11,7 +11,7 @@ class NinetyNineOcrNoiseRegressionTest {
         val text = """
             14:52 99
             SAPOPEMBA
-            R$O,00
+            R${'$'}O,00
             PASSAGEIRO TESTE
             Av. Afons
             FAÇA UMA
@@ -22,8 +22,8 @@ class NinetyNineOcrNoiseRegressionTest {
             de Saúde - Jardim S
             6.!55
             Cavid eta
-            R$ 29,99
-            R$2.0km
+            R${'$'} 29,99
+            R${'$'}2.0km
         """.trimIndent()
 
         assertTrue(RideScreenTextClassifier.looksLikeRideCard(text))
