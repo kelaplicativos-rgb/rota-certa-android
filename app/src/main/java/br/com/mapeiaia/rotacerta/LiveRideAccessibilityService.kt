@@ -19,7 +19,9 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var analyzeJob: Job? = null
     private var overlayView: TextView? = null
     private var overlayParams: WindowManager.LayoutParams? = null
+    private var overlayMenuView: LinearLayout? = null
+    private var overlayMenuParams: WindowManager.LayoutParams? = null
     private var windowManager: WindowManager? = null
     private var lastSnapshotHash: Int? = null
     private var lastAnalyzedHash: Int? = null
@@ -57,11 +61,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastOcrText: String = ""
     private var currentSettings = AppSettings()
     private var currentCardTemplates = emptyList<RideCardTemplate>()
-    private var currentRadarColor = RadarColor.Default
+    private var currentRadarColor = RadarColor.Idle
     private var currentDistanceKm: Double? = null
 
     private lateinit var repository: SettingsRepository
     private lateinit var geocodingService: GeocodingService
+    private lateinit var gpsAddressResolver: GpsAddressResolver
+    private lateinit var locationService: DeviceLocationService
     private lateinit var googleMapsService: GoogleMapsService
     private lateinit var ocrService: OcrService
     private lateinit var parser: RideTextParser
@@ -72,6 +78,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         super.onCreate()
         repository = SettingsRepository(applicationContext)
         geocodingService = GeocodingService(applicationContext)
+        gpsAddressResolver = GpsAddressResolver(applicationContext)
+        locationService = DeviceLocationService(applicationContext)
         googleMapsService = GoogleMapsService()
         ocrService = OcrService(applicationContext)
         parser = RideTextParser()
@@ -90,10 +98,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch {
             currentSettings = repository.settings.first()
             currentCardTemplates = repository.cardTemplates.first()
-            showOverlay(RadarColor.Default)
+            showOverlay(RadarColor.Idle)
             recordDiagnostic(
                 stage = "service_connected",
-                reason = "Servico de acessibilidade conectado; bolinha pronta em amarelo.",
+                reason = "Servico de acessibilidade conectado; bolinha em espera.",
             )
             startContinuousScan()
         }
@@ -105,10 +113,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("event package=${activePackageName.orEmpty()} type=${event.eventType}")
         if (!shouldScanPackage(activePackageName)) {
             traceEvent("event blocked package=${activePackageName.orEmpty()} reason=${scanBlockReason(activePackageName)}")
-            if (isPassiveDiagnosticPackage(activePackageName)) return
-            resetToDefault(reason = scanBlockReason(activePackageName), record = true)
+            if (isPassiveDiagnosticPackage(activePackageName)) {
+                resetToIdle(reason = scanBlockReason(activePackageName), record = false)
+                return
+            }
+            resetToIdle(reason = scanBlockReason(activePackageName), record = true)
             return
         }
+        if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
         scheduleVisibleTextAnalysis(delayMs = 80L)
         requestScreenshotAnalysis()
     }
@@ -132,10 +144,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch {
             while (serviceReady) {
                 if (shouldScanCurrentWindow()) {
+                    if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
                     scheduleVisibleTextAnalysis(delayMs = 0L)
                     requestScreenshotAnalysis()
-                } else if (!isPassiveDiagnosticPackage(currentWindowPackageName())) {
-                    resetToDefault(reason = "Janela atual nao permitida para leitura.", record = false)
+                } else {
+                    resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
                 }
                 delay(SCAN_LOOP_MS)
             }
@@ -498,19 +511,121 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun resetToIdle(
+        reason: String,
+        record: Boolean = false,
+    ) {
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        lastAccessibilityText = ""
+        lastOcrText = ""
+        showOverlay(RadarColor.Idle)
+        if (record) {
+            recordDiagnostic(stage = "idle", color = RadarColor.Idle, reason = reason)
+        }
+    }
+
+    private fun saveCurrentRideCardFromBubble() {
+        scope.launch {
+            val packageName = currentWindowPackageName() ?: activePackageName
+            val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
+                collectVisibleTextForAction()
+            }
+            if (text.isBlank()) {
+                toast("Abra o card de corrida e tente salvar novamente.")
+                recordDiagnostic(
+                    stage = "bubble_save_card_empty",
+                    color = currentRadarColor,
+                    reason = "Nao havia texto lido suficiente para salvar card de corrida.",
+                )
+                return@launch
+            }
+
+            val inferredPackage = packageName?.lowercase(Locale.ROOT)
+                ?: RideCardTemplateMatcher.inferPackageName(text)
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
+            repository.addCardTemplate(template)
+            val parseResult = parser.parseWithMetadata(text, inferredPackage)
+            repository.addCapturedScreen(
+                CapturedRideScreen(
+                    createdAtMillis = System.currentTimeMillis(),
+                    packageName = inferredPackage,
+                    textHash = text.snapshotHash(),
+                    textPreview = text.trim().take(DIAGNOSTIC_TEXT_LIMIT),
+                    parserName = parseResult.parserName,
+                    pickup = parseResult.fields.pickup,
+                    destination = parseResult.fields.destination,
+                    fare = parseResult.fields.fare,
+                ),
+            )
+            toast("Card de corrida salvo.")
+            recordDiagnostic(
+                stage = "bubble_save_card",
+                color = currentRadarColor,
+                reason = "Card de corrida salvo pela bolinha: ${template.name}.",
+                text = text,
+                fields = parseResult.fields,
+            )
+        }
+    }
+
+    private fun saveCurrentPlaceFromBubble(type: SavedPlaceType) {
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                toast("Autorize a localizacao para salvar este local.")
+                recordDiagnostic(
+                    stage = "bubble_save_place_no_gps",
+                    color = currentRadarColor,
+                    reason = "Nao foi possivel captar GPS para salvar o local.",
+                )
+                return@launch
+            }
+
+            val resolved = gpsAddressResolver.resolve(coordinate)
+            val createdAt = System.currentTimeMillis()
+            val isAlert = type == SavedPlaceType.ProximityAlert
+            val place = SavedPlace(
+                id = "place-$createdAt-${coordinate.latitude}-${coordinate.longitude}",
+                name = if (isAlert) "Alerta de proximidade" else "Local salvo",
+                type = type,
+                address = resolved.addressLine,
+                coordinate = coordinate,
+                alertDistanceMeters = if (isAlert) currentSettings.proximityAlertDistanceMeters else null,
+                createdAtMillis = createdAt,
+            )
+            repository.addSavedPlace(place)
+            toast(if (isAlert) "Alerta de proximidade criado." else "Local salvo.")
+            recordDiagnostic(
+                stage = if (isAlert) "bubble_save_proximity_alert" else "bubble_save_place",
+                color = currentRadarColor,
+                reason = if (isAlert) {
+                    "Alerta de proximidade salvo pela bolinha a ${place.alertDistanceMeters ?: 200} metros."
+                } else {
+                    "Local salvo pela bolinha."
+                },
+            )
+        }
+    }
+
+    private fun collectVisibleTextForAction(): String {
+        val root = rootInActiveWindow ?: return ""
+        val lines = mutableListOf<String>()
+        collectNodeText(root, lines)
+        return lines.map { it.trim() }.filter { it.isNotBlank() }.distinct().joinToString("\n")
+    }
+
     private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
 
     private fun currentWindowPackageName(): String? =
         rootInActiveWindow?.packageName?.toString() ?: activePackageName
 
     private fun shouldScanPackage(packageName: String?): Boolean {
-        val normalized = packageName?.lowercase(Locale.ROOT) ?: return true
+        val normalized = packageName?.lowercase(Locale.ROOT) ?: return false
         if (normalized == this.packageName) return false
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
-        if (normalized in SCREEN_READER_PACKAGES) return true
         val settings = currentSettings
-        if (!settings.restrictToSelectedRideApps) return true
         return normalized in selectedRidePackages(settings)
     }
 
@@ -532,9 +647,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (normalized == this.packageName) return "Rota Certa esta em primeiro plano; leitura pausada."
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return "Pacote passivo ignorado sem apagar a ultima decisao: $normalized."
         if (normalized in IGNORED_PACKAGES) return "Pacote ignorado para evitar leitura fora do card: $normalized."
-        if (normalized in SCREEN_READER_PACKAGES) return "Pacote de foto/arquivo permitido para leitura de tela: $normalized."
-        if (currentSettings.restrictToSelectedRideApps && normalized !in selectedRidePackages(currentSettings)) {
-            return "Modo restrito ligado; pacote nao selecionado: $normalized."
+        if (normalized !in selectedRidePackages(currentSettings)) {
+            return "Pacote fora dos apps monitorados; bolinha em espera: $normalized."
         }
         return "Pacote permitido: $normalized."
     }
@@ -626,7 +740,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             newView.includeFontPadding = false
             newView.setTextColor(Color.BLACK)
             newView.setTypeface(Typeface.DEFAULT_BOLD)
-            newView.setOnClickListener { openApp() }
+            newView.setOnClickListener { toggleActionMenu() }
             newView.setOnTouchListener(BubbleTouchListener())
             if (!runCatching { manager.addView(newView, params) }.isSuccess) return
             overlayView = newView
@@ -656,6 +770,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun removeOverlay() {
+        hideActionMenu()
         val view = overlayView ?: return
         runCatching { windowManager?.removeView(view) }
         overlayView = null
@@ -675,12 +790,97 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun openApp() {
+        hideActionMenu()
         runCatching {
             startActivity(
                 Intent(this, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             )
         }
+    }
+
+    private fun toggleActionMenu() {
+        if (overlayMenuView != null) {
+            hideActionMenu()
+        } else {
+            showActionMenu()
+        }
+    }
+
+    private fun showActionMenu() {
+        val manager = windowManager ?: return
+        if (overlayMenuView != null) return
+        val bubbleParams = overlayParams ?: return
+        val menu = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.argb(238, 32, 32, 32))
+                setStroke(dp(1), Color.argb(220, 255, 255, 255))
+            }
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            addView(actionMenuItem("🏠  Abrir Rota Certa") { openApp() })
+            addView(actionMenuItem("💾  Salvar card de corrida") {
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
+            addView(actionMenuItem("📍  Salvar este local") {
+                hideActionMenu()
+                saveCurrentPlaceFromBubble(SavedPlaceType.Place)
+            })
+            addView(actionMenuItem("🔔  Criar alerta de proximidade") {
+                hideActionMenu()
+                saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)
+            })
+        }
+        val params = WindowManager.LayoutParams(
+            dp(260),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleParams.x + dp(76)
+            y = bubbleParams.y
+        }
+        if (runCatching { manager.addView(menu, params) }.isSuccess) {
+            overlayMenuView = menu
+            overlayMenuParams = params
+        }
+    }
+
+    private fun actionMenuItem(label: String, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            minHeight = dp(42)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { action() }
+        }
+
+    private fun hideActionMenu() {
+        val view = overlayMenuView ?: return
+        runCatching { windowManager?.removeView(view) }
+        overlayMenuView = null
+        overlayMenuParams = null
+    }
+
+    private fun updateActionMenuPosition() {
+        val manager = windowManager ?: return
+        val view = overlayMenuView ?: return
+        val params = overlayMenuParams ?: return
+        val bubbleParams = overlayParams ?: return
+        params.x = bubbleParams.x + dp(76)
+        params.y = bubbleParams.y
+        runCatching { manager.updateViewLayout(view, params) }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
 
     private inner class BubbleTouchListener : View.OnTouchListener {
@@ -709,6 +909,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     params.x = (startX + deltaX).roundToInt().coerceAtLeast(0)
                     params.y = (startY + deltaY).roundToInt().coerceAtLeast(0)
                     runCatching { manager.updateViewLayout(view, params) }
+                    updateActionMenuPosition()
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
@@ -744,6 +945,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         private val darkArgb: Int,
         val diagnosticLabel: String,
     ) {
+        Idle(Color.rgb(117, 117, 117), Color.rgb(66, 66, 66), "cinza"),
         Default(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4), "amarelo"),
         Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59), "verde"),
         Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29), "vermelho");
@@ -766,16 +968,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val PACKAGE_99_DRIVER = "com.app99.driver"
         const val PACKAGE_UBER_DRIVER = "com.ubercab.driver"
         const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
-        val SCREEN_READER_PACKAGES = setOf(
-            "com.google.android.apps.photos",
-            "com.google.android.apps.docs",
-            "com.google.android.apps.nbu.files",
-            "com.android.documentsui",
-            "com.sec.android.gallery3d",
-            "com.samsung.android.gallery3d",
-            "com.miui.gallery",
-            "com.simplemobiletools.gallery",
-        )
         val IGNORED_PACKAGES = setOf(
             "android",
             "com.android.settings",

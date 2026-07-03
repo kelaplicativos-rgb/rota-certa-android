@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -78,6 +79,7 @@ fun RotaCertaApp() {
     val history by repository.analyses.collectAsState(initial = emptyList())
     val diagnostic by repository.diagnostic.collectAsState(initial = null)
     val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
+    val savedPlaces by repository.savedPlaces.collectAsState(initial = emptyList())
     val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
@@ -201,12 +203,14 @@ fun RotaCertaApp() {
                     latestResult = history.firstOrNull(),
                     diagnostic = diagnostic,
                     cardTemplates = cardTemplates,
+                    savedPlaces = savedPlaces,
                     templateStatus = templateStatus,
                     unreadTemplatePrints = unreadTemplatePrints,
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onRegisterRideCard = ::registerRideCard,
                     onDeleteCardModel = ::deleteCardModel,
+                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
                     onPickCardModels = { cardModelPicker.launch("image/*") },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -230,12 +234,14 @@ private fun AnalysisScreen(
     latestResult: AnalysisResult?,
     diagnostic: LiveDiagnostic?,
     cardTemplates: List<RideCardTemplate>,
+    savedPlaces: List<SavedPlace>,
     templateStatus: String,
     unreadTemplatePrints: Int,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
     onRegisterRideCard: (String?, String) -> Unit,
     onDeleteCardModel: (RideCardTemplate) -> Unit,
+    onDeleteSavedPlace: (SavedPlace) -> Unit,
     onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
@@ -331,6 +337,12 @@ private fun AnalysisScreen(
         diagnostic = diagnostic,
         cardTemplates = cardTemplates,
         onRegisterRideCard = onRegisterRideCard,
+    )
+
+    Spacer(Modifier.height(10.dp))
+    SavedPlacesCard(
+        savedPlaces = savedPlaces,
+        onDeleteSavedPlace = onDeleteSavedPlace,
     )
 
     Spacer(Modifier.height(10.dp))
@@ -501,6 +513,41 @@ private fun DiagnosticCard(
 }
 
 @Composable
+private fun SavedPlacesCard(
+    savedPlaces: List<SavedPlace>,
+    onDeleteSavedPlace: (SavedPlace) -> Unit,
+) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Locais salvos", fontWeight = FontWeight.Bold)
+            if (savedPlaces.isEmpty()) {
+                Text(
+                    "Toque na bolinha e use Salvar este local ou Criar alerta de proximidade.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                return@Column
+            }
+            savedPlaces.forEach { place ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(place.name, fontWeight = FontWeight.Bold)
+                        Text(savedPlaceTypeLabel(place), style = MaterialTheme.typography.bodySmall)
+                        Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }) {
+                        Text("GPS")
+                    }
+                    OutlinedButton(onClick = { onDeleteSavedPlace(place) }) {
+                        Text("Apagar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
     val radiusInfo = resultRadiusInfo(result, settings)
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -604,6 +651,11 @@ private fun SettingsScreen(
 
         RadiusSlider("Raio casa", draft.homeRadiusKm, { draft = draft.copy(homeRadiusKm = it) }, { onSave(draft) })
         RadiusSlider("Raio alfinete", draft.alternativeRadiusKm, { draft = draft.copy(alternativeRadiusKm = it) }, { onSave(draft) })
+        ProximityAlertDistanceSlider(
+            value = draft.proximityAlertDistanceMeters,
+            onValueChange = { draft = draft.copy(proximityAlertDistanceMeters = it) },
+            onValueChangeFinished = { onSave(draft) },
+        )
         OutlinedTextField(
             value = draft.googleMapsApiKey,
             onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
@@ -719,6 +771,28 @@ private fun BubbleOpacitySlider(value: Double, onValueChange: (Double) -> Unit, 
 }
 
 @Composable
+private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Unit, onValueChangeFinished: () -> Unit) {
+    val allowedValues = listOf(200, 500, 1000)
+    val selectedIndex = allowedValues.indexOf(value).takeIf { it >= 0 } ?: 0
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Distancia do alerta de proximidade")
+            Text("${allowedValues[selectedIndex]} m", fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = selectedIndex.toFloat(),
+            onValueChange = { rawValue ->
+                val index = rawValue.roundToInt().coerceIn(0, allowedValues.lastIndex)
+                onValueChange(allowedValues[index])
+            },
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = 0f..allowedValues.lastIndex.toFloat(),
+            steps = allowedValues.size - 2,
+        )
+    }
+}
+
+@Composable
 private fun HistoryScreen(history: List<AnalysisResult>) {
     if (history.isEmpty()) {
         Text("Nenhuma analise salva ainda.")
@@ -794,6 +868,23 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
     appendLine("Erro: ${error ?: "nenhum"}")
     appendLine("--- TEXTO LIDO ---")
     appendLine(textPreview.ifBlank { "sem texto" })
+}
+
+private fun savedPlaceTypeLabel(place: SavedPlace): String = when (place.type) {
+    SavedPlaceType.Place -> "Local salvo"
+    SavedPlaceType.ProximityAlert -> "Alerta de proximidade: ${place.alertDistanceMeters ?: 200} m"
+}
+
+private fun openSavedPlaceInGps(context: Context, place: SavedPlace) {
+    val uri = Uri.parse(
+        "geo:${place.coordinate.latitude},${place.coordinate.longitude}" +
+            "?q=${place.coordinate.latitude},${place.coordinate.longitude}(${Uri.encode(place.name)})",
+    )
+    val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+        .onFailure {
+            Toast.makeText(context, "Nao consegui abrir o GPS neste aparelho.", Toast.LENGTH_SHORT).show()
+        }
 }
 
 private fun formatDestination(value: String?): String {
