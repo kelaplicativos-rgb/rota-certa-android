@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -180,6 +181,40 @@ class SettingsRepository(private val context: Context) {
                 .getOrDefault(emptyList())
             prefs[savedPlacesKey] = json.encodeToString(current.filterNot { it.id == placeId })
         }
+    }
+
+    suspend fun exportBackupJson(): String {
+        val backupSettings = settings.first().let { current ->
+            if (current.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
+                current.copy(googleMapsApiKey = "")
+            } else {
+                current
+            }
+        }
+        val backup = RotaCertaBackup(
+            createdAtMillis = System.currentTimeMillis(),
+            appVersionName = BuildConfig.VERSION_NAME,
+            appVersionCode = BuildConfig.VERSION_CODE,
+            settings = backupSettings,
+            analyses = analyses.first(),
+            cardTemplates = cardTemplates.first(),
+            capturedScreens = capturedScreens.first(),
+            savedPlaces = savedPlaces.first(),
+        )
+        return json.encodeToString(backup)
+    }
+
+    suspend fun restoreBackupJson(content: String): RotaCertaBackup {
+        val backup = json.decodeFromString<RotaCertaBackup>(content)
+        saveSettings(backup.settings)
+        context.dataStore.edit { prefs ->
+            prefs[history] = json.encodeToString(backup.analyses.take(50))
+            prefs[rideCardTemplates] = json.encodeToString(backup.cardTemplates.take(30))
+            prefs[capturedRideScreens] = json.encodeToString(backup.capturedScreens.take(20))
+            prefs[savedPlacesKey] = json.encodeToString(backup.savedPlaces.take(200))
+            prefs.remove(liveDiagnostic)
+        }
+        return backup
     }
 
     private fun decodeCoordinate(value: String?): Coordinate? =

@@ -25,6 +25,19 @@ data class AppSettings(
 )
 
 @Serializable
+data class RotaCertaBackup(
+    val version: Int = 1,
+    val createdAtMillis: Long = 0L,
+    val appVersionName: String = "",
+    val appVersionCode: Int = 0,
+    val settings: AppSettings = AppSettings(),
+    val analyses: List<AnalysisResult> = emptyList(),
+    val cardTemplates: List<RideCardTemplate> = emptyList(),
+    val capturedScreens: List<CapturedRideScreen> = emptyList(),
+    val savedPlaces: List<SavedPlace> = emptyList(),
+)
+
+@Serializable
 data class Coordinate(
     val latitude: Double,
     val longitude: Double,

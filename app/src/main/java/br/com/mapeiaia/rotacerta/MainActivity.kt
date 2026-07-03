@@ -90,6 +90,7 @@ fun RotaCertaApp() {
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
     var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${cardTemplates.size}") }
     var unreadTemplatePrints by remember { mutableStateOf(0) }
+    var backupStatus by remember { mutableStateOf("") }
 
     fun registerRideCard(packageName: String?, text: String) {
         if (text.isBlank()) {
@@ -155,6 +156,48 @@ fun RotaCertaApp() {
                 failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
                 imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
                 else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
+            }
+        }
+    }
+
+    val backupFileCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) {
+            backupStatus = "Backup cancelado."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            backupStatus = "Criando backup..."
+            runCatching {
+                val backupJson = repository.exportBackupJson()
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                    writer.write(backupJson)
+                } ?: error("Nao consegui abrir o arquivo de backup.")
+            }.onSuccess {
+                backupStatus = "Backup salvo com sucesso."
+            }.onFailure { error ->
+                backupStatus = "Falha ao salvar backup: ${error.message.orEmpty()}"
+            }
+        }
+    }
+
+    val backupFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) {
+            backupStatus = "Restauracao cancelada."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            backupStatus = "Restaurando backup..."
+            runCatching {
+                val backupJson = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                    reader.readText()
+                } ?: error("Nao consegui abrir o arquivo selecionado.")
+                repository.restoreBackupJson(backupJson)
+            }.onSuccess { backup ->
+                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."
+            }.onFailure { error ->
+                backupStatus = "Falha ao restaurar backup: ${error.message.orEmpty()}"
             }
         }
     }
@@ -228,8 +271,11 @@ fun RotaCertaApp() {
                 )
                 "config" -> SettingsScreen(
                     settings = settings,
+                    backupStatus = backupStatus,
                     onSave = { scope.launch { repository.saveSettings(it) } },
                     onRegionDetected = { detectedRegion -> region = detectedRegion },
+                    onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
+                    onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
                 )
                 "historico" -> HistoryScreen(history)
             }
@@ -605,8 +651,11 @@ private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
 @Composable
 private fun SettingsScreen(
     settings: AppSettings,
+    backupStatus: String,
     onSave: (AppSettings) -> Unit,
     onRegionDetected: (DeviceRegion) -> Unit,
+    onCreateBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
 ) {
     val context = LocalContext.current
     val locationService = remember { DeviceLocationService(context) }
@@ -687,6 +736,11 @@ private fun SettingsScreen(
             onValueChange = { draft = draft.copy(proximityAlertDistanceMeters = it) },
             onValueChangeFinished = { onSave(draft) },
         )
+        BackupCard(
+            status = backupStatus,
+            onCreateBackup = onCreateBackup,
+            onRestoreBackup = onRestoreBackup,
+        )
         OutlinedTextField(
             value = draft.googleMapsApiKey,
             onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
@@ -713,6 +767,32 @@ private fun SettingsScreen(
         )
         if (gpsStatus.isNotBlank()) Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+    }
+}
+
+@Composable
+private fun BackupCard(
+    status: String,
+    onCreateBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Backup dos dados", fontWeight = FontWeight.Bold)
+            Text(
+                "Salva configuracoes, modelos de cards, locais e alertas de proximidade em um arquivo do celular.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onCreateBackup, modifier = Modifier.weight(1f)) {
+                    Text("Criar backup")
+                }
+                OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.weight(1f)) {
+                    Text("Restaurar")
+                }
+            }
+            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
