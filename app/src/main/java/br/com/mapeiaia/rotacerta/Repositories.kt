@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -32,10 +33,12 @@ class SettingsRepository(private val context: Context) {
     private val monitorInDrive = booleanPreferencesKey("monitor_indrive")
     private val extraMonitoredPackages = stringPreferencesKey("extra_monitored_packages")
     private val requireRegisteredRideCard = booleanPreferencesKey("require_registered_ride_card")
+    private val proximityAlertDistanceMeters = intPreferencesKey("proximity_alert_distance_meters")
     private val history = stringPreferencesKey("history")
     private val liveDiagnostic = stringPreferencesKey("live_diagnostic")
     private val rideCardTemplates = stringPreferencesKey("ride_card_templates")
     private val capturedRideScreens = stringPreferencesKey("captured_ride_screens")
+    private val savedPlacesKey = stringPreferencesKey("saved_places")
     private val json = Json { ignoreUnknownKeys = true }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -58,6 +61,7 @@ class SettingsRepository(private val context: Context) {
             monitorInDrive = prefs[monitorInDrive] ?: true,
             extraMonitoredPackages = prefs[extraMonitoredPackages].orEmpty(),
             requireRegisteredRideCard = prefs[requireRegisteredRideCard] ?: true,
+            proximityAlertDistanceMeters = prefs[proximityAlertDistanceMeters] ?: 200,
         )
     }
 
@@ -80,6 +84,11 @@ class SettingsRepository(private val context: Context) {
             .getOrDefault(emptyList())
     }
 
+    val savedPlaces: Flow<List<SavedPlace>> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
+            .getOrDefault(emptyList())
+    }
+
     suspend fun saveSettings(settings: AppSettings) {
         context.dataStore.edit { prefs ->
             prefs[homeAddress] = settings.homeAddress
@@ -96,6 +105,7 @@ class SettingsRepository(private val context: Context) {
             prefs[monitorInDrive] = settings.monitorInDrive
             prefs[extraMonitoredPackages] = settings.extraMonitoredPackages.trim()
             prefs[requireRegisteredRideCard] = settings.requireRegisteredRideCard
+            prefs[proximityAlertDistanceMeters] = settings.proximityAlertDistanceMeters.coerceIn(200, 1000)
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
@@ -144,6 +154,23 @@ class SettingsRepository(private val context: Context) {
                 .getOrDefault(emptyList())
             val updated = listOf(screen) + current.filterNot { it.textHash == screen.textHash && it.packageName == screen.packageName }
             prefs[capturedRideScreens] = json.encodeToString(updated.take(20))
+        }
+    }
+
+    suspend fun addSavedPlace(place: SavedPlace) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
+                .getOrDefault(emptyList())
+            val updated = listOf(place) + current.filterNot { it.id == place.id }
+            prefs[savedPlacesKey] = json.encodeToString(updated.take(200))
+        }
+    }
+
+    suspend fun removeSavedPlace(placeId: String) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
+                .getOrDefault(emptyList())
+            prefs[savedPlacesKey] = json.encodeToString(current.filterNot { it.id == placeId })
         }
     }
 
