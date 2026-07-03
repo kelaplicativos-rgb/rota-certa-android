@@ -166,6 +166,14 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateSavedPlace(place: SavedPlace) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
+                .getOrDefault(emptyList())
+            prefs[savedPlacesKey] = json.encodeToString(current.map { if (it.id == place.id) place else it })
+        }
+    }
+
     suspend fun removeSavedPlace(placeId: String) {
         context.dataStore.edit { prefs ->
             val current = runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }

@@ -12,6 +12,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.speech.tts.TextToSpeech
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
@@ -35,7 +36,11 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class LiveRideAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -53,6 +58,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastDiagnosticSignature: String? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
+    private var proximityAlertMonitorStarted = false
     private var serviceReady = false
     private var analyzing = false
     private var activePackageName: String? = null
@@ -61,8 +67,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastOcrText: String = ""
     private var currentSettings = AppSettings()
     private var currentCardTemplates = emptyList<RideCardTemplate>()
+    private var currentSavedPlaces = emptyList<SavedPlace>()
     private var currentRadarColor = RadarColor.Idle
     private var currentDistanceKm: Double? = null
+    private var textToSpeech: TextToSpeech? = null
+    private var textToSpeechReady = false
+    private val proximityAlertRuntime = mutableMapOf<String, ProximityAlertRuntime>()
 
     private lateinit var repository: SettingsRepository
     private lateinit var geocodingService: GeocodingService
@@ -86,6 +96,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         decisionEngine = DecisionEngine()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+        textToSpeech = TextToSpeech(applicationContext) { status ->
+            textToSpeechReady = status == TextToSpeech.SUCCESS
+            if (textToSpeechReady) textToSpeech?.language = Locale("pt", "BR")
+        }
         traceEvent("service.onCreate initialized")
     }
 
@@ -95,6 +109,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("service.onServiceConnected ready=true")
         scope.launch { repository.settings.collect { currentSettings = it } }
         scope.launch { repository.cardTemplates.collect { currentCardTemplates = it } }
+        scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
         scope.launch {
             currentSettings = repository.settings.first()
             currentCardTemplates = repository.cardTemplates.first()
@@ -104,6 +119,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 reason = "Servico de acessibilidade conectado; bolinha em espera.",
             )
             startContinuousScan()
+            startProximityAlertMonitor()
         }
     }
 
@@ -133,6 +149,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         screenshotInProgress.set(false)
         analyzeJob?.cancel()
         removeOverlay()
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
+        textToSpeechReady = false
         scope.cancel()
         super.onDestroy()
     }
@@ -151,6 +171,52 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
                 }
                 delay(SCAN_LOOP_MS)
+            }
+        }
+    }
+
+    private fun startProximityAlertMonitor() {
+        if (proximityAlertMonitorStarted || !serviceReady) return
+        proximityAlertMonitorStarted = true
+        traceEvent("proximity.loop started interval=${PROXIMITY_ALERT_LOOP_MS}ms")
+        scope.launch {
+            while (serviceReady) {
+                val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+                if (alerts.isNotEmpty()) checkProximityAlerts(alerts)
+                delay(PROXIMITY_ALERT_LOOP_MS)
+            }
+        }
+    }
+
+    private suspend fun checkProximityAlerts(alerts: List<SavedPlace>) {
+        val coordinate = locationService.currentCoordinate() ?: return
+        val now = System.currentTimeMillis()
+        val activeIds = alerts.map { it.id }.toSet()
+        proximityAlertRuntime.keys.retainAll(activeIds)
+
+        alerts.forEach { alert ->
+            val threshold = (alert.alertDistanceMeters ?: currentSettings.proximityAlertDistanceMeters).coerceIn(200, 1000)
+            val distanceMeters = distanceMeters(coordinate, alert.coordinate)
+            val runtime = proximityAlertRuntime.getOrPut(alert.id) { ProximityAlertRuntime() }
+            if (distanceMeters <= threshold) {
+                runtime.insideAlertZone = true
+                if (
+                    runtime.spokenCount < MAX_PROXIMITY_ALERT_SPEECH_COUNT &&
+                    now - runtime.lastSpokenAtMillis >= PROXIMITY_ALERT_REPEAT_GAP_MS
+                ) {
+                    speakProximityAlert(alert)
+                    runtime.spokenCount += 1
+                    runtime.lastSpokenAtMillis = now
+                    recordDiagnostic(
+                        stage = "proximity_alert_spoken",
+                        color = currentRadarColor,
+                        reason = "Alerta de proximidade falado: ${proximityAlertSpeech(alert)} a ${distanceMeters.roundToInt()} metros.",
+                    )
+                }
+            } else if (distanceMeters > threshold + PROXIMITY_ALERT_RESET_BUFFER_METERS) {
+                runtime.insideAlertZone = false
+                runtime.spokenCount = 0
+                runtime.lastSpokenAtMillis = 0L
             }
         }
     }
@@ -883,6 +949,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
 
+    private fun speakProximityAlert(place: SavedPlace) {
+        if (!textToSpeechReady) return
+        textToSpeech?.speak(
+            proximityAlertSpeech(place),
+            TextToSpeech.QUEUE_ADD,
+            null,
+            "proximity-alert-${place.id}-${System.currentTimeMillis()}",
+        )
+    }
+
+    private fun proximityAlertSpeech(place: SavedPlace): String {
+        val name = place.name.trim().ifBlank { "Alerta de proximidade" }
+        return "$name se aproximando"
+    }
+
+    private fun distanceMeters(from: Coordinate, to: Coordinate): Double {
+        val latDelta = Math.toRadians(to.latitude - from.latitude)
+        val lonDelta = Math.toRadians(to.longitude - from.longitude)
+        val fromLat = Math.toRadians(from.latitude)
+        val toLat = Math.toRadians(to.latitude)
+        val haversine = sin(latDelta / 2) * sin(latDelta / 2) +
+            cos(fromLat) * cos(toLat) * sin(lonDelta / 2) * sin(lonDelta / 2)
+        return 2 * EARTH_RADIUS_METERS * atan2(sqrt(haversine), sqrt(1 - haversine))
+    }
+
     private inner class BubbleTouchListener : View.OnTouchListener {
         private var downRawX = 0f
         private var downRawY = 0f
@@ -940,6 +1031,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private enum class TextSource { Accessibility, Ocr }
 
+    private data class ProximityAlertRuntime(
+        var spokenCount: Int = 0,
+        var insideAlertZone: Boolean = false,
+        var lastSpokenAtMillis: Long = 0L,
+    )
+
     private enum class RadarColor(
         private val normalArgb: Int,
         private val darkArgb: Int,
@@ -960,6 +1057,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private companion object {
         const val SCAN_LOOP_MS = 850L
         const val SCREENSHOT_INTERVAL_MS = 650L
+        const val PROXIMITY_ALERT_LOOP_MS = 15_000L
+        const val PROXIMITY_ALERT_REPEAT_GAP_MS = 20_000L
+        const val PROXIMITY_ALERT_RESET_BUFFER_METERS = 100
+        const val MAX_PROXIMITY_ALERT_SPEECH_COUNT = 2
+        const val EARTH_RADIUS_METERS = 6_371_000.0
         const val DIAGNOSTIC_TEXT_LIMIT = 1200
         const val DIAGNOSTIC_EVENT_LIMIT = 60
         const val BUBBLE_PREFS = "rota_certa_bubble"

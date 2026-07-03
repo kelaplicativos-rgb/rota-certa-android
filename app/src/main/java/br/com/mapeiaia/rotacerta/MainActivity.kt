@@ -111,6 +111,14 @@ fun RotaCertaApp() {
         }
     }
 
+    fun renameSavedPlace(place: SavedPlace, name: String) {
+        val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
+        scope.launch {
+            repository.updateSavedPlace(place.copy(name = safeName))
+            Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -210,6 +218,7 @@ fun RotaCertaApp() {
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
                     onRegisterRideCard = ::registerRideCard,
                     onDeleteCardModel = ::deleteCardModel,
+                    onRenameSavedPlace = ::renameSavedPlace,
                     onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
                     onPickCardModels = { cardModelPicker.launch("image/*") },
                     onOpenAccessibilitySettings = {
@@ -241,6 +250,7 @@ private fun AnalysisScreen(
     onSaveSettings: (AppSettings) -> Unit,
     onRegisterRideCard: (String?, String) -> Unit,
     onDeleteCardModel: (RideCardTemplate) -> Unit,
+    onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
     onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
@@ -342,6 +352,7 @@ private fun AnalysisScreen(
     Spacer(Modifier.height(10.dp))
     SavedPlacesCard(
         savedPlaces = savedPlaces,
+        onRenameSavedPlace = onRenameSavedPlace,
         onDeleteSavedPlace = onDeleteSavedPlace,
     )
 
@@ -515,6 +526,7 @@ private fun DiagnosticCard(
 @Composable
 private fun SavedPlacesCard(
     savedPlaces: List<SavedPlace>,
+    onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
     val context = LocalContext.current
@@ -529,17 +541,36 @@ private fun SavedPlacesCard(
                 return@Column
             }
             savedPlaces.forEach { place ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(place.name, fontWeight = FontWeight.Bold)
-                        Text(savedPlaceTypeLabel(place), style = MaterialTheme.typography.bodySmall)
-                        Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+                var draftName by remember(place.id, place.name) { mutableStateOf(place.name) }
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = draftName,
+                        onValueChange = { draftName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome falado no alerta" else "Nome do local") },
+                    )
+                    if (place.type == SavedPlaceType.ProximityAlert) {
+                        Text(
+                            "O app vai falar: ${draftName.ifBlank { defaultSavedPlaceName(place.type) }} se aproximando.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
-                    OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }) {
-                        Text("GPS")
-                    }
-                    OutlinedButton(onClick = { onDeleteSavedPlace(place) }) {
-                        Text("Apagar")
+                    Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.weight(1f)) {
+                            Text("GPS")
+                        }
+                        Button(
+                            enabled = draftName.trim() != place.name,
+                            onClick = { onRenameSavedPlace(place, draftName) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Salvar")
+                        }
+                        OutlinedButton(onClick = { onDeleteSavedPlace(place) }, modifier = Modifier.weight(1f)) {
+                            Text("Apagar")
+                        }
                     }
                 }
             }
@@ -873,6 +904,11 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
 private fun savedPlaceTypeLabel(place: SavedPlace): String = when (place.type) {
     SavedPlaceType.Place -> "Local salvo"
     SavedPlaceType.ProximityAlert -> "Alerta de proximidade: ${place.alertDistanceMeters ?: 200} m"
+}
+
+private fun defaultSavedPlaceName(type: SavedPlaceType): String = when (type) {
+    SavedPlaceType.Place -> "Local salvo"
+    SavedPlaceType.ProximityAlert -> "Alerta de proximidade"
 }
 
 private fun openSavedPlaceInGps(context: Context, place: SavedPlace) {
