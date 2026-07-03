@@ -1,3 +1,4 @@
-Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28666705685
+Build Debug APK requested for local backup and restore
+Source commit: daefdbc Add local backup and restore
+Requested at: 2026-07-03T14:45:00-03:00
 Artifact: rota-certa-debug-apk
-Commit: 6916bb321bfe6951a36bdd7df8aae7c0c802b39d
