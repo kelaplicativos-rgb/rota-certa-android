@@ -1,3 +1,4 @@
-Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28665815390
+Build Debug APK requested for spoken proximity alerts
+Source commit: 351c9b2 Add spoken proximity alerts
+Requested at: 2026-07-03T14:35:00-03:00
 Artifact: rota-certa-debug-apk
-Commit: f23c5d4a6afa6e505f98db471a9d2b71a59656bd
