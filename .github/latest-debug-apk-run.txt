@@ -1,3 +1,3 @@
-Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28616213079
-Artifact: rota-certa-debug-apk
-Commit: 6a995937c7743cac03e06c6d5a207c0773c448b7
+Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28665232574
+Artifact: pending
+Commit: fb00566949081b9da70ea6b4b1b548fad058a57b
