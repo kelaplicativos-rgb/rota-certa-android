@@ -21,6 +21,7 @@ data class AppSettings(
     val monitorInDrive: Boolean = true,
     val extraMonitoredPackages: String = "",
     val requireRegisteredRideCard: Boolean = true,
+    val proximityAlertDistanceMeters: Int = 200,
 )
 
 @Serializable
@@ -64,6 +65,25 @@ data class CapturedRideScreen(
     val pickup: String? = null,
     val destination: String? = null,
     val fare: String? = null,
+)
+
+@Serializable
+enum class SavedPlaceType {
+    Place,
+    ProximityAlert,
+}
+
+@Serializable
+data class SavedPlace(
+    val id: String,
+    val name: String,
+    val type: SavedPlaceType = SavedPlaceType.Place,
+    val address: String = "",
+    val coordinate: Coordinate,
+    val alertDistanceMeters: Int? = null,
+    val createdAtMillis: Long = 0L,
+    val lastTriggeredAtMillis: Long? = null,
+    val triggerCountInCurrentApproach: Int = 0,
 )
 
 enum class Recommendation {
