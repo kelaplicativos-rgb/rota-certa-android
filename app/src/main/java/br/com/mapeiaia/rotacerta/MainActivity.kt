@@ -245,24 +245,19 @@ fun RotaCertaApp() {
         ) {
             Text("Rota Certa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(deviceRegionLabel(region), style = MaterialTheme.typography.bodyMedium)
-            Text("Regra principal: farol so decide quando reconhecer card cadastrado.", style = MaterialTheme.typography.bodySmall)
+            Text("Aceite corridas cujo destino final fique dentro do raio definido por voce.", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
 
             when (tab) {
                 "analise" -> AnalysisScreen(
                     settings = settings,
                     latestResult = history.firstOrNull(),
-                    diagnostic = diagnostic,
                     cardTemplates = cardTemplates,
-                    savedPlaces = savedPlaces,
                     templateStatus = templateStatus,
                     unreadTemplatePrints = unreadTemplatePrints,
                     liveEnabled = liveEnabled,
                     onSaveSettings = { scope.launch { repository.saveSettings(it) } },
-                    onRegisterRideCard = ::registerRideCard,
                     onDeleteCardModel = ::deleteCardModel,
-                    onRenameSavedPlace = ::renameSavedPlace,
-                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
                     onPickCardModels = { cardModelPicker.launch("image/*") },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -271,8 +266,14 @@ fun RotaCertaApp() {
                 )
                 "config" -> SettingsScreen(
                     settings = settings,
+                    diagnostic = diagnostic,
+                    cardTemplates = cardTemplates,
+                    savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
                     onSave = { scope.launch { repository.saveSettings(it) } },
+                    onRegisterRideCard = ::registerRideCard,
+                    onRenameSavedPlace = ::renameSavedPlace,
+                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
                     onRegionDetected = { detectedRegion -> region = detectedRegion },
                     onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
                     onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
@@ -287,17 +288,12 @@ fun RotaCertaApp() {
 private fun AnalysisScreen(
     settings: AppSettings,
     latestResult: AnalysisResult?,
-    diagnostic: LiveDiagnostic?,
     cardTemplates: List<RideCardTemplate>,
-    savedPlaces: List<SavedPlace>,
     templateStatus: String,
     unreadTemplatePrints: Int,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
-    onRegisterRideCard: (String?, String) -> Unit,
     onDeleteCardModel: (RideCardTemplate) -> Unit,
-    onRenameSavedPlace: (SavedPlace, String) -> Unit,
-    onDeleteSavedPlace: (SavedPlace) -> Unit,
     onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
@@ -333,7 +329,7 @@ private fun AnalysisScreen(
                     homeCoordinate = coordinate,
                 ),
             )
-            homeStatus = "GPS casa salvo: ${formatCoordinate(coordinate)}"
+            homeStatus = "Endereco base salvo pelo GPS: ${formatCoordinate(coordinate)}"
         }
     }
 
@@ -345,7 +341,7 @@ private fun AnalysisScreen(
         if (permissions.values.any { it }) {
             captureHomeGps()
         } else {
-            homeStatus = "Localizacao negada. Autorize o GPS para salvar a casa atual."
+            homeStatus = "Localizacao negada. Autorize o GPS para salvar o endereco base."
         }
     }
 
@@ -359,6 +355,49 @@ private fun AnalysisScreen(
         )
     }
 
+    LiveReadingCard(
+        liveEnabled = liveEnabled,
+        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+        onRefreshLiveState = onRefreshLiveState,
+    )
+
+    Spacer(Modifier.height(10.dp))
+    HomeDecisionCard(
+        quickSettings = quickSettings,
+        homeStatus = homeStatus,
+        onSettingsChange = { quickSettings = it },
+        onRequestHomeGps = ::requestHomeGps,
+        onSave = { saveQuickSettings(quickSettings) },
+    )
+
+    Spacer(Modifier.height(10.dp))
+    RadiusQuickCard(
+        quickSettings = quickSettings,
+        onSettingsChange = { quickSettings = it },
+        onSaveSettings = onSaveSettings,
+    )
+
+    Spacer(Modifier.height(10.dp))
+    CardModelsCard(
+        cardTemplates = cardTemplates,
+        templateStatus = templateStatus,
+        unreadTemplatePrints = unreadTemplatePrints,
+        onPickCardModels = onPickCardModels,
+        onDeleteCardModel = onDeleteCardModel,
+    )
+
+    latestResult?.let {
+        Spacer(Modifier.height(12.dp))
+        ResultCard(it, settings)
+    }
+}
+
+@Composable
+private fun LiveReadingCard(
+    liveEnabled: Boolean,
+    onOpenAccessibilitySettings: () -> Unit,
+    onRefreshLiveState: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Leitura ao vivo", fontWeight = FontWeight.Bold)
@@ -370,120 +409,84 @@ private fun AnalysisScreen(
             }
             Text(
                 if (liveEnabled) {
-                    "Operando. Verde/vermelho so aparecem quando a tela bater com card cadastrado."
+                    "Operando. Verde/vermelho aparecem quando o app reconhece um card de corrida cadastrado."
                 } else {
-                    "Acesso negado. Ative 'Rota Certa - leitura ao vivo' nas configuracoes de Acessibilidade."
+                    "Ative 'Rota Certa - leitura ao vivo' nas configuracoes de Acessibilidade."
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
         }
     }
+}
 
-    Spacer(Modifier.height(10.dp))
-    CardModelsCard(
-        cardTemplates = cardTemplates,
-        templateStatus = templateStatus,
-        unreadTemplatePrints = unreadTemplatePrints,
-        onPickCardModels = onPickCardModels,
-        onDeleteCardModel = onDeleteCardModel,
-    )
-
-    Spacer(Modifier.height(10.dp))
-    DiagnosticCard(
-        diagnostic = diagnostic,
-        cardTemplates = cardTemplates,
-        onRegisterRideCard = onRegisterRideCard,
-    )
-
-    Spacer(Modifier.height(10.dp))
-    SavedPlacesCard(
-        savedPlaces = savedPlaces,
-        onRenameSavedPlace = onRenameSavedPlace,
-        onDeleteSavedPlace = onDeleteSavedPlace,
-    )
-
-    Spacer(Modifier.height(10.dp))
+@Composable
+private fun HomeDecisionCard(
+    quickSettings: AppSettings,
+    homeStatus: String,
+    onSettingsChange: (AppSettings) -> Unit,
+    onRequestHomeGps: () -> Unit,
+    onSave: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Home", fontWeight = FontWeight.Bold)
-            Text("Configure o ponto que o destino final precisa ficar perto.", style = MaterialTheme.typography.bodySmall)
+            Text("Endereco para aceitar corridas", fontWeight = FontWeight.Bold)
+            Text(
+                "Configure o ponto que o destino final precisa ficar perto. O Rota Certa usa este endereco e o raio em km para decidir aceitar ou recusar.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             OutlinedTextField(
                 value = quickSettings.homeAddress,
-                onValueChange = { quickSettings = quickSettings.copy(homeAddress = it, homeCoordinate = null) },
+                onValueChange = { onSettingsChange(quickSettings.copy(homeAddress = it, homeCoordinate = null)) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Casa / ponto principal") },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { requestHomeGps() }, modifier = Modifier.weight(1f)) {
+                Button(onClick = onRequestHomeGps, modifier = Modifier.weight(1f)) {
                     Text("Usar GPS atual")
                 }
                 OutlinedButton(
-                    onClick = {
-                        quickSettings = quickSettings.copy(homeCoordinate = null)
-                        homeStatus = "Digite o endereco e toque em Salvar home."
-                    },
+                    onClick = { onSettingsChange(quickSettings.copy(homeCoordinate = null)) },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Digitar")
                 }
             }
             quickSettings.homeCoordinate?.let {
-                Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+                Text("Endereco base salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
             }
             if (homeStatus.isNotBlank()) {
                 Text(homeStatus, style = MaterialTheme.typography.bodySmall)
             }
-            Button(onClick = { saveQuickSettings(quickSettings) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Salvar home")
+            Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
+                Text("Salvar endereco")
             }
         }
     }
+}
 
-    Spacer(Modifier.height(10.dp))
+@Composable
+private fun RadiusQuickCard(
+    quickSettings: AppSettings,
+    onSettingsChange: (AppSettings) -> Unit,
+    onSaveSettings: (AppSettings) -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Raio rapido", fontWeight = FontWeight.Bold)
+            Text("Raio de aceite", fontWeight = FontWeight.Bold)
+            Text("Defina ate quantos km do endereco salvo o destino final pode ficar.", style = MaterialTheme.typography.bodySmall)
             RadiusSlider(
                 label = "Casa",
                 value = quickSettings.homeRadiusKm,
-                onValueChange = { quickSettings = quickSettings.copy(homeRadiusKm = it) },
+                onValueChange = { onSettingsChange(quickSettings.copy(homeRadiusKm = it)) },
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
             )
             RadiusSlider(
                 label = "Alfinete",
                 value = quickSettings.alternativeRadiusKm,
-                onValueChange = { quickSettings = quickSettings.copy(alternativeRadiusKm = it) },
+                onValueChange = { onSettingsChange(quickSettings.copy(alternativeRadiusKm = it)) },
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
             )
         }
-    }
-
-    Spacer(Modifier.height(10.dp))
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Bolinha", fontWeight = FontWeight.Bold)
-            BubbleOpacitySlider(
-                value = quickSettings.bubbleOpacity,
-                onValueChange = { quickSettings = quickSettings.copy(bubbleOpacity = it) },
-                onValueChangeFinished = { onSaveSettings(quickSettings) },
-            )
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Cor mais escura")
-                Switch(
-                    checked = quickSettings.bubbleDarkMode,
-                    onCheckedChange = {
-                        quickSettings = quickSettings.copy(bubbleDarkMode = it)
-                        onSaveSettings(quickSettings.copy(bubbleDarkMode = it))
-                    },
-                )
-            }
-            Text("Toque na bolinha para abrir o Rota Certa. Arraste para mudar a posicao.", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-
-    latestResult?.let {
-        Spacer(Modifier.height(12.dp))
-        ResultCard(it, settings)
     }
 }
 
@@ -526,20 +529,17 @@ private fun CardModelsCard(
 }
 
 @Composable
-private fun DiagnosticCard(
+private fun DiagnosticExpander(
     diagnostic: LiveDiagnostic?,
     cardTemplates: List<RideCardTemplate>,
     onRegisterRideCard: (String?, String) -> Unit,
 ) {
     val context = LocalContext.current
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Diagnostico", fontWeight = FontWeight.Bold)
-            Text("Cards cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
-            if (diagnostic == null) {
-                Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
-                return@Column
-            }
+    ExpandableCard(title = "Diagnostico tecnico", initiallyExpanded = false) {
+        Text("Cards cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
+        if (diagnostic == null) {
+            Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
+        } else {
             Text("Cor: ${diagnostic.bubbleColor}")
             Text("Etapa: ${diagnostic.stage}")
             Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
@@ -575,50 +575,67 @@ private fun SavedPlacesCard(
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
-    val context = LocalContext.current
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Locais salvos", fontWeight = FontWeight.Bold)
-            if (savedPlaces.isEmpty()) {
-                Text(
-                    "Toque na bolinha e use Salvar este local ou Criar alerta de proximidade.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                return@Column
+    val places = savedPlaces.filter { it.type == SavedPlaceType.Place }
+    val alerts = savedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+
+    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = false) {
+        if (places.isEmpty()) {
+            Text("Nenhum local salvo ainda.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            places.forEach { place ->
+                SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
             }
-            savedPlaces.forEach { place ->
-                var draftName by remember(place.id, place.name) { mutableStateOf(place.name) }
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
-                    OutlinedTextField(
-                        value = draftName,
-                        onValueChange = { draftName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome falado no alerta" else "Nome do local") },
-                    )
-                    if (place.type == SavedPlaceType.ProximityAlert) {
-                        Text(
-                            "O app vai falar: ${draftName.ifBlank { defaultSavedPlaceName(place.type) }} se aproximando.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.weight(1f)) {
-                            Text("GPS")
-                        }
-                        Button(
-                            enabled = draftName.trim() != place.name,
-                            onClick = { onRenameSavedPlace(place, draftName) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Salvar")
-                        }
-                        OutlinedButton(onClick = { onDeleteSavedPlace(place) }, modifier = Modifier.weight(1f)) {
-                            Text("Apagar")
-                        }
-                    }
-                }
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
+    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = false) {
+        if (alerts.isEmpty()) {
+            Text("Nenhum alerta de proximidade criado ainda.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            alerts.forEach { place ->
+                SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedPlaceEditor(
+    place: SavedPlace,
+    onRenameSavedPlace: (SavedPlace, String) -> Unit,
+    onDeleteSavedPlace: (SavedPlace) -> Unit,
+) {
+    val context = LocalContext.current
+    var draftName by remember(place.id, place.name) { mutableStateOf(place.name) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = draftName,
+            onValueChange = { draftName = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome falado no alerta" else "Nome do local") },
+        )
+        if (place.type == SavedPlaceType.ProximityAlert) {
+            Text(
+                "O app vai falar: ${draftName.ifBlank { defaultSavedPlaceName(place.type) }} se aproximando.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.weight(1f)) {
+                Text("GPS")
+            }
+            Button(
+                enabled = draftName.trim() != place.name,
+                onClick = { onRenameSavedPlace(place, draftName) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Salvar")
+            }
+            OutlinedButton(onClick = { onDeleteSavedPlace(place) }, modifier = Modifier.weight(1f)) {
+                Text("Apagar")
             }
         }
     }
@@ -651,8 +668,14 @@ private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
 @Composable
 private fun SettingsScreen(
     settings: AppSettings,
+    diagnostic: LiveDiagnostic?,
+    cardTemplates: List<RideCardTemplate>,
+    savedPlaces: List<SavedPlace>,
     backupStatus: String,
     onSave: (AppSettings) -> Unit,
+    onRegisterRideCard: (String?, String) -> Unit,
+    onRenameSavedPlace: (SavedPlace, String) -> Unit,
+    onDeleteSavedPlace: (SavedPlace) -> Unit,
     onRegionDetected: (DeviceRegion) -> Unit,
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
@@ -704,46 +727,113 @@ private fun SettingsScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Configure o ponto que o destino final precisa ficar perto.", fontWeight = FontWeight.Bold)
-        OutlinedTextField(
-            value = draft.homeAddress,
-            onValueChange = { draft = draft.copy(homeAddress = it, homeCoordinate = null) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Casa / ponto principal") },
+        Text("Configuracoes", fontWeight = FontWeight.Bold)
+        DiagnosticExpander(
+            diagnostic = diagnostic,
+            cardTemplates = cardTemplates,
+            onRegisterRideCard = onRegisterRideCard,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { requestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) { Text("Usar GPS atual") }
-            OutlinedButton(onClick = { draft = draft.copy(homeCoordinate = null) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
-        }
-        draft.homeCoordinate?.let { Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
-
-        OutlinedTextField(
-            value = draft.alternativeAddress,
-            onValueChange = { draft = draft.copy(alternativeAddress = it, alternativeCoordinate = null) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Alfinete / localidade alternativa") },
+        BubbleSettingsCard(settings = draft, onChange = ::saveDraft)
+        SavedPlacesCard(
+            savedPlaces = savedPlaces,
+            onRenameSavedPlace = onRenameSavedPlace,
+            onDeleteSavedPlace = onDeleteSavedPlace,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { requestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) { Text("Usar GPS") }
-            OutlinedButton(onClick = { draft = draft.copy(alternativeCoordinate = null) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
-        }
-        draft.alternativeCoordinate?.let { Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
-
-        RadiusSlider("Raio casa", draft.homeRadiusKm, { draft = draft.copy(homeRadiusKm = it) }, { onSave(draft) })
-        RadiusSlider("Raio alfinete", draft.alternativeRadiusKm, { draft = draft.copy(alternativeRadiusKm = it) }, { onSave(draft) })
-        ProximityAlertDistanceSlider(
-            value = draft.proximityAlertDistanceMeters,
-            onValueChange = { draft = draft.copy(proximityAlertDistanceMeters = it) },
-            onValueChangeFinished = { onSave(draft) },
+        MonitoredAppsCard(settings = draft, onChange = ::saveDraft)
+        SettingsLocationCard(
+            draft = draft,
+            gpsStatus = gpsStatus,
+            onDraftChange = { draft = it },
+            onRequestGps = ::requestGps,
+            onSave = { onSave(draft) },
         )
+        MapsAndAdvancedCard(draft = draft, onDraftChange = { draft = it }, onSave = { onSave(draft) })
         BackupCard(
             status = backupStatus,
             onCreateBackup = onCreateBackup,
             onRestoreBackup = onRestoreBackup,
         )
+        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+    }
+}
+
+@Composable
+private fun BubbleSettingsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    ExpandableCard(title = "Bolinha e aparencia", initiallyExpanded = false) {
+        BubbleOpacitySlider(
+            value = settings.bubbleOpacity,
+            onValueChange = { onChange(settings.copy(bubbleOpacity = it)) },
+            onValueChangeFinished = {},
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Cor mais escura")
+            Switch(
+                checked = settings.bubbleDarkMode,
+                onCheckedChange = { onChange(settings.copy(bubbleDarkMode = it)) },
+            )
+        }
+        Text("Toque na bolinha para abrir o Rota Certa. Arraste para mudar a posicao.", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun SettingsLocationCard(
+    draft: AppSettings,
+    gpsStatus: String,
+    onDraftChange: (AppSettings) -> Unit,
+    onRequestGps: (LocationTarget) -> Unit,
+    onSave: () -> Unit,
+) {
+    ExpandableCard(title = "Enderecos e raios", initiallyExpanded = false) {
+        Text(
+            "Salve o endereco base para aceitar corridas dentro do raio de km definido.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = draft.homeAddress,
+            onValueChange = { onDraftChange(draft.copy(homeAddress = it, homeCoordinate = null)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Casa / ponto principal") },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onRequestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) { Text("Usar GPS atual") }
+            OutlinedButton(onClick = { onDraftChange(draft.copy(homeCoordinate = null)) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
+        }
+        draft.homeCoordinate?.let { Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
+
+        OutlinedTextField(
+            value = draft.alternativeAddress,
+            onValueChange = { onDraftChange(draft.copy(alternativeAddress = it, alternativeCoordinate = null)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Alfinete / localidade alternativa") },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onRequestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) { Text("Usar GPS") }
+            OutlinedButton(onClick = { onDraftChange(draft.copy(alternativeCoordinate = null)) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
+        }
+        draft.alternativeCoordinate?.let { Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
+
+        RadiusSlider("Raio casa", draft.homeRadiusKm, { onDraftChange(draft.copy(homeRadiusKm = it)) }, onSave)
+        RadiusSlider("Raio alfinete", draft.alternativeRadiusKm, { onDraftChange(draft.copy(alternativeRadiusKm = it)) }, onSave)
+        ProximityAlertDistanceSlider(
+            value = draft.proximityAlertDistanceMeters,
+            onValueChange = { onDraftChange(draft.copy(proximityAlertDistanceMeters = it)) },
+            onValueChangeFinished = onSave,
+        )
+        if (gpsStatus.isNotBlank()) Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun MapsAndAdvancedCard(
+    draft: AppSettings,
+    onDraftChange: (AppSettings) -> Unit,
+    onSave: () -> Unit,
+) {
+    ExpandableCard(title = "Google Maps e ajustes avancados", initiallyExpanded = false) {
         OutlinedTextField(
             value = draft.googleMapsApiKey,
-            onValueChange = { draft = draft.copy(googleMapsApiKey = it) },
+            onValueChange = { onDraftChange(draft.copy(googleMapsApiKey = it)) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Chave Google Maps API") },
             visualTransformation = PasswordVisualTransformation(),
@@ -752,21 +842,21 @@ private fun SettingsScreen(
             "Opcional: Google Maps melhora a precisao por rota real. Sem chave, o app usa distancia aproximada quando houver coordenadas confiaveis.",
             style = MaterialTheme.typography.bodySmall,
         )
-        MonitoredAppsCard(settings = draft, onChange = ::saveDraft)
         OutlinedTextField(
             value = draft.desiredKeywords,
-            onValueChange = { draft = draft.copy(desiredKeywords = it) },
+            onValueChange = { onDraftChange(draft.copy(desiredKeywords = it)) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Bairros/palavras desejados") },
         )
         OutlinedTextField(
             value = draft.avoidedKeywords,
-            onValueChange = { draft = draft.copy(avoidedKeywords = it) },
+            onValueChange = { onDraftChange(draft.copy(avoidedKeywords = it)) },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Bairros/palavras evitados") },
         )
-        if (gpsStatus.isNotBlank()) Text(gpsStatus, style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+        OutlinedButton(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
+            Text("Salvar ajustes avancados")
+        }
     }
 }
 
@@ -776,63 +866,79 @@ private fun BackupCard(
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Backup dos dados", fontWeight = FontWeight.Bold)
-            Text(
-                "Salva configuracoes, modelos de cards, locais e alertas de proximidade em um arquivo do celular.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onCreateBackup, modifier = Modifier.weight(1f)) {
-                    Text("Criar backup")
-                }
-                OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.weight(1f)) {
-                    Text("Restaurar")
-                }
+    ExpandableCard(title = "Backup dos dados", initiallyExpanded = false) {
+        Text(
+            "Salva configuracoes, modelos de cards, locais e alertas de proximidade em um arquivo do celular.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onCreateBackup, modifier = Modifier.weight(1f)) {
+                Text("Criar backup")
             }
-            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.weight(1f)) {
+                Text("Restaurar")
+            }
         }
+        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    ExpandableCard(title = "Apps monitorados", initiallyExpanded = false) {
+        SettingsSwitchRow(
+            label = "Exigir card cadastrado para farol",
+            checked = settings.requireRegisteredRideCard,
+            onCheckedChange = { onChange(settings.copy(requireRegisteredRideCard = it)) },
+        )
+        Text(
+            "Ligado: telas desconhecidas ficam amarelas e viram amostra. Desligado: usa o classificador antigo.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsSwitchRow(
+            label = "Ler somente apps selecionados",
+            checked = settings.restrictToSelectedRideApps,
+            onCheckedChange = { onChange(settings.copy(restrictToSelectedRideApps = it)) },
+        )
+        Text(
+            if (settings.restrictToSelectedRideApps) {
+                "Modo restrito: a bolinha so analisa os apps marcados abaixo. Outros apps voltam para amarelo."
+            } else {
+                "Modo livre: a bolinha analisa somente cards cadastrados e ignora telas passivas."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsSwitchRow("99 Motorista", settings.monitor99) { onChange(settings.copy(monitor99 = it)) }
+        SettingsSwitchRow("Uber Driver", settings.monitorUber) { onChange(settings.copy(monitorUber = it)) }
+        SettingsSwitchRow("inDrive", settings.monitorInDrive) { onChange(settings.copy(monitorInDrive = it)) }
+        OutlinedTextField(
+            value = settings.extraMonitoredPackages,
+            onValueChange = { onChange(settings.copy(extraMonitoredPackages = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Pacote extra permitido") },
+        )
+        Text("Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun ExpandableCard(
+    title: String,
+    initiallyExpanded: Boolean,
+    content: @Composable () -> Unit,
+) {
+    var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Apps monitorados", fontWeight = FontWeight.Bold)
-            SettingsSwitchRow(
-                label = "Exigir card cadastrado para farol",
-                checked = settings.requireRegisteredRideCard,
-                onCheckedChange = { onChange(settings.copy(requireRegisteredRideCard = it)) },
-            )
-            Text(
-                "Ligado: telas desconhecidas ficam amarelas e viram amostra. Desligado: usa o classificador antigo.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            SettingsSwitchRow(
-                label = "Ler somente apps selecionados",
-                checked = settings.restrictToSelectedRideApps,
-                onCheckedChange = { onChange(settings.copy(restrictToSelectedRideApps = it)) },
-            )
-            Text(
-                if (settings.restrictToSelectedRideApps) {
-                    "Modo restrito: a bolinha so analisa os apps marcados abaixo. Outros apps voltam para amarelo."
-                } else {
-                    "Modo livre: a bolinha analisa somente cards cadastrados e ignora telas passivas."
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-            SettingsSwitchRow("99 Motorista", settings.monitor99) { onChange(settings.copy(monitor99 = it)) }
-            SettingsSwitchRow("Uber Driver", settings.monitorUber) { onChange(settings.copy(monitorUber = it)) }
-            SettingsSwitchRow("inDrive", settings.monitorInDrive) { onChange(settings.copy(monitorInDrive = it)) }
-            OutlinedTextField(
-                value = settings.extraMonitoredPackages,
-                onValueChange = { onChange(settings.copy(extraMonitoredPackages = it)) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Pacote extra permitido") },
-            )
-            Text("Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.", style = MaterialTheme.typography.bodySmall)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Fechar" else "Abrir")
+                }
+            }
+            if (expanded) {
+                content()
+            }
         }
     }
 }
