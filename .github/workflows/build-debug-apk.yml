@@ -16,38 +16,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Apply pending Codex GPS/save feedback patch
-        run: |
-          set -euo pipefail
-          PATCH_WORKFLOW=".github/workflows/codex-apply-gps-save-feedback.yml"
-          if [ ! -f "$PATCH_WORKFLOW" ]; then
-            echo "No pending Codex patch workflow found."
-            exit 0
-          fi
-          python3 <<'PY'
-          from pathlib import Path
-          source = Path('.github/workflows/codex-apply-gps-save-feedback.yml').read_text()
-          marker = "git apply --whitespace=nowarn <<'PATCH'\n"
-          if marker not in source:
-              raise SystemExit('Patch marker not found')
-          patch = source.split(marker, 1)[1].split('\n          PATCH', 1)[0]
-          lines = [line[10:] if line.startswith('          ') else line for line in patch.splitlines()]
-          Path('/tmp/rota-certa-gps-save-feedback.patch').write_text('\n'.join(lines) + '\n')
-          PY
-          git apply --whitespace=nowarn /tmp/rota-certa-gps-save-feedback.patch
-          git rm -f "$PATCH_WORKFLOW"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/AndroidManifest.xml \
-            app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
-          git commit -m "Improve GPS monitoring and save feedback" || true
-          git push || true
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
