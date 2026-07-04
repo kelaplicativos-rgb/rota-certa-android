@@ -16,9 +16,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Apply pending radar import patch
+      - name: Apply pending innovation patch
         run: python3 .github/codex-radar-patch.py
+
+      - name: Commit applied innovation patch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement radar import and continuous GPS guidance"
+          git push
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -47,11 +58,12 @@ jobs:
       - name: Record debug APK run start
         run: |
           set -euo pipefail
+          CURRENT_SHA="$(git rev-parse HEAD)"
           mkdir -p .github
           {
             echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Artifact: pending"
-            echo "Commit: ${GITHUB_SHA}"
+            echo "Commit: ${CURRENT_SHA}"
           } > .github/latest-debug-apk-run.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -79,16 +91,15 @@ jobs:
       - name: Record latest APK run link
         run: |
           set -euo pipefail
+          CURRENT_SHA="$(git rev-parse HEAD)"
           mkdir -p .github
           {
             echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Artifact: rota-certa-debug-apk"
-            echo "Commit: ${GITHUB_SHA}"
+            echo "Commit: ${CURRENT_SHA}"
           } > .github/latest-debug-apk-run.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/latest-debug-apk-run.txt
           git commit -m "Record latest debug APK run" || exit 0
           git push
-
-# Keeps the debug APK workflow active after 99 parser and OCR noise fixes.
