@@ -1,4 +1,3 @@
-Build Debug APK run: pending
+Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28708214778
 Artifact: pending
-Commit: 1f6528429c30cb216715640a23d17e57945277f2
-Reason: trigger debug APK build for architecture refactor
+Commit: 93f96b8200e5caeb7eba8aa7176dd99bf351307a
