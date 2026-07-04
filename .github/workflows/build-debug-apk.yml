@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Apply pending radar import patch
+        run: python3 .github/codex-radar-patch.py
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
