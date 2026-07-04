@@ -1,6 +1,7 @@
 name: Apply Saved Place Naming Flow
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -13,7 +14,6 @@ jobs:
   patch-build:
     name: Patch naming flow and build APK
     runs-on: ubuntu-latest
-    if: github.actor != 'github-actions[bot]'
 
     steps:
       - name: Checkout
@@ -34,9 +34,7 @@ jobs:
           main_path = Path("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
           main = main_path.read_text()
 
-          main = replace_once(
-              main,
-              '''class MainActivity : ComponentActivity() {
+          main = replace_once(main, '''class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -48,8 +46,7 @@ jobs:
 }
 
 @Composable
-fun RotaCertaApp() {''',
-              '''class MainActivity : ComponentActivity() {
+fun RotaCertaApp() {''', '''class MainActivity : ComponentActivity() {
     private var launchIntent by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,30 +67,20 @@ fun RotaCertaApp() {''',
 }
 
 @Composable
-fun RotaCertaApp(launchIntent: Intent?) {''',
-              "MainActivity intent state",
-          )
+fun RotaCertaApp(launchIntent: Intent?) {''', "MainActivity intent state")
 
-          main = replace_once(
-              main,
-              '''    var tab by remember { mutableStateOf("analise") }
-    var region by remember { mutableStateOf(DeviceRegion()) }''',
-              '''    var tab by remember { mutableStateOf(TAB_ANALYSIS) }
+          replacements = [
+              ('''    var tab by remember { mutableStateOf("analise") }
+    var region by remember { mutableStateOf(DeviceRegion()) }''', '''    var tab by remember { mutableStateOf(TAB_ANALYSIS) }
     var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
-    var region by remember { mutableStateOf(DeviceRegion()) }''',
-              "tab state",
-          )
-
-          main = replace_once(
-              main,
-              '''    LaunchedEffect(cardTemplates.size) {
+    var region by remember { mutableStateOf(DeviceRegion()) }''', "tab state"),
+              ('''    LaunchedEffect(cardTemplates.size) {
         if (!templateStatus.startsWith("Lendo ")) {
             templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
         }
     }
 
-    LaunchedEffect(Unit) {''',
-              '''    LaunchedEffect(cardTemplates.size) {
+    LaunchedEffect(Unit) {''', '''    LaunchedEffect(cardTemplates.size) {
         if (!templateStatus.startsWith("Lendo ")) {
             templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
         }
@@ -107,85 +94,40 @@ fun RotaCertaApp(launchIntent: Intent?) {''',
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
     }
 
-    LaunchedEffect(Unit) {''',
-              "launch intent effect",
-          )
-
-          main = replace_once(
-              main,
-              '''                NavigationBarItem(selected = tab == "analise", onClick = { tab = "analise" }, label = { Text("Analise") }, icon = {})
+    LaunchedEffect(Unit) {''', "launch intent effect"),
+              ('''                NavigationBarItem(selected = tab == "analise", onClick = { tab = "analise" }, label = { Text("Analise") }, icon = {})
                 NavigationBarItem(selected = tab == "config", onClick = { tab = "config" }, label = { Text("Config") }, icon = {})
-                NavigationBarItem(selected = tab == "historico", onClick = { tab = "historico" }, label = { Text("Historico") }, icon = {})''',
-              '''                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
+                NavigationBarItem(selected = tab == "historico", onClick = { tab = "historico" }, label = { Text("Historico") }, icon = {})''', '''                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
                 NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
-                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})''',
-              "navigation constants",
-          )
-
-          main = replace_once(
-              main,
-              '''            when (tab) {
-                "analise" -> AnalysisScreen(''',
-              '''            when (tab) {
-                TAB_ANALYSIS -> AnalysisScreen(''',
-              "analysis tab constant",
-          )
-          main = replace_once(
-              main,
-              '''                "config" -> SettingsScreen(''',
-              '''                TAB_CONFIG -> SettingsScreen(''',
-              "config tab constant",
-          )
-          main = replace_once(
-              main,
-              '''                "historico" -> HistoryScreen(history)''',
-              '''                TAB_HISTORY -> HistoryScreen(history)''',
-              "history tab constant",
-          )
-
-          main = replace_once(
-              main,
-              '''                    savedPlaces = savedPlaces,
+                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})''', "navigation constants"),
+              ('''            when (tab) {
+                "analise" -> AnalysisScreen(''', '''            when (tab) {
+                TAB_ANALYSIS -> AnalysisScreen(''', "analysis tab constant"),
+              ('''                "config" -> SettingsScreen(''', '''                TAB_CONFIG -> SettingsScreen(''', "config tab constant"),
+              ('''                "historico" -> HistoryScreen(history)''', '''                TAB_HISTORY -> HistoryScreen(history)''', "history tab constant"),
+              ('''                    savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
-                    onSave = { scope.launch { repository.saveSettings(it) } },''',
-              '''                    savedPlaces = savedPlaces,
+                    onSave = { scope.launch { repository.saveSettings(it) } },''', '''                    savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
                     highlightedSavedPlaceId = highlightedSavedPlaceId,
-                    onSave = { scope.launch { repository.saveSettings(it) } },''',
-              "settings highlighted argument",
-          )
-
-          main = replace_once(
-              main,
-              '''    savedPlaces: List<SavedPlace>,
+                    onSave = { scope.launch { repository.saveSettings(it) } },''', "settings highlighted argument"),
+              ('''    savedPlaces: List<SavedPlace>,
     backupStatus: String,
-    onSave: (AppSettings) -> Unit,''',
-              '''    savedPlaces: List<SavedPlace>,
+    onSave: (AppSettings) -> Unit,''', '''    savedPlaces: List<SavedPlace>,
     backupStatus: String,
     highlightedSavedPlaceId: String?,
-    onSave: (AppSettings) -> Unit,''',
-              "settings highlighted parameter",
-          )
-
-          main = replace_once(
-              main,
-              '''        SavedPlacesCard(
+    onSave: (AppSettings) -> Unit,''', "settings highlighted parameter"),
+              ('''        SavedPlacesCard(
             savedPlaces = savedPlaces,
             onRenameSavedPlace = onRenameSavedPlace,
             onDeleteSavedPlace = onDeleteSavedPlace,
-        )''',
-              '''        SavedPlacesCard(
+        )''', '''        SavedPlacesCard(
             savedPlaces = savedPlaces,
             highlightedSavedPlaceId = highlightedSavedPlaceId,
             onRenameSavedPlace = onRenameSavedPlace,
             onDeleteSavedPlace = onDeleteSavedPlace,
-        )''',
-              "saved places highlighted argument",
-          )
-
-          main = replace_once(
-              main,
-              '''private fun SavedPlacesCard(
+        )''', "saved places highlighted argument"),
+              ('''private fun SavedPlacesCard(
     savedPlaces: List<SavedPlace>,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
@@ -193,8 +135,7 @@ fun RotaCertaApp(launchIntent: Intent?) {''',
     val places = savedPlaces.filter { it.type == SavedPlaceType.Place }
     val alerts = savedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
 
-    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = false) {''',
-              '''private fun SavedPlacesCard(
+    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = false) {''', '''private fun SavedPlacesCard(
     savedPlaces: List<SavedPlace>,
     highlightedSavedPlaceId: String?,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
@@ -211,71 +152,41 @@ fun RotaCertaApp(launchIntent: Intent?) {''',
         )
     }
 
-    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = highlightedType == SavedPlaceType.Place) {''',
-              "saved places card header",
-          )
-
-          main = replace_once(
-              main,
-              '''            places.forEach { place ->
+    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = highlightedType == SavedPlaceType.Place) {''', "saved places card header"),
+              ('''            places.forEach { place ->
                 SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
-            }''',
-              '''            places.forEach { place ->
+            }''', '''            places.forEach { place ->
                 SavedPlaceEditor(
                     place = place,
                     highlighted = place.id == highlightedSavedPlaceId,
                     onRenameSavedPlace = onRenameSavedPlace,
                     onDeleteSavedPlace = onDeleteSavedPlace,
                 )
-            }''',
-              "place editor highlighted",
-          )
-
-          main = replace_once(
-              main,
-              '''    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = false) {''',
-              '''    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = highlightedType == SavedPlaceType.ProximityAlert) {''',
-              "alert expander highlighted",
-          )
-
-          main = replace_once(
-              main,
-              '''            alerts.forEach { place ->
+            }''', "place editor highlighted"),
+              ('''    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = false) {''', '''    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = highlightedType == SavedPlaceType.ProximityAlert) {''', "alert expander highlighted"),
+              ('''            alerts.forEach { place ->
                 SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
-            }''',
-              '''            alerts.forEach { place ->
+            }''', '''            alerts.forEach { place ->
                 SavedPlaceEditor(
                     place = place,
                     highlighted = place.id == highlightedSavedPlaceId,
                     onRenameSavedPlace = onRenameSavedPlace,
                     onDeleteSavedPlace = onDeleteSavedPlace,
                 )
-            }''',
-              "alert editor highlighted",
-          )
-
-          main = replace_once(
-              main,
-              '''private fun SavedPlaceEditor(
+            }''', "alert editor highlighted"),
+              ('''private fun SavedPlaceEditor(
     place: SavedPlace,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
-) {''',
-              '''private fun SavedPlaceEditor(
+) {''', '''private fun SavedPlaceEditor(
     place: SavedPlace,
     highlighted: Boolean = false,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
-) {''',
-              "saved place editor signature",
-          )
-
-          main = replace_once(
-              main,
-              '''    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+) {''', "saved place editor signature"),
+              ('''    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
-        OutlinedTextField(''',
-              '''    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(''', '''    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
         if (highlighted) {
             Text(
@@ -283,20 +194,14 @@ fun RotaCertaApp(launchIntent: Intent?) {''',
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        OutlinedTextField(''',
-              "saved place editor hint",
-          )
-
-          main = replace_once(
-              main,
-              '''private fun ExpandableCard(
+        OutlinedTextField(''', "saved place editor hint"),
+              ('''private fun ExpandableCard(
     title: String,
     initiallyExpanded: Boolean,
     content: @Composable () -> Unit,
 ) {
     var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
-    Card(modifier = Modifier.fillMaxWidth()) {''',
-              '''private fun ExpandableCard(
+    Card(modifier = Modifier.fillMaxWidth()) {''', '''private fun ExpandableCard(
     title: String,
     initiallyExpanded: Boolean,
     content: @Composable () -> Unit,
@@ -305,43 +210,28 @@ fun RotaCertaApp(launchIntent: Intent?) {''',
     LaunchedEffect(initiallyExpanded) {
         if (initiallyExpanded) expanded = true
     }
-    Card(modifier = Modifier.fillMaxWidth()) {''',
-              "expandable reacts to highlight",
-          )
-
-          main = replace_once(
-              main,
-              '''private enum class LocationTarget { Home, Alternative }''',
-              '''private const val EXTRA_OPEN_TAB = "br.com.mapeiaia.rotacerta.extra.OPEN_TAB"
+    Card(modifier = Modifier.fillMaxWidth()) {''', "expandable reacts to highlight"),
+              ('''private enum class LocationTarget { Home, Alternative }''', '''private const val EXTRA_OPEN_TAB = "br.com.mapeiaia.rotacerta.extra.OPEN_TAB"
 private const val EXTRA_SAVED_PLACE_ID = "br.com.mapeiaia.rotacerta.extra.SAVED_PLACE_ID"
 private const val TAB_ANALYSIS = "analise"
 private const val TAB_CONFIG = "config"
 private const val TAB_HISTORY = "historico"
 
-private enum class LocationTarget { Home, Alternative }''',
-              "navigation constants declarations",
-          )
-
+private enum class LocationTarget { Home, Alternative }''', "navigation constants declarations"),
+          ]
+          for old, new, label in replacements:
+              main = replace_once(main, old, new, label)
           main_path.write_text(main)
 
           service_path = Path("app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
           service = service_path.read_text()
-
-          service = replace_once(
-              service,
-              '''            repository.addSavedPlace(place)
+          service = replace_once(service, '''            repository.addSavedPlace(place)
             toast(if (isAlert) "Alerta de proximidade criado." else "Local salvo.")
-            recordDiagnostic(''',
-              '''            repository.addSavedPlace(place)
+            recordDiagnostic(''', '''            repository.addSavedPlace(place)
             openSavedPlaceEditor(place)
             toast(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")
-            recordDiagnostic(''',
-              "open saved place editor after save",
-          )
-
-          service = replace_once(
-              service,
-              '''    private fun openApp() {
+            recordDiagnostic(''', "open saved place editor after save")
+          service = replace_once(service, '''    private fun openApp() {
         hideActionMenu()
         runCatching {
             startActivity(
@@ -351,8 +241,7 @@ private enum class LocationTarget { Home, Alternative }''',
         }
     }
 
-    private fun toggleActionMenu() {''',
-              '''    private fun openApp() {
+    private fun toggleActionMenu() {''', '''    private fun openApp() {
         hideActionMenu()
         runCatching {
             startActivity(
@@ -374,22 +263,13 @@ private enum class LocationTarget { Home, Alternative }''',
         }
     }
 
-    private fun toggleActionMenu() {''',
-              "open saved place editor helper",
-          )
-
-          service = replace_once(
-              service,
-              '''        const val KEY_BUBBLE_Y = "bubble_y"
-        const val PACKAGE_99_DRIVER = "com.app99.driver"''',
-              '''        const val KEY_BUBBLE_Y = "bubble_y"
+    private fun toggleActionMenu() {''', "open saved place editor helper")
+          service = replace_once(service, '''        const val KEY_BUBBLE_Y = "bubble_y"
+        const val PACKAGE_99_DRIVER = "com.app99.driver"''', '''        const val KEY_BUBBLE_Y = "bubble_y"
         const val EXTRA_OPEN_TAB = "br.com.mapeiaia.rotacerta.extra.OPEN_TAB"
         const val EXTRA_SAVED_PLACE_ID = "br.com.mapeiaia.rotacerta.extra.SAVED_PLACE_ID"
         const val TAB_CONFIG = "config"
-        const val PACKAGE_99_DRIVER = "com.app99.driver"''',
-              "service intent constants",
-          )
-
+        const val PACKAGE_99_DRIVER = "com.app99.driver"''', "service intent constants")
           service_path.write_text(service)
           PY
 
