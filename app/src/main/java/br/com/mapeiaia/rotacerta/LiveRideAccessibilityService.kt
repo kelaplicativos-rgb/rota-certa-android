@@ -68,6 +68,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var currentSettings = AppSettings()
     private var currentCardTemplates = emptyList<RideCardTemplate>()
     private var currentSavedPlaces = emptyList<SavedPlace>()
+    private var currentImportedRadars = emptyList<ImportedRadar>()
     private var currentRadarColor = RadarColor.Idle
     private var currentDistanceKm: Double? = null
     private var textToSpeech: TextToSpeech? = null
@@ -110,6 +111,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch { repository.settings.collect { currentSettings = it } }
         scope.launch { repository.cardTemplates.collect { currentCardTemplates = it } }
         scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
+        scope.launch { repository.importedRadars.collect { currentImportedRadars = it } }
         scope.launch {
             currentSettings = repository.settings.first()
             currentCardTemplates = repository.cardTemplates.first()
@@ -182,17 +184,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         scope.launch {
             while (serviceReady) {
                 val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
-                if (alerts.isNotEmpty()) checkProximityAlerts(alerts)
+                val radars = currentImportedRadars
+                if (alerts.isNotEmpty() || radars.isNotEmpty()) checkProximityAlerts(alerts, radars)
                 delay(PROXIMITY_ALERT_LOOP_MS)
             }
         }
     }
 
-    private suspend fun checkProximityAlerts(alerts: List<SavedPlace>) {
+    private suspend fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>) {
         val coordinate = locationService.currentCoordinate() ?: return
         val now = System.currentTimeMillis()
-        val activeIds = alerts.map { it.id }.toSet()
+        val activeIds = alerts.map { it.id }.toSet() + radars.map { "imported-${it.id}" }.toSet()
         proximityAlertRuntime.keys.retainAll(activeIds)
+        checkImportedRadars(radars, coordinate, now)
 
         alerts.forEach { alert ->
             val threshold = (alert.alertDistanceMeters ?: currentSettings.proximityAlertDistanceMeters).coerceIn(200, 1000)
@@ -218,6 +222,32 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 runtime.spokenCount = 0
                 runtime.lastSpokenAtMillis = 0L
             }
+        }
+    }
+
+    private fun checkImportedRadars(radars: List<ImportedRadar>, coordinate: Coordinate, now: Long) {
+        if (radars.isEmpty()) return
+        val threshold = currentSettings.proximityAlertDistanceMeters.coerceIn(200, 1000)
+        val nearest = radars.asSequence()
+            .map { radar -> radar to distanceMeters(coordinate, radar.coordinate) }
+            .filter { (_, distance) -> distance <= threshold }
+            .minByOrNull { (_, distance) -> distance }
+            ?: return
+        val radar = nearest.first
+        val distanceMeters = nearest.second
+        val runtime = proximityAlertRuntime.getOrPut("imported-${radar.id}") { ProximityAlertRuntime() }
+        if (
+            runtime.spokenCount < MAX_PROXIMITY_ALERT_SPEECH_COUNT &&
+            now - runtime.lastSpokenAtMillis >= PROXIMITY_ALERT_REPEAT_GAP_MS
+        ) {
+            speakImportedRadar(radar, distanceMeters)
+            runtime.spokenCount += 1
+            runtime.lastSpokenAtMillis = now
+            recordDiagnostic(
+                stage = "imported_radar_spoken",
+                color = currentRadarColor,
+                reason = "Radar importado falado: ${importedRadarSpeech(radar, distanceMeters)}",
+            )
         }
     }
 
@@ -661,7 +691,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 createdAtMillis = createdAt,
             )
             repository.addSavedPlace(place)
-            toast(if (isAlert) "Alerta de proximidade criado." else "Local salvo.")
+            openSavedPlaceEditor(place)
+            toast(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")
             recordDiagnostic(
                 stage = if (isAlert) "bubble_save_proximity_alert" else "bubble_save_place",
                 color = currentRadarColor,
@@ -865,6 +896,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun openSavedPlaceEditor(place: SavedPlace) {
+        hideActionMenu()
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+                    .putExtra(EXTRA_SAVED_PLACE_ID, place.id),
+            )
+        }
+    }
+
     private fun toggleActionMenu() {
         if (overlayMenuView != null) {
             hideActionMenu()
@@ -947,6 +990,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun toast(message: String) {
         Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double) {
+        if (!textToSpeechReady) return
+        textToSpeech?.speak(
+            importedRadarSpeech(radar, distanceMeters),
+            TextToSpeech.QUEUE_ADD,
+            null,
+            "imported-radar-${radar.id}-${System.currentTimeMillis()}",
+        )
     }
 
     private fun speakProximityAlert(place: SavedPlace) {

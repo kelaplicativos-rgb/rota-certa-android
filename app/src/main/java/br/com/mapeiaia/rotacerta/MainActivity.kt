@@ -60,18 +60,27 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
+    private var launchIntent by mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        launchIntent = intent
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                RotaCertaApp()
+                RotaCertaApp(launchIntent)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        launchIntent = intent
     }
 }
 
 @Composable
-fun RotaCertaApp() {
+fun RotaCertaApp(launchIntent: Intent?) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val repository = remember { SettingsRepository(context) }
@@ -80,17 +89,20 @@ fun RotaCertaApp() {
     val diagnostic by repository.diagnostic.collectAsState(initial = null)
     val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
     val savedPlaces by repository.savedPlaces.collectAsState(initial = emptyList())
+    val radarImportSummary by repository.radarImportSummary.collectAsState(initial = RadarImportSummary())
     val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
     val geocodingService = remember { GeocodingService(context) }
     val scope = rememberCoroutineScope()
 
-    var tab by remember { mutableStateOf("analise") }
+    var tab by remember { mutableStateOf(TAB_ANALYSIS) }
+    var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
     var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${cardTemplates.size}") }
     var unreadTemplatePrints by remember { mutableStateOf(0) }
     var backupStatus by remember { mutableStateOf("") }
+    var radarImportStatus by remember { mutableStateOf("") }
 
     fun registerRideCard(packageName: String?, text: String) {
         if (text.isBlank()) {
@@ -160,6 +172,30 @@ fun RotaCertaApp() {
         }
     }
 
+    val radarFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) {
+            radarImportStatus = "Importacao cancelada."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            radarImportStatus = "Importando radares..."
+            runCatching {
+                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                    reader.readText()
+                } ?: error("Nao consegui abrir o arquivo selecionado.")
+                val radars = parseMapaRadarCsv(content)
+                if (radars.isEmpty()) error("Arquivo sem radares validos. Use TXT/CSV do MapaRadar.")
+                repository.replaceImportedRadars(radars)
+                radars.size
+            }.onSuccess { count ->
+                radarImportStatus = "Importacao concluida: $count radar(es)."
+                Toast.makeText(context, "Radares importados: $count", Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                radarImportStatus = "Falha ao importar radares: ${error.message.orEmpty()}"
+            }
+        }
+    }
+
     val backupFileCreator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
@@ -208,6 +244,14 @@ fun RotaCertaApp() {
         }
     }
 
+    LaunchedEffect(launchIntent) {
+        val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
+        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_HISTORY) {
+            tab = requestedTab
+        }
+        highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+    }
+
     LaunchedEffect(Unit) {
         locationPermissionLauncher.launch(
             arrayOf(
@@ -230,9 +274,9 @@ fun RotaCertaApp() {
     Scaffold(
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(selected = tab == "analise", onClick = { tab = "analise" }, label = { Text("Analise") }, icon = {})
-                NavigationBarItem(selected = tab == "config", onClick = { tab = "config" }, label = { Text("Config") }, icon = {})
-                NavigationBarItem(selected = tab == "historico", onClick = { tab = "historico" }, label = { Text("Historico") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})
             }
         },
     ) { padding ->
@@ -249,7 +293,7 @@ fun RotaCertaApp() {
             Spacer(Modifier.height(16.dp))
 
             when (tab) {
-                "analise" -> AnalysisScreen(
+                TAB_ANALYSIS -> AnalysisScreen(
                     settings = settings,
                     latestResult = history.firstOrNull(),
                     cardTemplates = cardTemplates,
@@ -264,12 +308,15 @@ fun RotaCertaApp() {
                     },
                     onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
                 )
-                "config" -> SettingsScreen(
+                TAB_CONFIG -> SettingsScreen(
                     settings = settings,
                     diagnostic = diagnostic,
                     cardTemplates = cardTemplates,
                     savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
+                    highlightedSavedPlaceId = highlightedSavedPlaceId,
+                    radarImportSummary = radarImportSummary,
+                    radarImportStatus = radarImportStatus,
                     onSave = { scope.launch { repository.saveSettings(it) } },
                     onRegisterRideCard = ::registerRideCard,
                     onRenameSavedPlace = ::renameSavedPlace,
@@ -277,8 +324,16 @@ fun RotaCertaApp() {
                     onRegionDetected = { detectedRegion -> region = detectedRegion },
                     onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
                     onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                    onImportRadarFile = { radarFilePicker.launch(arrayOf("text/*", "text/comma-separated-values", "application/octet-stream", "*/*")) },
+                    onOpenMapaRadar = { openMapaRadarSite(context) },
+                    onClearImportedRadars = {
+                        scope.launch {
+                            repository.clearImportedRadars()
+                            radarImportStatus = "Radares importados removidos."
+                        }
+                    },
                 )
-                "historico" -> HistoryScreen(history)
+                TAB_HISTORY -> HistoryScreen(history)
             }
         }
     }
@@ -572,29 +627,35 @@ private fun DiagnosticExpander(
 @Composable
 private fun SavedPlacesCard(
     savedPlaces: List<SavedPlace>,
+    highlightedSavedPlaceId: String?,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
     val places = savedPlaces.filter { it.type == SavedPlaceType.Place }
     val alerts = savedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+    val highlightedType = savedPlaces.firstOrNull { it.id == highlightedSavedPlaceId }?.type
 
-    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = false) {
+    if (highlightedType != null) {
+        Text("Item criado pela bolinha. Informe um nome claro e toque em Salvar.", style = MaterialTheme.typography.bodySmall)
+    }
+
+    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = highlightedType == SavedPlaceType.Place) {
         if (places.isEmpty()) {
             Text("Nenhum local salvo ainda.", style = MaterialTheme.typography.bodySmall)
         } else {
             places.forEach { place ->
-                SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
+                SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
             }
         }
     }
 
     Spacer(Modifier.height(10.dp))
-    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = false) {
+    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = highlightedType == SavedPlaceType.ProximityAlert) {
         if (alerts.isEmpty()) {
             Text("Nenhum alerta de proximidade criado ainda.", style = MaterialTheme.typography.bodySmall)
         } else {
             alerts.forEach { place ->
-                SavedPlaceEditor(place, onRenameSavedPlace, onDeleteSavedPlace)
+                SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
             }
         }
     }
@@ -603,6 +664,7 @@ private fun SavedPlacesCard(
 @Composable
 private fun SavedPlaceEditor(
     place: SavedPlace,
+    highlighted: Boolean = false,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
@@ -610,6 +672,9 @@ private fun SavedPlaceEditor(
     var draftName by remember(place.id, place.name) { mutableStateOf(place.name) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
+        if (highlighted) {
+            Text("Informe o nome deste item agora. Esse nome aparece na lista e no alerta de voz.", style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedTextField(
             value = draftName,
             onValueChange = { draftName = it },
@@ -672,6 +737,9 @@ private fun SettingsScreen(
     cardTemplates: List<RideCardTemplate>,
     savedPlaces: List<SavedPlace>,
     backupStatus: String,
+    highlightedSavedPlaceId: String?,
+    radarImportSummary: RadarImportSummary,
+    radarImportStatus: String,
     onSave: (AppSettings) -> Unit,
     onRegisterRideCard: (String?, String) -> Unit,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
@@ -679,6 +747,9 @@ private fun SettingsScreen(
     onRegionDetected: (DeviceRegion) -> Unit,
     onCreateBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
+    onImportRadarFile: () -> Unit,
+    onOpenMapaRadar: () -> Unit,
+    onClearImportedRadars: () -> Unit,
 ) {
     val context = LocalContext.current
     val locationService = remember { DeviceLocationService(context) }
@@ -728,6 +799,10 @@ private fun SettingsScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Configuracoes", fontWeight = FontWeight.Bold)
+        AlwaysLocationPermissionCard(
+            hasAlwaysPermission = hasAlwaysLocationPermission(context),
+            onOpenLocationSettings = { openAppLocationSettings(context) },
+        )
         DiagnosticExpander(
             diagnostic = diagnostic,
             cardTemplates = cardTemplates,
@@ -736,8 +811,16 @@ private fun SettingsScreen(
         BubbleSettingsCard(settings = draft, onChange = ::saveDraft)
         SavedPlacesCard(
             savedPlaces = savedPlaces,
+            highlightedSavedPlaceId = highlightedSavedPlaceId,
             onRenameSavedPlace = onRenameSavedPlace,
             onDeleteSavedPlace = onDeleteSavedPlace,
+        )
+        RadarImportCard(
+            summary = radarImportSummary,
+            importStatus = radarImportStatus,
+            onPickFile = onImportRadarFile,
+            onOpenMapaRadar = onOpenMapaRadar,
+            onClearRadars = onClearImportedRadars,
         )
         MonitoredAppsCard(settings = draft, onChange = ::saveDraft)
         SettingsLocationCard(
@@ -928,6 +1011,9 @@ private fun ExpandableCard(
     content: @Composable () -> Unit,
 ) {
     var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
+    LaunchedEffect(initiallyExpanded) {
+        if (initiallyExpanded) expanded = true
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
