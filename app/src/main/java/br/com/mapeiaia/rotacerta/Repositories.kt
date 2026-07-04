@@ -15,6 +15,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val Context.dataStore by preferencesDataStore(name = "rota_certa")
+private const val MAX_IMPORTED_RADARS = 50000
 
 class SettingsRepository(private val context: Context) {
     private val homeAddress = stringPreferencesKey("home_address")
@@ -40,6 +41,7 @@ class SettingsRepository(private val context: Context) {
     private val rideCardTemplates = stringPreferencesKey("ride_card_templates")
     private val capturedRideScreens = stringPreferencesKey("captured_ride_screens")
     private val savedPlacesKey = stringPreferencesKey("saved_places")
+    private val importedRadarsKey = stringPreferencesKey("imported_radars")
     private val json = Json { ignoreUnknownKeys = true }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -88,6 +90,18 @@ class SettingsRepository(private val context: Context) {
     val savedPlaces: Flow<List<SavedPlace>> = context.dataStore.data.map { prefs ->
         runCatching { json.decodeFromString<List<SavedPlace>>(prefs[savedPlacesKey].orEmpty()) }
             .getOrDefault(emptyList())
+    }
+
+    val importedRadars: Flow<List<ImportedRadar>> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<List<ImportedRadar>>(prefs[importedRadarsKey].orEmpty()) }
+            .getOrDefault(emptyList())
+    }
+
+    val radarImportSummary: Flow<RadarImportSummary> = importedRadars.map { radars ->
+        RadarImportSummary(
+            count = radars.size,
+            lastImportedAtMillis = radars.maxOfOrNull { it.createdAtMillis } ?: 0L,
+        )
     }
 
     suspend fun saveSettings(settings: AppSettings) {
@@ -183,6 +197,16 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun replaceImportedRadars(radars: List<ImportedRadar>) {
+        context.dataStore.edit { prefs ->
+            prefs[importedRadarsKey] = json.encodeToString(radars.take(MAX_IMPORTED_RADARS))
+        }
+    }
+
+    suspend fun clearImportedRadars() {
+        context.dataStore.edit { prefs -> prefs.remove(importedRadarsKey) }
+    }
+
     suspend fun exportBackupJson(): String {
         val backupSettings = settings.first().let { current ->
             if (current.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
@@ -200,6 +224,7 @@ class SettingsRepository(private val context: Context) {
             cardTemplates = cardTemplates.first(),
             capturedScreens = capturedScreens.first(),
             savedPlaces = savedPlaces.first(),
+            importedRadars = importedRadars.first(),
         )
         return json.encodeToString(backup)
     }
@@ -212,6 +237,7 @@ class SettingsRepository(private val context: Context) {
             prefs[rideCardTemplates] = json.encodeToString(backup.cardTemplates.take(30))
             prefs[capturedRideScreens] = json.encodeToString(backup.capturedScreens.take(20))
             prefs[savedPlacesKey] = json.encodeToString(backup.savedPlaces.take(200))
+            prefs[importedRadarsKey] = json.encodeToString(backup.importedRadars.take(MAX_IMPORTED_RADARS))
             prefs.remove(liveDiagnostic)
         }
         return backup
