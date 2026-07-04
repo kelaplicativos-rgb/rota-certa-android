@@ -1,11 +1,5 @@
 package br.com.mapeiaia.rotacerta
 
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
-
 class DecisionEngine {
     fun decide(
         fields: RideFields,
@@ -94,13 +88,5 @@ class DecisionEngine {
         pickupToAlternativeKm = pickupToAlternativeKm,
     )
 
-    private fun haversineKm(a: Coordinate, b: Coordinate): Double {
-        val earthRadiusKm = 6371.0
-        val dLat = Math.toRadians(b.latitude - a.latitude)
-        val dLon = Math.toRadians(b.longitude - a.longitude)
-        val lat1 = Math.toRadians(a.latitude)
-        val lat2 = Math.toRadians(b.latitude)
-        val h = sin(dLat / 2).pow(2.0) + cos(lat1) * cos(lat2) * sin(dLon / 2).pow(2.0)
-        return 2 * earthRadiusKm * asin(sqrt(h))
-    }
+    private fun haversineKm(a: Coordinate, b: Coordinate): Double = GeoDistance.meters(a, b) / 1000.0
 }
