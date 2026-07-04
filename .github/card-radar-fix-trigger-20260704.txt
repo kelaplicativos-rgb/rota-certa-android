@@ -1,0 +1,1 @@
+Trigger card/radar fix workflow at 2026-07-04T09:xx America/Sao_Paulo.
