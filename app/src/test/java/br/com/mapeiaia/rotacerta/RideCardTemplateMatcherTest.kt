@@ -31,7 +31,7 @@ class RideCardTemplateMatcherTest {
         val match = RideCardTemplateMatcher.match(nextCard, "sinet.startup.indriver", listOf(template))
 
         assertNotNull(match)
-        assertTrue(match!!.score >= 0.72)
+        assertTrue(match!!.score >= 0.75)
     }
 
     @Test
@@ -75,7 +75,7 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
-    fun matchesSameNinetyNinePackageByStructuralRideFeaturesWhenPromoTextChanges() {
+    fun doesNotMatchNinetyNineCardByWeakStructuralFeaturesOnly() {
         val model = """
             Perfil Essencial
             R$ 12,40
@@ -95,11 +95,6 @@ class RideCardTemplateMatcherTest {
         """.trimIndent()
 
         val template = RideCardTemplateMatcher.createTemplate("com.app99.driver", model)
-        val match = RideCardTemplateMatcher.match(liveCard, "com.app99.driver", listOf(template))
-
-        assertNotNull(match)
-        assertTrue(match!!.matchedFeatures.contains("valor em reais"))
-        assertTrue(match.matchedFeatures.contains("distancia em km"))
-        assertTrue(match.matchedFeatures.contains("endereco"))
+        assertNull(RideCardTemplateMatcher.match(liveCard, "com.app99.driver", listOf(template)))
     }
 }
