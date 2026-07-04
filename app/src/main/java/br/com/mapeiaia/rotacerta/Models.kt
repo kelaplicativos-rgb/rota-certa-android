@@ -35,6 +35,7 @@ data class RotaCertaBackup(
     val cardTemplates: List<RideCardTemplate> = emptyList(),
     val capturedScreens: List<CapturedRideScreen> = emptyList(),
     val savedPlaces: List<SavedPlace> = emptyList(),
+    val importedRadars: List<ImportedRadar> = emptyList(),
 )
 
 @Serializable
@@ -97,6 +98,24 @@ data class SavedPlace(
     val createdAtMillis: Long = 0L,
     val lastTriggeredAtMillis: Long? = null,
     val triggerCountInCurrentApproach: Int = 0,
+)
+
+@Serializable
+data class ImportedRadar(
+    val id: String,
+    val coordinate: Coordinate,
+    val type: Int,
+    val speedKmh: Int? = null,
+    val directionType: Int? = null,
+    val direction: Int? = null,
+    val source: String = "MapaRadar",
+    val createdAtMillis: Long = 0L,
+)
+
+@Serializable
+data class RadarImportSummary(
+    val count: Int = 0,
+    val lastImportedAtMillis: Long = 0L,
 )
 
 enum class Recommendation {
