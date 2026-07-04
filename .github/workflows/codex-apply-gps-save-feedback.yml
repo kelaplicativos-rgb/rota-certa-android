@@ -16,380 +16,432 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Apply GPS and save feedback changes
+      - name: Apply patch
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          def read(path):
-              return Path(path).read_text()
-
-          def write(path, text):
-              Path(path).write_text(text)
-
-          def replace_once(text, old, new, label):
-              if old not in text:
-                  raise SystemExit(f"Missing replacement block: {label}")
-              return text.replace(old, new, 1)
-
-          # AndroidManifest: vibrate feedback for bubble actions.
-          path = 'app/src/main/AndroidManifest.xml'
-          text = read(path)
-          if 'android.permission.VIBRATE' not in text:
-              text = text.replace(
-                  '    <uses-permission android:name="android.permission.INTERNET" />\n',
-                  '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n',
-              )
-          write(path, text)
-
-          # AndroidServices: continuous high-accuracy updates while radar/proximity monitor is active.
-          path = 'app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt'
-          text = read(path)
-          text = replace_once(
-              text,
-              'import android.location.Geocoder\nimport android.net.Uri\nimport androidx.core.content.ContextCompat\nimport com.google.android.gms.location.LocationServices\n',
-              'import android.location.Geocoder\nimport android.location.Location\nimport android.net.Uri\nimport android.os.Looper\nimport androidx.core.content.ContextCompat\nimport com.google.android.gms.location.LocationCallback\nimport com.google.android.gms.location.LocationRequest\nimport com.google.android.gms.location.LocationResult\nimport com.google.android.gms.location.LocationServices\n',
-              'AndroidServices imports',
-          )
-          old = '''class DeviceLocationService(private val context: Context) {
-    private val client = LocationServices.getFusedLocationProviderClient(context)
-
-    suspend fun currentCoordinate(): Coordinate? {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return null
-
-        val location = client
-            .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, CancellationTokenSource().token)
-            .await()
-            ?: client.lastLocation.await()
-            ?: return null
-
-        return Coordinate(location.latitude, location.longitude)
-    }
-}
-'''
-          new = '''class DeviceLocationService(private val context: Context) {
-    private val client = LocationServices.getFusedLocationProviderClient(context)
-    private var activeLocationCallback: LocationCallback? = null
-    private var lastKnownCoordinate: Coordinate? = null
-
-    suspend fun currentCoordinate(): Coordinate? {
-        if (!hasLocationPermission()) return null
-
-        val location = client
-            .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, CancellationTokenSource().token)
-            .await()
-            ?: client.lastLocation.await()
-            ?: return null
-
-        return location.toCoordinate().also { lastKnownCoordinate = it }
-    }
-
-    fun latestCoordinate(): Coordinate? = lastKnownCoordinate
-
-    fun startContinuousUpdates(
-        onCoordinate: (Coordinate) -> Unit,
-        onError: (Throwable) -> Unit = {},
-    ): Boolean {
-        if (activeLocationCallback != null) return true
-        if (!hasLocationPermission()) return false
-
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, ACTIVE_INTERVAL_MS)
-            .setMinUpdateIntervalMillis(FASTEST_INTERVAL_MS)
-            .setMaxUpdateDelayMillis(MAX_DELAY_MS)
-            .setMinUpdateDistanceMeters(MIN_DISTANCE_METERS)
-            .setWaitForAccurateLocation(false)
-            .build()
-
-        val callback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.toCoordinate()?.let { coordinate ->
-                    lastKnownCoordinate = coordinate
-                    onCoordinate(coordinate)
-                }
-            }
-        }
-        activeLocationCallback = callback
-        client.requestLocationUpdates(request, callback, Looper.getMainLooper())
-            .addOnFailureListener { error ->
-                if (activeLocationCallback == callback) activeLocationCallback = null
-                onError(error)
-            }
-        return true
-    }
-
-    fun stopContinuousUpdates() {
-        activeLocationCallback?.let { callback ->
-            client.removeLocationUpdates(callback)
-        }
-        activeLocationCallback = null
-    }
-
-    private fun hasLocationPermission(): Boolean {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-        return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
-    }
-
-    private fun Location.toCoordinate(): Coordinate = Coordinate(latitude, longitude)
-
-    private companion object {
-        const val ACTIVE_INTERVAL_MS = 3_000L
-        const val FASTEST_INTERVAL_MS = 1_500L
-        const val MAX_DELAY_MS = 4_000L
-        const val MIN_DISTANCE_METERS = 5f
-    }
-}
-'''
-          text = replace_once(text, old, new, 'DeviceLocationService')
-          write(path, text)
-
-          # LiveRideAccessibilityService: continuous tracking and stronger bubble confirmations.
-          path = 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          text = read(path)
-          text = replace_once(
-              text,
-              'import android.os.Build\nimport android.speech.tts.TextToSpeech\n',
-              'import android.os.Build\nimport android.os.VibrationEffect\nimport android.os.Vibrator\nimport android.os.VibratorManager\nimport android.speech.tts.TextToSpeech\n',
-              'Live service vibration imports',
-          )
-          text = replace_once(
-              text,
-              '    private var continuousScanStarted = false\n    private var proximityAlertMonitorStarted = false\n',
-              '    private var continuousScanStarted = false\n    private var proximityAlertMonitorStarted = false\n    private var proximityLocationTrackingActive = false\n    private var lastProximityCoordinate: Coordinate? = null\n',
-              'Live service proximity vars',
-          )
-          text = replace_once(
-              text,
-              '        serviceReady = false\n        screenshotInProgress.set(false)\n',
-              '        serviceReady = false\n        stopProximityLocationTracking()\n        screenshotInProgress.set(false)\n',
-              'Live service stop tracking on destroy',
-          )
-          old = '''    private fun startProximityAlertMonitor() {
-        if (proximityAlertMonitorStarted || !serviceReady) return
-        proximityAlertMonitorStarted = true
-        traceEvent("proximity.loop started interval=${PROXIMITY_ALERT_LOOP_MS}ms")
-        scope.launch {
-            while (serviceReady) {
-                val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
-                val radars = currentImportedRadars
-                if (alerts.isNotEmpty() || radars.isNotEmpty()) checkProximityAlerts(alerts, radars)
-                delay(PROXIMITY_ALERT_LOOP_MS)
-            }
-        }
-    }
-
-    private suspend fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>) {
-        val coordinate = locationService.currentCoordinate() ?: return
-        proximityAlertEngine.check(
-            alerts = alerts,
-            radars = radars,
-            coordinate = coordinate,
-            settings = currentSettings,
-        ) { diagnostic ->
-            recordDiagnostic(stage = diagnostic.stage, reason = diagnostic.reason)
-        }
-    }
-'''
-          new = '''    private fun startProximityAlertMonitor() {
-        if (proximityAlertMonitorStarted || !serviceReady) return
-        proximityAlertMonitorStarted = true
-        traceEvent("proximity.loop started interval=${PROXIMITY_ALERT_LOOP_MS}ms")
-        scope.launch {
-            while (serviceReady) {
-                val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
-                val radars = currentImportedRadars
-                val shouldTrackLocation = alerts.isNotEmpty() || radars.isNotEmpty()
-                updateProximityLocationTracking(shouldTrackLocation)
-                if (shouldTrackLocation) {
-                    val coordinate = lastProximityCoordinate ?: locationService.currentCoordinate()
-                    if (coordinate != null) checkProximityAlerts(alerts, radars, coordinate)
-                }
-                delay(PROXIMITY_ALERT_LOOP_MS)
-            }
-            stopProximityLocationTracking()
-        }
-    }
-
-    private fun updateProximityLocationTracking(shouldTrack: Boolean) {
-        if (shouldTrack && !proximityLocationTrackingActive) {
-            val started = locationService.startContinuousUpdates(
-                onCoordinate = { coordinate ->
-                    lastProximityCoordinate = coordinate
-                    if (!serviceReady) return@startContinuousUpdates
-                    val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
-                    val radars = currentImportedRadars
-                    if (alerts.isNotEmpty() || radars.isNotEmpty()) {
-                        scope.launch { checkProximityAlerts(alerts, radars, coordinate) }
-                    }
-                },
-                onError = { error ->
-                    proximityLocationTrackingActive = false
-                    traceEvent("proximity.location_updates error=${error::class.java.simpleName}: ${error.message.orEmpty()}")
-                },
-            )
-            proximityLocationTrackingActive = started
-            if (started) {
-                traceEvent("proximity.location_updates started interval=3000ms")
-            } else {
-                traceEvent("proximity.location_updates blocked reason=location_permission_missing")
-            }
-            return
-        }
-        if (!shouldTrack && proximityLocationTrackingActive) {
-            stopProximityLocationTracking()
-        }
-    }
-
-    private fun stopProximityLocationTracking() {
-        if (!proximityLocationTrackingActive) return
-        locationService.stopContinuousUpdates()
-        proximityLocationTrackingActive = false
-        lastProximityCoordinate = null
-        traceEvent("proximity.location_updates stopped")
-    }
-
-    private fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>, coordinate: Coordinate) {
-        proximityAlertEngine.check(
-            alerts = alerts,
-            radars = radars,
-            coordinate = coordinate,
-            settings = currentSettings,
-        ) { diagnostic ->
-            recordDiagnostic(stage = diagnostic.stage, reason = diagnostic.reason)
-        }
-    }
-'''
-          text = replace_once(text, old, new, 'Live service proximity monitor')
-          for old_call, new_call in [
-              ('toast("Abra o card de corrida e tente salvar novamente.")', 'confirmBubbleAction("Abra o card de corrida e tente salvar novamente.")'),
-              ('toast("Card de corrida salvo.")', 'confirmBubbleAction("Card de corrida salvo.")'),
-              ('toast("Autorize a localizacao para salvar este local.")', 'confirmBubbleAction("Autorize a localizacao para salvar este local.")'),
-              ('toast(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")', 'confirmBubbleAction(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")'),
-          ]:
-              text = replace_once(text, old_call, new_call, f'Live service {old_call}')
-          text = replace_once(
-              text,
-              '''    private fun toast(message: String) {
-        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-    }
-
-    private inner class BubbleTouchListener : View.OnTouchListener {
-''',
-              '''    private fun toast(message: String) {
-        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun confirmBubbleAction(message: String) {
-        toast(message)
-        vibrateConfirmation()
-    }
-
-    private fun vibrateConfirmation() {
-        runCatching {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            }
-            if (!vibrator.hasVibrator()) return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(70L)
-            }
-        }
-    }
-
-    private inner class BubbleTouchListener : View.OnTouchListener {
-''',
-              'Live service confirmation helpers',
-          )
-          write(path, text)
-
-          # MainActivity: snackbar confirmation after save operations.
-          path = 'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt'
-          text = read(path)
-          text = replace_once(
-              text,
-              'import androidx.compose.material3.Scaffold\nimport androidx.compose.material3.Slider\n',
-              'import androidx.compose.material3.Scaffold\nimport androidx.compose.material3.SnackbarHost\nimport androidx.compose.material3.SnackbarHostState\nimport androidx.compose.material3.Slider\n',
-              'MainActivity snackbar imports',
-          )
-          text = replace_once(
-              text,
-              '    val geocodingService = remember { GeocodingService(context) }\n    val scope = rememberCoroutineScope()\n\n    var tab by remember { mutableStateOf(TAB_ANALYSIS) }\n',
-              '    val geocodingService = remember { GeocodingService(context) }\n    val scope = rememberCoroutineScope()\n    val snackbarHostState = remember { SnackbarHostState() }\n\n    var tab by remember { mutableStateOf(TAB_ANALYSIS) }\n',
-              'MainActivity snackbar state',
-          )
-          text = replace_once(
-              text,
-              '    var backupStatus by remember { mutableStateOf("") }\n    var radarImportStatus by remember { mutableStateOf("") }\n\n    fun registerRideCard(packageName: String?, text: String) {\n',
-              '    var backupStatus by remember { mutableStateOf("") }\n    var radarImportStatus by remember { mutableStateOf("") }\n\n    fun showConfirmation(message: String) {\n        scope.launch { snackbarHostState.showSnackbar(message) }\n    }\n\n    fun saveSettings(updated: AppSettings, message: String = "Configuracoes salvas.") {\n        scope.launch {\n            repository.saveSettings(updated)\n            snackbarHostState.showSnackbar(message)\n        }\n    }\n\n    fun registerRideCard(packageName: String?, text: String) {\n',
-              'MainActivity save helper',
-          )
-          replacements = [
-              ('Toast.makeText(context, "Modelo cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()', 'snackbarHostState.showSnackbar("Modelo cadastrado: ${template.name}")'),
-              ('Toast.makeText(context, "Modelo removido: ${template.name}", Toast.LENGTH_SHORT).show()', 'snackbarHostState.showSnackbar("Modelo removido: ${template.name}")'),
-              ('Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()', 'snackbarHostState.showSnackbar("Nome salvo: $safeName")'),
-              ('Toast.makeText(context, "Radares importados: $count", Toast.LENGTH_SHORT).show()', 'snackbarHostState.showSnackbar("Radares importados: $count")'),
-          ]
-          for old_call, new_call in replacements:
-              text = replace_once(text, old_call, new_call, f'MainActivity {old_call}')
-          text = replace_once(
-              text,
-              '            templateStatus = when {\n                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."\n                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."\n                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."\n            }\n',
-              '            templateStatus = when {\n                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."\n                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."\n                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."\n            }\n            snackbarHostState.showSnackbar(templateStatus)\n',
-              'MainActivity card model import snackbar',
-          )
-          text = replace_once(
-              text,
-              '            }.onSuccess {\n                backupStatus = "Backup salvo com sucesso."\n            }.onFailure { error ->\n',
-              '            }.onSuccess {\n                backupStatus = "Backup salvo com sucesso."\n                showConfirmation("Backup salvo com sucesso.")\n            }.onFailure { error ->\n',
-              'MainActivity backup save snackbar',
-          )
-          text = replace_once(
-              text,
-              '            }.onSuccess { backup ->\n                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."\n            }.onFailure { error ->\n',
-              '            }.onSuccess { backup ->\n                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."\n                showConfirmation("Backup restaurado com sucesso.")\n            }.onFailure { error ->\n',
-              'MainActivity backup restore snackbar',
-          )
-          text = replace_once(
-              text,
-              '    Scaffold(\n        bottomBar = {\n',
-              '    Scaffold(\n        snackbarHost = { SnackbarHost(snackbarHostState) },\n        bottomBar = {\n',
-              'MainActivity scaffold snackbar',
-          )
-          text = replace_once(text, '                    onSaveSettings = { scope.launch { repository.saveSettings(it) } },', '                    onSaveSettings = { saveSettings(it) },', 'MainActivity analysis save')
-          text = replace_once(text, '                    onSave = { scope.launch { repository.saveSettings(it) } },', '                    onSave = { saveSettings(it) },', 'MainActivity settings save')
-          text = replace_once(
-              text,
-              '                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },\n',
-              '                    onDeleteSavedPlace = { place ->\n                        scope.launch {\n                            repository.removeSavedPlace(place.id)\n                            snackbarHostState.showSnackbar("Item removido.")\n                        }\n                    },\n',
-              'MainActivity delete saved place snackbar',
-          )
-          text = replace_once(
-              text,
-              '                        scope.launch {\n                            repository.clearImportedRadars()\n                            radarImportStatus = "Radares importados removidos."\n                        }\n',
-              '                        scope.launch {\n                            repository.clearImportedRadars()\n                            radarImportStatus = "Radares importados removidos."\n                            snackbarHostState.showSnackbar("Radares importados removidos.")\n                        }\n',
-              'MainActivity clear radars snackbar',
-          )
-          write(path, text)
-
-          # RadarImport: describe active high-accuracy tracking honestly.
-          path = 'app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt'
-          text = read(path)
-          text = replace_once(
-              text,
-              '                    "Localizacao configurada para funcionar continuamente."\n',
-              '                    "Localizacao liberada. Quando houver alerta ou radar importado ativo, o Rota Certa acompanha em alta precisao."\n',
-              'RadarImport GPS copy',
-          )
-          write(path, text)
-          PY
+          git apply --whitespace=nowarn <<'PATCH'
+          diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+          index 9e45108..edddc71 100644
+          --- a/app/src/main/AndroidManifest.xml
+          +++ b/app/src/main/AndroidManifest.xml
+          @@ -3,6 +3,7 @@
+               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+               <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+               <uses-permission android:name="android.permission.INTERNET" />
+          +    <uses-permission android:name="android.permission.VIBRATE" />
+           
+               <application
+                   android:allowBackup="true"
+          diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          index 3fb16e0..df4e8b9 100644
+          --- a/app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          +++ b/app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          @@ -5,8 +5,13 @@ import android.content.Context
+           import android.content.pm.PackageManager
+           import android.graphics.Bitmap
+           import android.location.Geocoder
+          +import android.location.Location
+           import android.net.Uri
+          +import android.os.Looper
+           import androidx.core.content.ContextCompat
+          +import com.google.android.gms.location.LocationCallback
+          +import com.google.android.gms.location.LocationRequest
+          +import com.google.android.gms.location.LocationResult
+           import com.google.android.gms.location.LocationServices
+           import com.google.android.gms.location.Priority
+           import com.google.android.gms.tasks.CancellationTokenSource
+          @@ -34,11 +39,11 @@ class OcrService(private val context: Context) {
+           
+           class DeviceLocationService(private val context: Context) {
+               private val client = LocationServices.getFusedLocationProviderClient(context)
+          +    private var activeLocationCallback: LocationCallback? = null
+          +    private var lastKnownCoordinate: Coordinate? = null
+           
+               suspend fun currentCoordinate(): Coordinate? {
+          -        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+          -        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+          -        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return null
+          +        if (!hasLocationPermission()) return null
+           
+                   val location = client
+                       .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, CancellationTokenSource().token)
+          @@ -46,7 +51,62 @@ class DeviceLocationService(private val context: Context) {
+                       ?: client.lastLocation.await()
+                       ?: return null
+           
+          -        return Coordinate(location.latitude, location.longitude)
+          +        return location.toCoordinate().also { lastKnownCoordinate = it }
+          +    }
+          +
+          +    fun latestCoordinate(): Coordinate? = lastKnownCoordinate
+          +
+          +    fun startContinuousUpdates(
+          +        onCoordinate: (Coordinate) -> Unit,
+          +        onError: (Throwable) -> Unit = {},
+          +    ): Boolean {
+          +        if (activeLocationCallback != null) return true
+          +        if (!hasLocationPermission()) return false
+          +
+          +        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, ACTIVE_INTERVAL_MS)
+          +            .setMinUpdateIntervalMillis(FASTEST_INTERVAL_MS)
+          +            .setMaxUpdateDelayMillis(MAX_DELAY_MS)
+          +            .setMinUpdateDistanceMeters(MIN_DISTANCE_METERS)
+          +            .setWaitForAccurateLocation(false)
+          +            .build()
+          +
+          +        val callback = object : LocationCallback() {
+          +            override fun onLocationResult(result: LocationResult) {
+          +                result.lastLocation?.toCoordinate()?.let { coordinate ->
+          +                    lastKnownCoordinate = coordinate
+          +                    onCoordinate(coordinate)
+          +                }
+          +            }
+          +        }
+          +        activeLocationCallback = callback
+          +        client.requestLocationUpdates(request, callback, Looper.getMainLooper())
+          +            .addOnFailureListener { error ->
+          +                if (activeLocationCallback == callback) activeLocationCallback = null
+          +                onError(error)
+          +            }
+          +        return true
+          +    }
+          +
+          +    fun stopContinuousUpdates() {
+          +        activeLocationCallback?.let { callback ->
+          +            client.removeLocationUpdates(callback)
+          +        }
+          +        activeLocationCallback = null
+          +    }
+          +
+          +    private fun hasLocationPermission(): Boolean {
+          +        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+          +        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+          +        return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
+          +    }
+          +
+          +    private fun Location.toCoordinate(): Coordinate = Coordinate(latitude, longitude)
+          +
+          +    private companion object {
+          +        const val ACTIVE_INTERVAL_MS = 3_000L
+          +        const val FASTEST_INTERVAL_MS = 1_500L
+          +        const val MAX_DELAY_MS = 4_000L
+          +        const val MIN_DISTANCE_METERS = 5f
+               }
+           }
+           
+          diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          index 6f69890..7b5c484 100644
+          --- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          +++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          @@ -12,6 +12,9 @@ import android.graphics.PixelFormat
+           import android.graphics.Typeface
+           import android.graphics.drawable.GradientDrawable
+           import android.os.Build
+          +import android.os.VibrationEffect
+          +import android.os.Vibrator
+          +import android.os.VibratorManager
+           import android.speech.tts.TextToSpeech
+           import android.view.Display
+           import android.view.Gravity
+          @@ -56,6 +59,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
+               private var lastScreenshotMillis: Long = 0L
+               private var continuousScanStarted = false
+               private var proximityAlertMonitorStarted = false
+          +    private var proximityLocationTrackingActive = false
+          +    private var lastProximityCoordinate: Coordinate? = null
+               private var serviceReady = false
+               private var analyzing = false
+               private var activePackageName: String? = null
+          @@ -167,6 +172,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+               override fun onDestroy() {
+                   traceEvent("service.onDestroy")
+                   serviceReady = false
+          +        stopProximityLocationTracking()
+                   screenshotInProgress.set(false)
+                   analyzeJob?.cancel()
+                   removeOverlay()
+          @@ -219,14 +225,57 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                       while (serviceReady) {
+                           val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+                           val radars = currentImportedRadars
+          -                if (alerts.isNotEmpty() || radars.isNotEmpty()) checkProximityAlerts(alerts, radars)
+          +                val shouldTrackLocation = alerts.isNotEmpty() || radars.isNotEmpty()
+          +                updateProximityLocationTracking(shouldTrackLocation)
+          +                if (shouldTrackLocation) {
+          +                    val coordinate = lastProximityCoordinate ?: locationService.currentCoordinate()
+          +                    if (coordinate != null) checkProximityAlerts(alerts, radars, coordinate)
+          +                }
+                           delay(PROXIMITY_ALERT_LOOP_MS)
+                       }
+          +            stopProximityLocationTracking()
+          +        }
+          +    }
+          +
+          +    private fun updateProximityLocationTracking(shouldTrack: Boolean) {
+          +        if (shouldTrack && !proximityLocationTrackingActive) {
+          +            val started = locationService.startContinuousUpdates(
+          +                onCoordinate = { coordinate ->
+          +                    lastProximityCoordinate = coordinate
+          +                    if (!serviceReady) return@startContinuousUpdates
+          +                    val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+          +                    val radars = currentImportedRadars
+          +                    if (alerts.isNotEmpty() || radars.isNotEmpty()) {
+          +                        scope.launch { checkProximityAlerts(alerts, radars, coordinate) }
+          +                    }
+          +                },
+          +                onError = { error ->
+          +                    proximityLocationTrackingActive = false
+          +                    traceEvent("proximity.location_updates error=${error::class.java.simpleName}: ${error.message.orEmpty()}")
+          +                },
+          +            )
+          +            proximityLocationTrackingActive = started
+          +            if (started) {
+          +                traceEvent("proximity.location_updates started interval=3000ms")
+          +            } else {
+          +                traceEvent("proximity.location_updates blocked reason=location_permission_missing")
+          +            }
+          +            return
+          +        }
+          +        if (!shouldTrack && proximityLocationTrackingActive) {
+          +            stopProximityLocationTracking()
+          +        }
+          +    }
+          +
+          +    private fun stopProximityLocationTracking() {
+          +        if (!proximityLocationTrackingActive) return
+          +        locationService.stopContinuousUpdates()
+          +        proximityLocationTrackingActive = false
+          +        lastProximityCoordinate = null
+          +        traceEvent("proximity.location_updates stopped")
+                   }
+               }
+           
+          -    private suspend fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>) {
+          -        val coordinate = locationService.currentCoordinate() ?: return
+          +    private fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>, coordinate: Coordinate) {
+                   proximityAlertEngine.check(
+                       alerts = alerts,
+                       radars = radars,
+          @@ -688,7 +737,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                           collectVisibleTextForAction()
+                       }
+                       if (text.isBlank()) {
+          -                toast("Abra o card de corrida e tente salvar novamente.")
+          +                confirmBubbleAction("Abra o card de corrida e tente salvar novamente.")
+                           recordDiagnostic(
+                               stage = "bubble_save_card_empty",
+                               color = currentRadarColor,
+          @@ -714,7 +763,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                               fare = parseResult.fields.fare,
+                           ),
+                       )
+          -            toast("Card de corrida salvo.")
+          +            confirmBubbleAction("Card de corrida salvo.")
+                       recordDiagnostic(
+                           stage = "bubble_save_card",
+                           color = currentRadarColor,
+          @@ -736,7 +785,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   scope.launch {
+                       val coordinate = locationService.currentCoordinate()
+                       if (coordinate == null) {
+          -                toast("Autorize a localizacao para salvar este local.")
+          +                confirmBubbleAction("Autorize a localizacao para salvar este local.")
+                           recordDiagnostic(
+                               stage = "bubble_save_place_no_gps",
+                               color = currentRadarColor,
+          @@ -759,7 +808,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   )
+                   repository.addSavedPlace(place)
+                   openSavedPlaceEditor(place)
+          -            toast(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")
+          +            confirmBubbleAction(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")
+                   recordDiagnostic(
+                       stage = if (isAlert) "bubble_save_proximity_alert" else "bubble_save_place",
+                       color = currentRadarColor,
+          @@ -1062,6 +1111,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+               }
+           
+          +    private fun confirmBubbleAction(message: String) {
+          +        toast(message)
+          +        vibrateConfirmation()
+          +    }
+          +
+          +    private fun vibrateConfirmation() {
+          +        runCatching {
+          +            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          +                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+          +            } else {
+          +                @Suppress("DEPRECATION")
+          +                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+          +            }
+          +            if (!vibrator.hasVibrator()) return
+          +            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          +                vibrator.vibrate(VibrationEffect.createOneShot(70L, VibrationEffect.DEFAULT_AMPLITUDE))
+          +            } else {
+          +                @Suppress("DEPRECATION")
+          +                vibrator.vibrate(70L)
+          +            }
+          +        }
+          +    }
+          +
+               private inner class BubbleTouchListener : View.OnTouchListener {
+                   private var downRawX = 0f
+                   private var downRawY = 0f
+          diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          index 495c635..300753e 100644
+          --- a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          +++ b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          @@ -32,6 +32,8 @@ import androidx.compose.material3.NavigationBarItem
+           import androidx.compose.material3.OutlinedButton
+           import androidx.compose.material3.OutlinedTextField
+           import androidx.compose.material3.Scaffold
+          +import androidx.compose.material3.SnackbarHost
+          +import androidx.compose.material3.SnackbarHostState
+           import androidx.compose.material3.Slider
+           import androidx.compose.material3.Switch
+           import androidx.compose.material3.Text
+          @@ -94,6 +96,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+               val locationService = remember { DeviceLocationService(context) }
+               val geocodingService = remember { GeocodingService(context) }
+               val scope = rememberCoroutineScope()
+          +    val snackbarHostState = remember { SnackbarHostState() }
+           
+               var tab by remember { mutableStateOf(TAB_ANALYSIS) }
+               var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
+          @@ -104,6 +107,17 @@ fun RotaCertaApp(launchIntent: Intent?) {
+               var backupStatus by remember { mutableStateOf("") }
+               var radarImportStatus by remember { mutableStateOf("") }
+           
+          +    fun showConfirmation(message: String) {
+          +        scope.launch { snackbarHostState.showSnackbar(message) }
+          +    }
+          +
+          +    fun saveSettings(updated: AppSettings, message: String = "Configuracoes salvas.") {
+          +        scope.launch {
+          +            repository.saveSettings(updated)
+          +            snackbarHostState.showSnackbar(message)
+          +        }
+          +    }
+          +
+               fun registerRideCard(packageName: String?, text: String) {
+                   if (text.isBlank()) {
+                       Toast.makeText(context, "Nao ha texto lido para cadastrar", Toast.LENGTH_SHORT).show()
+          @@ -113,14 +127,14 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                       val inferredPackageName = packageName ?: RideCardTemplateMatcher.inferPackageName(text)
+                       val template = RideCardTemplateMatcher.createTemplate(inferredPackageName, text)
+                       repository.addCardTemplate(template)
+          -            Toast.makeText(context, "Modelo cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
+          +            snackbarHostState.showSnackbar("Modelo cadastrado: ${template.name}")
+                   }
+               }
+           
+               fun deleteCardModel(template: RideCardTemplate) {
+                   scope.launch {
+                       repository.removeCardTemplate(template.id)
+          -            Toast.makeText(context, "Modelo removido: ${template.name}", Toast.LENGTH_SHORT).show()
+          +            snackbarHostState.showSnackbar("Modelo removido: ${template.name}")
+                   }
+               }
+           
+          @@ -128,7 +142,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                   val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
+                   scope.launch {
+                       repository.updateSavedPlace(place.copy(name = safeName))
+          -            Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()
+          +            snackbarHostState.showSnackbar("Nome salvo: $safeName")
+                   }
+               }
+           
+          @@ -169,6 +183,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                       imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
+                       else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
+                   }
+          +            snackbarHostState.showSnackbar(templateStatus)
+               }
+           }
+           
+          @@ -189,7 +204,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                       radars.size
+                   }.onSuccess { count ->
+                       radarImportStatus = "Importacao concluida: $count radar(es)."
+          -            Toast.makeText(context, "Radares importados: $count", Toast.LENGTH_SHORT).show()
+          +            snackbarHostState.showSnackbar("Radares importados: $count")
+                   }.onFailure { error ->
+                       radarImportStatus = "Falha ao importar radares: ${error.message.orEmpty()}"
+                   }
+          @@ -212,6 +227,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                       } ?: error("Nao consegui abrir o arquivo de backup.")
+                   }.onSuccess {
+                       backupStatus = "Backup salvo com sucesso."
+          +            showConfirmation("Backup salvo com sucesso.")
+                   }.onFailure { error ->
+                       backupStatus = "Falha ao salvar backup: ${error.message.orEmpty()}"
+                   }
+          @@ -232,6 +248,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                       repository.restoreBackupJson(backupJson)
+                   }.onSuccess { backup ->
+                       backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."
+          +            showConfirmation("Backup restaurado com sucesso.")
+                   }.onFailure { error ->
+                       backupStatus = "Falha ao restaurar backup: ${error.message.orEmpty()}"
+                   }
+          @@ -272,6 +289,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+               }
+           
+               Scaffold(
+          +        snackbarHost = { SnackbarHost(snackbarHostState) },
+                   bottomBar = {
+                       NavigationBar {
+                           NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
+          @@ -300,7 +318,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                           templateStatus = templateStatus,
+                           unreadTemplatePrints = unreadTemplatePrints,
+                           liveEnabled = liveEnabled,
+          -                    onSaveSettings = { scope.launch { repository.saveSettings(it) } },
+          +                    onSaveSettings = { saveSettings(it) },
+                           onDeleteCardModel = ::deleteCardModel,
+                           onPickCardModels = { cardModelPicker.launch("image/*") },
+                           onOpenAccessibilitySettings = {
+          @@ -317,10 +335,15 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                           highlightedSavedPlaceId = highlightedSavedPlaceId,
+                           radarImportSummary = radarImportSummary,
+                           radarImportStatus = radarImportStatus,
+          -                    onSave = { scope.launch { repository.saveSettings(it) } },
+          +                    onSave = { saveSettings(it) },
+                           onRegisterRideCard = ::registerRideCard,
+                           onRenameSavedPlace = ::renameSavedPlace,
+          -                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
+          +                    onDeleteSavedPlace = { place ->
+          +                        scope.launch {
+          +                            repository.removeSavedPlace(place.id)
+          +                            snackbarHostState.showSnackbar("Item removido.")
+          +                        }
+          +                    },
+                           onRegionDetected = { detectedRegion -> region = detectedRegion },
+                           onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
+                           onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+          @@ -330,6 +353,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                               scope.launch {
+                                   repository.clearImportedRadars()
+                                   radarImportStatus = "Radares importados removidos."
+          +                        snackbarHostState.showSnackbar("Radares importados removidos.")
+                               }
+                           },
+                       )
+          diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+          index f217bac..73fa9f8 100644
+          --- a/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+          +++ b/app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+          @@ -108,7 +108,7 @@ fun AlwaysLocationPermissionCard(
+                       Text("GPS continuo", fontWeight = FontWeight.Bold)
+                       Text(
+                           if (hasAlwaysPermission) {
+          -                    "Localizacao configurada para funcionar continuamente."
+          +                    "Localizacao liberada. Quando houver alerta ou radar importado ativo, o Rota Certa acompanha em alta precisao."
+                           } else {
+                               "Para alertas em movimento, abra Permissoes > Localizacao e selecione Permitir o tempo todo."
+                           },
+          PATCH
       - name: Commit source changes
         run: |
           git config user.name "codex"
