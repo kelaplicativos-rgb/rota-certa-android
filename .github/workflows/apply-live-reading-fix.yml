@@ -1,0 +1,239 @@
+name: Apply Live Reading Fix
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fix and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -q 'pendingAnalysis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt && grep -q 'versionName = "0.1.35"' app/build.gradle.kts; then
+            echo "Live reading fix already applied."
+          else
+            git apply <<'PATCH'
+          diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+          index 3f9959f..ef8fcab 100644
+          --- a/app/build.gradle.kts
+          +++ b/app/build.gradle.kts
+          @@ -26,8 +26,8 @@ android {
+                   applicationId = "br.com.mapeiaia.rotacerta"
+                   minSdk = 26
+                   targetSdk = 35
+          -        versionCode = 35
+          -        versionName = "0.1.34"
+          +        versionCode = 36
+          +        versionName = "0.1.35"
+           
+                   testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                   buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
+          @@ -89,4 +89,4 @@ dependencies {
+           }
+           
+           fun String.escapeForBuildConfig(): String =
+          -    replace("\\", "\\\\").replace("\"", "\\\"")
+          \ No newline at end of file
+          +    replace("\\", "\\\\").replace("\"", "\\\"")
+          diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          index 4b6ca19..8794507 100644
+          --- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          +++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          @@ -56,6 +56,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+               private var lastAnalyzedHash: Int? = null
+               private var lastSavedReadHash: Int? = null
+               private var lastDiagnosticSignature: String? = null
+          +    private var pendingAnalysis: PendingLiveAnalysis? = null
+               private var lastScreenshotMillis: Long = 0L
+               private var continuousScanStarted = false
+               private var proximityAlertMonitorStarted = false
+          @@ -127,15 +128,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
+           
+               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+                   if (!serviceReady || event == null) return
+          -        activePackageName = event.packageName?.toString()
+          -        traceEvent("event package=${activePackageName.orEmpty()} type=${event.eventType}")
+          -        if (!shouldScanPackage(activePackageName)) {
+          -            traceEvent("event blocked package=${activePackageName.orEmpty()} reason=${scanBlockReason(activePackageName)}")
+          -            if (isPassiveDiagnosticPackage(activePackageName)) {
+          -                resetToIdle(reason = scanBlockReason(activePackageName), record = false)
+          -                return
+          -            }
+          -            resetToIdle(reason = scanBlockReason(activePackageName), record = true)
+          +        val eventPackageName = normalizePackageName(event.packageName?.toString())
+          +        val packageName = eventPackageName ?: currentRootPackageName()
+          +        if (eventPackageName != null && !isPassiveDiagnosticPackage(eventPackageName)) {
+          +            activePackageName = eventPackageName
+          +        }
+          +        traceEvent("event package=${packageName.orEmpty()} type=${event.eventType}")
+          +        if (packageName == null) {
+          +            traceEvent("event ignored package= reason=Pacote ativo nao informado pelo Android.")
+          +            return
+          +        }
+          +        if (!shouldScanPackage(packageName)) {
+          +            val reason = scanBlockReason(packageName)
+          +            traceEvent("event blocked package=$packageName reason=$reason")
+          +            if (isPassiveDiagnosticPackage(packageName)) return
+          +            resetToIdle(reason = reason, record = true)
+                       return
+                   }
+                   if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
+          @@ -169,11 +176,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   traceEvent("scan.loop started interval=${SCAN_LOOP_MS}ms")
+                   scope.launch {
+                       while (serviceReady) {
+          -                if (shouldScanCurrentWindow()) {
+          +                val packageName = currentWindowPackageName()
+          +                if (shouldScanPackage(packageName)) {
+                               if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
+                               scheduleVisibleTextAnalysis(delayMs = 0L)
+                               requestScreenshotAnalysis()
+          -                } else {
+          +                } else if (!isPassiveDiagnosticPackage(packageName)) {
+                               resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
+                           }
+                           delay(SCAN_LOOP_MS)
+          @@ -405,14 +413,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                       return
+                   }
+                   if (analyzing) {
+          -            traceEvent("analysis.skip analyzing=true")
+          +            pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch)
+          +            traceEvent("analysis.defer analyzing=true hash=$snapshotHash")
+                       return
+                   }
+                   analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch)
+               }
+           
+               private fun rememberSourceText(packageName: String?, source: TextSource, text: String) {
+          -        val normalizedPackage = packageName?.lowercase(Locale.ROOT)
+          +        val normalizedPackage = normalizePackageName(packageName)
+                   if (normalizedPackage != lastTextPackageName) {
+                       traceEvent("source.reset package=${normalizedPackage.orEmpty()}")
+                       lastTextPackageName = normalizedPackage
+          @@ -576,6 +585,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   } finally {
+                       analyzing = false
+                       traceEvent("analysis.finish hash=$snapshotHash")
+          +            val pending = pendingAnalysis
+          +            pendingAnalysis = null
+          +            if (pending != null && pending.snapshotHash != lastAnalyzedHash && shouldScanCurrentWindow()) {
+          +                traceEvent("analysis.pending replay hash=${pending.snapshotHash}")
+          +                scope.launch {
+          +                    analyzeLiveText(
+          +                        text = pending.text,
+          +                        fields = pending.fields,
+          +                        snapshotHash = pending.snapshotHash,
+          +                        cardMatch = pending.cardMatch,
+          +                    )
+          +                }
+          +            }
+                   }
+               }
+           
+          @@ -715,10 +737,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
+               private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
+           
+               private fun currentWindowPackageName(): String? =
+          -        rootInActiveWindow?.packageName?.toString() ?: activePackageName
+          +        currentRootPackageName() ?: activePackageName
+          +
+          +    private fun currentRootPackageName(): String? =
+          +        normalizePackageName(rootInActiveWindow?.packageName?.toString())
+           
+               private fun shouldScanPackage(packageName: String?): Boolean {
+          -        val normalized = packageName?.lowercase(Locale.ROOT) ?: return false
+          +        val normalized = normalizePackageName(packageName) ?: return false
+                   if (normalized == this.packageName) return false
+                   if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
+                   if (normalized in IGNORED_PACKAGES) return false
+          @@ -739,7 +764,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+               }
+           
+               private fun scanBlockReason(packageName: String?): String {
+          -        val normalized = packageName?.lowercase(Locale.ROOT)
+          +        val normalized = normalizePackageName(packageName)
+                   if (normalized.isNullOrBlank()) return "Pacote ativo nao informado pelo Android."
+                   if (normalized == this.packageName) return "Rota Certa esta em primeiro plano; leitura pausada."
+                   if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return "Pacote passivo ignorado sem apagar a ultima decisao: $normalized."
+          @@ -767,11 +792,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   error: Throwable? = null,
+                   cardTemplateMatch: RideCardTemplateMatch? = null,
+               ) {
+          -        if (stage != "service_connected" && isPassiveDiagnosticPackage(activePackageName)) return
+          +        val diagnosticPackageName = activePackageName
+          +            ?.takeUnless { isPassiveDiagnosticPackage(it) }
+          +            ?: currentWindowPackageName()
+          +        if (stage != "service_connected" && isPassiveDiagnosticPackage(diagnosticPackageName)) return
+                   val settings = currentSettings
+                   val diagnosticColor = color ?: currentRadarColor
+                   val hash = text?.snapshotHash()
+          -        val signature = listOf(stage, diagnosticColor.diagnosticLabel, reason, activePackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
+          +        val signature = listOf(stage, diagnosticColor.diagnosticLabel, reason, diagnosticPackageName.orEmpty(), hash?.toString().orEmpty()).joinToString("|")
+                   if (signature == lastDiagnosticSignature) return
+                   lastDiagnosticSignature = signature
+           
+          @@ -779,7 +807,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                       createdAtMillis = System.currentTimeMillis(),
+                       appVersionName = BuildConfig.VERSION_NAME,
+                       appVersionCode = BuildConfig.VERSION_CODE,
+          -            packageName = activePackageName,
+          +            packageName = diagnosticPackageName,
+                       stage = stage,
+                       bubbleColor = diagnosticColor.diagnosticLabel,
+                       reason = reason.withDiagnosticEvents(),
+          @@ -821,10 +849,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   String.format(Locale("pt", "BR"), "%.1fkm", value)
+           
+               private fun isPassiveDiagnosticPackage(packageName: String?): Boolean {
+          -        val normalized = packageName?.lowercase(Locale.ROOT) ?: return false
+          +        val normalized = normalizePackageName(packageName) ?: return true
+                   return normalized == this.packageName || normalized in PASSIVE_DIAGNOSTIC_PACKAGES
+               }
+           
+          +    private fun normalizePackageName(packageName: String?): String? =
+          +        packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+          +
+               private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
+                   if (!serviceReady) return
+                   val manager = windowManager ?: return
+          @@ -1090,6 +1121,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                   var lastSpokenAtMillis: Long = 0L,
+               )
+           
+          +    private data class PendingLiveAnalysis(
+          +        val text: String,
+          +        val fields: RideFields,
+          +        val snapshotHash: Int,
+          +        val cardMatch: RideCardTemplateMatch?,
+          +    )
+          +
+               private enum class RadarColor(
+                   private val normalArgb: Int,
+                   private val darkArgb: Int,
+          PATCH
+          fi
+
+          rm -f .github/workflows/apply-live-reading-fix.yml
+          if git diff --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle.kts app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt .github/workflows/apply-live-reading-fix.yml
+          git commit -m "Fix live reading diagnostic overwrite"
+          git push
