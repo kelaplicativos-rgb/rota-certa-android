@@ -5,6 +5,7 @@ import java.util.Locale
 object RideOfferDetector {
     fun looksLikeRideOffer(text: String, fields: RideFields, packageName: String?): Boolean {
         if (!RideScreenTextClassifier.looksLikeRideCard(text)) return false
+        if (containsNonRideScreenNoise(text)) return false
         val destination = fields.destination?.lowercase(Locale.ROOT).orEmpty()
         if (destination.isBlank()) return false
         val pickup = fields.pickup?.lowercase(Locale.ROOT).orEmpty()
@@ -36,6 +37,28 @@ object RideOfferDetector {
             "Destino final igual ao embarque; aguardando leitura mais completa."
         else -> "Destino foi lido, mas a tela nao parece um card de corrida aceito pelo filtro."
     }
+
+    private fun containsNonRideScreenNoise(text: String): Boolean {
+        val normalized = text.lowercase(Locale.ROOT)
+        return nonRideScreenPhrases.any { normalized.contains(it) }
+    }
+
+    private val nonRideScreenPhrases = listOf(
+        "permissões do app",
+        "permissoes do app",
+        "nenhuma permissão negada",
+        "nenhuma permissao negada",
+        "configurações de apps não usados",
+        "configuracoes de apps nao usados",
+        "gerenciar app que não está",
+        "gerenciar app que nao esta",
+        "remover permissões",
+        "remover permissoes",
+        "abrir rota certa",
+        "salvar card de corrida",
+        "salvar este local",
+        "criar alerta de proximidade",
+    )
 
     private const val PACKAGE_99_DRIVER = "com.app99.driver"
 }

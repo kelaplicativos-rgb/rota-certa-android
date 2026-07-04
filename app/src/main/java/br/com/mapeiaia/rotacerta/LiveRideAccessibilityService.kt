@@ -134,18 +134,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!serviceReady || event == null) return
         val eventPackageName = normalizePackageName(event.packageName?.toString())
         val packageName = eventPackageName ?: currentRootPackageName()
-        if (eventPackageName != null && !isPassiveDiagnosticPackage(eventPackageName)) {
-            activePackageName = eventPackageName
+        if (eventPackageName != null) {
+            activePackageName = if (isPassiveDiagnosticPackage(eventPackageName)) null else eventPackageName
         }
         traceEvent("event package=${packageName.orEmpty()} type=${event.eventType}")
         if (packageName == null) {
             traceEvent("event ignored package= reason=Pacote ativo nao informado pelo Android.")
+            scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
+            requestScreenshotAnalysis(allowPopupCandidate = true)
+            resetToDefaultForNonRideScreen("Pacote ativo nao informado pelo Android.")
             return
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
             traceEvent("event blocked package=$packageName reason=$reason")
-            if (isPassiveDiagnosticPackage(packageName)) return
+            scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
+            requestScreenshotAnalysis(allowPopupCandidate = true)
+            if (isPassiveDiagnosticPackage(packageName)) {
+                resetToDefaultForNonRideScreen(reason)
+                return
+            }
             resetToIdle(reason = reason, record = true)
             return
         }
@@ -182,9 +190,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     scheduleVisibleTextAnalysis(delayMs = 0L)
                     requestScreenshotAnalysis()
                 } else if (isPassiveDiagnosticPackage(packageName)) {
-                    resetStaleRegisteredCardDecision()
+                    val visibleText = collectVisibleText(allowPopupCandidate = true)
+                    if (visibleText.isNotBlank() && looksLikeRegisteredPopupCandidate(visibleText)) {
+                        processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
+                        requestScreenshotAnalysis(allowPopupCandidate = true)
+                    } else {
+                        resetToDefaultForNonRideScreen("Tela passiva detectada fora do card cadastrado; bolinha voltou para amarelo.")
+                    }
                 } else if (!isPassiveDiagnosticPackage(packageName)) {
-                    resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
+                    val visibleText = collectVisibleText(allowPopupCandidate = true)
+                    if (visibleText.isNotBlank() && looksLikeRegisteredPopupCandidate(visibleText)) {
+                        processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
+                        requestScreenshotAnalysis(allowPopupCandidate = true)
+                    } else {
+                        resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
+                    }
                 }
                 delay(SCAN_LOOP_MS)
             }
@@ -217,8 +237,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun scheduleVisibleTextAnalysis(delayMs: Long) {
-        if (!serviceReady || !shouldScanCurrentWindow()) return
+    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
+        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow())) return
         if (analyzing) {
             traceEvent("accessibility.schedule skipped analyzing=true")
             return
@@ -230,14 +250,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("accessibility.schedule delay=${delayMs}ms")
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
-            val visibleText = collectVisibleText()
+            val visibleText = collectVisibleText(allowPopupCandidate)
             traceEvent("accessibility.collect length=${visibleText.length}")
-            processRideText(visibleText, TextSource.Accessibility)
+            processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate)
         }
     }
 
-    private fun requestScreenshotAnalysis() {
-        if (!serviceReady || !shouldScanCurrentWindow() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+    private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
+        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow()) || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val now = System.currentTimeMillis()
         if (now - lastScreenshotMillis < SCREENSHOT_INTERVAL_MS) return
         if (!screenshotInProgress.compareAndSet(false, true)) {
@@ -254,11 +274,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         scope.launch {
                             runCatching {
-                                if (shouldScanCurrentWindow()) {
+                                if (allowPopupCandidate || shouldScanCurrentWindow()) {
                                     val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
                                     val ocrText = ocrService.extractText(bitmap)
                                     traceEvent("screenshot.ocr success length=${ocrText.length}")
-                                    processRideText(ocrText, TextSource.Ocr)
+                                    processRideText(ocrText, TextSource.Ocr, allowPopupCandidate)
                                 }
                             }.onFailure { error ->
                                 traceEvent("screenshot.ocr error=${error::class.java.simpleName}: ${error.message.orEmpty()}")
@@ -293,8 +313,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun collectVisibleText(): String {
-        if (!shouldScanCurrentWindow()) return ""
+    private fun collectVisibleText(allowPopupCandidate: Boolean = false): String {
+        if (!allowPopupCandidate && !shouldScanCurrentWindow()) return ""
         val root = rootInActiveWindow ?: return ""
         val lines = mutableListOf<String>()
         collectNodeText(root, lines)
@@ -310,14 +330,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun processRideText(text: String, source: TextSource) {
-        if (!serviceReady || !shouldScanCurrentWindow()) return
-        val packageName = currentWindowPackageName()
+    private suspend fun processRideText(text: String, source: TextSource, allowPopupCandidate: Boolean = false) {
+        if (!serviceReady) return
+        val windowPackageName = currentWindowPackageName()
+        if (!allowPopupCandidate && !shouldScanPackage(windowPackageName)) return
+        val packageName = resolveRidePackageForText(windowPackageName, text, allowPopupCandidate)
+        if (!shouldScanPackage(packageName)) {
+            if (allowPopupCandidate && text.isNotBlank()) {
+                traceEvent("popup.candidate ignored reason=package_not_identified raw_length=${text.length}")
+            }
+            return
+        }
         traceEvent("process.start source=$source package=${packageName.orEmpty()} raw_length=${text.length}")
-        rememberSourceText(packageName, source, text)
-        val snapshotText = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
+        if (!allowPopupCandidate) {
+            rememberSourceText(packageName, source, text)
+        } else {
+            rememberPopupCandidatePackage(packageName)
+        }
+        val snapshotText = if (allowPopupCandidate) {
+            text.trim()
+        } else {
+            mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
+        }
         if (snapshotText.isBlank()) {
             traceEvent("process.empty_text source=$source")
+            if (allowPopupCandidate) return
             registeredCardGate.clear()
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
             return
@@ -327,6 +364,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("process.snapshot length=${snapshotText.length} hash=$snapshotHash")
         RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
             traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
+            if (allowPopupCandidate) return
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
             registeredCardGate.clear()
@@ -353,6 +391,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!RideOfferDetector.looksLikeRideOffer(snapshotText, fields, packageName)) {
             val reason = RideOfferDetector.rejectReason(fields)
             traceEvent("classifier.ride_offer=false reason=$reason")
+            if (allowPopupCandidate) return
             registeredCardGate.clear()
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
             resetToDefault(reason = reason, text = snapshotText, fields = fields)
@@ -363,6 +402,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (cardMatch == null) {
             val reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado. Salvei a amostra; cadastre o modelo para liberar o farol."
             traceEvent("card_model.missing package=${packageName.orEmpty()} templates=${currentCardTemplates.size}")
+            if (allowPopupCandidate) return
             registeredCardGate.clear()
             saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
@@ -377,11 +417,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         if (analyzing) {
-            pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch)
+            pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
             traceEvent("analysis.defer analyzing=true hash=$snapshotHash")
             return
         }
-        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch)
+        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
+    }
+
+    private fun resolveRidePackageForText(
+        windowPackageName: String?,
+        text: String,
+        allowPopupCandidate: Boolean,
+    ): String? {
+        val normalizedWindowPackage = normalizePackageName(windowPackageName)
+        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
+        if (!allowPopupCandidate) return normalizedWindowPackage
+        return RideCardTemplateMatcher.inferPackageName(text)
+            ?.takeIf { inferred -> shouldScanPackage(inferred) }
+    }
+
+    private fun looksLikeRegisteredPopupCandidate(text: String): Boolean {
+        val packageName = resolveRidePackageForText(currentWindowPackageName(), text, allowPopupCandidate = true)
+            ?: return false
+        val parseResult = parser.parseWithMetadata(text, packageName)
+        if (!RideOfferDetector.looksLikeRideOffer(text, parseResult.fields, packageName)) return false
+        return RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) != null
     }
 
     private fun rememberSourceText(packageName: String?, source: TextSource, text: String) {
@@ -396,6 +456,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             TextSource.Accessibility -> lastAccessibilityText = text.trim()
             TextSource.Ocr -> lastOcrText = text.trim()
         }
+    }
+
+    private fun rememberPopupCandidatePackage(packageName: String?) {
+        val normalizedPackage = normalizePackageName(packageName)
+        if (normalizedPackage != lastTextPackageName) {
+            traceEvent("source.reset package=${normalizedPackage.orEmpty()}")
+        }
+        lastTextPackageName = normalizedPackage
+        lastAccessibilityText = ""
+        lastOcrText = ""
     }
 
     private fun mergeRideTexts(accessibilityText: String, ocrText: String): String {
@@ -448,8 +518,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         fields: RideFields,
         snapshotHash: Int,
         cardMatch: RideCardTemplateMatch?,
+        allowPopupCandidate: Boolean = false,
     ) {
-        if (!serviceReady || !shouldScanCurrentWindow() || analyzing) return
+        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow()) || analyzing) return
         analyzing = true
         traceEvent("analysis.start hash=$snapshotHash destination=${fields.destination.diagnosticValue()}")
         currentSettings = repository.settings.first()
@@ -478,15 +549,27 @@ class LiveRideAccessibilityService : AccessibilityService() {
             traceEvent("decision.result recommendation=${result.recommendation} reason=${result.reason}")
             repository.addAnalysis(result)
             lastSavedReadHash = snapshotHash
-            if (!shouldScanCurrentWindow() && !isPassiveDiagnosticPackage(currentWindowPackageName())) {
-                showOverlay(RadarColor.Default)
+            if (!allowPopupCandidate && !shouldScanCurrentWindow()) {
+                registeredCardGate.clear()
+                resetToDefaultForNonRideScreen(
+                    reason = "A tela saiu do card/app monitorado antes de aplicar a decisao.",
+                    record = false,
+                )
                 recordDiagnostic(
                     stage = "window_changed_after_analysis",
-                    reason = "A tela saiu do app permitido antes de aplicar a decisao.",
+                    reason = "A tela saiu do card/app monitorado antes de aplicar a decisao.",
                     text = text,
                     fields = fields,
                     result = result,
                     cardTemplateMatch = cardMatch,
+                )
+                return
+            }
+            if (allowPopupCandidate && !looksLikeRegisteredPopupCandidate(collectVisibleText(allowPopupCandidate = true))) {
+                registeredCardGate.clear()
+                resetToDefaultForNonRideScreen(
+                    reason = "O pop-up de corrida nao esta mais visivel; bolinha voltou para amarelo.",
+                    record = false,
                 )
                 return
             }
@@ -532,6 +615,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                         fields = pending.fields,
                         snapshotHash = pending.snapshotHash,
                         cardMatch = pending.cardMatch,
+                        allowPopupCandidate = pending.allowPopupCandidate,
                     )
                 }
             }
@@ -561,10 +645,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastSnapshotHash = null
         lastAnalyzedHash = null
         registeredCardGate.clear()
+        clearRememberedRideText()
         showOverlay(RadarColor.Default)
         if (record) {
             recordDiagnostic(stage = "default", reason = reason, text = text, fields = fields)
         }
+    }
+
+    private fun resetToDefaultForNonRideScreen(reason: String, record: Boolean = false) {
+        resetToDefault(reason = reason, record = record)
     }
 
     private fun resetStaleRegisteredCardDecision() {
@@ -585,8 +674,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastSnapshotHash = null
         lastAnalyzedHash = null
         registeredCardGate.clear()
-        lastAccessibilityText = ""
-        lastOcrText = ""
+        clearRememberedRideText()
         showOverlay(RadarColor.Idle)
         if (record) {
             recordDiagnostic(stage = "idle", color = RadarColor.Idle, reason = reason)
@@ -635,6 +723,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 fields = parseResult.fields,
             )
         }
+    }
+
+    private fun clearRememberedRideText() {
+        pendingAnalysis = null
+        lastTextPackageName = null
+        lastAccessibilityText = ""
+        lastOcrText = ""
     }
 
     private fun saveCurrentPlaceFromBubble(type: SavedPlaceType) {
@@ -737,6 +832,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     ) {
         val diagnosticPackageName = activePackageName
             ?.takeUnless { isPassiveDiagnosticPackage(it) }
+            ?: lastTextPackageName?.takeIf { shouldScanPackage(it) }
             ?: currentWindowPackageName()
         if (stage != "service_connected" && isPassiveDiagnosticPackage(diagnosticPackageName)) return
         val settings = currentSettings
@@ -1028,6 +1124,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val fields: RideFields,
         val snapshotHash: Int,
         val cardMatch: RideCardTemplateMatch?,
+        val allowPopupCandidate: Boolean,
     )
 
     private enum class RadarColor(
