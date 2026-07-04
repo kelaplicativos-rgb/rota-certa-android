@@ -1,3 +1,4 @@
-Build Debug APK run: https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/28708357726
-Artifact: rota-certa-debug-apk
-Commit: bc32c7222dc8286d09153f685e6182febcb13fb6
+Build Debug APK run: pending
+Artifact: pending
+Commit: bff77f3ac87a8dc50779c7f20336b846d04f2c33
+Reason: trigger debug APK build for popup card fix
