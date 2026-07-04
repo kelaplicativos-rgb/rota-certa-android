@@ -58,6 +58,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastDiagnosticSignature: String? = null
     private var pendingAnalysis: PendingLiveAnalysis? = null
     private var lastScreenshotMillis: Long = 0L
+    private var lastRegisteredCardSeenAtMillis: Long = 0L
     private var continuousScanStarted = false
     private var proximityAlertMonitorStarted = false
     private var serviceReady = false
@@ -177,6 +178,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
                     scheduleVisibleTextAnalysis(delayMs = 0L)
                     requestScreenshotAnalysis()
+                } else if (isPassiveDiagnosticPackage(packageName)) {
+                    resetStaleRegisteredCardDecision()
                 } else if (!isPassiveDiagnosticPackage(packageName)) {
                     resetToIdle(reason = "Janela atual nao permitida para leitura.", record = false)
                 }
@@ -216,14 +219,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     runtime.spokenCount < MAX_PROXIMITY_ALERT_SPEECH_COUNT &&
                     now - runtime.lastSpokenAtMillis >= PROXIMITY_ALERT_REPEAT_GAP_MS
                 ) {
-                    speakProximityAlert(alert)
-                    runtime.spokenCount += 1
-                    runtime.lastSpokenAtMillis = now
-                    recordDiagnostic(
-                        stage = "proximity_alert_spoken",
-                        color = currentRadarColor,
-                        reason = "Alerta de proximidade falado: ${proximityAlertSpeech(alert)} a ${distanceMeters.roundToInt()} metros.",
-                    )
+                    if (speakProximityAlert(alert)) {
+                        runtime.spokenCount += 1
+                        runtime.lastSpokenAtMillis = now
+                        recordDiagnostic(
+                            stage = "proximity_alert_spoken",
+                            color = currentRadarColor,
+                            reason = "Alerta de proximidade falado: ${proximityAlertSpeech(alert)} a ${distanceMeters.roundToInt()} metros.",
+                        )
+                    }
                 }
             } else if (distanceMeters > threshold + PROXIMITY_ALERT_RESET_BUFFER_METERS) {
                 runtime.insideAlertZone = false
@@ -236,26 +240,36 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun checkImportedRadars(radars: List<ImportedRadar>, coordinate: Coordinate, now: Long) {
         if (radars.isEmpty()) return
         val threshold = currentSettings.proximityAlertDistanceMeters.coerceIn(200, 1000)
-        val nearest = radars.asSequence()
-            .map { radar -> radar to distanceMeters(coordinate, radar.coordinate) }
-            .filter { (_, distance) -> distance <= threshold }
-            .minByOrNull { (_, distance) -> distance }
-            ?: return
-        val radar = nearest.first
-        val distanceMeters = nearest.second
+        var nearestRadar: ImportedRadar? = null
+        var nearestDistanceMeters = Double.MAX_VALUE
+        radars.forEach { radar ->
+            val distanceMeters = distanceMeters(coordinate, radar.coordinate)
+            val key = "imported-${radar.id}"
+            if (distanceMeters > threshold + PROXIMITY_ALERT_RESET_BUFFER_METERS) {
+                proximityAlertRuntime[key]?.reset()
+            }
+            if (distanceMeters <= threshold && distanceMeters < nearestDistanceMeters) {
+                nearestRadar = radar
+                nearestDistanceMeters = distanceMeters
+            }
+        }
+        val radar = nearestRadar ?: return
+        val distanceMeters = nearestDistanceMeters
         val runtime = proximityAlertRuntime.getOrPut("imported-${radar.id}") { ProximityAlertRuntime() }
+        runtime.insideAlertZone = true
         if (
             runtime.spokenCount < MAX_PROXIMITY_ALERT_SPEECH_COUNT &&
             now - runtime.lastSpokenAtMillis >= PROXIMITY_ALERT_REPEAT_GAP_MS
         ) {
-            speakImportedRadar(radar, distanceMeters)
-            runtime.spokenCount += 1
-            runtime.lastSpokenAtMillis = now
-            recordDiagnostic(
-                stage = "imported_radar_spoken",
-                color = currentRadarColor,
-                reason = "Radar importado falado: ${importedRadarSpeech(radar, distanceMeters)}",
-            )
+            if (speakImportedRadar(radar, distanceMeters)) {
+                runtime.spokenCount += 1
+                runtime.lastSpokenAtMillis = now
+                recordDiagnostic(
+                    stage = "imported_radar_spoken",
+                    color = currentRadarColor,
+                    reason = "Radar importado falado: ${importedRadarSpeech(radar, distanceMeters)}",
+                )
+            }
         }
     }
 
@@ -360,6 +374,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val snapshotText = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
         if (snapshotText.isBlank()) {
             traceEvent("process.empty_text source=$source")
+            lastRegisteredCardSeenAtMillis = 0L
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
@@ -370,6 +385,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
+            lastRegisteredCardSeenAtMillis = 0L
             resetToDefault(reason = reason, text = snapshotText, record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
@@ -377,9 +393,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (snapshotHash != lastSnapshotHash) {
             lastSnapshotHash = snapshotHash
             lastAnalyzedHash = null
+            showOverlay(RadarColor.Default)
             recordDiagnostic(
                 stage = "screen_changed",
-                reason = "A imagem/texto da tela mudou; mantendo a bolinha atual ate concluir a nova leitura.",
+                reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
                 text = snapshotText,
             )
         }
@@ -392,21 +409,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!looksLikeRideOffer(snapshotText, fields, packageName)) {
             val reason = rideOfferRejectReason(fields)
             traceEvent("classifier.ride_offer=false reason=$reason")
+            lastRegisteredCardSeenAtMillis = 0L
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
             resetToDefault(reason = reason, text = snapshotText, fields = fields)
             return
         }
 
         val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
-        if (currentSettings.requireRegisteredRideCard && cardMatch == null) {
+        if (cardMatch == null) {
             val reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado. Salvei a amostra; cadastre o modelo para liberar o farol."
             traceEvent("card_model.missing package=${packageName.orEmpty()} templates=${currentCardTemplates.size}")
+            lastRegisteredCardSeenAtMillis = 0L
             saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
             saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
             resetToDefault(reason = reason, text = snapshotText, fields = fields)
             return
         }
-        traceEvent("card_model.match name=${cardMatch?.template?.name ?: "disabled"} score=${cardMatch?.score ?: 0.0}")
+        lastRegisteredCardSeenAtMillis = System.currentTimeMillis()
+        traceEvent("card_model.match name=${cardMatch.template.name} score=${cardMatch.score}")
 
         if (snapshotHash == lastAnalyzedHash) {
             traceEvent("analysis.skip duplicate_hash=$snapshotHash")
@@ -623,9 +643,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
     ) {
         lastSnapshotHash = null
         lastAnalyzedHash = null
+        lastRegisteredCardSeenAtMillis = 0L
         showOverlay(RadarColor.Default)
         if (record) {
             recordDiagnostic(stage = "default", reason = reason, text = text, fields = fields)
+        }
+    }
+
+    private fun resetStaleRegisteredCardDecision() {
+        val hasDecisionColor = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
+        if (!hasDecisionColor || lastRegisteredCardSeenAtMillis <= 0L) return
+        val elapsed = System.currentTimeMillis() - lastRegisteredCardSeenAtMillis
+        if (elapsed >= REGISTERED_CARD_STALE_RESET_MS) {
+            lastRegisteredCardSeenAtMillis = 0L
+            resetToDefault(
+                reason = "Card cadastrado nao esta mais visivel; bolinha voltou para amarelo.",
+                record = false,
+            )
         }
     }
 
@@ -635,6 +669,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     ) {
         lastSnapshotHash = null
         lastAnalyzedHash = null
+        lastRegisteredCardSeenAtMillis = 0L
         lastAccessibilityText = ""
         lastOcrText = ""
         showOverlay(RadarColor.Idle)
@@ -813,7 +848,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             reason = reason.withDiagnosticEvents(),
             restrictToSelectedRideApps = settings.restrictToSelectedRideApps,
             selectedPackages = selectedRidePackages(settings).toList().sorted(),
-            registeredCardRequired = settings.requireRegisteredRideCard,
+            registeredCardRequired = true,
             registeredCardMatched = cardTemplateMatch?.template?.name,
             textLength = text?.length ?: 0,
             textHash = hash,
@@ -1023,24 +1058,32 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double) {
-        if (!textToSpeechReady) return
-        textToSpeech?.speak(
+    private fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double): Boolean {
+        if (!textToSpeechReady) {
+            traceEvent("tts.not_ready imported_radar=${radar.id}")
+            return false
+        }
+        val result = textToSpeech?.speak(
             importedRadarSpeech(radar, distanceMeters),
-            TextToSpeech.QUEUE_ADD,
+            TextToSpeech.QUEUE_FLUSH,
             null,
             "imported-radar-${radar.id}-${System.currentTimeMillis()}",
-        )
+        ) ?: TextToSpeech.ERROR
+        return result == TextToSpeech.SUCCESS
     }
 
-    private fun speakProximityAlert(place: SavedPlace) {
-        if (!textToSpeechReady) return
-        textToSpeech?.speak(
+    private fun speakProximityAlert(place: SavedPlace): Boolean {
+        if (!textToSpeechReady) {
+            traceEvent("tts.not_ready proximity_alert=${place.id}")
+            return false
+        }
+        val result = textToSpeech?.speak(
             proximityAlertSpeech(place),
-            TextToSpeech.QUEUE_ADD,
+            TextToSpeech.QUEUE_FLUSH,
             null,
             "proximity-alert-${place.id}-${System.currentTimeMillis()}",
-        )
+        ) ?: TextToSpeech.ERROR
+        return result == TextToSpeech.SUCCESS
     }
 
     private fun proximityAlertSpeech(place: SavedPlace): String {
@@ -1119,7 +1162,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         var spokenCount: Int = 0,
         var insideAlertZone: Boolean = false,
         var lastSpokenAtMillis: Long = 0L,
-    )
+    ) {
+        fun reset() {
+            spokenCount = 0
+            insideAlertZone = false
+            lastSpokenAtMillis = 0L
+        }
+    }
 
     private data class PendingLiveAnalysis(
         val text: String,
@@ -1148,6 +1197,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private companion object {
         const val SCAN_LOOP_MS = 850L
         const val SCREENSHOT_INTERVAL_MS = 650L
+        const val REGISTERED_CARD_STALE_RESET_MS = 900L
         const val PROXIMITY_ALERT_LOOP_MS = 15_000L
         const val PROXIMITY_ALERT_REPEAT_GAP_MS = 20_000L
         const val PROXIMITY_ALERT_RESET_BUFFER_METERS = 100

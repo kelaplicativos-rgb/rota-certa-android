@@ -969,13 +969,8 @@ private fun BackupCard(
 @Composable
 private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
     ExpandableCard(title = "Apps monitorados", initiallyExpanded = false) {
-        SettingsSwitchRow(
-            label = "Exigir card cadastrado para farol",
-            checked = settings.requireRegisteredRideCard,
-            onCheckedChange = { onChange(settings.copy(requireRegisteredRideCard = it)) },
-        )
         Text(
-            "Ligado: telas desconhecidas ficam amarelas e viram amostra. Desligado: usa o classificador antigo.",
+            "Farol ao vivo: verde/vermelho somente quando a tela bater com um card cadastrado manualmente. Telas desconhecidas ficam amarelas e viram amostra.",
             style = MaterialTheme.typography.bodySmall,
         )
         SettingsSwitchRow(
