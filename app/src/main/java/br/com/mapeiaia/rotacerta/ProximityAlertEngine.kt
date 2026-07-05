@@ -34,7 +34,7 @@ class ProximityAlertEngine(
             val distanceMeters = GeoDistance.meters(coordinate, alert.coordinate)
             val runtime = runtimeById.getOrPut(alert.id) { ProximityAlertRuntime() }
             if (distanceMeters <= threshold) {
-                if (runtime.canSpeak(now)) {
+                if (runtime.canSpeak(now, MAX_SAVED_PLACE_SPEECH_COUNT)) {
                     if (speechEngine.speakProximityAlert(alert)) {
                         runtime.recordSpoken(now)
                         onDiagnostic(
@@ -76,7 +76,7 @@ class ProximityAlertEngine(
         val radar = nearestRadar ?: return
         val distanceMeters = nearestDistanceMeters
         val runtime = runtimeById.getOrPut(importedRadarKey(radar)) { ProximityAlertRuntime() }
-        if (runtime.canSpeak(now)) {
+        if (runtime.canSpeak(now, MAX_IMPORTED_RADAR_SPEECH_COUNT)) {
             if (speechEngine.speakImportedRadar(radar, distanceMeters)) {
                 runtime.recordSpoken(now)
                 onDiagnostic(
@@ -95,8 +95,8 @@ class ProximityAlertEngine(
         var spokenCount: Int = 0,
         var lastSpokenAtMillis: Long = 0L,
     ) {
-        fun canSpeak(now: Long): Boolean =
-            spokenCount < MAX_SPEECH_COUNT && now - lastSpokenAtMillis >= REPEAT_GAP_MS
+        fun canSpeak(now: Long, maxSpeechCount: Int): Boolean =
+            spokenCount < maxSpeechCount && now - lastSpokenAtMillis >= REPEAT_GAP_MS
 
         fun recordSpoken(now: Long) {
             spokenCount += 1
@@ -112,7 +112,8 @@ class ProximityAlertEngine(
     private companion object {
         const val REPEAT_GAP_MS = 20_000L
         const val RESET_BUFFER_METERS = 100
-        const val MAX_SPEECH_COUNT = 2
+        const val MAX_SAVED_PLACE_SPEECH_COUNT = 2
+        const val MAX_IMPORTED_RADAR_SPEECH_COUNT = 1
     }
 }
 
