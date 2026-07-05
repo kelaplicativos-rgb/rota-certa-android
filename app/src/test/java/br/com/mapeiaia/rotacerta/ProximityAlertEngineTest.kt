@@ -24,7 +24,7 @@ class ProximityAlertEngineTest {
         now += 20_000L
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
 
-        assertEquals(4, speech.importedCalls)
+        assertEquals(3, speech.importedCalls)
     }
 
     @Test
@@ -53,6 +53,55 @@ class ProximityAlertEngineTest {
         assertEquals(listOf("nearer"), speech.importedRadarIds)
     }
 
+    @Test
+    fun doesNotRepeatImportedRadarDuringSameApproachAfterRepeatGap() {
+        var now = 100_000L
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { now }
+        val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
+        now += 25_000L
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
+
+        assertEquals(1, speech.importedCalls)
+    }
+
+    @Test
+    fun importedRadarSpeaksAgainAfterLeavingAndApproachingAgain() {
+        var now = 100_000L
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { now }
+        val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
+        now += 25_000L
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0045), settings()) {}
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
+
+        assertEquals(2, speech.importedCalls)
+    }
+
+    @Test
+    fun savedPlaceAlertCanRepeatDuringSameApproach() {
+        var now = 100_000L
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { now }
+        val alert = SavedPlace(
+            id = "alert-1",
+            name = "Alerta",
+            type = SavedPlaceType.ProximityAlert,
+            coordinate = Coordinate(0.0, 0.0005),
+            alertDistanceMeters = 200,
+        )
+
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+        now += 25_000L
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+
+        assertEquals(2, speech.proximityCalls)
+    }
+
     private fun settings(): AppSettings = AppSettings(proximityAlertDistanceMeters = 200)
 
     private fun importedRadar(id: String, coordinate: Coordinate): ImportedRadar =
@@ -62,6 +111,7 @@ class ProximityAlertEngineTest {
         var importedResult: Boolean = true,
     ) : ProximitySpeech {
         var importedCalls = 0
+        var proximityCalls = 0
         val importedRadarIds = mutableListOf<String>()
 
         override fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double): Boolean {
@@ -70,7 +120,10 @@ class ProximityAlertEngineTest {
             return importedResult
         }
 
-        override fun speakProximityAlert(place: SavedPlace): Boolean = true
+        override fun speakProximityAlert(place: SavedPlace): Boolean {
+            proximityCalls += 1
+            return true
+        }
 
         override fun proximityAlertSpeech(place: SavedPlace): String = place.name
     }
