@@ -2,8 +2,12 @@ name: Build Debug APK
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - 'codex/**'
 
 permissions:
   contents: write
@@ -47,6 +51,7 @@ jobs:
           fi
 
       - name: Record debug APK run start
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           CURRENT_SHA="$(git rev-parse HEAD)"
@@ -80,6 +85,7 @@ jobs:
           if-no-files-found: error
 
       - name: Record latest APK run link
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           CURRENT_SHA="$(git rev-parse HEAD)"
