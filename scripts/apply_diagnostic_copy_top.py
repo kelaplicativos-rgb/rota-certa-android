@@ -22,6 +22,12 @@ button_block = '''            Button(
 '''
 main = replace_once(
     main,
+    button_block,
+    "",
+    "old diagnostic copy button removal",
+)
+main = replace_once(
+    main,
     '''        Text("Cards cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
         if (diagnostic == null) {
             Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
@@ -33,11 +39,5 @@ main = replace_once(
         } else {
 ''' + button_block + '''            Text("Cor: ${diagnostic.bubbleColor}")''',
     "top diagnostic copy button insertion",
-)
-main = replace_once(
-    main,
-    button_block,
-    "",
-    "old diagnostic copy button removal",
 )
 main_path.write_text(main)
