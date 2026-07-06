@@ -17,6 +17,47 @@ val patchLiveAnalysisSupersede by tasks.registering {
         }
 
         text = text.replace(
+"""        val snapshotText = if (allowPopupCandidate) {
+            text.trim()
+        } else {
+            mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
+        }
+""",
+"""        val snapshotText = when {
+            allowPopupCandidate -> text.trim()
+            source == TextSource.Accessibility -> text.trim()
+            else -> mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
+        }
+""",
+        )
+
+        text = text.replace(
+"""                lastSnapshotHash = snapshotHash
+                lastAnalyzedHash = null
+                showOverlay(RadarColor.Default)
+""",
+"""                lastSnapshotHash = snapshotHash
+                lastAnalyzedHash = null
+                analysisSerial += 1
+                traceEvent("analysis.invalidate_on_screen_change hash=${dollar}snapshotHash")
+                showOverlay(RadarColor.Default)
+""",
+        )
+
+        text = text.replace(
+"""            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            showOverlay(RadarColor.Default)
+""",
+"""            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            analysisSerial += 1
+            traceEvent("analysis.invalidate_on_screen_change hash=${dollar}snapshotHash")
+            showOverlay(RadarColor.Default)
+""",
+        )
+
+        text = text.replace(
 """        if (analyzing) {
             pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
             traceEvent("analysis.defer analyzing=true hash=${dollar}snapshotHash")
@@ -34,6 +75,11 @@ val patchLiveAnalysisSupersede by tasks.registering {
         )
 
         text = text.replace(
+            "        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow()) || analyzing) return\n",
+            "        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow())) return\n",
+        )
+
+        text = text.replace(
 """        analyzing = true
         traceEvent("analysis.start hash=${dollar}snapshotHash destination=${dollar}{fields.destination.diagnosticValue()}")
 """,
@@ -42,6 +88,19 @@ val patchLiveAnalysisSupersede by tasks.registering {
         traceEvent("analysis.start token=${dollar}analysisToken hash=${dollar}snapshotHash destination=${dollar}{fields.destination.diagnosticValue()}")
 """,
         )
+
+        if ("analysis.drop_stale_before_quick" !in text) {
+            text = text.replace(
+"""            if (quickResult.recommendation != Recommendation.InsufficientData) {
+""",
+"""            if (analysisToken != analysisSerial) {
+                traceEvent("analysis.drop_stale_before_quick token=${dollar}analysisToken current=${dollar}analysisSerial hash=${dollar}snapshotHash")
+                return
+            }
+            if (quickResult.recommendation != Recommendation.InsufficientData) {
+""",
+            )
+        }
 
         text = text.replace(
 """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
@@ -76,7 +135,7 @@ val patchLiveAnalysisSupersede by tasks.registering {
 }
 
 patchLiveAnalysisSupersede.configure {
-    mustRunAfter("patchInstantCardDecisionCache")
+    mustRunAfter("patchLiveRideAccessibilityService", "patchInstantCardDecisionCache")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
