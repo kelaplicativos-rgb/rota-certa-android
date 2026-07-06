@@ -1,14 +1,12 @@
 package br.com.mapeiaia.rotacerta
 
-import java.util.ArrayDeque
-
 object DiagnosticLogStore {
     private const val MaxEvents = 500
     private const val MaxSourceLength = 48
     private const val MaxMessageLength = 500
 
     private val lock = Any()
-    private val events = ArrayDeque<String>()
+    private val events = mutableListOf<String>()
 
     fun record(source: String, message: String, nowMillis: Long = System.currentTimeMillis()) {
         val cleanSource = source
@@ -22,8 +20,8 @@ object DiagnosticLogStore {
             .ifBlank { "empty" }
             .take(MaxMessageLength)
         synchronized(lock) {
-            events.addLast("$nowMillis $cleanSource $cleanMessage")
-            while (events.size > MaxEvents) events.removeFirst()
+            events += "$nowMillis $cleanSource $cleanMessage"
+            while (events.size > MaxEvents) events.removeAt(0)
         }
     }
 
