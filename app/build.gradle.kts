@@ -208,3 +208,4 @@ fun String.escapeForBuildConfig(): String =
     replace("\\", "\\\\").replace("\"", "\\\"")
 
 apply(from = "patch-live-ride-stability.gradle.kts")
+apply(from = "patch-live-ride-bubble-actions.gradle.kts")
