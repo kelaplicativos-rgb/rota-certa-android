@@ -206,3 +206,5 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 
 fun String.escapeForBuildConfig(): String =
     replace("\\", "\\\\").replace("\"", "\\\"")
+
+apply(from = "patch-live-ride-stability.gradle.kts")
