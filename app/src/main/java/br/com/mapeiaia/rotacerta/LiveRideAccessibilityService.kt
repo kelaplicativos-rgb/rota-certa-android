@@ -132,6 +132,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!serviceReady || event == null) return
+        if (!currentSettings.appEnabled) {
+            if (currentRadarColor != RadarColor.Idle) resetToIdle("Rota Certa desligado pelo usuario.", record = false)
+            return
+        }
         val eventPackageName = normalizePackageName(event.packageName?.toString())
         val packageName = eventPackageName ?: currentRootPackageName()
         if (eventPackageName != null) {
@@ -184,6 +188,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("scan.loop started interval=${SCAN_LOOP_MS}ms")
         scope.launch {
             while (serviceReady) {
+                if (!currentSettings.appEnabled) {
+                    if (currentRadarColor != RadarColor.Idle) resetToIdle("Rota Certa desligado pelo usuario.", record = false)
+                    delay(SCAN_LOOP_MS)
+                    continue
+                }
                 val packageName = currentWindowPackageName()
                 if (shouldScanPackage(packageName)) {
                     if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
@@ -217,6 +226,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent("proximity.loop started interval=${PROXIMITY_ALERT_LOOP_MS}ms")
         scope.launch {
             while (serviceReady) {
+                if (!currentSettings.appEnabled || !currentSettings.proximityAlertsEnabled) {
+                    delay(PROXIMITY_ALERT_LOOP_MS)
+                    continue
+                }
                 val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
                 val radars = currentImportedRadars
                 if (alerts.isNotEmpty() || radars.isNotEmpty()) checkProximityAlerts(alerts, radars)
@@ -226,6 +239,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun checkProximityAlerts(alerts: List<SavedPlace>, radars: List<ImportedRadar>) {
+        if (!currentSettings.appEnabled || !currentSettings.proximityAlertsEnabled) return
         val coordinate = locationService.currentCoordinate() ?: return
         proximityAlertEngine.check(
             alerts = alerts,
@@ -793,6 +807,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
         val settings = currentSettings
+        if (!settings.appEnabled) return false
         return normalized in selectedRidePackages(settings)
     }
 

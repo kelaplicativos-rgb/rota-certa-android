@@ -805,6 +805,7 @@ private fun SettingsScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Configuracoes", fontWeight = FontWeight.Bold)
+        SystemControlCard(settings = draft, onChange = ::saveDraft)
         AlwaysLocationPermissionCard(
             hasAlwaysPermission = hasAlwaysLocationPermission(context),
             onOpenLocationSettings = { openAppLocationSettings(context) },
@@ -843,6 +844,33 @@ private fun SettingsScreen(
             onRestoreBackup = onRestoreBackup,
         )
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+    }
+}
+
+@Composable
+private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    ExpandableCard(title = "Controle geral", initiallyExpanded = true) {
+        SettingsSwitchRow(
+            label = "Rota Certa ligado",
+            checked = settings.appEnabled,
+            onCheckedChange = { enabled -> onChange(settings.copy(appEnabled = enabled)) },
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Falar radares e proximidade", modifier = Modifier.weight(1f))
+            Switch(
+                checked = settings.appEnabled && settings.proximityAlertsEnabled,
+                enabled = settings.appEnabled,
+                onCheckedChange = { enabled -> onChange(settings.copy(proximityAlertsEnabled = enabled)) },
+            )
+        }
+        Text(
+            if (settings.appEnabled) {
+                "Desligue apenas quando quiser pausar leitura ao vivo e avisos. A bolinha fica em espera."
+            } else {
+                "Rota Certa esta pausado: leitura ao vivo e avisos de proximidade ficam desligados."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

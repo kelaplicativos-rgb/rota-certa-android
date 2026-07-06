@@ -20,7 +20,9 @@ data class AppSettings(
     val monitorUber: Boolean = true,
     val monitorInDrive: Boolean = true,
     val extraMonitoredPackages: String = "",
+    val appEnabled: Boolean = true,
     val requireRegisteredRideCard: Boolean = true,
+    val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
 )
 
