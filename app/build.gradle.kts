@@ -177,7 +177,8 @@ val patchLiveRideAccessibilityService by tasks.registering {
 """,
         )
 
-        text = text.replace(
+        if ("private fun hasActiveRegisteredDecision()" !in text) {
+            text = text.replace(
 """    private fun resetToDefault(
 """,
 """    private fun hasActiveRegisteredDecision(): Boolean =
@@ -185,7 +186,8 @@ val patchLiveRideAccessibilityService by tasks.registering {
 
     private fun resetToDefault(
 """,
-        )
+            )
+        }
 
         text = text.replace(
             "else -> distanceKm.roundToInt().coerceAtMost(99).toString()",
