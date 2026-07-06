@@ -10,7 +10,7 @@ on:
       - 'codex/**'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -50,23 +50,6 @@ jobs:
             echo "GOOGLE_MAPS_API_KEY secret found."
           fi
 
-      - name: Record debug APK run start
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: |
-          set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: pending"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record debug APK run start" || exit 0
-          git push
-
       - name: Run unit tests
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
@@ -75,7 +58,7 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble)" gradle-test.log || tail -160 gradle-test.log
+            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble|patchLiveWindowStaleOcr)" gradle-test.log || tail -160 gradle-test.log
           fi
           exit "$status"
 
@@ -90,20 +73,3 @@ jobs:
           name: rota-certa-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-      - name: Record latest APK run link
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: |
-          set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: rota-certa-debug-apk"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record latest debug APK run" || exit 0
-          git push
