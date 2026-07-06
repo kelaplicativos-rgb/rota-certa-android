@@ -36,7 +36,7 @@ val patchLiveHistoryDedupe by tasks.registering {
                 extractedText = text,
                 fields = fields,
                 recommendation = Recommendation.InsufficientData,
-                reason = "Leitura capturada: $reason",
+                reason = "Leitura capturada: ${dollar}reason",
             ),
         )
     }
