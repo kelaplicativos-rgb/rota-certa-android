@@ -11,7 +11,7 @@
         <activity
             android:name=".BlaBlaCarCollectorActivity"
             android:exported="false"
-            android:label="Coletor BlaBlaCar" />
+            android:label="Assistente de Viagens" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
