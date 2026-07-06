@@ -338,6 +338,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     onOpenBlaBlaCarCollector = {
                         context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
                     },
+                    onClearClipboard = { clearClipboard(context) },
                 )
                 TAB_HISTORY -> HistoryScreen(history)
             }
@@ -1125,7 +1126,10 @@ private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Uni
 }
 
 @Composable
-private fun ToolsScreen(onOpenBlaBlaCarCollector: () -> Unit) {
+private fun ToolsScreen(
+    onOpenBlaBlaCarCollector: () -> Unit,
+    onClearClipboard: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Ferramentas", fontWeight = FontWeight.Bold)
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -1137,6 +1141,18 @@ private fun ToolsScreen(onOpenBlaBlaCarCollector: () -> Unit) {
                 )
                 Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
                     Text("Abrir coletor")
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Area de transferencia", fontWeight = FontWeight.Bold)
+                Text(
+                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                    Text("Limpar area de transferencia")
                 }
             }
         }
@@ -1160,6 +1176,21 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
                 }
             }
         }
+    }
+}
+
+private fun clearClipboard(context: Context) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            clipboard.clearPrimaryClip()
+        } else {
+            clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+        }
+    }.onSuccess {
+        Toast.makeText(context, "Area de transferencia limpa.", Toast.LENGTH_SHORT).show()
+    }.onFailure {
+        Toast.makeText(context, "Nao foi possivel limpar a area de transferencia.", Toast.LENGTH_SHORT).show()
     }
 }
 
