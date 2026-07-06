@@ -246,7 +246,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
 
     LaunchedEffect(launchIntent) {
         val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
-        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_HISTORY) {
+        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
             tab = requestedTab
         }
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
@@ -276,6 +276,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
                 NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_TOOLS, onClick = { tab = TAB_TOOLS }, label = { Text("Ferramentas") }, icon = {})
                 NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})
             }
         },
@@ -331,6 +332,11 @@ fun RotaCertaApp(launchIntent: Intent?) {
                             repository.clearImportedRadars()
                             radarImportStatus = "Radares importados removidos."
                         }
+                    },
+                )
+                TAB_TOOLS -> ToolsScreen(
+                    onOpenBlaBlaCarCollector = {
+                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
                     },
                 )
                 TAB_HISTORY -> HistoryScreen(history)
@@ -1087,6 +1093,25 @@ private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Uni
             valueRange = 0f..allowedValues.lastIndex.toFloat(),
             steps = allowedValues.size - 2,
         )
+    }
+}
+
+@Composable
+private fun ToolsScreen(onOpenBlaBlaCarCollector: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Ferramentas", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir coletor")
+                }
+            }
+        }
     }
 }
 

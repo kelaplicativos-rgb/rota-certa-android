@@ -10,13 +10,8 @@
         android:theme="@style/AppTheme">
         <activity
             android:name=".BlaBlaCarCollectorActivity"
-            android:exported="true"
-            android:label="Coletor BlaBlaCar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:label="Coletor BlaBlaCar" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
