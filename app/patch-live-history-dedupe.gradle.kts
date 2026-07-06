@@ -9,7 +9,8 @@ val patchLiveHistoryDedupe by tasks.registering {
         val original = text
         val dollar = "$"
 
-        text = text.replace(
+        if ("lastInsufficientHistorySignature" !in text) {
+            text = text.replace(
 """    private var lastSnapshotHash: Int? = null
     private var lastAnalyzedHash: Int? = null
     private var lastSavedReadHash: Int? = null
@@ -24,7 +25,8 @@ val patchLiveHistoryDedupe by tasks.registering {
     private var lastCapturedScreenAtMillis: Long = 0L
     private var lastDiagnosticSignature: String? = null
 """,
-        )
+            )
+        }
 
         text = text.replace(
 """    private suspend fun saveCapturedReadToHistory(text: String, fields: RideFields, snapshotHash: Int, reason: String) {
@@ -139,7 +141,8 @@ val patchLiveHistoryDedupe by tasks.registering {
             )
         }
 
-        text = text.replace(
+        if ("HISTORY_MIN_INTERVAL_MS" !in text) {
+            text = text.replace(
 """        const val DIAGNOSTIC_TEXT_LIMIT = 1200
         const val DIAGNOSTIC_EVENT_LIMIT = 60
 """,
@@ -149,7 +152,8 @@ val patchLiveHistoryDedupe by tasks.registering {
         const val HISTORY_DEDUPE_WINDOW_MS = 120_000L
         const val CAPTURED_SCREEN_DEDUPE_WINDOW_MS = 120_000L
 """,
-        )
+            )
+        }
 
         if (text != original) {
             file.writeText(text)
