@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlaBlaCarCollectorParserTest {
@@ -8,6 +9,14 @@ class BlaBlaCarCollectorParserTest {
     fun normalizesBrazilianPhoneNumbers() {
         assertEquals("5511987654321", BlaBlaCarCollectorParser.normalizePhone("(11) 98765-4321"))
         assertEquals("5521912345678", BlaBlaCarCollectorParser.normalizePhone("+55 21 91234-5678"))
+    }
+
+    @Test
+    fun buildsWhatsAppUrlWithNormalizedPhoneAndEncodedMessage() {
+        val url = BlaBlaCarCollectorParser.whatsappUrl("(11) 98765-4321", "Ola passageiro")
+
+        assertTrue(url.startsWith("https://wa.me/5511987654321?text="))
+        assertTrue(url.contains("Ola%20passageiro"))
     }
 
     @Test
