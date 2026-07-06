@@ -10,6 +10,42 @@ val patchLiveWindowStaleOcr by tasks.registering {
         val dollar = "$"
 
         text = text.replace(
+"""    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
+        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow())) return
+""",
+"""    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
+        if (!serviceReady) return
+        val scheduleWindowPackageName = currentWindowPackageName()
+        if (scheduleWindowPackageName == this.packageName) {
+            traceEvent("accessibility.schedule skipped rota_certa_foreground")
+            analyzeJob?.cancel()
+            pendingAnalysis = null
+            clearRememberedRideText()
+            return
+        }
+        if (!allowPopupCandidate && !shouldScanPackage(scheduleWindowPackageName)) return
+""",
+        )
+
+        text = text.replace(
+"""    private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
+        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow()) || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val now = System.currentTimeMillis()
+""",
+"""    private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
+        if (!serviceReady || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val requestWindowPackageName = currentWindowPackageName()
+        if (requestWindowPackageName == this.packageName) {
+            traceEvent("screenshot.request skipped rota_certa_foreground")
+            screenshotInProgress.set(false)
+            return
+        }
+        if (!allowPopupCandidate && !shouldScanPackage(requestWindowPackageName)) return
+        val now = System.currentTimeMillis()
+""",
+        )
+
+        text = text.replace(
 """        if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
             traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
