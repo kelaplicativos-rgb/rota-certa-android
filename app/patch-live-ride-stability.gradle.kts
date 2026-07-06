@@ -55,12 +55,14 @@ val patchLiveRideOverlayStability by tasks.registering {
 """,
         )
 
-        text = text.replace(
-            "        view.text = formatBubbleDistanceKm(currentDistanceKm)\n",
-            "        view.text = nextText\n",
-        )
+        if ("val nextText = formatBubbleDistanceKm(distanceKm)" in text) {
+            text = text.replace(
+                "        view.text = formatBubbleDistanceKm(currentDistanceKm)\n",
+                "        view.text = nextText\n",
+            )
+        }
 
-        if ("DECISION_OVERLAY_STICKY_MS" !in text) {
+        if ("const val DECISION_OVERLAY_STICKY_MS" !in text) {
             text = text.replace(
                 "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n",
                 "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n        const val DECISION_OVERLAY_STICKY_MS = 3_500L\n",
@@ -77,6 +79,6 @@ patchLiveRideOverlayStability.configure {
     mustRunAfter("patchLiveRideAccessibilityService")
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach {
+tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(patchLiveRideOverlayStability)
 }
