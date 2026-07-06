@@ -20,6 +20,145 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply OCR decision state patch
+        if: github.ref == 'refs/heads/codex/radar-txt-approach-alert-fix'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
+          text = path.read_text()
+          original = text
+
+          replacements = [
+              (
+                  '''        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
+            traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
+            if (allowPopupCandidate) return
+            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            registeredCardGate.clear()
+            resetToDefault(reason = reason, text = snapshotText, record = !isPassiveDiagnosticPackage(activePackageName))
+            return
+        }
+''',
+                  '''        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
+            traceEvent("classifier.ignore=true reason=$reason hash=$snapshotHash")
+            if (allowPopupCandidate) return
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.ignore_reason keep_decision=true reason=$reason")
+                return
+            }
+            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            registeredCardGate.clear()
+            resetToDefault(reason = reason, text = snapshotText, record = !isPassiveDiagnosticPackage(activePackageName))
+            return
+        }
+''',
+              ),
+              (
+                  '''        if (snapshotHash != lastSnapshotHash) {
+            lastSnapshotHash = snapshotHash
+            lastAnalyzedHash = null
+            showOverlay(RadarColor.Default)
+            recordDiagnostic(
+                stage = "screen_changed",
+                reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
+                text = snapshotText,
+            )
+        }
+''',
+                  '''        if (snapshotHash != lastSnapshotHash) {
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.screen_changed keep_decision=true hash=$snapshotHash")
+            } else {
+                lastSnapshotHash = snapshotHash
+                lastAnalyzedHash = null
+                showOverlay(RadarColor.Default)
+                recordDiagnostic(
+                    stage = "screen_changed",
+                    reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
+                    text = snapshotText,
+                )
+            }
+        }
+''',
+              ),
+              (
+                  '''            traceEvent("classifier.ride_offer=false reason=$reason")
+            if (allowPopupCandidate) return
+            registeredCardGate.clear()
+            saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
+''',
+                  '''            traceEvent("classifier.ride_offer=false reason=$reason")
+            if (allowPopupCandidate) return
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.ride_offer_false keep_decision=true reason=$reason")
+                return
+            }
+            registeredCardGate.clear()
+            saveCapturedReadToHistory(snapshotText, fields, snapshotHash, reason)
+''',
+              ),
+              (
+                  '''            traceEvent("card_model.missing package=${packageName.orEmpty()} templates=${currentCardTemplates.size}")
+            if (allowPopupCandidate) return
+            registeredCardGate.clear()
+            saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
+''',
+                  '''            traceEvent("card_model.missing package=${packageName.orEmpty()} templates=${currentCardTemplates.size}")
+            if (allowPopupCandidate) return
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.card_model_missing keep_decision=true templates=${currentCardTemplates.size}")
+                return
+            }
+            registeredCardGate.clear()
+            saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
+''',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new)
+
+          marker = '''    private fun resetToDefault(
+        reason: String,
+'''
+          helper = '''    private fun hasActiveRegisteredDecision(): Boolean =
+        currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
+
+'''
+          if 'private fun hasActiveRegisteredDecision()' not in text:
+              text = text.replace(marker, helper + marker)
+
+          if text == original:
+              print('LiveRideAccessibilityService.kt already patched or patterns not found.')
+          else:
+              path.write_text(text)
+
+          Path('.github/workflows/apply-ocr-decision-fix.yml').unlink(missing_ok=True)
+          Path('.github/apply-ocr-decision-fix.trigger').unlink(missing_ok=True)
+          PY
+
+      - name: Commit OCR decision state patch
+        if: github.ref == 'refs/heads/codex/radar-txt-approach-alert-fix'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt .github/workflows/apply-ocr-decision-fix.yml .github/apply-ocr-decision-fix.trigger
+          if git diff --cached --quiet; then
+            echo "No OCR decision state patch changes to commit."
+          else
+            git commit -m "Preserve ride decision after noisy OCR"
+            git push origin HEAD:codex/radar-txt-approach-alert-fix
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
