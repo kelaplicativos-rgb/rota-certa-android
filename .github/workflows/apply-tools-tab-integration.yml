@@ -1,0 +1,102 @@
+name: Apply Tools Tab Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/radar-txt-approach-alert-fix]
+    paths:
+      - '.github/workflows/apply-tools-tab-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    name: Patch tools tab integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply Kotlin patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  "if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_HISTORY) {",
+                  "if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {",
+                  "allowed tabs",
+              ),
+              (
+                  '''                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})''',
+                  '''                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_TOOLS, onClick = { tab = TAB_TOOLS }, label = { Text("Ferramentas") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})''',
+                  "navigation bar",
+              ),
+              (
+                  '''                TAB_HISTORY -> HistoryScreen(history)''',
+                  '''                TAB_TOOLS -> ToolsScreen(
+                    onOpenBlaBlaCarCollector = {
+                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
+                    },
+                )
+                TAB_HISTORY -> HistoryScreen(history)''',
+                  "tools tab route",
+              ),
+              (
+                  '''@Composable
+private fun HistoryScreen(history: List<AnalysisResult>) {''',
+                  '''@Composable
+private fun ToolsScreen(onOpenBlaBlaCarCollector: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Ferramentas", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir coletor")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryScreen(history: List<AnalysisResult>) {''',
+                  "tools screen composable",
+              ),
+          ]
+
+          for old, new, label in replacements:
+              if old not in text:
+                  raise SystemExit(f"Missing expected block: {label}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit patched app files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-tools-tab-integration.yml
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          git commit -m "Integrate BlaBlaCar collector into tools tab"
+          git push
