@@ -204,7 +204,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                         processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
                         requestScreenshotAnalysis(allowPopupCandidate = true)
                     } else {
-                        resetToDefaultForNonRideScreen("Tela passiva detectada fora do card cadastrado; bolinha voltou para amarelo.")
+                        resetToDefaultForNonRideScreen("Tela passiva detectada fora do card cadastrado; bolinha voltou para cinza.")
                     }
                 } else if (!isPassiveDiagnosticPackage(packageName)) {
                     val visibleText = collectVisibleText(allowPopupCandidate = true)
@@ -582,7 +582,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             if (allowPopupCandidate && !looksLikeRegisteredPopupCandidate(collectVisibleText(allowPopupCandidate = true))) {
                 registeredCardGate.clear()
                 resetToDefaultForNonRideScreen(
-                    reason = "O pop-up de corrida nao esta mais visivel; bolinha voltou para amarelo.",
+                    reason = "O pop-up de corrida nao esta mais visivel; bolinha voltou para cinza.",
                     record = false,
                 )
                 return
@@ -667,7 +667,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun resetToDefaultForNonRideScreen(reason: String, record: Boolean = false) {
-        resetToDefault(reason = reason, record = record)
+        resetToIdle(reason = reason, record = record)
     }
 
     private fun resetStaleRegisteredCardDecision() {
