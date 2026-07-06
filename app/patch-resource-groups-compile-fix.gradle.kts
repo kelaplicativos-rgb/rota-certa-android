@@ -14,12 +14,76 @@ val patchResourceGroupsCompileFix by tasks.registering {
         )
 
         text = text.replace(
+            "ExpandableCard(title = \"Controle geral\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Controle geral\", initiallyExpanded = false)",
+        )
+        text = text.replace(
             "ExpandableCard(title = \"Definir regiao de destino\", initiallyExpanded = true)",
-            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = false)",
         )
         text = text.replace(
             "ExpandableCard(title = \"Definir regiao de corridas\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = false)",
+        )
+        text = text.replace(
             "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = false)",
+        )
+        text = text.replace(
+            "ExpandableCard(title = \"Coletor BlaBlaCar\", initiallyExpanded = false)",
+            "ExpandableCard(title = \"Assistente de Viagens\", initiallyExpanded = false)",
+        )
+        text = text.replace(
+            "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+            "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
+        )
+        text = text.replace("Abrir coletor", "Abrir assistente")
+
+        text = text.replace(
+"""        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir assistente")
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Area de transferencia", fontWeight = FontWeight.Bold)
+                Text(
+                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                    Text("Limpar area de transferencia")
+                }
+            }
+        }
+""",
+"""        ExpandableCard(title = "Assistente de Viagens", initiallyExpanded = false) {
+            Text(
+                "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                Text("Abrir assistente")
+            }
+        }
+        ExpandableCard(title = "Area de transferencia", initiallyExpanded = false) {
+            Text(
+                "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                Text("Limpar area de transferencia")
+            }
+        }
+""",
         )
 
         text = text.replace(
@@ -48,13 +112,13 @@ val patchResourceGroupsCompileFix by tasks.registering {
             }
         }
 """,
-"""        ExpandableCard(title = "Coletor BlaBlaCar", initiallyExpanded = false) {
+"""        ExpandableCard(title = "Assistente de Viagens", initiallyExpanded = false) {
             Text(
-                "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
-                Text("Abrir coletor")
+                Text("Abrir assistente")
             }
         }
         ExpandableCard(title = "Area de transferencia", initiallyExpanded = false) {
