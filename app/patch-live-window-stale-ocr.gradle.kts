@@ -138,3 +138,5 @@ val patchLiveWindowStaleOcr by tasks.registering {
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(patchLiveWindowStaleOcr)
 }
+
+apply(from = "patch-live-history-dedupe.gradle.kts")
