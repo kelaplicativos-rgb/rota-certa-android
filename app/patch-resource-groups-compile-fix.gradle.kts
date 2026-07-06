@@ -14,6 +14,134 @@ val patchResourceGroupsCompileFix by tasks.registering {
         )
 
         text = text.replace(
+            "ExpandableCard(title = \"Definir regiao de destino\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de corridas\", initiallyExpanded = true)",
+        )
+
+        text = text.replace(
+"""        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir coletor")
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Area de transferencia", fontWeight = FontWeight.Bold)
+                Text(
+                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                    Text("Limpar area de transferencia")
+                }
+            }
+        }
+""",
+"""        ExpandableCard(title = "Coletor BlaBlaCar", initiallyExpanded = false) {
+            Text(
+                "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                Text("Abrir coletor")
+            }
+        }
+        ExpandableCard(title = "Area de transferencia", initiallyExpanded = false) {
+            Text(
+                "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                Text("Limpar area de transferencia")
+            }
+        }
+""",
+        )
+
+        text = text.replace(
+"""@Composable
+private fun CardModelsCard(
+    cardTemplates: List<RideCardTemplate>,
+    templateStatus: String,
+    unreadTemplatePrints: Int,
+    onPickCardModels: () -> Unit,
+    onDeleteCardModel: (RideCardTemplate) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Modelos de cards", fontWeight = FontWeight.Bold)
+            Text("Modelos cadastrados: ${'$'}{cardTemplates.size}")
+            Button(onClick = onPickCardModels, modifier = Modifier.fillMaxWidth()) {
+                Text("Anexar modelos de cards (prints)")
+            }
+            Text(templateStatus, style = MaterialTheme.typography.bodySmall)
+            if (unreadTemplatePrints > 0) {
+                Text("Prints sem leitura: ${'$'}unreadTemplatePrints", style = MaterialTheme.typography.bodySmall)
+            }
+            if (cardTemplates.isEmpty()) {
+                Text("Nenhum modelo cadastrado ainda.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                cardTemplates.forEach { template ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(template.name, fontWeight = FontWeight.Bold)
+                            Text(template.packageName ?: "app nao identificado", style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedButton(onClick = { onDeleteCardModel(template) }) {
+                            Text("Apagar")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+""",
+"""@Composable
+private fun CardModelsCard(
+    cardTemplates: List<RideCardTemplate>,
+    templateStatus: String,
+    unreadTemplatePrints: Int,
+    onPickCardModels: () -> Unit,
+    onDeleteCardModel: (RideCardTemplate) -> Unit,
+) {
+    ExpandableCard(title = "Modelos de cards", initiallyExpanded = false) {
+        Text("Modelos cadastrados: " + cardTemplates.size)
+        Button(onClick = onPickCardModels, modifier = Modifier.fillMaxWidth()) {
+            Text("Anexar modelos de cards (prints)")
+        }
+        Text(templateStatus, style = MaterialTheme.typography.bodySmall)
+        if (unreadTemplatePrints > 0) {
+            Text("Prints sem leitura: " + unreadTemplatePrints, style = MaterialTheme.typography.bodySmall)
+        }
+        if (cardTemplates.isEmpty()) {
+            Text("Nenhum modelo cadastrado ainda.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            cardTemplates.forEach { template ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(template.name, fontWeight = FontWeight.Bold)
+                        Text(template.packageName ?: "app nao identificado", style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(onClick = { onDeleteCardModel(template) }) {
+                        Text("Apagar")
+                    }
+                }
+            }
+        }
+    }
+}
+""",
+        )
+
+        text = text.replace(
 """        if (history.isEmpty()) {
             Text("Nenhuma analise salva ainda.")
             return@ExpandableCard
