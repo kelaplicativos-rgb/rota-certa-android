@@ -143,14 +143,12 @@ val patchLiveHistoryDedupe by tasks.registering {
 
         if ("HISTORY_MIN_INTERVAL_MS" !in text) {
             text = text.replace(
-"""        const val DIAGNOSTIC_TEXT_LIMIT = 1200
-        const val DIAGNOSTIC_EVENT_LIMIT = 60
+"""        const val BUBBLE_PREFS = "rota_certa_bubble"
 """,
-"""        const val DIAGNOSTIC_TEXT_LIMIT = 1200
-        const val DIAGNOSTIC_EVENT_LIMIT = 60
-        const val HISTORY_MIN_INTERVAL_MS = 10_000L
+"""        const val HISTORY_MIN_INTERVAL_MS = 10_000L
         const val HISTORY_DEDUPE_WINDOW_MS = 120_000L
         const val CAPTURED_SCREEN_DEDUPE_WINDOW_MS = 120_000L
+        const val BUBBLE_PREFS = "rota_certa_bubble"
 """,
             )
         }
