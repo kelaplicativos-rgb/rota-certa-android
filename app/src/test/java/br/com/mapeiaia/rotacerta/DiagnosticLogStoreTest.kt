@@ -18,13 +18,13 @@ class DiagnosticLogStoreTest {
             DiagnosticLogStore.record("test", "event=$index", nowMillis = index.toLong())
         }
 
-        val dump = DiagnosticLogStore.dump()
+        val lines = DiagnosticLogStore.dump().lines()
 
-        assertFalse(dump.contains("event=0"))
-        assertFalse(dump.contains("event=4"))
-        assertTrue(dump.contains("event=5"))
-        assertTrue(dump.contains("event=504"))
-        assertEquals(500, dump.lines().size)
+        assertFalse(lines.any { it.endsWith(" event=0") })
+        assertFalse(lines.any { it.endsWith(" event=4") })
+        assertTrue(lines.any { it.endsWith(" event=5") })
+        assertTrue(lines.any { it.endsWith(" event=504") })
+        assertEquals(500, lines.size)
     }
 
     @Test
