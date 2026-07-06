@@ -9,6 +9,11 @@ val patchResourceGroupsCompileFix by tasks.registering {
         val original = text
 
         text = text.replace(
+            "                else -> requestedTab\n",
+            "                else -> requestedTab ?: TAB_TOOLS\n",
+        )
+
+        text = text.replace(
 """        if (history.isEmpty()) {
             Text("Nenhuma analise salva ainda.")
             return@ExpandableCard
