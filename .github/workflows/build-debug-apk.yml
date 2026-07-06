@@ -21,6 +21,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Patch bubble idle behavior
+        if: github.event_name == 'push' && github.ref == 'refs/heads/codex/radar-txt-approach-alert-fix'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
+          text = path.read_text()
+          old = '''    private fun resetToDefaultForNonRideScreen(reason: String, record: Boolean = false) {
+              resetToDefault(reason = reason, record = record)
+          }
+          '''
+          old_alt = '''    private fun resetToDefaultForNonRideScreen(reason: String, record: Boolean = false) {
+        resetToDefault(reason = reason, record = record)
+    }
+'''
+          new = '''    private fun resetToDefaultForNonRideScreen(reason: String, record: Boolean = false) {
+        resetToIdle(reason = reason, record = record)
+    }
+'''
+          if new not in text:
+              if old_alt in text:
+                  text = text.replace(old_alt, new)
+              elif old in text:
+                  text = text.replace(old, new)
+              else:
+                  raise SystemExit('Target resetToDefaultForNonRideScreen block not found')
+          text = text.replace(
+              'Tela passiva detectada fora do card cadastrado; bolinha voltou para amarelo.',
+              'Tela passiva detectada fora do card cadastrado; bolinha em espera.',
+          )
+          text = text.replace(
+              'O pop-up de corrida nao esta mais visivel; bolinha voltou para amarelo.',
+              'O pop-up de corrida nao esta mais visivel; bolinha em espera.',
+          )
+          path.write_text(text)
+          PY
+          if git diff --quiet; then
+            echo "Bubble idle behavior already patched"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git commit -m "Fix bubble idle state outside monitored apps"
+          git push
+          echo "Patched and pushed bubble idle behavior. A follow-up run will validate the patched commit."
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
