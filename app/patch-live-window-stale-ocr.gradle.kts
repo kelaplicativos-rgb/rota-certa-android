@@ -7,11 +7,12 @@ val patchLiveWindowStaleOcr by tasks.registering {
         val file = serviceFile.asFile
         var text = file.readText()
         val original = text
+        val dollar = "$"
 
         text = text.replace(
 """        if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            traceEvent("event blocked package=$packageName reason=$reason")
+            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
             scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
             requestScreenshotAnalysis(allowPopupCandidate = true)
             if (isPassiveDiagnosticPackage(packageName)) {
@@ -24,7 +25,7 @@ val patchLiveWindowStaleOcr by tasks.registering {
 """,
 """        if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            traceEvent("event blocked package=$packageName reason=$reason")
+            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
             if (isPassiveDiagnosticPackage(packageName) || packageName in IGNORED_PACKAGES || packageName == this.packageName) {
                 analyzeJob?.cancel()
                 pendingAnalysis = null
@@ -69,7 +70,7 @@ val patchLiveWindowStaleOcr by tasks.registering {
 """,
 """        lastScreenshotMillis = now
         val requestedWindowPackageName = currentWindowPackageName()
-        traceEvent("screenshot.request started package=${requestedWindowPackageName.orEmpty()}")
+        traceEvent("screenshot.request started package=${dollar}{requestedWindowPackageName.orEmpty()}")
         runCatching {
 """,
         )
@@ -79,7 +80,7 @@ val patchLiveWindowStaleOcr by tasks.registering {
                                 if (allowPopupCandidate || shouldScanCurrentWindow()) {
                                     val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
                                     val ocrText = ocrService.extractText(bitmap)
-                                    traceEvent("screenshot.ocr success length=${ocrText.length}")
+                                    traceEvent("screenshot.ocr success length=${dollar}{ocrText.length}")
                                     processRideText(ocrText, TextSource.Ocr, allowPopupCandidate)
                                 }
                             }.onFailure { error ->
@@ -87,21 +88,21 @@ val patchLiveWindowStaleOcr by tasks.registering {
 """                            runCatching {
                                 val callbackWindowPackageName = currentWindowPackageName()
                                 if (!allowPopupCandidate && callbackWindowPackageName != requestedWindowPackageName) {
-                                    traceEvent("screenshot.discard window_changed request=${requestedWindowPackageName.orEmpty()} current=${callbackWindowPackageName.orEmpty()}")
+                                    traceEvent("screenshot.discard window_changed request=${dollar}{requestedWindowPackageName.orEmpty()} current=${dollar}{callbackWindowPackageName.orEmpty()}")
                                     return@runCatching
                                 }
                                 if (allowPopupCandidate && isPassiveDiagnosticPackage(callbackWindowPackageName)) {
-                                    traceEvent("screenshot.discard passive_popup_window=${callbackWindowPackageName.orEmpty()}")
+                                    traceEvent("screenshot.discard passive_popup_window=${dollar}{callbackWindowPackageName.orEmpty()}")
                                     return@runCatching
                                 }
                                 if (allowPopupCandidate || shouldScanCurrentWindow()) {
                                     val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
                                     val ocrText = ocrService.extractText(bitmap)
                                     if (!allowPopupCandidate && currentWindowPackageName() != requestedWindowPackageName) {
-                                        traceEvent("screenshot.discard after_ocr window_changed request=${requestedWindowPackageName.orEmpty()} current=${currentWindowPackageName().orEmpty()}")
+                                        traceEvent("screenshot.discard after_ocr window_changed request=${dollar}{requestedWindowPackageName.orEmpty()} current=${dollar}{currentWindowPackageName().orEmpty()}")
                                         return@runCatching
                                     }
-                                    traceEvent("screenshot.ocr success length=${ocrText.length}")
+                                    traceEvent("screenshot.ocr success length=${dollar}{ocrText.length}")
                                     processRideText(ocrText, TextSource.Ocr, allowPopupCandidate)
                                 }
                             }.onFailure { error ->
@@ -116,7 +117,7 @@ val patchLiveWindowStaleOcr by tasks.registering {
 """        val windowPackageName = currentWindowPackageName()
         if (!allowPopupCandidate && !shouldScanPackage(windowPackageName)) return
         if (allowPopupCandidate && isPassiveDiagnosticPackage(windowPackageName)) {
-            traceEvent("popup.candidate ignored reason=passive_window package=${windowPackageName.orEmpty()} raw_length=${text.length}")
+            traceEvent("popup.candidate ignored reason=passive_window package=${dollar}{windowPackageName.orEmpty()} raw_length=${dollar}{text.length}")
             return
         }
         val packageName = resolveRidePackageForText(windowPackageName, text, allowPopupCandidate)
@@ -124,8 +125,8 @@ val patchLiveWindowStaleOcr by tasks.registering {
         )
 
         text = text.replace(
-            "return \"Pacote passivo ignorado sem apagar a ultima decisao: $normalized.\"",
-            "return \"Pacote passivo; leitura cancelada e bolinha cinza: $normalized.\"",
+            "return \"Pacote passivo ignorado sem apagar a ultima decisao: ${dollar}normalized.\"",
+            "return \"Pacote passivo; leitura cancelada e bolinha cinza: ${dollar}normalized.\"",
         )
 
         if (text != original) {
