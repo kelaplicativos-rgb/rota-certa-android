@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -18,6 +19,15 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: System.getenv("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }
     ?: ""
 
+val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
+val appVersionCode = ciVersionCode ?: 37
+val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
+val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
+if (stableDebugKeystoreSource.exists()) {
+    stableDebugKeystoreFile.parentFile.mkdirs()
+    stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))
+}
+
 android {
     namespace = "br.com.mapeiaia.rotacerta"
     compileSdk = 35
@@ -26,14 +36,26 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
+        versionCode = appVersionCode
         versionName = "0.1.36"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
     }
 
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = stableDebugKeystoreFile
+            storePassword = "rotacerta"
+            keyAlias = "rotacerta-debug"
+            keyPassword = "rotacerta"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
