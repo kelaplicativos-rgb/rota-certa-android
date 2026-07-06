@@ -99,7 +99,7 @@ dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    implementation("org.jetbrains.kotlinx-coroutines-play-services:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     testImplementation("junit:junit:4.13.2")
@@ -231,3 +231,4 @@ fun String.escapeForBuildConfig(): String =
 
 apply(from = "patch-live-ride-stability.gradle.kts")
 apply(from = "patch-live-ride-bubble-actions.gradle.kts")
+apply(from = "patch-resource-groups-compile-fix.gradle.kts")
