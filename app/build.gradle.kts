@@ -232,3 +232,4 @@ fun String.escapeForBuildConfig(): String =
 apply(from = "patch-live-ride-stability.gradle.kts")
 apply(from = "patch-live-ride-bubble-actions.gradle.kts")
 apply(from = "patch-resource-groups-compile-fix.gradle.kts")
+apply(from = "patch-bubble-shortcut-clipboard.gradle.kts")
