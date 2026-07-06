@@ -7,6 +7,7 @@ val patchLiveRideBubbleActions by tasks.registering {
         val file = serviceFile.asFile
         var text = file.readText()
         val original = text
+        val dollar = "$"
 
         if ("saveCurrentDecisionAddressFromBubble" !in text) {
             text = text.replace(
@@ -59,11 +60,11 @@ val patchLiveRideBubbleActions by tasks.registering {
             repository.saveSettings(updated)
             currentSettings = updated
             val label = if (saveAsHome) "Casa" else "Alfinete"
-            toast("$label salvo pelo GPS atual.")
+            toast("${dollar}label salvo pelo GPS atual.")
             recordDiagnostic(
                 stage = if (saveAsHome) "bubble_save_home" else "bubble_save_alternative",
                 color = currentRadarColor,
-                reason = "$label salvo pela bolinha para decisao por km do destino final.",
+                reason = "${dollar}label salvo pela bolinha para decisao por km do destino final.",
             )
         }
     }
