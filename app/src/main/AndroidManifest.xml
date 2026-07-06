@@ -17,7 +17,7 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".LiveRideAccessibilityService"
+            android:name=".StableBubbleAccessibilityService"
             android:exported="true"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
