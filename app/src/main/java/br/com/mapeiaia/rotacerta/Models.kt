@@ -159,4 +159,5 @@ data class LiveDiagnostic(
     val homeDistanceKm: Double? = null,
     val alternativeDistanceKm: Double? = null,
     val error: String? = null,
+    val diagnosticLog: String = "",
 )
