@@ -22,7 +22,7 @@ val patchBubbleCardParity by tasks.registering {
         val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
         scope.launch {
             repository.updateSavedPlace(place.copy(name = safeName))
-            Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Nome salvo: ${dollar}safeName", Toast.LENGTH_SHORT).show()
         }
     }
 """,
@@ -30,7 +30,7 @@ val patchBubbleCardParity by tasks.registering {
         val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
         scope.launch {
             repository.updateSavedPlace(place.copy(name = safeName))
-            Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Nome salvo: ${dollar}safeName", Toast.LENGTH_SHORT).show()
         }
     }
 
