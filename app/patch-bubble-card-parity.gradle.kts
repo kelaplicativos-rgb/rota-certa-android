@@ -9,10 +9,10 @@ val patchBubbleCardParity by tasks.registering {
         val original = text
         val dollar = "$"
 
-        if ("val gpsAddressResolver = remember { GpsAddressResolver(context) }" !in text) {
+        if ("val savedPlaceGpsAddressResolver = remember { GpsAddressResolver(context) }" !in text) {
             text = text.replace(
                 "    val geocodingService = remember { GeocodingService(context) }\n",
-                "    val geocodingService = remember { GeocodingService(context) }\n    val gpsAddressResolver = remember { GpsAddressResolver(context) }\n",
+                "    val geocodingService = remember { GeocodingService(context) }\n    val savedPlaceGpsAddressResolver = remember { GpsAddressResolver(context) }\n",
             )
         }
 
@@ -41,7 +41,7 @@ val patchBubbleCardParity by tasks.registering {
                 Toast.makeText(context, "Autorize a localizacao para salvar este local.", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val resolved = gpsAddressResolver.resolve(coordinate)
+            val resolved = savedPlaceGpsAddressResolver.resolve(coordinate)
             val createdAt = System.currentTimeMillis()
             val isAlert = type == SavedPlaceType.ProximityAlert
             val place = SavedPlace(
