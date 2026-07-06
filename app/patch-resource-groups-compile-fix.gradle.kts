@@ -15,7 +15,11 @@ val patchResourceGroupsCompileFix by tasks.registering {
 
         text = text.replace(
             "ExpandableCard(title = \"Definir regiao de destino\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = true)",
+        )
+        text = text.replace(
             "ExpandableCard(title = \"Definir regiao de corridas\", initiallyExpanded = true)",
+            "ExpandableCard(title = \"Definir regiao de trabalho\", initiallyExpanded = true)",
         )
 
         text = text.replace(
