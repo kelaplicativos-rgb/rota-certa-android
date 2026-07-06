@@ -1,11 +1,19 @@
 package br.com.mapeiaia.rotacerta
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -117,6 +127,7 @@ private fun BlaBlaCarCollectorScreen(
 ) {
     var record by remember { mutableStateOf(initialRecord) }
     var rawText by remember { mutableStateOf("") }
+    var extractStatus by remember { mutableStateOf("") }
     var passengerName by remember { mutableStateOf("") }
     var passengerPhone by remember { mutableStateOf("") }
     var passengerPickup by remember { mutableStateOf("") }
@@ -132,8 +143,20 @@ private fun BlaBlaCarCollectorScreen(
         onRecordChanged(next)
     }
 
+    fun extractPassengersFromText(source: String) {
+        val parsed = BlaBlaCarCollectorParser.parsePassengers(source)
+        val existingPhones = record.passengers.map { it.phone }.toSet()
+        val newPassengers = parsed.filterNot { it.phone.isNotBlank() && it.phone in existingPhones }
+        update(record.copy(passengers = record.passengers + newPassengers))
+        extractStatus = if (newPassengers.isEmpty()) {
+            "Nenhum passageiro novo encontrado. Confira se a pagina logada mostra passageiros/telefones."
+        } else {
+            "Extraido: ${newPassengers.size} passageiro(s)."
+        }
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Coletor BlaBlaCar") }) },
+        topBar = { TopAppBar(title = { Text("Assistente de Viagens") }) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -163,20 +186,25 @@ private fun BlaBlaCarCollectorScreen(
                 }
             }
 
+            LoggedSiteExtractorCard(
+                onHtmlCaptured = { html ->
+                    val readable = htmlToReadableText(html)
+                    rawText = readable
+                    extractPassengersFromText(readable)
+                },
+            )
+
             SectionCard(title = "Extracao manual") {
-                Text("Cole aqui o texto copiado da tela logada do BlaBlaCar. A extracao e manual e local.", style = MaterialTheme.typography.bodySmall)
-                TextFieldLine("Texto copiado", rawText, minLines = 6) { rawText = it }
+                Text("Cole aqui o texto, HTML ou MHTML da tela logada. A extracao e manual e local.", style = MaterialTheme.typography.bodySmall)
+                TextFieldLine("Texto/HTML/MHTML capturado", rawText, minLines = 6) { rawText = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Button(onClick = { rawText = onPasteText() }, modifier = Modifier.weight(1f)) { Text("Colar") }
                     Button(
-                        onClick = {
-                            val parsed = BlaBlaCarCollectorParser.parsePassengers(rawText)
-                            val existingPhones = record.passengers.map { it.phone }.toSet()
-                            update(record.copy(passengers = record.passengers + parsed.filterNot { it.phone in existingPhones }))
-                        },
+                        onClick = { extractPassengersFromText(htmlToReadableText(rawText)) },
                         modifier = Modifier.weight(1f),
                     ) { Text("Extrair") }
                 }
+                if (extractStatus.isNotBlank()) Text(extractStatus, style = MaterialTheme.typography.bodySmall)
             }
 
             SectionCard(title = "Adicionar passageiro") {
@@ -267,6 +295,72 @@ private fun BlaBlaCarCollectorScreen(
     }
 }
 
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun LoggedSiteExtractorCard(onHtmlCaptured: (String) -> Unit) {
+    var siteUrl by remember { mutableStateOf("https://www.blablacar.com.br/") }
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    var status by remember { mutableStateOf("Abra o site, faca login manualmente e toque em Extrair HTML.") }
+
+    SectionCard(title = "Site logado") {
+        Text("O login acontece dentro do navegador abaixo. O app nao salva senha; ele apenas le o HTML quando voce tocar em extrair.", style = MaterialTheme.typography.bodySmall)
+        TextFieldLine("Site", siteUrl) { siteUrl = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { webView?.loadUrl(normalizeBrowserUrl(siteUrl)) }, modifier = Modifier.weight(1f)) {
+                Text("Abrir site")
+            }
+            Button(
+                onClick = {
+                    status = "Extraindo HTML da pagina carregada..."
+                    webView?.evaluateJavascript(
+                        "window.RotaCertaHtml.receiveHtml(document.documentElement.outerHTML);",
+                        null,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Extrair HTML")
+            }
+        }
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                    webViewClient = WebViewClient()
+                    webChromeClient = WebChromeClient()
+                    addJavascriptInterface(
+                        HtmlCaptureBridge { html ->
+                            status = "HTML capturado. Processando dados..."
+                            onHtmlCaptured(html)
+                        },
+                        "RotaCertaHtml",
+                    )
+                    loadUrl(normalizeBrowserUrl(siteUrl))
+                    webView = this
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 360.dp, max = 560.dp),
+        )
+        Text(status, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private class HtmlCaptureBridge(
+    private val onHtmlCaptured: (String) -> Unit,
+) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun receiveHtml(html: String) {
+        mainHandler.post { onHtmlCaptured(html) }
+    }
+}
+
 @Composable
 private fun FinanceSummary(record: BlaBlaCarTripRecord) {
     val revenue = BlaBlaCarCollectorCalculator.totalRevenue(record)
@@ -335,4 +429,35 @@ private fun TextFieldLine(
         minLines = minLines,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+private fun normalizeBrowserUrl(value: String): String {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return "https://www.blablacar.com.br/"
+    return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
+}
+
+private fun htmlToReadableText(value: String): String {
+    var text = value
+        .replace(Regex("(?is)<script[^>]*>.*?</script>"), " ")
+        .replace(Regex("(?is)<style[^>]*>.*?</style>"), " ")
+        .replace(Regex("(?i)<br\\s*/?>"), "\n")
+        .replace(Regex("(?i)</(p|div|li|tr|td|section|article|h[1-6])>"), "\n")
+        .replace(Regex("<[^>]+>"), " ")
+    val entities = mapOf(
+        "&nbsp;" to " ",
+        "&amp;" to "&",
+        "&quot;" to "\"",
+        "&#39;" to "'",
+        "&apos;" to "'",
+        "&lt;" to "<",
+        "&gt;" to ">",
+    )
+    entities.forEach { (entity, replacement) -> text = text.replace(entity, replacement) }
+    return text
+        .lines()
+        .map { it.trim().replace(Regex("\\s+"), " ") }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString("\n")
 }
