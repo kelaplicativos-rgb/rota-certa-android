@@ -117,6 +117,56 @@ class ProximityAlertEngineTest {
     }
 
     @Test
+    fun singleDirectionImportedRadarSpeaksWhenTravelBearingMatches() {
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("eastbound", Coordinate(0.0, 0.0), directionType = 1, direction = 90)
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, -0.0030), settings()) {}
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, -0.0015), settings()) {}
+
+        assertEquals(listOf("eastbound"), speech.importedRadarIds)
+    }
+
+    @Test
+    fun singleDirectionImportedRadarIgnoresOppositeTravelBearing() {
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("eastbound", Coordinate(0.0, 0.0), directionType = 1, direction = 90)
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0030), settings()) {}
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0015), settings()) {}
+
+        assertEquals(0, speech.importedCalls)
+        assertTrue(DiagnosticLogStore.dump().contains("direction_match=false"))
+    }
+
+    @Test
+    fun doubleDirectionImportedRadarAcceptsInverseTravelBearing() {
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("two-way", Coordinate(0.0, 0.0), directionType = 2, direction = 90)
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0030), settings()) {}
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0015), settings()) {}
+
+        assertEquals(listOf("two-way"), speech.importedRadarIds)
+    }
+
+    @Test
+    fun importedRadarDoesNotRetrySpeechWhileDistanceIsIncreasing() {
+        val speech = FakeProximitySpeech(importedResult = false)
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("radar-1", Coordinate(0.0, 0.0))
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, -0.0010), settings()) {}
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, -0.0015), settings()) {}
+
+        assertEquals(1, speech.importedCalls)
+        assertTrue(DiagnosticLogStore.dump().contains("approaching=false"))
+    }
+
+    @Test
     fun savedPlaceAlertCanRepeatDuringSameApproach() {
         var now = 100_000L
         val speech = FakeProximitySpeech()
@@ -138,8 +188,18 @@ class ProximityAlertEngineTest {
 
     private fun settings(): AppSettings = AppSettings(proximityAlertDistanceMeters = 200)
 
-    private fun importedRadar(id: String, coordinate: Coordinate): ImportedRadar =
-        ImportedRadar(id = id, coordinate = coordinate, type = 1)
+    private fun importedRadar(
+        id: String,
+        coordinate: Coordinate,
+        directionType: Int? = null,
+        direction: Int? = null,
+    ): ImportedRadar = ImportedRadar(
+        id = id,
+        coordinate = coordinate,
+        type = 1,
+        directionType = directionType,
+        direction = direction,
+    )
 
     private class FakeProximitySpeech(
         var importedResult: Boolean = true,
