@@ -1,6 +1,7 @@
 val patchResourceGroupsCompileFix by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
-    inputs.file(mainFile)
+    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    inputs.files(mainFile, serviceFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -38,6 +39,60 @@ val patchResourceGroupsCompileFix by tasks.registering {
             "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
         )
         text = text.replace("Abrir coletor", "Abrir assistente")
+
+        text = text.replace(
+"""private fun ExpandableCard(
+    title: String,
+    initiallyExpanded: Boolean,
+    content: @Composable () -> Unit,
+) {
+    var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
+    LaunchedEffect(initiallyExpanded) {
+        if (initiallyExpanded) expanded = true
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Fechar" else "Abrir")
+                }
+            }
+            if (expanded) {
+                content()
+            }
+        }
+    }
+}
+""",
+"""private fun ExpandableCard(
+    title: String,
+    initiallyExpanded: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val requestedExpander = (LocalContext.current as? android.app.Activity)
+        ?.intent
+        ?.getStringExtra("br.com.mapeiaia.rotacerta.extra.OPEN_EXPANDER")
+    var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
+    LaunchedEffect(initiallyExpanded, requestedExpander, title) {
+        if (initiallyExpanded || requestedExpander == title) expanded = true
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "Fechar" else "Abrir")
+                }
+            }
+            if (expanded) {
+                content()
+            }
+        }
+    }
+}
+""",
+        )
 
         text = text.replace(
 """        Card(modifier = Modifier.fillMaxWidth()) {
@@ -280,6 +335,163 @@ private fun CardModelsCard(
 
         if (text != original) {
             file.writeText(text)
+        }
+
+        val service = serviceFile.asFile
+        var serviceText = service.readText()
+        val originalService = serviceText
+
+        serviceText = serviceText.replace(
+"""    private fun openApp() {
+        hideActionMenu()
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+        }
+    }
+""",
+"""    private fun openApp(tab: String? = null, expander: String? = null) {
+        hideActionMenu()
+        runCatching {
+            val intent = Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (tab != null) intent.putExtra(EXTRA_OPEN_TAB, tab)
+            if (expander != null) intent.putExtra("br.com.mapeiaia.rotacerta.extra.OPEN_EXPANDER", expander)
+            startActivity(intent)
+        }
+    }
+""",
+        )
+
+        serviceText = serviceText.replace(
+"""                    .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+                    .putExtra(EXTRA_SAVED_PLACE_ID, place.id),
+""",
+"""                    .putExtra(EXTRA_OPEN_TAB, TAB_TOOLS)
+                    .putExtra("br.com.mapeiaia.rotacerta.extra.OPEN_EXPANDER", "Alertas de proximidade")
+                    .putExtra(EXTRA_SAVED_PLACE_ID, place.id),
+""",
+        )
+
+        serviceText = serviceText.replace(
+"""            addView(actionMenuItem("🏠  Abrir Rota Certa") { openApp() })
+            addView(actionMenuItem("💾  Salvar card de corrida") {
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
+            addView(actionMenuItem("📍  Salvar este local") {
+                hideActionMenu()
+                saveCurrentPlaceFromBubble(SavedPlaceType.Place)
+            })
+            addView(actionMenuItem("🎯  Definir região de destino") {
+                hideActionMenu()
+                openDecisionAddressSettingsFromBubble()
+            })
+            addView(actionMenuItem("🔔  Criar alerta de proximidade") {
+                hideActionMenu()
+                saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)
+            })
+""",
+"""            addView(actionMenuItem(
+                label = "🏠  Abrir Rota Certa",
+                action = { openApp() },
+                longAction = { openApp(tab = TAB_TOOLS) },
+            ))
+            addView(actionMenuItem(
+                label = "💾  Salvar card de corrida",
+                action = {
+                    hideActionMenu()
+                    saveCurrentRideCardFromBubble()
+                },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+            ))
+            addView(actionMenuItem(
+                label = "📍  Salvar este local",
+                action = {
+                    hideActionMenu()
+                    saveCurrentPlaceFromBubble(SavedPlaceType.Place)
+                },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Alertas de proximidade") },
+            ))
+            addView(actionMenuItem(
+                label = "🎯  Definir região de trabalho",
+                action = { openApp(tab = TAB_TOOLS, expander = "Definir regiao de trabalho") },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Definir regiao de trabalho") },
+            ))
+            addView(actionMenuItem(
+                label = "🔔  Criar alerta de proximidade",
+                action = {
+                    hideActionMenu()
+                    saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)
+                },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Alertas de proximidade") },
+            ))
+""",
+        )
+
+        serviceText = serviceText.replace(
+"""    private fun actionMenuItem(label: String, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            minHeight = dp(42)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { action() }
+        }
+""",
+"""    private fun actionMenuItem(
+        label: String,
+        action: () -> Unit,
+        longAction: (() -> Unit)? = null,
+    ): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            minHeight = dp(42)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), 0, dp(10), 0)
+            var longPressHandled = false
+            var longPressRunnable: Runnable? = null
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        longPressHandled = false
+                        longPressRunnable = Runnable {
+                            if (view.isPressed && longAction != null) {
+                                longPressHandled = true
+                                longAction.invoke()
+                            }
+                        }
+                        view.postDelayed(longPressRunnable, 2_000L)
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL -> {
+                        longPressRunnable?.let { view.removeCallbacks(it) }
+                        longPressRunnable = null
+                    }
+                }
+                false
+            }
+            setOnClickListener {
+                if (longPressHandled) {
+                    longPressHandled = false
+                } else {
+                    action()
+                }
+            }
+        }
+""",
+        )
+
+        if (serviceText != originalService) {
+            service.writeText(serviceText)
         }
     }
 }
