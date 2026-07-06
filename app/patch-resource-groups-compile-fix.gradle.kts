@@ -46,6 +46,42 @@ val patchResourceGroupsCompileFix by tasks.registering {
 """,
         )
 
+        text = text.replace(
+"""private fun List<AnalysisResult>.toHistoryShareText(): String = buildString {
+    appendLine("ROTA CERTA HISTORICO")
+    if (isEmpty()) {
+        appendLine("Nenhuma analise salva.")
+        return@buildString
+    }
+    forEachIndexed { index, result ->
+        appendLine((index + 1).toString() + ". " + recommendationLabel(result.recommendation))
+        appendLine("Data: " + formatDate(result.createdAtMillis))
+        appendLine("Destino: " + (result.fields.destination ?: "nao identificado"))
+        appendLine("Motivo: " + result.reason)
+        appendLine()
+    }
+}
+""",
+"""private fun List<AnalysisResult>.toHistoryShareText(): String {
+    val entries = this
+    return buildString {
+        appendLine("ROTA CERTA HISTORICO")
+        if (entries.isEmpty()) {
+            appendLine("Nenhuma analise salva.")
+            return@buildString
+        }
+        entries.forEachIndexed { index, entry ->
+            appendLine((index + 1).toString() + ". " + recommendationLabel(entry.recommendation))
+            appendLine("Data: " + formatDate(entry.createdAtMillis))
+            appendLine("Destino: " + (entry.fields.destination ?: "nao identificado"))
+            appendLine("Motivo: " + entry.reason)
+            appendLine()
+        }
+    }
+}
+""",
+        )
+
         if (text != original) {
             file.writeText(text)
         }
