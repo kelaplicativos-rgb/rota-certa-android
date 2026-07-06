@@ -141,7 +141,7 @@ val patchLiveHistoryDedupe by tasks.registering {
             )
         }
 
-        if ("HISTORY_MIN_INTERVAL_MS" !in text) {
+        if ("const val HISTORY_MIN_INTERVAL_MS" !in text) {
             text = text.replace(
 """        const val BUBBLE_PREFS = "rota_certa_bubble"
 """,
