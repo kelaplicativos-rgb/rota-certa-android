@@ -1,9 +1,16 @@
 package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class ProximityAlertEngineTest {
+    @Before
+    fun setUp() {
+        DiagnosticLogStore.clear()
+    }
+
     @Test
     fun doesNotConsumeImportedRadarCounterWhenSpeechFails() {
         var now = 100_000L
@@ -25,6 +32,33 @@ class ProximityAlertEngineTest {
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
 
         assertEquals(3, speech.importedCalls)
+    }
+
+    @Test
+    fun logsImportedRadarSpeechFailureWithoutConsumingCounter() {
+        val speech = FakeProximitySpeech(importedResult = false)
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
+
+        val dump = DiagnosticLogStore.dump()
+        assertTrue(dump.contains("imported_radar.speak.failed id=radar-1 counter_not_consumed=true"))
+    }
+
+    @Test
+    fun exportsGlobalLogInsideImportedRadarDiagnosticReason() {
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
+        var diagnostic: ProximityAlertDiagnostic? = null
+
+        engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) { diagnostic = it }
+
+        val reason = requireNotNull(diagnostic).reason
+        assertTrue(reason.contains("Radar importado falado"))
+        assertTrue(reason.contains("--- LOG GLOBAL ---"))
+        assertTrue(reason.contains("imported_radar.speak.success id=radar-1 spoken=1"))
     }
 
     @Test
