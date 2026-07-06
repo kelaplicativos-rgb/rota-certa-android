@@ -602,14 +602,6 @@ private fun DiagnosticExpander(
         if (diagnostic == null) {
             Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("Cor: ${diagnostic.bubbleColor}")
-            Text("Etapa: ${diagnostic.stage}")
-            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
-            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
-            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
-            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
-                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
-            }
             Button(
                 onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -619,6 +611,14 @@ private fun DiagnosticExpander(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Copiar diagnostico")
+            }
+            Text("Cor: ${diagnostic.bubbleColor}")
+            Text("Etapa: ${diagnostic.stage}")
+            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
+            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
+            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
+            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
+                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(
                 enabled = diagnostic.textPreview.isNotBlank(),
