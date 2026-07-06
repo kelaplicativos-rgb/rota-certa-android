@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 2
 
       - name: Apply tools tab integration
-        if: github.ref == 'refs/heads/codex/radar-txt-approach-alert-fix'
+        if: github.ref == 'refs/heads/codex/radar-txt-approach-alert-fix' || github.head_ref == 'codex/radar-txt-approach-alert-fix'
         run: |
           set -euo pipefail
           python3 scripts/apply_tools_tab_integration.py
