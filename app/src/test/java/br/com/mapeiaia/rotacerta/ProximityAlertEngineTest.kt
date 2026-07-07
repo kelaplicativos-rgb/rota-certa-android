@@ -167,18 +167,41 @@ class ProximityAlertEngineTest {
     }
 
     @Test
+    fun savedPlaceAlertDoesNotSpeakWhenFirstSeenAlreadyInsideZone() {
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { 100_000L }
+        val alert = proximityAlert()
+
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+
+        assertEquals(0, speech.proximityCalls)
+        assertTrue(DiagnosticLogStore.dump().contains("initial_inside_waiting_exit"))
+    }
+
+    @Test
+    fun savedPlaceAlertSpeaksAfterLeavingAndReEnteringZone() {
+        var now = 100_000L
+        val speech = FakeProximitySpeech()
+        val engine = ProximityAlertEngine(speech) { now }
+        val alert = proximityAlert()
+
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0045), settings()) {}
+        now += 25_000L
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
+
+        assertEquals(1, speech.proximityCalls)
+    }
+
+    @Test
     fun savedPlaceAlertCanRepeatDuringSameApproach() {
         var now = 100_000L
         val speech = FakeProximitySpeech()
         val engine = ProximityAlertEngine(speech) { now }
-        val alert = SavedPlace(
-            id = "alert-1",
-            name = "Alerta",
-            type = SavedPlaceType.ProximityAlert,
-            coordinate = Coordinate(0.0, 0.0005),
-            alertDistanceMeters = 200,
-        )
+        val alert = proximityAlert()
 
+        engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0045), settings()) {}
         engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
         now += 25_000L
         engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
@@ -187,6 +210,14 @@ class ProximityAlertEngineTest {
     }
 
     private fun settings(): AppSettings = AppSettings(proximityAlertDistanceMeters = 200)
+
+    private fun proximityAlert(): SavedPlace = SavedPlace(
+        id = "alert-1",
+        name = "Alerta",
+        type = SavedPlaceType.ProximityAlert,
+        coordinate = Coordinate(0.0, 0.0005),
+        alertDistanceMeters = 200,
+    )
 
     private fun importedRadar(
         id: String,
