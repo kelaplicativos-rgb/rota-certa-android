@@ -8,7 +8,9 @@ val patchBubblePopupClose by tasks.registering {
         var text = file.readText()
         val original = text
 
-        if ("actionMenuItem(\"Fechar\")" !in text) {
+        text = text.replace("Salvar card de corrida", "Salvar card desta corrida")
+
+        if ("actionMenuItem(\"Fechar\"" !in text) {
             val lines = text.lines().toMutableList()
             val openIndex = lines.indexOfFirst { line ->
                 line.contains("addView(actionMenuItem(") && line.contains("Abrir Rota Certa")
@@ -24,6 +26,10 @@ val patchBubblePopupClose by tasks.registering {
             file.writeText(text)
         }
     }
+}
+
+patchBubblePopupClose.configure {
+    mustRunAfter(tasks.matching { it.name.startsWith("patch") && it.name != "patchBubblePopupClose" })
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
