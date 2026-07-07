@@ -10,9 +10,11 @@ val patchBubblePopupClose by tasks.registering {
 
         if ("actionMenuItem(\"Fechar\")" !in text) {
             val openItemRegex = Regex("""(?m)^(\s*)addView\(actionMenuItem\("[^"]*Abrir Rota Certa"\) \{ openApp\(\) \}\)\s*$""")
-            text = openItemRegex.replaceFirst(text) { match ->
+            val match = openItemRegex.find(text)
+            if (match != null) {
                 val indent = match.groupValues[1]
-                "${indent}addView(actionMenuItem(\"Fechar\") { hideActionMenu() })\n${match.value}"
+                val replacement = "${indent}addView(actionMenuItem(\"Fechar\") { hideActionMenu() })\n${match.value}"
+                text = text.replaceRange(match.range, replacement)
             }
         }
 
