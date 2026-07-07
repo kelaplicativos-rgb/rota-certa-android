@@ -1,3 +1,20 @@
+fun replacePrivateFunctionBlockStableBubble(
+    source: String,
+    functionName: String,
+    transform: (String) -> String,
+): String {
+    val start = source.indexOf("    private fun $functionName")
+    if (start < 0) return source
+    val next = source.indexOf("\n    private fun ", start + 1)
+    val block = if (next < 0) source.substring(start) else source.substring(start, next + 1)
+    val replacement = transform(block)
+    return if (next < 0) {
+        source.substring(0, start) + replacement
+    } else {
+        source.substring(0, start) + replacement + source.substring(next + 1)
+    }
+}
+
 val stableBubbleNoFlicker by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
@@ -41,7 +58,8 @@ val stableBubbleNoFlicker by tasks.registering {
         }
 
         if ("overlay.skip unchanged=true" !in text) {
-            text = text.replace(
+            text = replacePrivateFunctionBlockStableBubble(text, "showOverlay") { block ->
+                block.replace(
 """        val manager = windowManager ?: return
 """,
 """        val manager = windowManager ?: return
@@ -56,7 +74,8 @@ val stableBubbleNoFlicker by tasks.registering {
             return
         }
 """,
-            )
+                )
+            }
         }
 
         if ("stable_bubble_no_flicker.patch_applied" !in text) {
