@@ -19,6 +19,28 @@ val bubbleRouteDistanceOnly by tasks.registering {
 """,
         )
 
+        text = text.replace(
+"""            traceEvent("overlay.apply color=${dollar}{radarColor.diagnosticLabel} label=${dollar}{bubbleLabel.orEmpty()} distance=${dollar}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
+            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm(), labelText = bubbleLabel)
+""",
+"""            val bubbleDistanceKm = result.nearestRoutedConfiguredDistanceKm(homeDistanceKm, alternativeDistanceKm)
+            traceEvent("overlay.apply color=${dollar}{radarColor.diagnosticLabel} label=${dollar}{bubbleLabel.orEmpty()} distance=${dollar}{bubbleDistanceKm?.let(::formatDiagnosticKm) ?: "hidden_approximate"}")
+            showOverlay(color = radarColor, distanceKm = bubbleDistanceKm, labelText = bubbleLabel)
+""",
+        )
+
+        text = text.replace(
+"""        showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
+        recordDiagnostic(
+            stage = "analysis_cached_result",
+""",
+"""        showOverlay(color = radarColor, distanceKm = null)
+        traceEvent("cache.instant_apply distance=hidden_cached_source_unknown")
+        recordDiagnostic(
+            stage = "analysis_cached_result",
+""",
+        )
+
         if ("private fun AnalysisResult.nearestRoutedConfiguredDistanceKm(" !in text) {
             text = text.replace(
 """    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
