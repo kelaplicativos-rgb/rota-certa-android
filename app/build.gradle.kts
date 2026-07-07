@@ -40,7 +40,7 @@ android {
         versionName = "0.1.39"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", BuildConfigFieldGoogleMapsApiKeyName(), "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
     }
 
     signingConfigs {
@@ -228,8 +228,6 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 
 fun String.escapeForBuildConfig(): String =
     replace("\\", "\\\\").replace("\"", "\\\"")
-
-fun BuildConfigFieldGoogleMapsApiKeyName(): String = "GOOGLE_MAPS_API_KEY"
 
 apply(from = "patch-live-ride-stability.gradle.kts")
 apply(from = "patch-live-ride-bubble-actions.gradle.kts")
