@@ -23,8 +23,8 @@ fun patchService(file: java.io.File) {
 
     if ("LIVE_DECISION_CACHE_LIMIT" in text && "const val LIVE_DECISION_CACHE_LIMIT" !in text) {
         text = text.replace(
-            "const val DIAGNOSTIC_EVENT_LIMIT = 180",
-            "const val DIAGNOSTIC_EVENT_LIMIT = 180\n        const val LIVE_DECISION_CACHE_LIMIT = 8",
+            "const val BUBBLE_PREFS = \"rota_certa_bubble\"",
+            "const val LIVE_DECISION_CACHE_LIMIT = 8\n        const val BUBBLE_PREFS = \"rota_certa_bubble\"",
         )
     }
 
