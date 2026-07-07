@@ -1,4 +1,4 @@
-val patchBubbleLiveAppearance by tasks.registering {
+val bubbleLiveAppearance by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
@@ -71,10 +71,10 @@ val patchBubbleLiveAppearance by tasks.registering {
     }
 }
 
-patchBubbleLiveAppearance.configure {
-    mustRunAfter(tasks.matching { it.name.startsWith("patch") && it.name != "patchBubbleLiveAppearance" })
+bubbleLiveAppearance.configure {
+    mustRunAfter(tasks.matching { it.name.startsWith("patch") })
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchBubbleLiveAppearance)
+    dependsOn(bubbleLiveAppearance)
 }
