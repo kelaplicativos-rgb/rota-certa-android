@@ -1,4 +1,4 @@
-val patchDiagnosticJsonToolsActions by tasks.registering {
+val diagnosticJsonToolsActions by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.files(mainFile, serviceFile)
@@ -10,12 +10,12 @@ val patchDiagnosticJsonToolsActions by tasks.registering {
     }
 }
 
-patchDiagnosticJsonToolsActions.configure {
-    mustRunAfter("patchBubbleCardParity", "patchFullDiagnosticExport", "patchPassiveScreenshotFailureGuard")
+diagnosticJsonToolsActions.configure {
+    mustRunAfter("patchBubbleCardParity", "patchFullDiagnosticExport")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
-    dependsOn(patchDiagnosticJsonToolsActions)
+    dependsOn(diagnosticJsonToolsActions)
 }
 
 fun patchMainActivityForJsonAndToolActions(file: java.io.File) {
