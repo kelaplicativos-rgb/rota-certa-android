@@ -43,8 +43,6 @@ val stableBubbleNoFlicker by tasks.registering {
         if ("overlay.skip unchanged=true" !in text) {
             text = text.replace(
 """        val manager = windowManager ?: return
-        currentRadarColor = color
-        if (distanceKm != null) {
 """,
 """        val manager = windowManager ?: return
         val targetText = labelText ?: formatBubbleDistanceKm(distanceKm)
@@ -57,8 +55,6 @@ val stableBubbleNoFlicker by tasks.registering {
             traceEvent("overlay.skip unchanged=true color=${dollar}{color.diagnosticLabel} text=${dollar}targetText")
             return
         }
-        currentRadarColor = color
-        if (distanceKm != null) {
 """,
             )
         }
