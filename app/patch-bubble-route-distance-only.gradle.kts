@@ -43,14 +43,10 @@ val bubbleRouteDistanceOnly by tasks.registering {
 
         if ("private fun AnalysisResult.nearestRoutedConfiguredDistanceKm(" !in text) {
             text = text.replace(
-"""    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
-        listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
-
+"""
     private fun resetToDefault(
 """,
-"""    private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
-        listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
-
+"""
     private fun AnalysisResult.nearestRoutedConfiguredDistanceKm(
         routedHomeDistanceKm: Double?,
         routedAlternativeDistanceKm: Double?,
