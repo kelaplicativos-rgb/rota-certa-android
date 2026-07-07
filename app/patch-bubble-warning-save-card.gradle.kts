@@ -9,19 +9,13 @@ val patchBubbleWarningSaveCard by tasks.registering {
         val original = text
         val dollar = "$"
 
-        if ("lastBubbleSaveCardText" !in text) {
+        if ("private var lastBubbleSaveCardText" !in text) {
             text = text.replace(
-"""    private var currentRadarColor = RadarColor.Idle
-    private var currentDistanceKm: Double? = null
-    private var textToSpeech: TextToSpeech? = null
-""",
-"""    private var currentRadarColor = RadarColor.Idle
-    private var currentDistanceKm: Double? = null
-    private var currentBubbleLabel: String? = null
-    private var lastBubbleSaveCardText: String = ""
-    private var lastBubbleSaveCardPackage: String? = null
-    private var textToSpeech: TextToSpeech? = null
-""",
+                "    private var currentDistanceKm: Double? = null\n",
+                "    private var currentDistanceKm: Double? = null\n" +
+                    "    private var currentBubbleLabel: String? = null\n" +
+                    "    private var lastBubbleSaveCardText: String = \"\"\n" +
+                    "    private var lastBubbleSaveCardPackage: String? = null\n",
             )
         }
 
@@ -184,21 +178,19 @@ val patchBubbleWarningSaveCard by tasks.registering {
 """,
         )
 
-        text = text.replace(
-"""    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {
-        if (!serviceReady) return
-        val manager = windowManager ?: return
-        currentRadarColor = color
-        currentDistanceKm = distanceKm
-""",
-"""    private fun showOverlay(color: RadarColor, distanceKm: Double? = null, labelText: String? = null) {
-        if (!serviceReady) return
-        val manager = windowManager ?: return
-        currentRadarColor = color
-        currentDistanceKm = distanceKm
-        currentBubbleLabel = labelText
-""",
-        )
+        if ("private fun showOverlay(color: RadarColor, distanceKm: Double? = null, labelText: String? = null)" !in text) {
+            text = text.replace(
+                "    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {",
+                "    private fun showOverlay(color: RadarColor, distanceKm: Double? = null, labelText: String? = null) {",
+            )
+        }
+
+        if ("currentBubbleLabel = labelText" !in text) {
+            text = text.replace(
+                "        currentDistanceKm = distanceKm\n",
+                "        currentDistanceKm = distanceKm\n        currentBubbleLabel = labelText\n",
+            )
+        }
 
         text = text.replace(
 """        view.text = formatBubbleDistanceKm(currentDistanceKm)
@@ -206,15 +198,6 @@ val patchBubbleWarningSaveCard by tasks.registering {
 """,
 """        view.text = currentBubbleLabel ?: formatBubbleDistanceKm(currentDistanceKm)
         view.textSize = bubbleTextSizeSp(view.text.toString())
-""",
-        )
-
-        text = text.replace(
-"""        else -> distanceKm.roundToInt().coerceAtMost(99).toString()
-    }
-""",
-"""        else -> distanceKm.roundToInt().coerceAtMost(99).toString()
-    }
 """,
         )
 
