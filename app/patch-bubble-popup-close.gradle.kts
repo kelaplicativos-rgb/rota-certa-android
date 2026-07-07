@@ -9,15 +9,14 @@ val patchBubblePopupClose by tasks.registering {
         val original = text
 
         if ("actionMenuItem(\"Fechar\")" !in text) {
-            val menuPadding = "            setPadding(dp(8), dp(8), dp(8), dp(8))\n"
-            val closeItem = "            addView(actionMenuItem(\"Fechar\") { hideActionMenu() })\n"
-            if (menuPadding in text) {
-                text = text.replaceFirst(menuPadding, menuPadding + closeItem)
-            } else {
-                val openAppItem = "            addView(actionMenuItem(\"🏠  Abrir Rota Certa\") { openApp() })\n"
-                if (openAppItem in text) {
-                    text = text.replaceFirst(openAppItem, closeItem + openAppItem)
-                }
+            val lines = text.lines().toMutableList()
+            val openIndex = lines.indexOfFirst { line ->
+                line.contains("addView(actionMenuItem(") && line.contains("Abrir Rota Certa")
+            }
+            if (openIndex >= 0) {
+                val indent = lines[openIndex].takeWhile { it.isWhitespace() }
+                lines.add(openIndex, "${indent}addView(actionMenuItem(\"Fechar\", { hideActionMenu() }))")
+                text = lines.joinToString("\n")
             }
         }
 
