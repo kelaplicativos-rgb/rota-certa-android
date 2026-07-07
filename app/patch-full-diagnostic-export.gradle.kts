@@ -76,7 +76,8 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
     appendLine(textPreview.ifBlank { "sem texto" })
 }
 """.trimIndent()
-        text = text.substring(0, start) + replacement + text.substring(end)
+        val normalizedReplacement = replacement.replace("joinToString(\", \')", "joinToString(\", \")")
+        text = text.substring(0, start) + normalizedReplacement + text.substring(end)
     }
 
     if (text != original) file.writeText(text)
