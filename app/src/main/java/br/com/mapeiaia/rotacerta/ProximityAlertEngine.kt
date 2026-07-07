@@ -51,6 +51,20 @@ class ProximityAlertEngine(
                     now = now,
                     message = "saved_alert.near id=${alert.id} distance=${distanceMeters.roundToInt()}m threshold=${threshold}m spoken=${runtime.spokenCount}/$MAX_SAVED_PLACE_SPEECH_COUNT",
                 )
+                if (!runtime.savedPlaceZoneInitialized) {
+                    runtime.savedPlaceZoneInitialized = true
+                    runtime.savedPlaceMutedUntilExit = true
+                    runtime.savedPlaceInsideZone = true
+                    runtime.lastDistanceMeters = distanceMeters
+                    trace(now = now, message = "saved_alert.speak.skipped id=${alert.id} reason=initial_inside_waiting_exit")
+                    return@forEach
+                }
+                runtime.savedPlaceInsideZone = true
+                runtime.lastDistanceMeters = distanceMeters
+                if (runtime.savedPlaceMutedUntilExit) {
+                    trace(now = now, message = "saved_alert.speak.skipped id=${alert.id} reason=waiting_exit_before_first_alert")
+                    return@forEach
+                }
                 if (runtime.canSpeak(now, MAX_SAVED_PLACE_SPEECH_COUNT)) {
                     trace(now = now, message = "saved_alert.speak.attempt id=${alert.id}")
                     if (speechEngine.speakProximityAlert(alert)) {
@@ -71,10 +85,14 @@ class ProximityAlertEngine(
                     trace(now = now, message = "saved_alert.speak.skipped id=${alert.id} reason=limit_or_repeat_gap")
                 }
             } else if (distanceMeters > threshold + RESET_BUFFER_METERS) {
-                if (runtime.spokenCount > 0 || runtime.lastSpokenAtMillis > 0L) {
+                if (runtime.spokenCount > 0 || runtime.lastSpokenAtMillis > 0L || runtime.savedPlaceMutedUntilExit || runtime.savedPlaceInsideZone) {
                     trace(now = now, message = "saved_alert.reset id=${alert.id} distance=${distanceMeters.roundToInt()}m")
                 }
-                runtime.reset()
+                runtime.resetSavedPlaceAfterExit(distanceMeters)
+            } else {
+                runtime.savedPlaceZoneInitialized = true
+                runtime.savedPlaceInsideZone = false
+                runtime.lastDistanceMeters = distanceMeters
             }
         }
     }
@@ -180,6 +198,9 @@ class ProximityAlertEngine(
         var spokenCount: Int = 0,
         var lastSpokenAtMillis: Long = 0L,
         var lastDistanceMeters: Double? = null,
+        var savedPlaceZoneInitialized: Boolean = false,
+        var savedPlaceMutedUntilExit: Boolean = false,
+        var savedPlaceInsideZone: Boolean = false,
     ) {
         fun canSpeak(now: Long, maxSpeechCount: Int): Boolean =
             spokenCount < maxSpeechCount && now - lastSpokenAtMillis >= REPEAT_GAP_MS
@@ -192,10 +213,22 @@ class ProximityAlertEngine(
             lastSpokenAtMillis = now
         }
 
+        fun resetSavedPlaceAfterExit(distanceMeters: Double) {
+            spokenCount = 0
+            lastSpokenAtMillis = 0L
+            lastDistanceMeters = distanceMeters
+            savedPlaceZoneInitialized = true
+            savedPlaceMutedUntilExit = false
+            savedPlaceInsideZone = false
+        }
+
         fun reset() {
             spokenCount = 0
             lastSpokenAtMillis = 0L
             lastDistanceMeters = null
+            savedPlaceZoneInitialized = false
+            savedPlaceMutedUntilExit = false
+            savedPlaceInsideZone = false
         }
     }
 
