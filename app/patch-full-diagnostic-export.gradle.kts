@@ -21,6 +21,13 @@ fun patchService(file: java.io.File) {
     text = text.replace("const val DIAGNOSTIC_TEXT_LIMIT = 1200", "const val DIAGNOSTIC_TEXT_LIMIT = 6000")
     text = text.replace("const val DIAGNOSTIC_EVENT_LIMIT = 60", "const val DIAGNOSTIC_EVENT_LIMIT = 180")
 
+    if ("LIVE_DECISION_CACHE_LIMIT" in text && "const val LIVE_DECISION_CACHE_LIMIT" !in text) {
+        text = text.replace(
+            "const val DIAGNOSTIC_EVENT_LIMIT = 180",
+            "const val DIAGNOSTIC_EVENT_LIMIT = 180\n        const val LIVE_DECISION_CACHE_LIMIT = 8",
+        )
+    }
+
     text = text.replace(
         "reason = reason.withDiagnosticEvents(),",
         "reason = reason,",
@@ -48,27 +55,27 @@ fun patchMainActivity(file: java.io.File) {
 private fun LiveDiagnostic.toShareText(): String = buildString {
     appendLine("ROTA CERTA DIAGNOSTICO COMPLETO")
     appendLine("Marcador: DIAGNOSTIC_FULL_EXPORT")
-    appendLine("Versao: ${'$'}appVersionName (${ '$' }appVersionCode)")
-    appendLine("Data: ${'$'}{formatDate(createdAtMillis)}")
-    appendLine("Pacote: ${'$'}{packageName ?: \"nao informado\"}")
-    appendLine("Etapa: ${'$'}stage")
-    appendLine("Cor: ${'$'}bubbleColor")
-    appendLine("Motivo: ${'$'}reason")
+    appendLine("Versao: " + appVersionName + " (" + appVersionCode + ")")
+    appendLine("Data: " + formatDate(createdAtMillis))
+    appendLine("Pacote: " + (packageName ?: "nao informado"))
+    appendLine("Etapa: " + stage)
+    appendLine("Cor: " + bubbleColor)
+    appendLine("Motivo: " + reason)
     appendLine("--- ESTADO ---")
-    appendLine("Modo restrito: ${'$'}restrictToSelectedRideApps")
-    appendLine("Card cadastrado obrigatorio: ${'$'}registeredCardRequired")
-    appendLine("Card reconhecido: ${'$'}{registeredCardMatched ?: \"nenhum\"}")
-    appendLine("Pacotes selecionados: ${'$'}{selectedPackages.joinToString(\", \').ifBlank { \"nenhum\" }}")
-    appendLine("Recomendacao: ${'$'}{recommendation ?: \"sem decisao\"}")
-    appendLine("Erro: ${'$'}{error ?: \"nenhum\"}")
+    appendLine("Modo restrito: " + restrictToSelectedRideApps)
+    appendLine("Card cadastrado obrigatorio: " + registeredCardRequired)
+    appendLine("Card reconhecido: " + (registeredCardMatched ?: "nenhum"))
+    appendLine("Pacotes selecionados: " + selectedPackages.joinToString(", ").ifBlank { "nenhum" })
+    appendLine("Recomendacao: " + (recommendation ?: "sem decisao"))
+    appendLine("Erro: " + (error ?: "nenhum"))
     appendLine("--- CARD E TEXTO ---")
-    appendLine("Destino: ${'$'}{destination ?: \"nao identificado\"}")
-    appendLine("Embarque: ${'$'}{pickup ?: \"nao identificado\"}")
-    appendLine("Texto tamanho: ${'$'}textLength")
-    appendLine("Texto hash: ${'$'}{textHash ?: \"sem hash\"}")
+    appendLine("Destino: " + (destination ?: "nao identificado"))
+    appendLine("Embarque: " + (pickup ?: "nao identificado"))
+    appendLine("Texto tamanho: " + textLength)
+    appendLine("Texto hash: " + (textHash ?: "sem hash"))
     appendLine("--- DISTANCIAS ---")
-    appendLine("Distancia casa: ${'$'}{homeDistanceKm?.let(::formatKm) ?: \"nao calculada\"}")
-    appendLine("Distancia alfinete: ${'$'}{alternativeDistanceKm?.let(::formatKm) ?: \"nao calculada\"}")
+    appendLine("Distancia casa: " + (homeDistanceKm?.let(::formatKm) ?: "nao calculada"))
+    appendLine("Distancia alfinete: " + (alternativeDistanceKm?.let(::formatKm) ?: "nao calculada"))
     appendLine("Observacao: se a rota de carro nao for calculada, a bolinha nao deve mostrar numero de km.")
     appendLine("--- LOGS ---")
     appendLine(diagnosticLog.ifBlank { "sem logs" })
@@ -76,8 +83,7 @@ private fun LiveDiagnostic.toShareText(): String = buildString {
     appendLine(textPreview.ifBlank { "sem texto" })
 }
 """.trimIndent()
-        val normalizedReplacement = replacement.replace("joinToString(\", \')", "joinToString(\", \")")
-        text = text.substring(0, start) + normalizedReplacement + text.substring(end)
+        text = text.substring(0, start) + replacement + text.substring(end)
     }
 
     if (text != original) file.writeText(text)
