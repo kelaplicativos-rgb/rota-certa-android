@@ -65,10 +65,6 @@ val patchPassiveScreenshotFailureGuard by tasks.registering {
     }
 }
 
-patchPassiveScreenshotFailureGuard.configure {
-    mustRunAfter("patchLiveWindowStaleOcr", "unmonitoredScreenshotGuard")
-}
-
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(patchPassiveScreenshotFailureGuard)
 }
