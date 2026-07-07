@@ -42,7 +42,15 @@ object RideCardTemplateMatcher {
 
     private val uberPackagePhrases = listOf("uberx", "exclusivo", "viagem longa", "radar de viagens", "pop expresso")
     private val ninetyNinePackagePhrases = listOf("negocia", "perfil premium", "perfil essencial")
-    private val inDrivePackagePhrases = listOf("pedido de viagem", "ofereca sua tarifa", "ofereça sua tarifa", "preco justo", "preço justo")
+    private val inDrivePackagePhrases = listOf(
+        "pedido de viagem",
+        "pedidos de viagem",
+        "ofereca sua tarifa",
+        "ofereça sua tarifa",
+        "preco justo",
+        "preço justo",
+    )
+    private val inDriveCanonicalFeatures = inDrivePackagePhrases.map { it.normalizedForCardMatch() }.toSet()
 
     fun inferPackageName(text: String): String? {
         val normalized = text.normalizedForCardMatch()
@@ -72,7 +80,7 @@ object RideCardTemplateMatcher {
     fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch? {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)
         val features = featuresFor(text)
-        return templates
+        val candidates = templates
             .asSequence()
             .filter { template ->
                 template.packageName.isNullOrBlank() || template.packageName.equals(normalizedPackage, ignoreCase = true)
@@ -84,6 +92,10 @@ object RideCardTemplateMatcher {
                 val score = matched.size.toDouble() / max(required.size, 1)
                 RideCardTemplateMatch(template = template, score = score, matchedFeatures = matched.toList().sorted())
             }
+            .toList()
+
+        val strictMatch = candidates
+            .asSequence()
             .filter { match ->
                 val samePackage = match.template.packageName?.equals(normalizedPackage, ignoreCase = true) == true
                 val required = match.template.requiredFeatures.toSet()
@@ -94,6 +106,46 @@ object RideCardTemplateMatcher {
                     requiredStructuralFeatures.all { it in match.matchedFeatures }
             }
             .maxByOrNull { it.score }
+        if (strictMatch != null) return strictMatch
+
+        return relaxedInDriveFeedMatch(text, normalizedPackage, features, candidates)
+    }
+
+    private fun relaxedInDriveFeedMatch(
+        text: String,
+        normalizedPackage: String?,
+        features: Set<String>,
+        candidates: List<RideCardTemplateMatch>,
+    ): RideCardTemplateMatch? {
+        if (normalizedPackage != INDRIVE_PACKAGE) return null
+        if (!structuralFeatures.all { it in features }) return null
+        if (!looksLikeInDriveFeed(text, features)) return null
+
+        return candidates
+            .asSequence()
+            .filter { match -> match.template.packageName?.equals(INDRIVE_PACKAGE, ignoreCase = true) == true }
+            .filter { match -> structuralFeatures.all { it in match.matchedFeatures } }
+            .filter { match -> match.matchedFeatures.size >= MIN_FEATURES }
+            .filter { match ->
+                val required = match.template.requiredFeatures.toSet()
+                required.any { it in inDriveCanonicalFeatures } || features.any { it in inDriveCanonicalFeatures }
+            }
+            .maxWithOrNull(compareBy<RideCardTemplateMatch> { it.matchedFeatures.size }.thenBy { it.score })
+            ?.let { match ->
+                match.copy(
+                    score = max(match.score, MIN_SCORE),
+                    matchedFeatures = (match.matchedFeatures + INDRIVE_FEED_MATCH_MARKER).distinct().sorted(),
+                )
+            }
+    }
+
+    private fun looksLikeInDriveFeed(text: String, features: Set<String>): Boolean {
+        val normalized = text.normalizedForCardMatch()
+        val hasKnownPhrase = features.any { it in inDriveCanonicalFeatures } ||
+            inDriveCanonicalFeatures.any { normalized.contains(it) }
+        val hasFeedActions = normalized.contains("reclamar") && normalized.contains("ocultar")
+        val hasBottomTabs = normalized.contains("pedidos de viagem") && normalized.contains("demanda")
+        return hasKnownPhrase || hasFeedActions || hasBottomTabs
     }
 
     fun featuresFor(text: String): Set<String> {
@@ -133,6 +185,7 @@ object RideCardTemplateMatcher {
 
     private val structuralFeatures = setOf("valor em reais", "distancia em km", "endereco")
 
+    private const val INDRIVE_FEED_MATCH_MARKER = "indrive.feed_template_match"
     private const val MIN_SCORE = 0.75
     private const val MIN_FEATURES = 3
 }
