@@ -14,14 +14,29 @@ val patchBubblePopupClose by tasks.registering {
             "addView(actionMenuItem(\"✕  Fechar\") { hideActionMenu() })",
         )
 
-        if ("actionMenuItem(\"✕  Fechar\"" !in text) {
+        if ("✕  Fechar" !in text) {
             val lines = text.lines().toMutableList()
-            val openIndex = lines.indexOfFirst { line ->
-                line.contains("addView(actionMenuItem(") && line.contains("Abrir Rota Certa")
+            val openLabelIndex = lines.indexOfFirst { line -> line.contains("Abrir Rota Certa") }
+            val openIndex = if (openLabelIndex >= 0) {
+                (openLabelIndex downTo 0).firstOrNull { index ->
+                    lines[index].contains("addView(actionMenuItem(")
+                } ?: openLabelIndex
+            } else {
+                -1
             }
             if (openIndex >= 0) {
                 val indent = lines[openIndex].takeWhile { it.isWhitespace() }
-                lines.add(openIndex, "${indent}addView(actionMenuItem(\"✕  Fechar\") { hideActionMenu() })")
+                val itemIndent = indent + "    "
+                lines.addAll(
+                    openIndex,
+                    listOf(
+                        "${indent}addView(actionMenuItem(",
+                        "${itemIndent}label = \"✕  Fechar\",",
+                        "${itemIndent}action = { hideActionMenu() },",
+                        "${itemIndent}longAction = { hideActionMenu() },",
+                        "${indent}))",
+                    ),
+                )
                 text = lines.joinToString("\n")
             }
         }
@@ -52,6 +67,16 @@ val patchBubblePopupClose by tasks.registering {
             x = menuPosition.first
             y = menuPosition.second
         }
+""",
+        )
+
+        text = text.replace(
+"""            x = overlayMenuX(bubbleParams)
+            y = overlayMenuY(bubbleParams)
+""",
+"""            val menuPosition = actionMenuPosition(bubbleParams, dp(260))
+            x = menuPosition.first
+            y = menuPosition.second
 """,
         )
 
@@ -95,6 +120,18 @@ val patchBubblePopupClose by tasks.registering {
         text = text.replace(
 """        params.x = bubbleParams.x + dp(76)
         params.y = bubbleParams.y
+        runCatching { manager.updateViewLayout(view, params) }
+""",
+"""        val menuPosition = actionMenuPosition(bubbleParams, params.width.takeIf { it > 0 } ?: dp(260))
+        params.x = menuPosition.first
+        params.y = menuPosition.second
+        runCatching { manager.updateViewLayout(view, params) }
+""",
+        )
+
+        text = text.replace(
+"""        params.x = overlayMenuX(bubbleParams)
+        params.y = overlayMenuY(bubbleParams)
         runCatching { manager.updateViewLayout(view, params) }
 """,
 """        val menuPosition = actionMenuPosition(bubbleParams, params.width.takeIf { it > 0 } ?: dp(260))
