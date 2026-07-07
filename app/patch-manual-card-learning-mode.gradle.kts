@@ -27,6 +27,13 @@ val manualCardLearningMode by tasks.registering {
             var text = file.readText()
             val original = text
 
+            if ("private var lastSaveableRideText: String = \"\"" !in text) {
+                text = text.replace(
+                    "    private var currentDistanceKm: Double? = null\n",
+                    "    private var currentDistanceKm: Double? = null\n    private var lastSaveableRideText: String = \"\"\n    private var lastSaveableRidePackageName: String? = null\n    private var lastSaveableRideCapturedAtMillis: Long = 0L\n",
+                )
+            }
+
             text = text.replace(
 """            if (shouldScanPackage(eventPackageName)) lastRidePackageName = eventPackageName
             activePackageName = if (isPassiveDiagnosticPackage(eventPackageName)) activePackageName else eventPackageName
@@ -135,6 +142,18 @@ val manualCardLearningMode by tasks.registering {
 """,
             )
 
+            if ("rememberSaveableRideCard(packageName, snapshotText)" !in text) {
+                text = text.replace(
+"""        val snapshotHash = snapshotText.snapshotHash()
+        traceEvent("process.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash")
+""",
+"""        val snapshotHash = snapshotText.snapshotHash()
+        traceEvent("process.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash")
+        rememberSaveableRideCard(packageName, snapshotText)
+""",
+                )
+            }
+
             text = text.replace(
 """            traceEvent("card_model.missing package=${dollar}{packageName.orEmpty()} templates=${dollar}{currentCardTemplates.size}")
             if (allowPopupCandidate) return
@@ -183,17 +202,19 @@ val manualCardLearningMode by tasks.registering {
             text = replacePrivateFunctionBlockManualCardLearningMode(text, "saveCurrentRideCardFromBubble") {
 """    private fun saveCurrentRideCardFromBubble() {
         scope.launch {
-            val packageName = listOf(lastTextPackageName, lastRidePackageName, currentWindowPackageName(), activePackageName)
+            val cachedText = cachedSaveableRideText()
+            val packageName = listOf(lastSaveableRidePackageName, lastTextPackageName, lastRidePackageName, currentWindowPackageName(), activePackageName)
                 .mapNotNull { normalizePackageName(it) }
                 .firstOrNull { candidate ->
                     candidate != this@LiveRideAccessibilityService.packageName &&
                         (shouldScanPackage(candidate) || shouldLearnFromUnmonitoredPackage(candidate))
                 }
-            val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
+            val text = (cachedText ?: mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
                 collectVisibleTextForAction()
-            }.trim()
+            }).trim()
             if (text.isBlank()) {
                 toast("Abra o card de corrida e tente salvar novamente.")
+                traceEvent("bubble.save_card failed empty cached=${dollar}{lastSaveableRideText.isNotBlank()} package=${dollar}{packageName.orEmpty()}")
                 recordDiagnostic(
                     stage = "bubble_save_card_empty",
                     color = currentRadarColor,
@@ -211,6 +232,7 @@ val manualCardLearningMode by tasks.registering {
                 repository.saveSettings(updatedSettings)
                 currentSettings = updatedSettings
                 lastRidePackageName = inferredPackage
+                lastSaveableRidePackageName = inferredPackage
                 activePackageName = inferredPackage
             }
             val parseResult = parser.parseWithMetadata(text, inferredPackage)
@@ -227,6 +249,7 @@ val manualCardLearningMode by tasks.registering {
                 ),
             )
             toast("Card de corrida salvo.")
+            traceEvent("bubble.save_card success package=${dollar}{inferredPackage.orEmpty()} cached=${dollar}{cachedText != null} templates=${dollar}{currentCardTemplates.size + 1}")
             recordDiagnostic(
                 stage = "bubble_save_card",
                 color = currentRadarColor,
@@ -275,10 +298,63 @@ val manualCardLearningMode by tasks.registering {
                 )
             }
 
+            if ("private fun rememberSaveableRideCard(" !in text) {
+                text = text.replace(
+"""
+    private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
+""",
+"""
+    private fun rememberSaveableRideCard(packageName: String?, text: String) {
+        val normalized = normalizePackageName(packageName) ?: return
+        if (normalized == this.packageName) return
+        if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return
+        if (normalized in IGNORED_PACKAGES) return
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+        lastSaveableRideText = trimmed
+        lastSaveableRidePackageName = normalized
+        lastSaveableRideCapturedAtMillis = System.currentTimeMillis()
+        traceEvent("bubble.save_cache updated package=${dollar}normalized length=${dollar}{trimmed.length}")
+    }
+
+    private fun cachedSaveableRideText(): String? {
+        val ageMs = System.currentTimeMillis() - lastSaveableRideCapturedAtMillis
+        if (lastSaveableRideText.isBlank()) return null
+        if (ageMs > SAVEABLE_RIDE_CACHE_TTL_MS) {
+            traceEvent("bubble.save_cache expired age_ms=${dollar}ageMs")
+            return null
+        }
+        traceEvent("bubble.save_cache hit package=${dollar}{lastSaveableRidePackageName.orEmpty()} age_ms=${dollar}ageMs length=${dollar}{lastSaveableRideText.length}")
+        return lastSaveableRideText
+    }
+
+    private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
+""",
+                )
+            }
+
+            if ("const val SAVEABLE_RIDE_CACHE_TTL_MS" !in text) {
+                text = text.replace(
+                    "    const val SCREENSHOT_INTERVAL_MS = 300L\n",
+                    "    const val SCREENSHOT_INTERVAL_MS = 300L\n    const val SAVEABLE_RIDE_CACHE_TTL_MS = 120_000L\n",
+                )
+                text = text.replace(
+                    "    const val SCREENSHOT_INTERVAL_MS = 650L\n",
+                    "    const val SCREENSHOT_INTERVAL_MS = 650L\n    const val SAVEABLE_RIDE_CACHE_TTL_MS = 120_000L\n",
+                )
+            }
+
+            if ("saveable_card_cache.patch_applied" !in text) {
+                text = text.replace(
+                    "        traceEvent(\"manual_card_learning_mode.patch_applied=true\")\n",
+                    "        traceEvent(\"manual_card_learning_mode.patch_applied=true\")\n        traceEvent(\"saveable_card_cache.patch_applied=true\")\n",
+                )
+            }
+
             if ("manual_card_learning_mode.patch_applied" !in text) {
                 text = text.replace(
                     "        traceEvent(\"manual_card_packages_only.patch_applied=true\")\n",
-                    "        traceEvent(\"manual_card_packages_only.patch_applied=true\")\n        traceEvent(\"manual_card_learning_mode.patch_applied=true\")\n",
+                    "        traceEvent(\"manual_card_packages_only.patch_applied=true\")\n        traceEvent(\"manual_card_learning_mode.patch_applied=true\")\n        traceEvent(\"saveable_card_cache.patch_applied=true\")\n",
                 )
             }
 
