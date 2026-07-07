@@ -19,13 +19,15 @@ val patchBubbleWarningSaveCard by tasks.registering {
             )
         }
 
-        text = text.replace(
+        if ("rememberRideCardForBubble(snapshotText, packageName)\n        val cardMatch" !in text) {
+            text = text.replace(
 """        val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
 """,
 """        rememberRideCardForBubble(snapshotText, packageName)
         val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
 """,
-        )
+            )
+        }
 
         text = text.replace(
 """            resetToDefault(reason = reason, text = snapshotText, fields = fields)
@@ -201,7 +203,8 @@ val patchBubbleWarningSaveCard by tasks.registering {
 """,
         )
 
-        text = text.replace(
+        if ("private var lastTapUpMillis" !in text) {
+            text = text.replace(
 """    private inner class BubbleTouchListener : View.OnTouchListener {
         private var downRawX = 0f
         private var downRawY = 0f
@@ -217,7 +220,8 @@ val patchBubbleWarningSaveCard by tasks.registering {
         private var moved = false
         private var lastTapUpMillis = 0L
 """,
-        )
+            )
+        }
 
         text = text.replace(
 """                MotionEvent.ACTION_UP -> {
