@@ -81,6 +81,27 @@ val registeredCardPackageReading by tasks.registering {
         }
 
         text = text.replace(
+"""        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
+        if (!allowPopupCandidate || learningUnmonitoredPackage) {
+            rememberSourceText(packageName, source, text)
+        } else {
+            rememberPopupCandidatePackage(packageName)
+        }
+""",
+"""        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
+        if (source == TextSource.Ocr && RideTextSanitizer.containsRotaCertaOverlay(text)) {
+            traceEvent("ocr.overlay_contamination skipped=true length=${dollar}{text.length}")
+            return
+        }
+        if (!allowPopupCandidate || learningUnmonitoredPackage) {
+            rememberSourceText(packageName, source, text)
+        } else {
+            rememberPopupCandidatePackage(packageName)
+        }
+""",
+        )
+
+        text = text.replace(
 """        if (snapshotText.isBlank()) {
             traceEvent("process.empty_text source=${dollar}source")
             if (allowPopupCandidate) return
@@ -195,6 +216,12 @@ val registeredCardPackageReading by tasks.registering {
             text = text.replace(
                 "        traceEvent(\"registered_card_package_reading.patch_applied=true\")\n",
                 "        traceEvent(\"registered_card_package_reading.patch_applied=true\")\n        traceEvent(\"immediate_card_reset_fast_scan.patch_applied=true\")\n",
+            )
+        }
+        if ("ocr_overlay_contamination_guard.patch_applied" !in text) {
+            text = text.replace(
+                "        traceEvent(\"immediate_card_reset_fast_scan.patch_applied=true\")\n",
+                "        traceEvent(\"immediate_card_reset_fast_scan.patch_applied=true\")\n        traceEvent(\"ocr_overlay_contamination_guard.patch_applied=true\")\n",
             )
         }
 
