@@ -66,7 +66,7 @@ object RideCardTemplateMatcher {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
         val features = featuresFor(text).toList().sorted()
         val label = name?.takeIf { it.isNotBlank() }
-            ?: "Card ${appLabel(normalizedPackage)} ${features.take(2).joinToString(" + ").ifBlank { "manual" }}"
+            ?: "Card ${appLabel(normalizedPackage)} ${features.filterNot { it.startsWith("adaptive.") }.take(2).joinToString(" + ").ifBlank { "manual" }}"
         return RideCardTemplate(
             id = "card-${System.currentTimeMillis()}-${text.stableHash()}",
             name = label.take(80),
@@ -108,7 +108,15 @@ object RideCardTemplateMatcher {
             .maxByOrNull { it.score }
         if (strictMatch != null) return strictMatch
 
-        return relaxedInDriveFeedMatch(text, normalizedPackage, features, candidates)
+        val adaptiveMatch = AdaptiveCardLearningEngine.bestMatch(
+            text = text,
+            normalizedPackage = normalizedPackage,
+            candidates = candidates,
+            currentFeatures = features,
+        )
+        if (adaptiveMatch != null) return adaptiveMatch
+
+        return null
     }
 
     private fun relaxedInDriveFeedMatch(
@@ -160,6 +168,7 @@ object RideCardTemplateMatcher {
         if (timeRegex.containsMatchIn(text)) features += "tempo de rota"
         if (addressRegex.containsMatchIn(text)) features += "endereco"
         if (mapMarkerRegex.containsMatchIn(text)) features += "marcadores a/b"
+        features += AdaptiveCardLearningEngine.adaptiveFeaturesFor(text)
         return features
     }
 
