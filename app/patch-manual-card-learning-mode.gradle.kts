@@ -147,6 +147,19 @@ val manualCardLearningMode by tasks.registering {
 """,
             )
 
+            text = text.replace(
+"""        if (allowPopupCandidate && !shouldScanPackage(requestWindowPackageName) && !isPassiveDiagnosticPackage(requestWindowPackageName)) {
+            traceEvent("screenshot.request skipped unmonitored_popup_package=${dollar}{requestWindowPackageName.orEmpty()}")
+            return
+        }
+""",
+"""        if (allowPopupCandidate && !shouldScanPackage(requestWindowPackageName) && !shouldLearnFromUnmonitoredPackage(requestWindowPackageName) && !isPassiveDiagnosticPackage(requestWindowPackageName)) {
+            traceEvent("screenshot.request skipped unmonitored_popup_package=${dollar}{requestWindowPackageName.orEmpty()}")
+            return
+        }
+""",
+            )
+
             text = replacePrivateFunctionBlockManualCardLearningMode(text, "resolveRidePackageForText") {
 """    private fun resolveRidePackageForText(
         windowPackageName: String?,
@@ -193,9 +206,12 @@ val manualCardLearningMode by tasks.registering {
             val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
             repository.addCardTemplate(template)
             if (!inferredPackage.isNullOrBlank()) {
-                repository.saveSettings(currentSettings.copy(extraMonitoredPackages = mergePackageIntoList(currentSettings.extraMonitoredPackages, inferredPackage)))
-                currentSettings = currentSettings.copy(extraMonitoredPackages = mergePackageIntoList(currentSettings.extraMonitoredPackages, inferredPackage))
+                val updatedPackages = mergePackageIntoList(currentSettings.extraMonitoredPackages, inferredPackage)
+                val updatedSettings = currentSettings.copy(extraMonitoredPackages = updatedPackages)
+                repository.saveSettings(updatedSettings)
+                currentSettings = updatedSettings
                 lastRidePackageName = inferredPackage
+                activePackageName = inferredPackage
             }
             val parseResult = parser.parseWithMetadata(text, inferredPackage)
             repository.addCapturedScreen(
@@ -224,6 +240,20 @@ val manualCardLearningMode by tasks.registering {
 """
             }
 
+            text = replacePrivateFunctionBlockManualCardLearningMode(text, "shouldLearnFromUnmonitoredPackage") {
+"""    private fun shouldLearnFromUnmonitoredPackage(packageName: String?): Boolean {
+        val normalized = normalizePackageName(packageName) ?: return false
+        if (normalized == this.packageName) return false
+        if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
+        if (normalized in IGNORED_PACKAGES) return false
+        val settings = currentSettings
+        if (!settings.appEnabled) return false
+        return normalized !in selectedRidePackages(settings)
+    }
+
+"""
+            }
+
             if ("private fun shouldLearnFromUnmonitoredPackage(" !in text) {
                 text = text.replace(
 """
@@ -237,7 +267,7 @@ val manualCardLearningMode by tasks.registering {
         if (normalized in IGNORED_PACKAGES) return false
         val settings = currentSettings
         if (!settings.appEnabled) return false
-        return selectedRidePackages(settings).isEmpty()
+        return normalized !in selectedRidePackages(settings)
     }
 
     private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
