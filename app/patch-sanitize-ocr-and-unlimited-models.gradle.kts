@@ -221,6 +221,14 @@ val sanitizeOcrAndUnlimitedModels by tasks.registering {
             )
             text = text.replace("val normalized = text.lowercase(Locale.ROOT)", "val normalized = cleanText.lowercase(Locale.ROOT)")
             text = text.replace("containsMatchIn(text)", "containsMatchIn(cleanText)")
+            text = text.replace(
+"""    private fun containsNonRideScreenNoise(text: String): Boolean {
+        val normalized = cleanText.lowercase(Locale.ROOT)
+""",
+"""    private fun containsNonRideScreenNoise(text: String): Boolean {
+        val normalized = text.lowercase(Locale.ROOT)
+""",
+            )
             if ("salvar card desta corrida" !in text) {
                 text = text.replace("\"salvar card de corrida\",", "\"salvar card de corrida\",\n        \"salvar card desta corrida\",")
             }
