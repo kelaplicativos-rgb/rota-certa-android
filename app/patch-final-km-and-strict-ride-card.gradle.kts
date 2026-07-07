@@ -45,23 +45,17 @@ val finalKmAndStrictRideCard by tasks.registering {
             val original = text
 
             text = text.replace(
-"""        val hasPositiveFare = fields.fare?.let {
-            Regex(""" + "\"\"\"^R\\$\\s*(?!0+(?:[,.]0{1,2})?\\b)\\d\"\"\"" + ", RegexOption.IGNORE_CASE).containsMatchIn(it)
-        } == true
-        val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&
+"""        val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&
             hasPositiveFare &&
-            Regex(""" + "\"\"\"\\b\\d+(?:[,.]\\d+)?\\s*km\\b\"\"\"" + ", RegexOption.IGNORE_CASE).containsMatchIn(text)
+            Regex(""" + '"' + '"' + '"' + "\\b\\d+(?:[,.]\\d+)?\\s*km\\b" + '"' + '"' + '"' + ", RegexOption.IGNORE_CASE).containsMatchIn(text)
         return hasDestinationAddressSignal && (hasRideCardSignal || hasMapPointSignal || hasNinetyNinePackageSignal)
 """,
-"""        val hasPositiveFare = fields.fare?.let {
-            Regex(""" + "\"\"\"^R\\$\\s*(?!0+(?:[,.]0{1,2})?\\b)\\d\"\"\"" + ", RegexOption.IGNORE_CASE).containsMatchIn(it)
-        } == true
+"""        val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&
+            hasPositiveFare &&
+            Regex(""" + '"' + '"' + '"' + "\\b\\d+(?:[,.]\\d+)?\\s*km\\b" + '"' + '"' + '"' + ", RegexOption.IGNORE_CASE).containsMatchIn(text)
         val hasExplicitOfferAction = listOf(
             "aceitar", "aceitar por", "selecionar", "ofereça sua tarifa", "ofereca sua tarifa"
         ).any { normalized.contains(it) }
-        val hasNinetyNinePackageSignal = normalizedPackage == PACKAGE_99_DRIVER &&
-            hasPositiveFare &&
-            Regex(""" + "\"\"\"\\b\\d+(?:[,.]\\d+)?\\s*km\\b\"\"\"" + ", RegexOption.IGNORE_CASE).containsMatchIn(text)
         val hasUberPackageSignal = normalizedPackage == PACKAGE_UBER_DRIVER &&
             hasPositiveFare &&
             hasExplicitOfferAction &&
