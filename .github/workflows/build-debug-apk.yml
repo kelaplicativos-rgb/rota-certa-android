@@ -58,7 +58,9 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble|patchLiveWindowStaleOcr)" gradle-test.log || tail -160 gradle-test.log
+            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble|patchLiveWindowStaleOcr)" gradle-test.log || true
+            echo "--- gradle-test.log tail ---"
+            tail -220 gradle-test.log
           fi
           exit "$status"
 
