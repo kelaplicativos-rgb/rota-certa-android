@@ -69,7 +69,46 @@ val patchBubbleShortcutClipboard by tasks.registering {
 """,
 """            addView(actionMenuItem(
                 label = "💾  Salvar card de corrida",
+                action = {
+                    hideActionMenu()
+                    saveCurrentRideCardFromBubble()
+                },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+            ))
+""",
+        )
+
+        text = text.replace(
+"""            addView(actionMenuItem(
+                label = "💾  Salvar card de corrida",
                 action = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+            ))
+""",
+"""            addView(actionMenuItem(
+                label = "💾  Salvar card de corrida",
+                action = {
+                    hideActionMenu()
+                    saveCurrentRideCardFromBubble()
+                },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+            ))
+""",
+        )
+
+        text = text.replace(
+"""            addView(actionMenuItem(
+                label = "💾  Salvar card desta corrida",
+                action = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+                longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
+            ))
+""",
+"""            addView(actionMenuItem(
+                label = "💾  Salvar card desta corrida",
+                action = {
+                    hideActionMenu()
+                    saveCurrentRideCardFromBubble()
+                },
                 longAction = { openApp(tab = TAB_TOOLS, expander = "Modelos de cards") },
             ))
 """,
