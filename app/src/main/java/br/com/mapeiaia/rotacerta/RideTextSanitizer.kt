@@ -16,8 +16,17 @@ object RideTextSanitizer {
             .trim()
     }
 
-    fun containsRotaCertaOverlay(text: String): Boolean =
-        text.lines().count(::isRotaCertaOverlayLine) >= 2
+    fun containsRotaCertaOverlay(text: String): Boolean {
+        if (text.isBlank()) return false
+        if (text.lines().count(::isRotaCertaOverlayLine) >= 2) return true
+
+        val normalizedText = text.normalizedForOverlayMatch()
+        val compactText = normalizedText.replace(" ", "")
+        val phraseHits = overlayMenuLines.count { phrase ->
+            normalizedText.contains(phrase) || compactText.contains(phrase.replace(" ", ""))
+        }
+        return phraseHits >= 2
+    }
 
     private fun isRotaCertaOverlayLine(line: String): Boolean {
         val normalized = line.normalizedForOverlayMatch()
@@ -34,11 +43,15 @@ object RideTextSanitizer {
 
     private val overlayMenuLines = setOf(
         "abrir rota certa",
+        "salvar card",
         "salvar card de corrida",
         "salvar card desta corrida",
         "salvar este local",
+        "minha regiao",
         "minha regiao de corridas",
+        "limpar area",
         "limpar area de transferencia",
+        "criar alerta",
         "criar alerta de proximidade",
         "fechar",
     )
