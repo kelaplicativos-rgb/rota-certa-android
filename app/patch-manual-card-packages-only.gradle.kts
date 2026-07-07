@@ -6,19 +6,6 @@ val manualCardPackagesOnly by tasks.registering {
     outputs.upToDateWhen { false }
 
     doLast {
-        fun normalizePackageList(value: String): String = value
-            .split(Regex("[,;\\s]+"))
-            .map { it.trim().lowercase(java.util.Locale.ROOT) }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString(",")
-
-        fun mergePackageIntoList(value: String, packageName: String?): String {
-            val normalizedPackage = packageName?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf { it.isNotBlank() }
-                ?: return normalizePackageList(value)
-            return normalizePackageList(listOf(value, normalizedPackage).joinToString(","))
-        }
-
         modelsFile.asFile.let { file ->
             var text = file.readText()
             val original = text
@@ -42,8 +29,7 @@ val manualCardPackagesOnly by tasks.registering {
             val template = RideCardTemplateMatcher.createTemplate(inferredPackageName, text)
             repository.addCardTemplate(template)
             if (!inferredPackageName.isNullOrBlank()) {
-                val current = repository.settings.value
-                repository.saveSettings(current.copy(extraMonitoredPackages = mergePackageIntoList(current.extraMonitoredPackages, inferredPackageName)))
+                repository.saveSettings(settings.copy(extraMonitoredPackages = mergePackageIntoList(settings.extraMonitoredPackages, inferredPackageName)))
             }
             Toast.makeText(context, "Modelo cadastrado: ${'$'}{template.name}", Toast.LENGTH_SHORT).show()
 """,
@@ -56,8 +42,7 @@ val manualCardPackagesOnly by tasks.registering {
 """,
 """                    val template = RideCardTemplateMatcher.createTemplate(packageName, extractedText)
                     repository.addCardTemplate(template)
-                    val current = repository.settings.value
-                    repository.saveSettings(current.copy(extraMonitoredPackages = mergePackageIntoList(current.extraMonitoredPackages, packageName)))
+                    repository.saveSettings(settings.copy(extraMonitoredPackages = mergePackageIntoList(settings.extraMonitoredPackages, packageName)))
                     imported += 1
 """,
             )
@@ -97,6 +82,30 @@ val manualCardPackagesOnly by tasks.registering {
 """,
             )
 
+            if ("private fun normalizePackageList(" !in text) {
+                text = text.replace(
+"""
+private fun clearClipboard(context: Context) {
+""",
+"""
+private fun normalizePackageList(value: String): String = value
+    .split(Regex("[,;\\s]+"))
+    .map { it.trim().lowercase(Locale.ROOT) }
+    .filter { it.isNotBlank() }
+    .distinct()
+    .joinToString(",")
+
+private fun mergePackageIntoList(value: String, packageName: String?): String {
+    val normalizedPackage = packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+        ?: return normalizePackageList(value)
+    return normalizePackageList(listOf(value, normalizedPackage).joinToString(","))
+}
+
+private fun clearClipboard(context: Context) {
+""",
+                )
+            }
+
             if ("manual_card_packages_only.patch_applied" !in text) {
                 text = text.replace(
                     "        Text(\"Toque na bolinha para abrir o Rota Certa. Arraste para mudar a posicao.\", style = MaterialTheme.typography.bodySmall)\n",
@@ -118,8 +127,7 @@ val manualCardPackagesOnly by tasks.registering {
 """            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
             repository.addCardTemplate(template)
             if (!inferredPackage.isNullOrBlank()) {
-                val settings = repository.settings.value
-                repository.saveSettings(settings.copy(extraMonitoredPackages = mergePackageIntoList(settings.extraMonitoredPackages, inferredPackage)))
+                repository.saveSettings(currentSettings.copy(extraMonitoredPackages = mergePackageIntoList(currentSettings.extraMonitoredPackages, inferredPackage)))
             }
 """,
             )
@@ -133,6 +141,30 @@ val manualCardPackagesOnly by tasks.registering {
 """        packages += settings.extraMonitoredPackages
 """,
             )
+
+            if ("private fun normalizePackageList(" !in text) {
+                text = text.replace(
+"""
+    private fun selectedRidePackages(settings: AppSettings): Set<String> {
+""",
+"""
+    private fun normalizePackageList(value: String): String = value
+        .split(Regex("[,;\\s]+"))
+        .map { it.trim().lowercase(Locale.ROOT) }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .joinToString(",")
+
+    private fun mergePackageIntoList(value: String, packageName: String?): String {
+        val normalizedPackage = packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+            ?: return normalizePackageList(value)
+        return normalizePackageList(listOf(value, normalizedPackage).joinToString(","))
+    }
+
+    private fun selectedRidePackages(settings: AppSettings): Set<String> {
+""",
+                )
+            }
 
             if ("manual_card_packages_only.patch_applied" !in text) {
                 text = text.replace(
