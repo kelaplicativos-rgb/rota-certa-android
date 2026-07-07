@@ -130,10 +130,10 @@ val patchInstantCardDecisionCache by tasks.registering {
             )
         }
 
-        if ("const val LIVE_DECISION_CACHE_LIMIT" !in text) {
+        if ("LIVE_DECISION_CACHE_LIMIT" in text && "const val LIVE_DECISION_CACHE_LIMIT" !in text) {
             text = text.replace(
-                "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n",
-                "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n        const val LIVE_DECISION_CACHE_LIMIT = 32\n",
+                "const val BUBBLE_PREFS = \"rota_certa_bubble\"",
+                "const val LIVE_DECISION_CACHE_LIMIT = 32\n        const val BUBBLE_PREFS = \"rota_certa_bubble\"",
             )
         }
 
