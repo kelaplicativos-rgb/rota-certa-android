@@ -74,8 +74,7 @@ val patchSetupWarningForceOverlay by tasks.registering {
 }
 
 patchSetupWarningForceOverlay.configure {
-    mustRunAfter(tasks.matching { it.name.startsWith("patch") && it.name != "patchSetupWarningForceOverlay" })
-    mustRunAfter("bubbleRouteDistanceOnly", "patchFullDiagnosticExport")
+    mustRunAfter("patchBubbleWarningSaveCard")
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
