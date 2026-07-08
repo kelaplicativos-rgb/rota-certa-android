@@ -188,7 +188,7 @@ val patchStrictBubbleLifecycle by tasks.registering {
 }
 
 tasks.named("patchStrictBubbleLifecycle").configure {
-    mustRunAfter(tasks.matching { task -> task.name.startsWith("patch") && task.name != "patchStrictBubbleLifecycle" })
+    mustRunAfter(tasks.named("patchLiveRideAccessibilityService"))
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
