@@ -179,6 +179,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
 """            addView(actionMenuItem("💾  Salvar card de corrida") {
                 traceEvent("bubble.save_card_button clicked")
+                toast("Salvando card de corrida...")
                 cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
                 hideActionMenu()
                 saveCurrentRideCardFromBubble()
@@ -244,6 +245,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                         val pressDuration = System.currentTimeMillis() - downAtMillis
                         if (pressDuration >= 650L) {
                             traceEvent("bubble.long_press_save_card")
+                            toast("Salvando card de corrida...")
                             cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
                             hideActionMenu()
                             saveCurrentRideCardFromBubble()
