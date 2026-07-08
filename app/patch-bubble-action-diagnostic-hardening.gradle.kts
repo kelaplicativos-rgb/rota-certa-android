@@ -14,76 +14,14 @@ fun patchServiceActionDiagnostics(file: java.io.File) {
     var text = file.readText()
     val original = text
 
-    if ("private val diagnosticActionEvents" !in text) {
-        text = text.replace(
-            """    private val diagnosticEvents = mutableListOf<String>()
-""",
-            """    private val diagnosticEvents = mutableListOf<String>()
-    private val diagnosticActionEvents = mutableListOf<String>()
-""",
-        )
-    }
-
     text = text.replace(
-"""    private fun traceEvent(message: String) {
-        diagnosticEvents += "${'$'}{System.currentTimeMillis()} ${'$'}message"
-        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) diagnosticEvents.removeAt(0)
-    }
-""",
-"""    private fun traceEvent(message: String) {
-        val line = "${'$'}{System.currentTimeMillis()} ${'$'}message"
-        diagnosticEvents += line
-        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) diagnosticEvents.removeAt(0)
-        if (isActionDiagnosticEvent(message)) {
-            diagnosticActionEvents += line
-            while (diagnosticActionEvents.size > ACTION_DIAGNOSTIC_EVENT_LIMIT) diagnosticActionEvents.removeAt(0)
-        }
-    }
-
-    private fun isActionDiagnosticEvent(message: String): Boolean =
-        message.startsWith("diagnostic.contract") ||
-            message.startsWith("bubble.") ||
-            message.startsWith("card_save_candidate") ||
-            message.startsWith("direct_save_candidate") ||
-            message.startsWith("screenshot.request") ||
-            message.startsWith("screenshot.ocr") ||
-            message.startsWith("screenshot.discard") ||
-            message.startsWith("screenshot.failure")
-
-    private fun buildDiagnosticLog(): String = buildString {
-        appendLine("--- GERAL ---")
-        diagnosticEvents.forEach { appendLine(it) }
-        appendLine("--- ACOES DO USUARIO ---")
-        if (diagnosticActionEvents.isEmpty()) {
-            appendLine("sem eventos de acao registrados")
-        } else {
-            diagnosticActionEvents.forEach { appendLine(it) }
-        }
-    }.trimEnd()
-""",
+        "const val DIAGNOSTIC_EVENT_LIMIT = 180",
+        "const val DIAGNOSTIC_EVENT_LIMIT = 320",
     )
-
     text = text.replace(
-        "diagnosticLog = diagnosticEvents.joinToString(\"\\n\"),",
-        "diagnosticLog = buildDiagnosticLog(),",
+        "const val DIAGNOSTIC_EVENT_LIMIT = 60",
+        "const val DIAGNOSTIC_EVENT_LIMIT = 320",
     )
-
-    if ("ACTION_DIAGNOSTIC_EVENT_LIMIT" !in text) {
-        text = text.replace(
-            """        const val DIAGNOSTIC_EVENT_LIMIT = 180
-""",
-            """        const val DIAGNOSTIC_EVENT_LIMIT = 320
-        const val ACTION_DIAGNOSTIC_EVENT_LIMIT = 160
-""",
-        )
-        text = text.replace(
-            """        const val DIAGNOSTIC_EVENT_LIMIT = 60
-""",
-            """        const val DIAGNOSTIC_EVENT_LIMIT = 320
-        const val ACTION_DIAGNOSTIC_EVENT_LIMIT = 160
-""",
-        )
-    }
 
     text = text.replace(
 """    private fun triggerBubbleSaveFromAction(source: String) {
@@ -166,7 +104,7 @@ fun patchMainActionDiagnostics(file: java.io.File) {
 """        saveSuccess -> "Card salvo com sucesso."
 """,
 """        saveSuccess -> "Card salvo com sucesso."
-        noBubbleActionRegistered && screenshotBlockedCount > 0 -> "Nao ha acao da bolinha registrada. O diagnostico so encontrou prints automaticos ou bloqueados; precisa testar novamente tocando no atalho e exportar logo em seguida."
+        noBubbleActionRegistered && screenshotBlockedCount > 0 -> "Nao ha acao da bolinha registrada. O diagnostico so encontrou prints automaticos ou bloqueados; toque no atalho da bolinha e exporte o diagnostico logo em seguida."
         shortcutCaptureRequested && shortcutScreenshotAttemptCount <= 1 && !saveSuccess -> "O atalho da bolinha iniciou captura, mas fez no maximo uma tentativa de print e nao confirmou salvamento."
         shortcutCaptureRequested && screenshotFailedCount > 0 && !saveSuccess -> "O atalho da bolinha pediu print, mas o Android recusou pelo menos uma captura."
         shortcutCaptureRequested && screenshotBlockedCount > 0 && !saveSuccess -> "O atalho da bolinha pediu captura, mas o print foi bloqueado por pacote fora do monitoramento."
