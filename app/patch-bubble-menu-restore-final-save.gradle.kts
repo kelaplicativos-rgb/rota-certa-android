@@ -156,31 +156,34 @@ val bubbleMenuRestoreFinalSave by tasks.registering {
                 .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: ""
+            val cachedPackageName = lastCardSaveCandidatePackageName?.takeIf { it.isNotBlank() }
+            val cachedText = lastCardSaveCandidateText.takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+            val freshCandidate = bestCardSaveCandidate(livePackageName ?: cachedPackageName, liveText)
+                ?: if (cachedPackageName != null && cachedText != null) cachedPackageName to cachedText else null
 
-            var candidate = bestCardSaveCandidate(livePackageName, liveText)
-                ?: pendingDirectCardSaveCandidate("save_start")
+            var packageName = freshCandidate?.first ?: livePackageName ?: cachedPackageName
+            var text = freshCandidate?.second ?: liveText.ifBlank { cachedText.orEmpty() }
 
-            if (candidate == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (text.isBlank() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 toast("Capturando print da tela...")
                 for (attempt in 0 until 3) {
                     cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 2_500L
                     lastScreenshotMillis = 0L
                     requestScreenshotAnalysis(allowPopupCandidate = true)
                     delay(700L)
-                    candidate = bestCardSaveCandidate(null, "")
-                        ?: pendingDirectCardSaveCandidate("after_screenshot_attempt_${'$'}attempt")
-                    if (candidate != null) break
+                    val attemptCandidate = bestCardSaveCandidate(packageName, "")
+                    if (attemptCandidate != null) {
+                        packageName = attemptCandidate.first
+                        text = attemptCandidate.second
+                        break
+                    }
                 }
             }
 
-            val packageName = candidate?.first ?: livePackageName
-            val text = candidate?.second ?: liveText
-            candidate?.let {
-                traceEvent("bubble.save_card_candidate.ready package=${'$'}{it.first} length=${'$'}{it.second.length}")
-            }
+            traceEvent("bubble.save_card_candidate.final package=${'$'}{packageName.orEmpty()} length=${'$'}{text.length} cached_len=${'$'}{cachedText?.length ?: 0} live_len=${'$'}{liveText.length}")
 
             if (text.isBlank()) {
-                traceEvent("diagnostic.contract save_card result=fail reason=text_blank pending_len=${'$'}{pendingDirectCardSaveText.length} last_len=${'$'}{lastCardSaveCandidateText.length} live_len=${'$'}{liveText.length}")
+                traceEvent("diagnostic.contract save_card result=fail reason=text_blank last_len=${'$'}{lastCardSaveCandidateText.length} live_len=${'$'}{liveText.length}")
                 toast("Nao consegui ler o card. Deixe o card aberto e toque em Capturar dados.")
                 recordDiagnostic(
                     stage = "bubble_save_card_empty",
@@ -207,9 +210,6 @@ val bubbleMenuRestoreFinalSave by tasks.registering {
             val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
             repository.addCardTemplate(template)
             rememberCardSaveCandidate(inferredPackage, text, "card_saved")
-            pendingDirectCardSavePackageName = null
-            pendingDirectCardSaveText = ""
-            pendingDirectCardSaveAtMillis = 0L
 
             val parseResult = parser.parseWithMetadata(text, inferredPackage)
             repository.addCapturedScreen(
