@@ -2,7 +2,6 @@ package br.com.mapeiaia.rotacerta
 
 import java.text.Normalizer
 import java.util.Locale
-import kotlin.math.max
 
 object RideCardTemplateMatcher {
     const val UBER_PACKAGE = "com.ubercab.driver"
@@ -50,7 +49,6 @@ object RideCardTemplateMatcher {
         "preco justo",
         "preço justo",
     )
-    private val inDriveCanonicalFeatures = inDrivePackagePhrases.map { it.normalizedForCardMatch() }.toSet()
 
     fun inferPackageName(text: String): String? {
         val normalized = text.normalizedForCardMatch()
@@ -79,26 +77,30 @@ object RideCardTemplateMatcher {
 
     fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch? {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)
-        val features = featuresFor(text)
+        val liveFeatures = deterministicFeaturesFor(text)
         val candidates = templates
             .asSequence()
             .filter { template ->
                 template.packageName.isNullOrBlank() || template.packageName.equals(normalizedPackage, ignoreCase = true)
             }
             .mapNotNull { template ->
-                val required = template.requiredFeatures.toSet()
+                val required = template.requiredFeatures
+                    .filterNot { it.startsWith("adaptive.") }
+                    .toSet()
                 if (required.isEmpty()) return@mapNotNull null
-                val matched = required.intersect(features)
-                val score = matched.size.toDouble() / max(required.size, 1)
+                val matched = required.intersect(liveFeatures)
+                val score = matched.size.toDouble() / required.size.coerceAtLeast(1)
                 RideCardTemplateMatch(template = template, score = score, matchedFeatures = matched.toList().sorted())
             }
             .toList()
 
-        val strictMatch = candidates
+        return candidates
             .asSequence()
             .filter { match ->
                 val samePackage = match.template.packageName?.equals(normalizedPackage, ignoreCase = true) == true
-                val required = match.template.requiredFeatures.toSet()
+                val required = match.template.requiredFeatures
+                    .filterNot { it.startsWith("adaptive.") }
+                    .toSet()
                 val requiredStructuralFeatures = structuralFeatures.intersect(required)
                 samePackage &&
                     match.score >= MIN_SCORE &&
@@ -106,57 +108,12 @@ object RideCardTemplateMatcher {
                     requiredStructuralFeatures.all { it in match.matchedFeatures }
             }
             .maxByOrNull { it.score }
-        if (strictMatch != null) return strictMatch
-
-        val adaptiveMatch = AdaptiveCardLearningEngine.bestMatch(
-            text = text,
-            normalizedPackage = normalizedPackage,
-            candidates = candidates,
-            currentFeatures = features,
-        )
-        if (adaptiveMatch != null) return adaptiveMatch
-
-        return null
     }
 
-    private fun relaxedInDriveFeedMatch(
-        text: String,
-        normalizedPackage: String?,
-        features: Set<String>,
-        candidates: List<RideCardTemplateMatch>,
-    ): RideCardTemplateMatch? {
-        if (normalizedPackage != INDRIVE_PACKAGE) return null
-        if (!structuralFeatures.all { it in features }) return null
-        if (!looksLikeInDriveFeed(text, features)) return null
+    fun featuresFor(text: String): Set<String> =
+        deterministicFeaturesFor(text) + AdaptiveCardLearningEngine.adaptiveFeaturesFor(text)
 
-        return candidates
-            .asSequence()
-            .filter { match -> match.template.packageName?.equals(INDRIVE_PACKAGE, ignoreCase = true) == true }
-            .filter { match -> structuralFeatures.all { it in match.matchedFeatures } }
-            .filter { match -> match.matchedFeatures.size >= MIN_FEATURES }
-            .filter { match ->
-                val required = match.template.requiredFeatures.toSet()
-                required.any { it in inDriveCanonicalFeatures } || features.any { it in inDriveCanonicalFeatures }
-            }
-            .maxWithOrNull(compareBy<RideCardTemplateMatch> { it.matchedFeatures.size }.thenBy { it.score })
-            ?.let { match ->
-                match.copy(
-                    score = max(match.score, MIN_SCORE),
-                    matchedFeatures = (match.matchedFeatures + INDRIVE_FEED_MATCH_MARKER).distinct().sorted(),
-                )
-            }
-    }
-
-    private fun looksLikeInDriveFeed(text: String, features: Set<String>): Boolean {
-        val normalized = text.normalizedForCardMatch()
-        val hasKnownPhrase = features.any { it in inDriveCanonicalFeatures } ||
-            inDriveCanonicalFeatures.any { normalized.contains(it) }
-        val hasFeedActions = normalized.contains("reclamar") && normalized.contains("ocultar")
-        val hasBottomTabs = normalized.contains("pedidos de viagem") && normalized.contains("demanda")
-        return hasKnownPhrase || hasFeedActions || hasBottomTabs
-    }
-
-    fun featuresFor(text: String): Set<String> {
+    private fun deterministicFeaturesFor(text: String): Set<String> {
         val normalized = text.normalizedForCardMatch()
         val features = linkedSetOf<String>()
         stablePhrases.forEach { phrase ->
@@ -168,7 +125,6 @@ object RideCardTemplateMatcher {
         if (timeRegex.containsMatchIn(text)) features += "tempo de rota"
         if (addressRegex.containsMatchIn(text)) features += "endereco"
         if (mapMarkerRegex.containsMatchIn(text)) features += "marcadores a/b"
-        features += AdaptiveCardLearningEngine.adaptiveFeaturesFor(text)
         return features
     }
 
@@ -194,7 +150,6 @@ object RideCardTemplateMatcher {
 
     private val structuralFeatures = setOf("valor em reais", "distancia em km", "endereco")
 
-    private const val INDRIVE_FEED_MATCH_MARKER = "indrive.feed_template_match"
     private const val MIN_SCORE = 0.75
     private const val MIN_FEATURES = 3
 }
