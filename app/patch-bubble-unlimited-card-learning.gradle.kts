@@ -196,6 +196,66 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
     )
 
+    replaceExact(
+"""            setOnClickListener { action() }
+""",
+"""            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        traceEvent("bubble.menu_item_down label=${'$'}{label.take(24)}")
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        traceEvent("bubble.menu_item_up label=${'$'}{label.take(24)}")
+                        action()
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> true
+                    else -> true
+                }
+            }
+""",
+    )
+
+    if ("bubble.long_press_save_card" !in text) {
+        replaceExact(
+"""        private var startY = 0
+        private var moved = false
+""",
+"""        private var startY = 0
+        private var downAtMillis = 0L
+        private var moved = false
+""",
+        )
+        replaceExact(
+"""                    moved = false
+                    return true
+""",
+"""                    downAtMillis = System.currentTimeMillis()
+                    moved = false
+                    return true
+""",
+        )
+        replaceExact(
+"""                    if (!moved) view.performClick()
+                    return true
+""",
+"""                    if (!moved) {
+                        val pressDuration = System.currentTimeMillis() - downAtMillis
+                        if (pressDuration >= 650L) {
+                            traceEvent("bubble.long_press_save_card")
+                            cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
+                            hideActionMenu()
+                            saveCurrentRideCardFromBubble()
+                        } else {
+                            view.performClick()
+                        }
+                    }
+                    return true
+""",
+        )
+    }
+
     if ("private fun snapshotCurrentCardCandidateForBubbleAction" !in text) {
         replaceExact(
 """    private fun collectVisibleTextForAction(): String {
@@ -291,6 +351,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 }
 
 tasks.named("bubbleUnlimitedCardLearning").configure {
+    mustRunAfter("patchLiveRideBubbleActions")
     mustRunAfter("enforceUserRegisteredPackagesOnly")
     mustRunAfter("bubbleStateMachineIntegration")
 }
