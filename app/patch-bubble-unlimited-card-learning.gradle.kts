@@ -84,9 +84,9 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     )
 
     replaceExact(
-"""        traceEvent("process.start source=$source package=${packageName.orEmpty()} raw_length=${text.length}")
+"""        traceEvent("process.start source=${'$'}source package=${'$'}{packageName.orEmpty()} raw_length=${'$'}{text.length}")
 """,
-"""        traceEvent("process.start source=$source package=${packageName.orEmpty()} raw_length=${text.length}")
+"""        traceEvent("process.start source=${'$'}source package=${'$'}{packageName.orEmpty()} raw_length=${'$'}{text.length}")
         rememberCardSaveCandidate(packageName, text, "process_start")
 """,
     )
@@ -179,17 +179,27 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     )
 
     replaceExact(
+"""    private fun showActionMenu() {
+        val manager = windowManager ?: return
+""",
+"""    private fun showActionMenu() {
+        snapshotCurrentCardCandidateForBubbleAction("menu_open")
+        val manager = windowManager ?: return
+""",
+    )
+
+    replaceExact(
 """    private fun collectVisibleTextForAction(): String {
 """,
 """    private fun snapshotCurrentCardCandidateForBubbleAction(reason: String) {
         val packageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
             ?.takeIf { isLearnableRideAppPackage(it) }
             ?: activePackageName?.takeIf { isLearnableRideAppPackage(it) }
-        val text = mergeRideTexts(lastAccessibilityText, lastOcrText)
+        val actionText = mergeRideTexts(lastAccessibilityText, lastOcrText)
             .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
             ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
             ?: return
-        rememberCardSaveCandidate(packageName, text, reason)
+        rememberCardSaveCandidate(packageName, actionText, reason)
     }
 
     private fun rememberCardSaveCandidate(packageName: String?, text: String, reason: String) {
