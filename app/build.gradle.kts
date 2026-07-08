@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 40
+val appVersionCode = ciVersionCode ?: 41
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.39"
+        versionName = "0.1.40"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -258,9 +258,4 @@ apply(from = "patch-clear-bubble-on-screen-change.gradle.kts")
 apply(from = "patch-bubble-region-shortcut-flow.gradle.kts")
 apply(from = "patch-card-lifecycle-strict-overlay.gradle.kts")
 apply(from = "patch-final-km-and-strict-ride-card.gradle.kts")
-apply(from = "patch-manual-card-packages-only.gradle.kts")
-apply(from = "patch-manual-card-learning-mode.gradle.kts")
-apply(from = "patch-sanitize-ocr-and-unlimited-models.gradle.kts")
-apply(from = "patch-registered-card-package-reading.gradle.kts")
-apply(from = "patch-local-adaptive-card-index.gradle.kts")
-apply(from = "patch-modular-bubble-lifecycle.gradle.kts")
+apply(from = "patch-strict-bubble-lifecycle.gradle.kts")
