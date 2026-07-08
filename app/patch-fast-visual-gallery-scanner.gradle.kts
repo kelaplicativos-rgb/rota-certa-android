@@ -87,6 +87,52 @@ val fastVisualGalleryScanner by tasks.registering {
 """,
         )
 
+        if ("visual.accessibility.skip chrome_text" !in text) {
+            text = text.replace(
+"""        val windowPackageName = currentWindowPackageName()
+        if (!allowPopupCandidate && !shouldScanPackage(windowPackageName)) return
+""",
+"""        val windowPackageName = currentWindowPackageName()
+        if (source == TextSource.Accessibility && isFastVisualPackage(windowPackageName) && !RideScreenTextClassifier.looksLikeRideCard(text)) {
+            traceEvent("visual.accessibility.skip chrome_text length=${'$'}{text.length}")
+            return
+        }
+        if (!allowPopupCandidate && !shouldScanPackage(windowPackageName)) return
+""",
+            )
+        }
+
+        val resolveRidePackageReplacement = """    private fun resolveRidePackageForText(
+        windowPackageName: String?,
+        text: String,
+        allowPopupCandidate: Boolean,
+    ): String? {
+        val normalizedWindowPackage = normalizePackageName(windowPackageName)
+        val inferredPackage = RideCardTemplateMatcher.inferPackageName(text)
+
+        if (isFastVisualPackage(normalizedWindowPackage)) {
+            if (inferredPackage != null && shouldScanPackage(inferredPackage)) {
+                traceEvent("visual.package.inferred source=${'$'}{normalizedWindowPackage.orEmpty()} inferred=${'$'}inferredPackage")
+                return inferredPackage
+            }
+            if (RegisteredRidePackagePolicy.hasUniversalTemplate(currentCardTemplates) && shouldScanPackage(normalizedWindowPackage)) {
+                traceEvent("visual.package.universal source=${'$'}{normalizedWindowPackage.orEmpty()}")
+                return normalizedWindowPackage
+            }
+        }
+
+        if (allowPopupCandidate && inferredPackage != null && shouldScanPackage(inferredPackage)) return inferredPackage
+        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
+        if (!allowPopupCandidate) return normalizedWindowPackage
+        return inferredPackage?.takeIf { inferred -> shouldScanPackage(inferred) }
+    }
+
+    private fun looksLikeRegisteredPopupCandidate"""
+
+        text = Regex("(?s)    private fun resolveRidePackageForText\\(\\s*windowPackageName: String\\?,\\s*text: String,\\s*allowPopupCandidate: Boolean,\\s*\\): String\\? \\{.*?    private fun looksLikeRegisteredPopupCandidate").replace(text) {
+            resolveRidePackageReplacement
+        }
+
         text = text.replace(
 """            val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
             traceEvent("geocode.destination ok=${'$'}{destinationCoordinate != null}")
