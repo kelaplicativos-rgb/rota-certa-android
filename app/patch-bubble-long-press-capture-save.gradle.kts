@@ -98,11 +98,12 @@ fun patchServiceLongPressCapture(file: java.io.File) {
 
 """
 
+    val finalReplacement = replacement + "    private fun dp"
     val withHelperRegex = Regex("(?s)    private fun captureAndSaveCardFromBubbleLongPress\\(\\) \\{.*?    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp")
     val listenerOnlyRegex = Regex("(?s)    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp")
     text = when {
-        withHelperRegex.containsMatchIn(text) -> withHelperRegex.replace(text, replacement + "    private fun dp")
-        listenerOnlyRegex.containsMatchIn(text) -> listenerOnlyRegex.replace(text, replacement + "    private fun dp")
+        withHelperRegex.containsMatchIn(text) -> withHelperRegex.replace(text) { finalReplacement }
+        listenerOnlyRegex.containsMatchIn(text) -> listenerOnlyRegex.replace(text) { finalReplacement }
         else -> text
     }
 
