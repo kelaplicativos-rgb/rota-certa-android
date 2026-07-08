@@ -137,6 +137,150 @@ fun patchMainActionDiagnostics(file: java.io.File) {
 """,
     )
 
+    if ("SYSTEM_ACTION_DIAGNOSTIC_PREFS" !in text) {
+        text = text.replace(
+"""private fun diagnosticJsonFileName(diagnostic: LiveDiagnostic): String =
+""",
+"""private const val SYSTEM_ACTION_DIAGNOSTIC_PREFS = "rota_certa_system_action_diagnostics"
+private const val SYSTEM_ACTION_DIAGNOSTIC_LOG = "events"
+private const val SYSTEM_ACTION_DIAGNOSTIC_LIMIT = 260
+
+private fun Context.traceSystemUserAction(action: String, status: String = "started", details: String = "") {
+    val cleanAction = action.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9_.-]+"), "_").trim('_').take(72).ifBlank { "unknown" }
+    val cleanStatus = status.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9_.-]+"), "_").trim('_').take(40).ifBlank { "unknown" }
+    val cleanDetails = details.replace(Regex("\\s+"), " ").trim().take(220)
+    val line = "${'$'}{System.currentTimeMillis()} ui.action name=${'$'}cleanAction status=${'$'}cleanStatus details=${'$'}cleanDetails"
+    val prefs = getSharedPreferences(SYSTEM_ACTION_DIAGNOSTIC_PREFS, Context.MODE_PRIVATE)
+    val previous = prefs.getString(SYSTEM_ACTION_DIAGNOSTIC_LOG, "").orEmpty().lines().filter { it.isNotBlank() }
+    val next = (previous + line).takeLast(SYSTEM_ACTION_DIAGNOSTIC_LIMIT)
+    prefs.edit().putString(SYSTEM_ACTION_DIAGNOSTIC_LOG, next.joinToString("\n")).apply()
+}
+
+private fun Context.systemUserActionDiagnosticEvents(): List<String> =
+    getSharedPreferences(SYSTEM_ACTION_DIAGNOSTIC_PREFS, Context.MODE_PRIVATE)
+        .getString(SYSTEM_ACTION_DIAGNOSTIC_LOG, "")
+        .orEmpty()
+        .lines()
+        .filter { it.isNotBlank() }
+        .takeLast(SYSTEM_ACTION_DIAGNOSTIC_LIMIT)
+
+private fun diagnosticJsonFileName(diagnostic: LiveDiagnostic): String =
+""",
+        )
+    }
+
+    if ("fun traceUserAction(action: String" !in text) {
+        text = text.replace(
+"""    var backupStatus by remember { mutableStateOf("") }
+    var radarImportStatus by remember { mutableStateOf("") }
+""",
+"""    var backupStatus by remember { mutableStateOf("") }
+    var radarImportStatus by remember { mutableStateOf("") }
+
+    fun traceUserAction(action: String, status: String = "started", details: String = "") {
+        context.traceSystemUserAction(action, status, details)
+    }
+""",
+        )
+    }
+
+    if ("traceUserAction(\"app.open\"" !in text) {
+        text = text.replace(
+"""    LaunchedEffect(Unit) {
+        locationPermissionLauncher.launch(
+""",
+"""    LaunchedEffect(Unit) {
+        traceUserAction("app.open", "success", "version=${'$'}{BuildConfig.VERSION_NAME} code=${'$'}{BuildConfig.VERSION_CODE}")
+        locationPermissionLauncher.launch(
+""",
+        )
+    }
+
+    text = text.replace(
+"""                    onPickCardModels = { cardModelPicker.launch("image/*") },
+""",
+"""                    onPickCardModels = {
+                        traceUserAction("cards.pick_prints", "started")
+                        cardModelPicker.launch("image/*")
+                    },
+""",
+    )
+
+    text = text.replace(
+"""    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+""",
+"""    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        traceUserAction("cards.import_prints", if (uris.isEmpty()) "cancelled" else "started", "count=${'$'}{uris.size}")
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+""",
+    )
+
+    text = text.replace(
+"""            templateStatus = when {
+                failures == 0 -> "Leitura concluida: ${'$'}imported modelo(s) importado(s)."
+                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
+                else -> "Leitura concluida: ${'$'}imported modelo(s) importado(s), ${'$'}failures print(s) sem leitura."
+            }
+""",
+"""            templateStatus = when {
+                failures == 0 -> "Leitura concluida: ${'$'}imported modelo(s) importado(s)."
+                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
+                else -> "Leitura concluida: ${'$'}imported modelo(s) importado(s), ${'$'}failures print(s) sem leitura."
+            }
+            traceUserAction("cards.import_prints", if (imported > 0) "success" else "fail", "imported=${'$'}imported failures=${'$'}failures selected=${'$'}{uris.size}")
+""",
+    )
+
+    text = text.replace(
+"""                    writer.write(selected.toJsonText())
+""",
+"""                    writer.write(selected.toJsonText(context))
+""",
+    )
+
+    text = text.replace(
+"""private fun LiveDiagnostic.toJsonText(): String =
+""",
+"""private fun LiveDiagnostic.toJsonText(context: Context): String =
+""",
+    )
+
+    if ("systemActionDiagnostics" !in text) {
+        text = text.replace(
+"""        put("actionDiagnostics", diagnosticActionJson(diagnosticLog, stage))
+""",
+"""        put("actionDiagnostics", diagnosticActionJson(diagnosticLog, stage))
+        put("systemActionDiagnostics", org.json.JSONObject().apply {
+            val actions = context.systemUserActionDiagnosticEvents()
+            put("total", actions.size)
+            put("lastAction", actions.lastOrNull() ?: org.json.JSONObject.NULL)
+            put("events", org.json.JSONArray().apply { actions.forEach { put(it) } })
+        })
+""",
+        )
+        text = text.replace(
+"""        put("logs", org.json.JSONArray().apply {
+            diagnosticLog.lines().filter { it.isNotBlank() }.forEach { put(it) }
+        })
+    }.toString(2)
+""",
+"""        put("logs", org.json.JSONArray().apply {
+            diagnosticLog.lines().filter { it.isNotBlank() }.forEach { put(it) }
+        })
+        put("systemActionDiagnostics", org.json.JSONObject().apply {
+            val actions = context.systemUserActionDiagnosticEvents()
+            put("total", actions.size)
+            put("lastAction", actions.lastOrNull() ?: org.json.JSONObject.NULL)
+            put("events", org.json.JSONArray().apply { actions.forEach { put(it) } })
+        })
+    }.toString(2)
+""",
+        )
+    }
+
     if (text != original) file.writeText(text)
 }
 
