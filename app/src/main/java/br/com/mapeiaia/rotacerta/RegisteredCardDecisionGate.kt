@@ -1,7 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 class RegisteredCardDecisionGate(
-    private val staleResetMillis: Long = 900L,
+    private val staleResetMillis: Long = 350L,
     private val nowProvider: () -> Long = { System.currentTimeMillis() },
 ) {
     private var lastSeenAtMillis: Long = 0L
