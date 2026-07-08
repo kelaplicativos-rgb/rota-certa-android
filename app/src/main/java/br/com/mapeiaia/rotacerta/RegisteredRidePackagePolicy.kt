@@ -9,6 +9,15 @@ object RegisteredRidePackagePolicy {
         .filter { it.isNotBlank() }
         .toSortedSet()
 
+    fun hasUniversalTemplate(templates: List<RideCardTemplate>): Boolean = templates.any { template ->
+        RideCardTemplateMatcher.isUniversalLearnedPackage(template.packageName)
+    }
+
+    fun acceptsPackageFromTemplates(packageName: String?, templates: List<RideCardTemplate>): Boolean {
+        val normalized = normalizePackageName(packageName) ?: return false
+        return normalized in packagesFromTemplates(templates) || hasUniversalTemplate(templates)
+    }
+
     fun normalizePackageName(packageName: String?): String? = packageName
         ?.trim()
         ?.lowercase(Locale.ROOT)
