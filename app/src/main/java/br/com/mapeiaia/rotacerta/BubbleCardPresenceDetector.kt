@@ -7,10 +7,8 @@ object BubbleCardPresenceDetector {
         match: RideCardTemplateMatch,
     ): BubbleAnalysisToken? = BubbleAnalysisToken.from(packageName, snapshotHash, match)
 
-    fun hasRegisteredPackage(packageName: String?, templates: List<RideCardTemplate>): Boolean {
-        val normalized = RegisteredRidePackagePolicy.normalizePackageName(packageName) ?: return false
-        return normalized in RegisteredRidePackagePolicy.packagesFromTemplates(templates)
-    }
+    fun hasRegisteredPackage(packageName: String?, templates: List<RideCardTemplate>): Boolean =
+        RegisteredRidePackagePolicy.acceptsPackageFromTemplates(packageName, templates)
 
     fun matchRegisteredCard(
         text: String,
