@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 58
+val appVersionCode = ciVersionCode ?: 59
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.56"
+        versionName = "0.1.57"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -263,6 +263,7 @@ apply(from = "patch-user-registered-packages-only.gradle.kts")
 apply(from = "patch-bubble-state-machine.gradle.kts")
 apply(from = "patch-bubble-unlimited-card-learning.gradle.kts")
 apply(from = "patch-generic-last-address-destination.gradle.kts")
+apply(from = "patch-final-destination-last-address-contract.gradle.kts")
 apply(from = "patch-bubble-save-primary-menu.gradle.kts")
 apply(from = "patch-bubble-action-diagnostic-hardening.gradle.kts")
 apply(from = "patch-bubble-long-press-capture-save.gradle.kts")
