@@ -147,7 +147,8 @@ fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
 """,
     )
 
-    replaceExact(
+    if ("analysis.discard stale_token=" !in text) {
+        replaceExact(
 """            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
             val radarColor = when (result.recommendation) {
 """,
@@ -177,7 +178,8 @@ fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
             lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
             val radarColor = when (result.recommendation) {
 """,
-    )
+        )
+    }
 
     replaceExact(
 """            traceEvent("overlay.apply color=${'$'}{radarColor.diagnosticLabel} distance=${'$'}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
