@@ -53,118 +53,124 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
     )
 
-    val resolveRegex = Regex(
-        """    private fun resolveRidePackageForText\([\s\S]*?\n    private fun looksLikeRegisteredPopupCandidate""",
-    )
-    text = resolveRegex.replace(text) {
-"""    private fun resolveRidePackageForText(
-        windowPackageName: String?,
-        text: String,
-        allowPopupCandidate: Boolean,
-    ): String? {
-        val normalizedWindowPackage = normalizePackageName(windowPackageName)
-        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        if (!allowPopupCandidate) return normalizedWindowPackage
-        if (isLearnableRideAppPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        activePackageName
-            ?.takeIf { isLearnableRideAppPackage(it) }
-            ?.let { return it }
-        RegisteredRidePackagePolicy.packagesFromTemplates(currentCardTemplates)
+    replaceExact(
+"""        return RideCardTemplateMatcher.inferPackageName(text)
+            ?.takeIf { inferred -> shouldScanPackage(inferred) }
+""",
+"""        RegisteredRidePackagePolicy.packagesFromTemplates(currentCardTemplates)
             .firstOrNull { registeredPackage ->
                 RideCardTemplateMatcher.match(text, registeredPackage, currentCardTemplates) != null
             }
             ?.let { return it }
         return RideCardTemplateMatcher.inferPackageName(text)
             ?.takeIf { inferred -> isLearnableRideAppPackage(inferred) || shouldScanPackage(inferred) }
-    }
-
-    private fun looksLikeRegisteredPopupCandidate"""
-    }
-
-    val saveRegex = Regex(
-        """    private fun saveCurrentRideCardFromBubble\(\) \{[\s\S]*?\n    private fun clearRememberedRideText\(\) \{""",
+""",
     )
-    text = saveRegex.replace(text) {
-"""    private fun saveCurrentRideCardFromBubble() {
-        hideActionMenu()
-        scope.launch {
-            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
+
+    replaceExact(
+"""            val packageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
+            val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
+                collectVisibleTextForAction()
+            }
+""",
+"""            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
             val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
             val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
                 .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: ""
-            bestCardSaveCandidate(livePackageName, liveText)?.let { candidate ->
-                saveRideCardTemplateFromBubble(candidate.first, candidate.second, "cached_text")
-                return@launch
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            var candidate = bestCardSaveCandidate(livePackageName, liveText)
+            if (candidate == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 toast("Capturando print do card...")
                 requestScreenshotAnalysis(allowPopupCandidate = true)
                 delay(900L)
-                bestCardSaveCandidate(null, "")?.let { candidate ->
-                    saveRideCardTemplateFromBubble(candidate.first, candidate.second, "screenshot_ocr")
-                    return@launch
-                }
+                candidate = bestCardSaveCandidate(null, "")
             }
+            val packageName = candidate?.first
+            val text = candidate?.second.orEmpty()
+""",
+    )
 
-            toast("Nao consegui capturar o card. Toque em salvar enquanto a chamada ainda estiver visivel.")
-            recordDiagnostic(
-                stage = "bubble_save_card_empty",
-                color = currentRadarColor,
-                reason = "O atalho de salvar nao encontrou texto de card nem pelo cache nem pelo print/OCR.",
-            )
-        }
-    }
+    replaceExact(
+"""            val packageName = currentWindowPackageName() ?: activePackageName
+            val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
+                collectVisibleTextForAction()
+            }
+""",
+"""            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
+            val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
+                ?.takeIf { isLearnableRideAppPackage(it) }
+            val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
+                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                ?: ""
+            var candidate = bestCardSaveCandidate(livePackageName, liveText)
+            if (candidate == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                toast("Capturando print do card...")
+                requestScreenshotAnalysis(allowPopupCandidate = true)
+                delay(900L)
+                candidate = bestCardSaveCandidate(null, "")
+            }
+            val packageName = candidate?.first
+            val text = candidate?.second.orEmpty()
+""",
+    )
 
-    private suspend fun saveRideCardTemplateFromBubble(rawPackageName: String?, rawText: String, source: String) {
-        val text = rawText.trim()
-        if (text.isBlank() || isBubbleActionMenuText(text)) {
-            toast("Nao consegui capturar o texto do card. Tente enquanto a chamada ainda estiver visivel.")
-            recordDiagnostic(
-                stage = "bubble_save_card_empty",
-                color = currentRadarColor,
-                reason = "Nao havia texto util no card no momento do atalho. Fonte: ${'$'}source.",
-                text = text,
-            )
-            return
-        }
-        val packageName = resolvePackageForCardSave(rawPackageName, text)
-        val template = RideCardTemplateMatcher.createTemplate(packageName, text)
-        repository.addCardTemplate(template)
-        rememberCardSaveCandidate(packageName, text, "card_saved_${'$'}source")
-        val parseResult = parser.parseWithMetadata(text, packageName)
-        repository.addCapturedScreen(
-            CapturedRideScreen(
-                createdAtMillis = System.currentTimeMillis(),
-                packageName = packageName,
-                textHash = text.snapshotHash(),
-                textPreview = text.take(DIAGNOSTIC_TEXT_LIMIT),
-                parserName = parseResult.parserName,
-                pickup = parseResult.fields.pickup,
-                destination = parseResult.fields.destination,
-                fare = parseResult.fields.fare,
-            ),
-        )
-        toast("Card de corrida salvo.")
-        recordDiagnostic(
-            stage = "bubble_save_card",
-            color = currentRadarColor,
-            reason = "Card de corrida salvo pela bolinha via ${'$'}source: ${'$'}{template.name}. Pacote: ${'$'}packageName.",
-            text = text,
-            fields = parseResult.fields,
-        )
-    }
+    replaceExact(
+"""            if (packageName.isNullOrBlank() || packageName == this@LiveRideAccessibilityService.packageName || isPassiveDiagnosticPackage(packageName)) {
+                toast("Abra o card dentro do app de corrida e salve novamente.")
+""",
+"""            if (packageName.isNullOrBlank() || !isLearnableRideAppPackage(packageName)) {
+                toast("Abra o card dentro do app de corrida e salve novamente.")
+""",
+    )
 
-    private fun resolvePackageForCardSave(packageName: String?, text: String): String =
-        normalizePackageName(packageName)
-            ?.takeIf { isLearnableRideAppPackage(it) }
-            ?: RideCardTemplateMatcher.inferPackageName(text)
-            ?: LEARNED_POPUP_PACKAGE
+    replaceExact(
+"""            val inferredPackage = packageName?.lowercase(Locale.ROOT)
+                ?: RideCardTemplateMatcher.inferPackageName(text)
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
+""",
+"""            if (packageName.isNullOrBlank() || !isLearnableRideAppPackage(packageName)) {
+                toast("Abra o card dentro do app de corrida e salve novamente.")
+                recordDiagnostic(
+                    stage = "bubble_save_card_missing_package",
+                    color = currentRadarColor,
+                    reason = "Card nao salvo: pacote real do app de corrida nao foi identificado.",
+                    text = text,
+                )
+                return@launch
+            }
+            val inferredPackage = packageName
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
+""",
+    )
 
-    private fun snapshotCurrentCardCandidateForBubbleAction(reason: String) {
+    replaceExact(
+"""            val inferredPackage = packageName
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
+""",
+"""            val inferredPackage = packageName
+            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
+            rememberCardSaveCandidate(inferredPackage, text, "card_saved")
+""",
+    )
+
+    replaceExact(
+"""    private fun showActionMenu() {
+        val manager = windowManager ?: return
+""",
+"""    private fun showActionMenu() {
+        snapshotCurrentCardCandidateForBubbleAction("menu_open")
+        val manager = windowManager ?: return
+""",
+    )
+
+    if ("private fun snapshotCurrentCardCandidateForBubbleAction" !in text) {
+        replaceExact(
+"""    private fun collectVisibleTextForAction(): String {
+""",
+"""    private fun snapshotCurrentCardCandidateForBubbleAction(reason: String) {
         val packageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
             ?.takeIf { isLearnableRideAppPackage(it) }
             ?: activePackageName?.takeIf { isLearnableRideAppPackage(it) }
@@ -178,7 +184,10 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     private fun rememberCardSaveCandidate(packageName: String?, text: String, reason: String) {
         val cleanText = text.trim()
         if (cleanText.isBlank() || isBubbleActionMenuText(cleanText)) return
-        val normalizedPackage = resolvePackageForCardSave(packageName, cleanText)
+        val normalizedPackage = normalizePackageName(packageName)
+            ?.takeIf { isLearnableRideAppPackage(it) }
+            ?: RideCardTemplateMatcher.inferPackageName(cleanText)
+            ?: LEARNED_POPUP_PACKAGE
         lastCardSaveCandidatePackageName = normalizedPackage
         lastCardSaveCandidateText = cleanText
         lastCardSaveCandidateAtMillis = System.currentTimeMillis()
@@ -187,7 +196,12 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 
     private fun bestCardSaveCandidate(packageName: String?, text: String): Pair<String, String>? {
         val cleanText = text.trim().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-        val normalizedPackage = cleanText?.let { resolvePackageForCardSave(packageName, it) }
+        val normalizedPackage = cleanText?.let {
+            normalizePackageName(packageName)
+                ?.takeIf { isLearnableRideAppPackage(it) }
+                ?: RideCardTemplateMatcher.inferPackageName(it)
+                ?: LEARNED_POPUP_PACKAGE
+        }
         if (normalizedPackage != null && cleanText != null) {
             return normalizedPackage to cleanText
         }
@@ -225,18 +239,10 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
         return true
     }
 
-    private fun clearRememberedRideText() {"""
+    private fun collectVisibleTextForAction(): String {
+""",
+        )
     }
-
-    replaceExact(
-"""    private fun showActionMenu() {
-        val manager = windowManager ?: return
-""",
-"""    private fun showActionMenu() {
-        snapshotCurrentCardCandidateForBubbleAction("menu_open")
-        val manager = windowManager ?: return
-""",
-    )
 
     if ("const val LEARNED_POPUP_PACKAGE" !in text) {
         replaceExact(
