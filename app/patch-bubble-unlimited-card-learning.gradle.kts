@@ -41,6 +41,18 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
     )
 
+    replaceExact(
+"""        val packageName = resolveRidePackageForText(windowPackageName, text, allowPopupCandidate)
+        if (!shouldScanPackage(packageName)) {
+""",
+"""        val packageName = resolveRidePackageForText(windowPackageName, text, allowPopupCandidate)
+        if (allowPopupCandidate && text.isNotBlank()) {
+            rememberCardSaveCandidate(packageName ?: RideCardTemplateMatcher.inferPackageName(text) ?: LEARNED_POPUP_PACKAGE, text, "popup_before_scan_gate")
+        }
+        if (!shouldScanPackage(packageName)) {
+""",
+    )
+
     val resolveRegex = Regex(
         """    private fun resolveRidePackageForText\([\s\S]*?\n    private fun looksLikeRegisteredPopupCandidate""",
     )
@@ -75,116 +87,35 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     text = saveRegex.replace(text) {
 """    private fun saveCurrentRideCardFromBubble() {
         hideActionMenu()
-        snapshotCurrentCardCandidateForBubbleAction("save_card_click")
-        val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
-            ?.takeIf { isLearnableRideAppPackage(it) }
-        val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
-            .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-            ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-            ?: ""
-        val candidate = bestCardSaveCandidate(livePackageName, liveText)
-        if (candidate != null) {
-            scope.launch { saveRideCardTemplateFromBubble(candidate.first, candidate.second, "cached_text") }
-            return
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            toast("Abra o card de corrida e tente salvar novamente.")
-            recordDiagnostic(
-                stage = "bubble_save_card_no_screenshot_support",
-                color = currentRadarColor,
-                reason = "Android sem suporte ao print pela acessibilidade e nenhum texto de card estava em cache.",
-            )
-            return
-        }
-        toast("Capturando print do card...")
-        captureCardScreenshotForSaving()
-    }
-
-    private fun captureCardScreenshotForSaving() {
         scope.launch {
-            var acquired = false
-            var attempts = 0
-            while (!acquired && attempts < 4) {
-                acquired = screenshotInProgress.compareAndSet(false, true)
-                if (!acquired) delay(120L)
-                attempts += 1
-            }
-            if (!acquired) {
-                toast("Aguarde um instante e tente salvar novamente.")
-                recordDiagnostic(
-                    stage = "bubble_save_card_screenshot_busy",
-                    color = currentRadarColor,
-                    reason = "Nao salvei o card porque outro print ainda estava em andamento.",
-                )
+            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
+            val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
+                ?.takeIf { isLearnableRideAppPackage(it) }
+            val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
+                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                ?: ""
+            bestCardSaveCandidate(livePackageName, liveText)?.let { candidate ->
+                saveRideCardTemplateFromBubble(candidate.first, candidate.second, "cached_text")
                 return@launch
             }
 
-            val bubbleView = overlayView
-            val previousVisibility = bubbleView?.visibility ?: View.VISIBLE
-            bubbleView?.visibility = View.INVISIBLE
-            hideActionMenu()
-            delay(220L)
-            traceEvent("card_save_screenshot.request started")
-            runCatching {
-                takeScreenshot(
-                    Display.DEFAULT_DISPLAY,
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            scope.launch {
-                                runCatching {
-                                    val bitmap = screenshot.toSoftwareBitmap()
-                                    val ocrText = bitmap?.let { ocrService.extractText(it) }.orEmpty().trim()
-                                    traceEvent("card_save_screenshot.ocr length=${'$'}{ocrText.length}")
-                                    val packageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
-                                        ?.takeIf { isLearnableRideAppPackage(it) }
-                                        ?: RideCardTemplateMatcher.inferPackageName(ocrText)
-                                        ?: lastCardSaveCandidatePackageName
-                                        ?: LEARNED_POPUP_PACKAGE
-                                    saveRideCardTemplateFromBubble(packageName, ocrText, "screenshot_ocr")
-                                }.onFailure { error ->
-                                    traceEvent("card_save_screenshot.ocr error=${'$'}{error::class.java.simpleName}: ${'$'}{error.message.orEmpty()}")
-                                    toast("Nao consegui ler o print do card.")
-                                    recordDiagnostic(
-                                        stage = "bubble_save_card_screenshot_ocr_error",
-                                        color = currentRadarColor,
-                                        reason = "Falha no OCR do print usado para salvar card.",
-                                        error = error,
-                                    )
-                                }
-                                bubbleView?.visibility = previousVisibility
-                                screenshotInProgress.set(false)
-                                showOverlay(currentRadarColor, currentDistanceKm)
-                            }
-                        }
-
-                        override fun onFailure(errorCode: Int) {
-                            traceEvent("card_save_screenshot.request failed code=${'$'}errorCode")
-                            bubbleView?.visibility = previousVisibility
-                            screenshotInProgress.set(false)
-                            showOverlay(currentRadarColor, currentDistanceKm)
-                            toast("Android recusou o print do card.")
-                            recordDiagnostic(
-                                stage = "bubble_save_card_screenshot_failed",
-                                color = currentRadarColor,
-                                reason = "Android recusou o print para salvar card. Codigo: ${'$'}errorCode.",
-                            )
-                        }
-                    },
-                )
-            }.onFailure { error ->
-                traceEvent("card_save_screenshot.request error=${'$'}{error::class.java.simpleName}: ${'$'}{error.message.orEmpty()}")
-                bubbleView?.visibility = previousVisibility
-                screenshotInProgress.set(false)
-                showOverlay(currentRadarColor, currentDistanceKm)
-                toast("Nao consegui tirar print do card.")
-                recordDiagnostic(
-                    stage = "bubble_save_card_screenshot_request_error",
-                    color = currentRadarColor,
-                    reason = "Erro ao solicitar print para salvar card.",
-                    error = error,
-                )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                toast("Capturando print do card...")
+                requestScreenshotAnalysis(allowPopupCandidate = true)
+                delay(900L)
+                bestCardSaveCandidate(null, "")?.let { candidate ->
+                    saveRideCardTemplateFromBubble(candidate.first, candidate.second, "screenshot_ocr")
+                    return@launch
+                }
             }
+
+            toast("Nao consegui capturar o card. Toque em salvar enquanto a chamada ainda estiver visivel.")
+            recordDiagnostic(
+                stage = "bubble_save_card_empty",
+                color = currentRadarColor,
+                reason = "O atalho de salvar nao encontrou texto de card nem pelo cache nem pelo print/OCR.",
+            )
         }
     }
 
@@ -245,9 +176,9 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     }
 
     private fun rememberCardSaveCandidate(packageName: String?, text: String, reason: String) {
-        val normalizedPackage = resolvePackageForCardSave(packageName, text)
         val cleanText = text.trim()
         if (cleanText.isBlank() || isBubbleActionMenuText(cleanText)) return
+        val normalizedPackage = resolvePackageForCardSave(packageName, cleanText)
         lastCardSaveCandidatePackageName = normalizedPackage
         lastCardSaveCandidateText = cleanText
         lastCardSaveCandidateAtMillis = System.currentTimeMillis()
