@@ -1,3 +1,4 @@
+// Retry marker: keep double tap diagnostics patch active after transient Android SDK setup failure.
 val bubbleDoubleTapDiagnosticsRobust by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     inputs.file(mainFile)
