@@ -1,14 +1,14 @@
-val patchBubbleStateMachine by tasks.registering {
+val bubbleStateMachineIntegration by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
 
     doLast {
-        patchBubbleStateMachineService(serviceFile.asFile)
+        integrateBubbleStateMachineIntoLiveService(serviceFile.asFile)
     }
 }
 
-fun patchBubbleStateMachineService(file: java.io.File) {
+fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
     var text = file.readText()
     val original = text
 
@@ -109,6 +109,20 @@ fun patchBubbleStateMachineService(file: java.io.File) {
 """            registeredCardGate.clear()
             bubbleStateMachine.clearCardDecision()
             saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
+""",
+    )
+
+    replaceExact(
+"""        return RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) != null
+""",
+"""        return BubbleCardPresenceDetector.matchRegisteredCard(text, packageName, currentCardTemplates) != null
+""",
+    )
+
+    replaceExact(
+"""        val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
+""",
+"""        val cardMatch = BubbleCardPresenceDetector.matchRegisteredCard(snapshotText, packageName, currentCardTemplates)
 """,
     )
 
@@ -247,48 +261,6 @@ fun patchBubbleStateMachineService(file: java.io.File) {
     )
 
     replaceExact(
-"""        val cardMatch = RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) ?: return false
-        return cardMatch.template.id == token.templateId
-""",
-"""        return BubbleCardPresenceDetector.sameRegisteredCard(
-            token = token,
-            text = text,
-            packageName = packageName,
-            templates = currentCardTemplates,
-        )
-""",
-    )
-
-    replaceExact(
-"""        val cardMatch = RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) ?: return false
-        return RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) != null
-""",
-"""        return BubbleCardPresenceDetector.matchRegisteredCard(text, packageName, currentCardTemplates) != null
-""",
-    )
-
-    replaceExact(
-"""        val cardMatch = RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) != null
-""",
-"""        val cardMatch = BubbleCardPresenceDetector.matchRegisteredCard(text, packageName, currentCardTemplates) != null
-""",
-    )
-
-    replaceExact(
-"""        val cardMatch = RideCardTemplateMatcher.match(text, packageName, currentCardTemplates)
-""",
-"""        val cardMatch = BubbleCardPresenceDetector.matchRegisteredCard(text, packageName, currentCardTemplates)
-""",
-    )
-
-    replaceExact(
-"""        val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)
-""",
-"""        val cardMatch = BubbleCardPresenceDetector.matchRegisteredCard(snapshotText, packageName, currentCardTemplates)
-""",
-    )
-
-    replaceExact(
 """        val allowPopupCandidate: Boolean,
     )
 """,
@@ -301,11 +273,11 @@ fun patchBubbleStateMachineService(file: java.io.File) {
     if (text != original) file.writeText(text)
 }
 
-tasks.named("patchBubbleStateMachine").configure {
+tasks.named("bubbleStateMachineIntegration").configure {
     mustRunAfter("enforceUserRegisteredPackagesOnly")
     mustRunAfter("patchStrictBubbleLifecycle")
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchBubbleStateMachine)
+    dependsOn(bubbleStateMachineIntegration)
 }
