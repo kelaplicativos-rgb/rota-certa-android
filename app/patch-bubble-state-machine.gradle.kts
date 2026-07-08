@@ -148,38 +148,13 @@ fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
     )
 
     replaceExact(
-"""            pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
-""",
-"""            pendingAnalysis = PendingLiveAnalysis(snapshotText, fields, snapshotHash, cardMatch, analysisToken, allowPopupCandidate)
-""",
-    )
-
-    replaceExact(
-"""        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
-""",
-"""        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch, analysisToken, allowPopupCandidate)
-""",
-    )
-
-    replaceExact(
-"""        cardMatch: RideCardTemplateMatch?,
-        allowPopupCandidate: Boolean = false,
-    ) {
-""",
-"""        cardMatch: RideCardTemplateMatch?,
-        analysisToken: BubbleAnalysisToken,
-        allowPopupCandidate: Boolean = false,
-    ) {
-""",
-    )
-
-    replaceExact(
 """            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
             val radarColor = when (result.recommendation) {
 """,
-"""            val currentPackageForToken = if (allowPopupCandidate) analysisToken.packageName else currentWindowPackageName()
-            if (!bubbleStateMachine.canApplyResult(analysisToken, currentPackageForToken, lastSnapshotHash ?: snapshotHash)) {
-                traceEvent("analysis.discard stale_token=${'$'}analysisToken current_package=${'$'}{currentPackageForToken.orEmpty()} current_hash=${'$'}{lastSnapshotHash ?: snapshotHash}")
+"""            val activeAnalysisToken = bubbleStateMachine.activeAnalysisToken()
+            val currentPackageForToken = if (allowPopupCandidate) activeAnalysisToken?.packageName else currentWindowPackageName()
+            if (activeAnalysisToken == null || !bubbleStateMachine.canApplyResult(activeAnalysisToken, currentPackageForToken, lastSnapshotHash ?: snapshotHash)) {
+                traceEvent("analysis.discard stale_token=${'$'}{activeAnalysisToken ?: "null"} current_package=${'$'}{currentPackageForToken.orEmpty()} current_hash=${'$'}{lastSnapshotHash ?: snapshotHash}")
                 registeredCardGate.clear()
                 bubbleStateMachine.clearCardDecision()
                 resetToDefault(
@@ -209,18 +184,8 @@ fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
             showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
 """,
 """            traceEvent("overlay.apply color=${'$'}{radarColor.diagnosticLabel} distance=${'$'}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
-            bubbleStateMachine.markDecision(analysisToken)
+            bubbleStateMachine.markDecision(activeAnalysisToken)
             showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
-""",
-    )
-
-    replaceExact(
-"""                        cardMatch = pending.cardMatch,
-                        allowPopupCandidate = pending.allowPopupCandidate,
-""",
-"""                        cardMatch = pending.cardMatch,
-                        analysisToken = pending.analysisToken,
-                        allowPopupCandidate = pending.allowPopupCandidate,
 """,
     )
 
@@ -257,16 +222,6 @@ fun integrateBubbleStateMachineIntoLiveService(file: java.io.File) {
         bubbleStateMachine.markIdle()
         clearRememberedRideText()
         showOverlay(RadarColor.Idle)
-""",
-    )
-
-    replaceExact(
-"""        val allowPopupCandidate: Boolean,
-    )
-""",
-"""        val analysisToken: BubbleAnalysisToken,
-        val allowPopupCandidate: Boolean,
-    )
 """,
     )
 
