@@ -98,10 +98,13 @@ fun patchServiceLongPressCapture(file: java.io.File) {
 
 """
 
-    text = text.replace(
-        Regex("(?s)    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp"),
-        replacement + "    private fun dp",
-    )
+    val withHelperRegex = Regex("(?s)    private fun captureAndSaveCardFromBubbleLongPress\\(\\) \\{.*?    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp")
+    val listenerOnlyRegex = Regex("(?s)    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp")
+    text = when {
+        withHelperRegex.containsMatchIn(text) -> withHelperRegex.replace(text, replacement + "    private fun dp")
+        listenerOnlyRegex.containsMatchIn(text) -> listenerOnlyRegex.replace(text, replacement + "    private fun dp")
+        else -> text
+    }
 
     if (text != original) file.writeText(text)
 }
@@ -158,6 +161,6 @@ bubbleLongPressCaptureSave.configure {
     mustRunAfter("bubbleUnlimitedCardLearning")
 }
 
-tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
+tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(bubbleLongPressCaptureSave)
 }
