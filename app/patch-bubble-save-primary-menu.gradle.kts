@@ -14,22 +14,8 @@ fun patchBubbleSaveContracts(file: java.io.File) {
     var text = file.readText()
     val original = text
 
-    val tracedSaveAction = """            addView(actionMenuItem("💾  Salvar card de corrida") {
-                traceEvent("diagnostic.contract save_card step=button_clicked ok=true source=menu")
-                traceEvent("bubble.save_card_button clicked")
-                toast("Salvando card de corrida...")
-                cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
-                hideActionMenu()
-                saveCurrentRideCardFromBubble()
-            })
-"""
     val primarySaveAction = """            addView(actionMenuItem("✅  SALVAR CARD DESTA TELA") {
-                traceEvent("diagnostic.contract save_card step=button_clicked ok=true source=menu")
-                traceEvent("bubble.save_card_button clicked")
-                toast("Salvando card de corrida...")
-                cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
-                hideActionMenu()
-                saveCurrentRideCardFromBubble()
+                triggerBubbleSaveFromAction("menu_button")
             })
 """
     val tracedOpenAction = """            addView(actionMenuItem("🏠  Abrir Rota Certa") {
@@ -38,12 +24,6 @@ fun patchBubbleSaveContracts(file: java.io.File) {
                 openApp()
             })
 """
-
-    text = text.replace(
-"""            addView(actionMenuItem("🏠  Abrir Rota Certa") { openApp() })
-$tracedSaveAction""",
-        primarySaveAction + tracedOpenAction,
-    )
 
     text = text.replace(
 """            addView(actionMenuItem("🏠  Abrir Rota Certa") { openApp() })
@@ -68,12 +48,76 @@ $tracedSaveAction""",
     )
 
     text = text.replace(
+"""            addView(actionMenuItem("💾  Salvar card de corrida") {
+                traceEvent("diagnostic.contract save_card step=button_clicked ok=true source=menu")
+                traceEvent("bubble.save_card_button clicked")
+                toast("Salvando card de corrida...")
+                cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
+""",
+        primarySaveAction,
+    )
+
+    text = text.replace(
+"""            addView(actionMenuItem("✅  SALVAR CARD DESTA TELA") {
+                traceEvent("diagnostic.contract save_card step=button_clicked ok=true source=menu")
+                traceEvent("bubble.save_card_button clicked")
+                toast("Salvando card de corrida...")
+                cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
+""",
+        primarySaveAction,
+    )
+
+    text = text.replace(
 """            addView(actionMenuItem("🏠  Abrir Rota Certa") {
                 traceEvent("bubble.open_app_button clicked")
                 openApp()
             })
 """,
         tracedOpenAction,
+    )
+
+    if ("private fun triggerBubbleSaveFromAction(" !in text) {
+        text = text.replace(
+"""    private fun toggleActionMenu() {
+""",
+"""    private fun triggerBubbleSaveFromAction(source: String) {
+        traceEvent("diagnostic.contract save_card step=button_clicked ok=true source=${'$'}source")
+        traceEvent("bubble.save_card_button clicked source=${'$'}source")
+        toast("Salvando card de corrida...")
+        cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
+        hideActionMenu()
+        saveCurrentRideCardFromBubble()
+    }
+
+    private fun toggleActionMenu() {
+""",
+        )
+    }
+
+    text = text.replace(
+"""    private fun toggleActionMenu() {
+        if (overlayMenuView != null) {
+            hideActionMenu()
+        } else {
+            showActionMenu()
+        }
+    }
+""",
+"""    private fun toggleActionMenu() {
+        if (overlayMenuView != null) {
+            traceEvent("diagnostic.contract bubble_menu step=second_bubble_tap ok=true")
+            triggerBubbleSaveFromAction("bubble_second_tap")
+        } else {
+            showActionMenu()
+        }
+    }
+""",
     )
 
     text = text.replace(
@@ -101,6 +145,40 @@ $tracedSaveAction""",
         traceEvent("bubble.menu_open primary_save_first")
         toast("Primeiro botao: SALVAR CARD")
         val manager = windowManager ?: return
+""",
+        )
+    }
+
+    if ("bubble_menu step=top_region_up" !in text) {
+        text = text.replace(
+"""            setPadding(dp(8), dp(8), dp(8), dp(8))
+""",
+"""            setPadding(dp(8), dp(8), dp(8), dp(8))
+            isClickable = true
+            setOnTouchListener { _, event ->
+                val isTopSaveRegion = event.y <= dp(66)
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        if (isTopSaveRegion) {
+                            traceEvent("diagnostic.contract bubble_menu step=top_region_down ok=true")
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (isTopSaveRegion) {
+                            traceEvent("diagnostic.contract bubble_menu step=top_region_up ok=true")
+                            triggerBubbleSaveFromAction("menu_top_region")
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    MotionEvent.ACTION_CANCEL -> isTopSaveRegion
+                    else -> isTopSaveRegion
+                }
+            }
 """,
         )
     }
@@ -185,6 +263,9 @@ fun patchDiagnosticActionVerdicts(file: java.io.File) {
     val openAppClicked = has("bubble.open_app_button clicked") || has("reason=open_app_clicked")
     val menuItemDown = has("bubble.menu_item_down") || has("diagnostic.contract menu_item step=down")
     val menuItemUp = has("bubble.menu_item_up") || has("diagnostic.contract menu_item step=up")
+    val topRegionDown = has("diagnostic.contract bubble_menu step=top_region_down")
+    val topRegionUp = has("diagnostic.contract bubble_menu step=top_region_up")
+    val secondBubbleTap = has("diagnostic.contract bubble_menu step=second_bubble_tap")
     val saveStarted = has("bubble.save_card_start") || has("diagnostic.contract save_card step=started")
     val saveSuccess = stage == "bubble_save_card" || has("diagnostic.contract save_card result=success")
     val textBlankFail = has("reason=text_blank") || stage == "bubble_save_card_empty"
@@ -195,8 +276,10 @@ fun patchDiagnosticActionVerdicts(file: java.io.File) {
     val verdict = when {
         saveSuccess -> "Card salvo com sucesso."
         openAppClicked && !saveButtonClicked -> "O menu abriu, mas o usuario tocou em Abrir Rota Certa em vez de Salvar Card."
-        menuOpened && candidateCount > 0 && !saveButtonClicked -> "O menu abriu e havia texto candidato, mas o botao Salvar Card nao foi acionado."
-        saveButtonClicked && !saveStarted -> "O botao Salvar Card foi tocado, mas a rotina de salvamento nao iniciou."
+        secondBubbleTap && !saveStarted -> "O usuario tocou de novo na bolinha para salvar, mas a rotina de salvamento nao iniciou."
+        topRegionDown && !topRegionUp -> "O toque chegou na area do botao Salvar Card, mas nao terminou com soltura valida."
+        menuOpened && candidateCount > 0 && !saveButtonClicked -> "O menu abriu e havia texto candidato, mas nenhum caminho de salvar foi acionado."
+        saveButtonClicked && !saveStarted -> "O comando Salvar Card foi acionado, mas a rotina de salvamento nao iniciou."
         saveStarted && textBlankFail -> "A rotina de salvamento iniciou, mas nao havia texto suficiente para salvar."
         saveStarted && missingPackageFail -> "A rotina de salvamento iniciou, mas o pacote da tela nao foi identificado."
         saveStarted && !saveSuccess -> "A rotina de salvamento iniciou, mas nao confirmou sucesso."
@@ -212,6 +295,9 @@ fun patchDiagnosticActionVerdicts(file: java.io.File) {
         put("botaoAbrirRotaCertaTocado", openAppClicked)
         put("toqueMenuIniciado", menuItemDown)
         put("toqueMenuFinalizado", menuItemUp)
+        put("toqueRegiaoSalvarIniciado", topRegionDown)
+        put("toqueRegiaoSalvarFinalizado", topRegionUp)
+        put("segundoToqueBolinha", secondBubbleTap)
         put("salvamentoIniciado", saveStarted)
         put("salvamentoConfirmado", saveSuccess)
         put("falhaTextoVazio", textBlankFail)
