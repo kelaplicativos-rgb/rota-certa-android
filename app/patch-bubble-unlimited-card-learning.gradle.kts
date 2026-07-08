@@ -26,6 +26,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     private var lastCardSaveCandidatePackageName: String? = null
     private var lastCardSaveCandidateText: String = ""
     private var lastCardSaveCandidateAtMillis: Long = 0L
+    private var cardSaveScreenshotRequestedUntilMillis: Long = 0L
 """,
         )
     }
@@ -46,7 +47,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
         if (!shouldScanPackage(packageName)) {
 """,
 """        val packageName = resolveRidePackageForText(windowPackageName, text, allowPopupCandidate)
-        if (allowPopupCandidate && text.isNotBlank()) {
+        if (allowPopupCandidate && text.isNotBlank() && looksLikeCardSaveText(text)) {
             rememberCardSaveCandidate(packageName ?: RideCardTemplateMatcher.inferPackageName(text) ?: LEARNED_POPUP_PACKAGE, text, "popup_before_scan_gate")
         }
         if (!shouldScanPackage(packageName)) {
@@ -77,15 +78,20 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
             val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
             val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
-                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
+                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
                 ?: ""
             var candidate = bestCardSaveCandidate(livePackageName, liveText)
             if (candidate == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 toast("Capturando print do card...")
-                requestScreenshotAnalysis(allowPopupCandidate = true)
-                delay(900L)
-                candidate = bestCardSaveCandidate(null, "")
+                for (attempt in 0 until 3) {
+                    cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 2_500L
+                    lastScreenshotMillis = 0L
+                    requestScreenshotAnalysis(allowPopupCandidate = true)
+                    delay(700L)
+                    candidate = bestCardSaveCandidate(null, "")
+                    if (candidate != null) break
+                }
             }
             val packageName = candidate?.first
             val text = candidate?.second.orEmpty()
@@ -102,15 +108,20 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
             val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
             val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
-                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+                .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
+                ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
                 ?: ""
             var candidate = bestCardSaveCandidate(livePackageName, liveText)
             if (candidate == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 toast("Capturando print do card...")
-                requestScreenshotAnalysis(allowPopupCandidate = true)
-                delay(900L)
-                candidate = bestCardSaveCandidate(null, "")
+                for (attempt in 0 until 3) {
+                    cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 2_500L
+                    lastScreenshotMillis = 0L
+                    requestScreenshotAnalysis(allowPopupCandidate = true)
+                    delay(700L)
+                    candidate = bestCardSaveCandidate(null, "")
+                    if (candidate != null) break
+                }
             }
             val packageName = candidate?.first
             val text = candidate?.second.orEmpty()
@@ -175,15 +186,15 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
             ?.takeIf { isLearnableRideAppPackage(it) }
             ?: activePackageName?.takeIf { isLearnableRideAppPackage(it) }
         val actionText = mergeRideTexts(lastAccessibilityText, lastOcrText)
-            .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-            ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+            .takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
+            ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
             ?: return
         rememberCardSaveCandidate(packageName, actionText, reason)
     }
 
     private fun rememberCardSaveCandidate(packageName: String?, text: String, reason: String) {
         val cleanText = text.trim()
-        if (cleanText.isBlank() || isBubbleActionMenuText(cleanText)) return
+        if (cleanText.isBlank() || isBubbleActionMenuText(cleanText) || !looksLikeCardSaveText(cleanText)) return
         val normalizedPackage = normalizePackageName(packageName)
             ?.takeIf { isLearnableRideAppPackage(it) }
             ?: RideCardTemplateMatcher.inferPackageName(cleanText)
@@ -195,7 +206,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     }
 
     private fun bestCardSaveCandidate(packageName: String?, text: String): Pair<String, String>? {
-        val cleanText = text.trim().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+        val cleanText = text.trim().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
         val normalizedPackage = cleanText?.let {
             normalizePackageName(packageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
@@ -207,12 +218,51 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
         }
         val now = System.currentTimeMillis()
         val cachedPackage = lastCardSaveCandidatePackageName?.takeIf { it.isNotBlank() }
-        val cachedText = lastCardSaveCandidateText.takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
+        val cachedText = lastCardSaveCandidateText.takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) && looksLikeCardSaveText(it) }
         if (cachedPackage != null && cachedText != null && now - lastCardSaveCandidateAtMillis <= 15_000L) {
             traceEvent("card_save_candidate.use_cached package=${'$'}cachedPackage age_ms=${'$'}{now - lastCardSaveCandidateAtMillis}")
             return cachedPackage to cachedText
         }
         return null
+    }
+
+    private fun isCardSaveScreenshotRequested(): Boolean =
+        System.currentTimeMillis() <= cardSaveScreenshotRequestedUntilMillis
+
+    private fun looksLikeCardSaveText(text: String): Boolean {
+        val normalized = text.lowercase(Locale.ROOT)
+        if (normalized.isBlank() || isBubbleActionMenuText(normalized)) return false
+        val hasMoney = Regex("""r\$\s*\d|\b\d+[,.]\d{2}\b""").containsMatchIn(normalized)
+        val hasDistance = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""").containsMatchIn(normalized)
+        val hasRideWord = listOf(
+            "corrida",
+            "viagem",
+            "embarque",
+            "destino",
+            "motorista",
+            "passageiro",
+            "pedido",
+            "aceitar",
+            "recusar",
+            "tarifa",
+            "oferta",
+            "uber",
+            "99",
+            "indrive",
+        ).any { normalized.contains(it) }
+        val hasAddressWord = listOf(
+            "rua",
+            "avenida",
+            "av.",
+            "bairro",
+            "jardim",
+            "rodovia",
+            "rod.",
+            "praça",
+            "praca",
+            "centro",
+        ).any { normalized.contains(it) }
+        return (hasRideWord && (hasMoney || hasDistance || hasAddressWord)) || (hasMoney && hasDistance)
     }
 
     private fun isBubbleActionMenuText(text: String): Boolean {
@@ -229,6 +279,10 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
         val normalized = normalizePackageName(packageName) ?: return false
         if (normalized == this.packageName) return false
         if (normalized == "android") return false
+        if (normalized == "com.google.android.apps.nbu.files") return false
+        if (normalized == "com.google.android.documentsui") return false
+        if (normalized == "com.sec.android.app.myfiles") return false
+        if (normalized == "com.samsung.android.app.myfiles") return false
         if (normalized in PASSIVE_DIAGNOSTIC_PACKAGES) return false
         if (normalized in IGNORED_PACKAGES) return false
         if (normalized.startsWith("com.android.")) return false
