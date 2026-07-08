@@ -156,6 +156,12 @@ val patchStrictBubbleLifecycle by tasks.registering {
 """,
         )
 
+        val preciseDistanceFormatter = """    private fun formatBubbleDistanceKm(distanceKm: Double?): String = when {
+        distanceKm == null -> ""
+        distanceKm >= 100.0 -> "99+"
+        else -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
+    }
+"""
         replaceExact(
 """    private fun formatBubbleDistanceKm(distanceKm: Double?): String = when {
         distanceKm == null -> ""
@@ -163,12 +169,16 @@ val patchStrictBubbleLifecycle by tasks.registering {
         else -> distanceKm.roundToInt().coerceAtMost(99).toString()
     }
 """,
+            preciseDistanceFormatter,
+        )
+        replaceExact(
 """    private fun formatBubbleDistanceKm(distanceKm: Double?): String = when {
         distanceKm == null -> ""
-        distanceKm >= 100.0 -> "99+"
+        distanceKm < 1.0 -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
         else -> String.format(Locale("pt", "BR"), "%.1f", distanceKm).removeSuffix(",0")
     }
 """,
+            preciseDistanceFormatter,
         )
 
         if (text != original) {
