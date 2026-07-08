@@ -74,7 +74,8 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                 collectVisibleTextForAction()
             }
 """,
-"""            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
+"""            traceEvent("bubble.save_card_start")
+            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
             val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
             val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
@@ -93,6 +94,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                     if (candidate != null) break
                 }
             }
+            candidate?.let { traceEvent("bubble.save_card_candidate.ready package=${'$'}{it.first} length=${'$'}{it.second.length}") }
             val packageName = candidate?.first
             val text = candidate?.second.orEmpty()
 """,
@@ -104,7 +106,8 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                 collectVisibleTextForAction()
             }
 """,
-"""            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
+"""            traceEvent("bubble.save_card_start")
+            snapshotCurrentCardCandidateForBubbleAction("save_card_click")
             val livePackageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
                 ?.takeIf { isLearnableRideAppPackage(it) }
             val liveText = mergeRideTexts(lastAccessibilityText, lastOcrText)
@@ -123,6 +126,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                     if (candidate != null) break
                 }
             }
+            candidate?.let { traceEvent("bubble.save_card_candidate.ready package=${'$'}{it.first} length=${'$'}{it.second.length}") }
             val packageName = candidate?.first
             val text = candidate?.second.orEmpty()
 """,
@@ -164,6 +168,21 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """            val inferredPackage = packageName
             val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
             rememberCardSaveCandidate(inferredPackage, text, "card_saved")
+""",
+    )
+
+    replaceExact(
+"""            addView(actionMenuItem("💾  Salvar card de corrida") {
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
+""",
+"""            addView(actionMenuItem("💾  Salvar card de corrida") {
+                traceEvent("bubble.save_card_button clicked")
+                cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 5_000L
+                hideActionMenu()
+                saveCurrentRideCardFromBubble()
+            })
 """,
     )
 
