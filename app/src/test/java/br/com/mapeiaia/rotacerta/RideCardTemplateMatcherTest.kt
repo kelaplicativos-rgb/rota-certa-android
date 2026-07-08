@@ -35,6 +35,27 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
+    fun keepsAdaptiveFeaturesForSavedTemplateButDoesNotUseThemAsLiveDecisionGate() {
+        val text = """
+            R$ 20
+            5 min
+            3,2 km
+            Rua A, 10
+            Avenida B, 200
+            Aceitar
+        """.trimIndent()
+        val template = RideCardTemplateMatcher.createTemplate("sinet.startup.indriver", text)
+
+        assertTrue(template.requiredFeatures.any { it.startsWith("adaptive.") })
+
+        val adaptiveOnlyTemplate = template.copy(
+            requiredFeatures = template.requiredFeatures.filter { it.startsWith("adaptive.") },
+        )
+
+        assertNull(RideCardTemplateMatcher.match(text, "sinet.startup.indriver", listOf(adaptiveOnlyTemplate)))
+    }
+
+    @Test
     fun doesNotMatchNavigationMapWithoutRideFeatures() {
         val sample = """
             Pedido de viagem
