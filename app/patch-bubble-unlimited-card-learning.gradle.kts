@@ -55,8 +55,8 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                 ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: ""
             val candidate = bestCardSaveCandidate(livePackageName, liveText)
-            val packageName = candidate?.packageName
-            val text = candidate?.text.orEmpty()
+            val packageName = candidate?.first
+            val text = candidate?.second.orEmpty()
 """,
     )
 
@@ -74,8 +74,8 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
                 ?: collectVisibleTextForAction().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
                 ?: ""
             val candidate = bestCardSaveCandidate(livePackageName, liveText)
-            val packageName = candidate?.packageName
-            val text = candidate?.text.orEmpty()
+            val packageName = candidate?.first
+            val text = candidate?.second.orEmpty()
 """,
     )
 
@@ -153,18 +153,18 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
         traceEvent("card_save_candidate.remember reason=${'$'}reason package=${'$'}normalizedPackage length=${'$'}{cleanText.length}")
     }
 
-    private fun bestCardSaveCandidate(packageName: String?, text: String): CardSaveCandidate? {
+    private fun bestCardSaveCandidate(packageName: String?, text: String): Pair<String, String>? {
         val normalizedPackage = normalizePackageName(packageName)?.takeIf { isLearnableRideAppPackage(it) }
         val cleanText = text.trim().takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
         if (normalizedPackage != null && cleanText != null) {
-            return CardSaveCandidate(normalizedPackage, cleanText)
+            return normalizedPackage to cleanText
         }
         val now = System.currentTimeMillis()
         val cachedPackage = lastCardSaveCandidatePackageName?.takeIf { isLearnableRideAppPackage(it) }
         val cachedText = lastCardSaveCandidateText.takeIf { it.isNotBlank() && !isBubbleActionMenuText(it) }
-        if (cachedPackage != null && cachedText != null && now - lastCardSaveCandidateAtMillis <= CARD_SAVE_CANDIDATE_TTL_MS) {
+        if (cachedPackage != null && cachedText != null && now - lastCardSaveCandidateAtMillis <= 15_000L) {
             traceEvent("card_save_candidate.use_cached package=${'$'}cachedPackage age_ms=${'$'}{now - lastCardSaveCandidateAtMillis}")
-            return CardSaveCandidate(cachedPackage, cachedText)
+            return cachedPackage to cachedText
         }
         return null
     }
@@ -188,30 +188,6 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     }
 
     private fun collectVisibleTextForAction(): String {
-""",
-        )
-    }
-
-    if ("private data class CardSaveCandidate" !in text) {
-        replaceExact(
-"""    private data class PendingLiveAnalysis(
-""",
-"""    private data class CardSaveCandidate(
-        val packageName: String,
-        val text: String,
-    )
-
-    private data class PendingLiveAnalysis(
-""",
-        )
-    }
-
-    if ("CARD_SAVE_CANDIDATE_TTL_MS" !in text) {
-        replaceExact(
-"""        const val DIAGNOSTIC_EVENT_LIMIT = 60
-""",
-"""        const val DIAGNOSTIC_EVENT_LIMIT = 60
-        const val CARD_SAVE_CANDIDATE_TTL_MS = 15_000L
 """,
         )
     }
