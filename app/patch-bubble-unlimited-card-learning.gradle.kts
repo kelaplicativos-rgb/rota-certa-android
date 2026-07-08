@@ -42,66 +42,6 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
     )
 
     replaceExact(
-"""        val normalizedWindowPackage = normalizePackageName(windowPackageName)
-        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        if (!allowPopupCandidate) return normalizedWindowPackage
-        return RegisteredRidePackagePolicy.packagesFromTemplates(currentCardTemplates)
-            .firstOrNull { registeredPackage ->
-                RideCardTemplateMatcher.match(text, registeredPackage, currentCardTemplates) != null
-            }
-""",
-"""        val normalizedWindowPackage = normalizePackageName(windowPackageName)
-        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        if (!allowPopupCandidate) return normalizedWindowPackage
-        if (isLearnableRideAppPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        activePackageName
-            ?.takeIf { isLearnableRideAppPackage(it) }
-            ?.let { return it }
-        return RegisteredRidePackagePolicy.packagesFromTemplates(currentCardTemplates)
-            .firstOrNull { registeredPackage ->
-                RideCardTemplateMatcher.match(text, registeredPackage, currentCardTemplates) != null
-            }
-""",
-    )
-
-    replaceExact(
-"""        val normalizedWindowPackage = normalizePackageName(windowPackageName)
-        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        if (!allowPopupCandidate) return normalizedWindowPackage
-        return RideCardTemplateMatcher.inferPackageName(text)
-            ?.takeIf { inferred -> shouldScanPackage(inferred) }
-""",
-"""        val normalizedWindowPackage = normalizePackageName(windowPackageName)
-        if (shouldScanPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        if (!allowPopupCandidate) return normalizedWindowPackage
-        if (isLearnableRideAppPackage(normalizedWindowPackage)) return normalizedWindowPackage
-        activePackageName
-            ?.takeIf { isLearnableRideAppPackage(it) }
-            ?.let { return it }
-        return RideCardTemplateMatcher.inferPackageName(text)
-            ?.takeIf { inferred -> isLearnableRideAppPackage(inferred) || shouldScanPackage(inferred) }
-""",
-    )
-
-    replaceExact(
-"""        traceEvent("process.start source=${'$'}source package=${'$'}{packageName.orEmpty()} raw_length=${'$'}{text.length}")
-""",
-"""        traceEvent("process.start source=${'$'}source package=${'$'}{packageName.orEmpty()} raw_length=${'$'}{text.length}")
-        rememberCardSaveCandidate(packageName, text, "process_start")
-""",
-    )
-
-    replaceExact(
-"""        if (!RideOfferDetector.looksLikeRideOffer(snapshotText, fields, packageName)) {
-""",
-"""        if (RideOfferDetector.looksLikeRideOffer(snapshotText, fields, packageName)) {
-            rememberCardSaveCandidate(packageName, snapshotText, "ride_offer_detected")
-        }
-        if (!RideOfferDetector.looksLikeRideOffer(snapshotText, fields, packageName)) {
-""",
-    )
-
-    replaceExact(
 """            val packageName = normalizePackageName(currentWindowPackageName() ?: activePackageName)
             val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
                 collectVisibleTextForAction()
@@ -188,7 +128,8 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
     )
 
-    replaceExact(
+    if ("private fun snapshotCurrentCardCandidateForBubbleAction" !in text) {
+        replaceExact(
 """    private fun collectVisibleTextForAction(): String {
 """,
 """    private fun snapshotCurrentCardCandidateForBubbleAction(reason: String) {
@@ -248,9 +189,11 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 
     private fun collectVisibleTextForAction(): String {
 """,
-    )
+        )
+    }
 
-    replaceExact(
+    if ("private data class CardSaveCandidate" !in text) {
+        replaceExact(
 """    private data class PendingLiveAnalysis(
 """,
 """    private data class CardSaveCandidate(
@@ -260,15 +203,18 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 
     private data class PendingLiveAnalysis(
 """,
-    )
+        )
+    }
 
-    replaceExact(
+    if ("CARD_SAVE_CANDIDATE_TTL_MS" !in text) {
+        replaceExact(
 """        const val DIAGNOSTIC_EVENT_LIMIT = 60
 """,
 """        const val DIAGNOSTIC_EVENT_LIMIT = 60
         const val CARD_SAVE_CANDIDATE_TTL_MS = 15_000L
 """,
-    )
+        )
+    }
 
     if (text != original) file.writeText(text)
 }
