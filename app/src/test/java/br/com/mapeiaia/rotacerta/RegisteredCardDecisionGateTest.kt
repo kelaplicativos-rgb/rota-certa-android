@@ -13,7 +13,7 @@ class RegisteredCardDecisionGateTest {
         assertFalse(gate.shouldResetStale(hasDecisionColor = true))
 
         gate.markSeen()
-        now += 899L
+        now += 349L
 
         assertFalse(gate.shouldResetStale(hasDecisionColor = true))
         assertFalse(gate.shouldResetStale(hasDecisionColor = false))
