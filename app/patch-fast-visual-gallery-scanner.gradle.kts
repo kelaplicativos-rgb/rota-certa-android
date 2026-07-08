@@ -1,3 +1,7 @@
+extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+    defaultConfig.versionName = "0.1.61"
+}
+
 val fastVisualGalleryScanner by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
