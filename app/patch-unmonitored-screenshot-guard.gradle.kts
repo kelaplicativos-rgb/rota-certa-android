@@ -58,7 +58,7 @@ val unmonitoredScreenshotGuard by tasks.registering {
         val now = System.currentTimeMillis()
 """,
 """        if (!allowPopupCandidate && !shouldScanPackage(requestWindowPackageName)) return
-        if (allowPopupCandidate && !shouldScanPackage(requestWindowPackageName) && !isPassiveDiagnosticPackage(requestWindowPackageName)) {
+        if (allowPopupCandidate && !shouldScanPackage(requestWindowPackageName) && !isPassiveDiagnosticPackage(requestWindowPackageName) && !isCardSaveScreenshotRequested()) {
             traceEvent("screenshot.request skipped unmonitored_popup_package=${dollar}{requestWindowPackageName.orEmpty()}")
             return
         }
