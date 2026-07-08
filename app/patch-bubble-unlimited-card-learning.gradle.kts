@@ -307,7 +307,7 @@ fun patchUnlimitedCardLearning(file: java.io.File) {
 """,
     )
 
-    if ("LEARNED_POPUP_PACKAGE" !in text) {
+    if ("const val LEARNED_POPUP_PACKAGE" !in text) {
         replaceExact(
 """        const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
 """,
