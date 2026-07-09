@@ -62,21 +62,19 @@ val patchBubbleRenderStability by tasks.registering {
         }
 
         if ("visible_card.signature_changed" !in text) {
-            text = text.replace(
-                """        registeredCardGate.markSeen()
-        traceEvent("card_model.match name=${'$'}{cardMatch.template.name} score=${'$'}{cardMatch.score}")
-""",
-                """        val visibleCardSignature = buildVisibleCardSignature(packageName, fields, cardMatch)
+            val duplicateHashGuard = "        if (snapshotHash == lastAnalyzedHash) {\n"
+            val insertionPoint = text.indexOf(duplicateHashGuard)
+            if (insertionPoint >= 0) {
+                val signatureGuard = """        val visibleCardSignature = buildVisibleCardSignature(packageName, fields, cardMatch)
         if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
             lastDecisionOverlayAtMillis = 0L
             traceEvent("visible_card.signature_changed previous=${'$'}lastVisibleCardSignature next=${'$'}visibleCardSignature") // bubble_render_stability_0_1_81
             showOverlay(RadarColor.Default)
         }
         lastVisibleCardSignature = visibleCardSignature
-        registeredCardGate.markSeen()
-        traceEvent("card_model.match name=${'$'}{cardMatch.template.name} score=${'$'}{cardMatch.score}")
-""",
-            )
+"""
+                text = text.substring(0, insertionPoint) + signatureGuard + text.substring(insertionPoint)
+            }
         }
 
         if ("bubble_render_background_uses_current_state_0_1_81" !in text) {
