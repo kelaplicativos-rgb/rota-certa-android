@@ -72,12 +72,7 @@ val globalLightDiagnostics by tasks.registering {
                 )
             }
 
-            if ("global.stability keep_decision=true" !in text) {
-                text = text.replace(
-"""        val manager = windowManager ?: return
-""",
-"""        val manager = windowManager ?: return
-        val globalDecisionNow = System.currentTimeMillis()
+            val stabilityBlock = """        val globalDecisionNow = System.currentTimeMillis()
         if ((color == RadarColor.Default || color == RadarColor.Idle) &&
             hasActiveRegisteredDecision() &&
             shouldScanCurrentWindow() &&
@@ -88,7 +83,17 @@ val globalLightDiagnostics by tasks.registering {
         }
         if (color == RadarColor.Green || color == RadarColor.Red) lastDecisionOverlayAtMillis = globalDecisionNow
         traceEvent("global.overlay request previous=${dollar}{currentRadarColor.diagnosticLabel} next=${dollar}{color.diagnosticLabel} distance=${dollar}{distanceKm?.toString() ?: "none"}")
-""",
+"""
+            text = text.replace(stabilityBlock, "")
+            text = text.replace(
+                Regex("""        val globalDecisionNow = System\.currentTimeMillis\(\)\n        if \(\(color == RadarColor\.Default[\s\S]*?traceEvent\("global\.overlay request[^\n]*\)\n"""),
+                "",
+            )
+
+            if ("global.stability keep_decision=true" !in text) {
+                text = text.replace(
+                    "        val manager = windowManager ?: return\n        val targetText",
+                    "        val manager = windowManager ?: return\n$stabilityBlock        val targetText",
                 )
             }
 
