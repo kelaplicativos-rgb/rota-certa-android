@@ -80,7 +80,7 @@ val patchOcrAccessibilityPriority by tasks.registering {
 """,
         )
 
-        if ("ACCESSIBILITY_OCR_PRIORITY_MS" !in text) {
+        if ("const val ACCESSIBILITY_OCR_PRIORITY_MS" !in text) {
             text = text.replace(
                 "        const val SCAN_LOOP_MS = 180L\n",
                 "        const val ACCESSIBILITY_OCR_PRIORITY_MS = 700L\n        const val SCAN_LOOP_MS = 180L\n",
