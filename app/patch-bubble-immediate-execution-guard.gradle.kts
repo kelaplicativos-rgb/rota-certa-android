@@ -13,6 +13,19 @@ fun replacePrivateFunctionBlockImmediateExecution(
     }
 }
 
+fun replaceMemberBlockImmediateExecution(
+    source: String,
+    startMarker: String,
+    nextMarker: String,
+    replacement: String,
+): String {
+    val start = source.indexOf(startMarker)
+    if (start < 0) return source
+    val next = source.indexOf(nextMarker, start + startMarker.length)
+    if (next < 0) return source
+    return source.substring(0, start) + replacement + source.substring(next + 1)
+}
+
 val bubbleImmediateExecutionGuard by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
@@ -65,8 +78,12 @@ val bubbleImmediateExecutionGuard by tasks.registering {
     }
 
 """
-        text = Regex("(?s)    override fun onAccessibilityEvent\\(event: AccessibilityEvent\\?\\) \\{.*?\\n    override fun onInterrupt\\(\\) = Unit")
-            .replace(text, eventReplacement + "    override fun onInterrupt() = Unit")
+        text = replaceMemberBlockImmediateExecution(
+            text,
+            "    override fun onAccessibilityEvent(event: AccessibilityEvent?) {",
+            "\n    override fun onInterrupt() = Unit",
+            eventReplacement,
+        )
 
         text = replacePrivateFunctionBlockImmediateExecution(text, "startContinuousScan", """    private fun startContinuousScan() {
         if (continuousScanStarted || !serviceReady) return
@@ -194,8 +211,19 @@ val bubbleImmediateExecutionGuard by tasks.registering {
 
 """)
 
-        text = Regex("(?s)        if \\(snapshotHash == lastAnalyzedHash\\) \\{.*?        analyzeLiveText\\(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate\\)\\n")
-            .replace(text, """        if (snapshotHash == lastAnalyzedHash) {
+        text = text.replace(
+"""        if (snapshotHash == lastAnalyzedHash) {
+            traceEvent("analysis.skip duplicate_hash=${dollar}snapshotHash")
+            return
+        }
+        if (analyzing) {
+            pendingAnalysis = null
+            analysisSerial += 1
+            traceEvent("analysis.supersede previous=true hash=${dollar}snapshotHash")
+        }
+        analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
+""",
+"""        if (snapshotHash == lastAnalyzedHash) {
             traceEvent("analysis.skip duplicate_hash=${dollar}snapshotHash")
             return
         }
@@ -209,7 +237,8 @@ val bubbleImmediateExecutionGuard by tasks.registering {
             return
         }
         analyzeLiveText(snapshotText, fields, snapshotHash, cardMatch, allowPopupCandidate)
-""")
+""",
+        )
 
         text = text.replace(
 """                traceEvent("decision.quick recommendation=${dollar}{quickResult.recommendation} distance=quick_approx_until_final_route")
