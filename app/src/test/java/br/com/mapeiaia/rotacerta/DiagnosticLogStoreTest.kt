@@ -14,7 +14,7 @@ class DiagnosticLogStoreTest {
 
     @Test
     fun keepsOnlyMostRecentEvents() {
-        repeat(505) { index ->
+        repeat(1_505) { index ->
             DiagnosticLogStore.record("test", "event=$index", nowMillis = index.toLong())
         }
 
@@ -23,8 +23,8 @@ class DiagnosticLogStoreTest {
         assertFalse(lines.any { it.endsWith(" event=0") })
         assertFalse(lines.any { it.endsWith(" event=4") })
         assertTrue(lines.any { it.endsWith(" event=5") })
-        assertTrue(lines.any { it.endsWith(" event=504") })
-        assertEquals(500, lines.size)
+        assertTrue(lines.any { it.endsWith(" event=1504") })
+        assertEquals(1_500, lines.size)
     }
 
     @Test
