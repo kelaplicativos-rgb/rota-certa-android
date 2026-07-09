@@ -75,7 +75,24 @@ jobs:
       - name: Build debug APK
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --stacktrace --console=plain > gradle-assemble.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|patch-|MainActivity|LiveRideAccessibilityService|Models|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
+            echo "--- gradle-assemble.log tail ---"
+            tail -320 gradle-assemble.log
+          fi
+          exit "$status"
+
+      - name: Upload Gradle assemble failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-assemble-log
+          path: gradle-assemble.log
+          if-no-files-found: ignore
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
