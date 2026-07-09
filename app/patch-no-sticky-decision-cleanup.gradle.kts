@@ -31,6 +31,33 @@ val noStickyDecisionCleanup by tasks.registering {
 """,
             )
 
+            if ("forceMissingCardOverlayDefault" !in text) {
+                text = text.replace(
+"""        if (color == RadarColor.Green || color == RadarColor.Red) lastDecisionOverlayAtMillis = now
+        val nextText = formatBubbleDistanceKm(distanceKm)
+        if (currentRadarColor == color && currentDistanceKm == distanceKm && overlayView?.text?.toString() == nextText) return
+        currentRadarColor = color
+        currentDistanceKm = distanceKm
+""",
+"""        val forceMissingCardOverlayDefault = lastBubbleStateReason.contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
+            lastBubbleStateReason.contains("cadastre o modelo para liberar o farol", ignoreCase = true) ||
+            lastBubbleStateReason.contains("tela nao confirmada por card cadastrado", ignoreCase = true)
+        val safeColor = if (forceMissingCardOverlayDefault) RadarColor.Default else color
+        val safeDistanceKm = if (forceMissingCardOverlayDefault) null else distanceKm
+        if (forceMissingCardOverlayDefault) {
+            traceEvent("overlay.force_missing_card_default requested=${dollar}{color.diagnosticLabel} previous=${dollar}{currentRadarColor.diagnosticLabel}") // force_missing_card_overlay_default_0_1_80
+            registeredCardGate.clear()
+            lastDecisionOverlayAtMillis = 0L
+        }
+        if (safeColor == RadarColor.Green || safeColor == RadarColor.Red) lastDecisionOverlayAtMillis = now
+        val nextText = formatBubbleDistanceKm(safeDistanceKm)
+        if (currentRadarColor == safeColor && currentDistanceKm == safeDistanceKm && overlayView?.text?.toString() == nextText) return
+        currentRadarColor = safeColor
+        currentDistanceKm = safeDistanceKm
+""",
+                )
+            }
+
             text = text.replace(
                 "val keepActiveDecisionDuringTransientText = hasActiveRegisteredDecision() && shouldScanCurrentWindow()",
                 "val keepActiveDecisionDuringTransientText = false // no_sticky_decision_cleanup_0_1_79",
@@ -75,11 +102,19 @@ val noStickyDecisionCleanup by tasks.registering {
 """,
             )
 
+            text = text.replace(
+                "Pacote passivo ignorado sem apagar a ultima decisao:",
+                "Pacote passivo ignorado; bolinha limpa:",
+            )
+
             if ("overlay.keep_decision" in text) {
                 throw org.gradle.api.GradleException("A bolinha ainda contem preservacao sticky de decisao antiga.")
             }
             if ("process.empty_text keep_active_decision=true" in text) {
                 throw org.gradle.api.GradleException("Texto vazio ainda preserva decisao antiga.")
+            }
+            if ("force_missing_card_overlay_default_0_1_80" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui instalar a trava final para card nao cadastrado no overlay.")
             }
             if ("no_sticky_decision_cleanup_0_1_79" !in text) {
                 throw org.gradle.api.GradleException("Limpeza anti-sticky nao foi aplicada.")
