@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -29,7 +30,7 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
-    fun keepsAdaptiveFeaturesForSavedTemplateButDoesNotUseThemAsLiveDecisionGate() {
+    fun savedTemplateDoesNotContainAdaptiveFeatures() {
         val text = """
             5 min (1.5 km)
             Avenida Ragueb Chohfi, Sao Mateus, Sao Paulo
@@ -39,13 +40,7 @@ class RideCardTemplateMatcherTest {
         """.trimIndent()
         val template = RideCardTemplateMatcher.createTemplate("sinet.startup.indriver", text)
 
-        assertTrue(template.requiredFeatures.any { it.startsWith("adaptive.") })
-
-        val adaptiveOnlyTemplate = template.copy(
-            requiredFeatures = template.requiredFeatures.filter { it.startsWith("adaptive.") },
-        )
-
-        assertNull(RideCardTemplateMatcher.match(text, "sinet.startup.indriver", listOf(adaptiveOnlyTemplate)))
+        assertFalse(template.requiredFeatures.any { it.startsWith("adaptive.") })
     }
 
     @Test
