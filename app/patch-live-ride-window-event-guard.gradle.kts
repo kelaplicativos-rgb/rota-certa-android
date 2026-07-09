@@ -17,6 +17,22 @@ val liveRideWindowEventGuard by tasks.registering {
                 "",
             )
 
+            val passivePackageListCode = """setOf(
+            "android",
+            "com.android.launcher",
+            "com.android.settings",
+            "com.android.systemui",
+            "com.google.android.apps.maps",
+            "com.google.android.apps.nbu.files",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.packageinstaller",
+            "com.openai.chatgpt",
+            "com.sec.android.app.launcher",
+            "com.samsung.android.app.settings",
+            "com.samsung.android.honeyboard",
+            "com.waze",
+        )"""
+
             if ("active_non_passive_package_priority_0_1_82" !in text) {
                 text = text.replace(
 """    private fun currentWindowPackageName(): String? =
@@ -25,7 +41,8 @@ val liveRideWindowEventGuard by tasks.registering {
 """    private fun currentWindowPackageName(): String? {
         val rootPackage = currentRootPackageName()
         val activePackage = normalizePackageName(activePackageName)
-        val activeIsPassive = activePackage == this.packageName || activePackage in PASSIVE_DIAGNOSTIC_PACKAGES
+        val passivePackages = $passivePackageListCode
+        val activeIsPassive = activePackage == null || activePackage == this.packageName || activePackage in passivePackages
         return when {
             activePackage != null && !activeIsPassive && activePackage != rootPackage -> activePackage // active_non_passive_package_priority_0_1_82
             rootPackage != null -> rootPackage
@@ -57,7 +74,8 @@ val liveRideWindowEventGuard by tasks.registering {
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            val eventPackageIsPassive = packageName == this.packageName || packageName in PASSIVE_DIAGNOSTIC_PACKAGES
+            val passiveEventPackages = $passivePackageListCode
+            val eventPackageIsPassive = packageName == this.packageName || packageName in passiveEventPackages
             if (eventPackageIsPassive) {
                 traceEvent("event passive ignored clean_stale_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_no_popup_scan_0_1_82
                 if (!hasActiveRegisteredDecision()) {
@@ -114,6 +132,9 @@ val liveRideWindowEventGuard by tasks.registering {
             }
             if ("active_non_passive_package_priority_0_1_82" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui priorizar pacote ativo real contra raiz obsoleta.")
+            }
+            if ("PASSIVE_DIAGNOSTIC_PACKAGES" in text.substringAfter("active_non_passive_package_priority_0_1_82")) {
+                throw org.gradle.api.GradleException("Patch anti-pisca ainda depende de constante passiva instavel.")
             }
 
             if (text != original) file.writeText(text)
