@@ -208,8 +208,7 @@ private fun clearClipboard(context: Context) {
             )
             serviceText = serviceText.replace(
                 Regex("""    private fun openApp\([^)]*\) \{[\s\S]*?\n    private fun openSavedPlaceEditor\("""),
-                """    @Suppress("UNUSED_PARAMETER")
-    private fun openApp(tab: String? = null, expander: String? = null) {
+                """    private fun openApp(tab: String? = null, expander: String? = null) {
         hideActionMenu()
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -223,6 +222,10 @@ private fun clearClipboard(context: Context) {
     private fun openSavedPlaceEditor(""",
             )
 
+            serviceText = serviceText.replace(
+                Regex("""(?m)^\s*@Suppress\("UNUSED_PARAMETER"\)\s*\n\s*@Suppress\("UNUSED_PARAMETER"\)\s*\n"""),
+                "    @Suppress(\"UNUSED_PARAMETER\")\n",
+            )
             serviceText = serviceText.replace(
                 Regex("""(?m)^\s*@RequiresApi\(Build\.VERSION_CODES\.R\)\s*\n"""),
                 "",
