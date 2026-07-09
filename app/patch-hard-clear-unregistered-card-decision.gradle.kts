@@ -38,11 +38,15 @@ val hardClearUnregisteredCardDecision by tasks.registering {
             }
 
             if ("hard_clear_overlay_now_0_1_77" !in text) {
-                text = text.replace(
-"""        val now = System.currentTimeMillis()
-""",
-"""        val now = System.currentTimeMillis()
-        if (color == RadarColor.Default && (
+                val showOverlayStart = text.indexOf("    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {")
+                val nowInShowOverlay = if (showOverlayStart >= 0) {
+                    text.indexOf("        val now = System.currentTimeMillis()\n", showOverlayStart)
+                } else {
+                    -1
+                }
+                if (nowInShowOverlay >= 0) {
+                    val insertionPoint = nowInShowOverlay + "        val now = System.currentTimeMillis()\n".length
+                    val guard = """        if (color == RadarColor.Default && (
                 lastBubbleStateReason.contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
                     lastBubbleStateReason.contains("cadastre o modelo para liberar o farol", ignoreCase = true)
             )
@@ -50,8 +54,9 @@ val hardClearUnregisteredCardDecision by tasks.registering {
             lastDecisionOverlayAtMillis = 0L // hard_clear_overlay_now_0_1_77
             registeredCardGate.clear()
         }
-""",
-                )
+"""
+                    text = text.substring(0, insertionPoint) + guard + text.substring(insertionPoint)
+                }
             }
 
             if ("missingRegisteredCardDecision" !in text) {
