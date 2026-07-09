@@ -79,6 +79,45 @@ val patchRealtimeBubbleEngine by tasks.registering {
         )
 
         text = text.replace(
+"""        if (snapshotHash != lastSnapshotHash) {
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.screen_changed keep_decision=true hash=${'$'}snapshotHash")
+            } else {
+                lastSnapshotHash = snapshotHash
+                lastAnalyzedHash = null
+                showOverlay(RadarColor.Default)
+                recordDiagnostic(
+                    stage = "screen_changed",
+                    reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
+                    text = snapshotText,
+                )
+            }
+        }
+""",
+"""        if (snapshotHash != lastSnapshotHash) {
+            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
+                traceEvent("ocr.screen_changed keep_decision=true hash=${'$'}snapshotHash")
+            } else {
+                val previousSnapshotHash = lastSnapshotHash
+                lastSnapshotHash = snapshotHash
+                lastAnalyzedHash = null
+                pendingAnalysis = null
+                registeredCardGate.clear()
+                if (previousSnapshotHash != null) {
+                    traceEvent("screen.supersede previous=${'$'}previousSnapshotHash current=${'$'}snapshotHash")
+                }
+                showOverlay(RadarColor.Default)
+                recordDiagnostic(
+                    stage = "screen_changed",
+                    reason = "A imagem/texto da tela mudou; limpei a bolinha antes de confirmar o proximo card cadastrado.",
+                    text = snapshotText,
+                )
+            }
+        }
+""",
+        )
+
+        text = text.replace(
 """            repository.addAnalysis(result)
             lastSavedReadHash = snapshotHash
             if (!allowPopupCandidate && !shouldScanCurrentWindow()) {
