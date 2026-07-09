@@ -8,14 +8,6 @@ val patchManualSupportReport by tasks.registering {
         var text = file.readText()
         val original = text
 
-        fun replaceBetween(source: String, startMarker: String, endMarker: String, replacement: String): String {
-            val start = source.indexOf(startMarker)
-            if (start < 0) return source
-            val end = source.indexOf(endMarker, start)
-            if (end < 0) return source
-            return source.substring(0, start) + replacement + source.substring(end)
-        }
-
         fun replaceToolsScreen(source: String, replacement: String): String {
             val start = source.indexOf("@Composable\nprivate fun ToolsScreen(")
             if (start < 0) return source
@@ -89,6 +81,26 @@ val patchManualSupportReport by tasks.registering {
 
         val toolsScreenReplacement = """@Composable
 private fun ToolsScreen(
+    settings: AppSettings = AppSettings(),
+    latestResult: AnalysisResult? = null,
+    cardTemplates: List<RideCardTemplate> = emptyList(),
+    templateStatus: String = "",
+    unreadTemplatePrints: Int = 0,
+    liveEnabled: Boolean = false,
+    savedPlaces: List<SavedPlace> = emptyList(),
+    highlightedSavedPlaceId: String? = null,
+    radarImportSummary: RadarImportSummary = RadarImportSummary(),
+    radarImportStatus: String = "",
+    onSaveSettings: (AppSettings) -> Unit = {},
+    onDeleteCardModel: (RideCardTemplate) -> Unit = {},
+    onPickCardModels: () -> Unit = {},
+    onOpenAccessibilitySettings: () -> Unit = {},
+    onRefreshLiveState: () -> Unit = {},
+    onRenameSavedPlace: (SavedPlace, String) -> Unit = { _, _ -> },
+    onDeleteSavedPlace: (SavedPlace) -> Unit = {},
+    onImportRadarFile: () -> Unit = {},
+    onOpenMapaRadar: () -> Unit = {},
+    onClearImportedRadars: () -> Unit = {},
     onOpenBlaBlaCarCollector: () -> Unit,
     onClearClipboard: () -> Unit,
     onCreateSupportReport: () -> Unit,
@@ -98,6 +110,39 @@ private fun ToolsScreen(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Ferramentas", fontWeight = FontWeight.Bold)
+        LiveReadingCard(
+            liveEnabled = liveEnabled,
+            onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            onRefreshLiveState = onRefreshLiveState,
+        )
+        WorkRegionCard(settings = settings, onSaveSettings = onSaveSettings)
+        latestResult
+            ?.takeIf { it.recommendation != Recommendation.InsufficientData }
+            ?.let { result -> ResultCard(result, settings) }
+        CardModelsCard(
+            cardTemplates = cardTemplates,
+            templateStatus = templateStatus,
+            unreadTemplatePrints = unreadTemplatePrints,
+            onPickCardModels = onPickCardModels,
+            onDeleteCardModel = onDeleteCardModel,
+        )
+        SavedPlacesCard(
+            savedPlaces = savedPlaces,
+            highlightedSavedPlaceId = highlightedSavedPlaceId,
+            onRenameSavedPlace = onRenameSavedPlace,
+            onDeleteSavedPlace = onDeleteSavedPlace,
+            onSaveCurrentPlace = onSaveCurrentPlace,
+            onCreateProximityAlert = onCreateProximityAlert,
+        )
+        ExpandableCard(title = "Radares importados (" + radarImportSummary.count + ")", initiallyExpanded = false) {
+            RadarImportCard(
+                summary = radarImportSummary,
+                importStatus = radarImportStatus,
+                onPickFile = onImportRadarFile,
+                onOpenMapaRadar = onOpenMapaRadar,
+                onClearRadars = onClearImportedRadars,
+            )
+        }
         ExpandableCard(title = "Assistente de Viagens", initiallyExpanded = false) {
             Text(
                 "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
@@ -118,20 +163,6 @@ private fun ToolsScreen(
                     Text("Gerar relatorio para anexar")
                 }
                 if (supportReportStatus.isNotBlank()) Text(supportReportStatus, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        onSaveCurrentPlace?.let { action ->
-            ExpandableCard(title = "Locais salvos", initiallyExpanded = false) {
-                Button(onClick = action, modifier = Modifier.fillMaxWidth()) {
-                    Text("Salvar local atual")
-                }
-            }
-        }
-        onCreateProximityAlert?.let { action ->
-            ExpandableCard(title = "Alertas de proximidade", initiallyExpanded = false) {
-                Button(onClick = action, modifier = Modifier.fillMaxWidth()) {
-                    Text("Criar alerta neste local")
-                }
             }
         }
         ExpandableCard(title = "Area de transferencia", initiallyExpanded = false) {
