@@ -223,6 +223,25 @@ private fun clearClipboard(context: Context) {
     private fun openSavedPlaceEditor(""",
             )
 
+            serviceText = serviceText.replace(
+                Regex("""(?m)(?:\s*@RequiresApi\(Build\.VERSION_CODES\.R\)\s*){2,}\s*private fun ScreenshotResult\.toSoftwareBitmap\(\): Bitmap\?\s*\{"""),
+                """
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {""",
+            )
+            serviceText = serviceText.replace(
+                Regex("""\n\s*if \(source == TextSource\.Ocr && hasActiveRegisteredDecision\(\)\) \{\s*Unit\s*return\s*\}"""),
+                "",
+            )
+            serviceText = serviceText.replace(
+                Regex("""\n\s*if \(\(color == RadarColor\.Default \|\| color == RadarColor\.Idle\) &&\s*hasActiveRegisteredDecision\(\) &&\s*shouldScanCurrentWindow\(\) &&\s*now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS\s*\) \{\s*Unit\s*return\s*\}"""),
+                "",
+            )
+            serviceText = serviceText.replace(
+                "        const val DECISION_OVERLAY_STICKY_MS = 3_500L\n",
+                "        const val DECISION_OVERLAY_STICKY_MS = 0L\n",
+            )
+
             if (serviceText != originalService) service.writeText(serviceText)
         }
     }
