@@ -189,6 +189,36 @@ val patchRemoveLiveDiagnostics by tasks.registering {
                 "",
             )
             text = text.replace(
+                "                NavigationBarItem(selected = tab == TAB_DIAGNOSTIC, onClick = { tab = TAB_DIAGNOSTIC }, label = { Text(\"Diagnostico\") }, icon = {})\n",
+                "",
+            )
+            text = text.replace(
+                "requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY || requestedTab == TAB_DIAGNOSTIC",
+                "requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY",
+            )
+            text = text.replace(
+                "                TAB_HISTORY -> TAB_DIAGNOSTIC\n",
+                "                TAB_HISTORY -> TAB_TOOLS\n",
+            )
+            text = text.replace(
+                Regex("""\n\s*TAB_HISTORY, TAB_DIAGNOSTIC -> DiagnosticScreen\(\n\s*diagnostic = diagnostic,\n\s*cardTemplates = cardTemplates,\n\s*history = history,\n\s*onRegisterRideCard = ::registerRideCard,\n\s*\)"""),
+                "\n                else -> Unit",
+            )
+            text = text.replace(
+                Regex("""\n@Composable\nprivate fun DiagnosticScreen\([\s\S]*?\n@Composable\nprivate fun HistoryScreen\(history: List<AnalysisResult>\) \{\n    HistoryDiagnosticCard\(history = history\)\n\}\n"""),
+                "\n@Composable\nprivate fun HistoryScreen(history: List<AnalysisResult>) = Unit\n",
+            )
+            text = replaceBetween(
+                source = text,
+                startMarker = "private fun copyHistory(context: Context, history: List<AnalysisResult>) {",
+                nextMarker = "private fun clearClipboard(context: Context) {",
+                replacement = "",
+            )
+            text = text.replace(
+                "private const val TAB_DIAGNOSTIC = \"diagnostico\"\n\n",
+                "",
+            )
+            text = text.replace(
                 Regex("""\n        DiagnosticExpander\(\n            diagnostic = diagnostic,\n            cardTemplates = cardTemplates,\n            onRegisterRideCard = onRegisterRideCard,\n        \)"""),
                 "",
             )
