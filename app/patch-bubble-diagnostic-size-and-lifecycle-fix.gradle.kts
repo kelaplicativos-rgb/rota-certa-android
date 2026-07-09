@@ -80,7 +80,7 @@ private fun BubbleSizeSlider(
 ) {
     val safeValue = value.coerceIn(48, 120)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Tamanho da bolinha: $safeValue dp")
+        Text("Tamanho da bolinha: ${'$'}safeValue dp")
         Slider(
             value = safeValue.toFloat(),
             onValueChange = { onValueChange(it.roundToInt().coerceIn(48, 120)) },
@@ -132,12 +132,8 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
 """,
 """
     private fun shouldKeepDecisionOverlayForSameRegisteredCard(): Boolean {
-        val session = bubbleCardSessionStore.current ?: return false
         val activeHash = lastSnapshotHash ?: return false
-        if (activeHash != session.snapshotHash) return false
-        val activePackage = normalizePackageName(currentWindowPackageName())
-        if (activePackage != null && session.packageName != null && activePackage != session.packageName) return false
-        return true
+        return activeHash == lastAnalyzedHash && shouldScanCurrentWindow()
     }
 
     private fun resetToDefault(
@@ -300,8 +296,8 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
 
     if ("bubble_diagnostic_size_and_lifecycle_fix.patch_applied" !in text) {
         text = text.replace(
-            "        traceEvent(\"modular_bubble_lifecycle.patch_applied=true\")\n",
-            "        traceEvent(\"modular_bubble_lifecycle.patch_applied=true\")\n        traceEvent(\"bubble_diagnostic_size_and_lifecycle_fix.patch_applied=true\")\n",
+            "        traceEvent(\"stable_bubble_no_flicker.patch_applied=true\")\n",
+            "        traceEvent(\"stable_bubble_no_flicker.patch_applied=true\")\n        traceEvent(\"bubble_diagnostic_size_and_lifecycle_fix.patch_applied=true\")\n",
         )
     }
 
@@ -314,7 +310,6 @@ bubbleDiagnosticSizeAndLifecycleFix.configure {
         "bubbleDoubleTapCardCapture",
         "bubbleLongPressDirectSaveAfterOcr",
         "bubbleLongPressCaptureSave",
-        "modularBubbleLifecycle",
         "patchLiveRideOverlayStability",
         "bubbleLiveAppearance",
         "stableBubbleNoFlicker",
