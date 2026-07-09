@@ -26,4 +26,26 @@ class RegisteredCardDecisionGateTest {
 
         assertFalse(gate.shouldResetStale(hasDecisionColor = true))
     }
+
+    @Test
+    fun stickyDecisionIsActiveOnlyAfterRegisteredCardWasRecentlySeen() {
+        var now = 20_000L
+        val gate = RegisteredCardDecisionGate(nowProvider = { now })
+
+        assertFalse(gate.hasSeenRecently(maxAgeMillis = 3_500L))
+
+        gate.markSeen()
+        now += 3_499L
+
+        assertTrue(gate.hasSeenRecently(maxAgeMillis = 3_500L))
+
+        now += 1L
+
+        assertFalse(gate.hasSeenRecently(maxAgeMillis = 3_500L))
+
+        gate.markSeen()
+        gate.clear()
+
+        assertFalse(gate.hasSeenRecently(maxAgeMillis = 3_500L))
+    }
 }
