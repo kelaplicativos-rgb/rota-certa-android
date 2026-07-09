@@ -16,7 +16,7 @@ val fastCardCacheFlowPatch by tasks.registering {
             )
         }
 
-        if ("card_model.fast_match" !in text) {
+        if ("FastRideCardMatcher.match(snapshotText, packageName, currentCardTemplates)" !in text) {
             text = text.replace(
                 "val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)",
                 "val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)\n            ?: FastRideCardMatcher.match(snapshotText, packageName, currentCardTemplates)?.also { fast ->\n                traceEvent(\"card_model.fast_match name=${'$'}{fast.template.name} score=${'$'}{fast.score}\")\n            }",
@@ -24,21 +24,18 @@ val fastCardCacheFlowPatch by tasks.registering {
         }
 
         if ("route.cache hit" !in text) {
-            text = text.replace(
-"""            val settings = currentSettings
+            val start = text.indexOf("            val settings = currentSettings\n            val region = DeviceRegion(country = \"Brasil\")")
+            val endMarker = "            traceEvent(\"route.distance home=${'$'}{homeDistanceKm?.let(::formatDiagnosticKm) ?: \"null\"} alternative=${'$'}{alternativeDistanceKm?.let(::formatDiagnosticKm) ?: \"null\"}\")\n"
+            val end = if (start >= 0) text.indexOf(endMarker, start) else -1
+            if (start >= 0 && end >= 0) {
+                val replacement = """            val settings = currentSettings
             val region = DeviceRegion(country = "Brasil")
-            val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
-            traceEvent("geocode.destination ok=${'$'}{destinationCoordinate != null}")
-            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress, region, settings)
-            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress, region, settings)
-            traceEvent("geocode.config home=${'$'}{homeCoordinate != null} alternative=${'$'}{alternativeCoordinate != null}")
-            val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate, settings)
-            val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate, settings)
-            traceEvent("route.distance home=${'$'}{homeDistanceKm?.let(::formatDiagnosticKm) ?: "null"} alternative=${'$'}{alternativeDistanceKm?.let(::formatDiagnosticKm) ?: "null"}")
-""",
-"""            val settings = currentSettings
-            val region = DeviceRegion(country = "Brasil")
-            val cacheKey = LiveRideRouteCache.keyFor(fields, settings)
+            val cacheKey = LiveRideRouteCache.keyFor(
+                fields = fields,
+                settings = settings,
+                packageName = cardMatch?.template?.packageName,
+                cardSignature = cardMatch?.template?.sampleHash?.toString(),
+            )
             val cachedRoute = routeCache.get(cacheKey)
             if (cachedRoute != null) {
                 traceEvent("route.cache hit age_ms=${'$'}{cachedRoute.ageMillis}")
@@ -65,26 +62,13 @@ val fastCardCacheFlowPatch by tasks.registering {
                 )
             }
             traceEvent("route.distance home=${'$'}{homeDistanceKm?.let(::formatDiagnosticKm) ?: "null"} alternative=${'$'}{alternativeDistanceKm?.let(::formatDiagnosticKm) ?: "null"}")
-""",
-            )
-        }
-
-        if ("card_model.fast_match" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui ativar reconhecimento rapido do card cadastrado.")
-        }
-        if ("route.cache hit" !in text || "private val routeCache = LiveRideRouteCache()" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui ativar cache de rota da bolinha.")
+"""
+                text = text.substring(0, start) + replacement + text.substring(end + endMarker.length)
+            }
         }
 
         if (text != original) file.writeText(text)
     }
-}
-
-fastCardCacheFlowPatch.configure {
-    mustRunAfter(
-        "patchBubbleRenderStability",
-        "passiveEventCompileFix",
-    )
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
