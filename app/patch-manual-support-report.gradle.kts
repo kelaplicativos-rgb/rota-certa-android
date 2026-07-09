@@ -250,6 +250,36 @@ private fun clearClipboard(context: Context) {
             )
         }
 
+        if ("private fun DiagnosticScreen(" !in text && "DiagnosticScreen(" in text) {
+            text = text.replace(
+                """private fun clearClipboard(context: Context) {
+""",
+                """@Composable
+private fun DiagnosticScreen(
+    diagnostic: LiveDiagnostic? = null,
+    cardTemplates: List<RideCardTemplate> = emptyList(),
+    onRegisterRideCard: (String?, String) -> Unit = { _, _ -> },
+) = Unit
+
+private fun clearClipboard(context: Context) {
+""",
+            )
+        }
+
+        if ("private fun HistoryDiagnosticCard(" !in text && "HistoryDiagnosticCard(" in text) {
+            text = text.replace(
+                """private fun clearClipboard(context: Context) {
+""",
+                """@Composable
+private fun HistoryDiagnosticCard(
+    history: List<AnalysisResult> = emptyList(),
+) = Unit
+
+private fun clearClipboard(context: Context) {
+""",
+            )
+        }
+
         requirePatched("var supportReportStatus by remember" in text, "Relatorio manual: estado da tela nao foi inserido.")
         requirePatched("val supportReportFileCreator = rememberLauncherForActivityResult" in text, "Relatorio manual: criador de arquivo nao foi inserido.")
         requirePatched("onCreateSupportReport = { supportReportFileCreator.launch" in text, "Relatorio manual: acao nao foi ligada na tela de Ferramentas.")
