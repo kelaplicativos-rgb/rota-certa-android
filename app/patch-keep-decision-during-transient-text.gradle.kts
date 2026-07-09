@@ -61,7 +61,7 @@ val keepDecisionDuringTransientText by tasks.registering {
                 return
             }
             registeredCardGate.clear()
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
             return
         }
 """
