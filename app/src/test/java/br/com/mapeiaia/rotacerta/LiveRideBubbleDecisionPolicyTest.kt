@@ -44,6 +44,45 @@ class LiveRideBubbleDecisionPolicyTest {
     }
 
     @Test
+    fun blocksGreenWhenResultReasonSaysCardIsNotRegistered() {
+        val decision = policy.decide(
+            LiveRideBubbleDecisionInput(
+                monitoredPackageActive = true,
+                registeredCardMatched = true,
+                destinationIdentified = true,
+                result = goodResult(
+                    reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado. Salvei a amostra; cadastre o modelo para liberar o farol.",
+                ),
+                nearestConfiguredDistanceKm = 3.15,
+            ),
+        )
+
+        assertEquals(LiveRideBubbleSignal.WaitingForRegisteredCard, decision.signal)
+        assertNull(decision.distanceKm)
+        assertTrue(decision.shouldClearActiveDecision)
+    }
+
+    @Test
+    fun blocksRedWhenResultReasonAsksToRegisterModel() {
+        val decision = policy.decide(
+            LiveRideBubbleDecisionInput(
+                monitoredPackageActive = true,
+                registeredCardMatched = true,
+                destinationIdentified = true,
+                result = goodResult(
+                    recommendation = Recommendation.OutsideRadius,
+                    reason = "Cadastre o modelo para liberar o farol.",
+                ),
+                nearestConfiguredDistanceKm = 15.56,
+            ),
+        )
+
+        assertEquals(LiveRideBubbleSignal.WaitingForRegisteredCard, decision.signal)
+        assertNull(decision.distanceKm)
+        assertTrue(decision.shouldClearActiveDecision)
+    }
+
+    @Test
     fun blocksDecisionAndDistanceWhenDestinationIsMissing() {
         val decision = policy.decide(
             LiveRideBubbleDecisionInput(
@@ -97,12 +136,13 @@ class LiveRideBubbleDecisionPolicyTest {
     private fun goodResult(
         recommendation: Recommendation = Recommendation.GoodRide,
         fields: RideFields = RideFields(destination = "Centro"),
+        reason: String = "Destino final dentro do raio da casa por rota real do Google Maps.",
     ) = AnalysisResult(
         createdAtMillis = 1L,
         extractedText = "Destino Centro",
         fields = fields,
         recommendation = recommendation,
-        reason = "resultado de teste",
+        reason = reason,
         pickupToHomeKm = 4.2,
     )
 }
