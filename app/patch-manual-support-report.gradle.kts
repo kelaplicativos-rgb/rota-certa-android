@@ -8,6 +8,18 @@ val patchManualSupportReport by tasks.registering {
         var text = file.readText()
         val original = text
 
+        fun replaceBetween(source: String, startMarker: String, endMarker: String, replacement: String): String {
+            val start = source.indexOf(startMarker)
+            if (start < 0) return source
+            val end = source.indexOf(endMarker, start)
+            if (end < 0) return source
+            return source.substring(0, start) + replacement + source.substring(end)
+        }
+
+        fun requirePatched(condition: Boolean, message: String) {
+            if (!condition) throw org.gradle.api.GradleException(message)
+        }
+
         if ("var supportReportStatus by remember" !in text) {
             text = text.replace(
                 "    var radarImportStatus by remember { mutableStateOf(\"\") }\n",
@@ -62,17 +74,30 @@ val patchManualSupportReport by tasks.registering {
             )
         }
 
-        if ("onCreateSupportReport: () -> Unit" !in text) {
-            text = text.replace(
-                "    onClearClipboard: () -> Unit,\n",
-                "    onClearClipboard: () -> Unit,\n    onCreateSupportReport: () -> Unit,\n    supportReportStatus: String,\n",
-            )
+        val toolsScreenReplacement = """@Composable
+private fun ToolsScreen(
+    onOpenBlaBlaCarCollector: () -> Unit,
+    onClearClipboard: () -> Unit,
+    onCreateSupportReport: () -> Unit,
+    supportReportStatus: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Ferramentas", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir coletor")
+                }
+            }
         }
-
-        if ("Text(\"Gerar relatorio para anexar\")" !in text) {
-            text = text.replace(
-                "                Text(\"Area de transferencia\", fontWeight = FontWeight.Bold)\n",
-                """                Text("Relatorio manual de falha", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Relatorio manual de falha", fontWeight = FontWeight.Bold)
                 Text(
                     "Gera um arquivo leve somente quando voce tocar aqui. A bolinha continua sem logs automaticos.",
                     style = MaterialTheme.typography.bodySmall,
@@ -81,11 +106,29 @@ val patchManualSupportReport by tasks.registering {
                     Text("Gerar relatorio para anexar")
                 }
                 if (supportReportStatus.isNotBlank()) Text(supportReportStatus, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(10.dp))
-                Text("Area de transferencia", fontWeight = FontWeight.Bold)
-""",
-            )
+            }
         }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Area de transferencia", fontWeight = FontWeight.Bold)
+                Text(
+                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                    Text("Limpar area de transferencia")
+                }
+            }
+        }
+    }
+}"""
+
+        text = replaceBetween(
+            source = text,
+            startMarker = "@Composable\nprivate fun ToolsScreen(",
+            endMarker = "\n\n@Composable\nprivate fun HistoryScreen",
+            replacement = toolsScreenReplacement,
+        )
 
         if ("private suspend fun buildManualSupportReport(" !in text) {
             text = text.replace(
@@ -157,6 +200,13 @@ private fun clearClipboard(context: Context) {
 """,
             )
         }
+
+        requirePatched("var supportReportStatus by remember" in text, "Relatorio manual: estado da tela nao foi inserido.")
+        requirePatched("val supportReportFileCreator = rememberLauncherForActivityResult" in text, "Relatorio manual: criador de arquivo nao foi inserido.")
+        requirePatched("onCreateSupportReport = { supportReportFileCreator.launch" in text, "Relatorio manual: acao nao foi ligada na tela de Ferramentas.")
+        requirePatched("Text(\"Relatorio manual de falha\")" in text, "Relatorio manual: card visivel nao foi inserido em Ferramentas.")
+        requirePatched("Text(\"Gerar relatorio para anexar\")" in text, "Relatorio manual: botao visivel nao foi inserido em Ferramentas.")
+        requirePatched("private suspend fun buildManualSupportReport(" in text, "Relatorio manual: gerador do arquivo nao foi inserido.")
 
         if (text != original) file.writeText(text)
     }
