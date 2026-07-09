@@ -258,6 +258,7 @@ private fun clearClipboard(context: Context) {
 private fun DiagnosticScreen(
     diagnostic: LiveDiagnostic? = null,
     cardTemplates: List<RideCardTemplate> = emptyList(),
+    history: List<AnalysisResult> = emptyList(),
     onRegisterRideCard: (String?, String) -> Unit = { _, _ -> },
 ) = Unit
 
