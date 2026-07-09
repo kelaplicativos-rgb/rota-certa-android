@@ -160,8 +160,8 @@ val strictCardPackageLearning by tasks.registering {
             )
 
             text = text.replace(
-                "importado(s), $failures print(s) sem leitura.",
-                "importado(s), $failures print(s) sem pacote real do app.",
+                "importado(s), \$failures print(s) sem leitura.",
+                "importado(s), \$failures print(s) sem pacote real do app.",
             )
             text = text.replace(
                 "Nenhum modelo importado. Confira se os prints sao cards de corrida.",
