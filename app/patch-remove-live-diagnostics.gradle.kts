@@ -1,7 +1,8 @@
 val patchRemoveLiveDiagnostics by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
-    inputs.files(serviceFile, mainFile)
+    val parserFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt")
+    inputs.files(serviceFile, mainFile, parserFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -114,6 +115,31 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             text = text.replace(
                 Regex("""\n        DiagnosticExpander\(\n            diagnostic = diagnostic,\n            cardTemplates = cardTemplates,\n            onRegisterRideCard = onRegisterRideCard,\n        \)"""),
                 "",
+            )
+
+            if (text != original) file.writeText(text)
+        }
+
+        parserFile.asFile.takeIf { it.exists() }?.let { file ->
+            var text = file.readText()
+            val original = text
+
+            text = text.replace(
+                """        val addresses = findAddressCandidates(lines)
+        val pickup = findAddressAfterMarker(lines, pickupMarkers) ?: addresses.firstOrNull()
+        val destination = findAddressAfterMarker(lines, destinationMarkers) ?: addresses.asReversed().firstOrNull {
+            !it.equals(pickup, ignoreCase = true)
+        }
+""",
+                """        val addresses = findAddressCandidates(lines)
+        val markerPickup = findAddressAfterMarker(lines, pickupMarkers)
+        val markerDestination = findAddressAfterMarker(lines, destinationMarkers)
+        val pickup = markerPickup ?: addresses.takeIf { it.size > 1 }?.firstOrNull()
+        val destination = markerDestination ?: when {
+            addresses.size == 1 -> addresses.first()
+            else -> addresses.asReversed().firstOrNull { !it.equals(pickup, ignoreCase = true) }
+        }
+""",
             )
 
             if (text != original) file.writeText(text)
