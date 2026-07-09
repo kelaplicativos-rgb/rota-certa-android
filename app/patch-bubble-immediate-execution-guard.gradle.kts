@@ -13,7 +13,7 @@ fun replacePrivateFunctionBlockImmediateExecution(
     }
 }
 
-val patchBubbleImmediateExecutionGuard by tasks.registering {
+val bubbleImmediateExecutionGuard by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
@@ -253,7 +253,7 @@ val patchBubbleImmediateExecutionGuard by tasks.registering {
     }
 }
 
-patchBubbleImmediateExecutionGuard.configure {
+bubbleImmediateExecutionGuard.configure {
     mustRunAfter(
         "patchRealtimeBubbleEngine",
         "patchOcrAccessibilityPriority",
@@ -263,5 +263,5 @@ patchBubbleImmediateExecutionGuard.configure {
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
-    dependsOn(patchBubbleImmediateExecutionGuard)
+    dependsOn(bubbleImmediateExecutionGuard)
 }
