@@ -165,6 +165,10 @@ val patchFactoryCleanNoFlicker by tasks.registering {
             )
 
             text = text.replace(
+                Regex("""(?m)\s*const val OVERLAY_VISUAL_MIN_INTERVAL_MS = 180L\n\s*const val OVERLAY_WAITING_MIN_INTERVAL_MS = 450L\n"""),
+                "",
+            )
+            text = text.replace(
                 """        const val DECISION_OVERLAY_STICKY_MS = 0L
 """,
                 """        const val DECISION_OVERLAY_STICKY_MS = 0L
