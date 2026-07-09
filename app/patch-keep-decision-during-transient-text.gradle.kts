@@ -36,7 +36,7 @@ val keepDecisionDuringTransientText by tasks.registering {
             )
 
             val emptyTextPattern = Regex(
-                """        if \(snapshotText\.isBlank\(\)\) \{\n            traceEvent\("process\.empty_text source=\$source"\)\n            if \(allowPopupCandidate\) return\n            registeredCardGate\.clear\(\)\n            resetToDefault\(reason = "Texto visivel vazio; nenhum card lido neste momento\.", record = !isPassiveDiagnosticPackage\(activePackageName\)\)\n            return\n        \}\n""",
+                """        if \(snapshotText\.isBlank\(\)\) \{\n            traceEvent\("process\.empty_text source=\$source"\)\n            if \(allowPopupCandidate\) return\n            registeredCardGate\.clear\(\)\n            resetToDefault\(reason = "Texto visivel vazio; nenhum card lido neste momento\.", record = !isPassiveDiagnosticPackage\(activePackageName\)\)\n            return\n        \}\n""".replace("\$source", "\\$" + "source"),
             )
             text = emptyTextPattern.replace(
                 text,
