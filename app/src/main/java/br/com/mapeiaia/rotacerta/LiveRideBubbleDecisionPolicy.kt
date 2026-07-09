@@ -20,12 +20,7 @@ class LiveRideBubbleDecisionPolicy {
         }
 
         if (!input.registeredCardMatched) {
-            return LiveRideBubbleDecision(
-                signal = LiveRideBubbleSignal.WaitingForRegisteredCard,
-                distanceKm = null,
-                reason = "Tela nao confirmada por card cadastrado; farol bloqueado.",
-                shouldClearActiveDecision = true,
-            )
+            return waitingForRegisteredCard()
         }
 
         if (!input.destinationIdentified) {
@@ -43,6 +38,10 @@ class LiveRideBubbleDecisionPolicy {
             reason = "Card cadastrado visivel, mas analise ainda nao retornou resultado.",
             shouldClearActiveDecision = true,
         )
+
+        if (result.reason.isUnregisteredCardReason()) {
+            return waitingForRegisteredCard()
+        }
 
         return when (result.recommendation) {
             Recommendation.GoodRide -> LiveRideBubbleDecision(
@@ -65,6 +64,18 @@ class LiveRideBubbleDecisionPolicy {
             )
         }
     }
+
+    private fun waitingForRegisteredCard(): LiveRideBubbleDecision = LiveRideBubbleDecision(
+        signal = LiveRideBubbleSignal.WaitingForRegisteredCard,
+        distanceKm = null,
+        reason = "Tela nao confirmada por card cadastrado; farol bloqueado.",
+        shouldClearActiveDecision = true,
+    )
+
+    private fun String.isUnregisteredCardReason(): Boolean =
+        contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
+            contains("cadastre o modelo para liberar o farol", ignoreCase = true) ||
+            contains("tela nao confirmada por card cadastrado", ignoreCase = true)
 }
 
 data class LiveRideBubbleDecisionInput(
