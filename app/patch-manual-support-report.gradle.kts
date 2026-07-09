@@ -16,6 +16,19 @@ val patchManualSupportReport by tasks.registering {
             return source.substring(0, start) + replacement + source.substring(end)
         }
 
+        fun replaceToolsScreen(source: String, replacement: String): String {
+            val start = source.indexOf("@Composable\nprivate fun ToolsScreen(")
+            if (start < 0) return source
+            val candidates = listOf(
+                source.indexOf("\n\n@Composable\nprivate fun HistoryScreen", start),
+                source.indexOf("\n\nprivate suspend fun buildManualSupportReport(", start),
+                source.indexOf("\n\nprivate fun clearClipboard(context: Context)", start),
+            ).filter { it > start }
+            if (candidates.isEmpty()) return source
+            val end = candidates.minOrNull() ?: return source
+            return source.substring(0, start) + replacement + source.substring(end)
+        }
+
         fun requirePatched(condition: Boolean, message: String) {
             if (!condition) throw org.gradle.api.GradleException(message)
         }
@@ -80,19 +93,18 @@ private fun ToolsScreen(
     onClearClipboard: () -> Unit,
     onCreateSupportReport: () -> Unit,
     supportReportStatus: String,
+    onSaveCurrentPlace: (() -> Unit)? = null,
+    onCreateProximityAlert: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Ferramentas", fontWeight = FontWeight.Bold)
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
-                Text(
-                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
-                    Text("Abrir coletor")
-                }
+        ExpandableCard(title = "Assistente de Viagens", initiallyExpanded = false) {
+            Text(
+                "Controle passageiros, rotas, faturamento, despesas e lucro das viagens.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                Text("Abrir assistente")
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -108,27 +120,33 @@ private fun ToolsScreen(
                 if (supportReportStatus.isNotBlank()) Text(supportReportStatus, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Area de transferencia", fontWeight = FontWeight.Bold)
-                Text(
-                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
-                    Text("Limpar area de transferencia")
+        onSaveCurrentPlace?.let { action ->
+            ExpandableCard(title = "Locais salvos", initiallyExpanded = false) {
+                Button(onClick = action, modifier = Modifier.fillMaxWidth()) {
+                    Text("Salvar local atual")
                 }
+            }
+        }
+        onCreateProximityAlert?.let { action ->
+            ExpandableCard(title = "Alertas de proximidade", initiallyExpanded = false) {
+                Button(onClick = action, modifier = Modifier.fillMaxWidth()) {
+                    Text("Criar alerta neste local")
+                }
+            }
+        }
+        ExpandableCard(title = "Area de transferencia", initiallyExpanded = false) {
+            Text(
+                "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                Text("Limpar area de transferencia")
             }
         }
     }
 }"""
 
-        text = replaceBetween(
-            source = text,
-            startMarker = "@Composable\nprivate fun ToolsScreen(",
-            endMarker = "\n\n@Composable\nprivate fun HistoryScreen",
-            replacement = toolsScreenReplacement,
-        )
+        text = replaceToolsScreen(text, toolsScreenReplacement)
 
         if ("private suspend fun buildManualSupportReport(" !in text) {
             text = text.replace(
