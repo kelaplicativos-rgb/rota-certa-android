@@ -97,7 +97,7 @@ val keepDecisionDuringTransientText by tasks.registering {
                 )
             } else {
                 val radarColor = computedRadarColor
-                traceEvent("overlay.apply color=${'$'}{radarColor.diagnosticLabel} distance=${'$'}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
+                traceEvent("overlay.apply color=${'$'}{radarColor.diagnosticLabel} distance=${'$'}{result.nearestConfiguredDistanceKm()?.toString() ?: "null"}")
                 showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
                 recordDiagnostic(
                     stage = "analysis_result",
