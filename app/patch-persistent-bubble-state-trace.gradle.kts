@@ -21,7 +21,7 @@ val persistentBubbleStateTrace by tasks.registering {
             .apply()
         DiagnosticLogStore.record(
             "bubble_state",
-            "stage=${'$'}lastBubbleStateStage color=${'$'}{currentRadarColor.diagnosticLabel} km=${'$'}{currentDistanceKm?.let { formatDiagnosticKm(it) } ?: "none"} window=${'$'}{currentWindowPackageName().orEmpty()} active=${'$'}{activePackageName.orEmpty()} textPackage=${'$'}{lastTextPackageName.orEmpty()} currentHash=${'$'}{lastSnapshotHash?.toString().orEmpty()} analyzedHash=${'$'}{lastAnalyzedHash?.toString().orEmpty()} pendingHash=${'$'}{pendingAnalysis?.snapshotHash?.toString().orEmpty()} accLen=${'$'}{lastAccessibilityText.length} ocrLen=${'$'}{lastOcrText.length} templates=${'$'}{currentCardTemplates.size} reason=${'$'}lastBubbleStateReason",
+            "stage=${'$'}lastBubbleStateStage color=${'$'}{currentRadarColor.diagnosticLabel} km=${'$'}{currentDistanceKm?.toString() ?: "none"} window=${'$'}{currentWindowPackageName().orEmpty()} active=${'$'}{activePackageName.orEmpty()} textPackage=${'$'}{lastTextPackageName.orEmpty()} currentHash=${'$'}{lastSnapshotHash?.toString().orEmpty()} analyzedHash=${'$'}{lastAnalyzedHash?.toString().orEmpty()} pendingHash=${'$'}{pendingAnalysis?.snapshotHash?.toString().orEmpty()} accLen=${'$'}{lastAccessibilityText.length} ocrLen=${'$'}{lastOcrText.length} templates=${'$'}{currentCardTemplates.size} reason=${'$'}lastBubbleStateReason",
         )
     }
 
