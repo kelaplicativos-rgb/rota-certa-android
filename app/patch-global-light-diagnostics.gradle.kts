@@ -102,7 +102,7 @@ val globalLightDiagnostics by tasks.registering {
             if ("DiagnosticLogStore.record(\"ui\"" !in text) {
                 text = text.replace(
                     "    prefs.edit().putString(SYSTEM_ACTION_DIAGNOSTIC_LOG, next.joinToString(\"\\n\")).apply()\n",
-                    "    prefs.edit().putString(SYSTEM_ACTION_DIAGNOSTIC_LOG, next.joinToString(\"\\n\")).apply()\n    DiagnosticLogStore.record(\"ui\", \"action=$${cleanAction} status=$${cleanStatus} details=$${cleanDetails}\")\n",
+                    "    prefs.edit().putString(SYSTEM_ACTION_DIAGNOSTIC_LOG, next.joinToString(\"\\n\")).apply()\n    DiagnosticLogStore.record(\"ui\", \"action=\${'$'}cleanAction status=\${'$'}cleanStatus details=\${'$'}cleanDetails\")\n",
                 )
             }
 
