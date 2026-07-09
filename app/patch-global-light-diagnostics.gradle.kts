@@ -136,7 +136,6 @@ globalLightDiagnostics.configure {
         "patchBubbleStateReportCompileFix",
         "patchVideoBubbleHardening",
         "patchFinalDiagnosticCleanup",
-        "systemWideActionDiagnostics",
     )
 }
 
