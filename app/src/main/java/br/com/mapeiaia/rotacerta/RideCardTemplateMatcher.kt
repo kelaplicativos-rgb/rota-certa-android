@@ -120,7 +120,7 @@ object RideCardTemplateMatcher {
 
     fun looksLikeLearnableRideCard(text: String): Boolean {
         val normalized = text.normalizedForCardMatch()
-        if (normalized.length < 28) return false
+        if (normalized.length < 24) return false
         if (ownAppMarkers.any { marker -> marker in normalized }) return false
         val features = featuresFor(text)
         return "card.crop.route_block" in features
@@ -184,7 +184,7 @@ object RideCardTemplateMatcher {
                 } else {
                     samePackage &&
                         cropOk &&
-                        structuralOk &&
+                        (structuralOk || "card.route.marked_stops" in match.matchedFeatures) &&
                         match.score >= MIN_SCORE &&
                         match.matchedFeatures.size >= MIN_FEATURES
                 }
@@ -206,22 +206,26 @@ object RideCardTemplateMatcher {
         val timeCount = timeRegex.findAll(text).count()
         val timeDistanceCount = timeDistanceLineRegex.findAll(text).count()
         val addressCount = addressRegex.findAll(text).count()
-        val hasMarkers = mapMarkerRegex.containsMatchIn(text)
+        val markerCount = mapMarkerRegex.findAll(text).count()
+        val hasMarkers = markerCount > 0
+        val hasTwoMarkers = markerCount >= 2
+        val endpointTextLines = routeEndpointTextLineCount(text)
         val hasRiskArea = "area de risco" in normalized
 
         if (moneyCount > 0) features += "valor em reais"
         if (distanceCount > 0) features += "distancia em km"
         if (timeCount > 0) features += "tempo de rota"
-        if (addressCount > 0) features += "endereco"
+        if (addressCount > 0 || endpointTextLines >= 2) features += "endereco"
         if (hasMarkers) features += "marcadores a/b"
 
         if (timeDistanceCount >= 1) features += "card.route.time_distance"
         if (timeDistanceCount >= 2) features += "card.route.two_time_distance"
         if (distanceCount >= 2) features += "card.route.two_distances"
         if (timeCount >= 2) features += "card.route.two_times"
-        if (addressCount >= 1) features += "card.route.address"
-        if (addressCount >= 2) features += "card.route.two_addresses"
+        if (addressCount >= 1 || endpointTextLines >= 1) features += "card.route.address"
+        if (addressCount >= 2 || endpointTextLines >= 2) features += "card.route.two_addresses"
         if (hasMarkers) features += "card.route.ab_markers"
+        if (hasTwoMarkers && endpointTextLines >= 2) features += "card.route.marked_stops"
         if (hasRiskArea) features += "card.risk_area"
 
         val hasRouteBlock = isRouteCardCrop(
@@ -231,6 +235,8 @@ object RideCardTemplateMatcher {
             distanceCount = distanceCount,
             addressCount = addressCount,
             hasMarkers = hasMarkers,
+            hasTwoMarkers = hasTwoMarkers,
+            endpointTextLines = endpointTextLines,
         )
         if (hasRouteBlock) features += "card.crop.route_block"
         return features
@@ -243,13 +249,31 @@ object RideCardTemplateMatcher {
         distanceCount: Int,
         addressCount: Int,
         hasMarkers: Boolean,
+        hasTwoMarkers: Boolean,
+        endpointTextLines: Int,
     ): Boolean {
         if (ownAppMarkers.any { marker -> marker in normalized }) return false
         if (timeDistanceCount >= 2 && addressCount >= 1) return true
         if (timeDistanceCount >= 1 && addressCount >= 2) return true
         if (hasMarkers && distanceCount >= 1 && addressCount >= 2) return true
+        if (hasTwoMarkers && endpointTextLines >= 2) return true
         if (timeCount >= 2 && distanceCount >= 2 && addressCount >= 1) return true
         return false
+    }
+
+    private fun routeEndpointTextLineCount(text: String): Int {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+        var count = 0
+        for (index in lines.indices) {
+            val line = lines[index]
+            if (line.equals("A", ignoreCase = true) || line.equals("B", ignoreCase = true)) {
+                val next = lines.getOrNull(index + 1).orEmpty()
+                if (next.length >= 5) count += 1
+            } else if (Regex("""^[AB]\s+.+""", RegexOption.IGNORE_CASE).matches(line) && line.length >= 7) {
+                count += 1
+            }
+        }
+        return count
     }
 
     private fun isBlockedLearningSourcePackage(packageName: String): Boolean =
@@ -286,13 +310,14 @@ object RideCardTemplateMatcher {
         "card.route.two_times",
         "card.route.two_addresses",
         "card.route.ab_markers",
+        "card.route.marked_stops",
         "card.risk_area",
     )
 
     private const val MIN_SCORE = 0.72
     private const val MIN_FEATURES = 4
-    private const val UNIVERSAL_MIN_SCORE = 0.90
-    private const val UNIVERSAL_MIN_FEATURES = 5
+    private const val UNIVERSAL_MIN_SCORE = 0.82
+    private const val UNIVERSAL_MIN_FEATURES = 4
 }
 
 data class RideCardTemplateMatch(
