@@ -4,6 +4,7 @@ val patchVideoBubbleHardening by tasks.registering {
     outputs.upToDateWhen { false }
 
     doLast {
+        val dollar = "$"
         val file = serviceFile.asFile
         if (!file.exists()) return@doLast
         var text = file.readText()
@@ -43,7 +44,7 @@ val patchVideoBubbleHardening by tasks.registering {
         text = text.replace(
             """        if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            traceEvent("event blocked package=$packageName reason=$reason")
+            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
             scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
             requestScreenshotAnalysis(allowPopupCandidate = true)
             if (isPassiveDiagnosticPackage(packageName)) {
@@ -56,7 +57,7 @@ val patchVideoBubbleHardening by tasks.registering {
 """,
             """        if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            traceEvent("event blocked package=$packageName reason=$reason")
+            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
             val visibleText = collectVisibleText(allowPopupCandidate = true)
             if (visibleText.isNotBlank() && looksLikeRegisteredPopupCandidate(visibleText)) {
                 processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
