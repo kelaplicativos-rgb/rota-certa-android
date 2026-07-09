@@ -25,8 +25,9 @@ val liveRideWindowEventGuard by tasks.registering {
 """    private fun currentWindowPackageName(): String? {
         val rootPackage = currentRootPackageName()
         val activePackage = normalizePackageName(activePackageName)
+        val activeIsPassive = activePackage == this.packageName || activePackage in PASSIVE_DIAGNOSTIC_PACKAGES
         return when {
-            activePackage != null && !isPassiveDiagnosticPackage(activePackage) && activePackage != rootPackage -> activePackage // active_non_passive_package_priority_0_1_82
+            activePackage != null && !activeIsPassive && activePackage != rootPackage -> activePackage // active_non_passive_package_priority_0_1_82
             rootPackage != null -> rootPackage
             else -> activePackage
         }
@@ -56,7 +57,8 @@ val liveRideWindowEventGuard by tasks.registering {
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            if (isPassiveDiagnosticPackage(packageName)) {
+            val eventPackageIsPassive = packageName == this.packageName || packageName in PASSIVE_DIAGNOSTIC_PACKAGES
+            if (eventPackageIsPassive) {
                 traceEvent("event passive ignored clean_stale_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_no_popup_scan_0_1_82
                 if (!hasActiveRegisteredDecision()) {
                     resetToIdle(reason, record = false)
