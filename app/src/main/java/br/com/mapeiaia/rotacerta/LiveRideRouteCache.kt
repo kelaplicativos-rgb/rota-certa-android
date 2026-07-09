@@ -6,8 +6,8 @@ import kotlin.math.roundToInt
 
 class LiveRideRouteCache(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
-    private val maxEntries: Int = 96,
-    private val ttlMillis: Long = 20 * 60 * 1000L,
+    private val maxEntries: Int = 512,
+    private val ttlMillis: Long = 30L * 24L * 60L * 60L * 1000L,
 ) {
     private val entries = object : LinkedHashMap<Key, Entry>(maxEntries, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Entry>?): Boolean = size > maxEntries
@@ -53,6 +53,8 @@ class LiveRideRouteCache(
         val homeRadiusMeters: Int,
         val alternativeRadiusMeters: Int,
         val avoidedKeywords: String,
+        val packageName: String = "",
+        val cardSignature: String = "",
     )
 
     data class CachedRoute(
@@ -74,7 +76,12 @@ class LiveRideRouteCache(
     )
 
     companion object {
-        fun keyFor(fields: RideFields, settings: AppSettings): Key? {
+        fun keyFor(
+            fields: RideFields,
+            settings: AppSettings,
+            packageName: String? = null,
+            cardSignature: String? = null,
+        ): Key? {
             val destination = normalizeKey(fields.destination).takeIf { it.isNotBlank() } ?: return null
             return Key(
                 destination = destination,
@@ -83,6 +90,8 @@ class LiveRideRouteCache(
                 homeRadiusMeters = (settings.homeRadiusKm * 1000).roundToInt(),
                 alternativeRadiusMeters = (settings.alternativeRadiusKm * 1000).roundToInt(),
                 avoidedKeywords = normalizeKey(settings.avoidedKeywords),
+                packageName = normalizeKey(packageName),
+                cardSignature = normalizeKey(cardSignature),
             )
         }
 
