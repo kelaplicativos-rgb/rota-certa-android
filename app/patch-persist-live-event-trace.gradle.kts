@@ -16,6 +16,21 @@ val persistLiveEventTrace by tasks.registering {
                 )
             }
 
+            val oldTraceEvent = """    private fun traceEvent(message: String) {
+        diagnosticEvents += "${'$'}{System.currentTimeMillis()} ${'$'}message"
+        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) diagnosticEvents.removeAt(0)
+    }
+"""
+            val newTraceEvent = """    private fun traceEvent(message: String) {
+        DiagnosticLogStore.record("bubble", message)
+        diagnosticEvents += "${'$'}{System.currentTimeMillis()} ${'$'}message"
+        while (diagnosticEvents.size > DIAGNOSTIC_EVENT_LIMIT) diagnosticEvents.removeAt(0)
+    }
+"""
+            if ("DiagnosticLogStore.record(\"bubble\", message)" !in text) {
+                text = text.replace(oldTraceEvent, newTraceEvent)
+            }
+
             if (text != original) file.writeText(text)
         }
 
