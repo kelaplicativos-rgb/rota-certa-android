@@ -4,10 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 
 object DiagnosticLogStore {
-    private const val MaxEvents = 500
-    private const val PersistedEvents = 240
+    private const val MaxEvents = 1_500
+    private const val PersistedEvents = 900
     private const val MaxSourceLength = 48
-    private const val MaxMessageLength = 420
+    private const val MaxMessageLength = 700
     private const val PreferencesName = "rota_certa_live_diagnostic_trace"
     private const val EventsKey = "events"
 
