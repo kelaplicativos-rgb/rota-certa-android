@@ -116,3 +116,5 @@ patchOcrAccessibilityPriority.configure {
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(patchOcrAccessibilityPriority)
 }
+
+apply(from = "patch-bubble-immediate-execution-guard.gradle.kts")
