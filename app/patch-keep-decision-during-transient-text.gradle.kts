@@ -69,7 +69,7 @@ val keepDecisionDuringTransientText by tasks.registering {
                 }
             }
 
-            if ("analysis.transient_insufficient keep_active_decision=true" !in text) {
+            if ("analysis.transient_insufficient keep_active_decision=true" !in text && "keepActiveDecisionForTransientInsufficient" !in text) {
                 val analysisStart = text.indexOf("            val radarColor = when (result.recommendation) {\n")
                 val analysisEnd = if (analysisStart >= 0) {
                     text.indexOf("\n        } catch (error: Exception) {", analysisStart)
@@ -120,7 +120,7 @@ val keepDecisionDuringTransientText by tasks.registering {
             if ("process.empty_text keep_active_decision=true" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de texto vazio transitorio.")
             }
-            if ("analysis.transient_insufficient keep_active_decision=true" !in text) {
+            if ("analysis.transient_insufficient keep_active_decision=true" !in text && "keepActiveDecisionForTransientInsufficient" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de analise insuficiente transitoria.")
             }
 
