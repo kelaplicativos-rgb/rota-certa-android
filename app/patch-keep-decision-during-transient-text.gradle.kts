@@ -8,12 +8,15 @@ val keepDecisionDuringTransientText by tasks.registering {
             var text = file.readText()
             val original = text
 
-            val snapshotPattern = Regex(
-                """        if \(snapshotHash != lastSnapshotHash\) \{\n            lastSnapshotHash = snapshotHash\n            lastAnalyzedHash = null\n            showOverlay\(RadarColor\.Default\)\n            recordDiagnostic\(\n                stage = "screen_changed",\n                reason = "[^"]*",\n                text = snapshotText,\n            \)\n        \}\n""",
-            )
-            text = snapshotPattern.replace(
-                text,
-"""        if (snapshotHash != lastSnapshotHash) {
+            if ("screen_changed.keep_active_decision" !in text) {
+                val screenStart = text.indexOf("        if (snapshotHash != lastSnapshotHash) {\n")
+                val screenEnd = if (screenStart >= 0) {
+                    text.indexOf("\n\n        val parseResult = parser.parseWithMetadata", screenStart)
+                } else {
+                    -1
+                }
+                if (screenStart >= 0 && screenEnd > screenStart) {
+                    val replacement = """        if (snapshotHash != lastSnapshotHash) {
             val keepActiveDecisionDuringTransientText = hasActiveRegisteredDecision() && shouldScanCurrentWindow()
             lastSnapshotHash = snapshotHash
             if (!keepActiveDecisionDuringTransientText) {
@@ -32,8 +35,10 @@ val keepDecisionDuringTransientText by tasks.registering {
                 text = snapshotText,
             )
         }
-""",
-            )
+"""
+                    text = text.substring(0, screenStart) + replacement + text.substring(screenEnd)
+                }
+            }
 
             if ("process.empty_text keep_active_decision=true" !in text) {
                 val emptyStart = text.indexOf("        if (snapshotText.isBlank()) {\n")
