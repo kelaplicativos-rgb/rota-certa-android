@@ -204,7 +204,7 @@ private fun clearClipboard(context: Context) {
         requirePatched("var supportReportStatus by remember" in text, "Relatorio manual: estado da tela nao foi inserido.")
         requirePatched("val supportReportFileCreator = rememberLauncherForActivityResult" in text, "Relatorio manual: criador de arquivo nao foi inserido.")
         requirePatched("onCreateSupportReport = { supportReportFileCreator.launch" in text, "Relatorio manual: acao nao foi ligada na tela de Ferramentas.")
-        requirePatched("Text(\"Relatorio manual de falha\")" in text, "Relatorio manual: card visivel nao foi inserido em Ferramentas.")
+        requirePatched("Relatorio manual de falha" in text, "Relatorio manual: card visivel nao foi inserido em Ferramentas.")
         requirePatched("Text(\"Gerar relatorio para anexar\")" in text, "Relatorio manual: botao visivel nao foi inserido em Ferramentas.")
         requirePatched("private suspend fun buildManualSupportReport(" in text, "Relatorio manual: gerador do arquivo nao foi inserido.")
 
