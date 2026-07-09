@@ -58,11 +58,19 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble|patchLiveWindowStaleOcr)" gradle-test.log || true
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|patch-|MainActivity|LiveRideAccessibilityService|Models|GradleScriptException|CompilationErrorException)" gradle-test.log || true
             echo "--- gradle-test.log tail ---"
-            tail -220 gradle-test.log
+            tail -320 gradle-test.log
           fi
           exit "$status"
+
+      - name: Upload Gradle failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-log
+          path: gradle-test.log
+          if-no-files-found: ignore
 
       - name: Build debug APK
         env:
