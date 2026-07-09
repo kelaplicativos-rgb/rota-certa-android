@@ -12,8 +12,12 @@ object RideCardTemplateMatcher {
     private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:seg|min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
+    private val timeDistanceLineRegex = Regex(
+        """\b\d{1,3}\s*(?:seg|min|minuto|minutos)\s*\(\s*\d+(?:[,.]\d+)?\s*km\s*\)""",
+        RegexOption.IGNORE_CASE,
+    )
     private val addressRegex = Regex(
-        """(?:\b(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|praça|bairro|jardim|cidade|parque|terminal|estacao|estação)\b|\b(?:r|av)\.)""",
+        """(?:\b(?:rua|avenida|rodovia|estrada|travessa|alameda|praca|praça|bairro|jardim|cidade|parque|terminal|estacao|estação|condominio|condomínio)\b|\b(?:r|av)\.)""",
         RegexOption.IGNORE_CASE,
     )
     private val mapMarkerRegex = Regex("""(?m)^\s*[ab]\b""", RegexOption.IGNORE_CASE)
@@ -38,6 +42,17 @@ object RideCardTemplateMatcher {
         "com.samsung.android.app.settings",
     )
 
+    private val ownAppMarkers = listOf(
+        "rota certa",
+        "relatorio manual",
+        "gerar relatorio",
+        "modelos de cards",
+        "configuracoes principais",
+        "backup interno",
+        "pacotes monitorados",
+        "leitura ao vivo",
+    )
+
     private val stablePhrases = listOf(
         "pedido de viagem",
         "pedidos de viagem",
@@ -58,6 +73,8 @@ object RideCardTemplateMatcher {
         "preço justo",
         "dinheiro",
         "pix",
+        "area de risco",
+        "área de risco",
     )
 
     private val uberPackagePhrases = listOf("uberx", "exclusivo", "viagem longa", "radar de viagens", "pop expresso")
@@ -69,6 +86,8 @@ object RideCardTemplateMatcher {
         "ofereça sua tarifa",
         "preco justo",
         "preço justo",
+        "area de risco",
+        "área de risco",
     )
 
     fun inferPackageName(text: String): String? {
@@ -101,33 +120,17 @@ object RideCardTemplateMatcher {
 
     fun looksLikeLearnableRideCard(text: String): Boolean {
         val normalized = text.normalizedForCardMatch()
-        if (normalized.length < 35) return false
+        if (normalized.length < 28) return false
+        if (ownAppMarkers.any { marker -> marker in normalized }) return false
         val features = featuresFor(text)
-        val structuralCount = listOf("valor em reais", "distancia em km", "endereco").count { it in features }
-        val hasRouteStructure = "adaptive.route.two_addresses" in features ||
-            "adaptive.structure.map_marked_addresses" in features ||
-            "marcadores a/b" in features
-        val hasRideAction = features.any {
-            it == "aceitar" ||
-                it == "aceitar por" ||
-                it == "selecionar" ||
-                it.startsWith("adaptive.action.")
-        }
-        val hasRidePhrase = features.any {
-            it in stablePhrases ||
-                it.startsWith("adaptive.phrase.") ||
-                it.startsWith("adaptive.payment.") ||
-                it.startsWith("adaptive.structure.")
-        }
-        val hasUsefulRouteData = structuralCount >= 2 && ("endereco" in features || hasRouteStructure)
-        return hasUsefulRouteData && (hasRideAction || hasRidePhrase || structuralCount >= 3)
+        return "card.crop.route_block" in features
     }
 
     fun createTemplate(packageName: String?, text: String, name: String? = null): RideCardTemplate {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
         val features = featuresFor(text).toList().sorted()
         val label = name?.takeIf { it.isNotBlank() }
-            ?: "Card ${appLabel(normalizedPackage)} ${features.filterNot { it.startsWith("adaptive.") }.take(2).joinToString(" + ").ifBlank { "manual" }}"
+            ?: "Card ${appLabel(normalizedPackage)} ${features.filter { it.startsWith("card.") }.take(2).joinToString(" + ").ifBlank { "recorte" }}"
         return RideCardTemplate(
             id = "card-${System.currentTimeMillis()}-${text.stableHash()}",
             name = label.take(80),
@@ -141,6 +144,7 @@ object RideCardTemplateMatcher {
     fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch? {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)
         val liveFeatures = deterministicFeaturesFor(text)
+        if ("card.crop.route_block" !in liveFeatures) return null
         val candidates = templates
             .asSequence()
             .filter { template ->
@@ -167,18 +171,22 @@ object RideCardTemplateMatcher {
                 val required = match.template.requiredFeatures
                     .filterNot { it.startsWith("adaptive.") }
                     .toSet()
+                val requiredCardFeatures = required.filter { it.startsWith("card.") }.toSet()
                 val requiredStructuralFeatures = structuralFeatures.intersect(required)
                 val structuralOk = requiredStructuralFeatures.all { it in match.matchedFeatures }
+                val cropOk = "card.crop.route_block" in match.matchedFeatures &&
+                    requiredCardFeatures.filter { it in strictCardFeatures }.all { it in match.matchedFeatures }
                 if (universalPackage) {
                     looksLikeLearnableRideCard(text) &&
+                        cropOk &&
                         match.score >= UNIVERSAL_MIN_SCORE &&
-                        match.matchedFeatures.size >= required.size.coerceAtMost(UNIVERSAL_MIN_FEATURES).coerceAtLeast(MIN_FEATURES) &&
-                        structuralOk
+                        match.matchedFeatures.size >= required.size.coerceAtMost(UNIVERSAL_MIN_FEATURES).coerceAtLeast(MIN_FEATURES)
                 } else {
                     samePackage &&
+                        cropOk &&
+                        structuralOk &&
                         match.score >= MIN_SCORE &&
-                        match.matchedFeatures.size >= MIN_FEATURES &&
-                        structuralOk
+                        match.matchedFeatures.size >= MIN_FEATURES
                 }
             }
             .maxByOrNull { it.score }
@@ -194,12 +202,55 @@ object RideCardTemplateMatcher {
             val normalizedPhrase = phrase.normalizedForCardMatch()
             if (normalized.contains(normalizedPhrase)) features += normalizedPhrase
         }
-        if (moneyRegex.containsMatchIn(text)) features += "valor em reais"
-        if (distanceRegex.containsMatchIn(text)) features += "distancia em km"
-        if (timeRegex.containsMatchIn(text)) features += "tempo de rota"
-        if (addressRegex.containsMatchIn(text)) features += "endereco"
-        if (mapMarkerRegex.containsMatchIn(text)) features += "marcadores a/b"
+        val moneyCount = moneyRegex.findAll(text).count()
+        val distanceCount = distanceRegex.findAll(text).count()
+        val timeCount = timeRegex.findAll(text).count()
+        val timeDistanceCount = timeDistanceLineRegex.findAll(text).count()
+        val addressCount = addressRegex.findAll(text).count()
+        val hasMarkers = mapMarkerRegex.containsMatchIn(text)
+        val hasRiskArea = "area de risco" in normalized
+
+        if (moneyCount > 0) features += "valor em reais"
+        if (distanceCount > 0) features += "distancia em km"
+        if (timeCount > 0) features += "tempo de rota"
+        if (addressCount > 0) features += "endereco"
+        if (hasMarkers) features += "marcadores a/b"
+
+        if (timeDistanceCount >= 1) features += "card.route.time_distance"
+        if (timeDistanceCount >= 2) features += "card.route.two_time_distance"
+        if (distanceCount >= 2) features += "card.route.two_distances"
+        if (timeCount >= 2) features += "card.route.two_times"
+        if (addressCount >= 1) features += "card.route.address"
+        if (addressCount >= 2) features += "card.route.two_addresses"
+        if (hasMarkers) features += "card.route.ab_markers"
+        if (hasRiskArea) features += "card.risk_area"
+
+        val hasRouteBlock = isRouteCardCrop(
+            normalized = normalized,
+            timeDistanceCount = timeDistanceCount,
+            timeCount = timeCount,
+            distanceCount = distanceCount,
+            addressCount = addressCount,
+            hasMarkers = hasMarkers,
+        )
+        if (hasRouteBlock) features += "card.crop.route_block"
         return features
+    }
+
+    private fun isRouteCardCrop(
+        normalized: String,
+        timeDistanceCount: Int,
+        timeCount: Int,
+        distanceCount: Int,
+        addressCount: Int,
+        hasMarkers: Boolean,
+    ): Boolean {
+        if (ownAppMarkers.any { marker -> marker in normalized }) return false
+        if (timeDistanceCount >= 2 && addressCount >= 1) return true
+        if (timeDistanceCount >= 1 && addressCount >= 2) return true
+        if (hasMarkers && distanceCount >= 1 && addressCount >= 2) return true
+        if (timeCount >= 2 && distanceCount >= 2 && addressCount >= 1) return true
+        return false
     }
 
     private fun isBlockedLearningSourcePackage(packageName: String): Boolean =
@@ -228,12 +279,21 @@ object RideCardTemplateMatcher {
             .replace(Regex("""\s+"""), " ")
             .trim()
 
-    private val structuralFeatures = setOf("valor em reais", "distancia em km", "endereco")
+    private val structuralFeatures = setOf("distancia em km", "tempo de rota", "endereco")
+    private val strictCardFeatures = setOf(
+        "card.crop.route_block",
+        "card.route.two_time_distance",
+        "card.route.two_distances",
+        "card.route.two_times",
+        "card.route.two_addresses",
+        "card.route.ab_markers",
+        "card.risk_area",
+    )
 
-    private const val MIN_SCORE = 0.75
-    private const val MIN_FEATURES = 3
-    private const val UNIVERSAL_MIN_SCORE = 0.95
-    private const val UNIVERSAL_MIN_FEATURES = 4
+    private const val MIN_SCORE = 0.72
+    private const val MIN_FEATURES = 4
+    private const val UNIVERSAL_MIN_SCORE = 0.90
+    private const val UNIVERSAL_MIN_FEATURES = 5
 }
 
 data class RideCardTemplateMatch(
