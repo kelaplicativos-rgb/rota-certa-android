@@ -235,21 +235,6 @@ val patchRealtimeBubbleEngine by tasks.registering {
     }
 }
 
-patchRealtimeBubbleEngine.configure {
-    mustRunAfter(
-        "patchLiveWindowStaleOcr",
-        "patchLiveAnalysisSupersede",
-        "patchInstantCardDecisionCache",
-        "bubbleRouteDistanceOnly",
-        "preciseBubbleRouteKm",
-        "stableBubbleNoFlicker",
-        "clearBubbleOnScreenChange",
-        "cardLifecycleStrictOverlay",
-        "finalKmAndStrictRideCard",
-        "patchStrictBubbleLifecycle",
-    )
-}
-
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(patchRealtimeBubbleEngine)
 }
