@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 63
+val appVersionCode = ciVersionCode ?: 64
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.61"
+        versionName = "0.1.62"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -275,3 +275,4 @@ apply(from = "patch-bubble-persistent-actions-and-hitbox.gradle.kts")
 apply(from = "patch-fast-visual-gallery-scanner.gradle.kts")
 apply(from = "patch-bubble-diagnostic-size-and-lifecycle-fix.gradle.kts")
 apply(from = "patch-realtime-bubble-engine.gradle.kts")
+apply(from = "patch-ocr-accessibility-priority.gradle.kts")
