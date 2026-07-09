@@ -41,6 +41,35 @@ val patchVideoBubbleHardening by tasks.registering {
         text = removeBlockContaining(text, "source == TextSource.Ocr && hasActiveRegisteredDecision()")
 
         text = text.replace(
+            """        if (!shouldScanPackage(packageName)) {
+            val reason = scanBlockReason(packageName)
+            traceEvent("event blocked package=$packageName reason=$reason")
+            scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
+            requestScreenshotAnalysis(allowPopupCandidate = true)
+            if (isPassiveDiagnosticPackage(packageName)) {
+                resetToDefaultForNonRideScreen(reason)
+                return
+            }
+            resetToIdle(reason = reason, record = true)
+            return
+        }
+""",
+            """        if (!shouldScanPackage(packageName)) {
+            val reason = scanBlockReason(packageName)
+            traceEvent("event blocked package=$packageName reason=$reason")
+            val visibleText = collectVisibleText(allowPopupCandidate = true)
+            if (visibleText.isNotBlank() && looksLikeRegisteredPopupCandidate(visibleText)) {
+                processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
+                requestScreenshotAnalysis(allowPopupCandidate = true)
+            } else {
+                resetToIdle(reason = reason, record = false)
+            }
+            return
+        }
+""",
+        )
+
+        text = text.replace(
             """        val snapshotText = if (allowPopupCandidate) {
             text.trim()
         } else {
