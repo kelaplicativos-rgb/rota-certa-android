@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 75
+val appVersionCode = ciVersionCode ?: 76
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.73"
+        versionName = "0.1.74"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
