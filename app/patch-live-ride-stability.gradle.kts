@@ -21,9 +21,20 @@ val patchLiveRideOverlayStability by tasks.registering {
 """    private fun resetToDefault(
 """,
 """    private fun hasActiveRegisteredDecision(): Boolean =
-        currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
+        (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+            registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)
 
     private fun resetToDefault(
+""",
+            )
+        } else {
+            text = text.replace(
+"""    private fun hasActiveRegisteredDecision(): Boolean =
+        currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
+""",
+"""    private fun hasActiveRegisteredDecision(): Boolean =
+        (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+            registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)
 """,
             )
         }
@@ -67,6 +78,10 @@ val patchLiveRideOverlayStability by tasks.registering {
                 "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n",
                 "        const val DIAGNOSTIC_EVENT_LIMIT = 60\n        const val DECISION_OVERLAY_STICKY_MS = 3_500L\n",
             )
+        }
+
+        if ("registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)" !in text) {
+            throw org.gradle.api.GradleException("Sticky da bolinha precisa depender de card cadastrado confirmado.")
         }
 
         if (text != original) {
