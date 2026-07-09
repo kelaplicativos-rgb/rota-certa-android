@@ -17,7 +17,25 @@ val liveRideWindowEventGuard by tasks.registering {
                 "",
             )
 
-            if ("event self ignored monitored_root" !in text) {
+            if ("active_non_passive_package_priority_0_1_82" !in text) {
+                text = text.replace(
+"""    private fun currentWindowPackageName(): String? =
+        currentRootPackageName() ?: activePackageName
+""",
+"""    private fun currentWindowPackageName(): String? {
+        val rootPackage = currentRootPackageName()
+        val activePackage = normalizePackageName(activePackageName)
+        return when {
+            activePackage != null && !isPassiveDiagnosticPackage(activePackage) && activePackage != rootPackage -> activePackage // active_non_passive_package_priority_0_1_82
+            rootPackage != null -> rootPackage
+            else -> activePackage
+        }
+    }
+""",
+                )
+            }
+
+            if ("event passive ignored clean_stale_root" !in text) {
                 text = text.replace(
 """        if (packageName == this.packageName) {
             rememberBubbleReason("self_app", "Rota Certa em primeiro plano; bolinha limpa e leitura de corrida pausada.")
@@ -38,6 +56,13 @@ val liveRideWindowEventGuard by tasks.registering {
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
+            if (isPassiveDiagnosticPackage(packageName)) {
+                traceEvent("event passive ignored clean_stale_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_no_popup_scan_0_1_82
+                if (!hasActiveRegisteredDecision()) {
+                    resetToIdle(reason, record = false)
+                }
+                return
+            }
             if (shouldScanPackage(currentRootPackageName())) {
                 traceEvent("event blocked ignored monitored_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason")
                 return
@@ -80,6 +105,13 @@ val liveRideWindowEventGuard by tasks.registering {
                     "if (shouldScanCurrentWindow() && (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red))",
                     "if (shouldScanCurrentWindow() && hasActiveRegisteredDecision())",
                 )
+            }
+
+            if ("passive_event_no_popup_scan_0_1_82" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui bloquear leitura/print em eventos passivos.")
+            }
+            if ("active_non_passive_package_priority_0_1_82" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui priorizar pacote ativo real contra raiz obsoleta.")
             }
 
             if (text != original) file.writeText(text)
