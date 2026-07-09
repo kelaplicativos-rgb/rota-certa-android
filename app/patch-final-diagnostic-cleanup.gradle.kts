@@ -1,6 +1,7 @@
 val patchFinalDiagnosticCleanup by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
-    inputs.file(mainFile)
+    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    inputs.files(mainFile, serviceFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -195,6 +196,35 @@ private fun clearClipboard(context: Context) {
         }
 
         if (text != original) file.writeText(text)
+
+        val service = serviceFile.asFile
+        if (service.exists()) {
+            var serviceText = service.readText()
+            val originalService = serviceText
+
+            serviceText = serviceText.replace(
+                "            newView.setOnClickListener { toggleActionMenu() }",
+                "            newView.setOnClickListener { openApp() }",
+            )
+            serviceText = serviceText.replace(
+                Regex("""    private fun openApp\([^)]*\) \{[\s\S]*?\n    private fun openSavedPlaceEditor\("""),
+                """    @Suppress("UNUSED_PARAMETER")
+    private fun openApp(tab: String? = null, expander: String? = null) {
+        hideActionMenu()
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (tab != null) intent.putExtra(EXTRA_OPEN_TAB, tab)
+        runCatching { startActivity(intent) }
+            .onFailure {
+                toast("Nao consegui abrir o Rota Certa agora.")
+            }
+    }
+
+    private fun openSavedPlaceEditor(""",
+            )
+
+            if (serviceText != originalService) service.writeText(serviceText)
+        }
     }
 }
 
