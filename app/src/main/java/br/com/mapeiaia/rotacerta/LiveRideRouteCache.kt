@@ -1,0 +1,98 @@
+package br.com.mapeiaia.rotacerta
+
+import java.text.Normalizer
+import java.util.Locale
+import kotlin.math.roundToInt
+
+class LiveRideRouteCache(
+    private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val maxEntries: Int = 96,
+    private val ttlMillis: Long = 20 * 60 * 1000L,
+) {
+    private val entries = object : LinkedHashMap<Key, Entry>(maxEntries, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Entry>?): Boolean = size > maxEntries
+    }
+
+    @Synchronized
+    fun get(key: Key?): CachedRoute? {
+        key ?: return null
+        val entry = entries[key] ?: return null
+        val age = nowMillis() - entry.createdAtMillis
+        if (age > ttlMillis) {
+            entries.remove(key)
+            return null
+        }
+        return CachedRoute(
+            destinationCoordinate = entry.destinationCoordinate,
+            homeCoordinate = entry.homeCoordinate,
+            alternativeCoordinate = entry.alternativeCoordinate,
+            homeDistanceKm = entry.homeDistanceKm,
+            alternativeDistanceKm = entry.alternativeDistanceKm,
+            ageMillis = age,
+        )
+    }
+
+    @Synchronized
+    fun put(key: Key?, route: CachedRoute) {
+        key ?: return
+        if (route.destinationCoordinate == null) return
+        entries[key] = Entry(
+            destinationCoordinate = route.destinationCoordinate,
+            homeCoordinate = route.homeCoordinate,
+            alternativeCoordinate = route.alternativeCoordinate,
+            homeDistanceKm = route.homeDistanceKm,
+            alternativeDistanceKm = route.alternativeDistanceKm,
+            createdAtMillis = nowMillis(),
+        )
+    }
+
+    data class Key(
+        val destination: String,
+        val homeCoordinate: String,
+        val alternativeCoordinate: String,
+        val homeRadiusMeters: Int,
+        val alternativeRadiusMeters: Int,
+        val avoidedKeywords: String,
+    )
+
+    data class CachedRoute(
+        val destinationCoordinate: Coordinate?,
+        val homeCoordinate: Coordinate?,
+        val alternativeCoordinate: Coordinate?,
+        val homeDistanceKm: Double?,
+        val alternativeDistanceKm: Double?,
+        val ageMillis: Long = 0L,
+    )
+
+    private data class Entry(
+        val destinationCoordinate: Coordinate?,
+        val homeCoordinate: Coordinate?,
+        val alternativeCoordinate: Coordinate?,
+        val homeDistanceKm: Double?,
+        val alternativeDistanceKm: Double?,
+        val createdAtMillis: Long,
+    )
+
+    companion object {
+        fun keyFor(fields: RideFields, settings: AppSettings): Key? {
+            val destination = normalizeKey(fields.destination).takeIf { it.isNotBlank() } ?: return null
+            return Key(
+                destination = destination,
+                homeCoordinate = settings.homeCoordinate.cachePart(),
+                alternativeCoordinate = settings.alternativeCoordinate.cachePart(),
+                homeRadiusMeters = (settings.homeRadiusKm * 1000).roundToInt(),
+                alternativeRadiusMeters = (settings.alternativeRadiusKm * 1000).roundToInt(),
+                avoidedKeywords = normalizeKey(settings.avoidedKeywords),
+            )
+        }
+
+        private fun Coordinate?.cachePart(): String =
+            this?.let { "%.5f,%.5f".format(Locale.US, it.latitude, it.longitude) }.orEmpty()
+
+        private fun normalizeKey(value: String?): String =
+            Normalizer.normalize(value.orEmpty().lowercase(Locale.ROOT), Normalizer.Form.NFD)
+                .replace(Regex("[^a-z0-9,. -]"), "")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+    }
+}
