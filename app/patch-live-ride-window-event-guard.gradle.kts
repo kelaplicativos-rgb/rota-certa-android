@@ -63,7 +63,7 @@ val liveRideWindowEventGuard by tasks.registering {
         reason: String,
         record: Boolean = false,
     ) {
-        if (shouldScanCurrentWindow() && (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red)) {
+        if (shouldScanCurrentWindow() && hasActiveRegisteredDecision()) {
             traceEvent("resetToIdle guarded active_ride_window reason=${'$'}reason")
             return
         }
@@ -74,6 +74,11 @@ val liveRideWindowEventGuard by tasks.registering {
         rememberBubbleReason("idle", reason)
         showOverlay(RadarColor.Idle)
 """,
+                )
+            } else {
+                text = text.replace(
+                    "if (shouldScanCurrentWindow() && (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red))",
+                    "if (shouldScanCurrentWindow() && hasActiveRegisteredDecision())",
                 )
             }
 
