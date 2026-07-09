@@ -1,0 +1,68 @@
+val passiveEventCompileFix by tasks.registering {
+    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    inputs.file(serviceFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val file = serviceFile.asFile
+        if (!file.exists()) return@doLast
+        var text = file.readText()
+        val original = text
+
+        val passiveListStart = "            val passiveEventPackages = setOf(\n"
+        val passiveDecisionLine = "            val eventPackageIsPassive = packageName == this.packageName || packageName in passiveEventPackages\n"
+        val passiveIfLine = "            if (eventPackageIsPassive) {"
+        val inlineIfLine = "            if (packageName == this.packageName || packageName in setOf(\n" +
+            "                \"android\",\n" +
+            "                \"com.android.launcher\",\n" +
+            "                \"com.android.settings\",\n" +
+            "                \"com.android.systemui\",\n" +
+            "                \"com.google.android.apps.maps\",\n" +
+            "                \"com.google.android.apps.nbu.files\",\n" +
+            "                \"com.google.android.inputmethod.latin\",\n" +
+            "                \"com.google.android.packageinstaller\",\n" +
+            "                \"com.openai.chatgpt\",\n" +
+            "                \"com.sec.android.app.launcher\",\n" +
+            "                \"com.samsung.android.app.settings\",\n" +
+            "                \"com.samsung.android.honeyboard\",\n" +
+            "                \"com.waze\",\n" +
+            "            )) {"
+
+        while (true) {
+            val listStart = text.indexOf(passiveListStart)
+            if (listStart < 0) break
+            val decisionStart = text.indexOf(passiveDecisionLine, listStart)
+            if (decisionStart < 0) break
+            val afterDecision = decisionStart + passiveDecisionLine.length
+            text = text.removeRange(listStart, afterDecision)
+            text = text.replace(passiveIfLine, inlineIfLine)
+        }
+
+        if ("val eventPackageIsPassive" in text) {
+            throw org.gradle.api.GradleException("Variavel duplicada eventPackageIsPassive ainda existe no servico.")
+        }
+        if ("passive_event_compile_fix_0_1_82" !in text) {
+            text = text.replace(
+                "// passive_event_no_popup_scan_0_1_82",
+                "// passive_event_no_popup_scan_0_1_82 passive_event_compile_fix_0_1_82",
+            )
+        }
+
+        if (text != original) file.writeText(text)
+    }
+}
+
+passiveEventCompileFix.configure {
+    mustRunAfter(
+        "liveRideWindowEventGuard",
+        "keepDecisionDuringTransientText",
+        "hardClearUnregisteredCardDecision",
+        "modularLiveBubbleCore",
+        "noStickyDecisionCleanup",
+        "patchBubbleRenderStability",
+    )
+}
+
+tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
+    dependsOn(passiveEventCompileFix)
+}
