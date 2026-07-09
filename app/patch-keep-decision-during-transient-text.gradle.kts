@@ -35,12 +35,15 @@ val keepDecisionDuringTransientText by tasks.registering {
 """,
             )
 
-            val emptyTextPattern = Regex(
-                """        if \(snapshotText\.isBlank\(\)\) \{\n            traceEvent\("process\.empty_text source=\$source"\)\n            if \(allowPopupCandidate\) return\n            registeredCardGate\.clear\(\)\n            resetToDefault\(reason = "Texto visivel vazio; nenhum card lido neste momento\.", record = !isPassiveDiagnosticPackage\(activePackageName\)\)\n            return\n        \}\n""".replace("\$source", "\\$" + "source"),
-            )
-            text = emptyTextPattern.replace(
-                text,
-"""        if (snapshotText.isBlank()) {
+            if ("process.empty_text keep_active_decision=true" !in text) {
+                val emptyStart = text.indexOf("        if (snapshotText.isBlank()) {\n")
+                val emptyEnd = if (emptyStart >= 0) {
+                    text.indexOf("\n\n        val snapshotHash = snapshotText.snapshotHash()", emptyStart)
+                } else {
+                    -1
+                }
+                if (emptyStart >= 0 && emptyEnd > emptyStart) {
+                    val replacement = """        if (snapshotText.isBlank()) {
             traceEvent("process.empty_text source=${'$'}source")
             if (allowPopupCandidate) return
             if (hasActiveRegisteredDecision() && shouldScanCurrentWindow()) {
@@ -56,8 +59,10 @@ val keepDecisionDuringTransientText by tasks.registering {
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
             return
         }
-""",
-            )
+"""
+                    text = text.substring(0, emptyStart) + replacement + text.substring(emptyEnd)
+                }
+            }
 
             if ("screen_changed.keep_active_decision" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de decisao em screen_changed.")
