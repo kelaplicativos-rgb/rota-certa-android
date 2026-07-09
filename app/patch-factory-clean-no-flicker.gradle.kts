@@ -5,6 +5,7 @@ val patchFactoryCleanNoFlicker by tasks.registering {
     outputs.upToDateWhen { false }
 
     doLast {
+        val dollar = "$"
         val main = mainFile.asFile
         if (main.exists()) {
             var text = main.readText()
@@ -31,13 +32,13 @@ val patchFactoryCleanNoFlicker by tasks.registering {
 """,
             )
             text = text.replace(
-                """                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
+                """                failures == 0 -> "Leitura concluida: ${dollar}imported modelo(s) importado(s)."
                 imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
-                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
+                else -> "Leitura concluida: ${dollar}imported modelo(s) importado(s), ${dollar}failures print(s) sem leitura."
 """,
-                """                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
+                """                failures == 0 -> "Leitura concluida: ${dollar}imported modelo(s) importado(s)."
                 imported == 0 -> "Nenhum modelo importado. Use recorte do bloco da corrida com tempo, km e enderecos."
-                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
+                else -> "Leitura concluida: ${dollar}imported modelo(s) importado(s), ${dollar}failures print(s) sem leitura."
 """,
             )
 
@@ -50,13 +51,13 @@ val patchFactoryCleanNoFlicker by tasks.registering {
                 text = text.replace(
                     """    LaunchedEffect(cardTemplates.size) {
         if (!templateStatus.startsWith("Lendo ")) {
-            templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
+            templateStatus = "Modelos cadastrados: ${dollar}{cardTemplates.size}"
         }
     }
 """,
                     """    LaunchedEffect(cardTemplates.size) {
         if (!templateStatus.startsWith("Lendo ")) {
-            templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
+            templateStatus = "Modelos cadastrados: ${dollar}{cardTemplates.size}"
         }
     }
 
