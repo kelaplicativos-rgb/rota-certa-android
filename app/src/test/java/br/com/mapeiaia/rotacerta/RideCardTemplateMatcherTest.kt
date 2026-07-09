@@ -30,6 +30,23 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
+    fun acceptsMarkedAddressCropWithoutTimeOrKm() {
+        val crop = """
+            A
+            Delboni | Lapa (Lapa)
+            B
+            Rua Bernardino Vergueiro (Penha de Franca, Sao Paulo - State of Sao Paulo)
+        """.trimIndent()
+
+        assertTrue(RideCardTemplateMatcher.looksLikeLearnableRideCard(crop))
+        val template = RideCardTemplateMatcher.createTemplate(null, crop)
+        val match = RideCardTemplateMatcher.match(crop, null, listOf(template))
+
+        assertNotNull(match)
+        assertTrue(template.requiredFeatures.contains("card.route.marked_stops"))
+    }
+
+    @Test
     fun savedTemplateDoesNotContainAdaptiveFeatures() {
         val text = """
             5 min (1.5 km)
