@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 77
+val appVersionCode = ciVersionCode ?: 78
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.75"
+        versionName = "0.1.76"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -125,7 +125,8 @@ val patchLiveRideAccessibilityService by tasks.registering {
 """    private fun resetToDefault(
 """,
 """    private fun hasActiveRegisteredDecision(): Boolean =
-        currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
+        (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+            registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)
 
     private fun resetToDefault(
 """,
