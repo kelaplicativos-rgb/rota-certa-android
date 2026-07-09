@@ -69,15 +69,10 @@ val patchManualSupportReport by tasks.registering {
             )
         }
 
-        if ("Text(\"Relatorio manual de falha\")" !in text) {
+        if ("Text(\"Gerar relatorio para anexar\")" !in text) {
             text = text.replace(
-                """        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Area de transferencia", fontWeight = FontWeight.Bold)
-""",
-                """        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Relatorio manual de falha", fontWeight = FontWeight.Bold)
+                "                Text(\"Area de transferencia\", fontWeight = FontWeight.Bold)\n",
+                """                Text("Relatorio manual de falha", fontWeight = FontWeight.Bold)
                 Text(
                     "Gera um arquivo leve somente quando voce tocar aqui. A bolinha continua sem logs automaticos.",
                     style = MaterialTheme.typography.bodySmall,
@@ -86,10 +81,7 @@ val patchManualSupportReport by tasks.registering {
                     Text("Gerar relatorio para anexar")
                 }
                 if (supportReportStatus.isNotBlank()) Text(supportReportStatus, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(10.dp))
                 Text("Area de transferencia", fontWeight = FontWeight.Bold)
 """,
             )
