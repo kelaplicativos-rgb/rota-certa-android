@@ -10,7 +10,7 @@ on:
       - 'codex/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -151,3 +151,37 @@ jobs:
           name: rota-certa-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish stable GitHub Release APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/codex/pr5-stable-bubble-combined'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          stable_apk="rota-certa-stable-debug.apk"
+          stable_sha="rota-certa-stable-debug.apk.sha256"
+          tag="rota-certa-stable-debug"
+          version_name="$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
+          version_code="$((1000 + GITHUB_RUN_NUMBER))"
+          cp "$apk" "$stable_apk"
+          sha256sum "$stable_apk" > "$stable_sha"
+          notes_file="stable-release-notes.md"
+          {
+            echo "Rota Certa Stable Debug APK"
+            echo
+            echo "Version: ${version_name}"
+            echo "VersionCode: ${version_code}"
+            echo "Run: ${GITHUB_RUN_NUMBER}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo
+            echo "Stable download asset: ${stable_apk}"
+            echo
+            cat apk-validation.txt
+          } > "$notes_file"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --target "$GITHUB_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+          fi
+          gh release upload "$tag" "$stable_apk" "$stable_sha" --clobber
