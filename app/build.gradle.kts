@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 70
+val appVersionCode = ciVersionCode ?: 71
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.68"
+        versionName = "0.1.69"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -119,85 +119,6 @@ val patchLiveRideAccessibilityService by tasks.registering {
         val file = serviceFile.asFile
         var text = file.readText()
         val original = text
-        val dollar = "$"
-
-        text = text.replace(
-"""        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
-            traceEvent("classifier.ignore=true reason=${dollar}reason hash=${dollar}snapshotHash")
-            if (allowPopupCandidate) return
-            lastSnapshotHash = snapshotHash
-            lastAnalyzedHash = null
-""",
-"""        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->
-            traceEvent("classifier.ignore=true reason=${dollar}reason hash=${dollar}snapshotHash")
-            if (allowPopupCandidate) return
-            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
-                traceEvent("ocr.ignore_reason keep_decision=true reason=${dollar}reason")
-                return
-            }
-            lastSnapshotHash = snapshotHash
-            lastAnalyzedHash = null
-""",
-        )
-
-        text = text.replace(
-"""        if (snapshotHash != lastSnapshotHash) {
-            lastSnapshotHash = snapshotHash
-            lastAnalyzedHash = null
-            showOverlay(RadarColor.Default)
-            recordDiagnostic(
-                stage = "screen_changed",
-                reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
-                text = snapshotText,
-            )
-        }
-""",
-"""        if (snapshotHash != lastSnapshotHash) {
-            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
-                traceEvent("ocr.screen_changed keep_decision=true hash=${dollar}snapshotHash")
-            } else {
-                lastSnapshotHash = snapshotHash
-                lastAnalyzedHash = null
-                showOverlay(RadarColor.Default)
-                recordDiagnostic(
-                    stage = "screen_changed",
-                    reason = "A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.",
-                    text = snapshotText,
-                )
-            }
-        }
-""",
-        )
-
-        text = text.replace(
-"""            traceEvent("classifier.ride_offer=false reason=${dollar}reason")
-            if (allowPopupCandidate) return
-            registeredCardGate.clear()
-""",
-"""            traceEvent("classifier.ride_offer=false reason=${dollar}reason")
-            if (allowPopupCandidate) return
-            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
-                traceEvent("ocr.ride_offer_false keep_decision=true reason=${dollar}reason")
-                return
-            }
-            registeredCardGate.clear()
-""",
-        )
-
-        text = text.replace(
-"""            traceEvent("card_model.missing package=${dollar}{packageName.orEmpty()} templates=${dollar}{currentCardTemplates.size}")
-            if (allowPopupCandidate) return
-            registeredCardGate.clear()
-""",
-"""            traceEvent("card_model.missing package=${dollar}{packageName.orEmpty()} templates=${dollar}{currentCardTemplates.size}")
-            if (allowPopupCandidate) return
-            if (source == TextSource.Ocr && hasActiveRegisteredDecision()) {
-                traceEvent("ocr.card_model_missing keep_decision=true templates=${dollar}{currentCardTemplates.size}")
-                return
-            }
-            registeredCardGate.clear()
-""",
-        )
 
         if ("private fun hasActiveRegisteredDecision()" !in text) {
             text = text.replace(
@@ -241,3 +162,4 @@ apply(from = "patch-fast-popup-analysis.gradle.kts")
 apply(from = "patch-remove-live-diagnostics.gradle.kts")
 apply(from = "patch-manual-support-report.gradle.kts")
 apply(from = "patch-final-diagnostic-cleanup.gradle.kts")
+apply(from = "patch-video-bubble-hardening.gradle.kts")
