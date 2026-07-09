@@ -14,9 +14,85 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             return source.substring(0, start) + replacement + source.substring(next)
         }
 
+        fun stripFunctionCalls(source: String, functionName: String): String {
+            var text = source
+            var searchFrom = 0
+            val callNeedle = "$functionName("
+            while (true) {
+                val callStart = text.indexOf(callNeedle, searchFrom)
+                if (callStart < 0) break
+                val prefix = text.substring(maxOf(0, callStart - 24), callStart)
+                if (prefix.contains("fun ")) {
+                    searchFrom = callStart + callNeedle.length
+                    continue
+                }
+
+                var index = callStart + functionName.length
+                var depth = 0
+                var inString = false
+                var inTripleString = false
+                var escaped = false
+                while (index < text.length) {
+                    if (inTripleString) {
+                        if (text.startsWith("\"\"\"", index)) {
+                            inTripleString = false
+                            index += 3
+                        } else {
+                            index += 1
+                        }
+                        continue
+                    }
+                    if (inString) {
+                        val char = text[index]
+                        if (escaped) {
+                            escaped = false
+                        } else if (char == '\\') {
+                            escaped = true
+                        } else if (char == '"') {
+                            inString = false
+                        }
+                        index += 1
+                        continue
+                    }
+                    if (text.startsWith("\"\"\"", index)) {
+                        inTripleString = true
+                        index += 3
+                        continue
+                    }
+                    val char = text[index]
+                    if (char == '"') {
+                        inString = true
+                    } else if (char == '(') {
+                        depth += 1
+                    } else if (char == ')') {
+                        depth -= 1
+                        if (depth == 0) {
+                            index += 1
+                            break
+                        }
+                    }
+                    index += 1
+                }
+                if (depth != 0) {
+                    searchFrom = callStart + callNeedle.length
+                    continue
+                }
+
+                var end = index
+                while (end < text.length && text[end].isWhitespace() && text[end] != '\n') end += 1
+                if (end < text.length && text[end] == '\n') end += 1
+                text = text.substring(0, callStart) + "Unit\n" + text.substring(end)
+                searchFrom = callStart + 5
+            }
+            return text
+        }
+
         serviceFile.asFile.takeIf { it.exists() }?.let { file ->
             var text = file.readText()
             val original = text
+
+            text = stripFunctionCalls(text, "traceEvent")
+            text = stripFunctionCalls(text, "recordDiagnostic")
 
             text = replaceBetween(
                 source = text,
