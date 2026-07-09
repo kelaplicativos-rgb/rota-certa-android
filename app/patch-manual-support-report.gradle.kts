@@ -110,6 +110,7 @@ private fun ToolsScreen(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Ferramentas", fontWeight = FontWeight.Bold)
+        // ToolsScreenResourceGroups
         LiveReadingCard(
             liveEnabled = liveEnabled,
             onOpenAccessibilitySettings = onOpenAccessibilitySettings,
@@ -244,37 +245,6 @@ private fun ToolsScreen(
         appendLine(backupJson)
     }
 }
-
-private fun clearClipboard(context: Context) {
-""",
-            )
-        }
-
-        if ("private fun DiagnosticScreen(" !in text && "DiagnosticScreen(" in text) {
-            text = text.replace(
-                """private fun clearClipboard(context: Context) {
-""",
-                """@Composable
-private fun DiagnosticScreen(
-    diagnostic: LiveDiagnostic? = null,
-    cardTemplates: List<RideCardTemplate> = emptyList(),
-    history: List<AnalysisResult> = emptyList(),
-    onRegisterRideCard: (String?, String) -> Unit = { _, _ -> },
-) = Unit
-
-private fun clearClipboard(context: Context) {
-""",
-            )
-        }
-
-        if ("private fun HistoryDiagnosticCard(" !in text && "HistoryDiagnosticCard(" in text) {
-            text = text.replace(
-                """private fun clearClipboard(context: Context) {
-""",
-                """@Composable
-private fun HistoryDiagnosticCard(
-    history: List<AnalysisResult> = emptyList(),
-) = Unit
 
 private fun clearClipboard(context: Context) {
 """,
