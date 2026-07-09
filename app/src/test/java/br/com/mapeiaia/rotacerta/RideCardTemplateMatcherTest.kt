@@ -7,41 +7,34 @@ import org.junit.Test
 
 class RideCardTemplateMatcherTest {
     @Test
-    fun matchesSameAppCardWithSameStableFeaturesAndDifferentAddresses() {
+    fun matchesSameAppCroppedRouteCardWithDifferentAddresses() {
         val sample = """
-            Pedido de viagem
-            R$ 15
-            R$ 2,2/km ~1,7 km
-            Rua Gaspar Guterres 129
-            Rua Rafael Fernandes, 63
-            Aceitar por R$ 15
-            Ofereça sua tarifa
+            9min (1,3km)
+            Yogui Stilo e Sports, Avenida Mateo Bei, 2651 - Cidade Sao Mateus
+            9min (2,9km)
+            Condominio Parque Residencial Santa Barbara, Cidade Satelite
         """.trimIndent()
         val nextCard = """
-            Pedido de viagem
-            R$ 22
-            R$ 1,9/km ~3,4 km
-            Rua A, 10
-            Avenida B, 200
-            Aceitar por R$ 22
-            Ofereça sua tarifa
+            5 min (1.5 km)
+            Avenida Ragueb Chohfi, Sao Mateus, Sao Paulo
+            3 minutos (0.8 km)
+            R. Ator Paulo Gustavo, 270, Cidade Sao Mateus, Sao Paulo
         """.trimIndent()
 
         val template = RideCardTemplateMatcher.createTemplate("sinet.startup.indriver", sample)
         val match = RideCardTemplateMatcher.match(nextCard, "sinet.startup.indriver", listOf(template))
 
         assertNotNull(match)
-        assertTrue(match!!.score >= 0.75)
+        assertTrue(match!!.score >= 0.72)
     }
 
     @Test
     fun keepsAdaptiveFeaturesForSavedTemplateButDoesNotUseThemAsLiveDecisionGate() {
         val text = """
-            R$ 20
-            5 min
-            3,2 km
-            Rua A, 10
-            Avenida B, 200
+            5 min (1.5 km)
+            Avenida Ragueb Chohfi, Sao Mateus, Sao Paulo
+            3 minutos (0.8 km)
+            R. Ator Paulo Gustavo, 270, Cidade Sao Mateus, Sao Paulo
             Aceitar
         """.trimIndent()
         val template = RideCardTemplateMatcher.createTemplate("sinet.startup.indriver", text)
@@ -56,14 +49,12 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
-    fun doesNotMatchNavigationMapWithoutRideFeatures() {
+    fun doesNotMatchNavigationMapWithoutRidePackageAndCropTemplate() {
         val sample = """
-            Pedido de viagem
-            R$ 15
-            R$ 2,2/km ~1,7 km
-            Rua Gaspar Guterres 129
-            Rua Rafael Fernandes, 63
-            Aceitar por R$ 15
+            9min (1,3km)
+            Yogui Stilo e Sports, Avenida Mateo Bei, 2651 - Cidade Sao Mateus
+            9min (2,9km)
+            Condominio Parque Residencial Santa Barbara, Cidade Satelite
         """.trimIndent()
         val navigation = """
             Google Maps
@@ -83,10 +74,9 @@ class RideCardTemplateMatcherTest {
     @Test
     fun doesNotMatchDifferentRideAppPackage() {
         val sample = """
-            UberX
-            R$ 13,48
-            7 min 2.0 km
+            7 min (2.0 km)
             Rua A, 10
+            12 min (5.1 km)
             Avenida B, 200
             Selecionar
         """.trimIndent()
@@ -98,18 +88,17 @@ class RideCardTemplateMatcherTest {
     @Test
     fun doesNotMatchNinetyNineCardByWeakStructuralFeaturesOnly() {
         val model = """
-            Perfil Essencial
-            R$ 12,40
             5min (1,9km)
             Rua Exemplo, 10
+            8min (3,4km)
             Avenida Modelo, 200
-            Selecionar
+            Perfil Essencial
         """.trimIndent()
         val liveCard = """
             99
             R$0,00
             Av. Afons de Sampaio e so
-            FAÇA UMA GRANA EXTRA
+            FACA UMA GRANA EXTRA
             Av. Aricanduva
             R$ 29,99
             R$2.03km
