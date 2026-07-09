@@ -158,6 +158,7 @@ jobs:
           (github.event_name == 'pull_request' && github.head_ref == 'codex/pr5-stable-bubble-combined')
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
@@ -175,15 +176,15 @@ jobs:
             echo "Version: ${version_name}"
             echo "VersionCode: ${version_code}"
             echo "Run: ${GITHUB_RUN_NUMBER}"
-            echo "Commit: ${GITHUB_SHA}"
+            echo "Commit: ${RELEASE_TARGET_SHA}"
             echo
             echo "Stable download asset: ${stable_apk}"
             echo
             cat apk-validation.txt
           } > "$notes_file"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --target "$GITHUB_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+            gh release edit "$tag" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           else
-            gh release create "$tag" --target "$GITHUB_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+            gh release create "$tag" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           fi
           gh release upload "$tag" "$stable_apk" "$stable_sha" --clobber
