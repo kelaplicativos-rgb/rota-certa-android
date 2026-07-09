@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 64
+val appVersionCode = ciVersionCode ?: 65
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.62"
+        versionName = "0.1.63"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -238,41 +238,4 @@ apply(from = "patch-live-reading-card-restore.gradle.kts")
 apply(from = "patch-bubble-card-parity.gradle.kts")
 apply(from = "patch-hide-insufficient-result-card.gradle.kts")
 apply(from = "patch-fast-popup-analysis.gradle.kts")
-apply(from = "patch-live-fast-color-priority.gradle.kts")
-apply(from = "patch-instant-card-decision-cache.gradle.kts")
-apply(from = "patch-live-analysis-supersede.gradle.kts")
-apply(from = "patch-live-window-stale-ocr.gradle.kts")
-apply(from = "patch-bubble-warning-save-card.gradle.kts")
-apply(from = "patch-bubble-popup-close.gradle.kts")
-apply(from = "patch-bubble-live-appearance.gradle.kts")
-apply(from = "patch-unmonitored-screenshot-guard.gradle.kts")
-apply(from = "patch-bubble-route-distance-only.gradle.kts")
-apply(from = "patch-full-diagnostic-export.gradle.kts")
-apply(from = "patch-setup-warning-force-overlay.gradle.kts")
-apply(from = "patch-passive-screenshot-failure-guard.gradle.kts")
-apply(from = "patch-diagnostic-json-tools-actions.gradle.kts")
-apply(from = "patch-shortcut-navigation-idle-reset.gradle.kts")
-apply(from = "patch-precise-bubble-route-km.gradle.kts")
-apply(from = "patch-stable-bubble-no-flicker.gradle.kts")
-apply(from = "patch-clear-bubble-on-screen-change.gradle.kts")
-apply(from = "patch-bubble-region-shortcut-flow.gradle.kts")
-apply(from = "patch-card-lifecycle-strict-overlay.gradle.kts")
-apply(from = "patch-final-km-and-strict-ride-card.gradle.kts")
-apply(from = "patch-strict-bubble-lifecycle.gradle.kts")
-apply(from = "patch-user-registered-packages-only.gradle.kts")
-apply(from = "patch-bubble-state-machine.gradle.kts")
-apply(from = "patch-bubble-unlimited-card-learning.gradle.kts")
-apply(from = "patch-generic-last-address-destination.gradle.kts")
-apply(from = "patch-final-destination-last-address-contract.gradle.kts")
-apply(from = "patch-bubble-save-primary-menu.gradle.kts")
-apply(from = "patch-bubble-action-diagnostic-hardening.gradle.kts")
-apply(from = "patch-bubble-long-press-capture-save.gradle.kts")
-apply(from = "patch-bubble-long-press-direct-save-after-ocr.gradle.kts")
-apply(from = "patch-universal-ai-card-learning.gradle.kts")
-apply(from = "patch-bubble-double-tap-card-capture.gradle.kts")
-apply(from = "patch-bubble-double-tap-diagnostics-robust.gradle.kts")
-apply(from = "patch-bubble-persistent-actions-and-hitbox.gradle.kts")
-apply(from = "patch-fast-visual-gallery-scanner.gradle.kts")
-apply(from = "patch-bubble-diagnostic-size-and-lifecycle-fix.gradle.kts")
-apply(from = "patch-realtime-bubble-engine.gradle.kts")
-apply(from = "patch-ocr-accessibility-priority.gradle.kts")
+apply(from = "patch-remove-live-diagnostics.gradle.kts")
