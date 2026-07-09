@@ -111,7 +111,7 @@ val globalLightDiagnostics by tasks.registering {
                 )
             }
 
-            if ("--- DIAGNOSTICO GLOBAL LEVE ---" !in text) {
+            if ("--- DIAGNOSTICO PONTUAL DE TEMPO ---" !in text) {
                 text = text.replace(
 """        appendLine("--- RADARES IMPORTADOS ---")
         appendLine(radarImportSummary.toString())
@@ -121,8 +121,11 @@ val globalLightDiagnostics by tasks.registering {
 """        appendLine("--- RADARES IMPORTADOS ---")
         appendLine(radarImportSummary.toString())
         appendLine()
+        val globalDiagnostic = DiagnosticLogStore.dump(900)
+        appendLine("--- DIAGNOSTICO PONTUAL DE TEMPO ---")
+        appendLine(PerformanceDiagnosticReporter.build(globalDiagnostic))
+        appendLine()
         appendLine("--- DIAGNOSTICO GLOBAL LEVE ---")
-        val globalDiagnostic = DiagnosticLogStore.dump(220)
         appendLine(globalDiagnostic.ifBlank { "sem eventos globais recentes" })
         appendLine()
         appendLine("--- BACKUP INTERNO ---")
