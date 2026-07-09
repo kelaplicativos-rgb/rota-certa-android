@@ -194,24 +194,47 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
 """,
     )
     text = text.replace("            newView.minWidth = dp(96)\n            newView.minHeight = dp(96)\n", "            val bubbleSizePx = dp(currentSettings.bubbleSizeDp.coerceIn(48, 120))\n            newView.minWidth = bubbleSizePx\n            newView.minHeight = bubbleSizePx\n")
+    text = text.replace("            newView.setOnClickListener { toggleActionMenu() }\n", "            newView.setOnClickListener { openApp() }\n")
+
+    text = replacePrivateFunctionBlockDiagnosticBubble(text, "toggleActionMenu") {
+"""    private fun toggleActionMenu() {
+        traceEvent("diagnostic.contract bubble_single_tap step=open_home_direct ok=true menu_disabled=true")
+        openApp()
+    }
+
+"""
+    }
+
+    text = replacePrivateFunctionBlockDiagnosticBubble(text, "showActionMenu") {
+"""    private fun showActionMenu() {
+        traceEvent("diagnostic.contract bubble_menu step=disabled ok=true")
+        openApp()
+    }
+
+"""
+    }
 
     text = replacePrivateFunctionBlockDiagnosticBubble(text, "captureAndSaveCardFromBubbleDoubleTap") {
 """    private fun captureAndSaveCardFromBubbleDoubleTap() {
-        traceEvent("diagnostic.contract bubble_double_tap step=triggered ok=true")
-        traceEvent("diagnostic.contract bubble_capture step=shortcut_requested ok=true source=double_tap")
-        updateBubbleLongPressCountdown("2x")
-        toast("Tirando print do card...")
-        hideActionMenu()
-        cardSaveScreenshotRequestedUntilMillis = System.currentTimeMillis() + 10_000L
-        lastScreenshotMillis = 0L
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            requestScreenshotAnalysis(allowPopupCandidate = true)
-        }
-        scope.launch {
-            delay(1_200L)
-            updateBubbleLongPressCountdown(null)
-            saveCurrentRideCardFromBubble()
-        }
+        traceEvent("diagnostic.contract bubble_double_tap step=disabled ok=true action=open_home")
+        openApp()
+    }
+
+"""
+    }
+
+    text = replacePrivateFunctionBlockDiagnosticBubble(text, "captureAndSaveCardFromBubbleLongPress") {
+"""    private fun captureAndSaveCardFromBubbleLongPress() {
+        traceEvent("diagnostic.contract bubble_long_press step=disabled ok=true action=open_home")
+        openApp()
+    }
+
+"""
+    }
+
+    text = replacePrivateFunctionBlockDiagnosticBubble(text, "updateBubbleLongPressCountdown") {
+"""    private fun updateBubbleLongPressCountdown(text: String?) {
+        traceEvent("diagnostic.contract bubble_long_press_countdown step=disabled ok=true")
     }
 
 """
@@ -223,8 +246,6 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
         private var startX = 0
         private var startY = 0
         private var moved = false
-        private var lastTapUpAtMillis = 0L
-        private var singleTapJob: Job? = null
 
         override fun onTouch(view: View, event: MotionEvent): Boolean {
             val params = overlayParams ?: return false
@@ -236,18 +257,13 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
                     startX = params.x
                     startY = params.y
                     moved = false
-                    singleTapJob?.cancel()
-                    traceEvent("diagnostic.contract bubble_touch step=down ok=true long_press_disabled=true")
+                    traceEvent("diagnostic.contract bubble_touch step=down ok=true shortcuts_disabled=true")
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val deltaX = event.rawX - downRawX
                     val deltaY = event.rawY - downRawY
-                    if (abs(deltaX) > dp(4) || abs(deltaY) > dp(4)) {
-                        moved = true
-                        singleTapJob?.cancel()
-                        updateBubbleLongPressCountdown(null)
-                    }
+                    if (abs(deltaX) > dp(4) || abs(deltaY) > dp(4)) moved = true
                     params.x = (startX + deltaX).roundToInt().coerceAtLeast(0)
                     params.y = (startY + deltaY).roundToInt().coerceAtLeast(0)
                     runCatching { manager.updateViewLayout(view, params) }
@@ -256,33 +272,12 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
                 }
                 MotionEvent.ACTION_UP -> {
                     bubblePrefs.edit().putInt(KEY_BUBBLE_X, params.x).putInt(KEY_BUBBLE_Y, params.y).apply()
-                    traceEvent("diagnostic.contract bubble_touch step=up ok=true moved=${dollar}moved long_press=false")
-                    updateBubbleLongPressCountdown(null)
-                    if (!moved) {
-                        val now = System.currentTimeMillis()
-                        val isDoubleTap = now - lastTapUpAtMillis <= 450L
-                        lastTapUpAtMillis = now
-                        if (isDoubleTap) {
-                            singleTapJob?.cancel()
-                            traceEvent("diagnostic.contract bubble_double_tap step=detected ok=true")
-                            captureAndSaveCardFromBubbleDoubleTap()
-                        } else {
-                            singleTapJob?.cancel()
-                            singleTapJob = scope.launch {
-                                delay(280L)
-                                if (System.currentTimeMillis() - lastTapUpAtMillis >= 260L) {
-                                    traceEvent("diagnostic.contract bubble_single_tap step=menu_scheduled ok=true")
-                                    view.performClick()
-                                }
-                            }
-                        }
-                    }
+                    traceEvent("diagnostic.contract bubble_touch step=up ok=true moved=${dollar}moved shortcuts_disabled=true")
+                    if (!moved) openApp()
                     return true
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    singleTapJob?.cancel()
-                    updateBubbleLongPressCountdown(null)
-                    traceEvent("diagnostic.contract bubble_touch step=cancel ok=true moved=${dollar}moved long_press=false")
+                    traceEvent("diagnostic.contract bubble_touch step=cancel ok=true moved=${dollar}moved shortcuts_disabled=true")
                     return true
                 }
             }
