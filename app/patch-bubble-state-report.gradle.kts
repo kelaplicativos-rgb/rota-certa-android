@@ -5,6 +5,7 @@ val patchBubbleStateReport by tasks.registering {
     outputs.upToDateWhen { false }
 
     doLast {
+        val dollar = "$"
         val service = serviceFile.asFile
         if (service.exists()) {
             var text = service.readText()
@@ -127,10 +128,10 @@ val patchBubbleStateReport by tasks.registering {
             )
 
             text = text.replace(
-                """            traceEvent("overlay.apply color=${radarColor.diagnosticLabel} distance=${result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
+                """            traceEvent("overlay.apply color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
             showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
 """,
-                """            traceEvent("overlay.apply color=${radarColor.diagnosticLabel} distance=${result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
+                """            traceEvent("overlay.apply color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
             rememberBubbleReason("analysis_result", result.reason)
             showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
 """,
