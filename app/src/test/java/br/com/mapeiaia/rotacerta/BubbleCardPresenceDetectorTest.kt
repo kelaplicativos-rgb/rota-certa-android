@@ -8,12 +8,10 @@ class BubbleCardPresenceDetectorTest {
     @Test
     fun sameRegisteredCardRequiresSamePackageHashAndTemplate() {
         val text = """
-            Pedido de viagem
-            R$ 20
-            3,2 km
-            Rua A, 10
-            Avenida B, 200
-            Aceitar
+            9min (1,3km)
+            Yogui Stilo e Sports, Avenida Mateo Bei, 2651 - Cidade Sao Mateus
+            9min (2,9km)
+            Condominio Parque Residencial Santa Barbara, Cidade Satelite
         """.trimIndent()
         val template = RideCardTemplateMatcher.createTemplate("com.regional.driver", text)
         val match = RideCardTemplateMatcher.match(text, "com.regional.driver", listOf(template))!!
@@ -34,7 +32,7 @@ class BubbleCardPresenceDetectorTest {
         assertFalse(
             BubbleCardPresenceDetector.sameRegisteredCard(
                 token = token,
-                text = text.replace("R$ 20", "R$ 31"),
+                text = text.replace("9min (2,9km)", "12min (5,8km)"),
                 packageName = "com.regional.driver",
                 templates = listOf(template),
             ),
