@@ -293,6 +293,9 @@ fun patchBubbleServiceLifecycleSizeAndTouch(file: java.io.File) {
 """
     val listenerRegex = Regex("(?s)    private inner class BubbleTouchListener : View\\.OnTouchListener \\{.*?    private fun dp")
     text = listenerRegex.replace(text) { listenerReplacement + "    private fun dp" }
+    if ("private inner class BubbleTouchListener" !in text) {
+        text = text.replace("\n    private fun dp(", "\n$listenerReplacement    private fun dp(")
+    }
 
     if ("bubble_diagnostic_size_and_lifecycle_fix.patch_applied" !in text) {
         text = text.replace(
@@ -313,6 +316,13 @@ bubbleDiagnosticSizeAndLifecycleFix.configure {
         "patchLiveRideOverlayStability",
         "bubbleLiveAppearance",
         "stableBubbleNoFlicker",
+        "fastVisualGalleryScanner",
+        "bubbleRegionShortcutFlow",
+        "clearBubbleOnScreenChange",
+        "cardLifecycleStrictOverlay",
+        "genericLastAddressDestination",
+        "finalDestinationLastAddressContract",
+        "finalKmAndStrictRideCard",
     )
 }
 
