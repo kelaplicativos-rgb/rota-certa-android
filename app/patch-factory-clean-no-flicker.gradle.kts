@@ -178,7 +178,7 @@ val patchFactoryCleanNoFlicker by tasks.registering {
 }
 
 patchFactoryCleanNoFlicker.configure {
-    mustRunAfter("patch-bubble-state-report-compile-fix")
+    mustRunAfter("patchBubbleStateReportCompileFix")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
