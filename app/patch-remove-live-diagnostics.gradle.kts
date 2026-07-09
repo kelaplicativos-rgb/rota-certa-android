@@ -91,8 +91,15 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             var text = file.readText()
             val original = text
 
+            text = text.replace("trace = ::traceEvent,", "trace = {},")
             text = stripFunctionCalls(text, "traceEvent")
             text = stripFunctionCalls(text, "recordDiagnostic")
+            text = text.replace("    private val diagnosticEvents = mutableListOf<String>()\n", "")
+            text = text.replace("    private var lastDiagnosticSignature: String? = null\n", "")
+            text = text.replace("isPassiveDiagnosticPackage", "isPassiveIgnoredPackage")
+            text = text.replace("PASSIVE_DIAGNOSTIC_PACKAGES", "PASSIVE_IGNORED_PACKAGES")
+            text = text.replace("DIAGNOSTIC_TEXT_LIMIT", "CARD_TEXT_PREVIEW_LIMIT")
+            text = text.replace("DIAGNOSTIC_EVENT_LIMIT", "TRACE_EVENT_LIMIT")
 
             text = replaceBetween(
                 source = text,
@@ -151,6 +158,12 @@ val patchRemoveLiveDiagnostics by tasks.registering {
 
 """,
             )
+            text = replaceBetween(
+                source = text,
+                startMarker = "    private fun String?.diagnosticValue(",
+                nextMarker = "    private fun isPassiveIgnoredPackage(",
+                replacement = "",
+            )
 
             text = text.replace(
                 "            repository.addAnalysis(result)\n            lastSavedReadHash = snapshotHash",
@@ -169,6 +182,10 @@ val patchRemoveLiveDiagnostics by tasks.registering {
                 "const val SCREENSHOT_INTERVAL_MS = 300L",
             )
             text = text.replace(
+                "const val CARD_TEXT_PREVIEW_LIMIT = 1200\n        const val TRACE_EVENT_LIMIT = 60\n",
+                "const val CARD_TEXT_PREVIEW_LIMIT = 1200\n",
+            )
+            text = text.replace(
                 "else -> distanceKm.roundToInt().coerceAtMost(99).toString()",
                 "else -> String.format(Locale(\"pt\", \"BR\"), \"%.1f\", distanceKm).removeSuffix(\",0\")",
             )
@@ -182,8 +199,12 @@ val patchRemoveLiveDiagnostics by tasks.registering {
 
             text = text.replace(
                 "    val history by repository.analyses.collectAsState(initial = emptyList())\n    val diagnostic by repository.diagnostic.collectAsState(initial = null)",
-                "    val history = emptyList<AnalysisResult>()\n    val diagnostic: LiveDiagnostic? = null",
+                "    val history = emptyList<AnalysisResult>()",
             )
+            text = text.replace("    val diagnostic: LiveDiagnostic? = null\n", "")
+            text = text.replace("                    diagnostic = diagnostic,\n", "")
+            text = text.replace("    diagnostic: LiveDiagnostic?,\n", "")
+            text = text.replace("    onRegisterRideCard: (String?, String) -> Unit,\n", "")
             text = text.replace(
                 "                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text(\"Historico\") }, icon = {})\n",
                 "",
@@ -207,6 +228,18 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             text = text.replace(
                 Regex("""\n@Composable\nprivate fun DiagnosticScreen\([\s\S]*?\n@Composable\nprivate fun HistoryScreen\(history: List<AnalysisResult>\) \{\n    HistoryDiagnosticCard\(history = history\)\n\}\n"""),
                 "\n@Composable\nprivate fun HistoryScreen(history: List<AnalysisResult>) = Unit\n",
+            )
+            text = replaceBetween(
+                source = text,
+                startMarker = "@Composable\nprivate fun DiagnosticExpander(",
+                nextMarker = "@Composable\nprivate fun SavedPlacesCard(",
+                replacement = "",
+            )
+            text = replaceBetween(
+                source = text,
+                startMarker = "private fun LiveDiagnostic.toShareText(): String = buildString {",
+                nextMarker = "private fun savedPlaceTypeLabel(",
+                replacement = "",
             )
             text = replaceBetween(
                 source = text,
