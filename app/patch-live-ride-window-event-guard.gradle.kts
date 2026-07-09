@@ -9,17 +9,15 @@ val liveRideWindowEventGuard by tasks.registering {
             val original = text
 
             text = text.replace(
-"""        val rootPackageName = currentRootPackageName()
-        val rootIsRideWindow = shouldScanPackage(rootPackageName)
-        val rootPackageName = currentRootPackageName()
-        val rootIsRideWindow = shouldScanPackage(rootPackageName)
-""",
-"""        val rootPackageName = currentRootPackageName()
-        val rootIsRideWindow = shouldScanPackage(rootPackageName)
-""",
+                Regex("""\n        val rootPackageName = currentRootPackageName\(\)\n        val rootIsRideWindow = shouldScanPackage\(rootPackageName\)"""),
+                "",
+            )
+            text = text.replace(
+                Regex("""\n        val activeRideRootPackage = currentRootPackageName\(\)\n        val hasActiveRideRoot = shouldScanPackage\(activeRideRootPackage\)"""),
+                "",
             )
 
-            if ("event self ignored active_ride_root" !in text) {
+            if ("event self ignored monitored_root" !in text) {
                 text = text.replace(
 """        if (packageName == this.packageName) {
             rememberBubbleReason("self_app", "Rota Certa em primeiro plano; bolinha limpa e leitura de corrida pausada.")
@@ -29,11 +27,9 @@ val liveRideWindowEventGuard by tasks.registering {
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
 """,
-"""        val activeRideRootPackage = currentRootPackageName()
-        val hasActiveRideRoot = shouldScanPackage(activeRideRootPackage)
-        if (packageName == this.packageName) {
-            if (hasActiveRideRoot) {
-                traceEvent("event self ignored active_ride_root=${'$'}{activeRideRootPackage.orEmpty()}")
+"""        if (packageName == this.packageName) {
+            if (shouldScanPackage(currentRootPackageName())) {
+                traceEvent("event self ignored monitored_root=${'$'}{currentRootPackageName().orEmpty()}")
                 return
             }
             rememberBubbleReason("self_app", "Rota Certa em primeiro plano; bolinha limpa e leitura de corrida pausada.")
@@ -42,8 +38,8 @@ val liveRideWindowEventGuard by tasks.registering {
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            if (hasActiveRideRoot) {
-                traceEvent("event blocked ignored active_ride_root=${'$'}{activeRideRootPackage.orEmpty()} event_package=${'$'}packageName reason=${'$'}reason")
+            if (shouldScanPackage(currentRootPackageName())) {
+                traceEvent("event blocked ignored monitored_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason")
                 return
             }
 """,
