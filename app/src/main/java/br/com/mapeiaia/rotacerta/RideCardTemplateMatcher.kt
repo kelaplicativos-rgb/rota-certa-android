@@ -192,8 +192,7 @@ object RideCardTemplateMatcher {
             .maxByOrNull { it.score }
     }
 
-    fun featuresFor(text: String): Set<String> =
-        deterministicFeaturesFor(text) + AdaptiveCardLearningEngine.adaptiveFeaturesFor(text)
+    fun featuresFor(text: String): Set<String> = deterministicFeaturesFor(text)
 
     private fun deterministicFeaturesFor(text: String): Set<String> {
         val normalized = text.normalizedForCardMatch()
