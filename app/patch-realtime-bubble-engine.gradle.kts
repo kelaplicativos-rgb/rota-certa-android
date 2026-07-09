@@ -3,8 +3,6 @@ val patchRealtimeBubbleEngine by tasks.registering {
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
 
-    mustRunAfter(tasks.matching { it.name.startsWith("patch") && it.name != "patchRealtimeBubbleEngine" })
-
     doLast {
         val file = serviceFile.asFile
         var text = file.readText()
