@@ -91,6 +91,7 @@ val patchFinalDiagnosticCleanup by tasks.registering {
         val original = text
 
         text = stripFunctionCalls(text, "SavedPlaceNameDialog")
+        text = text.replace("            savedPlaceNameDialogId = place.id\n", "")
         text = text.replace(
             "    val history by repository.analyses.collectAsState(initial = emptyList())\n    val diagnostic by repository.diagnostic.collectAsState(initial = null)",
             "    val history = emptyList<AnalysisResult>()",
@@ -149,6 +150,49 @@ val patchFinalDiagnosticCleanup by tasks.registering {
             replacement = "",
         )
         text = text.replace("private const val TAB_DIAGNOSTIC = \"diagnostico\"\n\n", "")
+
+        if ("DiagnosticScreen(" in text && "private fun DiagnosticScreen(" !in text) {
+            text = text.replace(
+                "private fun clearClipboard(context: Context) {",
+                """@Composable
+private fun DiagnosticScreen(
+    diagnostic: LiveDiagnostic? = null,
+    cardTemplates: List<RideCardTemplate> = emptyList(),
+    history: List<AnalysisResult> = emptyList(),
+    onRegisterRideCard: (String?, String) -> Unit = { _, _ -> },
+) = Unit
+
+private fun clearClipboard(context: Context) {
+""",
+            )
+        }
+        if ("HistoryDiagnosticCard(" in text && "private fun HistoryDiagnosticCard(" !in text) {
+            text = text.replace(
+                "private fun clearClipboard(context: Context) {",
+                """@Composable
+private fun HistoryDiagnosticCard(history: List<AnalysisResult>) = Unit
+
+private fun clearClipboard(context: Context) {
+""",
+            )
+        }
+        if ("SavedPlaceNameDialog(" in text && "private fun SavedPlaceNameDialog(" !in text) {
+            text = text.replace(
+                "private fun clearClipboard(context: Context) {",
+                """@Composable
+private fun SavedPlaceNameDialog(
+    place: SavedPlace,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) = Unit
+
+private fun clearClipboard(context: Context) {
+""",
+            )
+        }
+        if ("TAB_DIAGNOSTIC" in text && "private const val TAB_DIAGNOSTIC" !in text) {
+            text += "\nprivate const val TAB_DIAGNOSTIC = \"diagnostico\"\n"
+        }
 
         if (text != original) file.writeText(text)
     }
