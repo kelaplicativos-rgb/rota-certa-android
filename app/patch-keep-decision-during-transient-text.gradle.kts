@@ -69,11 +69,59 @@ val keepDecisionDuringTransientText by tasks.registering {
                 }
             }
 
+            if ("analysis.transient_insufficient keep_active_decision=true" !in text) {
+                val analysisStart = text.indexOf("            val radarColor = when (result.recommendation) {\n")
+                val analysisEnd = if (analysisStart >= 0) {
+                    text.indexOf("\n        } catch (error: Exception) {", analysisStart)
+                } else {
+                    -1
+                }
+                if (analysisStart >= 0 && analysisEnd > analysisStart) {
+                    val replacement = """            val computedRadarColor = when (result.recommendation) {
+                Recommendation.GoodRide -> RadarColor.Green
+                Recommendation.OutsideRadius -> RadarColor.Red
+                Recommendation.InsufficientData -> RadarColor.Default
+            }
+            val keepActiveDecisionForTransientInsufficient = computedRadarColor == RadarColor.Default &&
+                hasActiveRegisteredDecision() &&
+                shouldScanCurrentWindow()
+            if (keepActiveDecisionForTransientInsufficient) {
+                traceEvent("analysis.transient_insufficient keep_active_decision=true hash=${'$'}snapshotHash reason=${'$'}{result.reason}")
+                recordDiagnostic(
+                    stage = "analysis_result",
+                    reason = "Analise insuficiente/transitoria dentro do app monitorado; mantive a decisao verde/vermelha anterior ate confirmar novo card real.",
+                    text = text,
+                    fields = fields,
+                    result = result,
+                    cardTemplateMatch = cardMatch,
+                )
+            } else {
+                val radarColor = computedRadarColor
+                traceEvent("overlay.apply color=${'$'}{radarColor.diagnosticLabel} distance=${'$'}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
+                showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
+                recordDiagnostic(
+                    stage = "analysis_result",
+                    color = radarColor,
+                    reason = result.reason,
+                    text = text,
+                    fields = fields,
+                    result = result,
+                    cardTemplateMatch = cardMatch,
+                )
+            }
+"""
+                    text = text.substring(0, analysisStart) + replacement + text.substring(analysisEnd)
+                }
+            }
+
             if ("screen_changed.keep_active_decision" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de decisao em screen_changed.")
             }
             if ("process.empty_text keep_active_decision=true" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de texto vazio transitorio.")
+            }
+            if ("analysis.transient_insufficient keep_active_decision=true" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui instalar a protecao de analise insuficiente transitoria.")
             }
 
             if (text != original) file.writeText(text)
