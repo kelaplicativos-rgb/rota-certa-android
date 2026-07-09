@@ -37,24 +37,19 @@ val hardClearUnregisteredCardDecision by tasks.registering {
                 )
             }
 
-            if ("hardClearRequested" !in text) {
+            if ("hard_clear_overlay_now_0_1_77" !in text) {
                 text = text.replace(
-"""        if ((color == RadarColor.Default || color == RadarColor.Idle) &&
-            hasActiveRegisteredDecision() &&
-            shouldScanCurrentWindow() &&
-            now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS
-        ) {
+"""        val now = System.currentTimeMillis()
 """,
-"""        val hardClearRequested = color == RadarColor.Default && (
-            lastBubbleStateReason.contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
-                lastBubbleStateReason.contains("cadastre o modelo para liberar o farol", ignoreCase = true)
-        )
-        if (!hardClearRequested &&
-            (color == RadarColor.Default || color == RadarColor.Idle) &&
-            hasActiveRegisteredDecision() &&
-            shouldScanCurrentWindow() &&
-            now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS
+"""        val now = System.currentTimeMillis()
+        if (color == RadarColor.Default && (
+                lastBubbleStateReason.contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
+                    lastBubbleStateReason.contains("cadastre o modelo para liberar o farol", ignoreCase = true)
+            )
         ) {
+            lastDecisionOverlayAtMillis = 0L // hard_clear_overlay_now_0_1_77
+            registeredCardGate.clear()
+        }
 """,
                 )
             }
@@ -94,8 +89,8 @@ val hardClearUnregisteredCardDecision by tasks.registering {
             if ("hard_clear_missing_card_0_1_77" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar limpeza forte para card nao cadastrado.")
             }
-            if ("hardClearRequested" !in text) {
-                throw org.gradle.api.GradleException("Nao consegui bloquear sticky verde/vermelho para card nao cadastrado.")
+            if ("hard_clear_overlay_now_0_1_77" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui instalar limpeza da protecao sticky para card nao cadastrado.")
             }
 
             if (text != original) file.writeText(text)
