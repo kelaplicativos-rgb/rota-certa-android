@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -39,7 +40,9 @@ class RideCardTemplateMatcherTest {
         """.trimIndent()
 
         assertTrue(RideCardTemplateMatcher.looksLikeLearnableRideCard(crop))
-        val template = RideCardTemplateMatcher.createTemplate(null, crop)
+        val packageName = RideCardTemplateMatcher.packageNameForLearning(null, crop)
+        assertEquals(RideCardTemplateMatcher.UNIVERSAL_LEARNED_PACKAGE, packageName)
+        val template = RideCardTemplateMatcher.createTemplate(packageName, crop)
         val match = RideCardTemplateMatcher.match(crop, null, listOf(template))
 
         assertNotNull(match)
