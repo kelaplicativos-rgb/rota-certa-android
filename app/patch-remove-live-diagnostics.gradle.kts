@@ -91,7 +91,7 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             var text = file.readText()
             val original = text
 
-            text = text.replace("trace = ::traceEvent,", "trace = {},")
+            text = text.replace("trace = ::traceEvent,", "trace = { _ -> },")
             text = stripFunctionCalls(text, "traceEvent")
             text = stripFunctionCalls(text, "recordDiagnostic")
             text = text.replace("    private val diagnosticEvents = mutableListOf<String>()\n", "")
@@ -203,6 +203,7 @@ val patchRemoveLiveDiagnostics by tasks.registering {
             )
             text = text.replace("    val diagnostic: LiveDiagnostic? = null\n", "")
             text = text.replace("                    diagnostic = diagnostic,\n", "")
+            text = text.replace("                    onRegisterRideCard = ::registerRideCard,\n", "")
             text = text.replace("    diagnostic: LiveDiagnostic?,\n", "")
             text = text.replace("    onRegisterRideCard: (String?, String) -> Unit,\n", "")
             text = text.replace(
