@@ -64,16 +64,8 @@ val patchManualSupportReport by tasks.registering {
 
         if ("onCreateSupportReport: () -> Unit" !in text) {
             text = text.replace(
-                """private fun ToolsScreen(
-    onOpenBlaBlaCarCollector: () -> Unit,
-    onClearClipboard: () -> Unit,
-""",
-                """private fun ToolsScreen(
-    onOpenBlaBlaCarCollector: () -> Unit,
-    onClearClipboard: () -> Unit,
-    onCreateSupportReport: () -> Unit,
-    supportReportStatus: String,
-""",
+                "    onClearClipboard: () -> Unit,\n",
+                "    onClearClipboard: () -> Unit,\n    onCreateSupportReport: () -> Unit,\n    supportReportStatus: String,\n",
             )
         }
 
