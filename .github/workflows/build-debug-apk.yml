@@ -93,26 +93,39 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Print focused assemble failure summary
-        if: failure()
+      - name: Validate debug APK
         run: |
-          if [ -f gradle-assemble.log ]; then
-            echo "--- focused assemble failure summary ---"
-            grep -nE "(^e: |^w: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|patch-|MainActivity|LiveRideAccessibilityService|Models|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
-          fi
-          main_file="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
-          if [ -f "$main_file" ]; then
-            echo "--- generated MainActivity context: 300-330 ---"
-            nl -ba "$main_file" | sed -n '300,330p'
-            echo "--- generated MainActivity context: 360-385 ---"
-            nl -ba "$main_file" | sed -n '360,385p'
-            echo "--- generated MainActivity context: 445-465 ---"
-            nl -ba "$main_file" | sed -n '445,465p'
-            echo "--- generated MainActivity context: 1468-1492 ---"
-            nl -ba "$main_file" | sed -n '1468,1492p'
-            echo "--- generated MainActivity context: 1570-1628 ---"
-            nl -ba "$main_file" | sed -n '1570,1628p'
-          fi
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          {
+            echo "APK: $apk"
+            echo "APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')"
+            echo "APK_SIZE_BYTES=$(wc -c < "$apk")"
+          } > apk-validation.txt
+          tmp_dir="$(mktemp -d)"
+          unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
+          strings "$tmp_dir"/classes*.dex > apk-strings.txt
+          for expected in \
+            "Relatorio manual de falha" \
+            "Gerar relatorio para anexar" \
+            "ROTA CERTA RELATORIO MANUAL" \
+            "rota-certa-relatorio-falha.txt"
+          do
+            if grep -Fq "$expected" apk-strings.txt; then
+              echo "FOUND=$expected" >> apk-validation.txt
+            else
+              echo "MISSING=$expected" >> apk-validation.txt
+              exit 1
+            fi
+          done
+          cat apk-validation.txt
+
+      - name: Upload APK validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-validation
+          path: apk-validation.txt
+          if-no-files-found: error
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
