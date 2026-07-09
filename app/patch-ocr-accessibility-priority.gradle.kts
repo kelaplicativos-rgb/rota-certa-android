@@ -16,6 +16,20 @@ val patchOcrAccessibilityPriority by tasks.registering {
             )
         }
 
+        if ("lastCardSaveCandidatePackageName" !in text) {
+            text = text.replace(
+                "    private var lastOcrText: String = \"\"\n",
+                "    private var lastOcrText: String = \"\"\n    private var lastCardSaveCandidatePackageName: String? = null\n    private var lastCardSaveCandidateText: String = \"\"\n    private var lastCardSaveCandidateAtMillis: Long = 0L\n",
+            )
+        }
+
+        if ("cardSaveScreenshotRequestedUntilMillis" !in text) {
+            text = text.replace(
+                "    private var lastScreenshotMillis: Long = 0L\n",
+                "    private var lastScreenshotMillis: Long = 0L\n    private var cardSaveScreenshotRequestedUntilMillis: Long = 0L\n",
+            )
+        }
+
         if ("shouldPreferRecentAccessibilityCard" !in text) {
             text = text.replace(
 """        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
