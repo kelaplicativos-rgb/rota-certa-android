@@ -11,31 +11,32 @@ val liveCardAnalysisRaceFix by tasks.registering {
         val original = text
         val dollar = "$"
 
-        // A atualizacao da propria bolinha gera eventos com o pacote do Rota Certa.
-        // Eles nao podem apagar o pacote de corrida ativo nem interromper a leitura.
-        val oldActivePackageUpdate = """        if (eventPackageName != null) {
-            activePackageName = if (isPassiveDiagnosticPackage(eventPackageName)) null else eventPackageName
-        }
-"""
-        val newActivePackageUpdate = """        val ownAppMainWindowVisible = eventPackageName == this.packageName && isOwnAppMainWindowVisible()
-        if (eventPackageName != null) {
-            if (eventPackageName != this.packageName || ownAppMainWindowVisible) {
-                activePackageName = if (isPassiveDiagnosticPackage(eventPackageName)) null else eventPackageName
+        // Eventos gerados pela propria bolinha carregam o pacote do Rota Certa.
+        // A protecao entra antes da atualizacao de activePackageName para preservar
+        // o app de corrida que continua realmente visivel abaixo do overlay.
+        if ("live_card_analysis_race_fix_0_1_83" !in text) {
+            val packageAnchor = "        val packageName = eventPackageName ?: currentRootPackageName()\n"
+            if (packageAnchor !in text) {
+                throw org.gradle.api.GradleException("Nao encontrei o ponto de identificacao do pacote ativo.")
             }
-        }
+            text = text.replace(
+                packageAnchor,
+                packageAnchor + """        val ownAppMainWindowVisible = eventPackageName == this.packageName && isOwnAppMainWindowVisible()
         if (eventPackageName == this.packageName && !ownAppMainWindowVisible) {
             traceEvent("event self_overlay ignored active_ride=${dollar}{activePackageName.orEmpty()} root=${dollar}{currentRootPackageName().orEmpty()}") // live_card_analysis_race_fix_0_1_83
             return
         }
-"""
-        if (oldActivePackageUpdate in text) {
-            text = text.replace(oldActivePackageUpdate, newActivePackageUpdate)
+""",
+            )
         }
 
         if ("private fun isOwnAppMainWindowVisible(): Boolean" !in text) {
-            text = text.replace(
-                "    private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())\n",
-                """    private fun isOwnAppMainWindowVisible(): Boolean {
+            val currentWindowAnchor = "    private fun currentWindowPackageName(): String?"
+            val insertionIndex = text.indexOf(currentWindowAnchor)
+            if (insertionIndex < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei o resolvedor da janela atual.")
+            }
+            val helper = """    private fun isOwnAppMainWindowVisible(): Boolean {
         val root = rootInActiveWindow ?: return false
         if (normalizePackageName(root.packageName?.toString()) != this.packageName) return false
         val lines = mutableListOf<String>()
@@ -63,9 +64,8 @@ val liveCardAnalysisRaceFix by tasks.registering {
         return root.childCount > 0 && normalized.length >= 40 && strongMarkers.any { marker -> marker in normalized }
     }
 
-    private fun shouldScanCurrentWindow(): Boolean = shouldScanPackage(currentWindowPackageName())
-""",
-            )
+"""
+            text = text.substring(0, insertionIndex) + helper + text.substring(insertionIndex)
         }
 
         // O resultado deve ser associado ao hash que iniciou a analise, nunca ao hash global
@@ -99,8 +99,7 @@ val liveCardAnalysisRaceFix by tasks.registering {
             )
         }
 
-        // A troca real de origem/destino/valor sempre libera uma nova analise,
-        // mesmo se houver colisao de hash ou uma analise anterior ainda estiver terminando.
+        // A troca real de origem/destino/valor sempre libera uma nova analise.
         val signatureChange = """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
             lastDecisionOverlayAtMillis = 0L
             traceEvent("visible_card.signature_changed previous=${dollar}lastVisibleCardSignature next=${dollar}visibleCardSignature") // bubble_render_stability_0_1_81
