@@ -14,22 +14,13 @@ val coreScreenReadEnginePatch by tasks.registering {
         val dollar = "$"
 
         if ("core_screen_read_engine_0_1_92" !in text) {
-            val oldBlock = """        val snapshotText = if (allowPopupCandidate) {
-            text.trim()
-        } else {
-            mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
-        }
-        if (snapshotText.isBlank()) {
-            traceEvent("process.empty_text source=${dollar}source")
-            if (allowPopupCandidate) return
-            registeredCardGate.clear()
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
-            return
-        }
-
-        val snapshotHash = snapshotText.snapshotHash()
-        traceEvent("process.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash")
-"""
+            val startToken = "        val snapshotText ="
+            val endToken = "        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->\n"
+            val start = text.indexOf(startToken)
+            val end = if (start >= 0) text.indexOf(endToken, start) else -1
+            if (start < 0 || end < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei a regiao de snapshot/merge de leitura para mover ao Core.")
+            }
             val newBlock = """        val coreReadSnapshot = br.com.mapeiaia.rotacerta.core.CoreScreenReadEngine.prepare(
             accessibilityText = lastAccessibilityText,
             ocrText = lastOcrText,
@@ -47,11 +38,9 @@ val coreScreenReadEnginePatch by tasks.registering {
 
         val snapshotHash = coreReadSnapshot.hash
         traceEvent("core.read.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
+
 """
-            if (oldBlock !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei o bloco de snapshot/merge de leitura para mover ao Core.")
-            }
-            text = text.replace(oldBlock, newBlock)
+            text = text.substring(0, start) + newBlock + text.substring(end)
         }
 
         if ("core_screen_read_engine_0_1_92" !in text) {
