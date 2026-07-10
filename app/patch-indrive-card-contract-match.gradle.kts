@@ -1,7 +1,7 @@
 // Match contratual para card individual do inDrive.
 // A bolinha nao deve depender de todos os detalhes dinamicos do OCR.
-// Ela deve reconhecer o card salvo quando o contrato visual/textual aparece:
-// pedido de viagem + aceitar/oferta + valor + rota A/B + enderecos.
+// Ela deve reconhecer o card salvo somente quando o contrato da tela individual aberta aparece.
+// Listagem/feed de corridas continua bloqueada mesmo quando contem um card salvo.
 
 val inDriveCardContractMatch by tasks.registering {
     val matcherFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt")
@@ -29,6 +29,20 @@ val inDriveCardContractMatch by tasks.registering {
             )
         }
 
+        text = text.replace(
+            """        if (isInDriveIndividualContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_individual"
+        }
+""",
+            """        if (isInDriveIndividualContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_individual"
+        }
+        if (isInDriveOpenedCardContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_opened_single"
+        }
+""",
+        )
+
         if ("card.contract.indrive_individual" !in text) {
             text = text.replace(
                 """        if (hasRouteBlock) features += "card.crop.route_block"
@@ -37,6 +51,9 @@ val inDriveCardContractMatch by tasks.registering {
                 """        if (hasRouteBlock) features += "card.crop.route_block"
         if (isInDriveIndividualContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
             features += "card.contract.indrive_individual"
+        }
+        if (isInDriveOpenedCardContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_opened_single"
         }
         return features
 """,
@@ -47,7 +64,35 @@ val inDriveCardContractMatch by tasks.registering {
             text = text.replace(
                 """    private fun isRouteCardCrop(
 """,
-                """    private fun isInDriveIndividualContract(
+                """    private fun isInDriveListingScreen(normalized: String, rawText: String): Boolean {
+        val rideTitleCount = Regex("pedido[s]?\\s+de\\s+viagem", RegexOption.IGNORE_CASE).findAll(rawText).count()
+        val acceptCount = acceptButtonRegex.findAll(rawText).count()
+        val offerCount = inDriveOfferButtonRegex.findAll(rawText).count()
+        val hasPluralHeader = "pedidos de viagem" in normalized
+        val hasListWords = listOf("filtrar", "ordenar", "mais pedidos", "novos pedidos", "solicitacoes", "solicitações").any { it in normalized }
+        return hasPluralHeader || hasListWords || rideTitleCount > 1 || acceptCount > 1 || offerCount > 1
+    }
+
+    private fun isInDriveOpenedCardContract(
+        normalized: String,
+        rawText: String,
+        moneyCount: Int,
+        distanceCount: Int,
+        addressCount: Int,
+        markerCount: Int,
+        endpointTextLines: Int,
+    ): Boolean {
+        if (isInDriveListingScreen(normalized, rawText)) return false
+        val hasSingularRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
+        val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
+        val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasFarePerKm = farePerKmRegex.containsMatchIn(rawText)
+        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2
+        val hasEnoughAddress = addressCount >= 1 || endpointTextLines >= 2
+        return hasSingularRideTitle && hasAccept && hasOffer && moneyCount >= 1 && (distanceCount >= 1 || hasFarePerKm) && hasTwoEndpoints && hasEnoughAddress
+    }
+
+    private fun isInDriveIndividualContract(
         normalized: String,
         rawText: String,
         moneyCount: Int,
@@ -57,7 +102,8 @@ val inDriveCardContractMatch by tasks.registering {
         endpointTextLines: Int,
     ): Boolean {
         if (ownAppMarkers.any { marker -> marker in normalized }) return false
-        val hasRideTitle = "pedido de viagem" in normalized || "pedidos de viagem" in normalized
+        if (isInDriveListingScreen(normalized, rawText)) return false
+        val hasRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
         val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
         val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
         val hasMoney = moneyCount >= 1
@@ -70,12 +116,23 @@ val inDriveCardContractMatch by tasks.registering {
     private fun isRouteCardCrop(
 """,
             )
+        } else {
+            text = text.replace(
+                "val hasRideTitle = \"pedido de viagem\" in normalized || \"pedidos de viagem\" in normalized",
+                "if (isInDriveListingScreen(normalized, rawText)) return false\n        val hasRideTitle = \"pedido de viagem\" in normalized && \"pedidos de viagem\" !in normalized",
+            )
         }
 
         text = text.replace(
             """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in match.matchedFeatures // indrive_contract_match_0_1_84
 """,
+            """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_opened_single" in liveFeatures // indrive_opened_card_contract_0_1_86
+""",
+        )
+        text = text.replace(
             """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in liveFeatures // indrive_contract_match_0_1_85
+""",
+            """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_opened_single" in liveFeatures // indrive_opened_card_contract_0_1_86
 """,
         )
 
@@ -89,7 +146,7 @@ val inDriveCardContractMatch by tasks.registering {
 """,
                 """                val requiredStructuralFeatures = structuralFeatures.intersect(required)
                 val structuralOk = requiredStructuralFeatures.all { it in match.matchedFeatures }
-                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in liveFeatures // indrive_contract_match_0_1_85
+                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_opened_single" in liveFeatures // indrive_opened_card_contract_0_1_86
                 val cropOk = if (inDriveContractOk) {
                     true
                 } else {
@@ -124,11 +181,11 @@ val inDriveCardContractMatch by tasks.registering {
             text = text.replace("    private const val INDRIVE_CONTRACT_MIN_FEATURES = 6\n", "")
         }
 
-        if ("indrive_contract_match_0_1_85" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar o match contratual vivo do card inDrive.")
+        if ("indrive_opened_card_contract_0_1_86" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui instalar o contrato de card aberto do inDrive.")
         }
-        if ("card.contract.indrive_individual" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar a feature de card individual inDrive.")
+        if ("card.contract.indrive_opened_single" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui instalar a feature de card individual aberto inDrive.")
         }
         if ("INDRIVE_CONTRACT_MIN_FEATURES" in text) {
             throw org.gradle.api.GradleException("Contrato inDrive ainda depende de constante antiga.")
