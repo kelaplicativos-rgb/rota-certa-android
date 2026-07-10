@@ -34,6 +34,12 @@ val globalLightDiagnostics by tasks.registering {
                     "    private var currentDistanceKm: Double? = null\n    private var lastDecisionOverlayAtMillis: Long = 0L\n",
                 )
             }
+            if ("private var lastPassiveTraceKey: String" !in text) {
+                text = text.replace(
+                    "    private var lastDecisionOverlayAtMillis: Long = 0L\n",
+                    "    private var lastDecisionOverlayAtMillis: Long = 0L\n    private var lastPassiveTraceKey: String = \"\"\n    private var lastPassiveTraceAtMillis: Long = 0L\n",
+                )
+            }
 
             if ("private fun hasActiveRegisteredDecision()" !in text) {
                 text = text.replace(
@@ -51,6 +57,13 @@ val globalLightDiagnostics by tasks.registering {
                 text,
                 "traceEvent",
 """    private fun traceEvent(message: String) {
+        if (message.startsWith("event passive ignored")) {
+            val now = System.currentTimeMillis()
+            val passiveKey = message.substringBefore(" reason=")
+            if (passiveKey == lastPassiveTraceKey && now - lastPassiveTraceAtMillis < 1_500L) return
+            lastPassiveTraceKey = passiveKey
+            lastPassiveTraceAtMillis = now
+        }
         DiagnosticLogStore.record("bubble", message)
     }
 
@@ -95,6 +108,10 @@ val globalLightDiagnostics by tasks.registering {
                     "        val manager = windowManager ?: return\n        val targetText",
                     "        val manager = windowManager ?: return\n$stabilityBlock        val targetText",
                 )
+            }
+
+            if ("lastPassiveTraceKey" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui instalar o antispam de eventos passivos da bolinha.")
             }
 
             if (text != original) file.writeText(text)
