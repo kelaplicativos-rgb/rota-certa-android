@@ -75,15 +75,15 @@ val liveCardAnalysisRaceFix by tasks.registering {
             "            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83\n",
         )
 
-        // Se o card visivel mudou durante uma chamada de rede, descarta o resultado atrasado.
-        val decisionTrace = """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
-            repository.addAnalysis(result)
-"""
-        if ("analysis.discard stale_card" !in text && decisionTrace in text) {
-            text = text.replace(
-                decisionTrace,
-                """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
-            val analyzedCardSignature = cardMatch?.let { match ->
+        // Se o card visivel mudou durante uma chamada de rede, descarta o resultado atrasado
+        // exatamente antes de persistir/aplicar a decisao calculada.
+        if ("stale_result_guard_0_1_83" !in text) {
+            val persistenceAnchor = "            repository.addAnalysis(result)\n"
+            val persistenceIndex = text.indexOf(persistenceAnchor)
+            if (persistenceIndex < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei o ponto de persistencia do resultado da corrida.")
+            }
+            val staleGuard = """            val analyzedCardSignature = cardMatch?.let { match ->
                 buildVisibleCardSignature(lastTextPackageName ?: currentWindowPackageName(), fields, match)
             }
             if (analyzedCardSignature != null &&
@@ -94,9 +94,8 @@ val liveCardAnalysisRaceFix by tasks.registering {
                 traceEvent("analysis.discard stale_card analyzed=${dollar}analyzedCardSignature visible=${dollar}lastVisibleCardSignature") // stale_result_guard_0_1_83
                 return
             }
-            repository.addAnalysis(result)
-""",
-            )
+"""
+            text = text.substring(0, persistenceIndex) + staleGuard + text.substring(persistenceIndex)
         }
 
         // A troca real de origem/destino/valor sempre libera uma nova analise.
