@@ -30,6 +30,11 @@ val liveCardRouteLink by tasks.registering {
             )
         }
 
+        text = text.replace(
+            "if (quickResult.recommendation != Recommendation.InsufficientData) {",
+            "if (cardMatch != null && quickResult.recommendation != Recommendation.InsufficientData) {",
+        )
+
         if (text != original) file.writeText(text)
     }
 }
