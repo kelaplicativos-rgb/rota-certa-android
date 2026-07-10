@@ -40,8 +40,6 @@ val patchBubbleRenderStability by tasks.registering {
     ): String = listOf(
         normalizePackageName(packageName).orEmpty(),
         cardMatch.template.id,
-        fields.pickup.stableSignaturePart(),
-        fields.destination.stableSignaturePart(),
         fields.fare.stableSignaturePart(),
     ).joinToString("|")
 
@@ -86,9 +84,7 @@ val patchBubbleRenderStability by tasks.registering {
         if (insertionPoint >= 0) {
             val signatureGuard = """        val visibleCardSignature = buildVisibleCardSignature(packageName, fields, cardMatch)
         if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
-            lastDecisionOverlayAtMillis = 0L
-            traceEvent("visible_card.signature_changed previous=${'$'}lastVisibleCardSignature next=${'$'}visibleCardSignature") // bubble_render_stability_0_1_81
-            showOverlay(RadarColor.Default)
+            traceEvent("visible_card.signature_changed transient_previous=${'$'}lastVisibleCardSignature next=${'$'}visibleCardSignature") // bubble_render_signature_no_clear_0_1_84
         }
         lastVisibleCardSignature = visibleCardSignature
 """
@@ -104,6 +100,9 @@ val patchBubbleRenderStability by tasks.registering {
 
         if ("bubble_render_stability_quiet_defer_0_1_83" !in text) {
             throw org.gradle.api.GradleException("Nao consegui instalar a reducao de ruido do screen_changed da bolinha.")
+        }
+        if ("bubble_render_signature_no_clear_0_1_84" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui impedir limpeza por oscilacao de assinatura OCR.")
         }
         if (text.indexOf("val visibleCardSignature = buildVisibleCardSignature") < 0) {
             throw org.gradle.api.GradleException("Nao consegui instalar a assinatura visual do card da bolinha.")
