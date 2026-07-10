@@ -74,11 +74,7 @@ val liveResultFreshnessGuard by tasks.registering {
         }
 
         if ("analysis.discard stale_apply" !in text) {
-            text = text.replace(
-                """            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
-            val radarColor = when (result.recommendation) {
-""",
-                """            if (!allowPopupCandidate) {
+            val freshnessGuard = """            if (!allowPopupCandidate) {
                 val applyAgeMillis = System.currentTimeMillis() - analysisStartedAtMillis
                 val applyVisibleText = collectVisibleText(allowPopupCandidate = false)
                 val applyVisiblePackage = currentWindowPackageName()
@@ -115,10 +111,14 @@ val liveResultFreshnessGuard by tasks.registering {
                     }
                 }
             }
-            lastAnalyzedHash = snapshotHash
-            val radarColor = when (result.recommendation) {
-""",
-            )
+"""
+            val radarAnchor = "            val radarColor = when (result.recommendation) {\n"
+            val anchorIndex = text.indexOf(radarAnchor)
+            if (anchorIndex >= 0) {
+                text = text.substring(0, anchorIndex) + freshnessGuard + text.substring(anchorIndex)
+                text = text.replace("            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash\n", "            lastAnalyzedHash = snapshotHash\n")
+                text = text.replace("            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83\n", "            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83\n")
+            }
         }
 
         if ("OCR_RESULT_MAX_AGE_MS" !in text) {
