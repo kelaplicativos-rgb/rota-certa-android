@@ -20,10 +20,7 @@ val coreBubblePresenterPatch by tasks.registering {
         }
 
         if ("core_bubble_presenter_0_1_90" !in text) {
-            val oldBlock = """        view.text = formatBubbleDistanceKm(currentDistanceKm)
-        view.textSize = bubbleTextSizeSp(view.text.toString())
-"""
-            val newBlock = """        val coreBubblePresentation = coreBubblePresenter.present(
+            val presenterBlock = """        val coreBubblePresentation = coreBubblePresenter.present(
             mode = when (color) {
                 RadarColor.Green -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Good
                 RadarColor.Red -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Bad
@@ -36,10 +33,20 @@ val coreBubblePresenterPatch by tasks.registering {
         view.text = coreBubblePresentation.text
         view.textSize = coreBubblePresentation.textSizeSp
 """
-            if (oldBlock !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei o bloco de texto/tamanho antigo da bolinha para ligar o presenter.")
+            val exactOldBlock = """        view.text = formatBubbleDistanceKm(currentDistanceKm)
+        view.textSize = bubbleTextSizeSp(view.text.toString())
+"""
+            if (exactOldBlock in text) {
+                text = text.replace(exactOldBlock, presenterBlock)
+            } else {
+                val funStart = text.indexOf("    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {")
+                val backgroundStart = if (funStart >= 0) text.indexOf("        view.background = GradientDrawable().apply {", funStart) else -1
+                val viewTextStart = if (funStart >= 0) text.indexOf("        view.text =", funStart) else -1
+                if (funStart < 0 || backgroundStart < 0 || viewTextStart < 0 || viewTextStart > backgroundStart) {
+                    throw org.gradle.api.GradleException("Nao encontrei o trecho visual da bolinha para ligar o presenter.")
+                }
+                text = text.substring(0, viewTextStart) + presenterBlock + text.substring(backgroundStart)
             }
-            text = text.replace(oldBlock, newBlock)
         }
 
         if ("core_bubble_presenter_0_1_90" !in text) {
