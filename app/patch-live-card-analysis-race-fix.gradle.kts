@@ -51,6 +51,7 @@ val liveCardAnalysisRaceFix by tasks.registering {
             "configuracoes",
             "configurações",
             "modelos de cards",
+            "assinaturas de cards",
             "casa/ponto principal",
             "alertas de proximidade",
             "gerar relatorio",
@@ -98,18 +99,29 @@ val liveCardAnalysisRaceFix by tasks.registering {
             text = text.substring(0, resultApplicationIndex) + staleGuard + text.substring(resultApplicationIndex)
         }
 
-        // A troca real de origem/destino/valor sempre libera uma nova analise.
-        val signatureChange = """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
+        // A troca real de assinatura libera nova analise, mas nao apaga verde/vermelho por oscilacao de OCR.
+        val oldSignatureChange = """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
             lastDecisionOverlayAtMillis = 0L
             traceEvent("visible_card.signature_changed previous=${dollar}lastVisibleCardSignature next=${dollar}visibleCardSignature") // bubble_render_stability_0_1_81
 """
-        if (signatureChange in text) {
+        if (oldSignatureChange in text) {
             text = text.replace(
-                signatureChange,
+                oldSignatureChange,
                 """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
-            lastDecisionOverlayAtMillis = 0L
             lastAnalyzedHash = null // force_new_card_analysis_0_1_83
             traceEvent("visible_card.signature_changed previous=${dollar}lastVisibleCardSignature next=${dollar}visibleCardSignature") // bubble_render_stability_0_1_81
+""",
+            )
+        }
+        val nonClearingSignatureChange = """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
+            traceEvent("visible_card.signature_changed transient_previous=${dollar}lastVisibleCardSignature next=${dollar}visibleCardSignature") // bubble_render_signature_no_clear_0_1_84
+"""
+        if (nonClearingSignatureChange in text && "force_new_card_analysis_0_1_83" !in text) {
+            text = text.replace(
+                nonClearingSignatureChange,
+                """        if (lastVisibleCardSignature != null && lastVisibleCardSignature != visibleCardSignature) {
+            lastAnalyzedHash = null // force_new_card_analysis_0_1_83
+            traceEvent("visible_card.signature_changed transient_previous=${dollar}lastVisibleCardSignature next=${dollar}visibleCardSignature") // bubble_render_signature_no_clear_0_1_84
 """,
             )
         }
