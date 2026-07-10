@@ -74,7 +74,7 @@ val liveCardRouteLink by tasks.registering {
                 )
                 traceEvent("core.route.cache.store") // core_route_engine_0_1_89
             }
-            traceEvent("core.route.distance home=${'$'}{homeDistanceKm?.let(::formatDiagnosticKm) ?: "null"} alternative=${'$'}{alternativeDistanceKm?.let(::formatDiagnosticKm) ?: "null"}")
+            traceEvent("core.route.distance home=${'$'}{homeDistanceKm?.toString() ?: "null"} alternative=${'$'}{alternativeDistanceKm?.toString() ?: "null"}")
 
             val result = decisionEngine.decide(
                 fields = fields,
