@@ -47,13 +47,6 @@ val corePackageMonitorPatch by tasks.registering {
         }
 
         if ("core_package_monitor_passive_0_1_93" !in text) {
-            val passiveStartToken = "    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean {\n"
-            val passiveEndToken = "    private fun normalizePackageName(packageName: String?): String? =\n"
-            val passiveStart = text.indexOf(passiveStartToken)
-            val passiveEnd = if (passiveStart >= 0) text.indexOf(passiveEndToken, passiveStart) else -1
-            if (passiveStart < 0 || passiveEnd < 0) {
-                throw org.gradle.api.GradleException("Nao encontrei isPassiveDiagnosticPackage para delegar ao Core.")
-            }
             val passiveBlock = """    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean =
         br.com.mapeiaia.rotacerta.core.CorePackageMonitor.isPassive(
             packageName = packageName,
@@ -61,7 +54,19 @@ val corePackageMonitorPatch by tasks.registering {
         ) // core_package_monitor_passive_0_1_93
 
 """
-            text = text.substring(0, passiveStart) + passiveBlock + text.substring(passiveEnd)
+            val passiveStartToken = "    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean {\n"
+            val passiveEndToken = "    private fun normalizePackageName(packageName: String?): String? =\n"
+            val passiveStart = text.indexOf(passiveStartToken)
+            val passiveEnd = if (passiveStart >= 0) text.indexOf(passiveEndToken, passiveStart) else -1
+            if (passiveStart >= 0 && passiveEnd > passiveStart) {
+                text = text.substring(0, passiveStart) + passiveBlock + text.substring(passiveEnd)
+            } else {
+                val normalizeStart = text.indexOf(passiveEndToken)
+                if (normalizeStart < 0) {
+                    throw org.gradle.api.GradleException("Nao encontrei normalizePackageName para inserir pacote passivo Core.")
+                }
+                text = text.substring(0, normalizeStart) + passiveBlock + text.substring(normalizeStart)
+            }
         }
 
         if ("core_package_monitor_0_1_93" !in text) {
