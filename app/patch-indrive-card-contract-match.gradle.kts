@@ -18,11 +18,11 @@ val inDriveCardContractMatch by tasks.registering {
         if ("private val acceptButtonRegex" !in text) {
             text = text.replace(
                 """    private val timeDistanceLineRegex = Regex(
-        """",
-                """    private val acceptButtonRegex = Regex("""aceitar\s+por\s+r\$\s*\d+""", RegexOption.IGNORE_CASE)
-    private val farePerKmRegex = Regex("""r\$\s*\d+(?:[,.]\d+)?\s*/\s*km""", RegexOption.IGNORE_CASE)
-    private val inDriveOfferButtonRegex = Regex("""ofere[cç]a\s+sua\s+tarifa""", RegexOption.IGNORE_CASE)
-    private val routeMarkerInlineRegex = Regex("""(?m)^\s*[ab]\s+.{5,}""", RegexOption.IGNORE_CASE)
+        """,
+                """    private val acceptButtonRegex = Regex("aceitar\\s+por\\s+r\\$\\s*\\d+", RegexOption.IGNORE_CASE)
+    private val farePerKmRegex = Regex("r\\$\\s*\\d+(?:[,.]\\d+)?\\s*/\\s*km", RegexOption.IGNORE_CASE)
+    private val inDriveOfferButtonRegex = Regex("ofere[cç]a\\s+sua\\s+tarifa", RegexOption.IGNORE_CASE)
+    private val routeMarkerInlineRegex = Regex("(?m)^\\s*[ab]\\s+.{5,}", RegexOption.IGNORE_CASE)
 
     private val timeDistanceLineRegex = Regex(
         """,
