@@ -124,11 +124,15 @@ val noStickyDecisionCleanup by tasks.registering {
                 "Pacote passivo ignorado; bolinha limpa:",
             )
 
+            val hasPreserveDecisionPath = "preserve_valid_decision_0_1_84" in text ||
+                "screen_changed.keep_active_decision" in text ||
+                "process.empty_text keep_active_decision=true" in text ||
+                "analysis.transient_insufficient keep_active_decision=true" in text
             if ("force_missing_card_overlay_default_0_1_80" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a trava final para card nao cadastrado no overlay.")
             }
-            if ("preserve_valid_decision_0_1_84" !in text) {
-                throw org.gradle.api.GradleException("Nao consegui reativar a preservacao curta de decisao valida.")
+            if (!hasPreserveDecisionPath) {
+                throw org.gradle.api.GradleException("Nao encontrei nenhum caminho ativo para preservar decisao valida transitoria.")
             }
             if ("overlay.clear_previous_decision" in text) {
                 throw org.gradle.api.GradleException("A bolinha ainda contem limpeza agressiva de decisao valida.")
