@@ -24,29 +24,16 @@ val liveCardRouteLink by tasks.registering {
             )
         }
 
-        if ("core.route.cache" !in text) {
-            text = text.replace(
-"""            val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
-            traceEvent("geocode.destination ok=${'$'}{destinationCoordinate != null}")
-            val homeCoordinate = settings.homeCoordinate ?: geocodeBest(settings.homeAddress, region, settings)
-            val alternativeCoordinate = settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress, region, settings)
-            traceEvent("geocode.config home=${'$'}{homeCoordinate != null} alternative=${'$'}{alternativeCoordinate != null}")
-            val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate, settings)
-            val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate, settings)
-            traceEvent("route.distance home=${'$'}{homeDistanceKm?.let(::formatDiagnosticKm) ?: "null"} alternative=${'$'}{alternativeDistanceKm?.let(::formatDiagnosticKm) ?: "null"}")
-
-            val result = decisionEngine.decide(
-                fields = fields,
-                settings = settings,
-                destinationCoordinate = destinationCoordinate,
-                homeCoordinate = homeCoordinate,
-                alternativeCoordinate = alternativeCoordinate,
-                fullText = text,
-                homeDistanceKm = homeDistanceKm,
-                alternativeDistanceKm = alternativeDistanceKm,
-            )
-""",
-"""            val coreRouteTransaction = coreRouteEngine.beginTransaction(
+        if ("core_route_engine_0_1_89" !in text) {
+            val routeStartToken = "            val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }\n"
+            val routeStart = text.indexOf(routeStartToken)
+            val decisionEndToken = "                alternativeDistanceKm = alternativeDistanceKm,\n            )\n"
+            val decisionEnd = if (routeStart >= 0) text.indexOf(decisionEndToken, routeStart) else -1
+            if (routeStart < 0 || decisionEnd < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei o bloco de rota legado/original para substituir pelo CoreRouteEngine.")
+            }
+            val replaceEnd = decisionEnd + decisionEndToken.length
+            val coreRouteBlock = """            val coreRouteTransaction = coreRouteEngine.beginTransaction(
                 packageName = packageName,
                 fields = fields,
                 cardTemplateId = cardMatch?.template?.id,
@@ -99,8 +86,8 @@ val liveCardRouteLink by tasks.registering {
                 homeDistanceKm = homeDistanceKm,
                 alternativeDistanceKm = alternativeDistanceKm,
             )
-""",
-            )
+"""
+            text = text.substring(0, routeStart) + coreRouteBlock + text.substring(replaceEnd)
         }
 
         text = text.replace(
