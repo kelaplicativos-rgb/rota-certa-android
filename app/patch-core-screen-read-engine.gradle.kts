@@ -11,6 +11,7 @@ val coreScreenReadEnginePatch by tasks.registering {
         if (!file.exists()) return@doLast
         var text = file.readText()
         val original = text
+        val dollar = "$"
 
         if ("core_screen_read_engine_0_1_92" !in text) {
             val oldBlock = """        val snapshotText = if (allowPopupCandidate) {
@@ -19,7 +20,7 @@ val coreScreenReadEnginePatch by tasks.registering {
             mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank { text.trim() }
         }
         if (snapshotText.isBlank()) {
-            traceEvent("process.empty_text source=$source")
+            traceEvent("process.empty_text source=${dollar}source")
             if (allowPopupCandidate) return
             registeredCardGate.clear()
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
@@ -27,7 +28,7 @@ val coreScreenReadEnginePatch by tasks.registering {
         }
 
         val snapshotHash = snapshotText.snapshotHash()
-        traceEvent("process.snapshot length=${'$'}{snapshotText.length} hash=$snapshotHash")
+        traceEvent("process.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash")
 """
             val newBlock = """        val coreReadSnapshot = br.com.mapeiaia.rotacerta.core.CoreScreenReadEngine.prepare(
             accessibilityText = lastAccessibilityText,
@@ -37,7 +38,7 @@ val coreScreenReadEnginePatch by tasks.registering {
         )
         val snapshotText = coreReadSnapshot.text
         if (coreReadSnapshot.kind == br.com.mapeiaia.rotacerta.core.CoreScreenReadKind.Empty) {
-            traceEvent("core.read.empty source=$source summary=${'$'}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
+            traceEvent("core.read.empty source=${dollar}source summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
             if (allowPopupCandidate) return
             registeredCardGate.clear()
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
@@ -45,7 +46,7 @@ val coreScreenReadEnginePatch by tasks.registering {
         }
 
         val snapshotHash = coreReadSnapshot.hash
-        traceEvent("core.read.snapshot length=${'$'}{snapshotText.length} hash=$snapshotHash summary=${'$'}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
+        traceEvent("core.read.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
 """
             if (oldBlock !in text) {
                 throw org.gradle.api.GradleException("Nao encontrei o bloco de snapshot/merge de leitura para mover ao Core.")
