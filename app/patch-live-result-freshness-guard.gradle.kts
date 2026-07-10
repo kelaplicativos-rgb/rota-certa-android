@@ -140,7 +140,6 @@ val liveResultFreshnessGuard by tasks.registering {
 
 liveResultFreshnessGuard.configure {
     mustRunAfter(
-        "patchRotaCertaCoreStable",
         "liveCardAnalysisRaceFix",
         "patchBubbleRenderStability",
         "noStickyDecisionCleanup",
