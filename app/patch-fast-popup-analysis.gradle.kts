@@ -1,4 +1,5 @@
 apply(from = "patch-live-card-route-link.gradle.kts")
+apply(from = "patch-hide-monitored-apps-card.gradle.kts")
 
 val patchFastPopupAnalysis by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
