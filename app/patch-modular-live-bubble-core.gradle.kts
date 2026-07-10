@@ -15,7 +15,7 @@ val modularLiveBubbleCore by tasks.registering {
                 )
             }
 
-            if ("modular_bubble_policy_0_1_78" !in text) {
+            if ("modular_bubble_policy_0_1_78" !in text && "core_bubble_decision_0_1_88" !in text) {
                 text = text.replace(
 """                val radarColor = if (missingRegisteredCardDecision) RadarColor.Default else computedRadarColor
                 val displayedDistanceKm = if (missingRegisteredCardDecision) null else result.nearestConfiguredDistanceKm()
@@ -52,8 +52,8 @@ val modularLiveBubbleCore by tasks.registering {
             if ("private val bubbleDecisionPolicy = LiveRideBubbleDecisionPolicy()" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar o modulo central da bolinha no servico.")
             }
-            if ("modular_bubble_policy_0_1_78" !in text) {
-                throw org.gradle.api.GradleException("Nao consegui trocar a aplicacao de cor/km para o modulo central da bolinha.")
+            if ("modular_bubble_policy_0_1_78" !in text && "core_bubble_decision_0_1_88" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui trocar a aplicacao de cor/km para nenhum modulo central da bolinha.")
             }
 
             if (text != original) file.writeText(text)
