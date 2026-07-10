@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 class LiveRideRouteCache(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val maxEntries: Int = 512,
-    private val ttlMillis: Long = 30L * 24L * 60L * 60L * 1000L,
+    private val ttlMillis: Long = ROUTE_CACHE_TTL_MILLIS,
 ) {
     private val entries = object : LinkedHashMap<Key, Entry>(maxEntries, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Entry>?): Boolean = size > maxEntries
@@ -46,6 +46,11 @@ class LiveRideRouteCache(
         )
     }
 
+    @Synchronized
+    fun clear() {
+        entries.clear()
+    }
+
     data class Key(
         val destination: String,
         val homeCoordinate: String,
@@ -76,6 +81,9 @@ class LiveRideRouteCache(
     )
 
     companion object {
+        const val ROUTE_CACHE_TTL_DAYS: Long = 14L
+        const val ROUTE_CACHE_TTL_MILLIS: Long = ROUTE_CACHE_TTL_DAYS * 24L * 60L * 60L * 1000L
+
         fun keyFor(
             fields: RideFields,
             settings: AppSettings,
