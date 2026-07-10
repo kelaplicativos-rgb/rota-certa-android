@@ -46,9 +46,6 @@ val coreBubbleStatePatch by tasks.registering {
         }
 
         if ("core_bubble_state_render_0_1_91" !in text) {
-            val target = """        currentRadarColor = color
-        currentDistanceKm = distanceKm
-"""
             val replacement = """        val coreRenderState = coreBubbleState.render(
             mode = when (color) {
                 RadarColor.Green -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Good
@@ -62,10 +59,21 @@ val coreBubbleStatePatch by tasks.registering {
         currentRadarColor = color
         currentDistanceKm = coreRenderState.distanceKm
 """
-            if (target !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei o ponto de estado do showOverlay para ligar o CoreBubbleStateController.")
+            val exactTarget = """        currentRadarColor = color
+        currentDistanceKm = distanceKm
+"""
+            if (exactTarget in text) {
+                text = text.replace(exactTarget, replacement)
+            } else {
+                val funStart = text.indexOf("    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {")
+                val afterManager = if (funStart >= 0) text.indexOf("        val manager = windowManager ?: return\n", funStart) else -1
+                val viewStart = if (funStart >= 0) text.indexOf("        val view = overlayView", funStart) else -1
+                if (funStart < 0 || afterManager < 0 || viewStart < 0 || afterManager > viewStart) {
+                    throw org.gradle.api.GradleException("Nao encontrei o corpo de showOverlay para instalar estado central.")
+                }
+                val insertStart = afterManager + "        val manager = windowManager ?: return\n".length
+                text = text.substring(0, insertStart) + replacement + text.substring(viewStart)
             }
-            text = text.replace(target, replacement)
         }
 
         if ("core_bubble_state_render_0_1_91" !in text) {
