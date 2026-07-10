@@ -76,12 +76,12 @@ val liveCardAnalysisRaceFix by tasks.registering {
         )
 
         // Se o card visivel mudou durante uma chamada de rede, descarta o resultado atrasado
-        // exatamente antes de persistir/aplicar a decisao calculada.
+        // imediatamente antes de liberar a aplicacao da decisao/cor/km.
         if ("stale_result_guard_0_1_83" !in text) {
-            val persistenceAnchor = "            repository.addAnalysis(result)\n"
-            val persistenceIndex = text.indexOf(persistenceAnchor)
-            if (persistenceIndex < 0) {
-                throw org.gradle.api.GradleException("Nao encontrei o ponto de persistencia do resultado da corrida.")
+            val resultApplicationAnchor = "            lastSavedReadHash = snapshotHash\n"
+            val resultApplicationIndex = text.indexOf(resultApplicationAnchor)
+            if (resultApplicationIndex < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei o ponto de aplicacao do resultado da corrida.")
             }
             val staleGuard = """            val analyzedCardSignature = cardMatch?.let { match ->
                 buildVisibleCardSignature(lastTextPackageName ?: currentWindowPackageName(), fields, match)
@@ -95,7 +95,7 @@ val liveCardAnalysisRaceFix by tasks.registering {
                 return
             }
 """
-            text = text.substring(0, persistenceIndex) + staleGuard + text.substring(persistenceIndex)
+            text = text.substring(0, resultApplicationIndex) + staleGuard + text.substring(resultApplicationIndex)
         }
 
         // A troca real de origem/destino/valor sempre libera uma nova analise.
