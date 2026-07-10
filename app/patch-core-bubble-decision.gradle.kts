@@ -14,17 +14,17 @@ val coreBubbleDecisionPatch by tasks.registering {
         val dollar = "$"
 
         if ("core_bubble_decision_0_1_87" !in text) {
-            val oldBlock = """            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
-            val radarColor = when (result.recommendation) {
-                Recommendation.GoodRide -> RadarColor.Green
-                Recommendation.OutsideRadius -> RadarColor.Red
-                Recommendation.InsufficientData -> RadarColor.Default
+            val radarStart = text.indexOf("            val radarColor = when (result.recommendation) {")
+            if (radarStart < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei o inicio da decisao visual antiga da bolinha.")
             }
-            traceEvent("overlay.apply color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{result.nearestConfiguredDistanceKm()?.let(::formatDiagnosticKm) ?: "null"}")
-            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
-"""
-            val newBlock = """            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash
-            val coreClassificationForBubble = br.com.mapeiaia.rotacerta.core.RotaCertaCore.classifyScreen(
+            val showOverlayToken = "            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())\n"
+            val showOverlayIndex = text.indexOf(showOverlayToken, radarStart)
+            if (showOverlayIndex < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei a chamada antiga de showOverlay da bolinha.")
+            }
+            val replaceEnd = showOverlayIndex + showOverlayToken.length
+            val newBlock = """            val coreClassificationForBubble = br.com.mapeiaia.rotacerta.core.RotaCertaCore.classifyScreen(
                 packageName = currentWindowPackageName(),
                 text = text,
                 fields = fields,
@@ -43,10 +43,7 @@ val coreBubbleDecisionPatch by tasks.registering {
             traceEvent("core.bubble mode=${dollar}{coreBubbleDecision.mode} color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{coreBubbleDecision.distanceKm?.let(::formatDiagnosticKm) ?: "null"} reason=${dollar}{coreBubbleDecision.reason}") // core_bubble_decision_0_1_87
             showOverlay(color = radarColor, distanceKm = coreBubbleDecision.distanceKm)
 """
-            if (oldBlock !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei o bloco de decisao visual antigo da bolinha.")
-            }
-            text = text.replace(oldBlock, newBlock)
+            text = text.substring(0, radarStart) + newBlock + text.substring(replaceEnd)
         }
 
         if ("core_bubble_decision_0_1_87" !in text) {
