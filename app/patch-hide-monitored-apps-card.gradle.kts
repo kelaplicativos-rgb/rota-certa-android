@@ -14,6 +14,14 @@ val hideMonitoredAppsCard by tasks.registering {
             "",
         )
 
+        text = text.replace("Modelos de cards", "Assinaturas de cards")
+        text = text.replace("Modelos cadastrados", "Assinaturas cadastradas")
+        text = text.replace("Anexar modelos de cards (prints)", "Anexar prints dos cards")
+        text = text.replace("Nenhum modelo cadastrado ainda.", "Nenhuma assinatura de card cadastrada ainda.")
+        text = text.replace("Cadastrar texto lido como modelo", "Cadastrar como assinatura de card")
+        text = text.replace("Modelo cadastrado:", "Assinatura cadastrada:")
+        text = text.replace("Modelo removido:", "Assinatura removida:")
+
         if (text != original) file.writeText(text)
     }
 }
