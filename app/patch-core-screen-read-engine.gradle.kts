@@ -32,7 +32,7 @@ val coreScreenReadEnginePatch by tasks.registering {
             traceEvent("core.read.empty source=${dollar}source summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
             if (allowPopupCandidate) return
             registeredCardGate.clear()
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = !isPassiveDiagnosticPackage(activePackageName))
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
             return
         }
 
