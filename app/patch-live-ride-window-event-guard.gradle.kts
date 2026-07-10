@@ -29,9 +29,24 @@ val liveRideWindowEventGuard by tasks.registering {
             "com.openai.chatgpt",
             "com.sec.android.app.launcher",
             "com.samsung.android.app.settings",
+            "com.samsung.android.app.smartcapture",
+            "com.samsung.android.capture",
             "com.samsung.android.honeyboard",
             "com.waze",
         )"""
+
+            if ("smart_capture_passive_overlay_0_1_84" !in text) {
+                text = text.replace(
+                    """            "com.samsung.android.app.settings",
+            "com.samsung.android.honeyboard",
+""",
+                    """            "com.samsung.android.app.settings",
+            "com.samsung.android.app.smartcapture", // smart_capture_passive_overlay_0_1_84
+            "com.samsung.android.capture",
+            "com.samsung.android.honeyboard",
+""",
+                )
+            }
 
             if ("active_non_passive_package_priority_0_1_82" !in text) {
                 text = text.replace(
@@ -132,6 +147,9 @@ val liveRideWindowEventGuard by tasks.registering {
             }
             if ("active_non_passive_package_priority_0_1_82" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui priorizar pacote ativo real contra raiz obsoleta.")
+            }
+            if ("smart_capture_passive_overlay_0_1_84" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui tratar Samsung Smart Capture como overlay passivo.")
             }
             if ("PASSIVE_DIAGNOSTIC_PACKAGES" in text.substringAfter("active_non_passive_package_priority_0_1_82")) {
                 throw org.gradle.api.GradleException("Patch anti-pisca ainda depende de constante passiva instavel.")
