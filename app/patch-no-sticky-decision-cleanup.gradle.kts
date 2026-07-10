@@ -24,9 +24,29 @@ val noStickyDecisionCleanup by tasks.registering {
             shouldScanCurrentWindow() &&
             now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS
         ) {
+            traceEvent("overlay.keep_valid_decision_transient requested=${dollar}{color.diagnosticLabel} previous=${dollar}{currentRadarColor.diagnosticLabel}") // preserve_valid_decision_0_1_84
+            return
+        }
+""",
+            )
+            text = text.replace(
+"""        if ((color == RadarColor.Default || color == RadarColor.Idle) &&
+            hasActiveRegisteredDecision() &&
+            shouldScanCurrentWindow() &&
+            now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS
+        ) {
             traceEvent("overlay.clear_previous_decision requested=${dollar}{color.diagnosticLabel} previous=${dollar}{currentRadarColor.diagnosticLabel}") // no_sticky_decision_cleanup_0_1_79
             registeredCardGate.clear()
             lastDecisionOverlayAtMillis = 0L
+        }
+""",
+"""        if ((color == RadarColor.Default || color == RadarColor.Idle) &&
+            hasActiveRegisteredDecision() &&
+            shouldScanCurrentWindow() &&
+            now - lastDecisionOverlayAtMillis < DECISION_OVERLAY_STICKY_MS
+        ) {
+            traceEvent("overlay.keep_valid_decision_transient requested=${dollar}{color.diagnosticLabel} previous=${dollar}{currentRadarColor.diagnosticLabel}") // preserve_valid_decision_0_1_84
+            return
         }
 """,
             )
@@ -59,21 +79,21 @@ val noStickyDecisionCleanup by tasks.registering {
             }
 
             text = text.replace(
-                "val keepActiveDecisionDuringTransientText = hasActiveRegisteredDecision() && shouldScanCurrentWindow()",
                 "val keepActiveDecisionDuringTransientText = false // no_sticky_decision_cleanup_0_1_79",
+                "val keepActiveDecisionDuringTransientText = hasActiveRegisteredDecision() && shouldScanCurrentWindow() // preserve_valid_decision_0_1_84",
             )
             text = text.replace(
-                Regex("""val keepActiveDecisionForTransientInsufficient = computedRadarColor == RadarColor\.Default &&\s+!missingRegisteredCardDecision &&\s+hasActiveRegisteredDecision\(\) &&\s+shouldScanCurrentWindow\(\)"""),
-                "val keepActiveDecisionForTransientInsufficient = false // no_sticky_decision_cleanup_0_1_79",
-            )
-            text = text.replace(
-                Regex("""val keepActiveDecisionForTransientInsufficient = computedRadarColor == RadarColor\.Default &&\s+hasActiveRegisteredDecision\(\) &&\s+shouldScanCurrentWindow\(\)"""),
-                "val keepActiveDecisionForTransientInsufficient = false // no_sticky_decision_cleanup_0_1_79",
+                Regex("""val keepActiveDecisionForTransientInsufficient = false // no_sticky_decision_cleanup_0_1_79"""),
+                "val keepActiveDecisionForTransientInsufficient = computedRadarColor == RadarColor.Default && !missingRegisteredCardDecision && hasActiveRegisteredDecision() && shouldScanCurrentWindow() // preserve_valid_decision_0_1_84",
             )
 
             text = text.replace(
+"""            registeredCardGate.clear()
+            lastDecisionOverlayAtMillis = 0L // no_sticky_decision_cleanup_0_1_79
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
+""",
 """            if (hasActiveRegisteredDecision() && shouldScanCurrentWindow()) {
-                traceEvent("process.empty_text keep_active_decision=true")
+                traceEvent("process.empty_text keep_valid_decision_transient=true") // preserve_valid_decision_0_1_84
                 recordDiagnostic(
                     stage = "screen_changed",
                     reason = "Texto visivel ficou vazio por instantes; mantive a decisao atual ate confirmar saida real do card.",
@@ -82,22 +102,19 @@ val noStickyDecisionCleanup by tasks.registering {
                 return
             }
             registeredCardGate.clear()
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
-""",
-"""            registeredCardGate.clear()
-            lastDecisionOverlayAtMillis = 0L // no_sticky_decision_cleanup_0_1_79
+            lastDecisionOverlayAtMillis = 0L
             resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
 """,
             )
 
             text = text.replace(
 """        if (shouldScanCurrentWindow() && hasActiveRegisteredDecision()) {
-            traceEvent("resetToIdle guarded active_ride_window reason=${dollar}reason")
-            return
+            traceEvent("resetToIdle clear_active_ride_window reason=${dollar}reason") // no_sticky_decision_cleanup_0_1_79
         }
 """,
 """        if (shouldScanCurrentWindow() && hasActiveRegisteredDecision()) {
-            traceEvent("resetToIdle clear_active_ride_window reason=${dollar}reason") // no_sticky_decision_cleanup_0_1_79
+            traceEvent("resetToIdle keep_valid_decision_guard reason=${dollar}reason") // preserve_valid_decision_0_1_84
+            return
         }
 """,
             )
@@ -107,17 +124,14 @@ val noStickyDecisionCleanup by tasks.registering {
                 "Pacote passivo ignorado; bolinha limpa:",
             )
 
-            if ("overlay.keep_decision" in text) {
-                throw org.gradle.api.GradleException("A bolinha ainda contem preservacao sticky de decisao antiga.")
-            }
-            if ("process.empty_text keep_active_decision=true" in text) {
-                throw org.gradle.api.GradleException("Texto vazio ainda preserva decisao antiga.")
-            }
             if ("force_missing_card_overlay_default_0_1_80" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a trava final para card nao cadastrado no overlay.")
             }
-            if ("no_sticky_decision_cleanup_0_1_79" !in text) {
-                throw org.gradle.api.GradleException("Limpeza anti-sticky nao foi aplicada.")
+            if ("preserve_valid_decision_0_1_84" !in text) {
+                throw org.gradle.api.GradleException("Nao consegui reativar a preservacao curta de decisao valida.")
+            }
+            if ("overlay.clear_previous_decision" in text) {
+                throw org.gradle.api.GradleException("A bolinha ainda contem limpeza agressiva de decisao valida.")
             }
 
             if (text != original) file.writeText(text)
