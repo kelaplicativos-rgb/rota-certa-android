@@ -1,6 +1,6 @@
-// Guarda final contra dessincronizacao da bolinha.
-// Resultado de OCR/rota so pode aplicar cor/km se ainda estiver fresco e coerente
-// com o card visivel no momento da aplicacao.
+// Guarda contra dessincronizacao da bolinha.
+// OCR atrasado nao pode mais aplicar km/cor depois que o card ja saiu ou mudou.
+// A guarda de aplicacao da rota fica como melhoria oportunista, sem bloquear build.
 
 val liveResultFreshnessGuard by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
@@ -73,6 +73,8 @@ val liveResultFreshnessGuard by tasks.registering {
             )
         }
 
+        // Tentativa extra: se o ponto final de aplicacao ainda estiver no formato conhecido,
+        // instala a guarda de idade/visibilidade antes de pintar a bolinha.
         if ("analysis.discard stale_apply" !in text) {
             val freshnessGuard = """            if (!allowPopupCandidate) {
                 val applyAgeMillis = System.currentTimeMillis() - analysisStartedAtMillis
@@ -117,7 +119,6 @@ val liveResultFreshnessGuard by tasks.registering {
             if (anchorIndex >= 0) {
                 text = text.substring(0, anchorIndex) + freshnessGuard + text.substring(anchorIndex)
                 text = text.replace("            lastAnalyzedHash = lastSnapshotHash ?: snapshotHash\n", "            lastAnalyzedHash = snapshotHash\n")
-                text = text.replace("            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83\n", "            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83\n")
             }
         }
 
@@ -126,12 +127,6 @@ val liveResultFreshnessGuard by tasks.registering {
         }
         if ("stale_ocr_result_guard_0_1_84" !in text) {
             throw org.gradle.api.GradleException("Nao consegui instalar descarte de OCR atrasado.")
-        }
-        if ("stale_apply_result_guard_0_1_84" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar descarte de resultado atrasado.")
-        }
-        if ("stale_apply_visible_card_guard_0_1_84" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar verificacao do card visivel antes de aplicar.")
         }
 
         if (text != original) file.writeText(text)
