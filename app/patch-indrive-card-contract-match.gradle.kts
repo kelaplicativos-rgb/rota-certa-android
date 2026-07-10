@@ -72,6 +72,13 @@ val inDriveCardContractMatch by tasks.registering {
             )
         }
 
+        text = text.replace(
+            """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in match.matchedFeatures // indrive_contract_match_0_1_84
+""",
+            """                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in liveFeatures // indrive_contract_match_0_1_85
+""",
+        )
+
         if ("inDriveContractOk" !in text) {
             text = text.replace(
                 """                val requiredStructuralFeatures = structuralFeatures.intersect(required)
@@ -82,7 +89,7 @@ val inDriveCardContractMatch by tasks.registering {
 """,
                 """                val requiredStructuralFeatures = structuralFeatures.intersect(required)
                 val structuralOk = requiredStructuralFeatures.all { it in match.matchedFeatures }
-                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in match.matchedFeatures // indrive_contract_match_0_1_84
+                val inDriveContractOk = normalizedPackage == INDRIVE_PACKAGE && "card.contract.indrive_individual" in liveFeatures // indrive_contract_match_0_1_85
                 val cropOk = if (inDriveContractOk) {
                     true
                 } else {
@@ -103,29 +110,28 @@ val inDriveCardContractMatch by tasks.registering {
                         cropOk &&
                         (inDriveContractOk || structuralOk || "card.route.marked_stops" in match.matchedFeatures) &&
                         (inDriveContractOk || match.score >= MIN_SCORE) &&
-                        match.matchedFeatures.size >= if (inDriveContractOk) INDRIVE_CONTRACT_MIN_FEATURES else MIN_FEATURES
+                        (inDriveContractOk || match.matchedFeatures.size >= MIN_FEATURES)
 """,
             )
         }
 
-        if ("private const val INDRIVE_CONTRACT_MIN_FEATURES" !in text) {
-            text = text.replace(
-                """    private const val MIN_FEATURES = 4
-""",
-                """    private const val MIN_FEATURES = 4
-    private const val INDRIVE_CONTRACT_MIN_FEATURES = 6
-""",
-            )
+        text = text.replace(
+            "match.matchedFeatures.size >= if (inDriveContractOk) INDRIVE_CONTRACT_MIN_FEATURES else MIN_FEATURES",
+            "(inDriveContractOk || match.matchedFeatures.size >= MIN_FEATURES)",
+        )
+
+        if ("private const val INDRIVE_CONTRACT_MIN_FEATURES" in text) {
+            text = text.replace("    private const val INDRIVE_CONTRACT_MIN_FEATURES = 6\n", "")
         }
 
-        if ("indrive_contract_match_0_1_84" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar o match contratual do card inDrive.")
+        if ("indrive_contract_match_0_1_85" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui instalar o match contratual vivo do card inDrive.")
         }
         if ("card.contract.indrive_individual" !in text) {
             throw org.gradle.api.GradleException("Nao consegui instalar a feature de card individual inDrive.")
         }
-        if ("private const val INDRIVE_CONTRACT_MIN_FEATURES" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar o limite minimo do contrato inDrive.")
+        if ("INDRIVE_CONTRACT_MIN_FEATURES" in text) {
+            throw org.gradle.api.GradleException("Contrato inDrive ainda depende de constante antiga.")
         }
 
         if (text != original) file.writeText(text)
