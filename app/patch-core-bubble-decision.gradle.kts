@@ -49,7 +49,7 @@ val coreBubbleDecisionPatch by tasks.registering {
                 )
             } else {
                 val radarColor = computedRadarColor
-                traceEvent("core.bubble apply mode=${dollar}{coreBubbleDecision.mode} color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{coreBubbleDecision.distanceKm?.let(::formatDiagnosticKm) ?: "null"} reason=${dollar}{coreBubbleDecision.reason}") // core_bubble_decision_0_1_88
+                traceEvent("core.bubble apply mode=${dollar}{coreBubbleDecision.mode} color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{coreBubbleDecision.distanceKm?.toString() ?: "null"} reason=${dollar}{coreBubbleDecision.reason}") // core_bubble_decision_0_1_88
                 showOverlay(color = radarColor, distanceKm = coreBubbleDecision.distanceKm)
                 recordDiagnostic(
                     stage = "analysis_result",
@@ -85,7 +85,7 @@ val coreBubbleDecisionPatch by tasks.registering {
                 br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Waiting -> RadarColor.Default
                 br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Hidden -> RadarColor.Idle
             }
-            traceEvent("core.bubble apply mode=${dollar}{coreBubbleDecision.mode} color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{coreBubbleDecision.distanceKm?.let(::formatDiagnosticKm) ?: "null"} reason=${dollar}{coreBubbleDecision.reason}") // core_bubble_decision_0_1_88
+            traceEvent("core.bubble apply mode=${dollar}{coreBubbleDecision.mode} color=${dollar}{radarColor.diagnosticLabel} distance=${dollar}{coreBubbleDecision.distanceKm?.toString() ?: "null"} reason=${dollar}{coreBubbleDecision.reason}") // core_bubble_decision_0_1_88
             showOverlay(color = radarColor, distanceKm = coreBubbleDecision.distanceKm)
 """
                     text = text.substring(0, radarStart) + newBlock + text.substring(replaceEnd)
