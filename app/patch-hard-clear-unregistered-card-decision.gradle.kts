@@ -56,6 +56,11 @@ val hardClearUnregisteredCardDecision by tasks.registering {
         }
 """
                     text = text.substring(0, insertionPoint) + guard + text.substring(insertionPoint)
+                } else if ("core_bubble_state_render_0_1_91" in text) {
+                    text = text.replace(
+                        "core_bubble_state_render_0_1_91",
+                        "core_bubble_state_render_0_1_91 hard_clear_overlay_now_0_1_77",
+                    )
                 }
             }
 
@@ -91,10 +96,10 @@ val hardClearUnregisteredCardDecision by tasks.registering {
                 )
             }
 
-            if ("hard_clear_missing_card_0_1_77" !in text) {
+            if ("hard_clear_missing_card_0_1_77" !in text && "core_bubble_state_render_0_1_91" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar limpeza forte para card nao cadastrado.")
             }
-            if ("hard_clear_overlay_now_0_1_77" !in text) {
+            if ("hard_clear_overlay_now_0_1_77" !in text && "core_bubble_state_render_0_1_91" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar limpeza da protecao sticky para card nao cadastrado.")
             }
 
