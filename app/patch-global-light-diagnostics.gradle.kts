@@ -121,7 +121,7 @@ val globalLightDiagnostics by tasks.registering {
 """        appendLine("--- RADARES IMPORTADOS ---")
         appendLine(radarImportSummary.toString())
         appendLine()
-        val globalDiagnostic = DiagnosticLogStore.dump(900)
+        val globalDiagnostic = DiagnosticLogStore.dump(160)
         appendLine("--- DIAGNOSTICO PONTUAL DE TEMPO ---")
         appendLine(PerformanceDiagnosticReporter.build(globalDiagnostic))
         appendLine()
@@ -132,6 +132,7 @@ val globalLightDiagnostics by tasks.registering {
 """,
                 )
             }
+            text = text.replace("DiagnosticLogStore.dump(900)", "DiagnosticLogStore.dump(160)")
 
             if (text != original) file.writeText(text)
         }
