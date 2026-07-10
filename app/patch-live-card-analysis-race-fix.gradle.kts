@@ -42,7 +42,7 @@ val liveCardAnalysisRaceFix by tasks.registering {
         collectNodeText(root, lines)
         val normalized = lines.joinToString("\n")
             .lowercase(Locale.ROOT)
-            .replace(Regex("""\s+"""), " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
         val strongMarkers = listOf(
             "leitura ao vivo",
