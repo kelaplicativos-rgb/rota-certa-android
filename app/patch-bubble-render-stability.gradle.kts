@@ -63,16 +63,22 @@ val patchBubbleRenderStability by tasks.registering {
             )
         }
 
-        if ("screen_changed.defer_visual_until_card_match" !in text) {
+        if ("screen_changed.defer_visual_until_card_match" !in text && "bubble_render_stability_quiet_defer_0_1_83" !in text) {
             text = text.replace(
                 """                lastAnalyzedHash = null
                 showOverlay(RadarColor.Default)
 """,
                 """                lastAnalyzedHash = null
-                traceEvent("screen_changed.defer_visual_until_card_match source=${'$'}source hash=${'$'}snapshotHash") // bubble_render_stability_0_1_81
+                // bubble_render_stability_quiet_defer_0_1_83: nao renderiza amarelo nem registra log repetido ate bater com card cadastrado.
 """,
             )
         }
+        text = text.replace(
+            """                traceEvent("screen_changed.defer_visual_until_card_match source=${'$'}source hash=${'$'}snapshotHash") // bubble_render_stability_0_1_81
+""",
+            """                // bubble_render_stability_quiet_defer_0_1_83: tela mudou, mas a bolinha so registra/aplica estado depois do match do card.
+""",
+        )
 
         text = text.withoutExistingVisibleCardSignatureGuards()
         val duplicateHashGuard = "        if (snapshotHash == lastAnalyzedHash) {\n"
@@ -96,8 +102,8 @@ val patchBubbleRenderStability by tasks.registering {
             )
         }
 
-        if ("screen_changed.defer_visual_until_card_match" !in text) {
-            throw org.gradle.api.GradleException("Nao consegui instalar a estabilizacao de screen_changed da bolinha.")
+        if ("bubble_render_stability_quiet_defer_0_1_83" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui instalar a reducao de ruido do screen_changed da bolinha.")
         }
         if (text.indexOf("val visibleCardSignature = buildVisibleCardSignature") < 0) {
             throw org.gradle.api.GradleException("Nao consegui instalar a assinatura visual do card da bolinha.")
