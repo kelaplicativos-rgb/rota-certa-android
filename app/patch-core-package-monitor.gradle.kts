@@ -6,6 +6,20 @@ val corePackageMonitorPatch by tasks.registering {
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
 
+    fun removeFunction(text: String, signature: String): String {
+        var current = text
+        while (true) {
+            val start = current.indexOf(signature)
+            if (start < 0) return current
+            val nextFun = current.indexOf("\n    private fun ", start + signature.length)
+            val nextEnum = current.indexOf("\n    private enum class ", start + signature.length)
+            val nextCompanion = current.indexOf("\n    private companion object", start + signature.length)
+            val candidates = listOf(nextFun, nextEnum, nextCompanion).filter { it > start }
+            val end = candidates.minOrNull() ?: current.length
+            current = current.removeRange(start, end)
+        }
+    }
+
     doLast {
         val file = serviceFile.asFile
         if (!file.exists()) return@doLast
@@ -69,11 +83,30 @@ val corePackageMonitorPatch by tasks.registering {
             }
         }
 
+        if ("core_package_monitor_passive_ignored_0_1_93" !in text) {
+            text = removeFunction(text, "    private fun isPassiveIgnoredPackage(packageName: String?): Boolean")
+            val normalizeStart = text.indexOf("    private fun normalizePackageName(packageName: String?): String? =\n")
+            if (normalizeStart < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei normalizePackageName para inserir isPassiveIgnoredPackage unico.")
+            }
+            val ignoredBlock = """    private fun isPassiveIgnoredPackage(packageName: String?): Boolean =
+        br.com.mapeiaia.rotacerta.core.CorePackageMonitor.isPassive(
+            packageName = packageName,
+            ownPackageName = this.packageName,
+        ) // core_package_monitor_passive_ignored_0_1_93
+
+"""
+            text = text.substring(0, normalizeStart) + ignoredBlock + text.substring(normalizeStart)
+        }
+
         if ("core_package_monitor_0_1_93" !in text) {
             throw org.gradle.api.GradleException("CorePackageMonitor nao assumiu shouldScanPackage.")
         }
         if ("core_package_monitor_passive_0_1_93" !in text) {
             throw org.gradle.api.GradleException("CorePackageMonitor nao assumiu pacote passivo.")
+        }
+        if ("core_package_monitor_passive_ignored_0_1_93" !in text) {
+            throw org.gradle.api.GradleException("CorePackageMonitor nao assumiu isPassiveIgnoredPackage unico.")
         }
 
         if (text != original) file.writeText(text)
