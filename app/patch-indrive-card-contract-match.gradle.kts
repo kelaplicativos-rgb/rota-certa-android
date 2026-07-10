@@ -108,7 +108,7 @@ val inDriveCardContractMatch by tasks.registering {
             )
         }
 
-        if ("INDRIVE_CONTRACT_MIN_FEATURES" !in text) {
+        if ("private const val INDRIVE_CONTRACT_MIN_FEATURES" !in text) {
             text = text.replace(
                 """    private const val MIN_FEATURES = 4
 """,
@@ -123,6 +123,9 @@ val inDriveCardContractMatch by tasks.registering {
         }
         if ("card.contract.indrive_individual" !in text) {
             throw org.gradle.api.GradleException("Nao consegui instalar a feature de card individual inDrive.")
+        }
+        if ("private const val INDRIVE_CONTRACT_MIN_FEATURES" !in text) {
+            throw org.gradle.api.GradleException("Nao consegui instalar o limite minimo do contrato inDrive.")
         }
 
         if (text != original) file.writeText(text)
