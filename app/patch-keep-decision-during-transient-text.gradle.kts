@@ -40,7 +40,7 @@ val keepDecisionDuringTransientText by tasks.registering {
                 }
             }
 
-            if ("process.empty_text keep_active_decision=true" !in text) {
+            if ("process.empty_text keep_active_decision=true" !in text && "core_screen_read_engine_0_1_92" !in text) {
                 val emptyStart = text.indexOf("        if (snapshotText.isBlank()) {\n")
                 val emptyEnd = if (emptyStart >= 0) {
                     text.indexOf("\n\n        val snapshotHash = snapshotText.snapshotHash()", emptyStart)
@@ -117,7 +117,7 @@ val keepDecisionDuringTransientText by tasks.registering {
             if ("screen_changed.keep_active_decision" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de decisao em screen_changed.")
             }
-            if ("process.empty_text keep_active_decision=true" !in text) {
+            if ("process.empty_text keep_active_decision=true" !in text && "core_screen_read_engine_0_1_92" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui instalar a protecao de texto vazio transitorio.")
             }
             if ("analysis.transient_insufficient keep_active_decision=true" !in text && "keepActiveDecisionForTransientInsufficient" !in text) {
