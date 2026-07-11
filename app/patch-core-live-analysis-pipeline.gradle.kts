@@ -21,21 +21,19 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_begin_0_1_96" !in text) {
-            val target = """        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
-"""
-            val replacement = """        val corePipelineTransaction = coreLivePipeline.begin(
+            val traceStart = text.indexOf("        traceEvent(\"process.start")
+            if (traceStart < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei inicio de processRideText para ligar pipeline Core.")
+            }
+            val beginBlock = """        val corePipelineTransaction = coreLivePipeline.begin(
             packageName = packageName,
             source = source.name,
             rawLength = text.length,
             allowPopupCandidate = allowPopupCandidate,
         )
         traceEvent("core.pipeline.begin ${dollar}{corePipelineTransaction.traceSummary()}") // core_live_pipeline_begin_0_1_96
-        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
 """
-            if (target !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei inicio de processRideText para ligar pipeline Core.")
-            }
-            text = text.replace(target, replacement)
+            text = text.substring(0, traceStart) + beginBlock + text.substring(traceStart)
         }
 
         if ("core_live_pipeline_read_0_1_96" !in text) {
