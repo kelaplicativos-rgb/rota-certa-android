@@ -22,12 +22,15 @@ val coreVisibleCardLifecyclePatch by tasks.registering {
         val original = text
         val dollar = "$"
 
+        // Outros patches antigos tambem criavam esta variavel. Remove todas e reinsere uma unica fonte de verdade.
+        text = text.replace("    private var lastVisibleCardSignature: String? = null\n", "")
+
         if ("private val coreVisibleCardLifecycle = br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycle()" !in text) {
             text = text.replace(
                 "    private val registeredCardGate = RegisteredCardDecisionGate()\n",
                 "    private val registeredCardGate = RegisteredCardDecisionGate()\n    private val coreVisibleCardLifecycle = br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycle()\n    private var lastVisibleCardSignature: String? = null\n",
             )
-        } else if ("private var lastVisibleCardSignature: String? = null" !in text) {
+        } else {
             text = text.replace(
                 "    private val coreVisibleCardLifecycle = br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycle()\n",
                 "    private val coreVisibleCardLifecycle = br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycle()\n    private var lastVisibleCardSignature: String? = null\n",
