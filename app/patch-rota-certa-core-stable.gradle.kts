@@ -6,7 +6,9 @@
 
 val noStickyDecisionCleanup by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    val coreStateFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/core/CoreBubbleStateController.kt")
     inputs.file(serviceFile)
+    inputs.file(coreStateFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -14,6 +16,10 @@ val noStickyDecisionCleanup by tasks.registering {
             var text = file.readText()
             val original = text
             val dollar = "$"
+            val coreStateText = coreStateFile.asFile.takeIf { it.exists() }?.readText().orEmpty()
+            val hasRealCoreMissingCardGuard = "isMissingRegisteredCardReason" in coreStateText &&
+                "CoreBubbleMode.Waiting" in coreStateText &&
+                "distanceKm = null" in coreStateText
 
             text = text.replace(
 """        if ((color == RadarColor.Default || color == RadarColor.Idle) &&
@@ -57,7 +63,7 @@ val noStickyDecisionCleanup by tasks.registering {
 """,
             )
 
-            if ("forceMissingCardOverlayDefault" !in text) {
+            if (!hasRealCoreMissingCardGuard && "forceMissingCardOverlayDefault" !in text) {
                 text = text.replace(
 """        if (color == RadarColor.Green || color == RadarColor.Red) lastDecisionOverlayAtMillis = now
         val nextText = formatBubbleDistanceKm(distanceKm)
@@ -134,8 +140,9 @@ val noStickyDecisionCleanup by tasks.registering {
                 "screen_changed.keep_active_decision" in text ||
                 "process.empty_text keep_active_decision=true" in text ||
                 "analysis.transient_insufficient keep_active_decision=true" in text
-            if ("force_missing_card_overlay_default_0_1_80" !in text) {
-                throw org.gradle.api.GradleException("Nao consegui instalar a trava final para card nao cadastrado no overlay.")
+            val hasLegacyMissingCardOverlayGuard = "force_missing_card_overlay_default_0_1_80" in text
+            if (!hasLegacyMissingCardOverlayGuard && !hasRealCoreMissingCardGuard) {
+                throw org.gradle.api.GradleException("Nao encontrei trava real no Core nem trava legada para card nao cadastrado.")
             }
             if (!hasPreserveDecisionPath) {
                 throw org.gradle.api.GradleException("Nao encontrei nenhum caminho ativo para preservar decisao valida transitoria.")
