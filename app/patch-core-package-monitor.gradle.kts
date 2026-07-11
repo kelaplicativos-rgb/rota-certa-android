@@ -113,10 +113,6 @@ val corePackageMonitorPatch by tasks.registering {
     }
 }
 
-corePackageMonitorPatch.configure {
-    mustRunAfter("coreScreenReadEnginePatch", "coreBubbleStatePatch")
-}
-
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(corePackageMonitorPatch)
 }
