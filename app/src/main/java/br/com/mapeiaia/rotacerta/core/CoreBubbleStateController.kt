@@ -20,13 +20,14 @@ class CoreBubbleStateController(
 
     @Synchronized
     fun render(mode: CoreBubbleMode, distanceKm: Double?, reason: String): CoreBubbleStateSnapshot {
-        val sanitizedDistance = when (mode) {
+        val safeMode = if (reason.isMissingRegisteredCardReason()) CoreBubbleMode.Waiting else mode
+        val sanitizedDistance = when (safeMode) {
             CoreBubbleMode.Good,
             CoreBubbleMode.Bad -> distanceKm
             CoreBubbleMode.Waiting,
             CoreBubbleMode.Hidden -> null
         }
-        return update(mode = mode, distanceKm = sanitizedDistance, reason = reason)
+        return update(mode = safeMode, distanceKm = sanitizedDistance, reason = reason)
     }
 
     @Synchronized
@@ -52,6 +53,12 @@ class CoreBubbleStateController(
         state = next
         return next
     }
+
+    private fun String.isMissingRegisteredCardReason(): Boolean =
+        contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
+            contains("cadastre o modelo para liberar o farol", ignoreCase = true) ||
+            contains("tela nao confirmada por card cadastrado", ignoreCase = true) ||
+            contains("somente card individual cadastrado libera", ignoreCase = true)
 }
 
 data class CoreBubbleStateSnapshot(
