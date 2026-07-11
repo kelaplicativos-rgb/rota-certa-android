@@ -21,9 +21,15 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_begin_0_1_96" !in text) {
-            val traceStart = text.indexOf("        traceEvent(\"process.start")
-            if (traceStart < 0) {
-                throw org.gradle.api.GradleException("Nao encontrei inicio de processRideText para ligar pipeline Core.")
+            val stableStart = listOf(
+                "        if (!allowPopupCandidate) {\n            rememberSourceText(packageName, source, text)",
+                "        if (!allowPopupCandidate) {\n",
+                "        rememberSourceText(packageName, source, text)",
+                "        val snapshotText =",
+                "        val coreReadSnapshot =",
+            ).map { text.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: -1
+            if (stableStart < 0) {
+                throw org.gradle.api.GradleException("Nao encontrei inicio estavel de processRideText para ligar pipeline Core.")
             }
             val beginBlock = """        val corePipelineTransaction = coreLivePipeline.begin(
             packageName = packageName,
@@ -33,7 +39,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         )
         traceEvent("core.pipeline.begin ${dollar}{corePipelineTransaction.traceSummary()}") // core_live_pipeline_begin_0_1_96
 """
-            text = text.substring(0, traceStart) + beginBlock + text.substring(traceStart)
+            text = text.substring(0, stableStart) + beginBlock + text.substring(stableStart)
         }
 
         if ("core_live_pipeline_read_0_1_96" !in text) {
