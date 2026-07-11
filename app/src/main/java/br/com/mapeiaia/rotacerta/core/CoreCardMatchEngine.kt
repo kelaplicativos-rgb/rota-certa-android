@@ -32,24 +32,47 @@ object CoreCardMatchEngine {
             return CoreCardMatchResult.rejected("Nenhum card cadastrado para comparar com a tela atual.")
         }
         val normalizedText = text.normalizedCoreText()
-        if (isListLikeRideFeed(text, normalizedText)) {
-            return CoreCardMatchResult.rejected("Tela parece lista/feed de corridas; somente card individual cadastrado libera o farol.", isListLike = true)
-        }
         val features = RideCardTemplateMatcher.featuresFor(text)
+        val contract = CoreRideCardContractRegistry.contractFor(normalizedPackage)
+        val contractResult = contract.evaluate(text, normalizedPackage, features)
+        if (!contractResult.accepted) {
+            return CoreCardMatchResult.rejected(
+                reason = contractResult.reason,
+                isListLike = contractResult.isListLike,
+                contractName = contractResult.contractName,
+            )
+        }
+        if (isListLikeRideFeed(text, normalizedText)) {
+            return CoreCardMatchResult.rejected(
+                reason = "Tela parece lista/feed de corridas; somente card individual cadastrado libera o farol.",
+                isListLike = true,
+                contractName = contract.name,
+            )
+        }
         if ("card.crop.route_block" !in features) {
-            return CoreCardMatchResult.rejected("Leitura ainda nao contem bloco individual de rota do card cadastrado.")
+            return CoreCardMatchResult.rejected(
+                reason = "Leitura ainda nao contem bloco individual de rota do card cadastrado.",
+                contractName = contract.name,
+            )
         }
         val strictMatch = RideCardTemplateMatcher.match(text, normalizedPackage, templates)
         val match = strictMatch ?: FastRideCardMatcher.match(text, normalizedPackage, templates)
         if (match == null) {
-            return CoreCardMatchResult.rejected("Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado.")
+            return CoreCardMatchResult.rejected(
+                reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado.",
+                contractName = contract.name,
+            )
         }
         if (!belongsToPackage(match.template, normalizedPackage)) {
-            return CoreCardMatchResult.rejected("Card encontrado pertence a outro pacote; leitura bloqueada pelo Core.")
+            return CoreCardMatchResult.rejected(
+                reason = "Card encontrado pertence a outro pacote; leitura bloqueada pelo Core.",
+                contractName = contract.name,
+            )
         }
         return CoreCardMatchResult.accepted(
             match = match,
-            reason = "Card individual cadastrado confirmado pelo Core.",
+            reason = "Card individual cadastrado confirmado pelo contrato ${contract.name}.",
+            contractName = contract.name,
         )
     }
 
@@ -92,12 +115,13 @@ data class CoreCardMatchResult(
     val match: RideCardTemplateMatch?,
     val reason: String,
     val isListLike: Boolean = false,
+    val contractName: String = "Core",
 ) {
     companion object {
-        fun accepted(match: RideCardTemplateMatch, reason: String): CoreCardMatchResult =
-            CoreCardMatchResult(accepted = true, match = match, reason = reason)
+        fun accepted(match: RideCardTemplateMatch, reason: String, contractName: String = "Core"): CoreCardMatchResult =
+            CoreCardMatchResult(accepted = true, match = match, reason = reason, contractName = contractName)
 
-        fun rejected(reason: String, isListLike: Boolean = false): CoreCardMatchResult =
-            CoreCardMatchResult(accepted = false, match = null, reason = reason, isListLike = isListLike)
+        fun rejected(reason: String, isListLike: Boolean = false, contractName: String = "Core"): CoreCardMatchResult =
+            CoreCardMatchResult(accepted = false, match = null, reason = reason, isListLike = isListLike, contractName = contractName)
     }
 }
