@@ -106,7 +106,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_route_0_1_96" !in text) {
-            val routeBlock = """            val corePipelineRoute = coreLivePipeline.routeReady(
+            val routeBlockAnalysis = """            val corePipelineRoute = coreLivePipeline.routeReady(
                 transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
                 fromCache = false,
             )
@@ -126,13 +126,20 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
                 else -> null
             }
             if (routeTarget != null) {
-                text = text.replace(routeTarget, routeTarget + routeBlock)
+                text = text.replace(routeTarget, routeTarget + routeBlockAnalysis)
             } else {
-                val decisionStart = text.indexOf("            traceEvent(\"decision.result")
-                if (decisionStart < 0) {
-                    throw org.gradle.api.GradleException("Nao encontrei rota/cache nem decisao para pipeline Core.")
+                val cardMarker = text.indexOf("core_live_pipeline_card_0_1_96")
+                if (cardMarker < 0) {
+                    throw org.gradle.api.GradleException("Nao encontrei card para fallback de rota do pipeline Core.")
                 }
-                text = text.substring(0, decisionStart) + routeBlock + text.substring(decisionStart)
+                val lineEnd = text.indexOf("\n", cardMarker).takeIf { it >= 0 }?.plus(1) ?: cardMarker
+                val routeBlockAfterCard = """        val corePipelineRoute = coreLivePipeline.routeReady(
+            transaction = coreLivePipeline.currentTransaction() ?: corePipelineTransaction,
+            fromCache = false,
+        )
+        traceEvent("core.pipeline.route ${dollar}{corePipelineRoute.traceSummary()}") // core_live_pipeline_route_0_1_96
+"""
+                text = text.substring(0, lineEnd) + routeBlockAfterCard + text.substring(lineEnd)
             }
         }
 
@@ -148,9 +155,14 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
             traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
 """
             if (target !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei resultado de decisao para pipeline Core.")
+                val decisionStart = text.indexOf("            repository.addAnalysis(result)")
+                if (decisionStart < 0) {
+                    throw org.gradle.api.GradleException("Nao encontrei resultado de decisao para pipeline Core.")
+                }
+                text = text.substring(0, decisionStart) + replacement + text.substring(decisionStart)
+            } else {
+                text = text.replace(target, replacement)
             }
-            text = text.replace(target, replacement)
         }
 
         if ("core_live_pipeline_visual_0_1_96" !in text) {
