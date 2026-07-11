@@ -144,9 +144,23 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_decision_0_1_96" !in text) {
-            val target = """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
+            val decisionBlock = """            val corePipelineDecision = coreLivePipeline.decisionReady(
+                transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
+                recommendation = result.recommendation,
+                distanceKm = coreBubbleDecision.distanceKm,
+            )
+            traceEvent("core.pipeline.decision ${dollar}{corePipelineDecision.traceSummary()}") // core_live_pipeline_decision_0_1_96
 """
-            val replacement = """            val corePipelineDecision = coreLivePipeline.decisionReady(
+            val coreBubbleApplyStart = text.indexOf("            traceEvent(\"core.bubble apply")
+            if (coreBubbleApplyStart >= 0) {
+                text = text.substring(0, coreBubbleApplyStart) + decisionBlock + text.substring(coreBubbleApplyStart)
+            } else {
+                val oldTarget = """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
+"""
+                if (oldTarget !in text) {
+                    throw org.gradle.api.GradleException("Nao encontrei resultado de decisao para pipeline Core.")
+                }
+                val replacement = """            val corePipelineDecision = coreLivePipeline.decisionReady(
                 transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
                 recommendation = result.recommendation,
                 distanceKm = result.nearestConfiguredDistanceKm(),
@@ -154,20 +168,20 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
             traceEvent("core.pipeline.decision ${dollar}{corePipelineDecision.traceSummary()}") // core_live_pipeline_decision_0_1_96
             traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
 """
-            if (target !in text) {
-                val decisionStart = text.indexOf("            repository.addAnalysis(result)")
-                if (decisionStart < 0) {
-                    throw org.gradle.api.GradleException("Nao encontrei resultado de decisao para pipeline Core.")
-                }
-                text = text.substring(0, decisionStart) + replacement + text.substring(decisionStart)
-            } else {
-                text = text.replace(target, replacement)
+                text = text.replace(oldTarget, replacement)
             }
         }
 
         if ("core_live_pipeline_visual_0_1_96" !in text) {
-            val target = """            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
+            val coreTarget = """            showOverlay(color = radarColor, distanceKm = coreBubbleDecision.distanceKm)
 """
+            val oldTarget = """            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
+"""
+            val target = when {
+                coreTarget in text -> coreTarget
+                oldTarget in text -> oldTarget
+                else -> throw org.gradle.api.GradleException("Nao encontrei aplicacao visual para pipeline Core.")
+            }
             val replacement = """            val corePipelineVisual = coreLivePipeline.visualApplied(
                 transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
                 mode = when (radarColor) {
@@ -178,11 +192,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
                 },
             )
             traceEvent("core.pipeline.visual ${dollar}{corePipelineVisual.traceSummary()}") // core_live_pipeline_visual_0_1_96
-            showOverlay(color = radarColor, distanceKm = result.nearestConfiguredDistanceKm())
-"""
-            if (target !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei aplicacao visual para pipeline Core.")
-            }
+""" + target
             text = text.replace(target, replacement)
         }
 
