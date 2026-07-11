@@ -20,6 +20,14 @@ val corePackageMonitorPatch by tasks.registering {
         }
     }
 
+    fun insertBeforeNormalize(text: String, block: String): String {
+        val normalizeStart = text.indexOf("    private fun normalizePackageName(packageName: String?): String? =\n")
+        if (normalizeStart < 0) {
+            throw org.gradle.api.GradleException("Nao encontrei normalizePackageName para inserir helper Core.")
+        }
+        return text.substring(0, normalizeStart) + block + text.substring(normalizeStart)
+    }
+
     doLast {
         val file = serviceFile.asFile
         if (!file.exists()) return@doLast
@@ -60,35 +68,8 @@ val corePackageMonitorPatch by tasks.registering {
             text = text.substring(0, start) + delegatedBlock + text.substring(end)
         }
 
-        if ("core_package_monitor_passive_0_1_93" !in text) {
-            val passiveBlock = """    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean =
-        br.com.mapeiaia.rotacerta.core.CorePackageMonitor.isPassive(
-            packageName = packageName,
-            ownPackageName = this.packageName,
-        ) // core_package_monitor_passive_0_1_93
-
-"""
-            val passiveStartToken = "    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean {\n"
-            val passiveEndToken = "    private fun normalizePackageName(packageName: String?): String? =\n"
-            val passiveStart = text.indexOf(passiveStartToken)
-            val passiveEnd = if (passiveStart >= 0) text.indexOf(passiveEndToken, passiveStart) else -1
-            if (passiveStart >= 0 && passiveEnd > passiveStart) {
-                text = text.substring(0, passiveStart) + passiveBlock + text.substring(passiveEnd)
-            } else {
-                val normalizeStart = text.indexOf(passiveEndToken)
-                if (normalizeStart < 0) {
-                    throw org.gradle.api.GradleException("Nao encontrei normalizePackageName para inserir pacote passivo Core.")
-                }
-                text = text.substring(0, normalizeStart) + passiveBlock + text.substring(normalizeStart)
-            }
-        }
-
         if ("core_package_monitor_passive_ignored_0_1_93" !in text) {
             text = removeFunction(text, "    private fun isPassiveIgnoredPackage(packageName: String?): Boolean")
-            val normalizeStart = text.indexOf("    private fun normalizePackageName(packageName: String?): String? =\n")
-            if (normalizeStart < 0) {
-                throw org.gradle.api.GradleException("Nao encontrei normalizePackageName para inserir isPassiveIgnoredPackage unico.")
-            }
             val ignoredBlock = """    private fun isPassiveIgnoredPackage(packageName: String?): Boolean =
         br.com.mapeiaia.rotacerta.core.CorePackageMonitor.isPassive(
             packageName = packageName,
@@ -96,7 +77,19 @@ val corePackageMonitorPatch by tasks.registering {
         ) // core_package_monitor_passive_ignored_0_1_93
 
 """
-            text = text.substring(0, normalizeStart) + ignoredBlock + text.substring(normalizeStart)
+            text = insertBeforeNormalize(text, ignoredBlock)
+        }
+
+        if ("core_package_monitor_passive_0_1_93" !in text) {
+            text = removeFunction(text, "    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean")
+            val passiveBlock = """    private fun isPassiveDiagnosticPackage(packageName: String?): Boolean =
+        br.com.mapeiaia.rotacerta.core.CorePackageMonitor.isPassive(
+            packageName = packageName,
+            ownPackageName = this.packageName,
+        ) // core_package_monitor_passive_0_1_93
+
+"""
+            text = insertBeforeNormalize(text, passiveBlock)
         }
 
         if ("core_package_monitor_0_1_93" !in text) {
