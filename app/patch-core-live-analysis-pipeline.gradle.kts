@@ -182,7 +182,27 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
                 oldTarget in text -> oldTarget
                 else -> throw org.gradle.api.GradleException("Nao encontrei aplicacao visual para pipeline Core.")
             }
-            val replacement = """            val corePipelineVisual = coreLivePipeline.visualApplied(
+            val freshnessBlock = """            val coreFreshnessDecision = br.com.mapeiaia.rotacerta.core.CoreFreshnessGuard.evaluate(
+                transaction = coreLivePipeline.currentTransaction(),
+                currentPackageName = packageName,
+                currentSnapshotHash = snapshotHash,
+                currentVisibleCardSignature = lastVisibleCardSignature,
+            )
+            if (!coreFreshnessDecision.fresh) {
+                traceEvent("core.freshness stale reason=${dollar}{coreFreshnessDecision.reason}") // core_freshness_guard_0_1_97
+                recordDiagnostic(
+                    stage = "stale_result",
+                    reason = coreFreshnessDecision.reason,
+                    text = text,
+                    fields = fields,
+                    result = result,
+                    cardTemplateMatch = cardMatch,
+                )
+                return
+            }
+            traceEvent("core.freshness fresh reason=${dollar}{coreFreshnessDecision.reason}") // core_freshness_guard_0_1_97
+"""
+            val replacement = freshnessBlock + """            val corePipelineVisual = coreLivePipeline.visualApplied(
                 transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
                 mode = when (radarColor) {
                     RadarColor.Green -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Good
@@ -203,6 +223,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
             "core_live_pipeline_route_0_1_96",
             "core_live_pipeline_decision_0_1_96",
             "core_live_pipeline_visual_0_1_96",
+            "core_freshness_guard_0_1_97",
         ).forEach { marker ->
             if (marker !in text) throw org.gradle.api.GradleException("Marcador do pipeline ausente: $marker")
         }
