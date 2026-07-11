@@ -21,7 +21,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_begin_0_1_96" !in text) {
-            val target = """        traceEvent("process.start source=$source package=${packageName.orEmpty()} raw_length=${text.length}")
+            val target = """        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
 """
             val replacement = """        val corePipelineTransaction = coreLivePipeline.begin(
             packageName = packageName,
@@ -30,7 +30,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
             allowPopupCandidate = allowPopupCandidate,
         )
         traceEvent("core.pipeline.begin ${dollar}{corePipelineTransaction.traceSummary()}") // core_live_pipeline_begin_0_1_96
-        traceEvent("process.start source=$source package=${packageName.orEmpty()} raw_length=${text.length}")
+        traceEvent("process.start source=${dollar}source package=${dollar}{packageName.orEmpty()} raw_length=${dollar}{text.length}")
 """
             if (target !in text) {
                 throw org.gradle.api.GradleException("Nao encontrei inicio de processRideText para ligar pipeline Core.")
@@ -125,7 +125,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_decision_0_1_96" !in text) {
-            val target = """            traceEvent("decision.result recommendation=${result.recommendation} reason=${result.reason}")
+            val target = """            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
 """
             val replacement = """            val corePipelineDecision = coreLivePipeline.decisionReady(
                 transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
@@ -133,7 +133,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
                 distanceKm = result.nearestConfiguredDistanceKm(),
             )
             traceEvent("core.pipeline.decision ${dollar}{corePipelineDecision.traceSummary()}") // core_live_pipeline_decision_0_1_96
-            traceEvent("decision.result recommendation=${result.recommendation} reason=${result.reason}")
+            traceEvent("decision.result recommendation=${dollar}{result.recommendation} reason=${dollar}{result.reason}")
 """
             if (target !in text) {
                 throw org.gradle.api.GradleException("Nao encontrei resultado de decisao para pipeline Core.")
