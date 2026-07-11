@@ -106,7 +106,13 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
         }
 
         if ("core_live_pipeline_route_0_1_96" !in text) {
-            val target = when {
+            val routeBlock = """            val corePipelineRoute = coreLivePipeline.routeReady(
+                transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
+                fromCache = false,
+            )
+            traceEvent("core.pipeline.route ${dollar}{corePipelineRoute.traceSummary()}") // core_live_pipeline_route_0_1_96
+"""
+            val routeTarget = when {
                 "core.route.cache hit=" in text -> {
                     val start = text.indexOf("            traceEvent(\"core.route.cache hit=")
                     val lineEnd = text.indexOf("\n", start)
@@ -118,14 +124,16 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
                     if (start >= 0 && lineEnd >= 0) text.substring(start, lineEnd + 1) else null
                 }
                 else -> null
-            } ?: throw org.gradle.api.GradleException("Nao encontrei rota/cache para pipeline Core.")
-            val routeBlock = """            val corePipelineRoute = coreLivePipeline.routeReady(
-                transaction = coreLivePipeline.currentTransaction() ?: coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate),
-                fromCache = runCatching { coreCache.fromCache }.getOrDefault(false),
-            )
-            traceEvent("core.pipeline.route ${dollar}{corePipelineRoute.traceSummary()}") // core_live_pipeline_route_0_1_96
-"""
-            text = text.replace(target, target + routeBlock)
+            }
+            if (routeTarget != null) {
+                text = text.replace(routeTarget, routeTarget + routeBlock)
+            } else {
+                val decisionStart = text.indexOf("            traceEvent(\"decision.result")
+                if (decisionStart < 0) {
+                    throw org.gradle.api.GradleException("Nao encontrei rota/cache nem decisao para pipeline Core.")
+                }
+                text = text.substring(0, decisionStart) + routeBlock + text.substring(decisionStart)
+            }
         }
 
         if ("core_live_pipeline_decision_0_1_96" !in text) {
