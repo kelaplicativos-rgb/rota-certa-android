@@ -1,7 +1,6 @@
 package br.com.mapeiaia.rotacerta.core
 
 import br.com.mapeiaia.rotacerta.RideCardTemplate
-import br.com.mapeiaia.rotacerta.RideCardTemplateMatcher
 import br.com.mapeiaia.rotacerta.RideFields
 
 /**
@@ -51,15 +50,16 @@ object RotaCertaCore {
                 reason = classification.reason,
             )
         }
-        val match = RideCardTemplateMatcher.match(text, packageName, templates)
+        val matchResult = CoreCardMatchEngine.match(text, packageName, templates)
+        val match = matchResult.match
         return CoreCardMatchDecision(
             classification = classification,
             matched = match?.template?.name,
-            canAnalyzeRoute = match != null,
-            reason = if (match != null) {
-                "Card individual aberto e assinatura cadastrada confirmados pelo Rota Certa Core."
+            canAnalyzeRoute = matchResult.accepted && match != null,
+            reason = if (matchResult.accepted && match != null) {
+                matchResult.reason
             } else {
-                "Card individual aberto, mas assinatura cadastrada ainda nao bateu."
+                matchResult.reason
             },
         )
     }
