@@ -6,6 +6,15 @@ val coreVisibleCardLifecyclePatch by tasks.registering {
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
 
+    fun insertAfterFunctionStart(text: String, signature: String, block: String): String {
+        val start = text.indexOf(signature)
+        if (start < 0) return text
+        val bodyStart = text.indexOf("    ) {\n", start).takeIf { it >= 0 }?.let { it + "    ) {\n".length }
+            ?: text.indexOf("    )\n", start).takeIf { it >= 0 }?.let { text.indexOf("{\n", it) + 2 }
+            ?: return text
+        return text.substring(0, bodyStart) + block + text.substring(bodyStart)
+    }
+
     doLast {
         val file = serviceFile.asFile
         if (!file.exists()) return@doLast
@@ -70,10 +79,20 @@ val coreVisibleCardLifecyclePatch by tasks.registering {
         traceEvent("core.visible_card clear action=${dollar}{visibleCardClearEvent.action} previous=${dollar}{visibleCardClearEvent.previousSignature ?: "null"} reason=${dollar}{visibleCardClearEvent.reason}") // core_visible_card_clear_0_1_95
         clearRememberedRideText()
 """
-            if (resetTarget !in text) {
-                throw org.gradle.api.GradleException("Nao encontrei reset da bolinha para ligar clear do ciclo de vida.")
+            if (resetTarget in text) {
+                text = text.replace(resetTarget, resetReplacement)
+            } else {
+                val clearBlock = """        val visibleCardClearEvent = coreVisibleCardLifecycle.clear(reason)
+        lastVisibleCardSignature = null
+        traceEvent("core.visible_card clear action=${dollar}{visibleCardClearEvent.action} previous=${dollar}{visibleCardClearEvent.previousSignature ?: "null"} reason=${dollar}{visibleCardClearEvent.reason}") // core_visible_card_clear_0_1_95
+"""
+                val before = text
+                text = insertAfterFunctionStart(text, "    private fun resetToDefault(\n", clearBlock)
+                text = insertAfterFunctionStart(text, "    private fun resetToIdle(\n", clearBlock)
+                if (text == before) {
+                    throw org.gradle.api.GradleException("Nao encontrei reset da bolinha para ligar clear do ciclo de vida.")
+                }
             }
-            text = text.replace(resetTarget, resetReplacement)
         }
 
         if ("core_visible_card_lifecycle_0_1_95" !in text) {
