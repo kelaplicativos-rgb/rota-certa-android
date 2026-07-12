@@ -119,6 +119,7 @@ val patchLiveRideAccessibilityService by tasks.registering {
         val file = serviceFile.asFile
         var text = file.readText()
         val original = text
+        val dollar = "$"
 
         if ("private fun hasActiveRegisteredDecision()" !in text) {
             text = text.replace(
@@ -137,6 +138,35 @@ val patchLiveRideAccessibilityService by tasks.registering {
             "else -> distanceKm.roundToInt().coerceAtMost(99).toString()",
             "else -> String.format(Locale(\"pt\", \"BR\"), \"%.1f\", distanceKm).removeSuffix(\",0\")",
         )
+
+        if ("core_screen_read_engine_0_1_92" !in text) {
+            val startToken = "        val snapshotText ="
+            val endToken = "        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->\n"
+            val start = text.indexOf(startToken)
+            val end = if (start >= 0) text.indexOf(endToken, start) else -1
+            if (start >= 0 && end > start) {
+                val readBlock = """        val coreReadSnapshot = br.com.mapeiaia.rotacerta.core.CoreScreenReadEngine.prepare(
+            accessibilityText = lastAccessibilityText,
+            ocrText = lastOcrText,
+            fallbackText = text,
+            allowPopupCandidate = allowPopupCandidate,
+        )
+        val snapshotText = coreReadSnapshot.text
+        if (coreReadSnapshot.kind == br.com.mapeiaia.rotacerta.core.CoreScreenReadKind.Empty) {
+            traceEvent("core.read.empty source=${dollar}source summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
+            if (allowPopupCandidate) return
+            registeredCardGate.clear()
+            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
+            return
+        }
+
+        val snapshotHash = coreReadSnapshot.hash
+        traceEvent("core.read.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
+
+"""
+                text = text.substring(0, start) + readBlock + text.substring(end)
+            }
+        }
 
         if (text != original) {
             file.writeText(text)
@@ -182,7 +212,6 @@ apply(from = "patch-rota-certa-core-gate.gradle.kts")
 apply(from = "patch-core-bubble-decision.gradle.kts")
 apply(from = "patch-core-bubble-presenter.gradle.kts")
 apply(from = "patch-core-bubble-state.gradle.kts")
-apply(from = "patch-core-screen-read-engine.gradle.kts")
 apply(from = "patch-core-package-monitor.gradle.kts")
 apply(from = "patch-core-card-match-engine.gradle.kts")
 apply(from = "patch-core-visible-card-lifecycle.gradle.kts")
