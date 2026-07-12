@@ -3,6 +3,12 @@ package br.com.mapeiaia.rotacerta.core
 /**
  * Motor de leitura de tela do Rota Certa Core.
  * Ele nao acessa Android diretamente; recebe os textos brutos e prepara um snapshot estavel.
+ *
+ * Contrato profissional deste modulo:
+ * - popup usa somente o texto atual recebido;
+ * - leitura ao vivo combina Acessibilidade + OCR sem duplicar linhas;
+ * - fallback so entra quando a combinacao esta vazia;
+ * - o hash usado pela bolinha nasce aqui, junto com o snapshot.
  */
 object CoreScreenReadEngine {
     fun prepare(
@@ -12,13 +18,13 @@ object CoreScreenReadEngine {
         allowPopupCandidate: Boolean,
     ): CoreScreenReadSnapshot {
         val snapshotText = if (allowPopupCandidate) {
-            fallbackText.trimStable()
+            normalizeText(fallbackText)
         } else {
-            merge(accessibilityText, ocrText).ifBlank { fallbackText.trimStable() }
+            merge(accessibilityText, ocrText).ifBlank { normalizeText(fallbackText) }
         }
         return CoreScreenReadSnapshot(
             text = snapshotText,
-            hash = snapshotText.stableHash(),
+            hash = stableHash(snapshotText),
             kind = if (snapshotText.isBlank()) CoreScreenReadKind.Empty else CoreScreenReadKind.Ready,
             sourceSummary = buildSourceSummary(accessibilityText, ocrText, fallbackText, allowPopupCandidate),
         )
@@ -34,17 +40,20 @@ object CoreScreenReadEngine {
         return lines.joinToString("\n")
     }
 
+    fun normalizeText(text: String): String =
+        text.lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+
+    fun stableHash(text: String): Int = normalizeText(text).hashCode()
+
     private fun buildSourceSummary(
         accessibilityText: String,
         ocrText: String,
         fallbackText: String,
         allowPopupCandidate: Boolean,
     ): String = "accessibility=${accessibilityText.length};ocr=${ocrText.length};fallback=${fallbackText.length};popup=$allowPopupCandidate"
-
-    private fun String.trimStable(): String =
-        lines().map { it.trim() }.filter { it.isNotBlank() }.joinToString("\n")
-
-    private fun String.stableHash(): Int = hashCode()
 }
 
 enum class CoreScreenReadKind {
