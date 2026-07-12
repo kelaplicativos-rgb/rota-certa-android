@@ -255,7 +255,7 @@ val patchScreenPhoneWhatsApp by tasks.registering {
 
 patchScreenPhoneWhatsApp.configure {
     mustRunAfter(
-        "patchPassiveEventCompileFix",
+        "passiveEventCompileFix",
         "coreScreenReadEngineInlinePatch",
         "coreLiveAnalysisPipelinePatch",
     )
