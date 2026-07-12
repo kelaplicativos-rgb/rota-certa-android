@@ -68,7 +68,7 @@ val coreLiveAnalysisPipelinePatch by tasks.registering {
             val target = """        if (coreVisibleCardEvent.shouldClearPreviousDecision) {
 """
             val replacement = """        val corePipelineVisible = coreLivePipeline.visibleCard(
-            transaction = corePipelineRead,
+            transaction = coreLivePipeline.currentTransaction() ?: corePipelineTransaction,
             action = coreVisibleCardEvent.action,
             visibleCardSignature = coreVisibleCardEvent.currentSignature,
         )
