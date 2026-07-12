@@ -11,7 +11,7 @@ class CoreBubblePresenterTest {
 
         assertEquals(CoreBubbleMode.Good, presentation.mode)
         assertEquals("6,8", presentation.text)
-        assertEquals(18f, presentation.textSizeSp)
+        assertEquals(20f, presentation.textSizeSp)
         assertTrue(presentation.shouldShow)
     }
 
