@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 85
+val appVersionCode = ciVersionCode ?: 86
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.83"
+        versionName = "0.1.84"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -249,3 +249,5 @@ tasks.named("coreLiveAnalysisPipelinePatch").configure {
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(coreScreenReadEngineInlinePatch)
 }
+
+apply(from = "patch-screen-phone-whatsapp.gradle.kts")
