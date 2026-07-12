@@ -8,7 +8,8 @@ package br.com.mapeiaia.rotacerta.core
  * - popup usa somente o texto atual recebido;
  * - leitura ao vivo combina Acessibilidade + OCR sem duplicar linhas;
  * - fallback so entra quando a combinacao esta vazia;
- * - o hash usado pela bolinha nasce aqui, junto com o snapshot.
+ * - o hash usado pela bolinha nasce aqui, junto com o snapshot;
+ * - normalizacao e hash sao API publica do Core e possuem teste unitario.
  */
 object CoreScreenReadEngine {
     fun prepare(
