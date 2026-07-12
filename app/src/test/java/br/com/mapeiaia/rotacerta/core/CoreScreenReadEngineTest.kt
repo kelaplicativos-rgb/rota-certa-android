@@ -19,7 +19,7 @@ class CoreScreenReadEngineTest {
             "Pedido de viagem\nRua A\nRua B\nAceitar por R$ 44",
             snapshot.text,
         )
-        assertEquals(snapshot.text.hashCode(), snapshot.hash)
+        assertEquals(CoreScreenReadEngine.stableHash(snapshot.text), snapshot.hash)
         assertTrue(snapshot.sourceSummary.contains("popup=false"))
     }
 
@@ -34,7 +34,7 @@ class CoreScreenReadEngineTest {
 
         assertEquals(CoreScreenReadKind.Ready, snapshot.kind)
         assertEquals("Pedido de viagem\nAceitar por R$ 44", snapshot.text)
-        assertEquals(snapshot.text.hashCode(), snapshot.hash)
+        assertEquals(CoreScreenReadEngine.stableHash(snapshot.text), snapshot.hash)
     }
 
     @Test
@@ -48,7 +48,7 @@ class CoreScreenReadEngineTest {
 
         assertEquals(CoreScreenReadKind.Ready, snapshot.kind)
         assertEquals("Card pop-up\nAceitar", snapshot.text)
-        assertEquals(snapshot.text.hashCode(), snapshot.hash)
+        assertEquals(CoreScreenReadEngine.stableHash(snapshot.text), snapshot.hash)
         assertTrue(snapshot.sourceSummary.contains("popup=true"))
     }
 
@@ -64,5 +64,15 @@ class CoreScreenReadEngineTest {
         assertEquals(CoreScreenReadKind.Empty, snapshot.kind)
         assertEquals("", snapshot.text)
         assertEquals(0, snapshot.hash)
+    }
+
+    @Test
+    fun stableHashNormalizesDirtyTextBeforeHashing() {
+        val clean = "Pedido de viagem\nAceitar por R$ 44"
+        val dirty = "  Pedido de viagem  \n\n  Aceitar por R$ 44  \n"
+
+        assertEquals(clean, CoreScreenReadEngine.normalizeText(dirty))
+        assertEquals(clean.hashCode(), CoreScreenReadEngine.stableHash(dirty))
+        assertEquals(CoreScreenReadEngine.stableHash(clean), CoreScreenReadEngine.stableHash(dirty))
     }
 }
