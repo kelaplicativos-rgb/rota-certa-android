@@ -37,7 +37,10 @@ val coreVisibleCardLifecyclePatch by tasks.registering {
             )
         }
 
-        if ("core_visible_card_lifecycle_0_1_95" !in text) {
+        // Quando o patch final do relatorio ja moveu o lifecycle para depois do match real,
+        // nao reinstalar a observacao antiga antes da classificacao.
+        val hasFinalMatchedLifecycle = "report_visible_card_after_match_0_1_86" in text
+        if ("core_visible_card_lifecycle_0_1_95" !in text && !hasFinalMatchedLifecycle) {
             val markerAfter = when {
                 "traceEvent(\"core.read.snapshot" in text -> {
                     val start = text.indexOf("        traceEvent(\"core.read.snapshot")
@@ -98,8 +101,8 @@ val coreVisibleCardLifecyclePatch by tasks.registering {
             }
         }
 
-        if ("core_visible_card_lifecycle_0_1_95" !in text) {
-            throw org.gradle.api.GradleException("CoreVisibleCardLifecycle nao assumiu observacao de snapshot.")
+        if ("core_visible_card_lifecycle_0_1_95" !in text && "report_visible_card_after_match_0_1_86" !in text) {
+            throw org.gradle.api.GradleException("CoreVisibleCardLifecycle nao assumiu observacao de snapshot/card confirmado.")
         }
         if ("core_visible_card_clear_0_1_95" !in text) {
             throw org.gradle.api.GradleException("CoreVisibleCardLifecycle nao assumiu limpeza de card visivel.")
