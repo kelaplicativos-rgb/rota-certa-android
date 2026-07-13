@@ -71,9 +71,10 @@ val reportStaleLifecycleFix by tasks.registering {
         )
 
         // Remove o lifecycle instalado cedo demais, logo depois de qualquer snapshot parcial.
-        // Esse era o motivo dos centenas de VisibleCard com hash=-1/card=null no relatorio.
+        // Em execucoes seguintes o lifecycle final ja existe e nao deve ser removido novamente.
+        val hasFinalMatchedLifecycle = "report_visible_card_after_match_0_1_86" in text
         val earlyLifecycleStart = text.indexOf("        val coreVisibleCardEvent = coreVisibleCardLifecycle.observe(")
-        if (earlyLifecycleStart >= 0) {
+        if (earlyLifecycleStart >= 0 && !hasFinalMatchedLifecycle) {
             val classifierStart = text.indexOf("        RideScreenTextClassifier.ignoreReason(snapshotText)", earlyLifecycleStart)
             if (classifierStart < 0) {
                 throw org.gradle.api.GradleException("Nao encontrei fim do lifecycle precoce do card.")
