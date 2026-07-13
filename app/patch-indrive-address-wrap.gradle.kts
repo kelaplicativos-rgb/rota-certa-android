@@ -28,11 +28,11 @@ val inDriveAddressWrapPatch by tasks.registering {
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
-        val previousEndsWithConnector = Regex("""\\b(?:da|de|do|das|dos|e)\\s*${'$'}""", RegexOption.IGNORE_CASE)
+        val previousEndsWithConnector = Regex("\\b(?:da|de|do|das|dos|e)\\s*\\z", RegexOption.IGNORE_CASE)
             .containsMatchIn(previous)
         val previousStartsAsAddress = looksLikeAddress(previous)
-        val previousHasStreetNumber = Regex("""\\b\\d{1,6}\\b""").containsMatchIn(previous)
-        val valueStartsWithStreetNumber = Regex("""^\\d{1,6}\\b""").containsMatchIn(value)
+        val previousHasStreetNumber = Regex("\\b\\d{1,6}\\b").containsMatchIn(previous)
+        val valueStartsWithStreetNumber = Regex("^\\d{1,6}\\b").containsMatchIn(value)
         val joinsSplitStreetName = previousStartsAsAddress &&
             !previousHasStreetNumber &&
             (previousEndsWithConnector || valueStartsWithStreetNumber) // indrive_address_wrap_0_1_85
