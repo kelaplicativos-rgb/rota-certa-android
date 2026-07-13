@@ -41,11 +41,18 @@ object InDriveCardContract : CoreRideCardContract {
         val hasRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
         val hasAccept = acceptButtonRegex.containsMatchIn(text) || "aceitar por" in normalized
         val hasOffer = offerButtonRegex.containsMatchIn(text) || "ofereca sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
         val hasMoney = moneyRegex.containsMatchIn(text)
-        val hasRoute = "card.route.address" in features || "card.route.ab_markers" in features || routeMarkerRegex.findAll(text).count() >= 2
-        val strongSignals = listOf(hasRideTitle, hasAccept, hasOffer, hasMoney, hasRoute).count { it }
-        return if (strongSignals >= 4) {
-            CoreRideCardContractResult.accepted(name, "Contrato inDrive aceito: card individual aberto.")
+        val hasRoute = "card.route.address" in features ||
+            "card.route.ab_markers" in features ||
+            "card.route.marked_stops" in features ||
+            routeMarkerRegex.findAll(text).count() >= 2
+        val hasIndividualCardContract = hasRoute &&
+            hasPrimaryAction &&
+            (hasMoney || hasRideTitle) // indrive_core_contract_0_1_85
+
+        return if (hasIndividualCardContract) {
+            CoreRideCardContractResult.accepted(name, "Contrato inDrive aceito: card individual com rota e acao principal.")
         } else {
             CoreRideCardContractResult.rejected(name, "inDrive ainda nao confirmou card individual aberto.")
         }
