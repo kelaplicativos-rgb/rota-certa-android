@@ -15,7 +15,7 @@ val inDriveAddressWrapPatch by tasks.registering {
         val original = text
 
         if ("indrive_address_wrap_0_1_85" !in text) {
-            val oldBlock = """        val normalized = value.lowercase()
+            val oldContinuationBlock = """        val normalized = value.lowercase()
         val previous = previousLine.trim()
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
@@ -23,7 +23,7 @@ val inDriveAddressWrapPatch by tasks.registering {
 
         if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
 """
-            val newBlock = """        val normalized = value.lowercase()
+            val newContinuationBlock = """        val normalized = value.lowercase()
         val previous = previousLine.trim()
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
@@ -40,14 +40,34 @@ val inDriveAddressWrapPatch by tasks.registering {
         if (joinsSplitStreetName) return true
         if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
 """
-            if (oldBlock !in text) {
+            if (oldContinuationBlock !in text) {
                 throw org.gradle.api.GradleException("Nao encontrei o bloco de continuacao de endereco do RideTextParser.")
             }
-            text = text.replace(oldBlock, newBlock)
+            text = text.replace(oldContinuationBlock, newContinuationBlock)
+
+            val oldAddressStartBlock = """        val firstLine = cleanAddressLine(rawFirstLine)
+        if (!looksLikeAddress(firstLine)) return null
+
+        val parts = mutableListOf(firstLine)
+"""
+            val newAddressStartBlock = """        val firstLine = cleanAddressLine(rawFirstLine)
+        val hasOwnMapMarker = mapPointRegex.find(rawFirstLine) != null
+        if (!hasOwnMapMarker && startIndex > 0) {
+            val previousAddressLine = cleanAddressLine(lines[startIndex - 1])
+            if (isAddressContinuation(firstLine, previousAddressLine)) return null // indrive_skip_consumed_wrap_0_1_85
+        }
+        if (!looksLikeAddress(firstLine)) return null
+
+        val parts = mutableListOf(firstLine)
+"""
+            if (oldAddressStartBlock !in text) {
+                throw org.gradle.api.GradleException("Nao encontrei o inicio de buildAddressBlock no RideTextParser.")
+            }
+            text = text.replace(oldAddressStartBlock, newAddressStartBlock)
         }
 
-        if ("indrive_address_wrap_0_1_85" !in text) {
-            throw org.gradle.api.GradleException("A correcao de endereco quebrado do inDrive nao foi instalada.")
+        if ("indrive_address_wrap_0_1_85" !in text || "indrive_skip_consumed_wrap_0_1_85" !in text) {
+            throw org.gradle.api.GradleException("A correcao de endereco quebrado do inDrive nao foi instalada por completo.")
         }
 
         if (text != original) file.writeText(text)
