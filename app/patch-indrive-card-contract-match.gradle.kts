@@ -86,10 +86,15 @@ val inDriveCardContractMatch by tasks.registering {
         val hasSingularRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
         val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
         val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
         val hasFarePerKm = farePerKmRegex.containsMatchIn(rawText)
         val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2
         val hasEnoughAddress = addressCount >= 1 || endpointTextLines >= 2
-        return hasSingularRideTitle && hasAccept && hasOffer && moneyCount >= 1 && (distanceCount >= 1 || hasFarePerKm) && hasTwoEndpoints && hasEnoughAddress
+        val hasRouteStructure = hasTwoEndpoints && hasEnoughAddress
+        return hasRouteStructure &&
+            hasPrimaryAction &&
+            moneyCount >= 1 &&
+            (distanceCount >= 1 || hasFarePerKm || hasSingularRideTitle) // indrive_card_family_contract_0_1_85
     }
 
     private fun isInDriveIndividualContract(
@@ -106,11 +111,16 @@ val inDriveCardContractMatch by tasks.registering {
         val hasRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
         val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
         val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
         val hasMoney = moneyCount >= 1
         val hasRouteKm = distanceCount >= 1 || farePerKmRegex.containsMatchIn(rawText)
         val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2
         val hasAddress = addressCount >= 1 || endpointTextLines >= 2
-        return hasRideTitle && hasAccept && hasOffer && hasMoney && hasRouteKm && hasTwoEndpoints && hasAddress
+        val hasRouteStructure = hasTwoEndpoints && hasAddress
+        return hasRouteStructure &&
+            hasPrimaryAction &&
+            hasMoney &&
+            (hasRouteKm || hasRideTitle) // indrive_card_family_contract_0_1_85
     }
 
     private fun isRouteCardCrop(
