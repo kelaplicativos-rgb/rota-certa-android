@@ -183,7 +183,9 @@ jobs:
             cat apk-validation.txt
           } > "$notes_file"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+            # O tag estavel ja existe. Atualiza metadados e substitui o asset sem tentar
+            # retargetar o tag existente, operacao que pode retornar HTTP 422 no GitHub.
+            gh release edit "$tag" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           else
             gh release create "$tag" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           fi
