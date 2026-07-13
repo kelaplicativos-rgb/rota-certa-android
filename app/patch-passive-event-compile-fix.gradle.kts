@@ -102,3 +102,4 @@ tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.config
 }
 
 apply(from = "patch-report-stale-lifecycle-fix.gradle.kts")
+apply(from = "patch-report-stale-lifecycle-compile-fix.gradle.kts")
