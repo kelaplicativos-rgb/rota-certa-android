@@ -157,7 +157,7 @@ val reportStaleLifecycleFix by tasks.registering {
             "transaction = corePipelineVisible",
             "coreLivePipeline.transactionFor(snapshotHash)",
         ).forEach { marker ->
-            if (marker !in text) throw org.gradle.api.GradleException("Correcao do relatorio ausente: ${dollar}marker")
+            if (marker !in text) throw org.gradle.api.GradleException("Correcao do relatorio ausente: $marker")
         }
         if (text.indexOf("val coreVisibleCardEvent = coreVisibleCardLifecycle.observe") !=
             text.lastIndexOf("val coreVisibleCardEvent = coreVisibleCardLifecycle.observe")
