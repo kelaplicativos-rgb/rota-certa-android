@@ -100,3 +100,5 @@ passiveEventCompileFix.configure {
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(passiveEventCompileFix)
 }
+
+apply(from = "patch-report-stale-lifecycle-fix.gradle.kts")
