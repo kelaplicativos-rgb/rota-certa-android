@@ -17,9 +17,13 @@ class CoreVisibleCardLifecycle(
         packageName: String?,
         snapshotHash: Int,
         text: String,
+        stableSignature: String? = null,
     ): CoreVisibleCardEvent {
         val normalizedPackage = CorePackageMonitor.normalize(packageName).orEmpty()
-        val signature = signatureFor(normalizedPackage, snapshotHash, text)
+        val signature = stableSignature
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: signatureFor(normalizedPackage, snapshotHash, text)
         val previous = current
         val now = nowMillis()
         val nextSnapshot = CoreVisibleCardSnapshot(
