@@ -35,6 +35,7 @@ object InDriveCoreModule : RideAppCoreModule {
         val hasSingularRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
         val hasAccept = acceptButtonRegex.containsMatchIn(snapshot.text) || "aceitar por" in normalized
         val hasOffer = offerButtonRegex.containsMatchIn(snapshot.text) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
         val hasMoney = moneyRegex.containsMatchIn(snapshot.text)
         val hasRouteKm = distanceRegex.containsMatchIn(snapshot.text) || farePerKmRegex.containsMatchIn(snapshot.text)
         val markerCount = markerLineRegex.findAll(snapshot.text).count()
@@ -43,12 +44,17 @@ object InDriveCoreModule : RideAppCoreModule {
 
         val openSignals = listOf(hasSingularRideTitle, hasAccept, hasOffer, hasMoney, hasRouteKm, hasTwoMarkers, hasDestination)
         val score = openSignals.count { it } / openSignals.size.toDouble()
-        return if (score >= 0.86) {
+        val hasIndividualCardContract = hasDestination &&
+            hasPrimaryAction &&
+            hasMoney &&
+            (hasRouteKm || hasTwoMarkers) // indrive_card_family_0_1_85
+
+        return if (hasIndividualCardContract) {
             RideScreenClassification(
                 kind = RideScreenKind.OpenRideCard,
                 packageName = snapshot.packageName,
                 reason = "Card individual aberto do inDrive confirmado pelo Rota Certa Core.",
-                confidence = score,
+                confidence = maxOf(score, 0.90),
             )
         } else {
             RideScreenClassification(
@@ -72,8 +78,8 @@ object InDriveCoreModule : RideAppCoreModule {
             "mais pedidos",
             "solicitacoes",
             "solicitações",
-            "offline",
         )
+        // Online/offline e apenas o estado do motorista e aparece tanto na lista quanto no card aberto.
         return listWords.any { it in normalized } || titleCount > 1 || acceptCount > 1 || offerCount > 1
     }
 }
