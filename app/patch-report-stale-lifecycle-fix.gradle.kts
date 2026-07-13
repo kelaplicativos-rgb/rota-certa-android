@@ -17,23 +17,26 @@ val reportStaleLifecycleFix by tasks.registering {
         val original = text
         val dollar = "$"
 
-        // Eventos de pacote passivo so podem iniciar leitura de popup quando a raiz real
-        // ainda pertence a um app de corrida monitorado.
+        // Qualquer leitura de popup precisa continuar presa a uma raiz real de app
+        // monitorado. Isso bloqueia DocumentsUI, galeria e seletor de fotos.
         if ("report_popup_root_guard_0_1_86" !in text) {
-            val target = """            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
-            scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
-            requestScreenshotAnalysis(allowPopupCandidate = true)
+            val scheduleSignature = """    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
 """
-            val replacement = """            traceEvent("event blocked package=${dollar}packageName reason=${dollar}reason")
-            val popupRootPackage = currentRootPackageName()
-            if (shouldScanPackage(popupRootPackage)) {
-                scheduleVisibleTextAnalysis(delayMs = 80L, allowPopupCandidate = true)
-                requestScreenshotAnalysis(allowPopupCandidate = true)
-            } else {
-                traceEvent("popup.scan blocked passive_root=${dollar}{popupRootPackage.orEmpty()}") // report_popup_root_guard_0_1_86
+            val scheduleReplacement = scheduleSignature + """        if (allowPopupCandidate && !shouldScanPackage(currentRootPackageName())) return // report_popup_root_guard_0_1_86
+"""
+            if (scheduleSignature !in text) {
+                throw org.gradle.api.GradleException("Nao encontrei scheduleVisibleTextAnalysis para bloquear popup passivo.")
             }
+            text = text.replace(scheduleSignature, scheduleReplacement)
+
+            val screenshotSignature = """    private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
 """
-            if (target in text) text = text.replace(target, replacement)
+            val screenshotReplacement = screenshotSignature + """        if (allowPopupCandidate && !shouldScanPackage(currentRootPackageName())) return
+"""
+            if (screenshotSignature !in text) {
+                throw org.gradle.api.GradleException("Nao encontrei requestScreenshotAnalysis para bloquear popup passivo.")
+            }
+            text = text.replace(screenshotSignature, screenshotReplacement)
         }
 
         // Mesmo que uma leitura antiga ja tenha sido agendada, ela nao pode continuar
