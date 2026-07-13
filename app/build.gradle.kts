@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 86
+val appVersionCode = ciVersionCode ?: 87
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.84"
+        versionName = "0.1.85"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -178,6 +178,7 @@ apply(from = "patch-modular-live-bubble-core.gradle.kts")
 apply(from = "patch-rota-certa-core-stable.gradle.kts")
 apply(from = "patch-live-result-freshness-guard.gradle.kts")
 apply(from = "patch-indrive-card-contract-match.gradle.kts")
+apply(from = "patch-indrive-address-wrap.gradle.kts")
 apply(from = "patch-rota-certa-core-gate.gradle.kts")
 apply(from = "patch-core-bubble-decision.gradle.kts")
 apply(from = "patch-core-bubble-presenter.gradle.kts")
