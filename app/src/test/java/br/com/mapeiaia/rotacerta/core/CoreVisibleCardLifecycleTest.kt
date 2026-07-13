@@ -38,6 +38,29 @@ class CoreVisibleCardLifecycleTest {
     }
 
     @Test
+    fun stableSignatureIgnoresTransientOcrTextChanges() {
+        val lifecycle = CoreVisibleCardLifecycle(nowMillis = { 250L })
+        val stableSignature = "sinet.startup.indriver|template-1|rua destino 10|r$ 18"
+
+        lifecycle.observe(
+            packageName = "sinet.startup.indriver",
+            snapshotHash = 10,
+            text = "Pedido de viagem\nRua destino 10",
+            stableSignature = stableSignature,
+        )
+        val event = lifecycle.observe(
+            packageName = "sinet.startup.indriver",
+            snapshotHash = 11,
+            text = "Pedido de viagem\nRua destino 10\nPIX\nOfereca sua tarifa",
+            stableSignature = stableSignature,
+        )
+
+        assertEquals(CoreVisibleCardAction.Same, event.action)
+        assertEquals(stableSignature, event.currentSignature)
+        assertFalse(event.shouldClearPreviousDecision)
+    }
+
+    @Test
     fun changedTextChangesSignatureAndClearsPreviousDecision() {
         val lifecycle = CoreVisibleCardLifecycle(nowMillis = { 300L })
 
