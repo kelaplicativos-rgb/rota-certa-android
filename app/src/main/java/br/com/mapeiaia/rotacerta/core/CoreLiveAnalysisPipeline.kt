@@ -13,6 +13,7 @@ class CoreLiveAnalysisPipeline(
 ) {
     private val sequence = AtomicLong(0L)
     private var current: CoreLivePipelineTransaction? = null
+    private val transactionsBySnapshotHash = LinkedHashMap<Int, CoreLivePipelineTransaction>()
 
     @Synchronized
     fun begin(
@@ -132,12 +133,17 @@ class CoreLiveAnalysisPipeline(
             reason = reason,
             updatedAtMillis = nowMillis(),
         )
-        current = next
+        remember(next)
+        if (current == null || current?.id == base.id) current = next
         return next
     }
 
     @Synchronized
     fun currentTransaction(): CoreLivePipelineTransaction? = current
+
+    @Synchronized
+    fun transactionFor(snapshotHash: Int): CoreLivePipelineTransaction? =
+        transactionsBySnapshotHash[snapshotHash]
 
     private fun update(
         transaction: CoreLivePipelineTransaction,
@@ -167,8 +173,22 @@ class CoreLiveAnalysisPipeline(
             reason = reason,
             updatedAtMillis = nowMillis(),
         )
-        current = next
+        remember(next)
+        if (current == null || current?.id == transaction.id) current = next
         return next
+    }
+
+    private fun remember(transaction: CoreLivePipelineTransaction) {
+        val snapshotHash = transaction.snapshotHash ?: return
+        transactionsBySnapshotHash[snapshotHash] = transaction
+        while (transactionsBySnapshotHash.size > MAX_TRACKED_SNAPSHOTS) {
+            val oldestKey = transactionsBySnapshotHash.entries.firstOrNull()?.key ?: break
+            transactionsBySnapshotHash.remove(oldestKey)
+        }
+    }
+
+    private companion object {
+        const val MAX_TRACKED_SNAPSHOTS = 24
     }
 }
 
