@@ -2,10 +2,6 @@
 // O card mais recente sempre vence: uma rota antiga nao pode bloquear nem pintar a bolinha
 // depois que o card saiu, mudou ou foi substituido por outro.
 
-extensions.configure<com.android.build.api.dsl.ApplicationExtension>("android") {
-    defaultConfig.versionName = "0.1.91"
-}
-
 val latestCardWinsPatch by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
