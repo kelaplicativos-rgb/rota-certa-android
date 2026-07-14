@@ -96,8 +96,33 @@ val giguCoreClassificationPatch by tasks.registering {
             return
         }
         traceEvent("core.card_match accept name=${dollar}{cardMatch.template.name} score=${dollar}{cardMatch.score} reason=${dollar}{coreCardMatch.reason}") // core_card_match_engine_0_1_94
+
+        val coreStableCardSignature = buildVisibleCardSignature(packageName, fields, cardMatch)
+        val coreVisibleCardEvent = coreVisibleCardLifecycle.observe(
+            packageName = packageName,
+            snapshotHash = snapshotHash,
+            text = snapshotText,
+            stableSignature = coreStableCardSignature,
+        )
+        lastVisibleCardSignature = coreStableCardSignature
+        if (coreVisibleCardEvent.action != br.com.mapeiaia.rotacerta.core.CoreVisibleCardAction.Same) {
+            traceEvent("core.visible_card action=${dollar}{coreVisibleCardEvent.action} signature=${dollar}coreStableCardSignature reason=${dollar}{coreVisibleCardEvent.reason}") // core_visible_card_lifecycle_0_1_95 report_visible_card_after_match_0_1_86
+        }
+        val corePipelineVisible = coreLivePipeline.visibleCard(
+            transaction = corePipelineRead,
+            action = coreVisibleCardEvent.action,
+            visibleCardSignature = coreStableCardSignature,
+        )
+        if (coreVisibleCardEvent.shouldClearPreviousDecision) {
+            registeredCardGate.clear()
+            lastAnalyzedHash = null
+            if (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) {
+                showOverlay(RadarColor.Default)
+            }
+        }
+
         val corePipelineCard = coreLivePipeline.cardAccepted(
-            transaction = coreLivePipeline.currentTransaction() ?: corePipelineTransaction,
+            transaction = corePipelineVisible,
             contractName = coreCardMatch.contractName,
             cardTemplateName = cardMatch.template.name,
         )
@@ -135,6 +160,8 @@ val giguCoreClassificationPatch by tasks.registering {
             "gigu_core_app_classifier_0_1_90",
             "gigu_core_pipeline_card_0_1_90",
             "gigu_core_popup_classifier_0_1_90",
+            "report_visible_card_after_match_0_1_86",
+            "transaction = corePipelineVisible",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Integracao do Core por aplicativo incompleta: $marker")
         }
@@ -157,6 +184,8 @@ giguCoreClassificationPatch.configure {
         "coreCardMatchEnginePatch",
         "coreVisibleCardLifecyclePatch",
         "coreLiveAnalysisPipelinePatch",
+        "reportStaleLifecycleFix",
+        "reportStaleLifecycleCompileFix",
         "patchScreenPhoneWhatsApp",
         "giguInspiredLiveReaderPatch",
     )
