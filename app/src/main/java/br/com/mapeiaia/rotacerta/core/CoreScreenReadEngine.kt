@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.core
 
+import java.text.Normalizer
+import java.util.Locale
+
 /**
  * Motor de leitura de tela do Rota Certa Core.
  * Ele nao acessa Android diretamente; recebe os textos brutos e prepara um snapshot estavel.
@@ -32,13 +35,16 @@ object CoreScreenReadEngine {
     }
 
     fun merge(accessibilityText: String, ocrText: String): String {
-        val lines = linkedSetOf<String>()
+        val linesByCanonicalKey = linkedMapOf<String, String>()
         listOf(accessibilityText, ocrText)
             .flatMap { it.lines() }
-            .map { it.trim() }
+            .map { it.trim().replace(Regex("\\s+"), " ") }
             .filter { it.isNotBlank() }
-            .forEach { lines += it }
-        return lines.joinToString("\n")
+            .forEach { line ->
+                val canonicalKey = canonicalLineKey(line)
+                if (canonicalKey.isNotBlank()) linesByCanonicalKey.putIfAbsent(canonicalKey, line)
+            }
+        return linesByCanonicalKey.values.joinToString("\n")
     }
 
     fun normalizeText(text: String): String =
@@ -48,6 +54,13 @@ object CoreScreenReadEngine {
             .joinToString("\n")
 
     fun stableHash(text: String): Int = normalizeText(text).hashCode()
+
+    private fun canonicalLineKey(text: String): String =
+        Normalizer.normalize(text.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("[^\\p{L}\\p{N}$]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     private fun buildSourceSummary(
         accessibilityText: String,
