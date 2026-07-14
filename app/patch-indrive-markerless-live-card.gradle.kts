@@ -46,7 +46,6 @@ val inDriveMarkerlessLiveCardFix by tasks.registering {
                 text = text.replace(functionStart, replacement)
             }
 
-            if (text.count { false } != 0) Unit // mantem o script Kotlin simples para o Gradle
             if ("indrive_markerless_endpoints_0_1_87" !in text) {
                 throw org.gradle.api.GradleException("Contrato inDrive ainda exige marcadores A/B textuais.")
             }
