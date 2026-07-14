@@ -87,7 +87,7 @@ val giguCoreClassificationPatch by tasks.registering {
         val cardMatch = coreCardMatch.match
         if (!coreCardMatch.accepted || cardMatch == null) {
             val reason = coreCardMatch.reason
-            traceEvent("core.card_match reject list=${dollar}{coreCardMatch.isListLike} package=${dollar}{packageName.orEmpty()} templates=${dollar}{currentCardTemplates.size} reason=${dollar}reason")
+            traceEvent("core.card_match reject list=${dollar}{coreCardMatch.isListLike} package=${dollar}{packageName.orEmpty()} templates=${dollar}{currentCardTemplates.size} reason=${dollar}reason") // core_card_match_engine_0_1_94
             if (allowPopupCandidate) return
             registeredCardGate.clear()
             saveCapturedCardScreen(snapshotText, fields, snapshotHash, parseResult.parserName, packageName)
@@ -95,13 +95,13 @@ val giguCoreClassificationPatch by tasks.registering {
             resetToDefault(reason = reason, text = snapshotText, fields = fields)
             return
         }
-        traceEvent("core.card_match accept name=${dollar}{cardMatch.template.name} score=${dollar}{cardMatch.score} reason=${dollar}{coreCardMatch.reason}")
+        traceEvent("core.card_match accept name=${dollar}{cardMatch.template.name} score=${dollar}{cardMatch.score} reason=${dollar}{coreCardMatch.reason}") // core_card_match_engine_0_1_94
         val corePipelineCard = coreLivePipeline.cardAccepted(
             transaction = coreLivePipeline.currentTransaction() ?: corePipelineTransaction,
             contractName = coreCardMatch.contractName,
             cardTemplateName = cardMatch.template.name,
         )
-        traceEvent("core.pipeline.card ${dollar}{corePipelineCard.traceSummary()}") // gigu_core_pipeline_card_0_1_90
+        traceEvent("core.pipeline.card ${dollar}{corePipelineCard.traceSummary()}") // core_live_pipeline_card_0_1_96 gigu_core_pipeline_card_0_1_90
 """
             text = text.substring(0, legacyGateStart) + coreGate + text.substring(acceptedGateEnd)
         }
@@ -123,7 +123,7 @@ val giguCoreClassificationPatch by tasks.registering {
         val parseResult = parser.parseWithMetadata(sanitizedText, packageName)
         val classification = br.com.mapeiaia.rotacerta.core.RotaCertaCore.classifyScreen(packageName, sanitizedText, parseResult.fields)
         if (!classification.canAnalyzeRoute) return false
-        return br.com.mapeiaia.rotacerta.core.CoreCardMatchEngine.match(sanitizedText, packageName, currentCardTemplates).accepted // gigu_core_popup_classifier_0_1_90
+        return br.com.mapeiaia.rotacerta.core.CoreCardMatchEngine.match(sanitizedText, packageName, currentCardTemplates).accepted // core_popup_card_match_0_1_94 gigu_core_popup_classifier_0_1_90
 """
             text = text.replaceFirst(oldPopupBlock, newPopupBlock)
         }
