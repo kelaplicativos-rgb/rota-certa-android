@@ -174,15 +174,19 @@ val latestCardWinsPatch by tasks.registering {
                 )
             }
 
+            // Algumas versoes do Core persistem o resultado em outro modulo. Quando a
+            // chamada ainda existe aqui, tambem a protegemos; quando nao existe, a trava
+            // decisiva permanece imediatamente antes da cor/km.
             if ("latest_card_wins_drop_before_store_0_1_91" !in block) {
-                val anchor = "            repository.addAnalysis(result)\n"
-                if (anchor !in block) throw GradleException("Nao encontrei a persistencia do resultado da analise.")
-                val guard = """            if (analysisToken != analysisSerial) {
+                val storeAnchor = "            repository.addAnalysis(result)\n"
+                if (storeAnchor in block) {
+                    val guard = """            if (analysisToken != analysisSerial) {
                 traceEvent("analysis.drop_stale_result phase=store token=${dollar}analysisToken current=${dollar}analysisSerial hash=${dollar}snapshotHash") // latest_card_wins_drop_before_store_0_1_91
                 return
             }
 """
-                block = block.replaceFirst(anchor, guard + anchor)
+                    block = block.replaceFirst(storeAnchor, guard + storeAnchor)
+                }
             }
 
             if ("latest_card_wins_drop_before_visual_0_1_91" !in block) {
@@ -238,7 +242,6 @@ val latestCardWinsPatch by tasks.registering {
             "latest_card_wins_launch_0_1_91",
             "latest_card_wins_timeout_0_1_91",
             "latest_card_wins_analysis_start_0_1_91",
-            "latest_card_wins_drop_before_store_0_1_91",
             "latest_card_wins_drop_before_visual_0_1_91",
             "latest_card_wins_cancel_rethrow_0_1_91",
             "latest_card_wins_finish_0_1_91",
