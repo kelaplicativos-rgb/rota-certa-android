@@ -53,7 +53,18 @@ object CoreScreenReadEngine {
             .filter { it.isNotBlank() }
             .joinToString("\n")
 
-    fun stableHash(text: String): Int = normalizeText(text).hashCode()
+    /**
+     * Hash semantico: ignora acentos, caixa, espacos e pontuacao que variam entre
+     * Acessibilidade e OCR. Mantem a ordem das linhas para ainda detectar troca real
+     * de card, mas evita piscar por R$ 10/R$10 ou Sao/São.
+     */
+    fun stableHash(text: String): Int =
+        text.lines()
+            .map(::canonicalLineKey)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n")
+            .hashCode()
 
     /**
      * Chave exclusiva para deduplicacao entre Acessibilidade e OCR.
