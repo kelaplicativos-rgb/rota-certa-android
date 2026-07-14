@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.88"
+        versionName = "0.1.89"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -252,3 +252,4 @@ tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.config
 }
 
 apply(from = "patch-screen-phone-whatsapp.gradle.kts")
+apply(from = "patch-gigu-inspired-live-reader.gradle.kts")
