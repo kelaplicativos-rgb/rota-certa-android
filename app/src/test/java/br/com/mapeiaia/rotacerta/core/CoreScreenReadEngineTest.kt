@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,9 +71,12 @@ class CoreScreenReadEngineTest {
     fun stableHashNormalizesDirtyTextBeforeHashing() {
         val clean = "Pedido de viagem\nAceitar por R$ 44"
         val dirty = "  Pedido de viagem  \n\n  Aceitar por R$ 44  \n"
+        val sameMeaningDifferentFormatting = "PEDIDO DE VIAGEM\nAceitar por R$44"
+        val differentCard = "Pedido de viagem\nAceitar por R$ 55"
 
         assertEquals(clean, CoreScreenReadEngine.normalizeText(dirty))
-        assertEquals(clean.hashCode(), CoreScreenReadEngine.stableHash(dirty))
         assertEquals(CoreScreenReadEngine.stableHash(clean), CoreScreenReadEngine.stableHash(dirty))
+        assertEquals(CoreScreenReadEngine.stableHash(clean), CoreScreenReadEngine.stableHash(sameMeaningDifferentFormatting))
+        assertNotEquals(CoreScreenReadEngine.stableHash(clean), CoreScreenReadEngine.stableHash(differentCard))
     }
 }
