@@ -18,18 +18,32 @@ val giguInspiredLiveReaderPatch by tasks.registering {
         val original = text
         val dollar = "$"
 
-        if ("private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate()" !in text) {
+        if ("private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate" !in text) {
             val fieldTarget = "    private val registeredCardGate = RegisteredCardDecisionGate()\n"
             if (fieldTarget !in text) throw GradleException("Nao encontrei RegisteredCardDecisionGate para ligar o agrupador de eventos.")
             text = text.replaceFirst(
                 fieldTarget,
-                fieldTarget + "    private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate()\n",
+                fieldTarget + "    private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate(duplicateWindowMs = 180L)\n",
             )
         }
 
         if ("gigu_inspired_event_gate_0_1_89" !in text) {
-            val eventTrace = "        traceEvent(\"event package=${dollar}{packageName.orEmpty()} type=${dollar}{event.eventType}\")\n"
-            if (eventTrace !in text) throw GradleException("Nao encontrei o ponto de entrada dos eventos de acessibilidade.")
+            val eventStart = text.indexOf("    override fun onAccessibilityEvent(event: AccessibilityEvent?) {")
+            val eventEnd = if (eventStart >= 0) text.indexOf("    override fun onInterrupt()", eventStart) else -1
+            if (eventStart < 0 || eventEnd < 0) {
+                throw GradleException("Nao encontrei os limites de onAccessibilityEvent.")
+            }
+
+            val insertionCandidates = listOf(
+                "        if (packageName == this.packageName) {",
+                "        if (packageName == null) {",
+                "        if (!shouldScanPackage(packageName)) {",
+            ).map { token -> text.indexOf(token, eventStart) }
+                .filter { index -> index in (eventStart + 1) until eventEnd }
+
+            val insertionPoint = insertionCandidates.minOrNull()
+                ?: throw GradleException("Nao encontrei ponto seguro apos a resolucao do pacote no evento.")
+
             val gateBlock = """        val rootPackageNameForReadGate = currentRootPackageName()
         val liveReadTriggerDecision = coreLiveReadTriggerGate.decide(
             eventPackageName = packageName,
@@ -43,38 +57,26 @@ val giguInspiredLiveReaderPatch by tasks.registering {
             traceEvent("event grouped package=${dollar}{packageName.orEmpty()} type=${dollar}{event.eventType} reason=${dollar}{liveReadTriggerDecision.reason}") // gigu_inspired_event_gate_0_1_89
             return
         }
+        // Eventos aceitos apenas acordam a fila unica ja existente; o ciclo continuo executa as releituras. // gigu_inspired_event_wakeup_0_1_89
 """
-            text = text.replaceFirst(eventTrace, gateBlock + eventTrace)
-        }
-
-        if ("gigu_inspired_event_wakeup_0_1_89" !in text) {
-            val monitoredReadRegex = Regex(
-                """        if \(currentRadarColor == RadarColor\.Idle\) showOverlay\(RadarColor\.Default\)
-        scheduleVisibleTextAnalysis\(delayMs = \d+L\)
-        requestScreenshotAnalysis\(\)
-""",
-            )
-            val replacement = """        val immediateWindowEvent = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        if (currentRadarColor == RadarColor.Idle) showOverlay(RadarColor.Default)
-        scheduleVisibleTextAnalysis(delayMs = if (immediateWindowEvent) 0L else 35L) // gigu_inspired_event_wakeup_0_1_89
-        if (immediateWindowEvent) requestScreenshotAnalysis()
-"""
-            val updated = monitoredReadRegex.replaceFirst(text, replacement)
-            if (updated == text) throw GradleException("Nao encontrei o disparo final de leitura do evento monitorado.")
-            text = updated
+            text = text.substring(0, insertionPoint) + gateBlock + text.substring(insertionPoint)
         }
 
         text = Regex("const val SCAN_LOOP_MS = \\d+L").replace(text, "const val SCAN_LOOP_MS = 180L")
         text = Regex("const val SCREENSHOT_INTERVAL_MS = \\d+L").replace(text, "const val SCREENSHOT_INTERVAL_MS = 320L")
 
         if ("coreLiveReadTriggerGate.reset() // gigu_inspired_gate_reset_0_1_89" !in text) {
-            val destroyTarget = "        screenshotInProgress.set(false)\n"
-            if (destroyTarget !in text) throw GradleException("Nao encontrei a limpeza do servico para resetar o agrupador.")
-            text = text.replaceFirst(
-                destroyTarget,
-                destroyTarget + "        coreLiveReadTriggerGate.reset() // gigu_inspired_gate_reset_0_1_89\n",
-            )
+            val destroyStart = text.indexOf("    override fun onDestroy() {")
+            val destroyEnd = if (destroyStart >= 0) text.indexOf("    private fun startContinuousScan()", destroyStart) else -1
+            val resetPoint = if (destroyStart >= 0 && destroyEnd > destroyStart) {
+                text.indexOf("        screenshotInProgress.set(false)\n", destroyStart)
+                    .takeIf { it in destroyStart until destroyEnd }
+            } else null
+            if (resetPoint == null) throw GradleException("Nao encontrei a limpeza de screenshot dentro de onDestroy.")
+            val target = "        screenshotInProgress.set(false)\n"
+            text = text.substring(0, resetPoint) +
+                target + "        coreLiveReadTriggerGate.reset() // gigu_inspired_gate_reset_0_1_89\n" +
+                text.substring(resetPoint + target.length)
         }
 
         listOf(
