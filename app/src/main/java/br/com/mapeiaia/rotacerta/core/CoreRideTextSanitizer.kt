@@ -14,7 +14,9 @@ import java.util.Locale
 object CoreRideTextSanitizer {
     private val inDriveRatingRegex = Regex("^\\s*\\d(?:[,.]\\d)?\\s*\\(\\d{1,5}\\)\\s*$")
     private val inDriveCountRegex = Regex("^\\s*\\(\\d{1,5}\\)\\s*$")
-    private val moneyAndDistanceRegex = Regex("(?i).*r\\$.*\\b(?:km|m)\\b.*")
+    private val inDrivePerKmRegex = Regex(
+        "(?i)^.*r\\$\\s*\\d+(?:[,.]\\d+)?\\s*/?\\s*km(?:\\s*[~≈-]\\s*(\\d+(?:[,.]\\d+)?\\s*(?:km|m)))?.*$",
+    )
 
     fun sanitize(text: String, packageName: String?): String {
         if (text.isBlank()) return ""
@@ -28,8 +30,8 @@ object CoreRideTextSanitizer {
                     .trim()
                     .replace(Regex("\\s+"), " ")
             }
+            .mapNotNull { line -> sanitizeLine(line, normalizedPackage) }
             .filter { it.isNotBlank() }
-            .filterNot { line -> shouldIgnoreLine(line, normalizedPackage) }
             .forEach { line ->
                 val key = canonicalKey(line)
                 if (key.isNotBlank()) uniqueLines.putIfAbsent(key, line)
@@ -38,21 +40,24 @@ object CoreRideTextSanitizer {
         return uniqueLines.values.joinToString("\n")
     }
 
-    private fun shouldIgnoreLine(line: String, packageName: String?): Boolean {
-        if (packageName != RideCardTemplateMatcher.INDRIVE_PACKAGE) return false
-        val normalized = line.normalized()
-        if (normalized == "agora mesmo") return true
-        if (inDriveRatingRegex.matches(line) || inDriveCountRegex.matches(line)) return true
+    private fun sanitizeLine(line: String, packageName: String?): String? {
+        if (line.isBlank()) return null
+        if (packageName != RideCardTemplateMatcher.INDRIVE_PACKAGE) return line
 
-        // Linhas compactadas como "R$2,03/km" sao custo por km/ruido visual,
-        // nao o valor da corrida nem uma distancia de rota independente.
-        if (moneyAndDistanceRegex.matches(line) &&
-            "aceitar" !in normalized &&
-            "ofereca" !in normalized
-        ) {
-            return true
+        val normalized = line.normalized()
+        if (normalized == "agora mesmo") return null
+        if (inDriveRatingRegex.matches(line) || inDriveCountRegex.matches(line)) return null
+
+        // O inDrive combina custo por km e distancia ate o embarque na mesma linha,
+        // por exemplo: "R$ 1,9/km ~4,0 km". O custo unitario e ruido para o farol,
+        // mas a distancia depois de "~" e um sinal legitimo do card e precisa ficar.
+        val perKmMatch = inDrivePerKmRegex.matchEntire(line)
+        if (perKmMatch != null && "aceitar" !in normalized && "ofereca" !in normalized) {
+            return perKmMatch.groupValues.getOrNull(1)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
         }
-        return false
+        return line
     }
 
     private fun canonicalKey(text: String): String =
