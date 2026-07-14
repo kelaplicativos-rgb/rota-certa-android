@@ -12,25 +12,25 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 class GoogleMapsService {
     private val json = Json { ignoreUnknownKeys = true }
-    private val geocodeCache = mutableMapOf<String, Coordinate?>()
-    private val routeCache = mutableMapOf<String, Double?>()
+    private val geocodeCache = ConcurrentHashMap<String, Coordinate>()
+    private val routeCache = ConcurrentHashMap<String, Double>()
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank() || apiKey.isBlank()) return@withContext null
 
         geocodeQueries(query, region).forEach { scopedQuery ->
             val cacheKey = scopedQuery.lowercase(Locale.ROOT)
-            if (geocodeCache.containsKey(cacheKey)) {
-                geocodeCache[cacheKey]?.let { return@withContext it }
-                return@forEach
-            }
+            geocodeCache[cacheKey]?.let { return@withContext it }
 
-            val coordinate = requestGeocode(scopedQuery, apiKey)
-            geocodeCache[cacheKey] = coordinate
-            if (coordinate != null) return@withContext coordinate
+            val coordinate = requestWithRetry { requestGeocode(scopedQuery, apiKey) }
+            if (coordinate != null) {
+                geocodeCache[cacheKey] = coordinate
+                return@withContext coordinate
+            }
         }
 
         null
@@ -60,29 +60,31 @@ class GoogleMapsService {
             destination.longitude,
         )
 
-        val distanceKm = runCatching {
-            val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = ROUTE_TIMEOUT_MS
-                readTimeout = ROUTE_TIMEOUT_MS
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("X-Goog-Api-Key", apiKey.trim())
-                setRequestProperty("X-Goog-FieldMask", "routes.distanceMeters")
-            }
-
-            try {
-                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                if (connection.responseCode !in 200..299) return@runCatching null
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                parseDistanceKm(response)
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
-
-        routeCache[cacheKey] = distanceKm
+        val distanceKm = requestWithRetry { requestDrivingDistance(body, apiKey) }
+        if (distanceKm != null) routeCache[cacheKey] = distanceKm
         distanceKm
+    }
+
+    private fun requestDrivingDistance(body: String, apiKey: String): Double? {
+        val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("X-Goog-Api-Key", apiKey.trim())
+            setRequestProperty("X-Goog-FieldMask", "routes.distanceMeters")
+            setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+        }
+
+        return try {
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            if (connection.responseCode !in 200..299) return null
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            parseDistanceKm(response)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
@@ -118,21 +120,20 @@ class GoogleMapsService {
                 "&key=$encodedKey",
         )
 
-        return runCatching {
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = GEOCODE_TIMEOUT_MS
-                readTimeout = GEOCODE_TIMEOUT_MS
-            }
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+        }
 
-            try {
-                if (connection.responseCode !in 200..299) return@runCatching null
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                parseCoordinate(body)
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
+        return try {
+            if (connection.responseCode !in 200..299) return null
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            parseCoordinate(body)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun parseCoordinate(body: String): Coordinate? {
@@ -160,8 +161,19 @@ class GoogleMapsService {
         return distanceMeters / 1000.0
     }
 
+    private fun <T> requestWithRetry(block: () -> T?): T? {
+        repeat(REQUEST_ATTEMPTS) { attempt ->
+            val result = runCatching(block).getOrNull()
+            if (result != null) return result
+            if (attempt < REQUEST_ATTEMPTS - 1) Thread.sleep(RETRY_DELAY_MS)
+        }
+        return null
+    }
+
     private companion object {
-        const val GEOCODE_TIMEOUT_MS = 900
-        const val ROUTE_TIMEOUT_MS = 900
+        const val CONNECT_TIMEOUT_MS = 2_500
+        const val READ_TIMEOUT_MS = 4_000
+        const val REQUEST_ATTEMPTS = 2
+        const val RETRY_DELAY_MS = 120L
     }
 }
