@@ -55,11 +55,15 @@ object CoreScreenReadEngine {
 
     fun stableHash(text: String): Int = normalizeText(text).hashCode()
 
+    /**
+     * Chave exclusiva para deduplicacao entre Acessibilidade e OCR.
+     * Espacos e pontuacao variam muito entre as duas fontes: R$ 10, R$10,
+     * Sao/São e 2,3 KM/2,3 km precisam representar a mesma linha.
+     */
     private fun canonicalLineKey(text: String): String =
         Normalizer.normalize(text.lowercase(Locale.ROOT), Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("[^\\p{L}\\p{N}$]+"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}]+"), "")
             .trim()
 
     private fun buildSourceSummary(
