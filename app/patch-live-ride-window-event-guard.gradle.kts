@@ -68,7 +68,7 @@ val liveRideWindowEventGuard by tasks.registering {
                 )
             }
 
-            if ("event passive ignored clean_stale_root" !in text) {
+            if ("passive_event_preserves_monitored_root_0_1_88" !in text) {
                 text = text.replace(
 """        if (packageName == this.packageName) {
             rememberBubbleReason("self_app", "Rota Certa em primeiro plano; bolinha limpa e leitura de corrida pausada.")
