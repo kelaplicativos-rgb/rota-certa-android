@@ -6,7 +6,8 @@
 val inDriveMarkerlessLiveCardFix by tasks.registering {
     val matcherFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt")
     val contractsFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/core/CoreRideCardContracts.kt")
-    inputs.files(matcherFile, contractsFile)
+    val coreMatcherFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/core/CoreCardMatchEngine.kt")
+    inputs.files(matcherFile, contractsFile, coreMatcherFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -75,6 +76,26 @@ val inDriveMarkerlessLiveCardFix by tasks.registering {
             }
             if ("indrive_markerless_core_route_0_1_87" !in text) {
                 throw org.gradle.api.GradleException("Core inDrive nao aceitou dois enderecos sem A/B textual.")
+            }
+            if (text != original) file.writeText(text)
+        }
+
+        coreMatcherFile.asFile.takeIf { it.exists() }?.let { file ->
+            var text = file.readText()
+            val original = text
+            if ("indrive_plural_feed_guard_0_1_87" !in text) {
+                text = text.replace(
+                    """        val listMarkers = listOf(
+            "corridas disponiveis",
+""",
+                    """        val listMarkers = listOf(
+            "pedidos de viagem", // indrive_plural_feed_guard_0_1_87
+            "corridas disponiveis",
+""",
+                )
+            }
+            if ("indrive_plural_feed_guard_0_1_87" !in text) {
+                throw org.gradle.api.GradleException("Feed plural do inDrive nao foi bloqueado no CoreCardMatchEngine.")
             }
             if (text != original) file.writeText(text)
         }
