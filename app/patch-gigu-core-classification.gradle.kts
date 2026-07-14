@@ -197,3 +197,5 @@ giguCoreClassificationPatch.configure {
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
     dependsOn(giguCoreClassificationPatch)
 }
+
+apply(from = "patch-latest-card-wins.gradle.kts")
