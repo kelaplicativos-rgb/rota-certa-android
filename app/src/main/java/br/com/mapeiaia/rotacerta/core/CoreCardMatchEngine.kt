@@ -57,8 +57,10 @@ object CoreCardMatchEngine {
         if (templates.isEmpty()) {
             return CoreCardMatchResult.rejected("Nenhum card cadastrado para comparar com a tela atual.")
         }
-        val normalizedText = text.normalizedCoreText()
-        if (isListLikeRideFeed(text, normalizedText)) {
+
+        val preparedText = CoreRideTextSanitizer.sanitize(text, normalizedPackage)
+        val normalizedText = preparedText.normalizedCoreText()
+        if (isListLikeRideFeed(preparedText, normalizedText)) {
             return CoreCardMatchResult.rejected(
                 reason = "Tela parece lista/feed de corridas; somente card individual cadastrado libera o farol.",
                 isListLike = true,
@@ -66,14 +68,14 @@ object CoreCardMatchEngine {
             )
         }
 
-        val detectedFeatures = RideCardTemplateMatcher.featuresFor(text)
-        val features = if ("card.crop.route_block" in detectedFeatures || !hasStrongOpenedCardEvidence(text, normalizedText)) {
+        val detectedFeatures = RideCardTemplateMatcher.featuresFor(preparedText)
+        val features = if ("card.crop.route_block" in detectedFeatures || !hasStrongOpenedCardEvidence(preparedText, normalizedText)) {
             detectedFeatures
         } else {
             detectedFeatures + "card.crop.route_block"
         }
         val contract = CoreRideCardContractRegistry.contractFor(normalizedPackage)
-        val contractResult = contract.evaluate(text, normalizedPackage, features)
+        val contractResult = contract.evaluate(preparedText, normalizedPackage, features)
         if (!contractResult.accepted) {
             return CoreCardMatchResult.rejected(
                 reason = contractResult.reason,
@@ -88,9 +90,9 @@ object CoreCardMatchEngine {
             )
         }
 
-        val strictMatch = RideCardTemplateMatcher.match(text, normalizedPackage, templates)
+        val strictMatch = RideCardTemplateMatcher.match(preparedText, normalizedPackage, templates)
         val match = strictMatch
-            ?: FastRideCardMatcher.match(text, normalizedPackage, templates)
+            ?: FastRideCardMatcher.match(preparedText, normalizedPackage, templates)
             ?: registeredFamilyFallback(normalizedPackage, templates, features)
         if (match == null) {
             return CoreCardMatchResult.rejected(
@@ -119,16 +121,16 @@ object CoreCardMatchEngine {
 
         val titleCount = normalizedLines.filter { titleRegex.containsMatchIn(it) }.distinct().size
         val acceptButtonCount = acceptButtonRegex.findAll(text)
-            .map { it.value.normalizedCoreText() }
+            .map { it.value.normalizedCoreText().replace(" ", "") }
             .distinct()
             .count()
         val endpointCount = routeEndpointSignatures(text).size
         val moneyCount = moneyRegex.findAll(text)
-            .map { it.value.normalizedCoreText() }
+            .map { it.value.normalizedCoreText().replace(" ", "") }
             .distinct()
             .count()
         val distanceCount = distanceRegex.findAll(text)
-            .map { it.value.normalizedCoreText() }
+            .map { it.value.normalizedCoreText().replace(" ", "") }
             .distinct()
             .count()
 
