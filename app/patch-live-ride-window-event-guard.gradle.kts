@@ -89,17 +89,29 @@ val liveRideWindowEventGuard by tasks.registering {
         }
         if (!shouldScanPackage(packageName)) {
             val reason = scanBlockReason(packageName)
-            val passiveEventPackages = $passivePackageListCode
-            val eventPackageIsPassive = packageName == this.packageName || packageName in passiveEventPackages
-            if (eventPackageIsPassive) {
-                traceEvent("event passive ignored clean_stale_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_no_popup_scan_0_1_82
-                if (!hasActiveRegisteredDecision()) {
-                    resetToIdle(reason, record = false)
+            val passivePackagesForEvent = $passivePackageListCode
+            val eventIsPassiveOverlay = packageName == this.packageName || packageName in passivePackagesForEvent
+            val monitoredRootPackage = currentRootPackageName()
+            val eventAction = br.com.mapeiaia.rotacerta.core.RideWindowEventPolicy.decide(
+                eventPackageIsMonitored = false,
+                rootPackageIsMonitored = shouldScanPackage(monitoredRootPackage),
+                eventPackageIsPassive = eventIsPassiveOverlay,
+                hasActiveRegisteredDecision = hasActiveRegisteredDecision(),
+            )
+            when (eventAction) {
+                br.com.mapeiaia.rotacerta.core.RideWindowEventAction.PreserveMonitoredRoot -> {
+                    traceEvent("event overlay preserved monitored_root=${'$'}{monitoredRootPackage.orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_preserves_monitored_root_0_1_88
+                    return
                 }
-                return
+                br.com.mapeiaia.rotacerta.core.RideWindowEventAction.ResetIdle -> {
+                    traceEvent("event passive ignored clean_stale_root=${'$'}{monitoredRootPackage.orEmpty()} event_package=${'$'}packageName reason=${'$'}reason") // passive_event_no_popup_scan_0_1_82
+                    resetToIdle(reason, record = false)
+                    return
+                }
+                else -> Unit
             }
-            if (shouldScanPackage(currentRootPackageName())) {
-                traceEvent("event blocked ignored monitored_root=${'$'}{currentRootPackageName().orEmpty()} event_package=${'$'}packageName reason=${'$'}reason")
+            if (shouldScanPackage(monitoredRootPackage)) {
+                traceEvent("event blocked ignored monitored_root=${'$'}{monitoredRootPackage.orEmpty()} event_package=${'$'}packageName reason=${'$'}reason")
                 return
             }
 """,
@@ -144,6 +156,9 @@ val liveRideWindowEventGuard by tasks.registering {
 
             if ("passive_event_no_popup_scan_0_1_82" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui bloquear leitura/print em eventos passivos.")
+            }
+            if ("passive_event_preserves_monitored_root_0_1_88" !in text) {
+                throw org.gradle.api.GradleException("Evento passivo ainda apaga a janela monitorada antes da decisao.")
             }
             if ("active_non_passive_package_priority_0_1_82" !in text) {
                 throw org.gradle.api.GradleException("Nao consegui priorizar pacote ativo real contra raiz obsoleta.")
