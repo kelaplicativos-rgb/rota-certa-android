@@ -108,7 +108,7 @@ val giguCoreClassificationPatch by tasks.registering {
         if (coreVisibleCardEvent.action != br.com.mapeiaia.rotacerta.core.CoreVisibleCardAction.Same) {
             traceEvent("core.visible_card action=${dollar}{coreVisibleCardEvent.action} signature=${dollar}coreStableCardSignature reason=${dollar}{coreVisibleCardEvent.reason}") // core_visible_card_lifecycle_0_1_95 report_visible_card_after_match_0_1_86
         }
-        val corePipelineVisible = coreLivePipeline.visibleCard(
+        val corePipelineVisible = coreLivePipeline.visibleCard( // core_live_pipeline_visible_card_0_1_96
             transaction = coreLivePipeline.transactionFor(snapshotHash)
                 ?: coreLivePipeline.readReady(corePipelineTransaction, snapshotHash, snapshotText.length), // report_snapshot_read_binding_0_1_86
             action = coreVisibleCardEvent.action,
@@ -163,6 +163,7 @@ val giguCoreClassificationPatch by tasks.registering {
             "gigu_core_popup_classifier_0_1_90",
             "report_visible_card_after_match_0_1_86",
             "report_snapshot_read_binding_0_1_86",
+            "core_live_pipeline_visible_card_0_1_96",
             "transaction = corePipelineVisible",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Integracao do Core por aplicativo incompleta: $marker")
