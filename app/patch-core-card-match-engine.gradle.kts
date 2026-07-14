@@ -12,7 +12,8 @@ val coreCardMatchEnginePatch by tasks.registering {
         var text = file.readText()
         val original = text
 
-        if ("core_card_match_engine_0_1_94" !in text) {
+        val appSpecificCoreInstalled = "gigu_core_app_classifier_0_1_90" in text
+        if ("core_card_match_engine_0_1_94" !in text && !appSpecificCoreInstalled) {
             val startToken = "        val cardMatch = RideCardTemplateMatcher.match(snapshotText, packageName, currentCardTemplates)\n"
             val endToken = "        registeredCardGate.markSeen()\n"
             val start = text.indexOf(startToken)
@@ -41,17 +42,18 @@ val coreCardMatchEnginePatch by tasks.registering {
             text = text.substring(0, start) + replacement + text.substring(end)
         }
 
-        if ("core_popup_card_match_0_1_94" !in text) {
+        val appSpecificPopupInstalled = "gigu_core_popup_classifier_0_1_90" in text
+        if ("core_popup_card_match_0_1_94" !in text && !appSpecificPopupInstalled) {
             text = text.replace(
                 "return RideCardTemplateMatcher.match(text, packageName, currentCardTemplates) != null",
                 "return br.com.mapeiaia.rotacerta.core.CoreCardMatchEngine.match(text, packageName, currentCardTemplates).accepted // core_popup_card_match_0_1_94",
             )
         }
 
-        if ("core_card_match_engine_0_1_94" !in text) {
+        if ("core_card_match_engine_0_1_94" !in text && "gigu_core_app_classifier_0_1_90" !in text) {
             throw org.gradle.api.GradleException("CoreCardMatchEngine nao assumiu match principal.")
         }
-        if ("core_popup_card_match_0_1_94" !in text) {
+        if ("core_popup_card_match_0_1_94" !in text && "gigu_core_popup_classifier_0_1_90" !in text) {
             throw org.gradle.api.GradleException("CoreCardMatchEngine nao assumiu match de popup.")
         }
 
