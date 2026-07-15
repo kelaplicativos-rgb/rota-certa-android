@@ -199,3 +199,4 @@ tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.config
 }
 
 apply(from = "patch-latest-card-wins.gradle.kts")
+apply(from = "patch-same-card-route-coalescing.gradle.kts")
