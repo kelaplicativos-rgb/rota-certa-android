@@ -82,7 +82,7 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
 }
 
 openAllAppsAllScreensFixPatch.configure {
-    mustRunAfter(openAllAppsAllScreensPatch)
+    mustRunAfter("openAllAppsAllScreensPatch")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
