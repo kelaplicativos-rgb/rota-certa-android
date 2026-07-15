@@ -5,20 +5,24 @@ fun enforceInAppBubbleHome(file: java.io.File) {
     if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
     var text = file.readText()
 
-    // Remove a barra de abas. As secoes continuam acessiveis pelas bolinhas.
-    val scaffoldStart = text.indexOf("    Scaffold(\n        bottomBar = {")
-    val scaffoldContent = if (scaffoldStart >= 0) text.indexOf("    ) { padding ->", scaffoldStart) else -1
-    if (scaffoldStart >= 0 && scaffoldContent > scaffoldStart) {
-        text = text.substring(0, scaffoldStart) +
-            "    Scaffold(\n        bottomBar = {},\n" +
+    // Remove toda a barra inferior, independentemente de quais abas patches anteriores deixaram nela.
+    val scaffoldStart = text.indexOf("    Scaffold(")
+    val bottomStart = if (scaffoldStart >= 0) text.indexOf("        bottomBar = {", scaffoldStart) else -1
+    val scaffoldContent = if (bottomStart >= 0) text.indexOf("    ) { padding ->", bottomStart) else -1
+    if (bottomStart >= 0 && scaffoldContent > bottomStart) {
+        text = text.substring(0, bottomStart) +
+            "        bottomBar = {},\n" +
             text.substring(scaffoldContent)
     }
 
-    // A central antiga foi inserida somente na aba Analise. Ela agora aparece antes de qualquer secao.
-    val conditionalStartToken = "            if (tab == TAB_ANALYSIS) {\n                UnifiedAppControlBubbles("
-    val conditionalStart = text.indexOf(conditionalStartToken)
-    val whenToken = "\n            when (tab) {"
-    val whenIndex = if (conditionalStart >= 0) text.indexOf(whenToken, conditionalStart) else -1
+    // A central antiga foi inserida somente na aba Analise. Torna a chamada incondicional.
+    val firstBubbleCall = text.indexOf("                UnifiedAppControlBubbles(")
+    val conditionalStart = if (firstBubbleCall >= 0) {
+        text.lastIndexOf("            if (tab == TAB_ANALYSIS) {", firstBubbleCall)
+    } else {
+        -1
+    }
+    val whenIndex = if (firstBubbleCall >= 0) text.indexOf("\n            when (tab) {", firstBubbleCall) else -1
     if (conditionalStart >= 0 && whenIndex > conditionalStart) {
         val block = text.substring(conditionalStart, whenIndex)
         val firstLineEnd = block.indexOf('\n')
@@ -28,25 +32,31 @@ fun enforceInAppBubbleHome(file: java.io.File) {
         text = text.substring(0, conditionalStart) + unconditional + text.substring(whenIndex)
     }
 
-    // Sempre abre na central quando o icone do aplicativo foi tocado sem um destino interno explicito.
-    val launchBlockOld = """        val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
-        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
-            tab = requestedTab
+    // Sempre abre na central quando o icone do aplicativo foi tocado sem destino interno explicito.
+    if ("in_app_bubble_home_default_0_1_97" !in text) {
+        val requestedStart = text.indexOf("        val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)")
+        val highlightedStart = if (requestedStart >= 0) text.indexOf("        highlightedSavedPlaceId =", requestedStart) else -1
+        if (requestedStart < 0 || highlightedStart < 0) {
+            throw GradleException("Nao encontrei navegacao inicial para abrir a central de bolinhas.")
         }
-"""
-    val launchBlockNew = """        val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
+        val launchBlockNew = """        val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
         tab = if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
             requestedTab
         } else {
             TAB_ANALYSIS
         } // in_app_bubble_home_default_0_1_97
 """
-    if (launchBlockOld in text) text = text.replaceFirst(launchBlockOld, launchBlockNew)
+        text = text.substring(0, requestedStart) + launchBlockNew + text.substring(highlightedStart)
+    }
 
     // Estado real: sem Acessibilidade, Leitura e Acesso aparecem OFF e levam direto ao Android.
     text = text
         .replace(
             "Text(\"Central de controles\", fontWeight = FontWeight.Bold)",
+            "Text(\"Central de bolinhas\", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)",
+        )
+        .replace(
+            "Text(\"Central de controles\", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)",
             "Text(\"Central de bolinhas\", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)",
         )
         .replace(
@@ -92,7 +102,7 @@ fun enforceInAppBubbleHome(file: java.io.File) {
         "settings.liveReadingEnabled && liveEnabled",
         "bottomBar = {}",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Central interna incompleta: ${'$'}marker")
+        if (marker !in text) throw GradleException("Central interna incompleta: $marker")
     }
     if ("if (tab == TAB_ANALYSIS) {\n                UnifiedAppControlBubbles(" in text) {
         throw GradleException("Regressao: central ainda esta limitada a uma aba.")
