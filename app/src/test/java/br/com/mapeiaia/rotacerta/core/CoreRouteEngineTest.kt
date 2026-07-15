@@ -7,58 +7,58 @@ import org.junit.Test
 
 class CoreRouteEngineTest {
     @Test
-    fun freshRouteResultBelongsToCurrentPackageAndVisibleCard() {
+    fun freshRouteResultBelongsToCurrentVisibleAddress() {
         val engine = CoreRouteEngine(nowMillis = { 1_000L })
         val transaction = routeTransaction(
             packageName = "sinet.startup.indriver",
-            visibleCardSignature = "card-a",
+            visibleCardSignature = "address-a",
             startedAtMillis = 100L,
         )
 
-        assertTrue(engine.isFresh(transaction, " SINET.STARTUP.INDRIVER ", "card-a"))
+        assertTrue(engine.isFresh(transaction, " SINET.STARTUP.INDRIVER ", "address-a"))
         assertEquals(
-            "Resultado de rota ainda pertence ao card visivel.",
-            engine.freshnessReason(transaction, "sinet.startup.indriver", "card-a"),
+            "Resultado de rota ainda pertence ao ultimo endereco visivel; troca de pacote nao invalida o calculo.",
+            engine.freshnessReason(transaction, "sinet.startup.indriver", "address-a"),
         )
     }
 
     @Test
     fun oldRouteResultIsNotFresh() {
-        val engine = CoreRouteEngine(nowMillis = { 2_000L })
+        val engine = CoreRouteEngine(nowMillis = { 10_000L })
         val transaction = routeTransaction(
             packageName = "sinet.startup.indriver",
-            visibleCardSignature = "card-a",
+            visibleCardSignature = "address-a",
             startedAtMillis = 100L,
         )
 
-        assertFalse(engine.isFresh(transaction, "sinet.startup.indriver", "card-a"))
-        assertTrue(engine.freshnessReason(transaction, "sinet.startup.indriver", "card-a").contains("atrasado"))
+        assertFalse(engine.isFresh(transaction, "sinet.startup.indriver", "address-a"))
+        assertTrue(engine.freshnessReason(transaction, "sinet.startup.indriver", "address-a").contains("atrasado"))
     }
 
     @Test
-    fun routeResultFromAnotherPackageIsNotFresh() {
+    fun transientPackageChangeDoesNotDiscardUniversalRoute() {
         val engine = CoreRouteEngine(nowMillis = { 1_000L })
         val transaction = routeTransaction(
             packageName = "sinet.startup.indriver",
-            visibleCardSignature = "card-a",
+            visibleCardSignature = "address-a",
             startedAtMillis = 100L,
         )
 
-        assertFalse(engine.isFresh(transaction, "com.ubercab.driver", "card-a"))
-        assertTrue(engine.freshnessReason(transaction, "com.ubercab.driver", "card-a").contains("Pacote mudou"))
+        assertTrue(engine.isFresh(transaction, "com.android.documentsui", "address-a"))
+        assertTrue(engine.freshnessReason(transaction, "com.android.documentsui", "address-a").contains("troca de pacote nao invalida"))
     }
 
     @Test
-    fun routeResultFromAnotherVisibleCardIsNotFresh() {
+    fun routeResultFromAnotherVisibleAddressIsNotFresh() {
         val engine = CoreRouteEngine(nowMillis = { 1_000L })
         val transaction = routeTransaction(
             packageName = "sinet.startup.indriver",
-            visibleCardSignature = "card-a",
+            visibleCardSignature = "address-a",
             startedAtMillis = 100L,
         )
 
-        assertFalse(engine.isFresh(transaction, "sinet.startup.indriver", "card-b"))
-        assertTrue(engine.freshnessReason(transaction, "sinet.startup.indriver", "card-b").contains("Assinatura visivel mudou"))
+        assertFalse(engine.isFresh(transaction, "sinet.startup.indriver", "address-b"))
+        assertTrue(engine.freshnessReason(transaction, "sinet.startup.indriver", "address-b").contains("Assinatura visivel mudou"))
     }
 
     @Test
@@ -66,11 +66,11 @@ class CoreRouteEngineTest {
         val engine = CoreRouteEngine(nowMillis = { 1_000L })
         val transaction = routeTransaction(
             packageName = "sinet.startup.indriver",
-            visibleCardSignature = "card-a",
+            visibleCardSignature = "address-a",
             startedAtMillis = 100L,
         )
 
-        assertTrue(engine.isFresh(transaction, "sinet.startup.indriver", ""))
+        assertTrue(engine.isFresh(transaction, "com.android.systemui", ""))
     }
 
     private fun routeTransaction(
