@@ -8,7 +8,7 @@ val universalLastAddressCompileFix by tasks.registering {
         var text = file.readText()
         text = text.replace(
             "destination=${'$'}{destination.diagnosticValue()}",
-            "destination=${'$'}{destination.replace(Regex(\"\\\\s+\"), \" \ ").take(80)}",
+            "destination=${'$'}{destination.take(80)}",
         )
         if ("destination.diagnosticValue()" in text) {
             throw GradleException("A leitura universal ainda depende do helper de diagnostico removido.")
