@@ -7,25 +7,25 @@ import org.junit.Test
 
 class CoreScreenReadEngineTest {
     @Test
-    fun prepareMergesAccessibilityAndOcrWithoutDuplicatingLines() {
+    fun prepareUsesOnlyCurrentCallbackAndNeverMergesPreviousCardBuffers() {
         val snapshot = CoreScreenReadEngine.prepare(
-            accessibilityText = "Pedido de viagem\nRua A\nRua B",
-            ocrText = "Rua A\nAceitar por R$ 44",
-            fallbackText = "fallback nao deve entrar",
+            accessibilityText = "Pedido antigo\nRua antiga\nAceitar por R$ 30",
+            ocrText = "OCR antigo\nDestino antigo",
+            fallbackText = "  Pedido atual  \n  Rua atual  \n  Aceitar por R$ 44  ",
             allowPopupCandidate = false,
         )
 
         assertEquals(CoreScreenReadKind.Ready, snapshot.kind)
         assertEquals(
-            "Pedido de viagem\nRua A\nRua B\nAceitar por R$ 44",
+            "Pedido atual\nRua atual\nAceitar por R$ 44",
             snapshot.text,
         )
         assertEquals(CoreScreenReadEngine.stableHash(snapshot.text), snapshot.hash)
-        assertTrue(snapshot.sourceSummary.contains("popup=false"))
+        assertTrue(snapshot.sourceSummary.contains("isolated=true"))
     }
 
     @Test
-    fun prepareUsesFallbackWhenMergedLiveTextIsEmpty() {
+    fun prepareUsesCurrentFallbackWhenStoredSourcesAreEmpty() {
         val snapshot = CoreScreenReadEngine.prepare(
             accessibilityText = "   ",
             ocrText = "\n\n",
@@ -39,7 +39,7 @@ class CoreScreenReadEngineTest {
     }
 
     @Test
-    fun preparePopupCandidateUsesOnlyFallbackText() {
+    fun preparePopupCandidateUsesOnlyCurrentText() {
         val snapshot = CoreScreenReadEngine.prepare(
             accessibilityText = "texto antigo",
             ocrText = "ocr antigo",
@@ -54,10 +54,10 @@ class CoreScreenReadEngineTest {
     }
 
     @Test
-    fun prepareEmptyInputReturnsEmptySnapshot() {
+    fun prepareEmptyCurrentCallbackReturnsEmptyEvenWhenOldBuffersContainCard() {
         val snapshot = CoreScreenReadEngine.prepare(
-            accessibilityText = "   ",
-            ocrText = "   ",
+            accessibilityText = "Pedido antigo\nDestino antigo",
+            ocrText = "Aceitar por R$ 55",
             fallbackText = "   ",
             allowPopupCandidate = false,
         )
@@ -65,6 +65,17 @@ class CoreScreenReadEngineTest {
         assertEquals(CoreScreenReadKind.Empty, snapshot.kind)
         assertEquals("", snapshot.text)
         assertEquals(0, snapshot.hash)
+    }
+
+    @Test
+    fun mergeRemainsAvailableForExplicitNonLiveUse() {
+        assertEquals(
+            "Pedido de viagem\nRua A\nRua B\nAceitar por R$ 44",
+            CoreScreenReadEngine.merge(
+                accessibilityText = "Pedido de viagem\nRua A\nRua B",
+                ocrText = "Rua A\nAceitar por R$ 44",
+            ),
+        )
     }
 
     @Test
