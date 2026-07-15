@@ -108,11 +108,13 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate final bubble tap wiring
+      - name: Validate final bubble wiring and in-app center
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           test -f "$service"
+          test -f "$main"
           grep -Fq 'newView.setOnClickListener { onMainBubbleClick() }' "$service"
           grep -Fq 'private fun onMainBubbleClick()' "$service"
           grep -Fq 'bubble.tap.menu_contract_0_1_96' "$service"
@@ -124,7 +126,22 @@ jobs:
             echo "ERRO: a bolinha principal ainda abre o aplicativo diretamente."
             exit 1
           fi
+          grep -Fq 'Central de bolinhas' "$main"
+          grep -Fq 'Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF' "$main"
+          grep -Fq 'AppControlBubble("Acesso", liveEnabled, onOpenAccessibility)' "$main"
+          grep -Fq 'settings.liveReadingEnabled && liveEnabled' "$main"
+          grep -Fq 'bottomBar = {}' "$main"
+          if grep -Fq 'if (tab == TAB_ANALYSIS) {' "$main" && grep -Fq 'UnifiedAppControlBubbles(' "$main"; then
+            limited_block="$(sed -n '/if (tab == TAB_ANALYSIS)/,/when (tab)/p' "$main")"
+            if printf '%s' "$limited_block" | grep -Fq 'UnifiedAppControlBubbles('; then
+              echo "ERRO: central de bolinhas ainda limitada a uma aba."
+              exit 1
+            fi
+          fi
           {
+            echo "IN_APP_CENTER=always_visible"
+            echo "ACCESSIBILITY_OFF_STATE=visible"
+            echo "BOTTOM_TABS=removed"
             echo "MAIN_BUBBLE_TAP=opens_control_grid"
             echo "SECOND_TAP=closes_control_grid"
             echo "TOGGLE_BUTTONS=Rota,Leitura,Alertas,Escuro,Casa,Alfinete"
@@ -151,7 +168,8 @@ jobs:
             "ROTA CERTA RELATORIO MANUAL" \
             "rota-certa-relatorio-falha.txt" \
             "passive_event_preserves_monitored_root_0_1_88" \
-            "Bolinhas com ON/OFF alternam a funcao a cada toque" \
+            "Central de bolinhas" \
+            "Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF" \
             "Leitura ao vivo desligada pela bolinha" \
             "Casa e Alfinete estao desligados" \
             "bubble.tap.menu_contract_0_1_96" \
