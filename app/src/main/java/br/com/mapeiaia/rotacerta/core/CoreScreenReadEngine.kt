@@ -5,14 +5,18 @@ import java.util.Locale
 
 /**
  * Motor de leitura de tela do Rota Certa Core.
- * Ele nao acessa Android diretamente; recebe os textos brutos e prepara um snapshot estavel.
+ * Ele nao acessa Android diretamente; recebe o texto bruto da leitura atual e prepara um snapshot estavel.
  *
- * Contrato profissional deste modulo:
- * - popup usa somente o texto atual recebido;
- * - leitura ao vivo combina Acessibilidade + OCR sem duplicar linhas;
- * - fallback so entra quando a combinacao esta vazia;
+ * Contrato deste modulo:
+ * - cada callback usa somente o texto que acabou de ler;
+ * - texto de Acessibilidade ou OCR guardado de um callback anterior nunca entra no card atual;
+ * - popup e leitura ao vivo seguem a mesma regra de isolamento;
  * - o hash usado pela bolinha nasce aqui, junto com o snapshot;
  * - normalizacao e hash sao API publica do Core e possuem teste unitario.
+ *
+ * Os parametros accessibilityText e ocrText continuam na assinatura para compatibilidade com o
+ * servico existente, mas servem apenas ao resumo diagnostico. O fallbackText representa a captura
+ * corrente e e a unica fonte autorizada a decidir cor e quilometragem.
  */
 object CoreScreenReadEngine {
     fun prepare(
@@ -21,11 +25,7 @@ object CoreScreenReadEngine {
         fallbackText: String,
         allowPopupCandidate: Boolean,
     ): CoreScreenReadSnapshot {
-        val snapshotText = if (allowPopupCandidate) {
-            normalizeText(fallbackText)
-        } else {
-            merge(accessibilityText, ocrText).ifBlank { normalizeText(fallbackText) }
-        }
+        val snapshotText = normalizeText(fallbackText)
         return CoreScreenReadSnapshot(
             text = snapshotText,
             hash = stableHash(snapshotText),
@@ -34,6 +34,10 @@ object CoreScreenReadEngine {
         )
     }
 
+    /**
+     * Mantido para usos explicitos fora da leitura ao vivo. A bolinha nao usa este metodo para
+     * combinar callbacks, porque isso poderia unir o card atual ao OCR do card anterior.
+     */
     fun merge(accessibilityText: String, ocrText: String): String {
         val linesByCanonicalKey = linkedMapOf<String, String>()
         listOf(accessibilityText, ocrText)
@@ -82,7 +86,7 @@ object CoreScreenReadEngine {
         ocrText: String,
         fallbackText: String,
         allowPopupCandidate: Boolean,
-    ): String = "accessibility=${accessibilityText.length};ocr=${ocrText.length};fallback=${fallbackText.length};popup=$allowPopupCandidate"
+    ): String = "accessibility=${accessibilityText.length};ocr=${ocrText.length};fallback=${fallbackText.length};popup=$allowPopupCandidate;isolated=true"
 }
 
 enum class CoreScreenReadKind {
