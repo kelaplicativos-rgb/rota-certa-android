@@ -112,7 +112,7 @@ object UniversalScreenAddressParser {
     private fun cleanAddressSegment(value: String): String {
         val withoutMarker = value.replace(markerPrefix, "").trim()
         val match = addressStartRegex.find(withoutMarker)
-        val start = match?.groups?.getOrNull(1)?.range?.first
+        val start = match?.groups?.get(1)?.range?.first
         return if (start != null) withoutMarker.substring(start).trim() else withoutMarker
     }
 
