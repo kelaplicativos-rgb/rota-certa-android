@@ -1,7 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 class RegisteredCardDecisionGate(
-    private val staleResetMillis: Long = 350L,
+    private val staleResetMillis: Long = 180L,
     private val nowProvider: () -> Long = { System.currentTimeMillis() },
 ) {
     private var lastSeenAtMillis: Long = 0L
@@ -15,15 +15,15 @@ class RegisteredCardDecisionGate(
     }
 
     /**
-     * Nunca permite que o chamador amplie a janela natural de validade do card.
-     * A bolinha antiga passava 2,8 segundos aqui e, por isso, mantinha verde/vermelho e KM
-     * do card anterior depois que a tela ja tinha mudado. Uma solicitacao maior que o prazo
-     * real do gate agora e rejeitada imediatamente.
+     * O chamador pode pedir uma janela maior, mas nunca pode ampliar a validade real do card.
+     * O APK anterior passava 2,8 segundos aqui e mantinha verde/vermelho e KM antigos. Agora a
+     * tolerancia fica limitada a 180 ms: suficiente para absorver OCR do mesmo quadro, mas curta
+     * o bastante para limpar no proximo ciclo quando o card fechar ou mudar.
      */
     fun hasSeenRecently(maxAgeMillis: Long = staleResetMillis): Boolean {
         if (lastSeenAtMillis <= 0L || maxAgeMillis <= 0L) return false
-        if (maxAgeMillis > staleResetMillis) return false
-        return nowProvider() - lastSeenAtMillis < maxAgeMillis
+        val effectiveMaxAgeMillis = minOf(maxAgeMillis, staleResetMillis)
+        return nowProvider() - lastSeenAtMillis < effectiveMaxAgeMillis
     }
 
     fun shouldResetStale(hasDecisionColor: Boolean): Boolean {
