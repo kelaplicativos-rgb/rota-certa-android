@@ -1,7 +1,8 @@
 // Ajustes de regressao para a liberacao universal:
 // - preserva bloqueio de feeds com varias ofertas;
 // - evita que mapas/telas estruturais fracas virem card;
-// - atualiza testes que ainda exigiam trava por pacote ou crop.
+// - atualiza testes que ainda exigiam trava por pacote ou crop;
+// - torna o patch legado do inDrive idempotente entre test e assemble.
 
 val openAllAppsAllScreensFixPatch by tasks.registering {
     val sourceRoot = layout.projectDirectory.dir("src/main/java/br/com/mapeiaia/rotacerta")
@@ -10,8 +11,9 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
     val templateMatcherFile = sourceRoot.file("RideCardTemplateMatcher.kt")
     val matcherTestFile = testRoot.file("RideCardTemplateMatcherTest.kt")
     val contractTestFile = testRoot.file("core/CoreRideCardContractsTest.kt")
+    val legacyInDrivePatchFile = layout.projectDirectory.file("patch-indrive-card-contract-match.gradle.kts")
 
-    inputs.files(cardMatchEngineFile, templateMatcherFile, matcherTestFile, contractTestFile)
+    inputs.files(cardMatchEngineFile, templateMatcherFile, matcherTestFile, contractTestFile, legacyInDrivePatchFile)
     outputs.upToDateWhen { false }
 
     fun replaceRequired(file: java.io.File, old: String, replacement: String, marker: String) {
@@ -77,6 +79,19 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
                 "        assertTrue(result.accepted) // open_all_contract_assert_0_1_94\n        assertFalse(result.isListLike)\n",
             )
             contractTestFile.asFile.writeText(contractTest)
+        }
+
+        var legacyPatch = legacyInDrivePatchFile.asFile.readText()
+        if ("open_all_legacy_indrive_idempotence_0_1_94" !in legacyPatch) {
+            val target = "        val original = text\n"
+            if (target !in legacyPatch) {
+                throw GradleException("Nao encontrei ponto para tornar o patch legado inDrive idempotente.")
+            }
+            legacyPatch = legacyPatch.replaceFirst(
+                target,
+                target + "\n        if (\"open_all_template_matcher_0_1_94\" in text) return@doLast // open_all_legacy_indrive_idempotence_0_1_94\n",
+            )
+            legacyInDrivePatchFile.asFile.writeText(legacyPatch)
         }
     }
 }
