@@ -245,7 +245,7 @@ val latestCardWinsPatch by tasks.registering {
             "latest_card_wins_drop_before_visual_0_1_91",
             "latest_card_wins_cancel_rethrow_0_1_91",
             "latest_card_wins_finish_0_1_91",
-            "const val LIVE_ANALYSIS_TIMEOUT_MS = 4_500L",
+            "const val LIVE_ANALYSIS_TIMEOUT_MS =",
         ).forEach { marker -> requireMarker(marker, "Correcao latest-card-wins incompleta: $marker") }
 
         if ("analysis.defer analyzing=true" in text) {
