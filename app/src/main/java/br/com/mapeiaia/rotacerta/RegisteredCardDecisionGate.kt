@@ -14,8 +14,15 @@ class RegisteredCardDecisionGate(
         lastSeenAtMillis = 0L
     }
 
+    /**
+     * Nunca permite que o chamador amplie a janela natural de validade do card.
+     * A bolinha antiga passava 2,8 segundos aqui e, por isso, mantinha verde/vermelho e KM
+     * do card anterior depois que a tela ja tinha mudado. Uma solicitacao maior que o prazo
+     * real do gate agora e rejeitada imediatamente.
+     */
     fun hasSeenRecently(maxAgeMillis: Long = staleResetMillis): Boolean {
-        if (lastSeenAtMillis <= 0L) return false
+        if (lastSeenAtMillis <= 0L || maxAgeMillis <= 0L) return false
+        if (maxAgeMillis > staleResetMillis) return false
         return nowProvider() - lastSeenAtMillis < maxAgeMillis
     }
 
