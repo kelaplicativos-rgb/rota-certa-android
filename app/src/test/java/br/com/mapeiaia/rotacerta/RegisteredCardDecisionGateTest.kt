@@ -6,14 +6,14 @@ import org.junit.Test
 
 class RegisteredCardDecisionGateTest {
     @Test
-    fun resetsOnlyAfterRegisteredCardBecomesStaleWhileDecisionColorIsVisible() {
+    fun resetsAfterOneFastScanCycleWhenDecisionColorIsVisible() {
         var now = 10_000L
         val gate = RegisteredCardDecisionGate(nowProvider = { now })
 
         assertFalse(gate.shouldResetStale(hasDecisionColor = true))
 
         gate.markSeen()
-        now += 349L
+        now += 179L
 
         assertFalse(gate.shouldResetStale(hasDecisionColor = true))
         assertFalse(gate.shouldResetStale(hasDecisionColor = false))
@@ -33,7 +33,7 @@ class RegisteredCardDecisionGateTest {
         val gate = RegisteredCardDecisionGate(nowProvider = { now })
 
         gate.markSeen()
-        now += 349L
+        now += 179L
 
         assertTrue(gate.hasSeenRecently())
 
@@ -43,18 +43,19 @@ class RegisteredCardDecisionGateTest {
     }
 
     @Test
-    fun callerCannotExtendFreshnessAndKeepPreviousDecisionOnScreen() {
+    fun callerCannotExtendFreshnessToSeveralSeconds() {
         var now = 30_000L
         val gate = RegisteredCardDecisionGate(nowProvider = { now })
 
         gate.markSeen()
+        now += 179L
+
+        assertTrue(gate.hasSeenRecently(maxAgeMillis = 2_800L))
+
+        now += 1L
 
         assertFalse(gate.hasSeenRecently(maxAgeMillis = 2_800L))
         assertFalse(gate.hasSeenRecently(maxAgeMillis = 3_500L))
-
-        now += 50L
-
-        assertFalse(gate.hasSeenRecently(maxAgeMillis = 2_800L))
     }
 
     @Test
