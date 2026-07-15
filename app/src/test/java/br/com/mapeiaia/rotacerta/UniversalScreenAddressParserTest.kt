@@ -60,4 +60,50 @@ class UniversalScreenAddressParserTest {
 
         assertNull(fields.destination)
     }
+
+    @Test
+    fun datesFilesAndAndroidUiNeverBecomeAddresses() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            qua., 15 de jul.
+            14 de jul., 95,66 kB, Documento em PDF
+            rota-certa-relatorio-falha (8).txt
+            Radares importados (0)
+            Wi-Fi
+            Bluetooth
+            Planos de fundo
+            """.trimIndent(),
+        )
+
+        assertNull(fields.destination)
+    }
+
+    @Test
+    fun ownSettingsAndSavedGpsLabelsNeverBecomeAddresses() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            GPS salvo: -21,37907, -46,16011
+            Configuracoes
+            Aparencia da bolinha
+            Leitura ao vivo ativa
+            Backup dos dados
+            """.trimIndent(),
+        )
+
+        assertNull(fields.destination)
+    }
+
+    @Test
+    fun realAddressStillWinsAfterNoisyLines() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            qua., 15 de jul.
+            Documento em PDF
+            R$ 42,00
+            Rua Doutor Paulo, 77 - Centro, Tres Coracoes - MG
+            """.trimIndent(),
+        )
+
+        assertEquals("Rua Doutor Paulo, 77 - Centro, Tres Coracoes - MG", fields.destination)
+    }
 }
