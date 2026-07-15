@@ -11,13 +11,9 @@ import java.util.Locale
  * endereco distinto da tela e o destino usado pelo farol.
  */
 object UniversalScreenAddressParser {
-    private val addressWords = listOf(
-        "rua", "r.", "avenida", "av.", "alameda", "travessa", "estrada", "rodovia",
-        "praca", "praça", "largo", "via", "viela", "beco", "marginal", "bairro",
-        "condominio", "condomínio", "residencial", "shopping", "terminal", "estacao",
-        "estação", "aeroporto", "rodoviaria", "rodoviária", "hospital", "mercado",
-        "restaurante", "hotel", "pousada", "escola", "faculdade", "universidade",
-        "posto", "parque", "poupatempo", "igreja", "cemiterio", "cemitério",
+    private val addressStartRegex = Regex(
+        "(?:^|[\\s:;])((?:r\\.|av\\.|rua|avenida|alameda|travessa|estrada|rodovia|praca|praça|largo|via|viela|beco|marginal|bairro|condominio|condomínio|residencial|shopping|terminal|estacao|estação|aeroporto|rodoviaria|rodoviária|hospital|mercado|restaurante|hotel|pousada|escola|faculdade|universidade|posto|parque|poupatempo|igreja|cemiterio|cemitério)(?:\\b|(?=\\s)))",
+        RegexOption.IGNORE_CASE,
     )
     private val markerPrefix = Regex(
         "^(?:[ab]|origem|partida|embarque|destino(?:\\s+final)?|chegada|desembarque)\\s*[:\\-–—]?\\s+",
@@ -37,10 +33,9 @@ object UniversalScreenAddressParser {
 
     fun parse(text: String): RideFields {
         val addresses = findAddresses(text)
-        val destination = addresses.lastOrNull()
         return RideFields(
             pickup = addresses.firstOrNull()?.takeIf { addresses.size > 1 },
-            destination = destination,
+            destination = addresses.lastOrNull(),
         )
     }
 
@@ -53,12 +48,12 @@ object UniversalScreenAddressParser {
         val candidates = mutableListOf<String>()
         var index = 0
         while (index < lines.size) {
-            val current = cleanMarker(lines[index])
+            val current = cleanAddressSegment(lines[index])
             if (looksLikeAddress(current)) {
                 val parts = mutableListOf(current)
                 var nextIndex = index + 1
                 while (nextIndex < lines.size && parts.size < 3) {
-                    val next = cleanMarker(lines[nextIndex])
+                    val next = cleanAddressSegment(lines[nextIndex])
                     if (!looksLikeContinuation(next, parts.last())) break
                     parts += next
                     nextIndex += 1
@@ -79,8 +74,7 @@ object UniversalScreenAddressParser {
     private fun looksLikeAddress(value: String): Boolean {
         if (value.length < 5 || noiseRegex.containsMatchIn(value)) return false
         if (coordinateRegex.matches(value)) return true
-        val normalized = canonical(value)
-        val hasAddressWord = addressWords.any { word -> normalized.contains(canonical(word)) }
+        val hasAddressWord = addressStartRegex.containsMatchIn(value)
         val hasNumber = numberRegex.containsMatchIn(value)
         val hasCep = cepRegex.containsMatchIn(value)
         val hasState = stateRegex.containsMatchIn(value)
@@ -115,9 +109,12 @@ object UniversalScreenAddressParser {
             cepRegex.containsMatchIn(value)
     }
 
-    private fun cleanMarker(value: String): String = value
-        .replace(markerPrefix, "")
-        .trim()
+    private fun cleanAddressSegment(value: String): String {
+        val withoutMarker = value.replace(markerPrefix, "").trim()
+        val match = addressStartRegex.find(withoutMarker)
+        val start = match?.groups?.getOrNull(1)?.range?.first
+        return if (start != null) withoutMarker.substring(start).trim() else withoutMarker
+    }
 
     private fun normalizeLine(value: String): String = value
         .replace('\u00A0', ' ')
