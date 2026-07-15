@@ -7,6 +7,11 @@ import java.util.Locale
 /**
  * Portaria de pacotes do Rota Certa Core.
  * Nenhum modulo de card/rota/bolinha deve decidir sozinho se pode ler um app.
+ *
+ * Contrato:
+ * - modo restrito ligado: somente apps de corrida selecionados;
+ * - modo restrito desligado: qualquer app comum entra pelo modulo Universal;
+ * - telas do proprio app, sistema, launcher, teclado, Maps e Waze permanecem bloqueadas.
  */
 object CorePackageMonitor {
     private const val PACKAGE_99_DRIVER = RideCardTemplateMatcher.NINETY_NINE_PACKAGE
@@ -18,7 +23,6 @@ object CorePackageMonitor {
         "com.android.settings",
         "com.android.systemui",
         "com.google.android.inputmethod.latin",
-        "com.openai.chatgpt",
         "com.samsung.android.app.settings",
         "com.samsung.android.honeyboard",
     )
@@ -30,7 +34,6 @@ object CorePackageMonitor {
         "com.waze",
         "com.google.android.apps.nexuslauncher",
         "com.google.android.inputmethod.latin",
-        "com.openai.chatgpt",
         "com.sec.android.app.launcher",
         "com.android.settings",
         "com.samsung.android.app.settings",
@@ -86,7 +89,7 @@ object CorePackageMonitor {
                 kind = CorePackageKind.Ignored,
                 module = CoreRideAppModule.Unknown,
                 canScan = false,
-                reason = "Pacote ignorado para evitar leitura fora do card: $normalized.",
+                reason = "Pacote de sistema ignorado para evitar leitura indevida: $normalized.",
             )
         }
 
@@ -97,7 +100,17 @@ object CorePackageMonitor {
                 kind = CorePackageKind.RideApp,
                 module = moduleFor(normalized),
                 canScan = true,
-                reason = "Pacote permitido pelo Core: $normalized.",
+                reason = "Pacote de corrida permitido pelo Core: $normalized.",
+            )
+        }
+
+        if (!settings.restrictToSelectedRideApps) {
+            return CorePackageClassification(
+                packageName = normalized,
+                kind = CorePackageKind.RideApp,
+                module = CoreRideAppModule.Universal,
+                canScan = true,
+                reason = "Modo universal ativo; tela liberada para procurar card cadastrado: $normalized.",
             )
         }
 
@@ -106,7 +119,7 @@ object CorePackageMonitor {
             kind = CorePackageKind.NotMonitored,
             module = CoreRideAppModule.Unknown,
             canScan = false,
-            reason = "Pacote fora dos apps monitorados; bolinha em espera: $normalized.",
+            reason = "Modo restrito ativo; pacote fora dos apps monitorados: $normalized.",
         )
     }
 
