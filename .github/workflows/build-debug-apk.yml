@@ -125,7 +125,10 @@ jobs:
             "Gerar relatorio para anexar" \
             "ROTA CERTA RELATORIO MANUAL" \
             "rota-certa-relatorio-falha.txt" \
-            "passive_event_preserves_monitored_root_0_1_88"
+            "passive_event_preserves_monitored_root_0_1_88" \
+            "Bolinhas com ON/OFF alternam a funcao a cada toque" \
+            "Leitura ao vivo desligada pela bolinha" \
+            "Casa e Alfinete estao desligados"
           do
             if grep -Fq -- "$expected" apk-strings.txt; then
               echo "FOUND=$expected" >> apk-validation.txt
