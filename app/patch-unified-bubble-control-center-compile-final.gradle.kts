@@ -21,6 +21,10 @@ val unifiedBubbleCompileFinal by tasks.registering {
             .replace("openAppTab(TAB_ANALYSIS)", "openControlCenterTab(TAB_ANALYSIS)")
             .replace("openAppTab(TAB_CONFIG)", "openControlCenterTab(TAB_CONFIG)")
             .replace("openAppTab(TAB_TOOLS)", "openControlCenterTab(TAB_TOOLS)")
+            .replace(
+                "} // universal_source_freshness_process_0_1_94",
+                "} // universal_source_freshness_process_0_1_94 universal_last_address_process_v2_0_1_95",
+            )
 
         if ("private fun openControlCenterTab(tab: String)" !in text) {
             val anchor = "    private fun showActionMenu() {\n"
@@ -74,6 +78,7 @@ val unifiedBubbleCompileFinal by tasks.registering {
             "private var overlayMenuView: View? = null",
             "private fun openControlCenterTab(tab: String)",
             "unified_whatsapp_inside_grid_compile_0_1_94",
+            "universal_last_address_process_v2_0_1_95",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Correcao final da central ausente: $marker")
         }
