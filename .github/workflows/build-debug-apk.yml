@@ -108,6 +108,31 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
+      - name: Validate final bubble tap wiring
+        run: |
+          set -euo pipefail
+          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          test -f "$service"
+          grep -Fq 'newView.setOnClickListener { onMainBubbleClick() }' "$service"
+          grep -Fq 'private fun onMainBubbleClick()' "$service"
+          grep -Fq 'bubble.tap.menu_contract_0_1_96' "$service"
+          grep -Fq 'GridLayout(this)' "$service"
+          grep -Fq 'quickToggleBubbleButton("Rota"' "$service"
+          grep -Fq 'quickToggleBubbleButton("Leitura"' "$service"
+          overlay_block="$(sed -n '/private fun showOverlay(/,/private fun removeOverlay()/p' "$service")"
+          if printf '%s' "$overlay_block" | grep -Fq 'setOnClickListener { openApp'; then
+            echo "ERRO: a bolinha principal ainda abre o aplicativo diretamente."
+            exit 1
+          fi
+          {
+            echo "MAIN_BUBBLE_TAP=opens_control_grid"
+            echo "SECOND_TAP=closes_control_grid"
+            echo "TOGGLE_BUTTONS=Rota,Leitura,Alertas,Escuro,Casa,Alfinete"
+            echo "ACTION_BUTTONS=WA,Salvar,Acesso,Relat.,Backup,Fechar"
+            echo "DIRECT_OPEN_APP_ON_MAIN_TAP=absent"
+          } > bubble-menu-validation.txt
+          cat bubble-menu-validation.txt
+
       - name: Validate debug APK
         run: |
           apk="app/build/outputs/apk/debug/app-debug.apk"
@@ -128,7 +153,9 @@ jobs:
             "passive_event_preserves_monitored_root_0_1_88" \
             "Bolinhas com ON/OFF alternam a funcao a cada toque" \
             "Leitura ao vivo desligada pela bolinha" \
-            "Casa e Alfinete estao desligados"
+            "Casa e Alfinete estao desligados" \
+            "bubble.tap.menu_contract_0_1_96" \
+            "bubble.menu.opened grid=true"
           do
             if grep -Fq -- "$expected" apk-strings.txt; then
               echo "FOUND=$expected" >> apk-validation.txt
@@ -155,7 +182,15 @@ jobs:
               echo "ABSENT=$forbidden" >> apk-validation.txt
             fi
           done
+          cat bubble-menu-validation.txt >> apk-validation.txt
           cat apk-validation.txt
+
+      - name: Upload bubble menu validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: bubble-menu-validation
+          path: bubble-menu-validation.txt
+          if-no-files-found: error
 
       - name: Upload APK validation
         uses: actions/upload-artifact@v4
@@ -198,6 +233,8 @@ jobs:
             echo "Commit: ${RELEASE_TARGET_SHA}"
             echo
             echo "Stable download asset: ${stable_apk}"
+            echo
+            cat bubble-menu-validation.txt
             echo
             cat apk-validation.txt
             echo
