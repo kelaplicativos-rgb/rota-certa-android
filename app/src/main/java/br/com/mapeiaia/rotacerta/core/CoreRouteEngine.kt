@@ -9,7 +9,7 @@ import java.util.Locale
 /**
  * Motor de rota/cache do Rota Certa Core.
  * A bolinha nao deve decidir cache nem aceitar resultado atrasado.
- * Toda rota calculada nasce vinculada a uma transacao do card visivel.
+ * Toda rota calculada nasce vinculada a uma transacao do endereco visivel.
  */
 class CoreRouteEngine(
     private val cache: LiveRideRouteCache = LiveRideRouteCache(),
@@ -60,6 +60,11 @@ class CoreRouteEngine(
         cache.clear()
     }
 
+    /**
+     * A troca de pacote nao invalida mais uma rota universal.
+     * File picker, SystemUI, teclado e overlays podem assumir a janela enquanto o Google
+     * ainda calcula. A protecao decisiva e a assinatura/token do endereco atual.
+     */
     fun isFresh(
         transaction: CoreRouteTransaction,
         currentPackageName: String?,
@@ -67,8 +72,6 @@ class CoreRouteEngine(
     ): Boolean {
         val ageMillis = nowMillis() - transaction.startedAtMillis
         if (ageMillis > MAX_ROUTE_RESULT_AGE_MS) return false
-        val normalizedCurrentPackage = normalizePart(currentPackageName)
-        if (transaction.packageName.isNotBlank() && normalizedCurrentPackage != transaction.packageName) return false
         val visibleAtStart = transaction.visibleCardSignature
         val visibleNow = currentVisibleCardSignature.orEmpty()
         if (visibleAtStart.isNotBlank() && visibleNow.isNotBlank() && visibleAtStart != visibleNow) return false
@@ -81,15 +84,12 @@ class CoreRouteEngine(
         currentVisibleCardSignature: String?,
     ): String {
         val ageMillis = nowMillis() - transaction.startedAtMillis
-        val normalizedCurrentPackage = normalizePart(currentPackageName)
         val visibleNow = currentVisibleCardSignature.orEmpty()
         return when {
             ageMillis > MAX_ROUTE_RESULT_AGE_MS -> "Resultado de rota atrasado: ${ageMillis}ms."
-            transaction.packageName.isNotBlank() && normalizedCurrentPackage != transaction.packageName ->
-                "Pacote mudou durante a rota: inicio=${transaction.packageName}, atual=$normalizedCurrentPackage."
             transaction.visibleCardSignature.isNotBlank() && visibleNow.isNotBlank() && transaction.visibleCardSignature != visibleNow ->
                 "Assinatura visivel mudou durante a rota."
-            else -> "Resultado de rota ainda pertence ao card visivel."
+            else -> "Resultado de rota ainda pertence ao ultimo endereco visivel; troca de pacote nao invalida o calculo."
         }
     }
 
@@ -100,7 +100,7 @@ class CoreRouteEngine(
             .trim()
 
     companion object {
-        const val MAX_ROUTE_RESULT_AGE_MS: Long = 1_800L
+        const val MAX_ROUTE_RESULT_AGE_MS: Long = 8_000L
     }
 }
 
