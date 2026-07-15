@@ -24,3 +24,5 @@ universalLastAddressCompileFix.configure {
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
     dependsOn(universalLastAddressCompileFix)
 }
+
+apply(from = "patch-universal-task-order-fix.gradle.kts")
