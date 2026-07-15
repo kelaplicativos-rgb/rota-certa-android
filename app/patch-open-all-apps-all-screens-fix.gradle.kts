@@ -2,7 +2,7 @@
 // - preserva bloqueio de feeds com varias ofertas;
 // - evita que mapas/telas estruturais fracas virem card;
 // - atualiza testes que ainda exigiam trava por pacote ou crop;
-// - torna o patch legado do inDrive idempotente entre test e assemble.
+// - torna patches legados do inDrive idempotentes entre test e assemble.
 
 val openAllAppsAllScreensFixPatch by tasks.registering {
     val sourceRoot = layout.projectDirectory.dir("src/main/java/br/com/mapeiaia/rotacerta")
@@ -12,8 +12,16 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
     val matcherTestFile = testRoot.file("RideCardTemplateMatcherTest.kt")
     val contractTestFile = testRoot.file("core/CoreRideCardContractsTest.kt")
     val legacyInDrivePatchFile = layout.projectDirectory.file("patch-indrive-card-contract-match.gradle.kts")
+    val legacyMarkerlessPatchFile = layout.projectDirectory.file("patch-indrive-markerless-live-card.gradle.kts")
 
-    inputs.files(cardMatchEngineFile, templateMatcherFile, matcherTestFile, contractTestFile, legacyInDrivePatchFile)
+    inputs.files(
+        cardMatchEngineFile,
+        templateMatcherFile,
+        matcherTestFile,
+        contractTestFile,
+        legacyInDrivePatchFile,
+        legacyMarkerlessPatchFile,
+    )
     outputs.upToDateWhen { false }
 
     fun replaceRequired(file: java.io.File, old: String, replacement: String, marker: String) {
@@ -92,6 +100,19 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
                 target + "\n        if (\"open_all_template_matcher_0_1_94\" in text) return@doLast // open_all_legacy_indrive_idempotence_0_1_94\n",
             )
             legacyInDrivePatchFile.asFile.writeText(legacyPatch)
+        }
+
+        var markerlessPatch = legacyMarkerlessPatchFile.asFile.readText()
+        if ("open_all_legacy_markerless_idempotence_0_1_94" !in markerlessPatch) {
+            val target = "    doLast {\n        matcherFile.asFile.takeIf { it.exists() }?.let { file ->\n"
+            if (target !in markerlessPatch) {
+                throw GradleException("Nao encontrei ponto para tornar o patch markerless idempotente.")
+            }
+            markerlessPatch = markerlessPatch.replaceFirst(
+                target,
+                "    doLast {\n        if (coreMatcherFile.asFile.readText().contains(\"open_all_core_match_0_1_94\")) return@doLast // open_all_legacy_markerless_idempotence_0_1_94\n        matcherFile.asFile.takeIf { it.exists() }?.let { file ->\n",
+            )
+            legacyMarkerlessPatchFile.asFile.writeText(markerlessPatch)
         }
     }
 }
