@@ -136,8 +136,14 @@ jobs:
           test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
           grep -Fq 'IN_APP_TOGGLE=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'YELLOW_TRIGGER=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'IMMEDIATE_CLEAR_TO_GRAY=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
           test -s runtime-ui/app-before.png
-          test -s runtime-ui/app-after.png
+          test -s runtime-ui/app-after-off.png
+          test -s runtime-ui/app-restored-on.png
           test -s runtime-ui/home-bubble.png
+          test -s runtime-ui/two-address-trigger.png
+          test -s runtime-ui/after-address-clear.png
           test -s runtime-ui/floating-menu.png
