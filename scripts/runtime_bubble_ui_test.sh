@@ -69,27 +69,43 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 out = Path(sys.argv[1])
 root = ET.parse(out / 'app-before.xml').getroot()
 nodes = list(root.iter('node'))
+parents = {child: parent for parent in root.iter() for child in parent}
+
 def label(node):
     return ' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip()
+
+def clickable_bounds(node):
+    current = node
+    while current is not None:
+        if current.attrib.get('clickable') == 'true':
+            return current.attrib.get('bounds', '')
+        current = parents.get(current)
+    return node.attrib.get('bounds', '')
+
 all_text = '\n'.join(label(node) for node in nodes)
 (out / 'app-before-text.txt').write_text(all_text)
 required = ['Central de bolinhas', 'Rota', 'Leitura', 'Acesso', 'WA']
 missing = [item for item in required if item not in all_text]
 if missing:
     raise SystemExit('Central interna ausente: ' + ', '.join(missing))
-rota = next((node for node in nodes if label(node).startswith('Rota')), None)
+
+rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
 if rota is None:
     raise SystemExit('Bolinha Rota nao encontrada')
-match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', rota.attrib.get('bounds', ''))
+
+bounds = clickable_bounds(rota)
+match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
 if not match:
-    raise SystemExit('Bounds invalidos: ' + rota.attrib.get('bounds', ''))
+    raise SystemExit('Bounds clicaveis invalidos: ' + bounds)
 x = (int(match.group(1)) + int(match.group(3))) // 2
 y = (int(match.group(2)) + int(match.group(4))) // 2
 (out / 'rota-coordinates.txt').write_text(f'{x} {y}\n')
-(out / 'rota-before.txt').write_text(label(rota))
+(out / 'rota-before.txt').write_text(node_text := rota.attrib.get('text', '').strip())
+(out / 'rota-click-bounds.txt').write_text(bounds + '\n')
 PY
 
 read -r rota_x rota_y < "$OUT/rota-coordinates.txt"
@@ -102,18 +118,21 @@ python3 - "$OUT" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 out = Path(sys.argv[1])
 before = (out / 'rota-before.txt').read_text().strip()
 root = ET.parse(out / 'app-after.xml').getroot()
+nodes = list(root.iter('node'))
+
 def label(node):
     return ' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip()
-nodes = list(root.iter('node'))
+
 all_text = '\n'.join(label(node) for node in nodes)
 (out / 'app-after-text.txt').write_text(all_text)
-rota = next((node for node in nodes if label(node).startswith('Rota')), None)
+rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
 if rota is None:
     raise SystemExit('Bolinha Rota desapareceu')
-after = label(rota)
+after = rota.attrib.get('text', '').strip()
 if before == after:
     raise SystemExit(f'Rota nao alternou: {before!r}')
 if not ((('ON' in before) and ('OFF' in after)) or (('OFF' in before) and ('ON' in after))):
@@ -149,22 +168,36 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 out = Path(sys.argv[1])
 root = ET.parse(out / 'home-bubble.xml').getroot()
+nodes = list(root.iter('node'))
+parents = {child: parent for parent in root.iter() for child in parent}
+
 def label(node):
     return ' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip()
-nodes = list(root.iter('node'))
+
+def clickable_bounds(node):
+    current = node
+    while current is not None:
+        if current.attrib.get('clickable') == 'true':
+            return current.attrib.get('bounds', '')
+        current = parents.get(current)
+    return node.attrib.get('bounds', '')
+
 all_text = '\n'.join(label(node) for node in nodes)
 (out / 'home-bubble-text.txt').write_text(all_text)
-bubble = next((node for node in nodes if 'Rota Certa' in label(node)), None)
+bubble = next((node for node in nodes if node.attrib.get('content-desc') == 'Rota Certa'), None)
 if bubble is None:
     raise SystemExit('Bolinha flutuante nao apareceu')
-match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bubble.attrib.get('bounds', ''))
+bounds = clickable_bounds(bubble)
+match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
 if not match:
-    raise SystemExit('Bounds flutuantes invalidos')
+    raise SystemExit('Bounds flutuantes invalidos: ' + bounds)
 x = (int(match.group(1)) + int(match.group(3))) // 2
 y = (int(match.group(2)) + int(match.group(4))) // 2
 (out / 'floating-coordinates.txt').write_text(f'{x} {y}\n')
+(out / 'floating-click-bounds.txt').write_text(bounds + '\n')
 PY
 
 read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"
@@ -177,10 +210,13 @@ python3 - "$OUT" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 out = Path(sys.argv[1])
 root = ET.parse(out / 'floating-menu.xml').getroot()
+
 def label(node):
     return ' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip()
+
 text = '\n'.join(label(node) for node in root.iter('node'))
 (out / 'floating-menu-text.txt').write_text(text)
 required = ['Rota', 'Leitura', 'WA', 'Acesso', 'Fechar']
