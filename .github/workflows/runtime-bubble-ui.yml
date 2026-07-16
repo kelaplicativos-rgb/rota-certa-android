@@ -16,6 +16,8 @@ jobs:
     name: Install, tap and verify bubbles on Android
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android/avd
 
     steps:
       - name: Checkout
@@ -37,22 +39,29 @@ jobs:
 
       - name: Prepare runtime evidence directory
         run: |
-          mkdir -p runtime-ui
+          mkdir -p runtime-ui "$ANDROID_AVD_HOME"
           echo "RUNTIME_STAGE=prepared" > runtime-ui/progress.txt
           echo "HEAD_SHA=${GITHUB_SHA}" >> runtime-ui/progress.txt
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME}" >> runtime-ui/progress.txt
 
       - name: Build APK for runtime simulation
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Install Android emulator image
+      - name: Install Android emulator image and libraries
         run: |
           set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libgl1 libx11-6 libxcomposite1 libxcursor1 libxi6 libxtst6 libnss3
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
-          echo no | avdmanager create avd --force --name rota-runtime --package "system-images;android-34;default;x86_64" --device pixel_2
-          "$ANDROID_SDK_ROOT/emulator/emulator" -version > runtime-ui/emulator-version.txt 2>&1 || true
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --force --name rota_runtime --package "system-images;android-34;default;x86_64" --device pixel_2
+          "$ANDROID_SDK_ROOT/emulator/emulator" -version > runtime-ui/emulator-version.txt 2>&1
+          "$ANDROID_SDK_ROOT/emulator/emulator" -list-avds | tee runtime-ui/avd-list.txt
+          grep -Fxq 'rota_runtime' runtime-ui/avd-list.txt
+          find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -print > runtime-ui/avd-files.txt
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
       - name: Start emulator and run real taps
@@ -65,13 +74,15 @@ jobs:
           set -euxo pipefail
           EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
           test -x "$EMULATOR_BIN"
+          "$EMULATOR_BIN" -list-avds | tee runtime-ui/avd-list-before-start.txt
+          grep -Fxq 'rota_runtime' runtime-ui/avd-list-before-start.txt
           if [ -e /dev/kvm ]; then
             sudo chmod 666 /dev/kvm
             ls -l /dev/kvm | tee runtime-ui/kvm.txt
           else
             echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
           fi
-          nohup "$EMULATOR_BIN" @rota-runtime \
+          nohup "$EMULATOR_BIN" @rota_runtime \
             -no-window \
             -noaudio \
             -no-boot-anim \
