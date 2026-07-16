@@ -1,2 +1,3 @@
-// Compatibilidade incorporada diretamente em patch-universal-last-address-final-v2.gradle.kts.
-// Mantido como arquivo vazio para preservar o apply existente sem criar tarefas ou ciclos.
+// Compatibilidade final: carrega a trava que impede patches legados de
+// reescreverem o leitor universal na segunda chamada do Gradle.
+apply(from = "patch-universal-two-address-idempotence.gradle.kts")
