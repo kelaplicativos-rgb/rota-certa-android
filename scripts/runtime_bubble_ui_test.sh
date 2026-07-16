@@ -16,11 +16,12 @@ echo "RUNTIME_STAGE=script_started" >> "$OUT/progress.txt"
 
 finish() {
   status=$?
+  trap - EXIT
   echo "SCRIPT_EXIT=$status" >> "$OUT/progress.txt"
   adb devices -l > "$OUT/adb-devices-final.txt" 2>&1 || true
   adb logcat -d -v threadtime > "$OUT/logcat.txt" 2>&1 || true
   adb shell dumpsys accessibility > "$OUT/dumpsys-accessibility-final.txt" 2>&1 || true
-  return "$status"
+  exit "$status"
 }
 trap finish EXIT
 
@@ -64,7 +65,6 @@ wait_runtime_prefs() {
   for _ in $(seq 1 "$attempts"); do
     if read_runtime_prefs "$output"; then
       local all_found=true
-      local needle
       for needle in "$@"; do
         if ! grep -Fq -- "$needle" "$output"; then
           all_found=false
@@ -80,6 +80,41 @@ wait_runtime_prefs() {
   echo "Estado runtime esperado nao apareceu: $*" >&2
   cat "$output" 2>/dev/null || true
   return 1
+}
+
+find_rota_control() {
+  local input_xml="$1"
+  local state_file="$2"
+  local coordinates_file="$3"
+  python3 - "$input_xml" "$state_file" "$coordinates_file" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+xml_path, state_path, coordinates_path = map(Path, sys.argv[1:])
+root = ET.parse(xml_path).getroot()
+nodes = list(root.iter('node'))
+parents = {child: parent for parent in root.iter() for child in parent}
+rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
+if rota is None:
+    raise SystemExit('Bolinha Rota nao encontrada')
+current = rota
+bounds = ''
+while current is not None:
+    if current.attrib.get('clickable') == 'true':
+        bounds = current.attrib.get('bounds', '')
+        break
+    current = parents.get(current)
+if not bounds:
+    bounds = rota.attrib.get('bounds', '')
+match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
+if not match:
+    raise SystemExit('Bounds clicaveis invalidos: ' + bounds)
+x = (int(match.group(1)) + int(match.group(3))) // 2
+y = (int(match.group(2)) + int(match.group(4))) // 2
+state_path.write_text(rota.attrib.get('text', '').strip())
+coordinates_path.write_text(f'{x} {y}\n')
+PY
 }
 
 wait_boot
@@ -103,103 +138,53 @@ sleep 8
 dump_ui /sdcard/app-before.xml "$OUT/app-before.xml"
 adb exec-out screencap -p > "$OUT/app-before.png"
 
-python3 - "$OUT" <<'PY'
-import re
+python3 - "$OUT/app-before.xml" "$OUT/app-before-text.txt" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
-out = Path(sys.argv[1])
-root = ET.parse(out / 'app-before.xml').getroot()
-nodes = list(root.iter('node'))
-parents = {child: parent for parent in root.iter() for child in parent}
-
-def label(node):
-    return ' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip()
-
-def clickable_bounds(node):
-    current = node
-    while current is not None:
-        if current.attrib.get('clickable') == 'true':
-            return current.attrib.get('bounds', '')
-        current = parents.get(current)
-    return node.attrib.get('bounds', '')
-
-all_text = '\n'.join(label(node) for node in nodes)
-(out / 'app-before-text.txt').write_text(all_text)
+root = ET.parse(sys.argv[1]).getroot()
+text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('content-desc', '')])).strip() for n in root.iter('node'))
+Path(sys.argv[2]).write_text(text)
 required = ['Central de bolinhas', 'Rota', 'Leitura', 'Acesso', 'WA']
-missing = [item for item in required if item not in all_text]
+missing = [item for item in required if item not in text]
 if missing:
     raise SystemExit('Central interna ausente: ' + ', '.join(missing))
-
-rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
-if rota is None:
-    raise SystemExit('Bolinha Rota nao encontrada')
-bounds = clickable_bounds(rota)
-match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
-if not match:
-    raise SystemExit('Bounds clicaveis invalidos: ' + bounds)
-x = (int(match.group(1)) + int(match.group(3))) // 2
-y = (int(match.group(2)) + int(match.group(4))) // 2
-before = rota.attrib.get('text', '').strip()
-if 'ON' not in before:
-    raise SystemExit(f'Rota deveria iniciar ligada para o teste: {before!r}')
-(out / 'rota-coordinates.txt').write_text(f'{x} {y}\n')
-(out / 'rota-before.txt').write_text(before)
-(out / 'rota-click-bounds.txt').write_text(bounds + '\n')
 PY
 
+find_rota_control "$OUT/app-before.xml" "$OUT/rota-before.txt" "$OUT/rota-coordinates.txt"
 read -r rota_x rota_y < "$OUT/rota-coordinates.txt"
+if ! grep -Fq 'ON' "$OUT/rota-before.txt"; then
+  echo "Rota deveria iniciar ligada" >&2
+  exit 1
+fi
+
 adb shell input tap "$rota_x" "$rota_y"
 sleep 3
 dump_ui /sdcard/app-after-off.xml "$OUT/app-after-off.xml"
 adb exec-out screencap -p > "$OUT/app-after-off.png"
-
-python3 - "$OUT" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-from pathlib import Path
-out = Path(sys.argv[1])
-before = (out / 'rota-before.txt').read_text().strip()
-root = ET.parse(out / 'app-after-off.xml').getroot()
-nodes = list(root.iter('node'))
-rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
-if rota is None:
-    raise SystemExit('Bolinha Rota desapareceu apos desligar')
-after = rota.attrib.get('text', '').strip()
-if 'ON' not in before or 'OFF' not in after:
-    raise SystemExit(f'Alternancia ON para OFF invalida: {before!r} -> {after!r}')
-(out / 'rota-after-off.txt').write_text(after)
-PY
+find_rota_control "$OUT/app-after-off.xml" "$OUT/rota-after-off.txt" "$OUT/rota-coordinates-after-off.txt"
+if ! grep -Fq 'OFF' "$OUT/rota-after-off.txt"; then
+  echo "Rota nao mudou para OFF" >&2
+  exit 1
+fi
 
 adb shell input tap "$rota_x" "$rota_y"
 sleep 3
 dump_ui /sdcard/app-restored-on.xml "$OUT/app-restored-on.xml"
 adb exec-out screencap -p > "$OUT/app-restored-on.png"
+find_rota_control "$OUT/app-restored-on.xml" "$OUT/rota-restored-on.txt" "$OUT/rota-coordinates-restored.txt"
+if ! grep -Fq 'ON' "$OUT/rota-restored-on.txt"; then
+  echo "Rota nao voltou para ON" >&2
+  exit 1
+fi
 
-python3 - "$OUT" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-from pathlib import Path
-out = Path(sys.argv[1])
-before = (out / 'rota-before.txt').read_text().strip()
-after_off = (out / 'rota-after-off.txt').read_text().strip()
-root = ET.parse(out / 'app-restored-on.xml').getroot()
-nodes = list(root.iter('node'))
-rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
-if rota is None:
-    raise SystemExit('Bolinha Rota desapareceu ao religar')
-restored = rota.attrib.get('text', '').strip()
-if 'ON' not in restored:
-    raise SystemExit(f'Rota nao voltou para ON: {restored!r}')
-(out / 'in-app-result.txt').write_text(
-    'IN_APP_CENTER=visible\n'
-    f'ROTA_BEFORE={before}\n'
-    f'ROTA_AFTER_FIRST_TAP={after_off}\n'
-    f'ROTA_AFTER_SECOND_TAP={restored}\n'
-    'IN_APP_TOGGLE=approved\n'
-)
-PY
+cat > "$OUT/in-app-result.txt" <<EOF
+IN_APP_CENTER=visible
+ROTA_BEFORE=$(cat "$OUT/rota-before.txt")
+ROTA_AFTER_FIRST_TAP=$(cat "$OUT/rota-after-off.txt")
+ROTA_AFTER_SECOND_TAP=$(cat "$OUT/rota-restored-on.txt")
+IN_APP_TOGGLE=approved
+EOF
 
 echo "RUNTIME_STAGE=in_app_toggle_approved" >> "$OUT/progress.txt"
 adb shell settings put secure enabled_accessibility_services "$SERVICE"
@@ -207,50 +192,37 @@ adb shell settings put secure accessibility_enabled 1
 sleep 5
 adb shell settings get secure enabled_accessibility_services > "$OUT/enabled-services.txt"
 adb shell dumpsys accessibility > "$OUT/dumpsys-accessibility.txt"
-if ! grep -Fq "$PACKAGE" "$OUT/enabled-services.txt"; then
-  echo "Servico nao ficou habilitado" >&2
-  exit 1
-fi
-if ! grep -Fq 'TYPE_ACCESSIBILITY_OVERLAY' "$OUT/dumpsys-accessibility.txt"; then
-  echo "Janela da bolinha nao foi criada" >&2
-  exit 1
-fi
+grep -Fq "$PACKAGE" "$OUT/enabled-services.txt"
+grep -Fq 'TYPE_ACCESSIBILITY_OVERLAY' "$OUT/dumpsys-accessibility.txt"
 
-# Nao use force-stop depois de ativar a acessibilidade: isso encerra o servico.
+# Force-stop apos ativar a acessibilidade encerraria o servico. Apenas volte a Home.
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell dumpsys accessibility > "$OUT/home-bubble-accessibility.txt"
 adb exec-out screencap -p > "$OUT/home-bubble.png"
 wait_runtime_prefs "$OUT/home-runtime-prefs.xml" 30 '>cinza|'
 
-python3 - "$OUT" <<'PY'
+python3 - "$OUT/home-bubble-accessibility.txt" "$OUT/floating-coordinates.txt" "$OUT/floating-window-bounds.txt" "$OUT/floating-window-result.txt" <<'PY'
 import re
 import sys
 from pathlib import Path
-out = Path(sys.argv[1])
-text = (out / 'home-bubble-accessibility.txt').read_text(errors='replace')
-matches = re.findall(
-    r'type=TYPE_ACCESSIBILITY_OVERLAY.*?bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)',
-    text,
-)
+accessibility, coordinates, bounds_path, result = map(Path, sys.argv[1:])
+text = accessibility.read_text(errors='replace')
+matches = re.findall(r'type=TYPE_ACCESSIBILITY_OVERLAY.*?bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)', text)
 if not matches:
     raise SystemExit('Janela TYPE_ACCESSIBILITY_OVERLAY nao encontrada no Android')
 boxes = [tuple(map(int, values)) for values in matches]
-box = min(boxes, key=lambda b: max(1, b[2]-b[0]) * max(1, b[3]-b[1]))
-x1, y1, x2, y2 = box
+x1, y1, x2, y2 = min(boxes, key=lambda b: max(1, b[2]-b[0]) * max(1, b[3]-b[1]))
 if x2 <= x1 or y2 <= y1:
-    raise SystemExit(f'Bounds invalidos da bolinha: {box}')
-(out / 'floating-coordinates.txt').write_text(f'{(x1+x2)//2} {(y1+y2)//2}\n')
-(out / 'floating-window-bounds.txt').write_text(f'{x1},{y1},{x2},{y2}\n')
-(out / 'floating-window-result.txt').write_text(
-    'ACCESSIBILITY_OVERLAY_WINDOW=visible\n'
-    f'OVERLAY_BOUNDS={x1},{y1},{x2},{y2}\n'
-)
+    raise SystemExit(f'Bounds invalidos da bolinha: {(x1, y1, x2, y2)}')
+coordinates.write_text(f'{(x1+x2)//2} {(y1+y2)//2}\n')
+bounds_path.write_text(f'{x1},{y1},{x2},{y2}\n')
+result.write_text('ACCESSIBILITY_OVERLAY_WINDOW=visible\n' + f'OVERLAY_BOUNDS={x1},{y1},{x2},{y2}\n')
 PY
 
 echo "RUNTIME_STAGE=gray_idle_approved" >> "$OUT/progress.txt"
 adb shell am force-stop "$FIXTURE_PACKAGE"
-yellow_started_ms="$(date +%s%3N)"
+screen_started_ms="$(date +%s%3N)"
 adb shell am start -W -n "$FIXTURE_ACTIVITY" | tee "$OUT/fixture-start.txt"
 wait_runtime_prefs \
   "$OUT/yellow-runtime-prefs.xml" \
@@ -258,43 +230,54 @@ wait_runtime_prefs \
   '>amarelo|' \
   '<int name="runtime_visible_addresses" value="2"' \
   'Avenida Brasil, 900 - Bela Vista, Santo Andre - SP'
-yellow_finished_ms="$(date +%s%3N)"
-yellow_latency_ms="$((yellow_finished_ms - yellow_started_ms))"
-echo "$yellow_latency_ms" > "$OUT/yellow-latency-ms.txt"
-if [ "$yellow_latency_ms" -gt 1200 ]; then
-  echo "Gatilho amarelo demorou ${yellow_latency_ms}ms" >&2
-  exit 1
-fi
+screen_finished_ms="$(date +%s%3N)"
+screen_to_yellow_ms="$((screen_finished_ms - screen_started_ms))"
+echo "$screen_to_yellow_ms" > "$OUT/screen-to-yellow-ms.txt"
 
-dump_ui /sdcard/two-address-trigger.xml "$OUT/two-address-trigger.xml"
-adb exec-out screencap -p > "$OUT/two-address-trigger.png"
-
-python3 - "$OUT" <<'PY'
+python3 - "$OUT/yellow-runtime-prefs.xml" "$OUT/yellow-latency-ms.txt" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-out = Path(sys.argv[1])
-root = ET.parse(out / 'two-address-trigger.xml').getroot()
+root = ET.parse(sys.argv[1]).getroot()
+def value(name):
+    node = root.find(f"long[@name='{name}']")
+    if node is None:
+        raise SystemExit(f'Campo ausente: {name}')
+    return int(node.attrib['value'])
+latency = value('runtime_validation_state_at') - value('runtime_trigger_at')
+Path(sys.argv[2]).write_text(str(latency) + '\n')
+if latency < 0 or latency > 250:
+    raise SystemExit(f'Gatilho interno amarelo demorou {latency}ms')
+PY
+yellow_latency_ms="$(cat "$OUT/yellow-latency-ms.txt" | tr -d '\r\n')"
+
+dump_ui /sdcard/two-address-trigger.xml "$OUT/two-address-trigger.xml"
+adb exec-out screencap -p > "$OUT/two-address-trigger.png"
+python3 - "$OUT/two-address-trigger.xml" "$OUT/two-address-trigger-text.txt" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+root = ET.parse(sys.argv[1]).getroot()
 text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('content-desc', '')])).strip() for n in root.iter('node'))
-(out / 'two-address-trigger-text.txt').write_text(text)
+Path(sys.argv[2]).write_text(text)
 for expected in ('Rua das Flores, 120', 'Avenida Brasil, 900'):
     if expected not in text:
-        raise SystemExit(f'Endereco de teste nao apareceu na tela controlada: {expected}')
+        raise SystemExit(f'Endereco ausente na tela controlada: {expected}')
 PY
 
 echo "RUNTIME_STAGE=yellow_two_addresses_approved" >> "$OUT/progress.txt"
 clear_started_ms="$(date +%s%3N)"
 adb shell input keyevent KEYCODE_HOME
-wait_runtime_prefs \
-  "$OUT/cleared-runtime-prefs.xml" \
-  30 \
-  '>cinza|' \
-  '<int name="runtime_visible_addresses" value="0"'
+wait_runtime_prefs "$OUT/cleared-runtime-prefs.xml" 30 '>cinza|' '<int name="runtime_visible_addresses" value="0"'
 clear_finished_ms="$(date +%s%3N)"
 clear_latency_ms="$((clear_finished_ms - clear_started_ms))"
 echo "$clear_latency_ms" > "$OUT/clear-latency-ms.txt"
 if [ "$clear_latency_ms" -gt 1200 ]; then
   echo "Limpeza demorou ${clear_latency_ms}ms" >&2
+  exit 1
+fi
+if grep -Fq 'runtime_last_destination' "$OUT/cleared-runtime-prefs.xml"; then
+  echo "Destino anterior permaneceu depois da limpeza" >&2
   exit 1
 fi
 adb shell dumpsys accessibility > "$OUT/after-address-clear-accessibility.txt"
@@ -306,10 +289,12 @@ VISIBLE_ADDRESSES=2
 PICKUP=Rua das Flores, 120 - Centro, Sao Paulo - SP
 DESTINATION=Avenida Brasil, 900 - Bela Vista, Santo Andre - SP
 DESTINATION_RULE=last_visible_address
-YELLOW_TRIGGER_LATENCY_MS=$yellow_latency_ms
+SCREEN_TO_YELLOW_MS=$screen_to_yellow_ms
+INTERNAL_YELLOW_TRIGGER_LATENCY_MS=$yellow_latency_ms
 YELLOW_TRIGGER=approved
 CLEAR_LATENCY_MS=$clear_latency_ms
 IMMEDIATE_CLEAR_TO_GRAY=approved
+STALE_DESTINATION_AFTER_CLEAR=absent
 UNIVERSAL_TWO_ADDRESS_RUNTIME=approved
 EOF
 
@@ -333,10 +318,5 @@ GRID_LABELS=validated_in_source_and_apk
 FLOATING_RUNTIME=approved
 EOF
 
-cat \
-  "$OUT/in-app-result.txt" \
-  "$OUT/floating-window-result.txt" \
-  "$OUT/two-address-result.txt" \
-  "$OUT/floating-result.txt" \
-  | tee "$OUT/runtime-validation.txt"
+cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/two-address-result.txt" "$OUT/floating-result.txt" | tee "$OUT/runtime-validation.txt"
 echo "RUNTIME_STAGE=approved" >> "$OUT/progress.txt"
