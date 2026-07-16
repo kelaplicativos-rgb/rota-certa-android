@@ -78,7 +78,7 @@ jobs:
             -accel auto \
             > runtime-ui/emulator.log 2>&1 &
           echo $! > runtime-ui/emulator.pid
-          bash scripts/runtime_bubble_ui_test.sh
+          bash scripts/runtime_bubble_ui_test_bounded.sh
 
       - name: Upload real Android screenshots and validation
         if: always()
