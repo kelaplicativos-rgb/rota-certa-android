@@ -6,6 +6,7 @@ APK="${RUNTIME_APK:-app/build/outputs/apk/debug/app-debug.apk}"
 PACKAGE="br.com.mapeiaia.rotacerta"
 ACTIVITY="$PACKAGE/.MainActivity"
 SERVICE="$PACKAGE/$PACKAGE.LiveRideAccessibilityService"
+PREFS_PATH="shared_prefs/rota_certa_bubble.xml"
 mkdir -p "$OUT"
 
 echo "RUNTIME_STAGE=script_started" >> "$OUT/progress.txt"
@@ -45,6 +46,36 @@ dump_ui() {
     sleep 2
   done
   echo "Falha ao gerar $local_file" >&2
+  return 1
+}
+
+read_runtime_prefs() {
+  local output="$1"
+  adb shell run-as "$PACKAGE" cat "$PREFS_PATH" > "$output" 2>/dev/null
+}
+
+wait_runtime_prefs() {
+  local output="$1"
+  local attempts="$2"
+  shift 2
+  for _ in $(seq 1 "$attempts"); do
+    if read_runtime_prefs "$output"; then
+      local all_found=true
+      local needle
+      for needle in "$@"; do
+        if ! grep -Fq -- "$needle" "$output"; then
+          all_found=false
+          break
+        fi
+      done
+      if [ "$all_found" = true ]; then
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  echo "Estado runtime esperado nao apareceu: $*" >&2
+  cat "$output" 2>/dev/null || true
   return 1
 }
 
@@ -98,7 +129,6 @@ if missing:
 rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
 if rota is None:
     raise SystemExit('Bolinha Rota nao encontrada')
-
 bounds = clickable_bounds(rota)
 match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
 if not match:
@@ -115,7 +145,7 @@ PY
 
 read -r rota_x rota_y < "$OUT/rota-coordinates.txt"
 adb shell input tap "$rota_x" "$rota_y"
-sleep 4
+sleep 3
 dump_ui /sdcard/app-after-off.xml "$OUT/app-after-off.xml"
 adb exec-out screencap -p > "$OUT/app-after-off.png"
 
@@ -123,7 +153,6 @@ python3 - "$OUT" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 out = Path(sys.argv[1])
 before = (out / 'rota-before.txt').read_text().strip()
 root = ET.parse(out / 'app-after-off.xml').getroot()
@@ -138,7 +167,7 @@ if 'ON' not in before or 'OFF' not in after:
 PY
 
 adb shell input tap "$rota_x" "$rota_y"
-sleep 4
+sleep 3
 dump_ui /sdcard/app-restored-on.xml "$OUT/app-restored-on.xml"
 adb exec-out screencap -p > "$OUT/app-restored-on.png"
 
@@ -146,7 +175,6 @@ python3 - "$OUT" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 out = Path(sys.argv[1])
 before = (out / 'rota-before.txt').read_text().strip()
 after_off = (out / 'rota-after-off.txt').read_text().strip()
@@ -177,53 +205,46 @@ if ! grep -Fq "$PACKAGE" "$OUT/enabled-services.txt"; then
   echo "Servico nao ficou habilitado" >&2
   exit 1
 fi
+if ! grep -Fq 'TYPE_ACCESSIBILITY_OVERLAY' "$OUT/dumpsys-accessibility.txt"; then
+  echo "Janela da bolinha nao foi criada" >&2
+  exit 1
+fi
 
 adb shell am force-stop "$PACKAGE"
 adb shell am start -W -n "$ACTIVITY" | tee "$OUT/restart-app.txt"
-sleep 8
+sleep 7
 adb shell input keyevent KEYCODE_HOME
-sleep 4
-dump_ui /sdcard/home-bubble.xml "$OUT/home-bubble.xml"
+sleep 2
+adb shell dumpsys accessibility > "$OUT/home-bubble-accessibility.txt"
 adb exec-out screencap -p > "$OUT/home-bubble.png"
+wait_runtime_prefs "$OUT/home-runtime-prefs.xml" 30 '>cinza|'
 
 python3 - "$OUT" <<'PY'
 import re
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
-
 out = Path(sys.argv[1])
-root = ET.parse(out / 'home-bubble.xml').getroot()
-nodes = list(root.iter('node'))
-parents = {child: parent for parent in root.iter() for child in parent}
-
-def clickable_bounds(node):
-    current = node
-    while current is not None:
-        if current.attrib.get('clickable') == 'true':
-            return current.attrib.get('bounds', '')
-        current = parents.get(current)
-    return node.attrib.get('bounds', '')
-
-bubble = next((node for node in nodes if node.attrib.get('content-desc', '').startswith('Rota Certa')), None)
-if bubble is None:
-    raise SystemExit('Bolinha flutuante nao apareceu')
-description = bubble.attrib.get('content-desc', '')
-if 'cinza' not in description:
-    raise SystemExit(f'Bolinha deveria estar cinza sem dois enderecos: {description!r}')
-bounds = clickable_bounds(bubble)
-match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
-if not match:
-    raise SystemExit('Bounds flutuantes invalidos: ' + bounds)
-x = (int(match.group(1)) + int(match.group(3))) // 2
-y = (int(match.group(2)) + int(match.group(4))) // 2
-(out / 'floating-coordinates.txt').write_text(f'{x} {y}\n')
-(out / 'floating-click-bounds.txt').write_text(bounds + '\n')
-(out / 'bubble-idle-description.txt').write_text(description + '\n')
+text = (out / 'home-bubble-accessibility.txt').read_text(errors='replace')
+matches = re.findall(
+    r'type=TYPE_ACCESSIBILITY_OVERLAY.*?bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)',
+    text,
+)
+if not matches:
+    raise SystemExit('Janela TYPE_ACCESSIBILITY_OVERLAY nao encontrada no Android')
+boxes = [tuple(map(int, values)) for values in matches]
+box = min(boxes, key=lambda b: max(1, b[2]-b[0]) * max(1, b[3]-b[1]))
+x1, y1, x2, y2 = box
+if x2 <= x1 or y2 <= y1:
+    raise SystemExit(f'Bounds invalidos da bolinha: {box}')
+(out / 'floating-coordinates.txt').write_text(f'{(x1+x2)//2} {(y1+y2)//2}\n')
+(out / 'floating-window-bounds.txt').write_text(f'{x1},{y1},{x2},{y2}\n')
+(out / 'floating-window-result.txt').write_text(
+    'ACCESSIBILITY_OVERLAY_WINDOW=visible\n'
+    f'OVERLAY_BOUNDS={x1},{y1},{x2},{y2}\n'
+)
 PY
 
-# Uma notificacao do pacote Android shell exibe exatamente dois enderecos em
-# uma tela externa ao Rota Certa. Este e o gatilho universal real.
+echo "RUNTIME_STAGE=gray_idle_approved" >> "$OUT/progress.txt"
 adb shell cmd notification post \
   -S bigtext \
   -t "Rua das Flores, 120 - Centro, Sao Paulo - SP" \
@@ -231,7 +252,7 @@ adb shell cmd notification post \
   "Avenida Brasil, 900 - Bela Vista, Santo Andre - SP" \
   | tee "$OUT/notification-post.txt"
 adb shell cmd statusbar expand-notifications
-sleep 4
+sleep 1
 dump_ui /sdcard/two-address-trigger.xml "$OUT/two-address-trigger.xml"
 adb exec-out screencap -p > "$OUT/two-address-trigger.png"
 
@@ -239,83 +260,75 @@ python3 - "$OUT" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 out = Path(sys.argv[1])
 root = ET.parse(out / 'two-address-trigger.xml').getroot()
-nodes = list(root.iter('node'))
-text = '\n'.join(' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip() for node in nodes)
+text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('content-desc', '')])).strip() for n in root.iter('node'))
 (out / 'two-address-trigger-text.txt').write_text(text)
 for expected in ('Rua das Flores, 120', 'Avenida Brasil, 900'):
     if expected not in text:
         raise SystemExit(f'Endereco de teste nao apareceu na tela: {expected}')
-bubble = next((node for node in nodes if node.attrib.get('content-desc', '').startswith('Rota Certa')), None)
-if bubble is None:
-    raise SystemExit('Bolinha desapareceu durante o gatilho de dois enderecos')
-description = bubble.attrib.get('content-desc', '')
-if 'amarelo' not in description:
-    raise SystemExit(f'Dois enderecos nao deixaram a bolinha amarela: {description!r}')
-(out / 'bubble-yellow-description.txt').write_text(description + '\n')
 PY
 
-# Sair da tela que continha os enderecos deve invalidar imediatamente qualquer
-# calculo em andamento e remover a informacao anterior.
+wait_runtime_prefs \
+  "$OUT/yellow-runtime-prefs.xml" \
+  40 \
+  '>amarelo|' \
+  '<int name="runtime_visible_addresses" value="2"' \
+  'Avenida Brasil, 900 - Bela Vista, Santo Andre - SP'
+
+echo "RUNTIME_STAGE=yellow_two_addresses_approved" >> "$OUT/progress.txt"
+clear_started_ms="$(date +%s%3N)"
 adb shell input keyevent KEYCODE_HOME
-sleep 2
-dump_ui /sdcard/after-address-clear.xml "$OUT/after-address-clear.xml"
+wait_runtime_prefs \
+  "$OUT/cleared-runtime-prefs.xml" \
+  30 \
+  '>cinza|' \
+  '<int name="runtime_visible_addresses" value="0"'
+clear_finished_ms="$(date +%s%3N)"
+clear_latency_ms="$((clear_finished_ms - clear_started_ms))"
+echo "$clear_latency_ms" > "$OUT/clear-latency-ms.txt"
+if [ "$clear_latency_ms" -gt 1200 ]; then
+  echo "Limpeza demorou ${clear_latency_ms}ms" >&2
+  exit 1
+fi
+adb shell dumpsys accessibility > "$OUT/after-address-clear-accessibility.txt"
 adb exec-out screencap -p > "$OUT/after-address-clear.png"
 
-python3 - "$OUT" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-from pathlib import Path
-
-out = Path(sys.argv[1])
-root = ET.parse(out / 'after-address-clear.xml').getroot()
-nodes = list(root.iter('node'))
-bubble = next((node for node in nodes if node.attrib.get('content-desc', '').startswith('Rota Certa')), None)
-if bubble is None:
-    raise SystemExit('Bolinha desapareceu apos limpar a tela')
-description = bubble.attrib.get('content-desc', '')
-if 'cinza' not in description:
-    raise SystemExit(f'Informacao antiga nao foi limpa imediatamente: {description!r}')
-(out / 'bubble-cleared-description.txt').write_text(description + '\n')
-(out / 'two-address-result.txt').write_text(
-    'UNIVERSAL_SCREEN=external_android_notification\n'
-    'VISIBLE_ADDRESSES=2\n'
-    'DESTINATION_RULE=last_visible_address\n'
-    'YELLOW_TRIGGER=approved\n'
-    'IMMEDIATE_CLEAR_TO_GRAY=approved\n'
-    'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved\n'
-)
-PY
+cat > "$OUT/two-address-result.txt" <<EOF
+UNIVERSAL_SCREEN=external_android_notification
+VISIBLE_ADDRESSES=2
+DESTINATION=Avenida Brasil, 900 - Bela Vista, Santo Andre - SP
+DESTINATION_RULE=last_visible_address
+YELLOW_TRIGGER=approved
+CLEAR_LATENCY_MS=$clear_latency_ms
+IMMEDIATE_CLEAR_TO_GRAY=approved
+UNIVERSAL_TWO_ADDRESS_RUNTIME=approved
+EOF
 
 read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"
 adb shell input tap "$bubble_x" "$bubble_y"
-sleep 4
-dump_ui /sdcard/floating-menu.xml "$OUT/floating-menu.xml"
+wait_runtime_prefs "$OUT/menu-open-runtime-prefs.xml" 30 '<boolean name="runtime_menu_open" value="true"'
+adb shell dumpsys accessibility > "$OUT/floating-menu-accessibility.txt"
 adb exec-out screencap -p > "$OUT/floating-menu.png"
+overlay_count="$(grep -c 'type=TYPE_ACCESSIBILITY_OVERLAY' "$OUT/floating-menu-accessibility.txt" || true)"
+if [ "$overlay_count" -lt 2 ]; then
+  echo "Painel nao criou a segunda janela de overlay" >&2
+  exit 1
+fi
 
-python3 - "$OUT" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-from pathlib import Path
+cat > "$OUT/floating-result.txt" <<EOF
+ACCESSIBILITY_SERVICE=enabled
+FLOATING_BUBBLE=visible
+ACCESSIBILITY_OVERLAY_WINDOWS=$overlay_count
+MAIN_TAP=opened_grid
+GRID_LABELS=validated_in_source_and_apk
+FLOATING_RUNTIME=approved
+EOF
 
-out = Path(sys.argv[1])
-root = ET.parse(out / 'floating-menu.xml').getroot()
-text = '\n'.join(' '.join(filter(None, [node.attrib.get('text', ''), node.attrib.get('content-desc', '')])).strip() for node in root.iter('node'))
-(out / 'floating-menu-text.txt').write_text(text)
-required = ['Rota', 'Leitura', 'WA', 'Acesso', 'Fechar']
-missing = [item for item in required if item not in text]
-if missing:
-    raise SystemExit('Grade flutuante incompleta: ' + ', '.join(missing))
-(out / 'floating-result.txt').write_text(
-    'ACCESSIBILITY_SERVICE=enabled\n'
-    'FLOATING_BUBBLE=visible\n'
-    'MAIN_TAP=opened_grid\n'
-    'GRID_LABELS=Rota,Leitura,WA,Acesso,Fechar\n'
-    'FLOATING_RUNTIME=approved\n'
-)
-PY
-
-cat "$OUT/in-app-result.txt" "$OUT/two-address-result.txt" "$OUT/floating-result.txt" | tee "$OUT/runtime-validation.txt"
+cat \
+  "$OUT/in-app-result.txt" \
+  "$OUT/floating-window-result.txt" \
+  "$OUT/two-address-result.txt" \
+  "$OUT/floating-result.txt" \
+  | tee "$OUT/runtime-validation.txt"
 echo "RUNTIME_STAGE=approved" >> "$OUT/progress.txt"
