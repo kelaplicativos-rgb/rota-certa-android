@@ -112,8 +112,9 @@ val universalLastAddressFinalV2 by tasks.registering {
             service,
             "    private fun shouldScanPackage(packageName: String?): Boolean {",
             "    private fun selectedRidePackages(",
-            """    private fun shouldScanPackage(packageName: String?): Boolean =
-        serviceReady && currentSettings.appEnabled && !packageName.isNullOrBlank() // universal_all_packages_v2_0_1_95
+            """    private fun shouldScanPackage(packageName: String?): Boolean {
+        return serviceReady && currentSettings.appEnabled && !packageName.isNullOrBlank()
+    } // universal_all_packages_v2_0_1_95
 
 """,
             "universal_all_packages_v2_0_1_95",
