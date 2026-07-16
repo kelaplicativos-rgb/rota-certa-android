@@ -71,18 +71,21 @@ jobs:
           RUNTIME_UI_DIR: runtime-ui
           RUNTIME_APK: app/build/outputs/apk/debug/app-debug.apk
         run: |
-          set -euxo pipefail
+          set -uo pipefail
           EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
           test -x "$EMULATOR_BIN"
           "$EMULATOR_BIN" -list-avds | tee runtime-ui/avd-list-before-start.txt
           grep -Fxq 'rota_runtime' runtime-ui/avd-list-before-start.txt
+
           if [ -e /dev/kvm ]; then
             sudo chmod 666 /dev/kvm
             ls -l /dev/kvm | tee runtime-ui/kvm.txt
           else
             echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
           fi
-          nohup "$EMULATOR_BIN" @rota_runtime \
+
+          echo "RUNTIME_STAGE=emulator_launching" >> runtime-ui/progress.txt
+          "$EMULATOR_BIN" @rota_runtime \
             -no-window \
             -noaudio \
             -no-boot-anim \
@@ -91,8 +94,32 @@ jobs:
             -gpu swiftshader_indirect \
             -accel auto \
             > runtime-ui/emulator.log 2>&1 &
-          echo $! > runtime-ui/emulator.pid
-          bash scripts/runtime_bubble_ui_test_bounded.sh
+          emulator_pid=$!
+          echo "$emulator_pid" > runtime-ui/emulator.pid
+
+          cleanup() {
+            adb emu kill >/dev/null 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+            wait "$emulator_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          sleep 5
+          if ! kill -0 "$emulator_pid" >/dev/null 2>&1; then
+            echo "RUNTIME_STAGE=emulator_died_before_test" >> runtime-ui/progress.txt
+            cat runtime-ui/emulator.log
+            exit 1
+          fi
+          ps -fp "$emulator_pid" > runtime-ui/emulator-process.txt || true
+          adb devices -l > runtime-ui/adb-devices-before-script.txt 2>&1 || true
+
+          echo "RUNTIME_STAGE=script_invoking" >> runtime-ui/progress.txt
+          set +e
+          bash -x scripts/runtime_bubble_ui_test_bounded.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          runtime_status=$?
+          set -e
+          echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
+          exit "$runtime_status"
 
       - name: Upload real Android screenshots and validation
         if: always()
