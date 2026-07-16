@@ -15,7 +15,7 @@ jobs:
   runtime-ui:
     name: Install, tap and verify bubbles on Android
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
 
     steps:
       - name: Checkout
@@ -46,172 +46,39 @@ jobs:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Run real taps in Android emulator
-        id: emulator
+      - name: Install Android emulator image
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
+          echo no | avdmanager create avd --force --name rota-runtime --package "system-images;android-34;default;x86_64" --device pixel_2
+          emulator -version | tee runtime-ui/emulator-version.txt
+
+      - name: Start emulator and run real taps
+        id: runtime
         continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: |
-            set -euxo pipefail
-            echo "RUNTIME_STAGE=script_started" >> runtime-ui/progress.txt
-            adb wait-for-device
-            for i in $(seq 1 60); do
-              if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then break; fi
-              sleep 2
-            done
-            adb shell getprop > runtime-ui/device-properties.txt
-            adb devices -l > runtime-ui/adb-devices.txt
-
-            apk="app/build/outputs/apk/debug/app-debug.apk"
-            adb install -r "$apk" | tee runtime-ui/install.txt
-            adb shell pm grant br.com.mapeiaia.rotacerta android.permission.ACCESS_FINE_LOCATION || true
-            adb shell pm grant br.com.mapeiaia.rotacerta android.permission.ACCESS_COARSE_LOCATION || true
-
-            adb shell am force-stop br.com.mapeiaia.rotacerta
-            adb shell am start -W -n br.com.mapeiaia.rotacerta/.MainActivity | tee runtime-ui/start-app.txt
-            sleep 8
-            for i in $(seq 1 5); do
-              adb shell uiautomator dump /sdcard/app-before.xml && break || sleep 2
-            done
-            adb pull /sdcard/app-before.xml runtime-ui/app-before.xml
-            adb exec-out screencap -p > runtime-ui/app-before.png
-
-            python3 - <<'PY'
-            import re
-            import xml.etree.ElementTree as ET
-            root = ET.parse('runtime-ui/app-before.xml').getroot()
-            nodes = list(root.iter('node'))
-            def label(n):
-                return ' '.join(filter(None, [n.attrib.get('text',''), n.attrib.get('content-desc','')])).strip()
-            all_text = '\n'.join(label(n) for n in nodes)
-            open('runtime-ui/app-before-text.txt','w').write(all_text)
-            required = ['Central de bolinhas', 'Rota', 'Leitura', 'Acesso', 'WA']
-            missing = [item for item in required if item not in all_text]
-            if missing:
-                raise SystemExit('Central interna ausente no Android real: ' + ', '.join(missing))
-            rota = next((n for n in nodes if label(n).startswith('Rota')), None)
-            if rota is None:
-                raise SystemExit('Bolinha Rota nao encontrada para toque real')
-            match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', rota.attrib.get('bounds',''))
-            if not match:
-                raise SystemExit('Bounds da bolinha Rota invalidos: ' + rota.attrib.get('bounds',''))
-            x = (int(match.group(1)) + int(match.group(3))) // 2
-            y = (int(match.group(2)) + int(match.group(4))) // 2
-            before = label(rota)
-            open('runtime-ui/rota-coordinates.txt','w').write(f'{x} {y}\n')
-            open('runtime-ui/rota-before.txt','w').write(before)
-            PY
-
-            read rota_x rota_y < runtime-ui/rota-coordinates.txt
-            adb shell input tap "$rota_x" "$rota_y"
-            sleep 3
-            for i in $(seq 1 5); do
-              adb shell uiautomator dump /sdcard/app-after.xml && break || sleep 2
-            done
-            adb pull /sdcard/app-after.xml runtime-ui/app-after.xml
-            adb exec-out screencap -p > runtime-ui/app-after.png
-
-            python3 - <<'PY'
-            import xml.etree.ElementTree as ET
-            before = open('runtime-ui/rota-before.txt').read().strip()
-            root = ET.parse('runtime-ui/app-after.xml').getroot()
-            def label(n):
-                return ' '.join(filter(None, [n.attrib.get('text',''), n.attrib.get('content-desc','')])).strip()
-            nodes = list(root.iter('node'))
-            all_text = '\n'.join(label(n) for n in nodes)
-            open('runtime-ui/app-after-text.txt','w').write(all_text)
-            rota = next((n for n in nodes if label(n).startswith('Rota')), None)
-            if rota is None:
-                raise SystemExit('Bolinha Rota desapareceu depois do toque')
-            after = label(rota)
-            if before == after:
-                raise SystemExit(f'Bolinha Rota nao alternou: {before!r}')
-            before_on, before_off = 'ON' in before, 'OFF' in before
-            after_on, after_off = 'ON' in after, 'OFF' in after
-            if not ((before_on and after_off) or (before_off and after_on)):
-                raise SystemExit(f'Alternancia ON/OFF invalida: antes={before!r}, depois={after!r}')
-            open('runtime-ui/in-app-result.txt','w').write(
-                'IN_APP_CENTER=visible\n'
-                f'ROTA_BEFORE={before}\n'
-                f'ROTA_AFTER={after}\n'
-                'IN_APP_TOGGLE=approved\n'
-            )
-            PY
-
-            service="br.com.mapeiaia.rotacerta/br.com.mapeiaia.rotacerta.LiveRideAccessibilityService"
-            adb shell settings put secure enabled_accessibility_services "$service"
-            adb shell settings put secure accessibility_enabled 1
-            sleep 3
-            adb shell settings get secure enabled_accessibility_services > runtime-ui/enabled-services.txt
-            adb shell dumpsys accessibility > runtime-ui/dumpsys-accessibility.txt
-            adb shell am force-stop br.com.mapeiaia.rotacerta
-            adb shell am start -W -n br.com.mapeiaia.rotacerta/.MainActivity | tee runtime-ui/restart-app.txt
-            sleep 8
-            adb shell input keyevent KEYCODE_HOME
-            sleep 6
-            for i in $(seq 1 5); do
-              adb shell uiautomator dump /sdcard/home-bubble.xml && break || sleep 2
-            done
-            adb pull /sdcard/home-bubble.xml runtime-ui/home-bubble.xml
-            adb exec-out screencap -p > runtime-ui/home-bubble.png
-
-            python3 - <<'PY'
-            import re
-            import xml.etree.ElementTree as ET
-            root = ET.parse('runtime-ui/home-bubble.xml').getroot()
-            nodes = list(root.iter('node'))
-            def label(n):
-                return ' '.join(filter(None, [n.attrib.get('text',''), n.attrib.get('content-desc','')])).strip()
-            all_text = '\n'.join(label(n) for n in nodes)
-            open('runtime-ui/home-bubble-text.txt','w').write(all_text)
-            bubble = next((n for n in nodes if 'Rota Certa' in label(n)), None)
-            if bubble is None:
-                raise SystemExit('Bolinha flutuante nao apareceu com Acessibilidade ativa')
-            match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bubble.attrib.get('bounds',''))
-            if not match:
-                raise SystemExit('Bounds da bolinha flutuante invalidos: ' + bubble.attrib.get('bounds',''))
-            x = (int(match.group(1)) + int(match.group(3))) // 2
-            y = (int(match.group(2)) + int(match.group(4))) // 2
-            open('runtime-ui/floating-coordinates.txt','w').write(f'{x} {y}\n')
-            PY
-
-            read bubble_x bubble_y < runtime-ui/floating-coordinates.txt
-            adb shell input tap "$bubble_x" "$bubble_y"
-            sleep 4
-            for i in $(seq 1 5); do
-              adb shell uiautomator dump /sdcard/floating-menu.xml && break || sleep 2
-            done
-            adb pull /sdcard/floating-menu.xml runtime-ui/floating-menu.xml
-            adb exec-out screencap -p > runtime-ui/floating-menu.png
-
-            python3 - <<'PY'
-            import xml.etree.ElementTree as ET
-            root = ET.parse('runtime-ui/floating-menu.xml').getroot()
-            def label(n):
-                return ' '.join(filter(None, [n.attrib.get('text',''), n.attrib.get('content-desc','')])).strip()
-            text = '\n'.join(label(n) for n in root.iter('node'))
-            open('runtime-ui/floating-menu-text.txt','w').write(text)
-            required = ['Rota', 'Leitura', 'WA', 'Acesso', 'Fechar']
-            missing = [item for item in required if item not in text]
-            if missing:
-                raise SystemExit('Grade flutuante ausente/incompleta: ' + ', '.join(missing))
-            open('runtime-ui/floating-result.txt','w').write(
-                'ACCESSIBILITY_SERVICE=enabled\n'
-                'FLOATING_BUBBLE=visible\n'
-                'MAIN_TAP=opened_grid\n'
-                'GRID_LABELS=Rota,Leitura,WA,Acesso,Fechar\n'
-                'FLOATING_RUNTIME=approved\n'
-            )
-            PY
-
-            cat runtime-ui/in-app-result.txt runtime-ui/floating-result.txt | tee runtime-ui/runtime-validation.txt
-            echo "RUNTIME_STAGE=approved" >> runtime-ui/progress.txt
+        env:
+          RUNTIME_UI_DIR: runtime-ui
+          RUNTIME_APK: app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          set -euxo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm | tee runtime-ui/kvm.txt
+          else
+            echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
+          fi
+          nohup emulator @rota-runtime \
+            -no-window \
+            -noaudio \
+            -no-boot-anim \
+            -no-snapshot \
+            -wipe-data \
+            -gpu swiftshader_indirect \
+            -accel auto \
+            > runtime-ui/emulator.log 2>&1 &
+          echo $! > runtime-ui/emulator.pid
+          bash scripts/runtime_bubble_ui_test.sh
 
       - name: Upload real Android screenshots and validation
         if: always()
@@ -224,6 +91,12 @@ jobs:
       - name: Require successful runtime simulation
         if: always()
         run: |
+          echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
+          test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
           grep -Fq 'IN_APP_TOGGLE=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          test -s runtime-ui/app-before.png
+          test -s runtime-ui/app-after.png
+          test -s runtime-ui/home-bubble.png
+          test -s runtime-ui/floating-menu.png
