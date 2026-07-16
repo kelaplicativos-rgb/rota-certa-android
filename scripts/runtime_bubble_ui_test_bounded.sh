@@ -4,10 +4,16 @@ set -euo pipefail
 OUT="${RUNTIME_UI_DIR:-runtime-ui}"
 mkdir -p "$OUT"
 
+# O emulador pode iniciar antes do daemon ADB do runner. Subir o daemon aqui
+# permite que o aparelho se conecte antes de adb wait-for-device.
+adb kill-server >/dev/null 2>&1 || true
+adb start-server | tee "$OUT/adb-start-server.txt"
+adb devices -l > "$OUT/adb-devices-after-start-server.txt" 2>&1 || true
+
 # O script principal ja possui seletores exatos para a bolinha Rota. Este
 # limitador apenas impede que adb ou o emulador deixem o workflow preso.
 set +e
-timeout --signal=TERM --kill-after=20s 720s bash scripts/runtime_bubble_ui_test.sh
+timeout --signal=TERM --kill-after=20s 480s bash scripts/runtime_bubble_ui_test.sh
 status=$?
 set -e
 
