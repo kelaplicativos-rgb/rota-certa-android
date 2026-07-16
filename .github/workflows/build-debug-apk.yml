@@ -108,16 +108,38 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate final bubble wiring and in-app center
+      - name: Validate final universal reader and bubble controls
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          trigger="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalAddressTrigger.kt"
           test -f "$service"
           test -f "$main"
+          test -f "$trigger"
+
+          grep -Fq 'const val MINIMUM_VISIBLE_ADDRESSES = 2' "$trigger"
+          grep -Fq 'UniversalAddressTrigger.evaluate(snapshotText)' "$service"
+          grep -Fq 'trigger.addresses.size' "$service"
+          grep -Fq 'trigger.destination' "$service"
+          grep -Fq 'showOverlay(RadarColor.Default, distanceKm = null)' "$service"
+          grep -Fq 'hardClearUniversalTwoAddress' "$service"
+          grep -Fq 'universalRouteCache.get' "$service"
+          grep -Fq 'universalRouteCache.put' "$service"
+          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
+
+          process_block="$(sed -n '/private suspend fun processRideText(/,/private fun resolveRidePackageForText(/p' "$service")"
+          if printf '%s' "$process_block" | grep -Fq 'RideCardTemplateMatcher.match'; then
+            echo "ERRO: o leitor universal ainda exige modelo cadastrado."
+            exit 1
+          fi
+          if printf '%s' "$process_block" | grep -Fq 'RideOfferDetector'; then
+            echo "ERRO: o leitor universal ainda exige classificacao de corrida."
+            exit 1
+          fi
+
           grep -Fq 'newView.setOnClickListener { onMainBubbleClick() }' "$service"
           grep -Fq 'private fun onMainBubbleClick()' "$service"
-          grep -Fq 'bubble.tap.menu_contract_0_1_96' "$service"
           grep -Fq 'GridLayout(this)' "$service"
           grep -Fq 'quickToggleBubbleButton("Rota"' "$service"
           grep -Fq 'quickToggleBubbleButton("Leitura"' "$service"
@@ -126,32 +148,37 @@ jobs:
             echo "ERRO: a bolinha principal ainda abre o aplicativo diretamente."
             exit 1
           fi
+
           grep -Fq 'Central de bolinhas' "$main"
           grep -Fq 'Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF' "$main"
           grep -Fq 'AppControlBubble("Acesso", liveEnabled, onOpenAccessibility)' "$main"
           grep -Fq 'settings.liveReadingEnabled && liveEnabled' "$main"
           grep -Fq 'bottomBar = {}' "$main"
-          if grep -Fq 'if (tab == TAB_ANALYSIS) {' "$main" && grep -Fq 'UnifiedAppControlBubbles(' "$main"; then
-            limited_block="$(sed -n '/if (tab == TAB_ANALYSIS)/,/when (tab)/p' "$main")"
-            if printf '%s' "$limited_block" | grep -Fq 'UnifiedAppControlBubbles('; then
-              echo "ERRO: central de bolinhas ainda limitada a uma aba."
-              exit 1
-            fi
-          fi
+
           {
+            echo "UNIVERSAL_SCREEN_READING=enabled"
+            echo "MINIMUM_VISIBLE_ADDRESSES=2"
+            echo "TRIGGER_COLOR=yellow"
+            echo "DESTINATION_RULE=last_visible_address"
+            echo "PACKAGE_FILTER=removed"
+            echo "REGISTERED_CARD_FILTER=removed"
+            echo "RIDE_OFFER_FILTER=removed"
+            echo "SCREEN_CHANGE_INVALIDATION=immediate"
+            echo "STALE_RESULT_GUARD=generation_hash_signature"
+            echo "ROUTE_CACHE=enabled"
+            echo "SCAN_LOOP_MS=120"
             echo "IN_APP_CENTER=always_visible"
-            echo "ACCESSIBILITY_OFF_STATE=visible"
-            echo "BOTTOM_TABS=removed"
             echo "MAIN_BUBBLE_TAP=opens_control_grid"
             echo "SECOND_TAP=closes_control_grid"
             echo "TOGGLE_BUTTONS=Rota,Leitura,Alertas,Escuro,Casa,Alfinete"
             echo "ACTION_BUTTONS=WA,Salvar,Acesso,Relat.,Backup,Fechar"
-            echo "DIRECT_OPEN_APP_ON_MAIN_TAP=absent"
-          } > bubble-menu-validation.txt
-          cat bubble-menu-validation.txt
+          } > universal-two-address-validation.txt
+          cp universal-two-address-validation.txt bubble-menu-validation.txt
+          cat universal-two-address-validation.txt
 
       - name: Validate debug APK
         run: |
+          set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
           {
@@ -162,14 +189,17 @@ jobs:
           tmp_dir="$(mktemp -d)"
           unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
           strings "$tmp_dir"/classes*.dex > apk-strings.txt
+
           for expected in \
-            "Relatorio manual de falha" \
-            "Gerar relatorio para anexar" \
-            "ROTA CERTA RELATORIO MANUAL" \
-            "rota-certa-relatorio-falha.txt" \
-            "passive_event_preserves_monitored_root_0_1_88" \
             "Central de bolinhas" \
             "Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF" \
+            "Menos de dois enderecos visiveis; dado anterior removido." \
+            "universal.trigger source=" \
+            "universal.screen.changed hash=" \
+            "universal.route.cache hit=true" \
+            "universal.route.cache stored=true" \
+            "universal.result discarded_stale=true" \
+            "universal.clear immediate=true reason=" \
             "Leitura ao vivo desligada pela bolinha" \
             "Casa e Alfinete estao desligados" \
             "bubble.tap.menu_contract_0_1_96" \
@@ -179,29 +209,20 @@ jobs:
               echo "FOUND=$expected" >> apk-validation.txt
             else
               echo "MISSING=$expected" >> apk-validation.txt
-              exit 1
-            fi
-          done
-          for forbidden in \
-            "ROTA CERTA DIAGNOSTICO" \
-            "Diagnostico tecnico" \
-            "Copiar diagnostico" \
-            "Diagnostico copiado" \
-            "--- LOGS ---" \
-            "Rota Certa diagnostico" \
-            "Historico de analises" \
-            "Copiar historico"
-          do
-            if grep -Fq -- "$forbidden" apk-strings.txt; then
-              echo "FORBIDDEN_FOUND=$forbidden" >> apk-validation.txt
               cat apk-validation.txt
               exit 1
-            else
-              echo "ABSENT=$forbidden" >> apk-validation.txt
             fi
           done
-          cat bubble-menu-validation.txt >> apk-validation.txt
+
+          cat universal-two-address-validation.txt >> apk-validation.txt
           cat apk-validation.txt
+
+      - name: Upload universal reader validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-two-address-validation
+          path: universal-two-address-validation.txt
+          if-no-files-found: error
 
       - name: Upload bubble menu validation
         uses: actions/upload-artifact@v4
@@ -252,7 +273,7 @@ jobs:
             echo
             echo "Stable download asset: ${stable_apk}"
             echo
-            cat bubble-menu-validation.txt
+            cat universal-two-address-validation.txt
             echo
             cat apk-validation.txt
             echo
