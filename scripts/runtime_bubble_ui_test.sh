@@ -3,9 +3,12 @@ set -euo pipefail
 
 OUT="${RUNTIME_UI_DIR:-runtime-ui}"
 APK="${RUNTIME_APK:-app/build/outputs/apk/debug/app-debug.apk}"
+FIXTURE_APK="${RUNTIME_FIXTURE_APK:-runtimefixture/build/outputs/apk/debug/runtimefixture-debug.apk}"
 PACKAGE="br.com.mapeiaia.rotacerta"
 ACTIVITY="$PACKAGE/.MainActivity"
 SERVICE="$PACKAGE/$PACKAGE.LiveRideAccessibilityService"
+FIXTURE_PACKAGE="br.com.mapeiaia.rotacerta.runtimefixture"
+FIXTURE_ACTIVITY="$FIXTURE_PACKAGE/.TwoAddressActivity"
 PREFS_PATH="shared_prefs/rota_certa_bubble.xml"
 mkdir -p "$OUT"
 
@@ -86,11 +89,14 @@ adb shell settings put global window_animation_scale 0 || true
 adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
 
+test -f "$APK"
+test -f "$FIXTURE_APK"
 adb install -r "$APK" | tee "$OUT/install.txt"
+adb install -r "$FIXTURE_APK" | tee "$OUT/fixture-install.txt"
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION || true
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION || true
 
-echo "RUNTIME_STAGE=apk_installed" >> "$OUT/progress.txt"
+echo "RUNTIME_STAGE=apks_installed" >> "$OUT/progress.txt"
 adb shell am force-stop "$PACKAGE"
 adb shell am start -W -n "$ACTIVITY" | tee "$OUT/start-app.txt"
 sleep 8
@@ -210,9 +216,7 @@ if ! grep -Fq 'TYPE_ACCESSIBILITY_OVERLAY' "$OUT/dumpsys-accessibility.txt"; the
   exit 1
 fi
 
-adb shell am force-stop "$PACKAGE"
-adb shell am start -W -n "$ACTIVITY" | tee "$OUT/restart-app.txt"
-sleep 7
+# Nao use force-stop depois de ativar a acessibilidade: isso encerra o servico.
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell dumpsys accessibility > "$OUT/home-bubble-accessibility.txt"
@@ -245,14 +249,23 @@ if x2 <= x1 or y2 <= y1:
 PY
 
 echo "RUNTIME_STAGE=gray_idle_approved" >> "$OUT/progress.txt"
-adb shell cmd notification post \
-  -S bigtext \
-  -t "Rua das Flores, 120 - Centro, Sao Paulo - SP" \
-  rota_two_addresses \
-  "Avenida Brasil, 900 - Bela Vista, Santo Andre - SP" \
-  | tee "$OUT/notification-post.txt"
-adb shell cmd statusbar expand-notifications
-sleep 1
+adb shell am force-stop "$FIXTURE_PACKAGE"
+yellow_started_ms="$(date +%s%3N)"
+adb shell am start -W -n "$FIXTURE_ACTIVITY" | tee "$OUT/fixture-start.txt"
+wait_runtime_prefs \
+  "$OUT/yellow-runtime-prefs.xml" \
+  80 \
+  '>amarelo|' \
+  '<int name="runtime_visible_addresses" value="2"' \
+  'Avenida Brasil, 900 - Bela Vista, Santo Andre - SP'
+yellow_finished_ms="$(date +%s%3N)"
+yellow_latency_ms="$((yellow_finished_ms - yellow_started_ms))"
+echo "$yellow_latency_ms" > "$OUT/yellow-latency-ms.txt"
+if [ "$yellow_latency_ms" -gt 1200 ]; then
+  echo "Gatilho amarelo demorou ${yellow_latency_ms}ms" >&2
+  exit 1
+fi
+
 dump_ui /sdcard/two-address-trigger.xml "$OUT/two-address-trigger.xml"
 adb exec-out screencap -p > "$OUT/two-address-trigger.png"
 
@@ -266,15 +279,8 @@ text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('
 (out / 'two-address-trigger-text.txt').write_text(text)
 for expected in ('Rua das Flores, 120', 'Avenida Brasil, 900'):
     if expected not in text:
-        raise SystemExit(f'Endereco de teste nao apareceu na tela: {expected}')
+        raise SystemExit(f'Endereco de teste nao apareceu na tela controlada: {expected}')
 PY
-
-wait_runtime_prefs \
-  "$OUT/yellow-runtime-prefs.xml" \
-  40 \
-  '>amarelo|' \
-  '<int name="runtime_visible_addresses" value="2"' \
-  'Avenida Brasil, 900 - Bela Vista, Santo Andre - SP'
 
 echo "RUNTIME_STAGE=yellow_two_addresses_approved" >> "$OUT/progress.txt"
 clear_started_ms="$(date +%s%3N)"
@@ -295,10 +301,12 @@ adb shell dumpsys accessibility > "$OUT/after-address-clear-accessibility.txt"
 adb exec-out screencap -p > "$OUT/after-address-clear.png"
 
 cat > "$OUT/two-address-result.txt" <<EOF
-UNIVERSAL_SCREEN=external_android_notification
+UNIVERSAL_SCREEN=controlled_external_android_activity
 VISIBLE_ADDRESSES=2
+PICKUP=Rua das Flores, 120 - Centro, Sao Paulo - SP
 DESTINATION=Avenida Brasil, 900 - Bela Vista, Santo Andre - SP
 DESTINATION_RULE=last_visible_address
+YELLOW_TRIGGER_LATENCY_MS=$yellow_latency_ms
 YELLOW_TRIGGER=approved
 CLEAR_LATENCY_MS=$clear_latency_ms
 IMMEDIATE_CLEAR_TO_GRAY=approved
