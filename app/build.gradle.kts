@@ -20,7 +20,7 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: ""
 
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 98
+val appVersionCode = ciVersionCode ?: 99
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
 if (stableDebugKeystoreSource.exists()) {
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.97"
+        versionName = "0.1.98"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -260,3 +260,4 @@ apply(from = "functional-bubble-toggles-final.gradle.kts")
 apply(from = "functional-bubble-idempotence-final.gradle.kts")
 apply(from = "patch-main-bubble-tap-menu-contract.gradle.kts")
 apply(from = "patch-in-app-bubble-home-final.gradle.kts")
+apply(from = "patch-universal-two-address-runtime-final.gradle.kts")
