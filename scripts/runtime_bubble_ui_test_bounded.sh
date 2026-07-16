@@ -10,7 +10,23 @@ adb kill-server >/dev/null 2>&1 || true
 adb start-server | tee "$OUT/adb-start-server.txt"
 adb devices -l > "$OUT/adb-devices-after-start-server.txt" 2>&1 || true
 
-# O script principal ja preserva o servico de acessibilidade e usa uma tela
+# SharedPreferences pode serializar o separador interno da assinatura como
+# &#31;, que nao e permitido no XML 1.0. O aplicativo le o arquivo normalmente;
+# somente o parser de evidencias do CI precisa remover essa referencia antes de
+# extrair os timestamps. A substituicao tambem e segura para os XMLs de UI.
+python3 - <<'PY'
+from pathlib import Path
+path = Path("scripts/runtime_bubble_ui_test.sh")
+text = path.read_text()
+old = "root = ET.parse(sys.argv[1]).getroot()"
+new = "root = ET.fromstring(Path(sys.argv[1]).read_text().replace('&#31;', ''))"
+count = text.count(old)
+if count < 1:
+    raise SystemExit("Nenhum parser XML foi encontrado no teste runtime")
+path.write_text(text.replace(old, new))
+PY
+
+# O script principal preserva o servico de acessibilidade e usa uma tela
 # externa controlada com dois enderecos completos. Este limitador apenas evita
 # que ADB ou o emulador deixem o workflow preso.
 set +e
