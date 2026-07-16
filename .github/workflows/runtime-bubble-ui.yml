@@ -52,7 +52,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
           echo no | avdmanager create avd --force --name rota-runtime --package "system-images;android-34;default;x86_64" --device pixel_2
-          emulator -version | tee runtime-ui/emulator-version.txt
+          emulator -version > runtime-ui/emulator-version.txt 2>&1 || true
 
       - name: Start emulator and run real taps
         id: runtime
