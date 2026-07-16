@@ -52,7 +52,8 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
           echo no | avdmanager create avd --force --name rota-runtime --package "system-images;android-34;default;x86_64" --device pixel_2
-          emulator -version > runtime-ui/emulator-version.txt 2>&1 || true
+          "$ANDROID_SDK_ROOT/emulator/emulator" -version > runtime-ui/emulator-version.txt 2>&1 || true
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
       - name: Start emulator and run real taps
         id: runtime
@@ -62,13 +63,15 @@ jobs:
           RUNTIME_APK: app/build/outputs/apk/debug/app-debug.apk
         run: |
           set -euxo pipefail
+          EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
+          test -x "$EMULATOR_BIN"
           if [ -e /dev/kvm ]; then
             sudo chmod 666 /dev/kvm
             ls -l /dev/kvm | tee runtime-ui/kvm.txt
           else
             echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
           fi
-          nohup emulator @rota-runtime \
+          nohup "$EMULATOR_BIN" @rota-runtime \
             -no-window \
             -noaudio \
             -no-boot-anim \
