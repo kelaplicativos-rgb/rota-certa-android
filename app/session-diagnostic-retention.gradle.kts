@@ -62,13 +62,6 @@ val sessionDiagnosticRetention by tasks.registering {
             val readChanged = previous?.hash != snapshot.hash ||
 """,
             )
-
-            text = text.replace(
-                """                        append("destination=${session.destination ?: "nao identificado"}; ")
-""",
-                """                        append("destination=${cleanDestination ?: "nao identificado"}; ")
-""",
-            )
         }
 
         if ("session_preserves_origin_package_v2" !in text) {
