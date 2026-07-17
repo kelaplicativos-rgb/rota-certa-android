@@ -50,6 +50,64 @@ class UniversalRuntimeGuardsTest {
     }
 
     @Test
+    fun emptyAccessibilityFromOwnOverlayIsIgnored() {
+        assertTrue(
+            UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
+                text = "",
+                rootPackageName = "br.com.mapeiaia.rotacerta",
+                effectivePackageName = "sinet.startup.indriver",
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+            ),
+        )
+    }
+
+    @Test
+    fun emptyAccessibilityFromExternalAppStillClearsImmediately() {
+        assertFalse(
+            UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
+                text = "",
+                rootPackageName = "sinet.startup.indriver",
+                effectivePackageName = "sinet.startup.indriver",
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+            ),
+        )
+    }
+
+    @Test
+    fun nonEmptyAccessibilityIsNeverHiddenByOverlayPolicy() {
+        assertFalse(
+            UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
+                text = "Rua A, 10\nRua B, 20",
+                rootPackageName = "br.com.mapeiaia.rotacerta",
+                effectivePackageName = "sinet.startup.indriver",
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+            ),
+        )
+    }
+
+    @Test
+    fun ocrIsPausedWhileAccessibilityOwnsActiveCard() {
+        assertFalse(
+            UniversalFastReadPolicy.shouldRequestOcr(
+                accessibilityOwnsCard = true,
+                hasActiveAddressSignature = true,
+            ),
+        )
+        assertTrue(
+            UniversalFastReadPolicy.shouldRequestOcr(
+                accessibilityOwnsCard = false,
+                hasActiveAddressSignature = true,
+            ),
+        )
+        assertTrue(
+            UniversalFastReadPolicy.shouldRequestOcr(
+                accessibilityOwnsCard = true,
+                hasActiveAddressSignature = false,
+            ),
+        )
+    }
+
+    @Test
     fun duplicateHistoryIsBlockedInsideWindow() {
         val deduper = UniversalAnalysisDeduper(duplicateWindowMillis = 60_000L)
 
