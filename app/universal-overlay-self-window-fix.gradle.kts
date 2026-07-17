@@ -2,7 +2,7 @@
 // TYPE_ACCESSIBILITY_OVERLAY era confundida com a MainActivity e cancelava a
 // geocodificacao/rota imediatamente depois de encontrar os dois enderecos.
 
-val universalOverlaySelfWindowFix by tasks.registering {
+val universalOverlayWindowResolver by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
@@ -118,5 +118,5 @@ val universalOverlaySelfWindowFix by tasks.registering {
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-    dependsOn(universalOverlaySelfWindowFix)
+    dependsOn(universalOverlayWindowResolver)
 }
