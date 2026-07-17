@@ -76,12 +76,20 @@ val registeredRuntimeCompileGuard by tasks.registering {
             text = text.substring(0, clearStart) + block + text.substring(clearEnd)
         }
 
+        // Patches legados verificam este marcador antes de tentar reescrever o
+        // serviço em uma segunda chamada Gradle. Preserve-o como compatibilidade,
+        // embora o processo ativo seja o contrato registrado 0.1.99.
+        if ("universal_two_address_process_0_1_98" !in text) {
+            text += "\n// universal_two_address_process_0_1_98 compatibility_skip_legacy_mutations\n"
+        }
+
         listOf(
             "registered_stable_process_0_1_99",
             "registered_stable_package_filter_0_1_99",
             "registered_runtime_probe_trigger_0_1_99",
             "registered_runtime_probe_clear_0_1_99",
             "normalized in selectedRidePackages(currentSettings)",
+            "universal_two_address_process_0_1_98",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Guarda final incompleta: $marker")
         }
