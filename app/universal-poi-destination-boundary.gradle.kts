@@ -1,7 +1,8 @@
 // Corrige destinos que chegam como nome de estabelecimento seguido do endereco
 // entre parenteses, por exemplo:
 // "Pronto Socorro ... (Rua Jose Martinho - Parque Imperial, Barueri - SP)".
-// Esse formato deve formar um segundo destino, e nao ser anexado ao embarque.
+// Esse formato deve formar um segundo destino quando vier em uma linha propria,
+// sem transformar estabelecimentos achatados de outros cards em destino atual.
 
 val universalPoiDestinationBoundary by tasks.registering {
     val parserFile = layout.projectDirectory.file(
@@ -18,14 +19,36 @@ val universalPoiDestinationBoundary by tasks.registering {
         var text = file.readText()
 
         if ("universal_poi_parenthesized_address_0_1_107" !in text) {
-            val oldStreetBoundary =
-                "(?:^|[\\\\s:;])((?:r\\\\.|av\\\\.|rua|avenida|alameda|travessa|estrada|rodovia|praca|praça|largo|via|viela|beco|marginal|servidao|servidão)(?:\\\\b|(?=\\\\s)))"
-            val newStreetBoundary =
-                "(?:^|[\\\\s:;(])((?:r\\\\.|av\\\\.|rua|avenida|alameda|travessa|estrada|rodovia|praca|praça|largo|via|viela|beco|marginal|servidao|servidão)(?:\\\\b|(?=\\\\s)))"
-            if (oldStreetBoundary !in text) {
-                throw GradleException("Limite inicial de logradouro nao encontrado")
+            val localityAnchor = "    private val localityStartRegex = Regex(\n"
+            if (localityAnchor !in text) {
+                throw GradleException("Ponto dos reconhecedores de endereco nao encontrado")
             }
-            text = text.replaceFirst(oldStreetBoundary, newStreetBoundary)
+            val parenthesizedStreetRegex = """    private val parenthesizedStreetRegex = Regex(
+        "\\(((?:r\\.|av\\.|rua|avenida|alameda|travessa|estrada|rodovia|praca|praça|largo|via|viela|beco|marginal|servidao|servidão)(?:\\b|(?=\\s)))",
+        RegexOption.IGNORE_CASE,
+    )
+"""
+            text = text.replaceFirst(localityAnchor, parenthesizedStreetRegex + localityAnchor)
+
+            val oldStreetLookup = """        val streetMatch = streetStartRegex.find(value) ?: return false
+        val streetGroup = streetMatch.groups[1] ?: return false
+"""
+            val newStreetLookup = """        val streetGroup = streetStartRegex.find(value)?.groups?.get(1)
+            ?: parenthesizedStreetRegex.find(value)?.groups?.get(1)
+            ?: return false
+"""
+            val streetLookupCount = oldStreetLookup.toRegex(RegexOption.LITERAL).findAll(text).count()
+            if (streetLookupCount != 2) {
+                throw GradleException("Esperava dois pontos de leitura de logradouro; encontrei $streetLookupCount")
+            }
+            text = text.replace(oldStreetLookup, newStreetLookup)
+
+            val oldContinuation = "        if (streetStartRegex.containsMatchIn(value)) return false\n"
+            val newContinuation = "        if (streetStartRegex.containsMatchIn(value) || parenthesizedStreetRegex.containsMatchIn(value)) return false\n"
+            if (oldContinuation !in text) {
+                throw GradleException("Regra de continuacao de endereco nao encontrada")
+            }
+            text = text.replaceFirst(oldContinuation, newContinuation)
 
             val oldCleanFunction = """    private fun cleanAddressSegment(value: String): String {
         val withoutMarker = value.replace(markerPrefix, "").trim()
@@ -40,16 +63,11 @@ val universalPoiDestinationBoundary by tasks.registering {
 """
             val newCleanFunction = """    private fun cleanAddressSegment(value: String): String {
         val withoutMarker = value.replace(markerPrefix, "").trim()
-        val streetMatch = streetStartRegex.find(withoutMarker)
-        val streetStart = streetMatch?.groups?.get(1)?.range?.first
-        val prefixBeforeStreet = streetStart
-            ?.takeIf { it > 0 }
-            ?.let { withoutMarker.substring(0, it).trimEnd() }
-        if (prefixBeforeStreet?.endsWith("(") == true) {
+        if (parenthesizedStreetRegex.containsMatchIn(withoutMarker)) {
             return withoutMarker // universal_poi_parenthesized_address_0_1_107
         }
         val starts = listOfNotNull(
-            streetStart,
+            streetStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
             localityStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
             poiStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
         )
@@ -65,7 +83,7 @@ val universalPoiDestinationBoundary by tasks.registering {
         }
 
         listOf(
-            "[\\\\s:;(]",
+            "parenthesizedStreetRegex",
             "universal_poi_parenthesized_address_0_1_107",
             "universal_poi_destination_boundary_0_1_107",
         ).forEach { marker ->
