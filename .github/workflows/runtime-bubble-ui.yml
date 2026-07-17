@@ -63,7 +63,7 @@ jobs:
           grep -Fxq 'rota_runtime' runtime-ui/avd-list.txt
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
-      - name: Start emulator and run registered-card regression
+      - name: Start emulator and run universal-address regression
         id: runtime
         continue-on-error: true
         env:
@@ -126,17 +126,19 @@ jobs:
           path: runtime-ui/
           if-no-files-found: error
 
-      - name: Require successful registered-card runtime simulation
+      - name: Require successful universal-address runtime simulation
         if: always()
         run: |
           echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
           test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
           grep -Fq 'IN_APP_TOGGLE=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'UNREGISTERED_TWO_ADDRESS_BLOCK=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'REGISTERED_CARD_RUNTIME=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'DESTINATION_WITHOUT_MODEL=absent' runtime-ui/runtime-validation.txt
-          grep -Fq 'BUBBLE_STATE=gray' runtime-ui/runtime-validation.txt
+          grep -Fq 'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'PACKAGE_SELECTION_REQUIRED=false' runtime-ui/runtime-validation.txt
+          grep -Fq 'MODEL_REQUIRED=false' runtime-ui/runtime-validation.txt
+          grep -Fq 'DESTINATION_WITHOUT_MODEL=present' runtime-ui/runtime-validation.txt
+          grep -Fq 'BUBBLE_STATE=active_not_gray' runtime-ui/runtime-validation.txt
+          grep -Fq 'DESTINATION_RULE=last_complete_numbered_address' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
           test -s runtime-ui/app-before.png
           test -s runtime-ui/app-after-off.png
