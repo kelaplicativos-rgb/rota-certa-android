@@ -44,7 +44,7 @@ fun noCardRemoveBalancedCall(source: String, token: String): String {
     }
 }
 
-val universalNoCardRuntimeFinal by tasks.registering {
+val universalNoCardRuntimeContract by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.files(mainFile, serviceFile)
@@ -306,5 +306,5 @@ private fun DiagnosticExpander(
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-    dependsOn(universalNoCardRuntimeFinal)
+    dependsOn(universalNoCardRuntimeContract)
 }
