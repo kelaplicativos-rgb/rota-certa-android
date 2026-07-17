@@ -58,7 +58,7 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|registered-card|StableLiveRead|RegisteredCardAddress|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-test.log || true
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-test.log || true
             echo "--- gradle-test.log tail ---"
             tail -360 gradle-test.log
           fi
@@ -95,7 +95,7 @@ jobs:
           status=$?
           if [ "$status" -ne 0 ]; then
             echo "--- assemble failure summary ---"
-            grep -nE "(^e: |^w: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|registered-card|StableLiveRead|RegisteredCardAddress|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
+            grep -nE "(^e: |^w: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
             tail -360 gradle-assemble.log
           fi
           exit "$status"
@@ -108,42 +108,41 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate registered card and numbered address runtime
+      - name: Validate universal numbered-address runtime
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          trigger="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalAddressTrigger.kt"
           parser="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt"
-          card_gate="app/src/main/java/br/com/mapeiaia/rotacerta/RegisteredCardAddressGate.kt"
-          source_gate="app/src/main/java/br/com/mapeiaia/rotacerta/StableLiveReadSourceGate.kt"
 
-          for file in "$service" "$main" "$parser" "$card_gate" "$source_gate"; do
+          for file in "$service" "$main" "$trigger" "$parser"; do
             test -f "$file"
           done
 
-          grep -Fq 'registered_stable_process_0_1_99' "$service"
-          grep -Fq 'RideCardTemplateMatcher.match(it, packageName, currentCardTemplates)' "$service"
-          grep -Fq 'RegisteredCardAddressGate.evaluate(parsed.fields)' "$service"
-          grep -Fq 'StableLiveReadSourceGate()' "$service"
-          grep -Fq 'normalized in selectedRidePackages(currentSettings)' "$service"
-          grep -Fq 'registered.history duplicate_skipped=true' "$service"
-          grep -Fq 'const val SCAN_LOOP_MS = 250L' "$service"
-          grep -Fq 'const val SCREENSHOT_INTERVAL_MS = 500L' "$service"
-          grep -Fq 'isCompleteNumberedAddress' "$card_gate"
+          grep -Fq 'const val MINIMUM_VISIBLE_ADDRESSES = 2' "$trigger"
+          grep -Fq 'UniversalAddressTrigger.evaluate(snapshotText)' "$service"
+          grep -Fq 'trigger.addresses.size' "$service"
+          grep -Fq 'trigger.destination' "$service"
+          grep -Fq 'showOverlay(RadarColor.Default, distanceKm = null)' "$service"
+          grep -Fq 'hardClearUniversalTwoAddress' "$service"
+          grep -Fq 'universalRouteCache.get' "$service"
+          grep -Fq 'universalRouteCache.put' "$service"
+          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
           grep -Fq 'explicitHouseNumberRegex' "$parser"
           grep -Fq 'noNumberRegex' "$parser"
 
           process_block="$(sed -n '/private suspend fun processRideText(/,/private fun resolveRidePackageForText(/p' "$service")"
-          if printf '%s' "$process_block" | grep -Fq 'UniversalAddressTrigger.evaluate(snapshotText)'; then
-            echo "ERRO: o processo final ainda usa o ultimo endereco da tela inteira."
+          if printf '%s' "$process_block" | grep -Fq 'RideCardTemplateMatcher.match'; then
+            echo "ERRO: o leitor universal ainda exige modelo cadastrado."
             exit 1
           fi
-          if ! printf '%s' "$process_block" | grep -Fq 'RideCardTemplateMatcher.match'; then
-            echo "ERRO: modelo cadastrado nao esta sendo exigido."
+          if printf '%s' "$process_block" | grep -Fq 'RegisteredCardAddressGate'; then
+            echo "ERRO: o leitor universal ainda depende do gate de card cadastrado."
             exit 1
           fi
-          if ! printf '%s' "$process_block" | grep -Fq 'parser.parseWithMetadata'; then
-            echo "ERRO: parser do primeiro card nao esta ligado ao runtime."
+          if printf '%s' "$process_block" | grep -Fq 'selectedRidePackages'; then
+            echo "ERRO: o leitor universal ainda filtra aplicativos monitorados."
             exit 1
           fi
 
@@ -155,25 +154,23 @@ jobs:
           grep -Fq 'bottomBar = {}' "$main"
 
           {
-            echo "REGISTERED_CARD_RUNTIME=enabled"
-            echo "PACKAGE_FILTER=selected_ride_apps"
-            echo "REGISTERED_CARD_FILTER=required"
+            echo "UNIVERSAL_SCREEN_READING=enabled"
+            echo "PACKAGE_FILTER=removed"
+            echo "REGISTERED_CARD_FILTER=removed"
             echo "MINIMUM_COMPLETE_NUMBERED_ADDRESSES=2"
-            echo "ADDRESS_SCOPE=first_parsed_card"
-            echo "DESTINATION_RULE=last_complete_numbered_endpoint_in_card"
-            echo "SOURCE_ARBITRATION=single_owner_accessibility_or_ocr"
-            echo "INACTIVE_OTHER_SOURCE=ignored"
-            echo "ADDRESS_LOSS_CLEAR=immediate_by_active_source"
-            echo "HISTORY_DEDUPE_WINDOW_MS=30000"
-            echo "STALE_RESULT_GUARD=generation_hash_package_template_signature"
-            echo "ROUTE_CACHE=package_and_card_scoped"
-            echo "SCAN_LOOP_MS=250"
-            echo "SCREENSHOT_INTERVAL_MS=500"
+            echo "ADDRESS_SCOPE=all_visible_content"
+            echo "DESTINATION_RULE=last_complete_numbered_address"
+            echo "TRIGGER_COLOR=yellow"
+            echo "ADDRESS_WITHOUT_NUMBER=ignored"
+            echo "LESS_THAN_TWO_NUMBERED_ADDRESSES=gray"
+            echo "SCREEN_CHANGE_INVALIDATION=immediate"
+            echo "STALE_RESULT_GUARD=generation_hash_signature"
+            echo "ROUTE_CACHE=enabled"
+            echo "SCAN_LOOP_MS=120"
             echo "MAIN_BUBBLE_TAP=opens_control_grid"
-          } > registered-card-address-validation.txt
-          cp registered-card-address-validation.txt universal-two-address-validation.txt
-          cp registered-card-address-validation.txt bubble-menu-validation.txt
-          cat registered-card-address-validation.txt
+          } > universal-two-address-validation.txt
+          cp universal-two-address-validation.txt bubble-menu-validation.txt
+          cat universal-two-address-validation.txt
 
       - name: Validate debug APK
         run: |
@@ -191,12 +188,13 @@ jobs:
 
           for expected in \
             "Central de bolinhas" \
-            "registered.trigger source=" \
-            "Card atual nao corresponde a nenhum modelo cadastrado" \
-            "Card perdeu um dos dois enderecos completos e numerados" \
-            "registered.history duplicate_skipped=true" \
-            "registered.result discarded_stale=true" \
-            "registered.clear immediate=true reason=" \
+            "Menos de dois enderecos visiveis; dado anterior removido." \
+            "universal.trigger source=" \
+            "universal.screen.changed hash=" \
+            "universal.route.cache hit=true" \
+            "universal.route.cache stored=true" \
+            "universal.result discarded_stale=true" \
+            "universal.clear immediate=true reason=" \
             "Leitura ao vivo desligada pela bolinha" \
             "Casa e Alfinete estao desligados" \
             "bubble.tap.menu_contract_0_1_96" \
@@ -211,17 +209,10 @@ jobs:
             fi
           done
 
-          cat registered-card-address-validation.txt >> apk-validation.txt
+          cat universal-two-address-validation.txt >> apk-validation.txt
           cat apk-validation.txt
 
-      - name: Upload registered card validation
-        uses: actions/upload-artifact@v4
-        with:
-          name: registered-card-address-validation
-          path: registered-card-address-validation.txt
-          if-no-files-found: error
-
-      - name: Upload compatibility validation
+      - name: Upload universal reader validation
         uses: actions/upload-artifact@v4
         with:
           name: universal-two-address-validation
@@ -277,7 +268,7 @@ jobs:
             echo
             echo "Stable download asset: ${stable_apk}"
             echo
-            cat registered-card-address-validation.txt
+            cat universal-two-address-validation.txt
             echo
             cat apk-validation.txt
             echo
