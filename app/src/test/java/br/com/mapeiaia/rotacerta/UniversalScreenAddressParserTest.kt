@@ -80,7 +80,7 @@ class UniversalScreenAddressParserTest {
             UniversalScreenAddressParser.parse(webText).destination,
         )
         assertEquals(
-            "Avenida Central - Varginha - MG",
+            "Hospital Modelo, Avenida Central - Varginha - MG",
             UniversalScreenAddressParser.parse(photoText).destination,
         )
     }
