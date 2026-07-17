@@ -2,6 +2,19 @@
 // TYPE_ACCESSIBILITY_OVERLAY era confundida com a MainActivity e cancelava a
 // geocodificacao/rota imediatamente depois de encontrar os dois enderecos.
 
+fun overlayResolverReplaceRegion(
+    source: String,
+    startToken: String,
+    endToken: String,
+    replacement: String,
+    label: String,
+): String {
+    val start = source.indexOf(startToken)
+    val end = if (start >= 0) source.indexOf(endToken, start + startToken.length) else -1
+    if (start < 0 || end <= start) throw GradleException("Regiao ausente para $label")
+    return source.substring(0, start) + replacement + source.substring(end)
+}
+
 val universalOverlayWindowResolver by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
@@ -18,19 +31,24 @@ val universalOverlayWindowResolver by tasks.registering {
                 val fieldRegex = Regex("    private var universalActiveAddressSignature: String\\? = null[^\\n]*\\n")
                 val match = fieldRegex.find(text)
                     ?: throw GradleException("Campo de assinatura universal nao encontrado")
-                val replacement = match.value +
-                    "    private var lastExternalWindowPackageName: String? = null\n" +
-                    "    private var lastUniversalClearReason: String? = null\n"
-                text = text.replaceRange(match.range, replacement)
+                text = text.replaceRange(
+                    match.range,
+                    match.value + "    private var lastExternalWindowPackageName: String? = null\n",
+                )
             }
 
-            val oldEventBlock = """        activePackageName = packageName
-        if (packageName == this.packageName) {
-            hardClearUniversalTwoAddress("Tela do proprio Rota Certa.")
+            text = overlayResolverReplaceRegion(
+                source = text,
+                startToken = "    override fun onAccessibilityEvent(event: AccessibilityEvent?) {",
+                endToken = "    override fun onInterrupt()",
+                replacement = """    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!serviceReady || event == null) return
+        if (!currentSettings.appEnabled || !currentSettings.liveReadingEnabled) {
+            hardClearUniversalTwoAddress("Leitura universal desligada.")
             return
         }
-"""
-            val newEventBlock = """        val ownMainActivityEvent = UniversalWindowPackageResolver.isOwnMainActivityEvent(
+        val packageName = normalizePackageName(event.packageName?.toString()) ?: currentRootPackageName()
+        val ownMainActivityEvent = UniversalWindowPackageResolver.isOwnMainActivityEvent(
             eventPackageName = packageName,
             eventClassName = event.className?.toString(),
             eventType = event.eventType,
@@ -52,16 +70,20 @@ val universalOverlayWindowResolver by tasks.registering {
             }
             return
         }
-"""
-            if (oldEventBlock !in text) {
-                throw GradleException("Bloco de evento proprio que cancelava a rota nao encontrado")
-            }
-            text = text.replaceFirst(oldEventBlock, newEventBlock)
+        traceEvent("universal.event package=" + packageName.orEmpty() + " type=" + event.eventType) // universal_two_address_event_0_1_98
+        scheduleVisibleTextAnalysis(delayMs = 0L, allowPopupCandidate = true)
+        requestScreenshotAnalysis(allowPopupCandidate = true)
+    } // universal_overlay_event_guard_0_1_106
 
-            val oldCurrentWindow = """    private fun currentWindowPackageName(): String? =
-        currentRootPackageName() ?: activePackageName
-"""
-            val newCurrentWindow = """    private fun currentWindowPackageName(): String? {
+""",
+                label = "evento de acessibilidade universal",
+            )
+
+            text = overlayResolverReplaceRegion(
+                source = text,
+                startToken = "    private fun currentWindowPackageName()",
+                endToken = "    private fun currentRootPackageName()",
+                replacement = """    private fun currentWindowPackageName(): String? {
         val resolution = UniversalWindowPackageResolver.resolve(
             rootPackageName = currentRootPackageName(),
             activePackageName = activePackageName,
@@ -70,35 +92,27 @@ val universalOverlayWindowResolver by tasks.registering {
         )
         lastExternalWindowPackageName = resolution.lastExternalPackageName
         return resolution.effectivePackageName
-    }
-"""
-            if (oldCurrentWindow !in text) {
-                throw GradleException("Resolvedor da janela atual nao encontrado")
-            }
-            text = text.replaceFirst(oldCurrentWindow, newCurrentWindow)
+    } // universal_overlay_window_resolver_0_1_106
 
-            val signatureAssignment = "            universalActiveAddressSignature = trigger.addressSignature\n"
-            if (signatureAssignment !in text) {
-                throw GradleException("Assinatura da tela universal nao encontrada")
-            }
-            text = text.replaceFirst(
-                signatureAssignment,
-                signatureAssignment + "            lastUniversalClearReason = null\n",
+""",
+                label = "resolvedor da janela atual",
             )
 
-            val hadDataBlock = """        val hadData = currentRadarColor != RadarColor.Idle ||
-            currentDistanceKm != null ||
-            lastSnapshotHash != null ||
-            universalActiveAddressSignature != null
-"""
-            if (hadDataBlock !in text) {
-                throw GradleException("Bloco de limpeza universal nao encontrado")
+            val clearStart = text.indexOf("    private fun hardClearUniversalTwoAddress(reason: String) {")
+            val clearEnd = if (clearStart >= 0) text.indexOf("\n    private fun ", clearStart + 10) else -1
+            if (clearStart < 0 || clearEnd <= clearStart) {
+                throw GradleException("Limpeza universal nao encontrada")
             }
-            text = text.replaceFirst(
-                hadDataBlock,
-                hadDataBlock + "        if (!hadData && currentRadarColor == RadarColor.Idle) return\n" +
-                    "        lastUniversalClearReason = reason\n",
+            var clearBlock = text.substring(clearStart, clearEnd)
+            val hadDataEndToken = "            universalActiveAddressSignature != null\n"
+            if (hadDataEndToken !in clearBlock) {
+                throw GradleException("Estado da limpeza universal nao encontrado")
+            }
+            clearBlock = clearBlock.replaceFirst(
+                hadDataEndToken,
+                hadDataEndToken + "        if (!hadData && currentRadarColor == RadarColor.Idle) return // universal_clear_idempotent_0_1_106\n",
             )
+            text = text.substring(0, clearStart) + clearBlock + text.substring(clearEnd)
 
             text += "\n// universal_overlay_self_window_fix_0_1_106\n"
         }
@@ -107,7 +121,9 @@ val universalOverlayWindowResolver by tasks.registering {
             "UniversalWindowPackageResolver.resolve(",
             "UniversalWindowPackageResolver.isOwnMainActivityEvent(",
             "universal.overlay.event ignored=true",
-            "if (!hadData && currentRadarColor == RadarColor.Idle) return",
+            "universal_overlay_event_guard_0_1_106",
+            "universal_overlay_window_resolver_0_1_106",
+            "universal_clear_idempotent_0_1_106",
             "universal_overlay_self_window_fix_0_1_106",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Correcao de overlay incompleta: $marker")
