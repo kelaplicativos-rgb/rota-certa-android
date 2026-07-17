@@ -6,10 +6,11 @@ import java.util.Locale
 /**
  * Contrato unico que decide quando a bolinha pode agir.
  *
- * - zero ou um endereco: inativa e sem dado antigo;
- * - dois ou mais enderecos distintos: ativa imediatamente;
- * - o ultimo endereco visivel sempre e o destino;
- * - qualquer alteracao no texto visivel muda o hash da tela e invalida o resultado anterior.
+ * - somente enderecos com logradouro e numero de imovel entram na contagem;
+ * - zero ou um endereco completo: cinza, sem geocodificacao e sem dado antigo;
+ * - dois ou mais enderecos completos: amarela e inicia a analise;
+ * - o ultimo endereco completo e numerado sempre e o destino;
+ * - qualquer alteracao no texto visivel muda o hash e invalida o resultado anterior.
  */
 data class UniversalAddressTriggerDecision(
     val addresses: List<String>,
@@ -18,14 +19,17 @@ data class UniversalAddressTriggerDecision(
     val destination: String?,
     val addressSignature: String,
     val screenHash: Int,
-)
+) {
+    val shouldClearPreviousResult: Boolean
+        get() = !active
+}
 
 object UniversalAddressTrigger {
-    const val MINIMUM_VISIBLE_ADDRESSES = 2
+    const val MINIMUM_COMPLETE_NUMBERED_ADDRESSES = 2
 
     fun evaluate(text: String): UniversalAddressTriggerDecision {
         val addresses = UniversalScreenAddressParser.findAddresses(text)
-        val active = addresses.size >= MINIMUM_VISIBLE_ADDRESSES
+        val active = addresses.size >= MINIMUM_COMPLETE_NUMBERED_ADDRESSES
         return UniversalAddressTriggerDecision(
             addresses = addresses,
             active = active,
