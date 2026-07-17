@@ -26,16 +26,36 @@ val universalImmediateGrayClear by tasks.registering {
                 throw GradleException("Retorno cinza universal nao encontrado.")
             }
 
-            if ("registeredCardGate.clear()" !in block) {
-                block = block.replaceFirst(
-                    overlayAnchor,
-                    "        registeredCardGate.clear()\n" + overlayAnchor,
+            val forcedGray = """        registeredCardGate.clear()
+        showOverlay(RadarColor.Idle, distanceKm = null)
+        currentRadarColor = RadarColor.Idle
+        currentDistanceKm = null
+        overlayView?.let { view ->
+            view.text = ""
+            view.textSize = bubbleTextSizeSp("")
+            view.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(RadarColor.Idle.argb(currentSettings))
+                setStroke(
+                    dp(3),
+                    Color.argb(
+                        (currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(),
+                        255,
+                        255,
+                        255,
+                    ),
                 )
             }
-            block = block.replaceFirst(
-                overlayAnchor,
-                overlayAnchor + "        // universal_immediate_gray_clear_0_1_100\n",
-            )
+            view.contentDescription = "Rota Certa ${'$'}{RadarColor.Idle.diagnosticLabel}"
+        }
+        if (BuildConfig.DEBUG) {
+            bubblePrefs.edit()
+                .putString("runtime_validation_state", "cinza|")
+                .putLong("runtime_validation_state_at", System.currentTimeMillis())
+                .apply()
+        } // universal_immediate_gray_clear_0_1_100
+"""
+            block = block.replaceFirst(overlayAnchor, forcedGray)
             text = text.substring(0, clearStart) + block + text.substring(clearEnd)
         }
 
@@ -45,6 +65,9 @@ val universalImmediateGrayClear by tasks.registering {
         listOf(
             "registeredCardGate.clear()",
             "showOverlay(RadarColor.Idle, distanceKm = null)",
+            "currentRadarColor = RadarColor.Idle",
+            "setColor(RadarColor.Idle.argb(currentSettings))",
+            ".putString(\"runtime_validation_state\", \"cinza|\")",
             "universal_immediate_gray_clear_0_1_100",
         ).forEach { marker ->
             if (marker !in clearBlock) throw GradleException("Limpeza cinza universal incompleta: $marker")
