@@ -47,30 +47,45 @@ val universalOverlayWindowResolver by tasks.registering {
             hardClearUniversalTwoAddress("Leitura universal desligada.")
             return
         }
-        val packageName = normalizePackageName(event.packageName?.toString()) ?: currentRootPackageName()
+
+        val eventPackage = normalizePackageName(event.packageName?.toString())
+        val rootPackage = currentRootPackageName()
+        val candidatePackage = eventPackage ?: rootPackage
         val ownMainActivityEvent = UniversalWindowPackageResolver.isOwnMainActivityEvent(
-            eventPackageName = packageName,
+            eventPackageName = candidatePackage,
             eventClassName = event.className?.toString(),
             eventType = event.eventType,
             ownPackageName = this.packageName,
             mainActivityClassName = MainActivity::class.java.name,
             windowStateChangedType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
         )
-        if (packageName != this.packageName) {
-            activePackageName = packageName
-            lastExternalWindowPackageName = packageName
-        } else if (ownMainActivityEvent) {
-            activePackageName = packageName
-        }
-        if (packageName == this.packageName) {
+
+        if (candidatePackage == this.packageName) {
             if (ownMainActivityEvent) {
+                universalForegroundPackageName = this.packageName
+                activePackageName = this.packageName
+                analyzeJob?.cancel()
+                analyzeJob = null
                 hardClearUniversalTwoAddress("Tela do proprio Rota Certa.")
             } else {
                 traceEvent("universal.overlay.event ignored=true type=" + event.eventType)
             }
             return
         }
-        traceEvent("universal.event package=" + packageName.orEmpty() + " type=" + event.eventType) // universal_two_address_event_0_1_98
+
+        val resolvedPackage = candidatePackage ?: lastExternalWindowPackageName ?: return
+        val previousExternalPackage = universalForegroundPackageName?.takeUnless { it == this.packageName }
+        universalForegroundPackageName = resolvedPackage
+        activePackageName = resolvedPackage
+        lastExternalWindowPackageName = resolvedPackage
+        if (previousExternalPackage != null && previousExternalPackage != resolvedPackage) {
+            hardClearUniversalTwoAddress("Aplicativo ou janela alterada; resultado anterior removido.")
+            universalForegroundPackageName = resolvedPackage
+            activePackageName = resolvedPackage
+            lastExternalWindowPackageName = resolvedPackage
+        }
+
+        traceEvent("universal.event package=" + resolvedPackage + " type=" + event.eventType) // universal_two_address_event_0_1_98 universal_stable_foreground_event_0_1_101
         scheduleVisibleTextAnalysis(delayMs = 0L, allowPopupCandidate = true)
         requestScreenshotAnalysis(allowPopupCandidate = true)
     } // universal_overlay_event_guard_0_1_106
@@ -86,7 +101,7 @@ val universalOverlayWindowResolver by tasks.registering {
                 replacement = """    private fun currentWindowPackageName(): String? {
         val resolution = UniversalWindowPackageResolver.resolve(
             rootPackageName = currentRootPackageName(),
-            activePackageName = activePackageName,
+            activePackageName = universalForegroundPackageName ?: activePackageName,
             lastExternalPackageName = lastExternalWindowPackageName,
             ownPackageName = this.packageName,
         )
@@ -96,6 +111,30 @@ val universalOverlayWindowResolver by tasks.registering {
 
 """,
                 label = "resolvedor da janela atual",
+            )
+
+            text = overlayResolverReplaceRegion(
+                source = text,
+                startToken = "    private fun universalResolvedForegroundPackage()",
+                endToken = "    private fun traceUniversalTrigger(",
+                replacement = """    private fun universalResolvedForegroundPackage(): String? {
+        val resolution = UniversalWindowPackageResolver.resolve(
+            rootPackageName = currentRootPackageName(),
+            activePackageName = universalForegroundPackageName ?: activePackageName,
+            lastExternalPackageName = lastExternalWindowPackageName,
+            ownPackageName = this.packageName,
+        )
+        lastExternalWindowPackageName = resolution.lastExternalPackageName
+        return resolution.effectivePackageName
+    }
+
+    private fun isUniversalExternalWindowActive(): Boolean {
+        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return false
+        return universalResolvedForegroundPackage()?.let { it != this.packageName } == true
+    } // universal_overlay_external_window_guard_0_1_106
+
+""",
+                label = "guarda da janela externa",
             )
 
             val clearStart = text.indexOf("    private fun hardClearUniversalTwoAddress(reason: String) {")
@@ -121,8 +160,10 @@ val universalOverlayWindowResolver by tasks.registering {
             "UniversalWindowPackageResolver.resolve(",
             "UniversalWindowPackageResolver.isOwnMainActivityEvent(",
             "universal.overlay.event ignored=true",
+            "universal_stable_foreground_event_0_1_101",
             "universal_overlay_event_guard_0_1_106",
             "universal_overlay_window_resolver_0_1_106",
+            "universal_overlay_external_window_guard_0_1_106",
             "universal_clear_idempotent_0_1_106",
             "universal_overlay_self_window_fix_0_1_106",
         ).forEach { marker ->
