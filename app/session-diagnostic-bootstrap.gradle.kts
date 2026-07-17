@@ -32,6 +32,10 @@ sessionDiagnosticSource = strictMarkerBlock.replace(
         }
         if ("--- BACKUP INTERNO ---""".trimEnd(),
 )
+sessionDiagnosticSource = sessionDiagnosticSource.replace(
+    "if (\"--- BACKUP INTERNO --- in main.substring(",
+    "if (\"--- BACKUP INTERNO ---\" in main.substring(",
+)
 
 sessionDiagnosticScript.writeText(sessionDiagnosticSource)
 val verifiedSource = sessionDiagnosticScript.readText()
