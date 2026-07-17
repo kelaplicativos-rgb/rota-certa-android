@@ -1,12 +1,14 @@
 package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UniversalScreenAddressParserTest {
     @Test
-    fun oneAddressIsEnoughAndBecomesDestination() {
+    fun oneCompleteAddressIsDetectedButDoesNotCreatePickup() {
         val fields = UniversalScreenAddressParser.parse(
             """
             Foto recebida
@@ -19,7 +21,7 @@ class UniversalScreenAddressParserTest {
     }
 
     @Test
-    fun alwaysUsesLastVisibleAddress() {
+    fun alwaysUsesLastCompleteNumberedAddress() {
         val fields = UniversalScreenAddressParser.parse(
             """
             Origem: Avenida Brasil, 1000 - Centro, Sao Paulo - SP
@@ -34,7 +36,23 @@ class UniversalScreenAddressParserTest {
     }
 
     @Test
-    fun appOrScreenTypeDoesNotMatter() {
+    fun acceptedHouseNumberFormatsAreNormalizedAsValidAddresses() {
+        val validAddresses = listOf(
+            "Rua X, 123",
+            "Rua X nº 123",
+            "Rua X numero 123",
+            "Rua X, 123-A",
+            "Rua X, 123 bloco B",
+        )
+
+        validAddresses.forEach { address ->
+            assertTrue(address, UniversalScreenAddressParser.isCompleteNumberedAddress(address))
+            assertEquals(listOf(address), UniversalScreenAddressParser.findAddresses(address))
+        }
+    }
+
+    @Test
+    fun appOrScreenTypeDoesNotMatterWhenStreetAndNumberArePresent() {
         val webText = "Confira no navegador: Rodovia Fernao Dias, 1500 - Extrema - MG"
         val photoText = "Imagem\nHospital Modelo, Avenida Central, 55 - Varginha - MG"
 
@@ -49,10 +67,42 @@ class UniversalScreenAddressParserTest {
     }
 
     @Test
-    fun priceDistanceAndButtonsDoNotBecomeAddresses() {
+    fun incompleteStreetCepAndNoNumberMarkersAreRejected() {
+        val invalidAddresses = listOf(
+            "Rua das Flores",
+            "Avenida Brasil - Centro",
+            "Rua das Flores, s/n",
+            "Avenida Brasil, SN",
+            "Rua Central, sem numero",
+            "Rua das Flores, 09000-000",
+        )
+
+        invalidAddresses.forEach { address ->
+            assertFalse(address, UniversalScreenAddressParser.isCompleteNumberedAddress(address))
+            assertEquals(emptyList<String>(), UniversalScreenAddressParser.findAddresses(address))
+        }
+    }
+
+    @Test
+    fun numberOnAnotherLineIsNotBorrowed() {
+        val addresses = UniversalScreenAddressParser.findAddresses(
+            """
+            Rua das Flores,
+            120
+            """.trimIndent(),
+        )
+
+        assertEquals(emptyList<String>(), addresses)
+    }
+
+    @Test
+    fun priceDistancePhoneTimeAndButtonsDoNotBecomeAddresses() {
         val fields = UniversalScreenAddressParser.parse(
             """
+            Rua das Flores
             R$ 35,00
+            (11) 99999-8888
+            18:30
             12,5 km
             Aceitar por R$ 35
             """.trimIndent(),
