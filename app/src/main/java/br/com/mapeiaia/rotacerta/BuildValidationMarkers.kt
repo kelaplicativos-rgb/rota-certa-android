@@ -18,6 +18,7 @@ object BuildValidationMarkers {
     const val ROUTE_CACHE_STORED = "universal.route.cache stored=true"
     const val STALE_RESULT_DISCARDED = "universal.result discarded_stale=true"
     const val IMMEDIATE_CLEAR = "universal.clear immediate=true reason="
+    const val OVERLAY_WINDOW_ROUTE_FIX = "universal_overlay_self_window_fix_0_1_106"
 
     const val LIVE_READING_DISABLED = "Leitura ao vivo desligada pela bolinha"
     const val TARGETS_DISABLED = "Casa e Alfinete estao desligados"
