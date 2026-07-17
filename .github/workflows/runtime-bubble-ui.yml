@@ -139,11 +139,11 @@ jobs:
           grep -Fq 'DESTINATION_WITHOUT_MODEL=present' runtime-ui/runtime-validation.txt
           grep -Fq 'BUBBLE_STATE=active_not_gray' runtime-ui/runtime-validation.txt
           grep -Fq 'DESTINATION_RULE=last_complete_numbered_address' runtime-ui/runtime-validation.txt
-          grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'CLEAR_TO_GRAY=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'STALE_DESTINATION_AFTER_CLEAR=absent' runtime-ui/runtime-validation.txt
           test -s runtime-ui/app-before.png
           test -s runtime-ui/app-after-off.png
           test -s runtime-ui/app-restored-on.png
           test -s runtime-ui/home-bubble.png
           test -s runtime-ui/unregistered-two-address.png
           test -s runtime-ui/after-address-clear.png
-          test -s runtime-ui/floating-menu.png
