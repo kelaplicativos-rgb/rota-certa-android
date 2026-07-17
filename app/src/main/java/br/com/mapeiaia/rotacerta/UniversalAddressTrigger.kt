@@ -26,6 +26,7 @@ data class UniversalAddressTriggerDecision(
 
 object UniversalAddressTrigger {
     const val MINIMUM_COMPLETE_NUMBERED_ADDRESSES = 2
+    const val MINIMUM_VISIBLE_ADDRESSES = MINIMUM_COMPLETE_NUMBERED_ADDRESSES
 
     fun evaluate(text: String): UniversalAddressTriggerDecision {
         val addresses = UniversalScreenAddressParser.findAddresses(text)
