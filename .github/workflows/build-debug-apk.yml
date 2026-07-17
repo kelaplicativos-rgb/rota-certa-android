@@ -108,7 +108,7 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate universal numbered-address runtime
+      - name: Validate universal address runtime
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
@@ -121,6 +121,8 @@ jobs:
           done
 
           grep -Fq 'const val MINIMUM_VISIBLE_ADDRESSES = 2' "$trigger"
+          grep -Fq 'const val MINIMUM_RECOGNIZED_ADDRESSES = MINIMUM_VISIBLE_ADDRESSES' "$trigger"
+          grep -Fq 'fun isRecognizedAddress' "$parser"
           grep -Fq 'UniversalAddressTrigger.evaluate(snapshotText)' "$service"
           grep -Fq 'trigger.addresses.size' "$service"
           grep -Fq 'trigger.destination' "$service"
@@ -157,12 +159,12 @@ jobs:
             echo "UNIVERSAL_SCREEN_READING=enabled"
             echo "PACKAGE_FILTER=removed"
             echo "REGISTERED_CARD_FILTER=removed"
-            echo "MINIMUM_COMPLETE_NUMBERED_ADDRESSES=2"
+            echo "MINIMUM_RECOGNIZED_ADDRESSES=2"
             echo "ADDRESS_SCOPE=all_visible_content"
-            echo "DESTINATION_RULE=last_complete_numbered_address"
+            echo "DESTINATION_RULE=last_recognized_address"
             echo "TRIGGER_COLOR=yellow"
-            echo "ADDRESS_WITHOUT_NUMBER=ignored"
-            echo "LESS_THAN_TWO_NUMBERED_ADDRESSES=gray"
+            echo "ADDRESS_WITHOUT_NUMBER=accepted"
+            echo "LESS_THAN_TWO_RECOGNIZED_ADDRESSES=gray"
             echo "SCREEN_CHANGE_INVALIDATION=immediate"
             echo "STALE_RESULT_GUARD=generation_hash_signature"
             echo "ROUTE_CACHE=enabled"
@@ -253,7 +255,7 @@ jobs:
           stable_apk="rota-certa-stable-debug.apk"
           stable_sha="rota-certa-stable-debug.apk.sha256"
           tag="rota-certa-stable-debug"
-          version_name="$(grep -m1 'versionName' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
+          version_name="$(find app -maxdepth 1 -name 'version-*.gradle.kts' -printf '%f\n' | sed -E 's/^version-(.*)\.gradle\.kts$/\1/' | sort -V | tail -1)"
           version_code="$((1000 + GITHUB_RUN_NUMBER))"
           cp "$apk" "$stable_apk"
           sha256sum "$stable_apk" > "$stable_sha"
