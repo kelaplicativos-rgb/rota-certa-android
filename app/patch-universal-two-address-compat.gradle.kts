@@ -4,8 +4,8 @@
 // - nao aplica filtro de pacote;
 // - nao exige modelo de card cadastrado.
 //
-// O contrato ativo volta a ser: ler qualquer tela, localizar pelo menos dois
-// enderecos completos e numerados, usar o ultimo como destino e calcular ate o
+// O contrato ativo e: ler qualquer tela, localizar pelo menos dois enderecos
+// reconheciveis, com ou sem numero, usar o ultimo como destino e calcular ate o
 // endereco definido pelo usuario.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
@@ -24,3 +24,4 @@ apply(from = "universal-no-card-compile-repair.gradle.kts")
 apply(from = "version-0.1.101.gradle.kts")
 apply(from = "version-0.1.102.gradle.kts")
 apply(from = "version-0.1.103.gradle.kts")
+apply(from = "version-0.1.104.gradle.kts")
