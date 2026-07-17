@@ -107,6 +107,31 @@ if old_result not in text:
     raise SystemExit("Resultado antigo de card cadastrado nao foi encontrado")
 text = text.replace(old_result, new_result)
 
+# A validacao antiga continuava abrindo o menu flutuante depois de comprovar o
+# contrato principal. Isso podia prender o emulador sem acrescentar cobertura
+# ao leitor universal. Encerre logo depois da limpeza real para cinza.
+menu_start_marker = 'read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"'
+menu_start = text.find(menu_start_marker)
+if menu_start < 0:
+    raise SystemExit("Inicio dos passos antigos do menu nao foi encontrado")
+finish_block = '''if ! grep -Fq '>cinza|' "$OUT/cleared-runtime-prefs.xml"; then
+  echo "Bolinha nao voltou para cinza depois que os enderecos sumiram" >&2
+  exit 1
+fi
+if grep -Fq 'runtime_last_destination' "$OUT/cleared-runtime-prefs.xml"; then
+  echo "Destino anterior permaneceu depois da limpeza" >&2
+  exit 1
+fi
+
+cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" | tee "$OUT/runtime-validation.txt"
+cat >> "$OUT/runtime-validation.txt" <<EOF
+CLEAR_TO_GRAY=approved
+STALE_DESTINATION_AFTER_CLEAR=absent
+EOF
+echo "RUNTIME_STAGE=approved" >> "$OUT/progress.txt"
+'''
+text = text[:menu_start] + finish_block
+
 path.write_text(text)
 PY
 
