@@ -61,10 +61,9 @@ jobs:
           "$ANDROID_SDK_ROOT/emulator/emulator" -version > runtime-ui/emulator-version.txt 2>&1
           "$ANDROID_SDK_ROOT/emulator/emulator" -list-avds | tee runtime-ui/avd-list.txt
           grep -Fxq 'rota_runtime' runtime-ui/avd-list.txt
-          find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -print > runtime-ui/avd-files.txt
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
-      - name: Start emulator and run real taps
+      - name: Start emulator and run registered-card regression
         id: runtime
         continue-on-error: true
         env:
@@ -110,8 +109,6 @@ jobs:
             cat runtime-ui/emulator.log
             exit 1
           fi
-          ps -fp "$emulator_pid" > runtime-ui/emulator-process.txt || true
-          adb devices -l > runtime-ui/adb-devices-before-script.txt 2>&1 || true
 
           echo "RUNTIME_STAGE=script_invoking" >> runtime-ui/progress.txt
           set +e
@@ -129,21 +126,22 @@ jobs:
           path: runtime-ui/
           if-no-files-found: error
 
-      - name: Require successful runtime simulation
+      - name: Require successful registered-card runtime simulation
         if: always()
         run: |
           echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
           test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
           grep -Fq 'IN_APP_TOGGLE=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'YELLOW_TRIGGER=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'IMMEDIATE_CLEAR_TO_GRAY=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'UNREGISTERED_TWO_ADDRESS_BLOCK=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'REGISTERED_CARD_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'DESTINATION_WITHOUT_MODEL=absent' runtime-ui/runtime-validation.txt
+          grep -Fq 'BUBBLE_STATE=gray' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
           test -s runtime-ui/app-before.png
           test -s runtime-ui/app-after-off.png
           test -s runtime-ui/app-restored-on.png
           test -s runtime-ui/home-bubble.png
-          test -s runtime-ui/two-address-trigger.png
+          test -s runtime-ui/unregistered-two-address.png
           test -s runtime-ui/after-address-clear.png
           test -s runtime-ui/floating-menu.png
