@@ -8,35 +8,35 @@ import org.junit.Test
 
 class UniversalScreenAddressParserTest {
     @Test
-    fun oneCompleteAddressIsDetectedButDoesNotCreatePickup() {
+    fun oneStreetWithoutNumberIsDetectedButDoesNotCreatePickup() {
         val fields = UniversalScreenAddressParser.parse(
             """
             Foto recebida
-            Rua das Flores, 120 - Centro, Sao Paulo - SP
+            Rua das Flores - Centro, Sao Paulo - SP
             """.trimIndent(),
         )
 
-        assertEquals("Rua das Flores, 120 - Centro, Sao Paulo - SP", fields.destination)
+        assertEquals("Rua das Flores - Centro, Sao Paulo - SP", fields.destination)
         assertNull(fields.pickup)
     }
 
     @Test
-    fun alwaysUsesLastCompleteNumberedAddress() {
+    fun alwaysUsesLastRecognizedAddressWithOrWithoutNumber() {
         val fields = UniversalScreenAddressParser.parse(
             """
             Origem: Avenida Brasil, 1000 - Centro, Sao Paulo - SP
             Texto qualquer
             Rua das Acacias, 45 - Jardim Azul, Santo Andre - SP
-            Destino final: Alameda Santos, 900 - Bela Vista, Sao Paulo - SP
+            Destino final: Alameda Santos - Bela Vista, Sao Paulo - SP
             """.trimIndent(),
         )
 
         assertEquals("Avenida Brasil, 1000 - Centro, Sao Paulo - SP", fields.pickup)
-        assertEquals("Alameda Santos, 900 - Bela Vista, Sao Paulo - SP", fields.destination)
+        assertEquals("Alameda Santos - Bela Vista, Sao Paulo - SP", fields.destination)
     }
 
     @Test
-    fun acceptedHouseNumberFormatsAreNormalizedAsValidAddresses() {
+    fun acceptedHouseNumberFormatsRemainValidNumberedAddresses() {
         val validAddresses = listOf(
             "Rua X, 123",
             "Rua X nº 123",
@@ -47,44 +47,46 @@ class UniversalScreenAddressParserTest {
 
         validAddresses.forEach { address ->
             assertTrue(address, UniversalScreenAddressParser.isCompleteNumberedAddress(address))
+            assertTrue(address, UniversalScreenAddressParser.isRecognizedAddress(address))
             assertEquals(listOf(address), UniversalScreenAddressParser.findAddresses(address))
         }
     }
 
     @Test
-    fun appOrScreenTypeDoesNotMatterWhenStreetAndNumberArePresent() {
-        val webText = "Confira no navegador: Rodovia Fernao Dias, 1500 - Extrema - MG"
-        val photoText = "Imagem\nHospital Modelo, Avenida Central, 55 - Varginha - MG"
-
-        assertEquals(
-            "Rodovia Fernao Dias, 1500 - Extrema - MG",
-            UniversalScreenAddressParser.parse(webText).destination,
-        )
-        assertEquals(
-            "Hospital Modelo, Avenida Central, 55 - Varginha - MG",
-            UniversalScreenAddressParser.parse(photoText).destination,
-        )
-    }
-
-    @Test
-    fun incompleteStreetCepAndNoNumberMarkersAreRejected() {
-        val invalidAddresses = listOf(
+    fun streetsWithoutNumberAndNoNumberMarkersAreRecognized() {
+        val addresses = listOf(
             "Rua das Flores",
             "Avenida Brasil - Centro",
             "Rua das Flores, s/n",
             "Avenida Brasil, SN",
             "Rua Central, sem numero",
-            "Rua das Flores, 09000-000",
+            "Rua Erundina (Jardim Rodolfo Pirani, Sao Paulo - SP)",
         )
 
-        invalidAddresses.forEach { address ->
+        addresses.forEach { address ->
             assertFalse(address, UniversalScreenAddressParser.isCompleteNumberedAddress(address))
-            assertEquals(emptyList<String>(), UniversalScreenAddressParser.findAddresses(address))
+            assertTrue(address, UniversalScreenAddressParser.isRecognizedAddress(address))
+            assertEquals(listOf(address), UniversalScreenAddressParser.findAddresses(address))
         }
     }
 
     @Test
-    fun numberOnAnotherLineIsNotBorrowed() {
+    fun appOrScreenTypeDoesNotMatterWhenStreetIsRecognizable() {
+        val webText = "Confira no navegador: Rodovia Fernao Dias - Extrema - MG"
+        val photoText = "Imagem\nHospital Modelo, Avenida Central - Varginha - MG"
+
+        assertEquals(
+            "Rodovia Fernao Dias - Extrema - MG",
+            UniversalScreenAddressParser.parse(webText).destination,
+        )
+        assertEquals(
+            "Avenida Central - Varginha - MG",
+            UniversalScreenAddressParser.parse(photoText).destination,
+        )
+    }
+
+    @Test
+    fun numberOnAnotherLineIsNotMistakenForASeparateAddress() {
         val addresses = UniversalScreenAddressParser.findAddresses(
             """
             Rua das Flores,
@@ -92,12 +94,12 @@ class UniversalScreenAddressParserTest {
             """.trimIndent(),
         )
 
-        assertEquals(emptyList<String>(), addresses)
+        assertEquals(listOf("Rua das Flores"), addresses)
     }
 
     @Test
-    fun priceDistancePhoneTimeAndButtonsDoNotBecomeAddresses() {
-        val fields = UniversalScreenAddressParser.parse(
+    fun priceDistancePhoneTimeAndButtonsDoNotBecomeAdditionalAddresses() {
+        val addresses = UniversalScreenAddressParser.findAddresses(
             """
             Rua das Flores
             R$ 35,00
@@ -108,7 +110,7 @@ class UniversalScreenAddressParserTest {
             """.trimIndent(),
         )
 
-        assertNull(fields.destination)
+        assertEquals(listOf("Rua das Flores"), addresses)
     }
 
     @Test
@@ -144,16 +146,30 @@ class UniversalScreenAddressParserTest {
     }
 
     @Test
+    fun inDriveDestinationWithoutNumberIsPreservedWithWrappedLocality() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            A Travessa Voa Voa Beija-Flor 37 (Jardim da Conquista)
+            B Rua Erundina (Jardim Rodolfo
+            Pirani, Sao Paulo - SP)
+            """.trimIndent(),
+        )
+
+        assertEquals("Travessa Voa Voa Beija-Flor 37 (Jardim da Conquista)", fields.pickup)
+        assertEquals("Rua Erundina (Jardim Rodolfo Pirani, Sao Paulo - SP)", fields.destination)
+    }
+
+    @Test
     fun realAddressStillWinsAfterNoisyLines() {
         val fields = UniversalScreenAddressParser.parse(
             """
             qua., 15 de jul.
             Documento em PDF
             R$ 42,00
-            Rua Doutor Paulo, 77 - Centro, Tres Coracoes - MG
+            Rua Doutor Paulo - Centro, Tres Coracoes - MG
             """.trimIndent(),
         )
 
-        assertEquals("Rua Doutor Paulo, 77 - Centro, Tres Coracoes - MG", fields.destination)
+        assertEquals("Rua Doutor Paulo - Centro, Tres Coracoes - MG", fields.destination)
     }
 }
