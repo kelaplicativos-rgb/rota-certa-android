@@ -4,11 +4,12 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Detecta enderecos em qualquer texto visivel, sem depender de aplicativo,
- * pacote, modelo de card, preco, botao ou layout especifico.
+ * Detecta somente enderecos completos e numerados no texto visivel.
  *
- * A regra operacional e simples: encontrou um ou mais enderecos, o ultimo
- * endereco distinto da tela e o destino usado pelo farol.
+ * Um candidato so e aceito quando a mesma linha que contem o logradouro tambem
+ * contem um numero de imovel estruturalmente associado. Bairro, cidade, ponto de
+ * referencia, estabelecimento, CEP, coordenada e numeros soltos nunca completam
+ * artificialmente um endereco.
  */
 object UniversalScreenAddressParser {
     private val streetStartRegex = Regex(
@@ -23,22 +24,43 @@ object UniversalScreenAddressParser {
         "(?:^|[\\s:;])((?:shopping|terminal|estacao|estação|aeroporto|rodoviaria|rodoviária|hospital|mercado|restaurante|hotel|pousada|escola|faculdade|universidade|posto|parque|poupatempo|igreja|cemiterio|cemitério)(?:\\b|(?=\\s)))",
         RegexOption.IGNORE_CASE,
     )
-    private val addressStartRegex = Regex(
-        listOf(streetStartRegex.pattern, localityStartRegex.pattern, poiStartRegex.pattern)
-            .joinToString("|") { "(?:$it)" },
-        RegexOption.IGNORE_CASE,
-    )
     private val markerPrefix = Regex(
         "^(?:[ab]|origem|partida|embarque|destino(?:\\s+final)?|chegada|desembarque)\\s*[:\\-–—]?\\s+",
         RegexOption.IGNORE_CASE,
     )
     private val cepRegex = Regex("\\b\\d{5}-?\\d{3}\\b")
-    private val numberRegex = Regex("\\b\\d{1,6}[a-z]?\\b", RegexOption.IGNORE_CASE)
+    private val noNumberRegex = Regex(
+        "\\b(?:s\\s*/\\s*n|s\\s*n|sem\\s+n[uú]mero)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val houseNumberMarkerRegex = Regex(
+        "n\\s*(?:[º°o]\\.?|\\.|[uú]mero)",
+        RegexOption.IGNORE_CASE,
+    )
+    private val explicitHouseNumberRegex = Regex(
+        "(?:,\\s*|\\bn(?:[º°o]\\.?|\\.|[uú]mero)\\s*[:\\-]?\\s*)(\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val directHouseNumberRegex = Regex(
+        "\\b(\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?)\\b(?=\\s*(?:$|[,;\\-–—]|\\b(?:bloco|casa|loja|sala|ap(?:to)?\\.?|apartamento|fundos|andar|lote|quadra)\\b))",
+        RegexOption.IGNORE_CASE,
+    )
+    private val phoneRegex = Regex(
+        "(?<!\\d)(?:\\+?55\\s*)?(?:\\(?\\d{2}\\)?\\s*)?(?:9\\s*)?\\d{4}[\\s\\-]?\\d{4}(?!\\d)",
+    )
+    private val timeRegex = Regex("\\b(?:[01]?\\d|2[0-3])[:h]\\d{2}\\b", RegexOption.IGNORE_CASE)
+    private val moneyRegex = Regex(
+        "(?:R\\$\\s*\\d+(?:[,.]\\d{2})?|\\b\\d+(?:[,.]\\d{2})?\\s*(?:R\\$|reais?)\\b)",
+        RegexOption.IGNORE_CASE,
+    )
+    private val measurementRegex = Regex(
+        "\\b\\d+(?:[,.]\\d+)?\\s*(?:km|quil[oô]metros?|m|min|minutos?|h|horas?)\\b",
+        RegexOption.IGNORE_CASE,
+    )
     private val stateRegex = Regex(
         "(?:\\-|,|\\()\\s*(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)(?:\\b|\\))",
         RegexOption.IGNORE_CASE,
     )
-    private val coordinateRegex = Regex("^-?\\d{1,3}[,.]\\d{4,}\\s*[,;]\\s*-?\\d{1,3}[,.]\\d{4,}$")
     private val fileRegex = Regex(
         "(?:\\.(?:txt|pdf|json|csv|zip|apk|jpg|jpeg|png|webp|doc|docx|xls|xlsx|mht|mp4)\\b|\\b\\d+(?:[,.]\\d+)?\\s*(?:kb|mb|gb)\\b|documento\\s+em\\s+pdf)",
         RegexOption.IGNORE_CASE,
@@ -55,6 +77,7 @@ object UniversalScreenAddressParser {
         "(?:r\\$|\\b\\d+(?:[,.]\\d+)?\\s*(?:km|m|min|minutos?)\\b|aceitar|ofere[cç]a|tarifa|pre[cç]o|pix|dinheiro|cart[aã]o|fechar|cancelar)",
         RegexOption.IGNORE_CASE,
     )
+    private val invalidStreetNameWords = setOf("de", "da", "do", "das", "dos", "n", "no", "numero", "número")
 
     fun parse(text: String): RideFields {
         val addresses = findAddresses(text)
@@ -74,7 +97,7 @@ object UniversalScreenAddressParser {
         var index = 0
         while (index < lines.size) {
             val current = cleanAddressSegment(lines[index])
-            if (looksLikeAddress(current)) {
+            if (isCompleteNumberedAddress(current)) {
                 val parts = mutableListOf(current)
                 var nextIndex = index + 1
                 while (nextIndex < lines.size && parts.size < 3) {
@@ -96,35 +119,65 @@ object UniversalScreenAddressParser {
         return candidates.distinctBy(::canonical)
     }
 
-    private fun looksLikeAddress(value: String): Boolean {
+    fun isCompleteNumberedAddress(value: String): Boolean {
         if (value.length < 5 || isNoise(value)) return false
-        if (coordinateRegex.matches(value)) return true
+        val streetMatch = streetStartRegex.find(value) ?: return false
+        val streetGroup = streetMatch.groups[1] ?: return false
+        val streetTypeEnd = streetGroup.range.last + 1
+        val addressTail = value.substring(streetTypeEnd)
+        if (noNumberRegex.containsMatchIn(addressTail)) return false
 
-        val words = value.split(Regex("\\s+")).filter { token -> token.any(Char::isLetter) }
-        val hasLetters = value.count { it.isLetter() } >= 4
-        if (!hasLetters || words.size < 2) return false
+        val excludedRanges = sequenceOf(cepRegex, phoneRegex, timeRegex, moneyRegex, measurementRegex)
+            .flatMap { regex -> regex.findAll(value) }
+            .map { match -> match.range }
+            .toList()
 
-        val hasStreetStart = streetStartRegex.containsMatchIn(value)
-        val hasLocalityStart = localityStartRegex.containsMatchIn(value)
-        val hasPoiStart = poiStartRegex.containsMatchIn(value)
-        val hasNumber = numberRegex.containsMatchIn(value)
-        val hasCep = cepRegex.containsMatchIn(value)
-        val hasState = stateRegex.containsMatchIn(value)
-        val hasLocalityPunctuation = value.contains(',') || value.contains(" - ") || value.contains('(')
-
-        return when {
-            hasStreetStart -> true
-            hasPoiStart -> words.size >= 2
-            hasLocalityStart -> words.size >= 3 || hasNumber || hasState || hasLocalityPunctuation
-            hasCep -> true
-            hasState && hasLocalityPunctuation && words.size >= 2 -> true
-            else -> false
+        val explicitCandidates = explicitHouseNumberRegex.findAll(value, streetTypeEnd)
+            .mapNotNull { match -> match.groups[1]?.range }
+            .toList()
+        if (explicitCandidates.any { range -> isValidHouseNumberRange(value, streetTypeEnd, range, excludedRanges) }) {
+            return true
         }
+
+        return directHouseNumberRegex.findAll(value, streetTypeEnd)
+            .mapNotNull { match -> match.groups[1]?.range }
+            .toList()
+            .asReversed()
+            .any { range -> isValidHouseNumberRange(value, streetTypeEnd, range, excludedRanges) }
+    }
+
+    private fun isValidHouseNumberRange(
+        value: String,
+        streetTypeEnd: Int,
+        numberRange: IntRange,
+        excludedRanges: List<IntRange>,
+    ): Boolean {
+        if (excludedRanges.any { excluded -> numberRange.overlaps(excluded) }) return false
+        if (isDecimalFragment(value, numberRange)) return false
+
+        val streetName = value.substring(streetTypeEnd, numberRange.first)
+            .replace(houseNumberMarkerRegex, " ")
+            .replace(Regex("[,;:\\-–—]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        val meaningfulStreetWords = streetName
+            .split(Regex("\\s+"))
+            .map(::canonical)
+            .filter { token -> token.any(Char::isLetter) && token !in invalidStreetNameWords }
+        return meaningfulStreetWords.isNotEmpty()
+    }
+
+    private fun isDecimalFragment(value: String, range: IntRange): Boolean {
+        val before = range.first - 1
+        val after = range.last + 1
+        val decimalBefore = before > 0 && value[before] in charArrayOf(',', '.') && value[before - 1].isDigit()
+        val decimalAfter = after + 1 < value.length && value[after] in charArrayOf(',', '.') && value[after + 1].isDigit()
+        return decimalBefore || decimalAfter
     }
 
     private fun looksLikeContinuation(value: String, previous: String): Boolean {
         if (value.length < 2 || isNoise(value)) return false
-        if (looksLikeAddress(value)) return false
+        if (streetStartRegex.containsMatchIn(value)) return false
         val normalized = canonical(value)
         val previousOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         return previous.endsWith(',') ||
@@ -170,4 +223,6 @@ object UniversalScreenAddressParser {
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+
+    private fun IntRange.overlaps(other: IntRange): Boolean = first <= other.last && other.first <= last
 }
