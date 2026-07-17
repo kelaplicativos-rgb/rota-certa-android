@@ -6,10 +6,10 @@ import java.util.Locale
 /**
  * Contrato unico que decide quando a bolinha pode agir.
  *
- * - somente enderecos com logradouro e numero de imovel entram na contagem;
- * - zero ou um endereco completo: cinza, sem geocodificacao e sem dado antigo;
- * - dois ou mais enderecos completos: amarela e inicia a analise;
- * - o ultimo endereco completo e numerado sempre e o destino;
+ * - enderecos com logradouro reconhecivel entram na contagem, com ou sem numero;
+ * - zero ou um endereco reconhecido: cinza, sem geocodificacao e sem dado antigo;
+ * - dois ou mais enderecos reconhecidos: amarela e inicia a analise;
+ * - o ultimo endereco reconhecido sempre e o destino;
  * - qualquer alteracao no texto visivel muda o hash e invalida o resultado anterior.
  */
 data class UniversalAddressTriggerDecision(
@@ -26,12 +26,13 @@ data class UniversalAddressTriggerDecision(
 
 object UniversalAddressTrigger {
     const val MINIMUM_VISIBLE_ADDRESSES = 2
-    const val MINIMUM_COMPLETE_NUMBERED_ADDRESSES = MINIMUM_VISIBLE_ADDRESSES
+    const val MINIMUM_RECOGNIZED_ADDRESSES = MINIMUM_VISIBLE_ADDRESSES
+    const val MINIMUM_COMPLETE_NUMBERED_ADDRESSES = MINIMUM_VISIBLE_ADDRESSES // compatibilidade legada
 
     fun evaluate(text: String): UniversalAddressTriggerDecision {
         val addressText = WrappedAddressTextNormalizer.normalize(text)
         val addresses = UniversalScreenAddressParser.findAddresses(addressText)
-        val active = addresses.size >= MINIMUM_COMPLETE_NUMBERED_ADDRESSES
+        val active = addresses.size >= MINIMUM_RECOGNIZED_ADDRESSES
         return UniversalAddressTriggerDecision(
             addresses = addresses,
             active = active,
