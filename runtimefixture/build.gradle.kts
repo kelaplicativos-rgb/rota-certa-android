@@ -7,11 +7,13 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "br.com.mapeiaia.rotacerta.runtimefixture"
+        // Usa um pacote real monitorado apenas no emulador do CI. Assim o teste
+        // prova que dois enderecos, sem modelo cadastrado, continuam cinza.
+        applicationId = "sinet.startup.indriver"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     compileOptions {
