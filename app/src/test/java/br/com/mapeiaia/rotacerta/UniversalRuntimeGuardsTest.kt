@@ -1,8 +1,8 @@
 package br.com.mapeiaia.rotacerta
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UniversalRuntimeGuardsTest {
@@ -57,5 +57,59 @@ class UniversalRuntimeGuardsTest {
         assertFalse(deduper.shouldPersist("destino|vermelho|10.057", nowMillis = 10_150L))
         assertTrue(deduper.shouldPersist("outro|verde|4.649", nowMillis = 10_200L))
         assertTrue(deduper.shouldPersist("destino|vermelho|10.057", nowMillis = 70_001L))
+    }
+
+    @Test
+    fun accessibilityOverlayRootKeepsRideAppAsEffectiveWindow() {
+        val resolution = UniversalWindowPackageResolver.resolve(
+            rootPackageName = "br.com.mapeiaia.rotacerta",
+            activePackageName = "sinet.startup.indriver",
+            lastExternalPackageName = "sinet.startup.indriver",
+            ownPackageName = "br.com.mapeiaia.rotacerta",
+        )
+
+        assertEquals("sinet.startup.indriver", resolution.effectivePackageName)
+        assertEquals("sinet.startup.indriver", resolution.lastExternalPackageName)
+    }
+
+    @Test
+    fun realMainActivityOwnsForegroundAndAllowsImmediateClear() {
+        val resolution = UniversalWindowPackageResolver.resolve(
+            rootPackageName = "br.com.mapeiaia.rotacerta",
+            activePackageName = "br.com.mapeiaia.rotacerta",
+            lastExternalPackageName = "sinet.startup.indriver",
+            ownPackageName = "br.com.mapeiaia.rotacerta",
+        )
+
+        assertEquals("br.com.mapeiaia.rotacerta", resolution.effectivePackageName)
+        assertEquals("sinet.startup.indriver", resolution.lastExternalPackageName)
+    }
+
+    @Test
+    fun overlayEventIsNotMistakenForMainActivity() {
+        assertFalse(
+            UniversalWindowPackageResolver.isOwnMainActivityEvent(
+                eventPackageName = "br.com.mapeiaia.rotacerta",
+                eventClassName = "android.widget.LinearLayout",
+                eventType = 32,
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+                mainActivityClassName = "br.com.mapeiaia.rotacerta.MainActivity",
+                windowStateChangedType = 32,
+            ),
+        )
+    }
+
+    @Test
+    fun realMainActivityWindowEventIsRecognized() {
+        assertTrue(
+            UniversalWindowPackageResolver.isOwnMainActivityEvent(
+                eventPackageName = "br.com.mapeiaia.rotacerta",
+                eventClassName = "br.com.mapeiaia.rotacerta.MainActivity",
+                eventType = 32,
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+                mainActivityClassName = "br.com.mapeiaia.rotacerta.MainActivity",
+                windowStateChangedType = 32,
+            ),
+        )
     }
 }
