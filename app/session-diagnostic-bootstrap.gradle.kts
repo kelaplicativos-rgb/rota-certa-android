@@ -40,6 +40,11 @@ if (fragileClearBlock in sessionDiagnosticSource) {
     sessionDiagnosticSource = sessionDiagnosticSource.replace(fragileClearBlock, safeClearBlock)
 }
 
+sessionDiagnosticSource = sessionDiagnosticSource.replace(
+    "        val reportBody = \"\"\"{\n",
+    "        val reportBody = \"\"\"{\n    // universal_no_card_registration_0_1_102\n    // Leitura universal de tela: true\n",
+)
+
 val strictMarkerBlock = Regex(
     "(?s)        listOf\\(\\n            \"session_diagnostic_trace_v2\",.*?        \\}\\n        if \\(\"--- BACKUP INTERNO ---\"",
 )
@@ -71,4 +76,7 @@ if ("val targetIndex = if (clearStart >= 0)" !in verifiedSource) {
 }
 if ("if (false && \"session_diagnostic_freshness_v2\" !in service)" !in verifiedSource) {
     throw GradleException("Nao consegui desativar a substituicao insegura de freshness")
+}
+if ("universal_no_card_registration_0_1_102" !in verifiedSource || "Leitura universal de tela: true" !in verifiedSource) {
+    throw GradleException("Marcadores de compatibilidade do leitor universal ausentes")
 }
