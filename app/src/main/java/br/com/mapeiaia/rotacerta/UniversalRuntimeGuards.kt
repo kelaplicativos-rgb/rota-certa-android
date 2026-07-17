@@ -90,6 +90,37 @@ class UniversalLiveReadGate(
         timestamp > 0L && nowMillis >= timestamp && nowMillis - timestamp <= windowMillis
 }
 
+/**
+ * Regras pequenas e testaveis para o caminho rapido da leitura ao vivo.
+ *
+ * Em alguns aparelhos, TYPE_ACCESSIBILITY_OVERLAY vira temporariamente a raiz
+ * de acessibilidade enquanto o app de corrida continua em primeiro plano. A
+ * arvore da propria bolinha nao contem o card e produz texto vazio. Esse vazio
+ * nao representa saida do card e nao pode cancelar geocodificacao ou rota.
+ */
+object UniversalFastReadPolicy {
+    fun shouldIgnoreTransientEmptyAccessibilityRead(
+        text: String,
+        rootPackageName: String?,
+        effectivePackageName: String?,
+        ownPackageName: String,
+    ): Boolean {
+        if (text.isNotBlank()) return false
+        val own = normalize(ownPackageName) ?: return false
+        val root = normalize(rootPackageName)
+        val effective = normalize(effectivePackageName)
+        return root == own && effective != null && effective != own
+    }
+
+    fun shouldRequestOcr(
+        accessibilityOwnsCard: Boolean,
+        hasActiveAddressSignature: Boolean,
+    ): Boolean = !(accessibilityOwnsCard && hasActiveAddressSignature)
+
+    private fun normalize(value: String?): String? =
+        value?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+}
+
 /** Mantem o historico com uma entrada util por decisao, sem dezenas de copias. */
 class UniversalAnalysisDeduper(
     private val duplicateWindowMillis: Long = 60_000L,
