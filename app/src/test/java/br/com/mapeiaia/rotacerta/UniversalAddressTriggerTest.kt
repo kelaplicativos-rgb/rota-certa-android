@@ -9,7 +9,7 @@ import org.junit.Test
 
 class UniversalAddressTriggerTest {
     @Test
-    fun twoStreetsWithoutNumbersProduceZeroValidAddressesAndStayInactive() {
+    fun twoStreetsWithoutNumbersActivateAndUseLastStreetAsDestination() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             Rua das Flores
@@ -17,14 +17,25 @@ class UniversalAddressTriggerTest {
             """.trimIndent(),
         )
 
-        assertEquals(0, decision.addresses.size)
+        assertEquals(2, decision.addresses.size)
+        assertTrue(decision.active)
+        assertFalse(decision.shouldClearPreviousResult)
+        assertEquals("Rua das Flores", decision.pickup)
+        assertEquals("Avenida Brasil", decision.destination)
+    }
+
+    @Test
+    fun oneStreetWithoutNumberStaysInactive() {
+        val decision = UniversalAddressTrigger.evaluate("Rua das Flores")
+
+        assertEquals(listOf("Rua das Flores"), decision.addresses)
         assertFalse(decision.active)
         assertTrue(decision.shouldClearPreviousResult)
         assertNull(decision.destination)
     }
 
     @Test
-    fun oneNumberedStreetAndOneIncompleteStreetProduceOnlyOneValidAddress() {
+    fun numberedPickupAndUnnumberedDestinationActivateNormally() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             Rua das Flores, 120 - Centro, Sao Paulo - SP
@@ -32,14 +43,13 @@ class UniversalAddressTriggerTest {
             """.trimIndent(),
         )
 
-        assertEquals(listOf("Rua das Flores, 120 - Centro, Sao Paulo - SP"), decision.addresses)
-        assertFalse(decision.active)
-        assertTrue(decision.shouldClearPreviousResult)
-        assertNull(decision.destination)
+        assertTrue(decision.active)
+        assertEquals("Rua das Flores, 120 - Centro, Sao Paulo - SP", decision.pickup)
+        assertEquals("Avenida Brasil - Bela Vista, Santo Andre - SP", decision.destination)
     }
 
     @Test
-    fun twoNumberedStreetsActivateAndUseLastNumberedAddressAsDestination() {
+    fun twoNumberedStreetsStillActivateAndUseLastAddressAsDestination() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             A Rua das Flores, 120 - Centro, Sao Paulo - SP
@@ -55,7 +65,7 @@ class UniversalAddressTriggerTest {
     }
 
     @Test
-    fun incompleteLastAddressIsIgnoredAndPreviousCompleteAddressRemainsDestination() {
+    fun unnumberedLastAddressIsNotDiscarded() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             Rua Um, 10 - Centro, Sao Paulo - SP
@@ -65,12 +75,12 @@ class UniversalAddressTriggerTest {
         )
 
         assertTrue(decision.active)
-        assertEquals(2, decision.addresses.size)
-        assertEquals("Rua Dois, 20 - Centro, Santo Andre - SP", decision.destination)
+        assertEquals(3, decision.addresses.size)
+        assertEquals("Rua Tres - Centro, Maua - SP", decision.destination)
     }
 
     @Test
-    fun losingOneHouseNumberImmediatelyInvalidatesPreviousDecision() {
+    fun losingHouseNumberDoesNotInvalidateRecognizedStreet() {
         val before = UniversalAddressTrigger.evaluate(
             """
             Rua Um, 10 - Centro, Sao Paulo - SP
@@ -85,46 +95,43 @@ class UniversalAddressTriggerTest {
         )
 
         assertTrue(before.active)
-        assertFalse(after.active)
-        assertTrue(after.shouldClearPreviousResult)
-        assertEquals(1, after.addresses.size)
-        assertNull(after.destination)
-        assertEquals("", after.addressSignature)
+        assertTrue(after.active)
+        assertEquals(2, after.addresses.size)
+        assertEquals("Rua Dois - Centro, Santo Andre - SP", after.destination)
         assertNotEquals(before.screenHash, after.screenHash)
     }
 
     @Test
-    fun pricePhoneTimeDistanceAndRatingNeverSupplyMissingHouseNumbers() {
+    fun pricePhoneTimeDistanceAndRatingNeverBecomeAdditionalAddresses() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             Rua das Flores
-            Avenida Brasil
             R$ 35,00
             (11) 99999-8888
             18:30
             12,5 km
             Nota 4,9
+            Avenida Brasil
             """.trimIndent(),
         )
 
-        assertEquals(0, decision.addresses.size)
-        assertFalse(decision.active)
-        assertTrue(decision.shouldClearPreviousResult)
+        assertEquals(listOf("Rua das Flores", "Avenida Brasil"), decision.addresses)
+        assertTrue(decision.active)
+        assertEquals("Avenida Brasil", decision.destination)
     }
 
     @Test
-    fun noNumberMarkersAreRejectedAndNeverParticipateInTrigger() {
+    fun noNumberMarkersAreAcceptedAsStreetAddresses() {
         val decision = UniversalAddressTrigger.evaluate(
             """
             Rua das Flores, s/n - Centro, Sao Paulo - SP
             Avenida Brasil, SN - Bela Vista, Santo Andre - SP
-            Rua Central, sem numero - Centro, Maua - SP
             """.trimIndent(),
         )
 
-        assertEquals(0, decision.addresses.size)
-        assertFalse(decision.active)
-        assertNull(decision.destination)
+        assertEquals(2, decision.addresses.size)
+        assertTrue(decision.active)
+        assertEquals("Avenida Brasil, SN - Bela Vista, Santo Andre - SP", decision.destination)
     }
 
     @Test
@@ -148,20 +155,24 @@ class UniversalAddressTriggerTest {
     }
 
     @Test
-    fun galleryNoiseIsNeverBorrowedAsAHouseNumber() {
+    fun inDriveStyleCardAcceptsDestinationWithoutHouseNumber() {
         val decision = UniversalAddressTrigger.evaluate(
             """
-            Rua das Flores
-            12,5 km
-            Avenida Brasil
-            18:30
-            Rua Central
-            09000-000
+            Pedido de viagem
+            5,9 km
+            10 min
+            R$ 14,50
+            A Travessa Voa Voa Beija-Flor 37 (Jardim da Conquista)
+            B Rua Erundina (Jardim Rodolfo
+            Pirani, Sao Paulo - SP)
+            Aceitar por R$ 14,50
             """.trimIndent(),
         )
 
-        assertEquals(0, decision.addresses.size)
-        assertFalse(decision.active)
+        assertTrue(decision.active)
+        assertEquals(2, decision.addresses.size)
+        assertEquals("Travessa Voa Voa Beija-Flor 37 (Jardim da Conquista)", decision.pickup)
+        assertEquals("Rua Erundina (Jardim Rodolfo Pirani, Sao Paulo - SP)", decision.destination)
     }
 
     @Test
