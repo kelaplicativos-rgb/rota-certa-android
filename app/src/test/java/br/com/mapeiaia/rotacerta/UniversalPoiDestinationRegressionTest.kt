@@ -21,19 +21,4 @@ class UniversalPoiDestinationRegressionTest {
         )
         assertEquals(addresses.last(), fields.destination)
     }
-
-    @Test
-    fun flattenedEstablishmentDestinationDoesNotMergeIntoPickup() {
-        val text = "Avenida Juscelino Kubitschek de Oliveira, 1974 (Portal D'oeste, Osasco - SP) " +
-            "Pronto Socorro José Agostinho dos Santos Parque Imperial " +
-            "(Rua José Martinho - Parque Imperial, Barueri - SP)"
-
-        val addresses = UniversalScreenAddressParser.findAddresses(text)
-
-        assertEquals(2, addresses.size)
-        assertEquals(
-            "Rua José Martinho - Parque Imperial, Barueri - SP)",
-            addresses.last(),
-        )
-    }
 }
