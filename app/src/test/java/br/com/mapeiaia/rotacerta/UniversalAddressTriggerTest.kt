@@ -128,13 +128,35 @@ class UniversalAddressTriggerTest {
     }
 
     @Test
-    fun numberFromAnotherLineIsNeverBorrowedByIncompleteStreet() {
+    fun galleryOcrWrappedHouseNumbersActivateAndUseLastAddress() {
         val decision = UniversalAddressTrigger.evaluate(
             """
+            Google Fotos
+            Origem
             Rua das Flores,
-            120
+            120 - Centro, Sao Paulo - SP
+            Destino
             Avenida Brasil
-            900
+            900 - Bela Vista, Santo Andre - SP
+            """.trimIndent(),
+        )
+
+        assertTrue(decision.active)
+        assertEquals(2, decision.addresses.size)
+        assertEquals("Rua das Flores, 120 - Centro, Sao Paulo - SP", decision.pickup)
+        assertEquals("Avenida Brasil 900 - Bela Vista, Santo Andre - SP", decision.destination)
+    }
+
+    @Test
+    fun galleryNoiseIsNeverBorrowedAsAHouseNumber() {
+        val decision = UniversalAddressTrigger.evaluate(
+            """
+            Rua das Flores
+            12,5 km
+            Avenida Brasil
+            18:30
+            Rua Central
+            09000-000
             """.trimIndent(),
         )
 
