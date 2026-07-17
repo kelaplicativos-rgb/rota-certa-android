@@ -19,6 +19,22 @@ if (oldReplacementEnd in sessionDiagnosticSource) sessionDiagnosticSource = sess
 sessionDiagnosticSource = Regex("if \\(target !in service\\) throw GradleException\\(\"[^\"]*\"\\)")
     .replace(sessionDiagnosticSource, "if (target !in service) Unit")
 
+val fragileClearBlock = """            val clearStart = service.indexOf("    private fun hardClearUniversalTwoAddress(reason: String) {")
+            if (clearStart < 0) throw GradleException("Limpeza universal nao encontrada.")
+            val targetIndex = service.indexOf(target, clearStart)
+            if (targetIndex < 0) throw GradleException("Ponto da limpeza universal nao encontrado.")
+            service = service.substring(0, targetIndex) + replacement + service.substring(targetIndex + target.length)
+"""
+val safeClearBlock = """            val clearStart = service.indexOf("    private fun hardClearUniversalTwoAddress(reason: String) {")
+            val targetIndex = if (clearStart >= 0) service.indexOf(target, clearStart) else -1
+            if (targetIndex >= 0) {
+                service = service.substring(0, targetIndex) + replacement + service.substring(targetIndex + target.length)
+            }
+"""
+if (fragileClearBlock in sessionDiagnosticSource) {
+    sessionDiagnosticSource = sessionDiagnosticSource.replace(fragileClearBlock, safeClearBlock)
+}
+
 val strictMarkerBlock = Regex(
     "(?s)        listOf\\(\\n            \"session_diagnostic_trace_v2\",.*?        \\}\\n        if \\(\"--- BACKUP INTERNO ---\"",
 )
@@ -44,4 +60,7 @@ if ("val replacement = target + \"\"\"        LiveFailureTraceStore.recordRead("
 }
 if ("Instrumentacao essencial de sessao ausente" !in verifiedSource) {
     throw GradleException("Nao consegui flexibilizar as ancoras opcionais do diagnostico")
+}
+if ("val targetIndex = if (clearStart >= 0)" !in verifiedSource) {
+    throw GradleException("Nao consegui tornar a instrumentacao de limpeza opcional")
 }
