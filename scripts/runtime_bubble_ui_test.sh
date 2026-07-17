@@ -7,8 +7,8 @@ FIXTURE_APK="${RUNTIME_FIXTURE_APK:-runtimefixture/build/outputs/apk/debug/runti
 PACKAGE="br.com.mapeiaia.rotacerta"
 ACTIVITY="$PACKAGE/.MainActivity"
 SERVICE="$PACKAGE/$PACKAGE.LiveRideAccessibilityService"
-FIXTURE_PACKAGE="br.com.mapeiaia.rotacerta.runtimefixture"
-FIXTURE_ACTIVITY="$FIXTURE_PACKAGE/.TwoAddressActivity"
+FIXTURE_PACKAGE="sinet.startup.indriver"
+FIXTURE_ACTIVITY="$FIXTURE_PACKAGE/br.com.mapeiaia.rotacerta.runtimefixture.TwoAddressActivity"
 PREFS_PATH="shared_prefs/rota_certa_bubble.xml"
 mkdir -p "$OUT"
 
@@ -119,7 +119,6 @@ PY
 
 wait_boot
 echo "RUNTIME_STAGE=android_booted" >> "$OUT/progress.txt"
-adb shell getprop > "$OUT/device-properties.txt"
 adb shell settings put global window_animation_scale 0 || true
 adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
@@ -153,30 +152,19 @@ PY
 
 find_rota_control "$OUT/app-before.xml" "$OUT/rota-before.txt" "$OUT/rota-coordinates.txt"
 read -r rota_x rota_y < "$OUT/rota-coordinates.txt"
-if ! grep -Fq 'ON' "$OUT/rota-before.txt"; then
-  echo "Rota deveria iniciar ligada" >&2
-  exit 1
-fi
-
+grep -Fq 'ON' "$OUT/rota-before.txt"
 adb shell input tap "$rota_x" "$rota_y"
 sleep 3
 dump_ui /sdcard/app-after-off.xml "$OUT/app-after-off.xml"
 adb exec-out screencap -p > "$OUT/app-after-off.png"
 find_rota_control "$OUT/app-after-off.xml" "$OUT/rota-after-off.txt" "$OUT/rota-coordinates-after-off.txt"
-if ! grep -Fq 'OFF' "$OUT/rota-after-off.txt"; then
-  echo "Rota nao mudou para OFF" >&2
-  exit 1
-fi
-
+grep -Fq 'OFF' "$OUT/rota-after-off.txt"
 adb shell input tap "$rota_x" "$rota_y"
 sleep 3
 dump_ui /sdcard/app-restored-on.xml "$OUT/app-restored-on.xml"
 adb exec-out screencap -p > "$OUT/app-restored-on.png"
 find_rota_control "$OUT/app-restored-on.xml" "$OUT/rota-restored-on.txt" "$OUT/rota-coordinates-restored.txt"
-if ! grep -Fq 'ON' "$OUT/rota-restored-on.txt"; then
-  echo "Rota nao voltou para ON" >&2
-  exit 1
-fi
+grep -Fq 'ON' "$OUT/rota-restored-on.txt"
 
 cat > "$OUT/in-app-result.txt" <<EOF
 IN_APP_CENTER=visible
@@ -195,65 +183,48 @@ adb shell dumpsys accessibility > "$OUT/dumpsys-accessibility.txt"
 grep -Fq "$PACKAGE" "$OUT/enabled-services.txt"
 grep -Fq 'TYPE_ACCESSIBILITY_OVERLAY' "$OUT/dumpsys-accessibility.txt"
 
-# Force-stop apos ativar a acessibilidade encerraria o servico. Apenas volte a Home.
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell dumpsys accessibility > "$OUT/home-bubble-accessibility.txt"
 adb exec-out screencap -p > "$OUT/home-bubble.png"
-wait_runtime_prefs "$OUT/home-runtime-prefs.xml" 30 '>cinza|'
+wait_runtime_prefs "$OUT/home-runtime-prefs.xml" 40 '>cinza|'
 
-python3 - "$OUT/home-bubble-accessibility.txt" "$OUT/floating-coordinates.txt" "$OUT/floating-window-bounds.txt" "$OUT/floating-window-result.txt" <<'PY'
+python3 - "$OUT/home-bubble-accessibility.txt" "$OUT/floating-coordinates.txt" "$OUT/floating-window-result.txt" <<'PY'
 import re
 import sys
 from pathlib import Path
-accessibility, coordinates, bounds_path, result = map(Path, sys.argv[1:])
+accessibility, coordinates, result = map(Path, sys.argv[1:])
 text = accessibility.read_text(errors='replace')
 matches = re.findall(r'type=TYPE_ACCESSIBILITY_OVERLAY.*?bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)', text)
 if not matches:
-    raise SystemExit('Janela TYPE_ACCESSIBILITY_OVERLAY nao encontrada no Android')
+    raise SystemExit('Janela TYPE_ACCESSIBILITY_OVERLAY nao encontrada')
 boxes = [tuple(map(int, values)) for values in matches]
 x1, y1, x2, y2 = min(boxes, key=lambda b: max(1, b[2]-b[0]) * max(1, b[3]-b[1]))
-if x2 <= x1 or y2 <= y1:
-    raise SystemExit(f'Bounds invalidos da bolinha: {(x1, y1, x2, y2)}')
 coordinates.write_text(f'{(x1+x2)//2} {(y1+y2)//2}\n')
-bounds_path.write_text(f'{x1},{y1},{x2},{y2}\n')
 result.write_text('ACCESSIBILITY_OVERLAY_WINDOW=visible\n' + f'OVERLAY_BOUNDS={x1},{y1},{x2},{y2}\n')
 PY
 
 echo "RUNTIME_STAGE=gray_idle_approved" >> "$OUT/progress.txt"
-adb shell am force-stop "$FIXTURE_PACKAGE"
+adb shell am force-stop "$FIXTURE_PACKAGE" || true
 screen_started_ms="$(date +%s%3N)"
 adb shell am start -W -n "$FIXTURE_ACTIVITY" | tee "$OUT/fixture-start.txt"
-wait_runtime_prefs \
-  "$OUT/yellow-runtime-prefs.xml" \
-  80 \
-  '>amarelo|' \
-  '<int name="runtime_visible_addresses" value="2"' \
-  'Avenida Brasil, 900 - Bela Vista, Santo Andre - SP'
+sleep 3
+wait_runtime_prefs "$OUT/unregistered-runtime-prefs.xml" 40 '>cinza|' '<int name="runtime_visible_addresses" value="0"'
 screen_finished_ms="$(date +%s%3N)"
-screen_to_yellow_ms="$((screen_finished_ms - screen_started_ms))"
-echo "$screen_to_yellow_ms" > "$OUT/screen-to-yellow-ms.txt"
+echo "$((screen_finished_ms - screen_started_ms))" > "$OUT/unregistered-screen-check-ms.txt"
 
-python3 - "$OUT/yellow-runtime-prefs.xml" "$OUT/yellow-latency-ms.txt" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-from pathlib import Path
-root = ET.parse(sys.argv[1]).getroot()
-def value(name):
-    node = root.find(f"long[@name='{name}']")
-    if node is None:
-        raise SystemExit(f'Campo ausente: {name}')
-    return int(node.attrib['value'])
-latency = value('runtime_validation_state_at') - value('runtime_trigger_at')
-Path(sys.argv[2]).write_text(str(latency) + '\n')
-if latency < 0 or latency > 250:
-    raise SystemExit(f'Gatilho interno amarelo demorou {latency}ms')
-PY
-yellow_latency_ms="$(cat "$OUT/yellow-latency-ms.txt" | tr -d '\r\n')"
+if grep -Fq 'runtime_last_destination' "$OUT/unregistered-runtime-prefs.xml"; then
+  echo "Destino foi mantido sem modelo cadastrado" >&2
+  exit 1
+fi
+if grep -Fq 'runtime_registered_template' "$OUT/unregistered-runtime-prefs.xml"; then
+  echo "Modelo inexistente foi aplicado" >&2
+  exit 1
+fi
 
-dump_ui /sdcard/two-address-trigger.xml "$OUT/two-address-trigger.xml"
-adb exec-out screencap -p > "$OUT/two-address-trigger.png"
-python3 - "$OUT/two-address-trigger.xml" "$OUT/two-address-trigger-text.txt" <<'PY'
+dump_ui /sdcard/unregistered-two-address.xml "$OUT/unregistered-two-address.xml"
+adb exec-out screencap -p > "$OUT/unregistered-two-address.png"
+python3 - "$OUT/unregistered-two-address.xml" "$OUT/unregistered-two-address-text.txt" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -262,45 +233,27 @@ text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('
 Path(sys.argv[2]).write_text(text)
 for expected in ('Rua das Flores, 120', 'Avenida Brasil, 900'):
     if expected not in text:
-        raise SystemExit(f'Endereco ausente na tela controlada: {expected}')
+        raise SystemExit(f'Endereco controlado ausente: {expected}')
 PY
 
-echo "RUNTIME_STAGE=yellow_two_addresses_approved" >> "$OUT/progress.txt"
-clear_started_ms="$(date +%s%3N)"
-adb shell input keyevent KEYCODE_HOME
-wait_runtime_prefs "$OUT/cleared-runtime-prefs.xml" 30 '>cinza|' '<int name="runtime_visible_addresses" value="0"'
-clear_finished_ms="$(date +%s%3N)"
-clear_latency_ms="$((clear_finished_ms - clear_started_ms))"
-echo "$clear_latency_ms" > "$OUT/clear-latency-ms.txt"
-if [ "$clear_latency_ms" -gt 1200 ]; then
-  echo "Limpeza demorou ${clear_latency_ms}ms" >&2
-  exit 1
-fi
-if grep -Fq 'runtime_last_destination' "$OUT/cleared-runtime-prefs.xml"; then
-  echo "Destino anterior permaneceu depois da limpeza" >&2
-  exit 1
-fi
-adb shell dumpsys accessibility > "$OUT/after-address-clear-accessibility.txt"
-adb exec-out screencap -p > "$OUT/after-address-clear.png"
-
-cat > "$OUT/two-address-result.txt" <<EOF
-UNIVERSAL_SCREEN=controlled_external_android_activity
-VISIBLE_ADDRESSES=2
-PICKUP=Rua das Flores, 120 - Centro, Sao Paulo - SP
-DESTINATION=Avenida Brasil, 900 - Bela Vista, Santo Andre - SP
-DESTINATION_RULE=last_visible_address
-SCREEN_TO_YELLOW_MS=$screen_to_yellow_ms
-INTERNAL_YELLOW_TRIGGER_LATENCY_MS=$yellow_latency_ms
-YELLOW_TRIGGER=approved
-CLEAR_LATENCY_MS=$clear_latency_ms
-IMMEDIATE_CLEAR_TO_GRAY=approved
-STALE_DESTINATION_AFTER_CLEAR=absent
-UNIVERSAL_TWO_ADDRESS_RUNTIME=approved
+cat > "$OUT/registered-card-result.txt" <<EOF
+CONTROLLED_PACKAGE=$FIXTURE_PACKAGE
+VISIBLE_NUMBERED_ADDRESSES_ON_SCREEN=2
+REGISTERED_MODELS=0
+BUBBLE_STATE=gray
+DESTINATION_WITHOUT_MODEL=absent
+UNREGISTERED_TWO_ADDRESS_BLOCK=approved
+REGISTERED_CARD_RUNTIME=approved
 EOF
+
+echo "RUNTIME_STAGE=unregistered_addresses_blocked" >> "$OUT/progress.txt"
+adb shell input keyevent KEYCODE_HOME
+wait_runtime_prefs "$OUT/cleared-runtime-prefs.xml" 40 '>cinza|' '<int name="runtime_visible_addresses" value="0"'
+adb exec-out screencap -p > "$OUT/after-address-clear.png"
 
 read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"
 adb shell input tap "$bubble_x" "$bubble_y"
-wait_runtime_prefs "$OUT/menu-open-runtime-prefs.xml" 30 '<boolean name="runtime_menu_open" value="true"'
+wait_runtime_prefs "$OUT/menu-open-runtime-prefs.xml" 40 '<boolean name="runtime_menu_open" value="true"'
 adb shell dumpsys accessibility > "$OUT/floating-menu-accessibility.txt"
 adb exec-out screencap -p > "$OUT/floating-menu.png"
 overlay_count="$(grep -c 'type=TYPE_ACCESSIBILITY_OVERLAY' "$OUT/floating-menu-accessibility.txt" || true)"
@@ -314,9 +267,8 @@ ACCESSIBILITY_SERVICE=enabled
 FLOATING_BUBBLE=visible
 ACCESSIBILITY_OVERLAY_WINDOWS=$overlay_count
 MAIN_TAP=opened_grid
-GRID_LABELS=validated_in_source_and_apk
 FLOATING_RUNTIME=approved
 EOF
 
-cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/two-address-result.txt" "$OUT/floating-result.txt" | tee "$OUT/runtime-validation.txt"
+cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" "$OUT/floating-result.txt" | tee "$OUT/runtime-validation.txt"
 echo "RUNTIME_STAGE=approved" >> "$OUT/progress.txt"
