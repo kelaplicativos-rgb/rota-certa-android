@@ -19,6 +19,11 @@ if (oldReplacementEnd in sessionDiagnosticSource) sessionDiagnosticSource = sess
 sessionDiagnosticSource = Regex("if \\(target !in service\\) throw GradleException\\(\"[^\"]*\"\\)")
     .replace(sessionDiagnosticSource, "if (target !in service) Unit")
 
+sessionDiagnosticSource = sessionDiagnosticSource.replace(
+    "if (\"session_diagnostic_freshness_v2\" !in service) {",
+    "if (false && \"session_diagnostic_freshness_v2\" !in service) {",
+)
+
 val fragileClearBlock = """            val clearStart = service.indexOf("    private fun hardClearUniversalTwoAddress(reason: String) {")
             if (clearStart < 0) throw GradleException("Limpeza universal nao encontrada.")
             val targetIndex = service.indexOf(target, clearStart)
@@ -63,4 +68,7 @@ if ("Instrumentacao essencial de sessao ausente" !in verifiedSource) {
 }
 if ("val targetIndex = if (clearStart >= 0)" !in verifiedSource) {
     throw GradleException("Nao consegui tornar a instrumentacao de limpeza opcional")
+}
+if ("if (false && \"session_diagnostic_freshness_v2\" !in service)" !in verifiedSource) {
+    throw GradleException("Nao consegui desativar a substituicao insegura de freshness")
 }
