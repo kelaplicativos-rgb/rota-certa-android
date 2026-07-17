@@ -4,12 +4,11 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Detecta somente enderecos completos e numerados no texto visivel.
+ * Detecta enderecos de rua no texto visivel, com ou sem numero de imovel.
  *
- * Um candidato so e aceito quando a mesma linha que contem o logradouro tambem
- * contem um numero de imovel estruturalmente associado. Bairro, cidade, ponto de
- * referencia, estabelecimento, CEP, coordenada e numeros soltos nunca completam
- * artificialmente um endereco.
+ * O numero melhora a precisao, mas nao e obrigatorio porque alguns cards exibem
+ * somente o nome do logradouro. Preco, distancia, horario, telefone, CEP e
+ * controles da interface continuam bloqueados como falsos enderecos.
  */
 object UniversalScreenAddressParser {
     private val streetStartRegex = Regex(
@@ -35,6 +34,10 @@ object UniversalScreenAddressParser {
     )
     private val houseNumberMarkerRegex = Regex(
         "n\\s*(?:[º°o]\\.?|\\.|[uú]mero)",
+        RegexOption.IGNORE_CASE,
+    )
+    private val houseNumberTokenRegex = Regex(
+        "\\b\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?\\b",
         RegexOption.IGNORE_CASE,
     )
     private val explicitHouseNumberRegex = Regex(
@@ -77,7 +80,7 @@ object UniversalScreenAddressParser {
         "(?:r\\$|\\b\\d+(?:[,.]\\d+)?\\s*(?:km|m|min|minutos?)\\b|aceitar|ofere[cç]a|tarifa|pre[cç]o|pix|dinheiro|cart[aã]o|fechar|cancelar)",
         RegexOption.IGNORE_CASE,
     )
-    private val invalidStreetNameWords = setOf("de", "da", "do", "das", "dos", "n", "no", "numero", "número")
+    private val invalidStreetNameWords = setOf("de", "da", "do", "das", "dos", "n", "no", "numero", "número", "sn")
 
     fun parse(text: String): RideFields {
         val addresses = findAddresses(text)
@@ -97,7 +100,7 @@ object UniversalScreenAddressParser {
         var index = 0
         while (index < lines.size) {
             val current = cleanAddressSegment(lines[index])
-            if (isCompleteNumberedAddress(current)) {
+            if (isRecognizedAddress(current)) {
                 val parts = mutableListOf(current)
                 var nextIndex = index + 1
                 while (nextIndex < lines.size && parts.size < 3) {
@@ -119,8 +122,17 @@ object UniversalScreenAddressParser {
         return candidates.distinctBy(::canonical)
     }
 
-    fun isCompleteNumberedAddress(value: String): Boolean {
+    /** Aceita logradouro reconhecivel mesmo quando o card omite o numero. */
+    fun isRecognizedAddress(value: String): Boolean {
         if (value.length < 5 || isNoise(value)) return false
+        val streetMatch = streetStartRegex.find(value) ?: return false
+        val streetGroup = streetMatch.groups[1] ?: return false
+        return hasMeaningfulStreetName(value, streetGroup.range.last + 1)
+    }
+
+    /** Mantido para validar e recompor numeros quebrados pelo OCR. */
+    fun isCompleteNumberedAddress(value: String): Boolean {
+        if (!isRecognizedAddress(value)) return false
         val streetMatch = streetStartRegex.find(value) ?: return false
         val streetGroup = streetMatch.groups[1] ?: return false
         val streetTypeEnd = streetGroup.range.last + 1
@@ -144,6 +156,23 @@ object UniversalScreenAddressParser {
             .toList()
             .asReversed()
             .any { range -> isValidHouseNumberRange(value, streetTypeEnd, range, excludedRanges) }
+    }
+
+    private fun hasMeaningfulStreetName(value: String, streetTypeEnd: Int): Boolean {
+        val streetName = value.substring(streetTypeEnd)
+            .substringBefore('(')
+            .substringBefore(',')
+            .substringBefore(" - ")
+            .replace(noNumberRegex, " ")
+            .replace(houseNumberMarkerRegex, " ")
+            .replace(houseNumberTokenRegex, " ")
+            .replace(Regex("[;:\\-–—]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return streetName
+            .split(Regex("\\s+"))
+            .map(::canonical)
+            .any { token -> token.any(Char::isLetter) && token !in invalidStreetNameWords }
     }
 
     private fun isValidHouseNumberRange(
