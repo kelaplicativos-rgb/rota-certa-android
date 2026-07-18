@@ -140,7 +140,7 @@ val universal99CardAddresses111 by tasks.registering {
             text = rc111ReplaceRegion(
                 source = text,
                 startToken = "    private fun looksLikeContinuation(value: String, previous: String): Boolean {",
-                endToken = "    private fun cleanAddressSegment(value: String): String {",
+                endToken = "    private fun splitAddressSegments(value: String): List<String> {",
                 replacement = """    private fun looksLikeContinuation(value: String, previous: String): Boolean {
         if (value.length < 2 || isNoise(value)) return false
         if (streetStartRegex.containsMatchIn(value) || parenthesizedStreetRegex.containsMatchIn(value)) return false
@@ -196,6 +196,7 @@ val universal99CardAddresses111 by tasks.registering {
             "universal_99_join_before_confirm_0_1_111",
             "universal_99_named_destination_0_1_111",
             "universal_99_wrapped_address_0_1_111",
+            "splitAddressSegments",
             "universal_99_card_addresses_0_1_111",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Contrato dos cards 99 incompleto: $marker")
