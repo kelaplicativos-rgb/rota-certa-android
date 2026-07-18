@@ -32,6 +32,26 @@ fun fastRead110InsertBeforeLastBrace(
     return source.substring(0, index) + addition + source.substring(index)
 }
 
+fun fastRead110ReplaceContinuousScanDelay(source: String): String {
+    val start = source.indexOf("    private fun startContinuousScan() {")
+    if (start < 0) throw GradleException("Inicio de startContinuousScan ausente")
+    val end = source.indexOf("    private fun startProximityAlertMonitor()", start)
+    if (end < 0) throw GradleException("Fim de startContinuousScan ausente")
+    val section = source.substring(start, end)
+    val delayLine = Regex("(?m)^ {16}delay\\([^\\n]+\\)$")
+        .findAll(section)
+        .lastOrNull()
+        ?: throw GradleException("Delay final de startContinuousScan ausente")
+    val replacement = """                val accessibilityScanDelayMillis = UniversalFastReadPolicy.minimumAccessibilityScanIntervalMillis(
+                    accessibilityOwnsCard = universalAccessibilityOwnsCard,
+                    hasActiveAddressSignature = universalActiveAddressSignature != null,
+                )
+                delay(accessibilityScanDelayMillis)"""
+    val absoluteStart = start + delayLine.range.first
+    val absoluteEndExclusive = start + delayLine.range.last + 1
+    return source.replaceRange(absoluteStart, absoluteEndExclusive, replacement)
+}
+
 val universalFastReadRuntime110 by tasks.registering {
     val serviceFile = layout.projectDirectory.file(
         "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
@@ -133,28 +153,7 @@ val universalFastReadRuntime110 by tasks.registering {
 
         var serviceText = service.readText()
         if ("universal_fast_read_runtime_0_1_110" !in serviceText) {
-            serviceText = fastRead110ReplaceOnce(
-                source = serviceText,
-                oldValue = """                delay(SCAN_LOOP_MS)
-            }
-        }
-    }
-
-    private fun startProximityAlertMonitor() {
-""",
-                newValue = """                val accessibilityScanDelayMillis = UniversalFastReadPolicy.minimumAccessibilityScanIntervalMillis(
-                    accessibilityOwnsCard = universalAccessibilityOwnsCard,
-                    hasActiveAddressSignature = universalActiveAddressSignature != null,
-                )
-                delay(accessibilityScanDelayMillis)
-            }
-        }
-    }
-
-    private fun startProximityAlertMonitor() {
-""",
-                label = "polling adaptativo da acessibilidade",
-            )
+            serviceText = fastRead110ReplaceContinuousScanDelay(serviceText)
             serviceText += "\n// universal_fast_read_runtime_0_1_110\n"
             service.writeText(serviceText)
         }
