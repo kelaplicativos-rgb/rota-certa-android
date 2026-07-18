@@ -15,16 +15,19 @@ enum class UniversalLiveReadAction {
  * Impede que OCR e acessibilidade disputem a mesma bolinha.
  *
  * A acessibilidade tem prioridade quando encontrou enderecos. O OCR continua
- * como fallback para telas que nao expoem texto, mas uma leitura OCR vazia nao
- * apaga um card valido que acabou de ser lido pela acessibilidade.
+ * como fallback para telas que nao expoem texto. Uma leitura vazia isolada nao
+ * encerra um card: o fim precisa ser confirmado pela mesma fonte ativa.
  */
 class UniversalLiveReadGate(
     private val accessibilityPriorityMillis: Long = 1_000L,
     private val ocrGraceMillis: Long = 750L,
+    private val inactiveConfirmationsRequired: Int = 2,
 ) {
     private var activeSource: UniversalLiveReadSource? = null
     private var lastAccessibilityActiveAtMillis: Long = 0L
     private var lastOcrActiveAtMillis: Long = 0L
+    private var lastInactiveSource: UniversalLiveReadSource? = null
+    private var consecutiveInactiveReads: Int = 0
 
     fun submit(
         source: UniversalLiveReadSource,
@@ -32,6 +35,7 @@ class UniversalLiveReadGate(
         nowMillis: Long = System.currentTimeMillis(),
     ): UniversalLiveReadAction {
         if (active) {
+            resetInactiveConfirmation()
             return when (source) {
                 UniversalLiveReadSource.Accessibility -> {
                     activeSource = source
@@ -58,23 +62,18 @@ class UniversalLiveReadGate(
             UniversalLiveReadSource.Ocr -> {
                 when {
                     activeSource == UniversalLiveReadSource.Accessibility -> UniversalLiveReadAction.Ignore
-                    activeSource == UniversalLiveReadSource.Ocr -> {
-                        activeSource = null
-                        UniversalLiveReadAction.Clear
-                    }
+                    activeSource == UniversalLiveReadSource.Ocr -> confirmInactive(source)
                     else -> UniversalLiveReadAction.Ignore
                 }
             }
 
             UniversalLiveReadSource.Accessibility -> {
-                if (
+                when {
                     activeSource == UniversalLiveReadSource.Ocr &&
-                    isFresh(lastOcrActiveAtMillis, nowMillis, ocrGraceMillis)
-                ) {
-                    UniversalLiveReadAction.Ignore
-                } else {
-                    activeSource = null
-                    UniversalLiveReadAction.Clear
+                        isFresh(lastOcrActiveAtMillis, nowMillis, ocrGraceMillis) ->
+                        UniversalLiveReadAction.Ignore
+                    activeSource == UniversalLiveReadSource.Accessibility -> confirmInactive(source)
+                    else -> UniversalLiveReadAction.Ignore
                 }
             }
         }
@@ -84,6 +83,27 @@ class UniversalLiveReadGate(
         activeSource = null
         lastAccessibilityActiveAtMillis = 0L
         lastOcrActiveAtMillis = 0L
+        resetInactiveConfirmation()
+    }
+
+    private fun confirmInactive(source: UniversalLiveReadSource): UniversalLiveReadAction {
+        if (lastInactiveSource != source) {
+            lastInactiveSource = source
+            consecutiveInactiveReads = 1
+        } else {
+            consecutiveInactiveReads += 1
+        }
+        if (consecutiveInactiveReads < inactiveConfirmationsRequired.coerceAtLeast(1)) {
+            return UniversalLiveReadAction.Ignore
+        }
+        activeSource = null
+        resetInactiveConfirmation()
+        return UniversalLiveReadAction.Clear
+    }
+
+    private fun resetInactiveConfirmation() {
+        lastInactiveSource = null
+        consecutiveInactiveReads = 0
     }
 
     private fun isFresh(timestamp: Long, nowMillis: Long, windowMillis: Long): Boolean =
@@ -99,6 +119,13 @@ class UniversalLiveReadGate(
  * nao representa saida do card e nao pode cancelar geocodificacao ou rota.
  */
 object UniversalFastReadPolicy {
+    private val passivePackages = setOf(
+        "com.android.systemui",
+        "com.google.android.documentsui",
+        "com.android.documentsui",
+        "com.android.settings",
+    )
+
     fun shouldIgnoreTransientEmptyAccessibilityRead(
         text: String,
         rootPackageName: String?,
@@ -112,10 +139,25 @@ object UniversalFastReadPolicy {
         return root == own && effective != null && effective != own
     }
 
+    fun shouldScanLivePackage(
+        packageName: String?,
+        ownPackageName: String,
+    ): Boolean {
+        val normalized = normalize(packageName) ?: return false
+        val own = normalize(ownPackageName)
+        if (normalized == own || normalized in passivePackages) return false
+        if (normalized.contains("launcher")) return false
+        if (normalized.contains("inputmethod") || normalized.contains("keyboard")) return false
+        return true
+    }
+
     fun shouldRequestOcr(
         accessibilityOwnsCard: Boolean,
         hasActiveAddressSignature: Boolean,
     ): Boolean = !(accessibilityOwnsCard && hasActiveAddressSignature)
+
+    fun minimumOcrIntervalMillis(hasActiveAddressSignature: Boolean): Long =
+        if (hasActiveAddressSignature) 650L else 300L
 
     private fun normalize(value: String?): String? =
         value?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
