@@ -22,6 +22,16 @@ fun fastRead110ReplaceOnce(
     return source.replaceFirst(oldValue, newValue)
 }
 
+fun fastRead110InsertBeforeLastBrace(
+    source: String,
+    addition: String,
+    label: String,
+): String {
+    val index = source.lastIndexOf("\n}")
+    if (index < 0) throw GradleException("Fechamento de classe ausente para $label")
+    return source.substring(0, index) + addition + source.substring(index)
+}
+
 val universalFastReadRuntime110 by tasks.registering {
     val serviceFile = layout.projectDirectory.file(
         "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
@@ -151,53 +161,27 @@ val universalFastReadRuntime110 by tasks.registering {
 
         var parserTestText = parserTest.readText()
         if ("wrappedNeighborhoodAfterDanglingSaoIsJoined" !in parserTestText) {
-            parserTestText = fastRead110ReplaceOnce(
-                source = parserTestText,
-                oldValue = """    @Test
-    fun realAddressStillWinsAfterNoisyLines() {
-        val fields = UniversalScreenAddressParser.parse(
-            """
-            qua., 15 de jul.
-            Documento em PDF
-            R$ 42,00
-            Rua Doutor Paulo - Centro, Tres Coracoes - MG
-            """.trimIndent(),
-        )
-
-        assertEquals("Rua Doutor Paulo - Centro, Tres Coracoes - MG", fields.destination)
-    }
-}
-""",
-                newValue = """    @Test
-    fun realAddressStillWinsAfterNoisyLines() {
-        val fields = UniversalScreenAddressParser.parse(
-            """
-            qua., 15 de jul.
-            Documento em PDF
-            R$ 42,00
-            Rua Doutor Paulo - Centro, Tres Coracoes - MG
-            """.trimIndent(),
-        )
-
-        assertEquals("Rua Doutor Paulo - Centro, Tres Coracoes - MG", fields.destination)
-    }
+            val tripleQuote = "\"\"\""
+            val parserTestAddition = """
 
     @Test
     fun wrappedNeighborhoodAfterDanglingSaoIsJoined() {
         val fields = UniversalScreenAddressParser.parse(
-            """
+            ${tripleQuote}
             Av. Mateo Bei, Sao Mateus, Sao
             12 minutos (3.4 km)
             Rua Pedro da Lomba, 188, Sao
             Rafael, Sao Paulo
-            """.trimIndent(),
+            ${tripleQuote}.trimIndent(),
         )
 
         assertEquals("Av. Mateo Bei, Sao Mateus, Sao", fields.pickup)
         assertEquals("Rua Pedro da Lomba, 188, Sao Rafael, Sao Paulo", fields.destination)
     }
-}
-""",
+"""
+            parserTestText = fastRead110InsertBeforeLastBrace(
+                source = parserTestText,
+                addition = parserTestAddition,
                 label = "teste da localidade quebrada",
             )
             parserTest.writeText(parserTestText)
@@ -205,22 +189,7 @@ val universalFastReadRuntime110 by tasks.registering {
 
         var guardTestText = guardTest.readText()
         if ("ocrOwnedCardThrottlesOnlyRedundantAccessibilityPolling" !in guardTestText) {
-            guardTestText = fastRead110ReplaceOnce(
-                source = guardTestText,
-                oldValue = """    @Test
-    fun activeOcrUsesSlowerWatchdogWithoutDelayingFirstRead() {
-        assertEquals(300L, UniversalFastReadPolicy.minimumOcrIntervalMillis(false))
-        assertEquals(650L, UniversalFastReadPolicy.minimumOcrIntervalMillis(true))
-    }
-
-    @Test
-    fun duplicateHistoryIsBlockedInsideWindow() {
-""",
-                newValue = """    @Test
-    fun activeOcrUsesSlowerWatchdogWithoutDelayingFirstRead() {
-        assertEquals(300L, UniversalFastReadPolicy.minimumOcrIntervalMillis(false))
-        assertEquals(650L, UniversalFastReadPolicy.minimumOcrIntervalMillis(true))
-    }
+            val guardTestAddition = """
 
     @Test
     fun ocrOwnedCardThrottlesOnlyRedundantAccessibilityPolling() {
@@ -246,10 +215,10 @@ val universalFastReadRuntime110 by tasks.registering {
             ),
         )
     }
-
-    @Test
-    fun duplicateHistoryIsBlockedInsideWindow() {
-""",
+"""
+            guardTestText = fastRead110InsertBeforeLastBrace(
+                source = guardTestText,
+                addition = guardTestAddition,
                 label = "teste do polling adaptativo",
             )
             guardTest.writeText(guardTestText)
