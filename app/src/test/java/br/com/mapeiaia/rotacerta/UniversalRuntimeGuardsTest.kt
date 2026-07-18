@@ -21,7 +21,7 @@ class UniversalRuntimeGuardsTest {
     }
 
     @Test
-    fun ocrFallbackSurvivesTemporaryEmptyAccessibility() {
+    fun ocrFallbackRequiresTwoEmptyFramesBeforeClear() {
         val gate = UniversalLiveReadGate()
 
         assertEquals(
@@ -33,8 +33,31 @@ class UniversalRuntimeGuardsTest {
             gate.submit(UniversalLiveReadSource.Accessibility, active = false, nowMillis = 2_300L),
         )
         assertEquals(
-            UniversalLiveReadAction.Clear,
+            UniversalLiveReadAction.Ignore,
             gate.submit(UniversalLiveReadSource.Ocr, active = false, nowMillis = 2_350L),
+        )
+        assertEquals(
+            UniversalLiveReadAction.Clear,
+            gate.submit(UniversalLiveReadSource.Ocr, active = false, nowMillis = 2_700L),
+        )
+    }
+
+    @Test
+    fun activeFrameCancelsPendingEmptyConfirmation() {
+        val gate = UniversalLiveReadGate()
+
+        gate.submit(UniversalLiveReadSource.Ocr, active = true, nowMillis = 4_000L)
+        assertEquals(
+            UniversalLiveReadAction.Ignore,
+            gate.submit(UniversalLiveReadSource.Ocr, active = false, nowMillis = 4_300L),
+        )
+        assertEquals(
+            UniversalLiveReadAction.Analyze,
+            gate.submit(UniversalLiveReadSource.Ocr, active = true, nowMillis = 4_500L),
+        )
+        assertEquals(
+            UniversalLiveReadAction.Ignore,
+            gate.submit(UniversalLiveReadSource.Ocr, active = false, nowMillis = 4_800L),
         )
     }
 
@@ -62,7 +85,7 @@ class UniversalRuntimeGuardsTest {
     }
 
     @Test
-    fun emptyAccessibilityFromExternalAppStillClearsImmediately() {
+    fun emptyAccessibilityFromExternalAppStillReachesSourceGate() {
         assertFalse(
             UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
                 text = "",
@@ -86,6 +109,40 @@ class UniversalRuntimeGuardsTest {
     }
 
     @Test
+    fun passivePackagesDoNotStartLiveScanning() {
+        listOf(
+            "com.android.systemui",
+            "com.sec.android.app.launcher",
+            "com.google.android.documentsui",
+            "com.google.android.inputmethod.latin",
+        ).forEach { packageName ->
+            assertFalse(
+                UniversalFastReadPolicy.shouldScanLivePackage(
+                    packageName = packageName,
+                    ownPackageName = "br.com.mapeiaia.rotacerta",
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun rideAndImageViewerPackagesRemainReadable() {
+        listOf(
+            "sinet.startup.indriver",
+            "com.ubercab.driver",
+            "com.app99.driver",
+            "com.google.android.apps.nbu.files",
+        ).forEach { packageName ->
+            assertTrue(
+                UniversalFastReadPolicy.shouldScanLivePackage(
+                    packageName = packageName,
+                    ownPackageName = "br.com.mapeiaia.rotacerta",
+                ),
+            )
+        }
+    }
+
+    @Test
     fun ocrIsPausedWhileAccessibilityOwnsActiveCard() {
         assertFalse(
             UniversalFastReadPolicy.shouldRequestOcr(
@@ -105,6 +162,12 @@ class UniversalRuntimeGuardsTest {
                 hasActiveAddressSignature = false,
             ),
         )
+    }
+
+    @Test
+    fun activeOcrUsesSlowerWatchdogWithoutDelayingFirstRead() {
+        assertEquals(300L, UniversalFastReadPolicy.minimumOcrIntervalMillis(false))
+        assertEquals(650L, UniversalFastReadPolicy.minimumOcrIntervalMillis(true))
     }
 
     @Test
