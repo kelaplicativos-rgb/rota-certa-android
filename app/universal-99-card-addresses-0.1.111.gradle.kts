@@ -2,7 +2,7 @@
 // - "Avenida Mateo" / "Bei, 2651 - Cidade Sao Mateus" deve formar um endereco;
 // - "Condominio Parque Residencial" / "Santa Barbara, Cidade Satelite..." deve
 //   ser aceito como destino nomeado mesmo sem Rua/Avenida;
-// - reticencias de truncamento do OCR nao devem ser enviadas ao geocodificador.
+// - um nome incompleto so vira endereco depois que a continuacao o completa.
 
 fun rc111ReplaceRegion(
     source: String,
@@ -46,6 +46,48 @@ val universal99CardAddresses111 by tasks.registering {
 
             text = rc111ReplaceRegion(
                 source = text,
+                startToken = "    fun findAddresses(text: String): List<String> {",
+                endToken = "    /** Aceita logradouro reconhecivel mesmo quando o card omite o numero. */",
+                replacement = """    fun findAddresses(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        val lines = text.lines()
+            .flatMap(::splitAddressSegments)
+            .filter { it.length >= 4 }
+
+        val candidates = mutableListOf<String>()
+        var index = 0
+        while (index < lines.size) {
+            val current = cleanAddressSegment(lines[index])
+            val canStartAddress = isRecognizedAddress(current) || isPotentialNamedPlacePrefix(current)
+            if (canStartAddress) {
+                val parts = mutableListOf(current)
+                var nextIndex = index + 1
+                while (nextIndex < lines.size && parts.size < 3) {
+                    val next = cleanAddressSegment(lines[nextIndex])
+                    if (!looksLikeContinuation(next, parts.last())) break
+                    parts += next
+                    nextIndex += 1
+                }
+                val joined = parts.joinToString(" ")
+                    .replace(Regex("\\s+"), " ")
+                    .replace(Regex("\\.{2,}$"), "")
+                    .trim(' ', ',', '-', '–', '—')
+                if (joined.length >= 5 && isRecognizedAddress(joined)) candidates += joined
+                index = nextIndex
+            } else {
+                index += 1
+            }
+        }
+
+        return candidates.distinctBy(::canonical)
+    } // universal_99_join_before_confirm_0_1_111
+
+""",
+                label = "juncao antes da confirmacao do endereco",
+            )
+
+            text = rc111ReplaceRegion(
+                source = text,
                 startToken = "    fun isRecognizedAddress(value: String): Boolean {",
                 endToken = "    /** Mantido para validar e recompor numeros quebrados pelo OCR. */",
                 replacement = """    fun isRecognizedAddress(value: String): Boolean {
@@ -56,6 +98,17 @@ val universal99CardAddresses111 by tasks.registering {
             return hasMeaningfulStreetName(value, streetGroup.range.last + 1)
         }
         return isRecognizedNamedPlace(value)
+    }
+
+    private fun isPotentialNamedPlacePrefix(value: String): Boolean {
+        if (!namedPlaceStartRegex.containsMatchIn(value) || isNoise(value)) return false
+        val normalized = canonical(value)
+        val words = normalized.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size < 2) return false
+        return normalized.endsWith(" residencial") ||
+            normalized.endsWith(" condominio") ||
+            normalized.endsWith(" loteamento") ||
+            normalized.endsWith(" parque")
     }
 
     private fun isRecognizedNamedPlace(value: String): Boolean {
@@ -133,30 +186,16 @@ val universal99CardAddresses111 by tasks.registering {
                 label = "continuacao de endereco do 99",
             )
 
-            val oldNormalize = """    private fun normalizeLine(value: String): String = value
-        .replace('\\u00A0', ' ')
-        .replace('\\u202F', ' ')
-        .replace(Regex("\\s+"), " ")
-        .trim()
-"""
-            val newNormalize = """    private fun normalizeLine(value: String): String = value
-        .replace('\\u00A0', ' ')
-        .replace('\\u202F', ' ')
-        .replace(Regex("\\s+"), " ")
-        .replace(Regex("\\.{2,}$"), "")
-        .trim()
-"""
-            if (oldNormalize !in text) throw GradleException("Normalizacao final do OCR nao encontrada")
-            text = text.replaceFirst(oldNormalize, newNormalize)
             text += "\n// universal_99_card_addresses_0_1_111\n"
         }
 
         listOf(
             "namedPlaceStartRegex",
             "namedPlaceLocalityRegex",
+            "isPotentialNamedPlacePrefix",
+            "universal_99_join_before_confirm_0_1_111",
             "universal_99_named_destination_0_1_111",
             "universal_99_wrapped_address_0_1_111",
-            "Regex(\"\\\\.{2,}$\")",
             "universal_99_card_addresses_0_1_111",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Contrato dos cards 99 incompleto: $marker")
