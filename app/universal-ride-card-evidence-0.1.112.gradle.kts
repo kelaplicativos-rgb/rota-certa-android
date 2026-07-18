@@ -139,11 +139,18 @@ object UniversalRideCardEvidencePolicy {
 
         var serviceText = service.readText()
         if ("universal_ride_evidence_gate_0_1_112" !in serviceText) {
-            val traceAnchor = """        val trigger = UniversalAddressTrigger.evaluate(snapshotText)
-        traceUniversalTrigger(source, trigger)
-"""
-            if (traceAnchor !in serviceText) throw GradleException("Gatilho universal nao encontrado")
-            val traceReplacement = traceAnchor + """        val rideEvidence = UniversalRideCardEvidencePolicy.evaluate(
+            val triggerStart = serviceText.indexOf(
+                "        val trigger = UniversalAddressTrigger.evaluate(snapshotText)",
+            )
+            val liveSourceStart = if (triggerStart >= 0) {
+                serviceText.indexOf("        val liveSource = when (source)", triggerStart)
+            } else {
+                -1
+            }
+            if (triggerStart < 0 || liveSourceStart <= triggerStart) {
+                throw GradleException("Intervalo do gatilho universal nao encontrado")
+            }
+            val evidenceBlock = """        val rideEvidence = UniversalRideCardEvidencePolicy.evaluate(
             text = snapshotText,
             addresses = trigger.addresses,
             destination = trigger.destination,
@@ -155,14 +162,18 @@ object UniversalRideCardEvidencePolicy {
             )
         }
 """
-            serviceText = serviceText.replaceFirst(traceAnchor, traceReplacement)
+            serviceText = serviceText.substring(0, liveSourceStart) +
+                evidenceBlock +
+                serviceText.substring(liveSourceStart)
 
-            val activeAnchor = "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank()\n"
-            if (activeAnchor !in serviceText) throw GradleException("Ativacao do gatilho universal nao encontrada")
-            serviceText = serviceText.replaceFirst(
-                activeAnchor,
-                "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112\n",
+            val activeRegex = Regex(
+                "(?m)^ {8}val activeTrigger = trigger\\.active && !trigger\\.destination\\.isNullOrBlank\\(\\)\\s*$",
             )
+            val activeMatch = activeRegex.find(serviceText)
+                ?: throw GradleException("Ativacao do gatilho universal nao encontrada")
+            val activeReplacement =
+                "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112"
+            serviceText = serviceText.replaceRange(activeMatch.range, activeReplacement)
             service.writeText(serviceText)
         }
 
