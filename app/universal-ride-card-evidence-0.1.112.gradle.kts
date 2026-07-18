@@ -91,7 +91,9 @@ object UniversalRideCardEvidencePolicy {
         destination: String?,
         packageName: String?,
     ): UniversalRideCardEvidenceDecision {
-        val normalizedAddresses = addresses.map(String::trim).filter(String::isNotBlank)
+        val normalizedAddresses = addresses
+            .map { address -> address.trim() }
+            .filter { address -> address.isNotBlank() }
         if (normalizedAddresses.size < 2 || destination.isNullOrBlank()) {
             return UniversalRideCardEvidenceDecision(false, 0, "menos_de_dois_enderecos")
         }
@@ -107,7 +109,8 @@ object UniversalRideCardEvidencePolicy {
         val hasPerKm = perKmRegex.containsMatchIn(text)
         val markerCount = rideMarkerRegex.findAll(text).map { it.value.lowercase() }.distinct().count()
         val hasTripMetrics = hasTime && hasTripDistance
-        val knownRideApp = packageName?.trim()?.lowercase() in knownRidePackages
+        val normalizedPackage = packageName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val knownRideApp = normalizedPackage != null && normalizedPackage in knownRidePackages
 
         val score = (if (hasTripMetrics) 2 else 0) +
             (if (hasMoney) 1 else 0) +
