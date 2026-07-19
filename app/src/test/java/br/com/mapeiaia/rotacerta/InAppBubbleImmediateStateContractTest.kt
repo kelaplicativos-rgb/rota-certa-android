@@ -7,34 +7,41 @@ import org.junit.Test
 
 class InAppBubbleImmediateStateContractTest {
     @Test
-    fun inAppToggleChangesLocalComposeStateBeforePersisting() {
+    fun groupSelectionChangesComposeStateImmediately() {
         val sourceFile = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
         ).firstOrNull(File::exists) ?: error("MainActivity.kt nao encontrado")
 
         val source = sourceFile.readText()
-        assertTrue("Estado imediato precisa existir", "in_app_bubble_immediate_state_0_1_98" in source)
+        assertTrue("Estado de grupo precisa existir", "grouped_bubble_state_0_1_115" in source)
         assertTrue(
-            "Central precisa renderizar o estado local imediato",
-            "settings = bubbleControlSettings," in source,
+            "Toque precisa atualizar o grupo selecionado imediatamente",
+            "selectedBubbleGroup = group" in source,
         )
         assertTrue(
-            "Toque precisa reduzir a partir do estado visual atual",
-            "val updated = QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)" in source,
+            "Destino precisa abrir o grupo de endereco e raio",
+            "BUBBLE_GROUP_DESTINATION -> TAB_ANALYSIS" in source,
         )
         assertTrue(
-            "Estado visual precisa mudar antes da persistencia",
-            source.indexOf("bubbleControlSettings = updated") < source.indexOf("repository.saveSettings(updated)"),
+            "Relatorios precisam abrir o historico agrupado",
+            "BUBBLE_GROUP_REPORTS -> TAB_HISTORY" in source,
         )
-
-        val callStart = source.indexOf("UnifiedAppControlBubbles(")
-        val callEnd = source.indexOf("\n                )", callStart)
-        assertTrue("Chamada da Central de bolinhas precisa existir", callStart >= 0 && callEnd > callStart)
-        val call = source.substring(callStart, callEnd)
+        assertTrue(
+            "Ferramentas precisam abrir o grupo proprio",
+            "BUBBLE_GROUP_TOOLS -> TAB_TOOLS" in source,
+        )
+        assertTrue(
+            "Demais grupos precisam abrir configuracao filtrada",
+            "else -> TAB_CONFIG" in source,
+        )
         assertFalse(
-            "Central nao pode depender do estado atrasado capturado do DataStore",
-            "QuickBubbleToggleReducer.toggle(settings, toggle)" in call,
+            "Central nao deve mais alternar configuracao diretamente no botao pequeno",
+            "QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)" in source,
+        )
+        assertFalse(
+            "Estado antigo da grade ON/OFF nao deve permanecer ativo",
+            "settings = bubbleControlSettings," in source,
         )
     }
 }
