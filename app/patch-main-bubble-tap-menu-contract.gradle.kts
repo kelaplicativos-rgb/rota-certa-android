@@ -1,114 +1,161 @@
 // Contrato final do toque na bolinha principal.
-// O APK 0.1.95 continha a grade funcional, mas o listener compilado ainda chamava openApp().
-// Este patch roda no ultimo instante antes da compilacao e impede a regressao.
+//
+// A grade flutuante de bolinhas foi removida do clique principal. O toque simples
+// abre diretamente a Home do Rota Certa. O arraste continua sendo tratado pelo
+// BubbleTouchListener e nao abre o aplicativo.
 
-fun enforceMainBubbleTapMenuContract(file: java.io.File) {
+fun replaceMainBubbleRegion114(
+    source: String,
+    startToken: String,
+    endToken: String,
+    replacement: String,
+    label: String,
+): String {
+    val start = source.indexOf(startToken)
+    val end = if (start >= 0) source.indexOf(endToken, start + startToken.length) else -1
+    if (start < 0 || end <= start) throw GradleException("Regiao ausente para $label")
+    return source.substring(0, start) + replacement + source.substring(end)
+}
+
+fun enforceMainBubbleTapHomeContract(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
 
     val showOverlayStart = text.indexOf("    private fun showOverlay(")
-    val removeOverlayStart = if (showOverlayStart >= 0) text.indexOf("\n    private fun removeOverlay()", showOverlayStart) else -1
-    if (showOverlayStart < 0 || removeOverlayStart < 0) {
-        throw GradleException("Nao encontrei showOverlay para ligar o toque ao painel de bolinhas.")
+    val removeOverlayStart = if (showOverlayStart >= 0) {
+        text.indexOf("\n    private fun removeOverlay()", showOverlayStart)
+    } else {
+        -1
+    }
+    if (showOverlayStart < 0 || removeOverlayStart <= showOverlayStart) {
+        throw GradleException("Nao encontrei showOverlay para ligar o toque diretamente a Home.")
     }
 
     var showOverlayBlock = text.substring(showOverlayStart, removeOverlayStart)
-    showOverlayBlock = showOverlayBlock
-        .replace("newView.setOnClickListener { openApp() }", "newView.setOnClickListener { onMainBubbleClick() }")
-        .replace("newView.setOnClickListener { toggleActionMenu() }", "newView.setOnClickListener { onMainBubbleClick() }")
-        .replace(
-            Regex("newView\\.setOnClickListener\\s*\\{\\s*openApp\\([^}]*\\)\\s*}"),
-            "newView.setOnClickListener { onMainBubbleClick() }",
-        )
-
-    if ("newView.setOnClickListener { onMainBubbleClick() }" !in showOverlayBlock) {
-        val listenerRegex = Regex("newView\\.setOnClickListener\\s*\\{[^}]*}")
-        if (!listenerRegex.containsMatchIn(showOverlayBlock)) {
-            throw GradleException("Listener principal da bolinha nao encontrado.")
-        }
-        showOverlayBlock = showOverlayBlock.replaceFirst(
-            listenerRegex,
-            "newView.setOnClickListener { onMainBubbleClick() }",
-        )
+    val listenerRegex = Regex("newView\\.setOnClickListener\\s*\\{[^}]*}")
+    if (!listenerRegex.containsMatchIn(showOverlayBlock)) {
+        throw GradleException("Listener principal da bolinha nao encontrado.")
     }
+    showOverlayBlock = showOverlayBlock.replaceFirst(
+        listenerRegex,
+        "newView.setOnClickListener { onMainBubbleClick() }",
+    )
     text = text.substring(0, showOverlayStart) + showOverlayBlock + text.substring(removeOverlayStart)
 
-    if ("private fun onMainBubbleClick()" !in text) {
+    val directHomeHelper = """    private fun onMainBubbleClick() {
+        hideActionMenu()
+        traceEvent("bubble.tap.home_direct_0_1_114")
+        openApp()
+    }
+
+"""
+    if ("    private fun onMainBubbleClick() {" in text) {
+        text = replaceMainBubbleRegion114(
+            source = text,
+            startToken = "    private fun onMainBubbleClick() {",
+            endToken = "    private fun toggleActionMenu() {",
+            replacement = directHomeHelper,
+            label = "clique principal direto na Home",
+        )
+    } else {
         val anchor = "    private fun toggleActionMenu() {\n"
         if (anchor !in text) throw GradleException("toggleActionMenu nao encontrado.")
-        val helper = """    private fun onMainBubbleClick() {
-        traceEvent("bubble.tap.menu_contract_0_1_96")
-        toggleActionMenu()
+        text = text.replaceFirst(anchor, directHomeHelper + anchor)
     }
 
-"""
-        text = text.replaceFirst(anchor, helper + anchor)
+    text = replaceMainBubbleRegion114(
+        source = text,
+        startToken = "    private fun toggleActionMenu() {",
+        endToken = "    private fun showActionMenu() {",
+        replacement = """    private fun toggleActionMenu() {
+        onMainBubbleClick()
     }
 
-    // Nao deixa falha de WindowManager silenciosa: o usuario precisa saber se o Android recusou o painel.
-    val silentAdd = """        if (runCatching { manager.addView(menu, params) }.isSuccess) {
-            overlayMenuView = menu
-            overlayMenuParams = params
-        }
-"""
-    if (silentAdd in text) {
-        text = text.replaceFirst(
-            silentAdd,
-            """        runCatching { manager.addView(menu, params) }
-            .onSuccess {
-                overlayMenuView = menu
-                overlayMenuParams = params
-                traceEvent("bubble.menu.opened grid=true")
-            }
-            .onFailure { error ->
-                traceEvent("bubble.menu.open_failed ${'$'}{error::class.java.simpleName}: ${'$'}{error.message.orEmpty()}")
-                toast("Nao foi possivel abrir as bolinhas. Reative a Acessibilidade do Rota Certa.")
-            }
 """,
-        )
-    }
+        label = "desativacao do alternador do popup",
+    )
+
+    // Remove toda a construcao da grade flutuante, inclusive botoes e chamada ao
+    // WindowManager. Caso algum codigo legado chame showActionMenu(), a Home e
+    // aberta diretamente e nenhuma segunda janela de overlay e criada.
+    text = replaceMainBubbleRegion114(
+        source = text,
+        startToken = "    private fun showActionMenu() {",
+        endToken = "    private fun hideActionMenu() {",
+        replacement = """    private fun showActionMenu() {
+        onMainBubbleClick()
+    } // floating_bubble_popup_removed_0_1_114
+
+""",
+        label = "remocao da grade flutuante",
+    )
+
+    text = text
+        .replace("        traceEvent(\"bubble.tap.menu_contract_0_1_96\")\n", "")
+        .replace("                traceEvent(\"bubble.menu.opened grid=true\")\n", "")
 
     val finalShowStart = text.indexOf("    private fun showOverlay(")
-    val finalShowEnd = if (finalShowStart >= 0) text.indexOf("\n    private fun removeOverlay()", finalShowStart) else -1
+    val finalShowEnd = if (finalShowStart >= 0) {
+        text.indexOf("\n    private fun removeOverlay()", finalShowStart)
+    } else {
+        -1
+    }
     val finalShowBlock = if (finalShowStart >= 0 && finalShowEnd > finalShowStart) {
         text.substring(finalShowStart, finalShowEnd)
     } else {
         ""
     }
+    val clickStart = text.indexOf("    private fun onMainBubbleClick() {")
+    val clickEnd = if (clickStart >= 0) text.indexOf("    private fun toggleActionMenu() {", clickStart) else -1
+    val clickBlock = if (clickStart >= 0 && clickEnd > clickStart) text.substring(clickStart, clickEnd) else ""
+    val menuStart = text.indexOf("    private fun showActionMenu() {")
+    val menuEnd = if (menuStart >= 0) text.indexOf("    private fun hideActionMenu() {", menuStart) else -1
+    val menuBlock = if (menuStart >= 0 && menuEnd > menuStart) text.substring(menuStart, menuEnd) else ""
 
     listOf(
         "newView.setOnClickListener { onMainBubbleClick() }",
         "private fun onMainBubbleClick()",
-        "bubble.tap.menu_contract_0_1_96",
-        "private fun showActionMenu()",
-        "GridLayout(this)",
-        "quickToggleBubbleButton(\"Rota\"",
-        "quickToggleBubbleButton(\"Leitura\"",
+        "bubble.tap.home_direct_0_1_114",
+        "floating_bubble_popup_removed_0_1_114",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Contrato do painel ausente: ${'$'}marker")
+        if (marker !in text) throw GradleException("Contrato do toque direto ausente: $marker")
     }
-    if ("setOnClickListener { openApp" in finalShowBlock || "openApp${'$'}default" in finalShowBlock) {
-        throw GradleException("Regressao: toque principal ainda abre o app em vez das bolinhas.")
+    if ("openApp()" !in clickBlock || "toggleActionMenu()" in clickBlock || "showActionMenu()" in clickBlock) {
+        throw GradleException("Regressao: clique principal nao abre diretamente a Home.")
+    }
+    if ("toggleActionMenu()" in finalShowBlock || "showActionMenu()" in finalShowBlock) {
+        throw GradleException("Regressao: listener principal ainda tenta abrir o popup.")
+    }
+    if ("GridLayout(this)" in menuBlock || "manager.addView(menu" in menuBlock) {
+        throw GradleException("Regressao: grade flutuante ainda pode ser criada.")
+    }
+    if ("bubble.tap.menu_contract_0_1_96" in text || "bubble.menu.opened grid=true" in text) {
+        throw GradleException("Regressao: marcadores do popup antigo ainda estao no runtime.")
     }
 
     file.writeText(text)
 }
 
+// O nome da tarefa e preservado porque outros modulos antigos dependem dele.
 val mainBubbleTapMenuContract by tasks.registering {
-    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    val serviceFile = layout.projectDirectory.file(
+        "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
+    )
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
     dependsOn("functionalBubbleIdempotenceFinal")
-    doLast { enforceMainBubbleTapMenuContract(serviceFile.asFile) }
+    doLast { enforceMainBubbleTapHomeContract(serviceFile.asFile) }
 }
 
-// Executa novamente imediatamente antes do compilador Kotlin. Assim nenhum patch independente
-// consegue recolocar openApp() depois da correcao.
+// Executa novamente imediatamente antes do compilador Kotlin. Assim nenhum patch
+// posterior consegue recolocar a grade ou toggleActionMenu() no clique principal.
 tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
     dependsOn(mainBubbleTapMenuContract)
     doFirst {
-        enforceMainBubbleTapMenuContract(
-            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
+        enforceMainBubbleTapHomeContract(
+            layout.projectDirectory.file(
+                "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
+            ).asFile,
         )
     }
 }
