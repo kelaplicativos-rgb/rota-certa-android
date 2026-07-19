@@ -1,6 +1,6 @@
 // Sonda somente de build debug para validar o comportamento real do serviço
 // instalado. Não gera log contínuo: grava preferências apenas quando cor,
-// gatilho, destino ou abertura do menu mudam.
+// gatilho, destino ou estado do antigo menu mudam.
 
 val universalRuntimeStateProbe by tasks.registering {
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
@@ -108,11 +108,23 @@ $yellowAnchor""",
             if (menuStart < 0 || menuEnd <= menuStart) throw GradleException("showActionMenu nao encontrado para sonda.")
             var block = text.substring(menuStart, menuEnd)
             val openAnchor = "                overlayMenuParams = params\n"
-            if (openAnchor !in block) throw GradleException("Confirmacao de abertura do menu nao encontrada.")
-            block = block.replaceFirst(
-                openAnchor,
-                openAnchor + "                publishRuntimeValidationMenu(true) // universal_runtime_probe_menu_open_0_1_98\n",
-            )
+            if (openAnchor in block) {
+                block = block.replaceFirst(
+                    openAnchor,
+                    openAnchor + "                publishRuntimeValidationMenu(true) // universal_runtime_probe_menu_open_0_1_98\n",
+                )
+            } else if ("floating_bubble_popup_removed_0_1_114" in block) {
+                val directAnchor = "        onMainBubbleClick()\n"
+                if (directAnchor !in block) {
+                    throw GradleException("Contrato direto da Home nao encontrado para sonda.")
+                }
+                block = block.replaceFirst(
+                    directAnchor,
+                    "        publishRuntimeValidationMenu(false) // universal_runtime_probe_menu_open_0_1_98 popup_removed\n" + directAnchor,
+                )
+            } else {
+                throw GradleException("Nem abertura de menu nem contrato de popup removido foram encontrados.")
+            }
             text = text.substring(0, menuStart) + block + text.substring(menuEnd)
         }
 
