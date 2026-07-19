@@ -10,10 +10,9 @@ adb kill-server >/dev/null 2>&1 || true
 adb start-server | tee "$OUT/adb-start-server.txt"
 adb devices -l > "$OUT/adb-devices-after-start-server.txt" 2>&1 || true
 
-# Ajusta o teste principal para o contrato universal vigente:
-# qualquer tela externa com dois enderecos completos e numerados deve ativar a
-# bolinha, sem pacote selecionado e sem modelo cadastrado. O ultimo endereco e o
-# destino. Enderecos sem numero ou menos de dois enderecos mantem cinza.
+# Ajusta o teste principal para o contrato universal vigente e para o contrato
+# 0.1.114 do toque: a bolinha abre a Home diretamente e nao cria uma segunda
+# janela TYPE_ACCESSIBILITY_OVERLAY com a grade flutuante.
 python3 - <<'PY'
 from pathlib import Path
 
@@ -25,18 +24,6 @@ new_xml = "root = ET.fromstring(Path(sys.argv[1]).read_text().replace('&#31;', '
 if old_xml not in text:
     raise SystemExit("Nenhum parser XML foi encontrado no teste runtime")
 text = text.replace(old_xml, new_xml)
-
-old_overlay = '''if [ "$overlay_count" -lt 2 ]; then
-  echo "Painel nao criou a segunda janela de overlay" >&2
-  exit 1
-fi'''
-new_overlay = '''if [ "$overlay_count" -lt 1 ]; then
-  echo "Janela da bolinha/menu nao foi encontrada" >&2
-  exit 1
-fi'''
-if old_overlay not in text:
-    raise SystemExit("Validacao antiga de duas janelas nao foi encontrada")
-text = text.replace(old_overlay, new_overlay)
 
 old_activation = '''screen_started_ms="$(date +%s%3N)"
 adb shell am start -W -n "$FIXTURE_ACTIVITY" | tee "$OUT/fixture-start.txt"
@@ -107,14 +94,12 @@ if old_result not in text:
     raise SystemExit("Resultado antigo de card cadastrado nao foi encontrado")
 text = text.replace(old_result, new_result)
 
-# A validacao antiga continuava abrindo o menu flutuante depois de comprovar o
-# contrato principal. Isso podia prender o emulador sem acrescentar cobertura
-# ao leitor universal. Encerre logo depois da limpeza real para cinza.
 menu_start_marker = 'read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"'
 menu_start = text.find(menu_start_marker)
 if menu_start < 0:
     raise SystemExit("Inicio dos passos antigos do menu nao foi encontrado")
-finish_block = '''if ! grep -Fq '>cinza|' "$OUT/cleared-runtime-prefs.xml"; then
+
+direct_home_block = r'''if ! grep -Fq '>cinza|' "$OUT/cleared-runtime-prefs.xml"; then
   echo "Bolinha nao voltou para cinza depois que os enderecos sumiram" >&2
   exit 1
 fi
@@ -123,20 +108,65 @@ if grep -Fq 'runtime_last_destination' "$OUT/cleared-runtime-prefs.xml"; then
   exit 1
 fi
 
-cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" | tee "$OUT/runtime-validation.txt"
+read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"
+adb shell input keyevent KEYCODE_HOME
+sleep 1
+adb shell input tap "$bubble_x" "$bubble_y"
+
+home_opened=false
+for _ in $(seq 1 40); do
+  if dump_ui /sdcard/bubble-tap-home.xml "$OUT/bubble-tap-home.xml"; then
+    if grep -Fq 'Central de bolinhas' "$OUT/bubble-tap-home.xml"; then
+      home_opened=true
+      break
+    fi
+  fi
+  sleep 0.25
+done
+if [ "$home_opened" != true ]; then
+  echo "Toque na bolinha nao abriu diretamente a Home" >&2
+  cat "$OUT/bubble-tap-home.xml" 2>/dev/null || true
+  exit 1
+fi
+
+adb exec-out screencap -p > "$OUT/bubble-tap-home.png"
+adb shell dumpsys accessibility > "$OUT/bubble-tap-accessibility.txt"
+adb shell dumpsys activity activities > "$OUT/bubble-tap-activity.txt" 2>&1 || true
+overlay_count="$(grep -c 'type=TYPE_ACCESSIBILITY_OVERLAY' "$OUT/bubble-tap-accessibility.txt" || true)"
+if [ "$overlay_count" -ge 2 ]; then
+  echo "Toque ainda criou uma segunda janela de popup" >&2
+  exit 1
+fi
+
+read_runtime_prefs "$OUT/bubble-tap-runtime-prefs.xml" || true
+if grep -Fq '<boolean name="runtime_menu_open" value="true"' "$OUT/bubble-tap-runtime-prefs.xml" 2>/dev/null; then
+  echo "Estado antigo do menu flutuante ainda foi ativado" >&2
+  exit 1
+fi
+
+cat > "$OUT/floating-tap-result.txt" <<EOF
+ACCESSIBILITY_SERVICE=enabled
+FLOATING_BUBBLE=visible
+ACCESSIBILITY_OVERLAY_WINDOWS_AFTER_TAP=$overlay_count
+MAIN_TAP=opened_home_direct
+FLOATING_POPUP=absent
+FLOATING_RUNTIME=approved
+EOF
+
+cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" "$OUT/floating-tap-result.txt" | tee "$OUT/runtime-validation.txt"
 cat >> "$OUT/runtime-validation.txt" <<EOF
 CLEAR_TO_GRAY=approved
 STALE_DESTINATION_AFTER_CLEAR=absent
 EOF
 echo "RUNTIME_STAGE=approved" >> "$OUT/progress.txt"
 '''
-text = text[:menu_start] + finish_block
+text = text[:menu_start] + direct_home_block
 
 path.write_text(text)
 PY
 
-# O script principal preserva o servico de acessibilidade e usa uma tela
-# externa controlada com dois enderecos completos e numerados, sem modelo.
+# O script principal preserva o servico de acessibilidade, valida o leitor
+# universal e termina tocando a bolinha real no launcher.
 set +e
 timeout --signal=TERM --kill-after=20s 480s bash scripts/runtime_bubble_ui_test.sh
 status=$?
