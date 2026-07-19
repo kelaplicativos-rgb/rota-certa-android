@@ -82,23 +82,25 @@ wait_runtime_prefs() {
   return 1
 }
 
-find_rota_control() {
+find_group_control() {
   local input_xml="$1"
-  local state_file="$2"
+  local label="$2"
   local coordinates_file="$3"
-  python3 - "$input_xml" "$state_file" "$coordinates_file" <<'PY'
+  python3 - "$input_xml" "$label" "$coordinates_file" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-xml_path, state_path, coordinates_path = map(Path, sys.argv[1:])
+xml_path = Path(sys.argv[1])
+label = sys.argv[2]
+coordinates_path = Path(sys.argv[3])
 root = ET.parse(xml_path).getroot()
 nodes = list(root.iter('node'))
 parents = {child: parent for parent in root.iter() for child in parent}
-rota = next((node for node in nodes if node.attrib.get('text', '').startswith('Rota\n')), None)
-if rota is None:
-    raise SystemExit('Bolinha Rota nao encontrada')
-current = rota
+node = next((item for item in nodes if item.attrib.get('text', '').strip() == label or item.attrib.get('content-desc', '').strip() == label), None)
+if node is None:
+    raise SystemExit(f'Bolinha de grupo nao encontrada: {label}')
+current = node
 bounds = ''
 while current is not None:
     if current.attrib.get('clickable') == 'true':
@@ -106,13 +108,12 @@ while current is not None:
         break
     current = parents.get(current)
 if not bounds:
-    bounds = rota.attrib.get('bounds', '')
+    bounds = node.attrib.get('bounds', '')
 match = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
 if not match:
     raise SystemExit('Bounds clicaveis invalidos: ' + bounds)
 x = (int(match.group(1)) + int(match.group(3))) // 2
 y = (int(match.group(2)) + int(match.group(4))) // 2
-state_path.write_text(rota.attrib.get('text', '').strip())
 coordinates_path.write_text(f'{x} {y}\n')
 PY
 }
@@ -144,37 +145,58 @@ from pathlib import Path
 root = ET.parse(sys.argv[1]).getroot()
 text = '\n'.join(' '.join(filter(None, [n.attrib.get('text', ''), n.attrib.get('content-desc', '')])).strip() for n in root.iter('node'))
 Path(sys.argv[2]).write_text(text)
-required = ['Central de bolinhas', 'Rota', 'Leitura', 'Acesso', 'WA']
+required = ['Central de bolinhas', 'Rota', 'Leitura', 'Destino', 'Alertas', 'Aparencia', 'Permissoes']
 missing = [item for item in required if item not in text]
 if missing:
-    raise SystemExit('Central interna ausente: ' + ', '.join(missing))
+    raise SystemExit('Central agrupada ausente: ' + ', '.join(missing))
+if 'Rota\nON' in text or 'Rota\nOFF' in text:
+    raise SystemExit('Bolinhas ainda exibem ON/OFF quebrado')
 PY
 
-find_rota_control "$OUT/app-before.xml" "$OUT/rota-before.txt" "$OUT/rota-coordinates.txt"
-read -r rota_x rota_y < "$OUT/rota-coordinates.txt"
-grep -Fq 'ON' "$OUT/rota-before.txt"
+find_group_control "$OUT/app-before.xml" "Rota" "$OUT/rota-group-coordinates.txt"
+find_group_control "$OUT/app-before.xml" "Aparencia" "$OUT/appearance-group-coordinates.txt"
+read -r rota_x rota_y < "$OUT/rota-group-coordinates.txt"
+read -r appearance_x appearance_y < "$OUT/appearance-group-coordinates.txt"
+
 adb shell input tap "$rota_x" "$rota_y"
-sleep 3
-dump_ui /sdcard/app-after-off.xml "$OUT/app-after-off.xml"
-adb exec-out screencap -p > "$OUT/app-after-off.png"
-find_rota_control "$OUT/app-after-off.xml" "$OUT/rota-after-off.txt" "$OUT/rota-coordinates-after-off.txt"
-grep -Fq 'OFF' "$OUT/rota-after-off.txt"
-adb shell input tap "$rota_x" "$rota_y"
-sleep 3
-dump_ui /sdcard/app-restored-on.xml "$OUT/app-restored-on.xml"
-adb exec-out screencap -p > "$OUT/app-restored-on.png"
-find_rota_control "$OUT/app-restored-on.xml" "$OUT/rota-restored-on.txt" "$OUT/rota-coordinates-restored.txt"
-grep -Fq 'ON' "$OUT/rota-restored-on.txt"
+sleep 1
+adb shell input swipe 500 1150 500 350 450
+sleep 1
+dump_ui /sdcard/app-rota-group.xml "$OUT/app-rota-group.xml"
+adb exec-out screencap -p > "$OUT/app-rota-group.png"
+grep -Fq 'Controle geral' "$OUT/app-rota-group.xml"
+grep -Fq 'Rota Certa ligado' "$OUT/app-rota-group.xml"
+if grep -Fq '>Abrir<' "$OUT/app-rota-group.xml"; then
+  echo "Grupo Rota ainda exige segundo toque em Abrir" >&2
+  exit 1
+fi
+
+adb shell input swipe 500 300 500 1250 500
+sleep 1
+adb shell input tap "$appearance_x" "$appearance_y"
+sleep 1
+adb shell input swipe 500 1150 500 350 450
+sleep 1
+dump_ui /sdcard/app-appearance-group.xml "$OUT/app-appearance-group.xml"
+adb exec-out screencap -p > "$OUT/app-appearance-group.png"
+grep -Fq 'Bolinha e aparencia' "$OUT/app-appearance-group.xml"
+grep -Fq 'Transparencia' "$OUT/app-appearance-group.xml"
+if grep -Fq '>Abrir<' "$OUT/app-appearance-group.xml"; then
+  echo "Grupo Aparencia ainda exige segundo toque em Abrir" >&2
+  exit 1
+fi
 
 cat > "$OUT/in-app-result.txt" <<EOF
 IN_APP_CENTER=visible
-ROTA_BEFORE=$(cat "$OUT/rota-before.txt")
-ROTA_AFTER_FIRST_TAP=$(cat "$OUT/rota-after-off.txt")
-ROTA_AFTER_SECOND_TAP=$(cat "$OUT/rota-restored-on.txt")
-IN_APP_TOGGLE=approved
+GROUP_BUBBLES=9
+BUBBLE_TEXT_WRAP=clean
+ROTA_GROUP=visible
+APPEARANCE_GROUP=visible
+INNER_OPEN_BUTTON=absent
+IN_APP_GROUP_NAVIGATION=approved
 EOF
 
-echo "RUNTIME_STAGE=in_app_toggle_approved" >> "$OUT/progress.txt"
+echo "RUNTIME_STAGE=in_app_group_navigation_approved" >> "$OUT/progress.txt"
 adb shell settings put secure enabled_accessibility_services "$SERVICE"
 adb shell settings put secure accessibility_enabled 1
 sleep 5
