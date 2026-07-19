@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   runtime-ui:
-    name: Install, tap and verify bubble on Android
+    name: Install, tap and verify grouped bubbles on Android
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
@@ -126,13 +126,16 @@ jobs:
           path: runtime-ui/
           if-no-files-found: error
 
-      - name: Require successful universal-address runtime simulation
+      - name: Require successful grouped-bubble runtime simulation
         if: always()
         run: |
           echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
           test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
-          grep -Fq 'IN_APP_TOGGLE=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'IN_APP_GROUP_NAVIGATION=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'GROUP_BUBBLES=9' runtime-ui/runtime-validation.txt
+          grep -Fq 'BUBBLE_TEXT_WRAP=clean' runtime-ui/runtime-validation.txt
+          grep -Fq 'INNER_OPEN_BUTTON=absent' runtime-ui/runtime-validation.txt
           grep -Fq 'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'PACKAGE_SELECTION_REQUIRED=false' runtime-ui/runtime-validation.txt
           grep -Fq 'MODEL_REQUIRED=false' runtime-ui/runtime-validation.txt
@@ -144,8 +147,8 @@ jobs:
           grep -Fq 'MAIN_TAP=opened_home_direct' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_POPUP=absent' runtime-ui/runtime-validation.txt
           test -s runtime-ui/app-before.png
-          test -s runtime-ui/app-after-off.png
-          test -s runtime-ui/app-restored-on.png
+          test -s runtime-ui/app-rota-group.png
+          test -s runtime-ui/app-appearance-group.png
           test -s runtime-ui/home-bubble.png
           test -s runtime-ui/unregistered-two-address.png
           test -s runtime-ui/after-address-clear.png
