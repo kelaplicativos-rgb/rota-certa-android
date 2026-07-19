@@ -7,7 +7,7 @@ import org.junit.Test
 
 class MainBubbleTapMenuContractTest {
     @Test
-    fun compiledSourceWiresMainBubbleTapToGridInsteadOfOpeningApp() {
+    fun compiledSourceOpensHomeDirectlyWithoutFloatingGrid() {
         val sourceFile = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"),
@@ -24,24 +24,32 @@ class MainBubbleTapMenuContractTest {
             "newView.setOnClickListener { onMainBubbleClick() }" in overlayBlock,
         )
         assertFalse(
-            "Toque principal nao pode abrir a Activity diretamente",
-            "setOnClickListener { openApp" in overlayBlock,
+            "Listener principal nao pode chamar o alternador do popup",
+            "toggleActionMenu()" in overlayBlock || "showActionMenu()" in overlayBlock,
         )
 
         val tapStart = source.indexOf("    private fun onMainBubbleClick()")
         val tapEnd = source.indexOf("\n    private fun toggleActionMenu()", tapStart)
         assertTrue("Helper do toque precisa existir", tapStart >= 0 && tapEnd > tapStart)
         val tapBlock = source.substring(tapStart, tapEnd)
-        assertTrue("Helper precisa alternar o painel", "toggleActionMenu()" in tapBlock)
-        assertFalse("Helper nao pode abrir a tela principal", "openApp(" in tapBlock)
+        assertTrue("Helper precisa abrir a tela principal", "openApp()" in tapBlock)
+        assertTrue("Helper precisa registrar o contrato novo", "bubble.tap.home_direct_0_1_114" in tapBlock)
+        assertFalse("Helper nao pode alternar o painel", "toggleActionMenu()" in tapBlock)
+        assertFalse("Helper nao pode abrir a grade", "showActionMenu()" in tapBlock)
 
         val menuStart = source.indexOf("    private fun showActionMenu()")
         val menuEnd = source.indexOf("\n    private fun hideActionMenu()", menuStart)
-        assertTrue("Painel precisa existir", menuStart >= 0 && menuEnd > menuStart)
+        assertTrue("Stub de compatibilidade precisa existir", menuStart >= 0 && menuEnd > menuStart)
         val menuBlock = source.substring(menuStart, menuEnd)
-        assertTrue("Painel precisa ser grade", "GridLayout(this)" in menuBlock)
-        assertTrue("Grade precisa conter Rota", "quickToggleBubbleButton(\"Rota\"" in menuBlock)
-        assertTrue("Grade precisa conter Leitura", "quickToggleBubbleButton(\"Leitura\"" in menuBlock)
-        assertTrue("Grade precisa conter WhatsApp", "quickActionBubbleButton(\"WA\"" in menuBlock)
+        assertTrue(
+            "Stub precisa estar marcado como popup removido",
+            "floating_bubble_popup_removed_0_1_114" in menuBlock,
+        )
+        assertFalse("Grade flutuante nao pode existir", "GridLayout(this)" in menuBlock)
+        assertFalse("Popup nao pode adicionar janela", "manager.addView(menu" in menuBlock)
+        assertFalse("Popup nao pode manter botoes rapidos", "quickBubbleButton(" in menuBlock)
+
+        assertFalse("Marcador antigo do toque deve desaparecer", "bubble.tap.menu_contract_0_1_96" in source)
+        assertFalse("Marcador antigo da grade deve desaparecer", "bubble.menu.opened grid=true" in source)
     }
 }
