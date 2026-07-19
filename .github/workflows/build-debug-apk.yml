@@ -150,7 +150,32 @@ jobs:
 
           grep -Fq 'newView.setOnClickListener { onMainBubbleClick() }' "$service"
           grep -Fq 'private fun onMainBubbleClick()' "$service"
-          grep -Fq 'GridLayout(this)' "$service"
+          grep -Fq 'bubble.tap.home_direct_0_1_114' "$service"
+          grep -Fq 'floating_bubble_popup_removed_0_1_114' "$service"
+          click_block="$(sed -n '/private fun onMainBubbleClick()/,/private fun toggleActionMenu()/p' "$service" | sed '$d')"
+          show_block="$(sed -n '/private fun showOverlay(/,/private fun removeOverlay()/p' "$service" | sed '$d')"
+          menu_block="$(sed -n '/private fun showActionMenu()/,/private fun hideActionMenu()/p' "$service" | sed '$d')"
+          if ! printf '%s' "$click_block" | grep -Fq 'openApp()'; then
+            echo "ERRO: o toque principal nao abre a Home."
+            exit 1
+          fi
+          if printf '%s' "$click_block" | grep -Eq 'toggleActionMenu\(\)|showActionMenu\(\)'; then
+            echo "ERRO: o clique principal ainda chama o popup."
+            exit 1
+          fi
+          if printf '%s' "$show_block" | grep -Eq 'toggleActionMenu\(\)|showActionMenu\(\)'; then
+            echo "ERRO: o listener da bolinha ainda chama o popup."
+            exit 1
+          fi
+          if printf '%s' "$menu_block" | grep -Eq 'GridLayout\(this\)|manager\.addView\(menu'; then
+            echo "ERRO: a grade flutuante ainda pode criar uma segunda janela."
+            exit 1
+          fi
+          if grep -Fq 'bubble.tap.menu_contract_0_1_96' "$service" || grep -Fq 'bubble.menu.opened grid=true' "$service"; then
+            echo "ERRO: o contrato antigo do popup ainda esta no runtime."
+            exit 1
+          fi
+
           grep -Fq 'Central de bolinhas' "$main"
           grep -Fq 'Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF' "$main"
           grep -Fq 'bottomBar = {}' "$main"
@@ -169,9 +194,10 @@ jobs:
             echo "STALE_RESULT_GUARD=generation_hash_signature"
             echo "ROUTE_CACHE=enabled"
             echo "SCAN_LOOP_MS=120"
-            echo "MAIN_BUBBLE_TAP=opens_control_grid"
+            echo "MAIN_BUBBLE_TAP=opens_home_directly"
+            echo "FLOATING_BUBBLE_POPUP=removed"
           } > universal-two-address-validation.txt
-          cp universal-two-address-validation.txt bubble-menu-validation.txt
+          cp universal-two-address-validation.txt bubble-tap-validation.txt
           cat universal-two-address-validation.txt
 
       - name: Validate debug APK
@@ -199,8 +225,7 @@ jobs:
             "universal.clear immediate=true reason=" \
             "Leitura ao vivo desligada pela bolinha" \
             "Casa e Alfinete estao desligados" \
-            "bubble.tap.menu_contract_0_1_96" \
-            "bubble.menu.opened grid=true"
+            "bubble.tap.home_direct_0_1_114"
           do
             if grep -Fq -- "$expected" apk-strings.txt; then
               echo "FOUND=$expected" >> apk-validation.txt
@@ -209,6 +234,18 @@ jobs:
               cat apk-validation.txt
               exit 1
             fi
+          done
+
+          for forbidden in \
+            "bubble.tap.menu_contract_0_1_96" \
+            "bubble.menu.opened grid=true"
+          do
+            if grep -Fq -- "$forbidden" apk-strings.txt; then
+              echo "FORBIDDEN_PRESENT=$forbidden" >> apk-validation.txt
+              cat apk-validation.txt
+              exit 1
+            fi
+            echo "FORBIDDEN_ABSENT=$forbidden" >> apk-validation.txt
           done
 
           cat universal-two-address-validation.txt >> apk-validation.txt
@@ -221,11 +258,11 @@ jobs:
           path: universal-two-address-validation.txt
           if-no-files-found: error
 
-      - name: Upload bubble menu validation
+      - name: Upload bubble tap validation
         uses: actions/upload-artifact@v4
         with:
-          name: bubble-menu-validation
-          path: bubble-menu-validation.txt
+          name: bubble-tap-validation
+          path: bubble-tap-validation.txt
           if-no-files-found: error
 
       - name: Upload APK validation
