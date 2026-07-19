@@ -110,6 +110,17 @@ val universalFragmentedStreetPrefix113 by tasks.registering {
             val helper = """    private fun isPotentialStreetPrefix(value: String): Boolean {
         if (value.length < 3 || isNoise(value)) return false
         return danglingStreetPrefixRegex.containsMatchIn(value)
+    }
+
+    private fun looksLikeStreetPrefixContinuation(value: String, previous: String): Boolean {
+        if (!isPotentialStreetPrefix(previous) || value.length < 3 || isNoise(value)) return false
+        return value.contains(',') ||
+            value.contains('-') ||
+            value.contains('–') ||
+            value.contains('—') ||
+            namedPlaceLocalityRegex.containsMatchIn(value) ||
+            stateRegex.containsMatchIn(value) ||
+            cepRegex.containsMatchIn(value)
     } // universal_fragmented_street_prefix_0_1_113
 
 """
@@ -123,7 +134,7 @@ val universalFragmentedStreetPrefix113 by tasks.registering {
                 oldValue = """        return previous.endsWith(',') ||
             previous.endsWith('-') ||
 """,
-                newValue = """        return isPotentialStreetPrefix(previous) ||
+                newValue = """        return looksLikeStreetPrefixContinuation(value, previous) ||
             previous.endsWith(',') ||
             previous.endsWith('-') ||
 """,
@@ -189,6 +200,7 @@ val universalFragmentedStreetPrefix113 by tasks.registering {
         listOf(
             "danglingStreetPrefixRegex",
             "isPotentialStreetPrefix",
+            "looksLikeStreetPrefixContinuation",
             "startedFromDanglingStreetPrefix",
             "universal_fragmented_street_prefix_0_1_113",
             "universal_fragmented_pickup_0_1_113",
