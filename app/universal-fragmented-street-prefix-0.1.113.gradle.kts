@@ -20,7 +20,7 @@ fun rc113InsertBeforeLastBrace(source: String, addition: String, label: String):
     return source.substring(0, index) + addition + source.substring(index)
 }
 
-val universalFragmentedStreetPrefix113 by tasks.registering {
+val universalFragmentedStreetStart113 by tasks.registering {
     val parserFile = layout.projectDirectory.file(
         "src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt",
     )
@@ -214,5 +214,5 @@ val universalFragmentedStreetPrefix113 by tasks.registering {
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-    dependsOn(universalFragmentedStreetPrefix113)
+    dependsOn(universalFragmentedStreetStart113)
 }
