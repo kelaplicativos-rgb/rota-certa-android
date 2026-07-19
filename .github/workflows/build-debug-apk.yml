@@ -58,7 +58,7 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-test.log || true
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|MainActivity|GradleScriptException|CompilationErrorException)" gradle-test.log || true
             echo "--- gradle-test.log tail ---"
             tail -360 gradle-test.log
           fi
@@ -95,7 +95,7 @@ jobs:
           status=$?
           if [ "$status" -ne 0 ]; then
             echo "--- assemble failure summary ---"
-            grep -nE "(^e: |^w: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
+            grep -nE "(^e: |^w: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|Conflicting declarations|UniversalAddressTrigger|UniversalScreenAddressParser|LiveRideAccessibilityService|MainActivity|GradleScriptException|CompilationErrorException)" gradle-assemble.log || true
             tail -360 gradle-assemble.log
           fi
           exit "$status"
@@ -108,7 +108,7 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate universal address runtime
+      - name: Validate universal address runtime and grouped Home
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
@@ -177,8 +177,32 @@ jobs:
           fi
 
           grep -Fq 'Central de bolinhas' "$main"
-          grep -Fq 'Acessibilidade OFF: toque em Acesso OFF ou Leitura OFF' "$main"
+          grep -Fq 'grouped_bubble_home_0_1_115' "$main"
+          grep -Fq 'grouped_bubble_navigation_0_1_115' "$main"
+          grep -Fq 'grouped_settings_screen_0_1_115' "$main"
+          grep -Fq 'grouped_card_always_open_0_1_115' "$main"
+          grep -Fq '"Rota" to BUBBLE_GROUP_GENERAL' "$main"
+          grep -Fq '"Leitura" to BUBBLE_GROUP_READING' "$main"
+          grep -Fq '"Destino" to BUBBLE_GROUP_DESTINATION' "$main"
+          grep -Fq '"Alertas" to BUBBLE_GROUP_ALERTS' "$main"
+          grep -Fq '"Aparencia" to BUBBLE_GROUP_APPEARANCE' "$main"
+          grep -Fq '"Permissoes" to BUBBLE_GROUP_ACCESS' "$main"
+          grep -Fq '"Relatorios" to BUBBLE_GROUP_REPORTS' "$main"
+          grep -Fq '"Backup" to BUBBLE_GROUP_BACKUP' "$main"
+          grep -Fq '"Ferramentas" to BUBBLE_GROUP_TOOLS' "$main"
           grep -Fq 'bottomBar = {}' "$main"
+          if grep -Fq 'AppControlBubble("Mais"' "$main"; then
+            echo "ERRO: bolinha Mais ainda duplica toda a tela de configuracao."
+            exit 1
+          fi
+          if grep -Fq 'Text(if (expanded) "Fechar" else "Abrir")' "$main"; then
+            echo "ERRO: grupos ainda exigem segundo toque em Abrir."
+            exit 1
+          fi
+          if grep -Fq 'label + "\n" + if (active)' "$main"; then
+            echo "ERRO: textos ON/OFF ainda quebram dentro das bolinhas pequenas."
+            exit 1
+          fi
 
           {
             echo "UNIVERSAL_SCREEN_READING=enabled"
@@ -197,6 +221,10 @@ jobs:
             echo "MAIN_BUBBLE_TAP=opens_home_directly"
             echo "FLOATING_BUBBLE_POPUP=removed"
             echo "POPUP_RUNTIME_SOURCE=absent"
+            echo "IN_APP_GROUPS=9"
+            echo "SETTINGS_DUPLICATION=removed"
+            echo "GROUP_CARD_SECOND_TAP=removed"
+            echo "BUBBLE_LABEL_WRAP=clean"
           } > universal-two-address-validation.txt
           cp universal-two-address-validation.txt bubble-tap-validation.txt
           cat universal-two-address-validation.txt
@@ -217,6 +245,10 @@ jobs:
 
           for expected in \
             "Central de bolinhas" \
+            "Cada bolinha abre um grupo" \
+            "Destino, Casa e Alfinete" \
+            "Bolinha e aparencia" \
+            "Permissoes e GPS continuo" \
             "Menos de dois enderecos visiveis; dado anterior removido." \
             "universal.trigger source=" \
             "universal.screen.changed hash=" \
@@ -236,10 +268,8 @@ jobs:
             fi
           done
 
-          # A ausencia do popup e validada no bloco-fonte executavel acima e por
-          # toque real no emulador Android. Uma busca global em todas as strings do
-          # DEX pode encontrar textos historicos de diagnostico sem rota executavel.
           echo "POPUP_ACTIVE_RUNTIME=validated_in_source_and_android" >> apk-validation.txt
+          echo "GROUPED_HOME_RUNTIME=validated_in_source_and_android" >> apk-validation.txt
 
           cat universal-two-address-validation.txt >> apk-validation.txt
           cat apk-validation.txt
