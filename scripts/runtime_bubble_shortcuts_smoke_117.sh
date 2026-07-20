@@ -6,6 +6,7 @@ APK="${RUNTIME_APK:-app/build/outputs/apk/debug/app-debug.apk}"
 PACKAGE="br.com.mapeiaia.rotacerta"
 ACTIVITY="$PACKAGE/.MainActivity"
 SERVICE="$PACKAGE/$PACKAGE.LiveRideAccessibilityService"
+PREFS_PATH="shared_prefs/rota_certa_bubble.xml"
 mkdir -p "$OUT"
 
 adb wait-for-device
@@ -69,21 +70,23 @@ if [ "$dx" -lt 80 ] && [ "$dy" -lt 80 ]; then
   exit 1
 fi
 
+adb shell dumpsys activity activities > "$OUT/activity-after-drag.txt" 2>&1 || true
+if grep -E '(topResumedActivity|mResumedActivity)=.*br\.com\.mapeiaia\.rotacerta/\.MainActivity' "$OUT/activity-after-drag.txt" >/dev/null; then
+  echo "Arraste abriu a Home" >&2
+  exit 1
+fi
+
 adb shell input tap "$nx" "$ny"
 opened=false
-for _ in $(seq 1 30); do
-  adb shell uiautomator dump /sdcard/shortcuts.xml >/dev/null 2>&1 || true
-  adb pull /sdcard/shortcuts.xml "$OUT/shortcuts.xml" >/dev/null 2>&1 || true
-  if grep -Fq 'Salvar alerta' "$OUT/shortcuts.xml" 2>/dev/null && \
-     grep -Fq 'Salvar local' "$OUT/shortcuts.xml" 2>/dev/null && \
-     grep -Fq 'Salvar card' "$OUT/shortcuts.xml" 2>/dev/null && \
-     grep -Fq 'Abrir destino' "$OUT/shortcuts.xml" 2>/dev/null && \
-     grep -Fq 'Abrir leitura' "$OUT/shortcuts.xml" 2>/dev/null && \
-     grep -Fq 'Abrir ajustes' "$OUT/shortcuts.xml" 2>/dev/null; then
+for _ in $(seq 1 40); do
+  adb shell run-as "$PACKAGE" cat "$PREFS_PATH" > "$OUT/shortcuts-prefs.xml" 2>/dev/null || true
+  if grep -Fq '<boolean name="runtime_shortcuts_open" value="true"' "$OUT/shortcuts-prefs.xml" 2>/dev/null && \
+     grep -Fq '<int name="runtime_shortcut_count" value="6"' "$OUT/shortcuts-prefs.xml" 2>/dev/null && \
+     grep -Fq 'Salvar alerta|Salvar local|Salvar card|Abrir destino|Abrir leitura|Abrir ajustes' "$OUT/shortcuts-prefs.xml" 2>/dev/null; then
     opened=true
     break
   fi
-  sleep 0.25
+  sleep 0.10
 done
 [ "$opened" = true ]
 adb exec-out screencap -p > "$OUT/shortcuts.png"
@@ -99,6 +102,7 @@ DRAG_DISPLACEMENT_Y=$dy
 DRAG_OPENED_HOME=false
 MAIN_TAP=opened_resource_shortcuts
 RESOURCE_SHORTCUTS=6
+SHORTCUT_LABELS=Salvar alerta|Salvar local|Salvar card|Abrir destino|Abrir leitura|Abrir ajustes
 SHORTCUT_MENU=lightweight
 SAVE_ALERT_ACTION=visible
 SAVE_LOCAL_ACTION=visible
