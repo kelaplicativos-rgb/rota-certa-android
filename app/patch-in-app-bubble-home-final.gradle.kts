@@ -5,6 +5,31 @@ fun enforceInAppBubbleHome(file: java.io.File) {
     if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
     var text = file.readText()
 
+    // A Home 0.1.115 substitui os antigos botoes ON/OFF por grupos de navegacao.
+    // Quando ela ja foi montada, valide o novo contrato e nao recoloque textos,
+    // callbacks ou cartoes da central antiga.
+    if ("grouped_bubble_home_0_1_115" in text) {
+        listOf(
+            "grouped_bubble_navigation_0_1_115",
+            "grouped_settings_screen_0_1_115",
+            "grouped_card_always_open_0_1_115",
+            "Central de bolinhas",
+            "Cada bolinha abre um grupo",
+            "BUBBLE_GROUP_DESTINATION",
+            "bottomBar = {}",
+        ).forEach { marker ->
+            if (marker !in text) throw GradleException("Central agrupada incompleta: $marker")
+        }
+        if ("AppControlBubble(\"Mais\"" in text) {
+            throw GradleException("Regressao: bolinha Mais ainda duplica as configuracoes.")
+        }
+        if ("Text(if (expanded) \"Fechar\" else \"Abrir\")" in text) {
+            throw GradleException("Regressao: grupo ainda exige segundo toque em Abrir.")
+        }
+        file.writeText(text)
+        return
+    }
+
     // Remove toda a barra inferior, independentemente de quais abas patches anteriores deixaram nela.
     val scaffoldStart = text.indexOf("    Scaffold(")
     val bottomStart = if (scaffoldStart >= 0) text.indexOf("        bottomBar = {", scaffoldStart) else -1
@@ -92,7 +117,6 @@ fun enforceInAppBubbleHome(file: java.io.File) {
         text = text.substring(0, index) + "// in_app_bubble_home_visible_0_1_97\n" + text.substring(index)
     }
 
-    // Contratos que impedem repetir exatamente o defeito mostrado no video.
     listOf(
         "in_app_bubble_home_visible_0_1_97",
         "in_app_bubble_home_default_0_1_97",
