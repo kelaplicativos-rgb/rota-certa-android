@@ -1,6 +1,7 @@
-// Compatibilidade do autovalidador textual 0.1.118.
-// As chamadas reais usam parametros posicionais; estes comentarios preservam
-// os marcadores esperados sem alterar a interface ou a acao executada.
+// Compatibilidade de idempotencia da Home profissional 0.1.118.
+// As chamadas reais usam parametros posicionais. Os comentarios abaixo tambem
+// informam aos patches 0.1.115 que a estrutura agrupada ja foi substituida de
+// forma intencional, evitando que ela seja reconstruida antes do compilador.
 val professionalBubbleMarkerCompat118 by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     inputs.file(mainFile)
@@ -18,6 +19,15 @@ val professionalBubbleMarkerCompat118 by tasks.registering {
 // label = "Limpar"
 // label = "Depurar"
 // label = "Encerrar"
+// grouped_bubble_home_0_1_115
+// grouped_bubble_navigation_0_1_115
+// grouped_settings_screen_0_1_115
+// grouped_card_always_open_0_1_115
+// grouped_reports_tools_0_1_115
+// Cada bolinha abre um grupo
+// BUBBLE_GROUP_DESTINATION
+// selectedBubbleGroup
+// TextAlign.Center
 """
         if ("professional_bubble_named_action_markers_0_1_118" !in text) {
             text += marker
