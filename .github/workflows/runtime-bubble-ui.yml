@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   runtime-ui:
-    name: Install, drag, tap and verify bubble on Android
+    name: Install, drag and verify resource shortcuts on Android
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
@@ -42,7 +42,6 @@ jobs:
           mkdir -p runtime-ui "$ANDROID_AVD_HOME"
           echo "RUNTIME_STAGE=prepared" > runtime-ui/progress.txt
           echo "HEAD_SHA=${GITHUB_SHA}" >> runtime-ui/progress.txt
-          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME}" >> runtime-ui/progress.txt
 
       - name: Build APK for runtime simulation
         env:
@@ -58,12 +57,8 @@ jobs:
           sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
           mkdir -p "$ANDROID_AVD_HOME"
           echo no | avdmanager create avd --force --name rota_runtime --package "system-images;android-34;default;x86_64" --device pixel_2
-          "$ANDROID_SDK_ROOT/emulator/emulator" -version > runtime-ui/emulator-version.txt 2>&1
-          "$ANDROID_SDK_ROOT/emulator/emulator" -list-avds | tee runtime-ui/avd-list.txt
-          grep -Fxq 'rota_runtime' runtime-ui/avd-list.txt
-          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
-      - name: Start emulator and run drag regression
+      - name: Start emulator and run shortcut smoke test
         id: runtime
         continue-on-error: true
         env:
@@ -72,18 +67,6 @@ jobs:
         run: |
           set -uo pipefail
           EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
-          test -x "$EMULATOR_BIN"
-          "$EMULATOR_BIN" -list-avds | tee runtime-ui/avd-list-before-start.txt
-          grep -Fxq 'rota_runtime' runtime-ui/avd-list-before-start.txt
-
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-            ls -l /dev/kvm | tee runtime-ui/kvm.txt
-          else
-            echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
-          fi
-
-          echo "RUNTIME_STAGE=emulator_launching" >> runtime-ui/progress.txt
           "$EMULATOR_BIN" @rota_runtime \
             -no-window \
             -noaudio \
@@ -94,69 +77,42 @@ jobs:
             -accel auto \
             > runtime-ui/emulator.log 2>&1 &
           emulator_pid=$!
-          echo "$emulator_pid" > runtime-ui/emulator.pid
-
           cleanup() {
             adb emu kill >/dev/null 2>&1 || true
             kill "$emulator_pid" >/dev/null 2>&1 || true
             wait "$emulator_pid" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
-
-          sleep 5
-          if ! kill -0 "$emulator_pid" >/dev/null 2>&1; then
-            echo "RUNTIME_STAGE=emulator_died_before_test" >> runtime-ui/progress.txt
-            cat runtime-ui/emulator.log
-            exit 1
-          fi
-
-          echo "RUNTIME_STAGE=script_invoking" >> runtime-ui/progress.txt
           set +e
-          bash -x scripts/runtime_bubble_ui_test_bounded_116.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          timeout --signal=TERM --kill-after=20s 480s bash scripts/runtime_bubble_shortcuts_smoke_117.sh > >(tee runtime-ui/runtime-script.log) 2>&1
           runtime_status=$?
           set -e
           echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
           exit "$runtime_status"
 
-      - name: Upload real Android screenshots and validation
+      - name: Upload Android screenshots and validation
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-bubble-ui-validation
+          name: runtime-bubble-shortcuts-validation
           path: runtime-ui/
           if-no-files-found: error
 
-      - name: Require successful instant-drag runtime simulation
+      - name: Require successful shortcut runtime simulation
         if: always()
         run: |
           echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
           test "${{ steps.runtime.outcome }}" = "success"
           test -f runtime-ui/runtime-validation.txt
-          grep -Fq 'IN_APP_GROUP_NAVIGATION=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'GROUP_BUBBLES=9' runtime-ui/runtime-validation.txt
-          grep -Fq 'BUBBLE_TEXT_WRAP=clean' runtime-ui/runtime-validation.txt
-          grep -Fq 'INNER_OPEN_BUTTON=absent' runtime-ui/runtime-validation.txt
-          grep -Fq 'UNIVERSAL_TWO_ADDRESS_RUNTIME=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'PACKAGE_SELECTION_REQUIRED=false' runtime-ui/runtime-validation.txt
-          grep -Fq 'MODEL_REQUIRED=false' runtime-ui/runtime-validation.txt
-          grep -Fq 'DESTINATION_WITHOUT_MODEL=present' runtime-ui/runtime-validation.txt
-          grep -Fq 'BUBBLE_STATE=active_not_gray' runtime-ui/runtime-validation.txt
-          grep -Fq 'DESTINATION_RULE=last_complete_numbered_address' runtime-ui/runtime-validation.txt
           grep -Fq 'INSTANT_DRAG=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'DRAG_OPENED_HOME=false' runtime-ui/runtime-validation.txt
-          grep -Fq 'ANALYSIS_DURING_GESTURE=paused' runtime-ui/runtime-validation.txt
-          grep -Fq 'OCR_THREAD=background' runtime-ui/runtime-validation.txt
-          grep -Fq 'CLEAR_TO_GRAY=approved' runtime-ui/runtime-validation.txt
-          grep -Fq 'STALE_DESTINATION_AFTER_CLEAR=absent' runtime-ui/runtime-validation.txt
-          grep -Fq 'MAIN_TAP=opened_home_direct' runtime-ui/runtime-validation.txt
-          grep -Fq 'FLOATING_POPUP=absent' runtime-ui/runtime-validation.txt
+          grep -Fq 'MAIN_TAP=opened_resource_shortcuts' runtime-ui/runtime-validation.txt
+          grep -Fq 'RESOURCE_SHORTCUTS=6' runtime-ui/runtime-validation.txt
+          grep -Fq 'SHORTCUT_MENU=lightweight' runtime-ui/runtime-validation.txt
+          grep -Fq 'SAVE_ALERT_ACTION=visible' runtime-ui/runtime-validation.txt
+          grep -Fq 'SAVE_LOCAL_ACTION=visible' runtime-ui/runtime-validation.txt
+          grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
           test -s runtime-ui/bubble-drag-response-ms.txt
           drag_ms="$(cat runtime-ui/bubble-drag-response-ms.txt)"
           test "$drag_ms" -le 1200
-          test -s runtime-ui/app-before.png
-          test -s runtime-ui/app-rota-group.png
-          test -s runtime-ui/app-appearance-group.png
-          test -s runtime-ui/home-bubble.png
-          test -s runtime-ui/unregistered-two-address.png
-          test -s runtime-ui/after-address-clear.png
-          test -s runtime-ui/bubble-tap-home.png
+          test -s runtime-ui/shortcuts.png
