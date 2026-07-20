@@ -16,9 +16,9 @@ import kotlin.math.roundToInt
 /**
  * Janelas leves usadas pela bolinha principal.
  *
- * Salvar local e Salvar alerta sao recursos diferentes:
- * - Local: ponto para abrir no GPS depois; nunca gera voz ou popup de proximidade.
- * - Alerta: ponto monitorado; ao reentrar na area exibe popup editavel/excluivel.
+ * O controlador nao conhece regras de negocio. Cada recurso da grade possui um
+ * BubbleShortcutModule proprio; aqui apenas renderizamos o catalogo e devolvemos
+ * o modulo clicado ao servico.
  */
 class BubbleShortcutOverlayController(
     private val context: Context,
@@ -33,13 +33,9 @@ class BubbleShortcutOverlayController(
 
     fun toggleShortcuts(
         anchor: WindowManager.LayoutParams,
-        actions: BubbleShortcutActions,
+        onShortcut: (BubbleShortcutSpec) -> Unit,
     ) {
-        if (shortcutView != null) {
-            hideShortcuts()
-        } else {
-            showShortcuts(anchor, actions)
-        }
+        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut)
     }
 
     fun hideShortcuts() {
@@ -77,17 +73,9 @@ class BubbleShortcutOverlayController(
         })
         container.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(popupButton("Fechar") {
-                hideProximityAlert()
-                actions.onDismiss()
-            })
-            addView(popupButton("Editar") {
-                hideProximityAlert()
-                actions.onEdit(alert)
-            })
-            addView(popupButton("Excluir") {
-                showDeleteConfirmation(alert, actions)
-            })
+            addView(popupButton("Fechar") { hideProximityAlert(); actions.onDismiss() })
+            addView(popupButton("Editar") { hideProximityAlert(); actions.onEdit(alert) })
+            addView(popupButton("Excluir") { showDeleteConfirmation(alert, actions) })
         })
 
         val params = WindowManager.LayoutParams(
@@ -120,9 +108,10 @@ class BubbleShortcutOverlayController(
 
     private fun showShortcuts(
         anchor: WindowManager.LayoutParams,
-        actions: BubbleShortcutActions,
+        onShortcut: (BubbleShortcutSpec) -> Unit,
     ) {
         hideProximityAlert()
+        BubbleShortcutCatalog.requireValid()
         val menuSize = dp(238)
         val menu = GridLayout(context).apply {
             columnCount = 3
@@ -133,30 +122,13 @@ class BubbleShortcutOverlayController(
                 setStroke(dp(1), Color.argb(220, 255, 255, 255))
             }
             setPadding(dp(7), dp(7), dp(7), dp(7))
-            addView(shortcutBubble("⚠️\nSalvar\nalerta", "Salvar alerta") {
-                hideShortcuts()
-                actions.onSaveAlert()
-            })
-            addView(shortcutBubble("📍\nSalvar\nlocal", "Salvar local") {
-                hideShortcuts()
-                actions.onSaveLocal()
-            })
-            addView(shortcutBubble("💾\nSalvar\ncard", "Salvar card") {
-                hideShortcuts()
-                actions.onSaveCard()
-            })
-            addView(shortcutBubble("🏠\nDestino", "Abrir destino") {
-                hideShortcuts()
-                actions.onOpenDestination()
-            })
-            addView(shortcutBubble("👁\nLeitura", "Abrir leitura") {
-                hideShortcuts()
-                actions.onOpenReading()
-            })
-            addView(shortcutBubble("⚙️\nAjustes", "Abrir ajustes") {
-                hideShortcuts()
-                actions.onOpenSettings()
-            })
+            BubbleShortcutCatalog.modules.forEach { module ->
+                addView(shortcutBubble(module.spec) {
+                    hideShortcuts()
+                    trace("bubble.shortcut.clicked id=${module.spec.id}")
+                    onShortcut(module.spec)
+                })
+            }
         }
 
         val metrics = context.resources.displayMetrics
@@ -169,30 +141,22 @@ class BubbleShortcutOverlayController(
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (rightX + menuSize <= metrics.widthPixels) {
-                rightX
-            } else {
-                (anchor.x - menuSize - dp(8)).coerceAtLeast(0)
-            }
+            x = if (rightX + menuSize <= metrics.widthPixels) rightX else (anchor.x - menuSize - dp(8)).coerceAtLeast(0)
             y = anchor.y.coerceIn(0, (metrics.heightPixels - dp(180)).coerceAtLeast(0))
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
-            trace("bubble.shortcuts.opened count=6")
+            trace("bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size}")
         }
     }
 
-    private fun shortcutBubble(
-        label: String,
-        description: String,
-        action: () -> Unit,
-    ): TextView = TextView(context).apply {
-        text = label
+    private fun shortcutBubble(spec: BubbleShortcutSpec, action: () -> Unit): TextView = TextView(context).apply {
+        text = spec.displayText
         textSize = 11f
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        contentDescription = description
+        contentDescription = spec.label
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.rgb(72, 64, 82))
@@ -206,10 +170,7 @@ class BubbleShortcutOverlayController(
         setOnClickListener { action() }
     }
 
-    private fun showDeleteConfirmation(
-        alert: SavedPlace,
-        actions: ProximityAlertPopupActions,
-    ) {
+    private fun showDeleteConfirmation(alert: SavedPlace, actions: ProximityAlertPopupActions) {
         val parent = alertPopupView as? LinearLayout ?: return
         parent.removeAllViews()
         parent.addView(TextView(context).apply {
@@ -222,10 +183,7 @@ class BubbleShortcutOverlayController(
         parent.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(popupButton("Cancelar") { hideProximityAlert() })
-            addView(popupButton("Confirmar") {
-                hideProximityAlert()
-                actions.onDelete(alert)
-            })
+            addView(popupButton("Confirmar") { hideProximityAlert(); actions.onDelete(alert) })
         })
     }
 
@@ -247,9 +205,7 @@ class BubbleShortcutOverlayController(
         gravity = Gravity.CENTER
         contentDescription = label
         setPadding(dp(8), dp(9), dp(8), dp(9))
-        layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
-            setMargins(dp(3), 0, dp(3), 0)
-        }
+        layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) }
         background = GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
             setColor(Color.rgb(79, 68, 88))
@@ -257,18 +213,8 @@ class BubbleShortcutOverlayController(
         setOnClickListener { action() }
     }
 
-    private fun dp(value: Int): Int =
-        (value * context.resources.displayMetrics.density).roundToInt()
+    private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
 }
-
-data class BubbleShortcutActions(
-    val onSaveAlert: () -> Unit,
-    val onSaveLocal: () -> Unit,
-    val onSaveCard: () -> Unit,
-    val onOpenDestination: () -> Unit,
-    val onOpenReading: () -> Unit,
-    val onOpenSettings: () -> Unit,
-)
 
 data class ProximityAlertPopupActions(
     val onEdit: (SavedPlace) -> Unit,
