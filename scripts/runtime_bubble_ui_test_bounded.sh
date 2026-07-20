@@ -10,9 +10,8 @@ adb kill-server >/dev/null 2>&1 || true
 adb start-server | tee "$OUT/adb-start-server.txt"
 adb devices -l > "$OUT/adb-devices-after-start-server.txt" 2>&1 || true
 
-# Ajusta o teste principal para o contrato universal vigente e para o contrato
-# 0.1.114 do toque: a bolinha abre a Home diretamente e nao cria uma segunda
-# janela TYPE_ACCESSIBILITY_OVERLAY com a grade flutuante.
+# Ajusta o teste principal para o contrato universal vigente, a Home agrupada e
+# o contrato 0.1.116: arraste imediato, clique abrindo a Home e nenhum popup.
 python3 - <<'PY'
 from pathlib import Path
 
@@ -111,6 +110,90 @@ fi
 read -r bubble_x bubble_y < "$OUT/floating-coordinates.txt"
 adb shell input keyevent KEYCODE_HOME
 sleep 1
+
+# Arraste real: a posicao precisa mudar no primeiro gesto curto, sem abrir a Home.
+if [ "$bubble_x" -lt 500 ]; then
+  drag_target_x=$((bubble_x + 220))
+else
+  drag_target_x=$((bubble_x - 220))
+fi
+if [ "$bubble_y" -lt 900 ]; then
+  drag_target_y=$((bubble_y + 220))
+else
+  drag_target_y=$((bubble_y - 220))
+fi
+
+drag_started_ms="$(date +%s%3N)"
+adb shell input swipe "$bubble_x" "$bubble_y" "$drag_target_x" "$drag_target_y" 120
+
+drag_persisted=false
+for _ in $(seq 1 24); do
+  if read_runtime_prefs "$OUT/bubble-after-drag-prefs.xml"; then
+    saved_x="$(sed -n 's/.*<int name="bubble_x" value="\([^"]*\)".*/\1/p' "$OUT/bubble-after-drag-prefs.xml" | tail -1)"
+    saved_y="$(sed -n 's/.*<int name="bubble_y" value="\([^"]*\)".*/\1/p' "$OUT/bubble-after-drag-prefs.xml" | tail -1)"
+    if [ -n "$saved_x" ] && [ -n "$saved_y" ] && { [ "$saved_x" != "$bubble_x" ] || [ "$saved_y" != "$bubble_y" ]; }; then
+      drag_persisted=true
+      break
+    fi
+  fi
+  sleep 0.05
+done
+
+drag_finished_ms="$(date +%s%3N)"
+drag_response_ms=$((drag_finished_ms - drag_started_ms))
+echo "$drag_response_ms" > "$OUT/bubble-drag-response-ms.txt"
+if [ "$drag_persisted" != true ]; then
+  echo "Arraste nao persistiu nova posicao" >&2
+  cat "$OUT/bubble-after-drag-prefs.xml" 2>/dev/null || true
+  exit 1
+fi
+if [ "$drag_response_ms" -gt 1200 ]; then
+  echo "Arraste demorou ${drag_response_ms}ms; limite 1200ms" >&2
+  exit 1
+fi
+
+adb shell dumpsys accessibility > "$OUT/bubble-after-drag-accessibility.txt"
+python3 - "$OUT/bubble-after-drag-accessibility.txt" "$OUT/bubble-after-drag-coordinates.txt" <<'PYDRAG'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(errors='replace')
+matches = re.findall(r'type=TYPE_ACCESSIBILITY_OVERLAY.*?bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)', text)
+if not matches:
+    raise SystemExit('Bolinha nao encontrada depois do arraste')
+boxes = [tuple(map(int, values)) for values in matches]
+x1, y1, x2, y2 = min(boxes, key=lambda b: max(1, b[2]-b[0]) * max(1, b[3]-b[1]))
+Path(sys.argv[2]).write_text(f'{(x1+x2)//2} {(y1+y2)//2}\n')
+PYDRAG
+read -r dragged_bubble_x dragged_bubble_y < "$OUT/bubble-after-drag-coordinates.txt"
+move_x=$((dragged_bubble_x - bubble_x)); [ "$move_x" -lt 0 ] && move_x=$((-move_x))
+move_y=$((dragged_bubble_y - bubble_y)); [ "$move_y" -lt 0 ] && move_y=$((-move_y))
+if [ "$move_x" -lt 80 ] && [ "$move_y" -lt 80 ]; then
+  echo "Bolinha quase nao saiu do lugar: dx=${move_x} dy=${move_y}" >&2
+  exit 1
+fi
+
+adb shell dumpsys activity activities > "$OUT/bubble-after-drag-activity.txt" 2>&1 || true
+if grep -Fq "$PACKAGE/.MainActivity" "$OUT/bubble-after-drag-activity.txt"; then
+  echo "Arrastar abriu a Home indevidamente" >&2
+  exit 1
+fi
+
+cat > "$OUT/floating-drag-result.txt" <<EOF
+INSTANT_DRAG=approved
+DRAG_RESPONSE_MS=$drag_response_ms
+DRAG_DISPLACEMENT_X=$move_x
+DRAG_DISPLACEMENT_Y=$move_y
+DRAG_OPENED_HOME=false
+ANALYSIS_DURING_GESTURE=paused
+OCR_THREAD=background
+EOF
+
+echo "RUNTIME_STAGE=instant_drag_approved" >> "$OUT/progress.txt"
+
+# Depois do arraste, um toque curto na nova posicao deve abrir diretamente a Home.
+bubble_x="$dragged_bubble_x"
+bubble_y="$dragged_bubble_y"
 adb shell input tap "$bubble_x" "$bubble_y"
 
 home_opened=false
@@ -153,7 +236,7 @@ FLOATING_POPUP=absent
 FLOATING_RUNTIME=approved
 EOF
 
-cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" "$OUT/floating-tap-result.txt" | tee "$OUT/runtime-validation.txt"
+cat "$OUT/in-app-result.txt" "$OUT/floating-window-result.txt" "$OUT/registered-card-result.txt" "$OUT/floating-drag-result.txt" "$OUT/floating-tap-result.txt" | tee "$OUT/runtime-validation.txt"
 cat >> "$OUT/runtime-validation.txt" <<EOF
 CLEAR_TO_GRAY=approved
 STALE_DESTINATION_AFTER_CLEAR=absent
@@ -166,7 +249,7 @@ path.write_text(text)
 PY
 
 # O script principal preserva o servico de acessibilidade, valida o leitor
-# universal e termina tocando a bolinha real no launcher.
+# universal, arrasta a bolinha real e termina tocando-a no launcher.
 set +e
 timeout --signal=TERM --kill-after=20s 480s bash scripts/runtime_bubble_ui_test.sh
 status=$?
