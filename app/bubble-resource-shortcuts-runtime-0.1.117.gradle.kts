@@ -83,8 +83,8 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
         "                name = if (isAlert) \"Alerta\" else \"Local salvo\",\n",
     )
 
-    val methodsAnchor = "    private fun openApp() {\n"
-    if (methodsAnchor !in text) throw GradleException("openApp nao encontrado para inserir atalhos.")
+    val methodsAnchor = "    private fun openSavedPlaceEditor("
+    if (methodsAnchor !in text) throw GradleException("Editor de locais nao encontrado para inserir atalhos.")
     val shortcutMethods = """    private fun toggleResourceShortcuts() {
         val params = overlayParams ?: return
         shortcutOverlayController.toggleShortcuts(
