@@ -19,7 +19,7 @@ data class BubbleShortcutSpec(
     val targetTab: String? = null,
 ) {
     val displayText: String
-        get() = "$emoji\n$label"
+        get() = "$emoji\n${label.replace(" ", "\n")}"
 }
 
 interface BubbleShortcutModule {
@@ -40,6 +40,9 @@ object BubbleShortcutCatalog {
         require(modules.size == 6) { "A grade deve conter seis modulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
+        }
+        require(modules.map { it.spec.action }.distinct().size == modules.size) {
+            "Cada recurso precisa executar uma acao propria."
         }
     }
 }
