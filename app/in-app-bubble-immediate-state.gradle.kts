@@ -1,6 +1,6 @@
 // Estado visual imediato para as bolinhas internas.
-// A interface nao deve esperar a gravacao assíncrona no DataStore para mostrar
-// ON/OFF; atualiza localmente no mesmo toque e persiste em segundo plano.
+// A interface antiga usava controles ON/OFF dentro dos circulos. A Home 0.1.115
+// usa selecao imediata de grupos e mantem os interruptores dentro de cada grupo.
 
 val inAppBubbleImmediateState by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
@@ -12,6 +12,23 @@ val inAppBubbleImmediateState by tasks.registering {
         val file = mainFile.asFile
         if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
         var text = file.readText()
+
+        // Em uma segunda invocacao do Gradle, a fonte ja pode estar agrupada.
+        // Nao recoloque bubbleControlSettings nem os callbacks antigos.
+        if ("grouped_bubble_home_0_1_115" in text) {
+            listOf(
+                "grouped_bubble_state_0_1_115",
+                "selectedBubbleGroup = group",
+                "grouped_bubble_navigation_0_1_115",
+            ).forEach { marker ->
+                if (marker !in text) throw GradleException("Estado agrupado imediato ausente: $marker")
+            }
+            if ("settings = bubbleControlSettings," in text || "QuickBubbleToggleReducer.toggle(bubbleControlSettings" in text) {
+                throw GradleException("Regressao: estado antigo ON/OFF voltou para a Home agrupada.")
+            }
+            file.writeText(text)
+            return@doLast
+        }
 
         if ("in_app_bubble_immediate_state_0_1_98" !in text) {
             val settingsAnchor = "    val settings by repository.settings.collectAsState(initial = AppSettings())\n"
@@ -39,14 +56,14 @@ val inAppBubbleImmediateState by tasks.registering {
             )
 
             val oldCallback = """                    onToggle = { toggle ->
-                        scope.launch { repository.saveSettings(QuickBubbleToggleReducer.toggle(settings, toggle)) }
-                    },
+                         scope.launch { repository.saveSettings(QuickBubbleToggleReducer.toggle(settings, toggle)) }
+                     },
 """
             val newCallback = """                    onToggle = { toggle ->
-                        val updated = QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)
-                        bubbleControlSettings = updated
-                        scope.launch { repository.saveSettings(updated) }
-                    },
+                         val updated = QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)
+                         bubbleControlSettings = updated
+                         scope.launch { repository.saveSettings(updated) }
+                     },
 """
             if (oldCallback !in callBlock) {
                 throw GradleException("Callback antigo das bolinhas internas nao encontrado.")
