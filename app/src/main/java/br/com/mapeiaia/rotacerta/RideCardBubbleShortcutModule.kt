@@ -5,6 +5,7 @@ object RideCardBubbleShortcutModule : BubbleShortcutModule {
         id = "ride_card",
         emoji = "💾",
         label = "Salvar card",
+        displayLabel = "Card",
         action = BubbleShortcutAction.SaveRideCard,
     )
 }
