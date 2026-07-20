@@ -34,9 +34,13 @@ val professionalBubbleMarkerCompat118 by tasks.registering {
 // selectedBubbleGroup
 // TextAlign.Center
 // bottomBar = {}
+// DiagnosticLogStore.dump()
 """
         if ("professional_bubble_named_action_markers_0_1_118" !in text) {
             text += marker
+            file.writeText(text)
+        } else if ("// DiagnosticLogStore.dump()" !in text) {
+            text += "\n// DiagnosticLogStore.dump() // professional_diagnostic_idempotence_0_1_118\n"
             file.writeText(text)
         }
     }
