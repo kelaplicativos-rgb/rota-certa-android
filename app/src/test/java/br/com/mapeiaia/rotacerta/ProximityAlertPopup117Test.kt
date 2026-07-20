@@ -7,14 +7,8 @@ class ProximityAlertPopup117Test {
     @Test
     fun popupAppearsOncePerApproachAndRearmsAfterExit() {
         var now = 100_000L
-        val engine = ProximityAlertEngine(
-            speechEngine = object : ProximitySpeech {
-                override fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double): Boolean = true
-                override fun speakProximityAlert(place: SavedPlace): Boolean = true
-                override fun proximityAlertSpeech(place: SavedPlace): String = place.name
-            },
-            nowProvider = { now },
-        )
+        val speech = CountingSpeech()
+        val engine = ProximityAlertEngine(speechEngine = speech, nowProvider = { now })
         val alert = SavedPlace(
             id = "alert-popup-1",
             name = "Buraco",
@@ -29,7 +23,6 @@ class ProximityAlertPopup117Test {
             popupCount += 1
         }
 
-        // Primeiro carregamento ja dentro da zona: aguarda sair, sem popup.
         engine.check(
             alerts = listOf(alert),
             radars = emptyList(),
@@ -39,7 +32,6 @@ class ProximityAlertPopup117Test {
         ) {}
         assertEquals(0, popupCount)
 
-        // Sai da zona e entra novamente: um popup.
         engine.check(
             alerts = listOf(alert),
             radars = emptyList(),
@@ -57,7 +49,6 @@ class ProximityAlertPopup117Test {
         ) {}
         assertEquals(1, popupCount)
 
-        // Continua dentro: nao repete o popup, mesmo depois do intervalo da voz.
         now += 25_000L
         engine.check(
             alerts = listOf(alert),
@@ -68,7 +59,6 @@ class ProximityAlertPopup117Test {
         ) {}
         assertEquals(1, popupCount)
 
-        // Sai e reentra em uma nova aproximacao: popup rearmado.
         engine.check(
             alerts = listOf(alert),
             radars = emptyList(),
@@ -85,5 +75,50 @@ class ProximityAlertPopup117Test {
             onSavedPlacePopup = onPopup,
         ) {}
         assertEquals(2, popupCount)
+    }
+
+    @Test
+    fun savedLocalNeverSpeaksOrShowsProximityPopup() {
+        val speech = CountingSpeech()
+        val engine = ProximityAlertEngine(speechEngine = speech, nowProvider = { 100_000L })
+        val parking = SavedPlace(
+            id = "parking-1",
+            name = "Estacionamento",
+            type = SavedPlaceType.Place,
+            coordinate = Coordinate(0.0, 0.0005),
+        )
+        val settings = AppSettings(proximityAlertDistanceMeters = 200)
+        var popupCount = 0
+
+        engine.check(
+            alerts = listOf(parking),
+            radars = emptyList(),
+            coordinate = Coordinate(0.0, 0.0045),
+            settings = settings,
+            onSavedPlacePopup = { _, _ -> popupCount += 1 },
+        ) {}
+        engine.check(
+            alerts = listOf(parking),
+            radars = emptyList(),
+            coordinate = Coordinate(0.0, 0.0),
+            settings = settings,
+            onSavedPlacePopup = { _, _ -> popupCount += 1 },
+        ) {}
+
+        assertEquals(0, popupCount)
+        assertEquals(0, speech.proximityCalls)
+    }
+
+    private class CountingSpeech : ProximitySpeech {
+        var proximityCalls = 0
+
+        override fun speakImportedRadar(radar: ImportedRadar, distanceMeters: Double): Boolean = true
+
+        override fun speakProximityAlert(place: SavedPlace): Boolean {
+            proximityCalls += 1
+            return true
+        }
+
+        override fun proximityAlertSpeech(place: SavedPlace): String = place.name
     }
 }
