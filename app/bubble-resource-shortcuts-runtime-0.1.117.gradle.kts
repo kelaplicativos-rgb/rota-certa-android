@@ -1,4 +1,4 @@
-// Integra o controlador Kotlin de atalhos ao servico da bolinha.
+// Integra o catalogo de modulos Kotlin ao servico da bolinha.
 
 fun shortcutRuntime117ReplaceRegion(
     source: String,
@@ -79,8 +79,12 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
     )
 
     text = text.replace(
+        "    private fun saveCurrentPlaceFromBubble(type: SavedPlaceType) {\n",
+        "    private fun saveCurrentPlaceFromBubble(type: SavedPlaceType, defaultName: String = defaultSavedPlaceName(type)) {\n",
+    )
+    text = text.replace(
         "                name = if (isAlert) \"Alerta de proximidade\" else \"Local salvo\",\n",
-        "                name = if (isAlert) \"Alerta\" else \"Local salvo\",\n",
+        "                name = defaultName,\n",
     )
 
     val methodsAnchor = "    private fun openSavedPlaceEditor("
@@ -89,16 +93,31 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
         val params = overlayParams ?: return
         shortcutOverlayController.toggleShortcuts(
             anchor = params,
-            actions = BubbleShortcutActions(
-                onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) },
-                onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) },
-                onSaveCard = ::saveCurrentRideCardFromBubble,
-                onOpenDestination = { openResourceGroup(BUBBLE_GROUP_DESTINATION_VALUE, TAB_ANALYSIS) },
-                onOpenReading = { openResourceGroup(BUBBLE_GROUP_READING_VALUE, TAB_CONFIG) },
-                onOpenSettings = { openResourceGroup(BUBBLE_GROUP_GENERAL_VALUE, TAB_CONFIG) },
-            ),
+            onShortcut = ::executeShortcutModule,
         )
         traceEvent("bubble.shortcuts.toggle")
+    }
+
+    private fun executeShortcutModule(spec: BubbleShortcutSpec) {
+        traceEvent("bubble.shortcut.execute id=" + spec.id)
+        when (spec.action) {
+            BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(
+                type = SavedPlaceType.ProximityAlert,
+                defaultName = requireNotNull(spec.defaultName),
+            )
+            BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(
+                type = SavedPlaceType.Place,
+                defaultName = requireNotNull(spec.defaultName),
+            )
+            BubbleShortcutAction.SaveRideCard -> saveCurrentRideCardFromBubble()
+            BubbleShortcutAction.OpenDestination,
+            BubbleShortcutAction.OpenReading,
+            BubbleShortcutAction.OpenSettings,
+            -> openResourceGroup(
+                group = requireNotNull(spec.targetGroup),
+                tab = requireNotNull(spec.targetTab),
+            )
+        }
     }
 
     private fun openResourceGroup(group: String, tab: String) {
@@ -189,14 +208,16 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
 
     listOf(
         "newView.setOnClickListener { toggleResourceShortcuts() }",
-        "BubbleShortcutActions(",
-        "onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) }",
-        "onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) }",
+        "onShortcut = ::executeShortcutModule",
+        "BubbleShortcutAction.CreateAlert",
+        "BubbleShortcutAction.CreateSavedPlace",
+        "BubbleShortcutAction.SaveRideCard",
+        "defaultName = requireNotNull(spec.defaultName)",
         "showSavedAlertPopup(alert, distanceMeters)",
         "shortcutOverlayController.hideShortcuts()",
         "bubble_resource_shortcuts_runtime_0_1_117",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Runtime de atalhos incompleto: $marker")
+        if (marker !in text) throw GradleException("Runtime modular de atalhos incompleto: $marker")
     }
 
     file.writeText(text)
