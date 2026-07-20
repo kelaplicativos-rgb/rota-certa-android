@@ -12,13 +12,30 @@ fun enforceFullSessionDiagnostic118(file: java.io.File) {
             "O relatorio registra a linha do tempo mantida em memoria desde o inicio da execucao, alem da tentativa detalhada de leitura, OCR, enderecos, geocodificacao, rota, descartes, atalhos e cor final.",
         )
 
-    val sessionStartAnchor = "    LaunchedEffect(Unit) {\n"
     if ("app.session.started" !in text) {
-        if (sessionStartAnchor !in text) throw GradleException("Inicio da sessao da Home nao encontrado.")
-        text = text.replaceFirst(
-            sessionStartAnchor,
-            sessionStartAnchor + "        DiagnosticLogStore.record(\"app\", \"app.session.started version=\" + BuildConfig.VERSION_NAME + \" build=\" + BuildConfig.VERSION_CODE)\n",
+        val contextAnchor = "    val context = LocalContext.current\n"
+        val sessionBlock = """    LaunchedEffect("rota_certa_session_0_1_118") {
+        DiagnosticLogStore.record(
+            "app",
+            "app.session.started version=" + BuildConfig.VERSION_NAME + " build=" + BuildConfig.VERSION_CODE,
         )
+    } // full_session_start_0_1_118
+
+"""
+        when {
+            contextAnchor in text -> {
+                text = text.replaceFirst(contextAnchor, contextAnchor + sessionBlock)
+            }
+            "    LaunchedEffect(" in text -> {
+                val effectStart = text.indexOf("    LaunchedEffect(")
+                val bodyStart = text.indexOf("{\n", effectStart)
+                if (bodyStart < 0) throw GradleException("LaunchedEffect sem corpo valido na Home.")
+                val insertAt = bodyStart + 2
+                val eventLine = "        DiagnosticLogStore.record(\"app\", \"app.session.started version=\" + BuildConfig.VERSION_NAME + \" build=\" + BuildConfig.VERSION_CODE) // full_session_start_0_1_118\n"
+                text = text.substring(0, insertAt) + eventLine + text.substring(insertAt)
+            }
+            else -> throw GradleException("Nao encontrei ponto seguro para registrar o inicio da sessao.")
+        }
     }
 
     if ("report.export.started" !in text) {
@@ -48,6 +65,7 @@ fun enforceFullSessionDiagnostic118(file: java.io.File) {
         "app.session.started",
         "report.export.started",
         "report.export.completed",
+        "full_session_start_0_1_118",
         marker,
     ).forEach { expected ->
         if (expected !in text) throw GradleException("Diagnostico completo 0.1.118 ausente: $expected")
