@@ -303,12 +303,10 @@ jobs:
           if-no-files-found: error
 
       - name: Publish stable GitHub Release APK
-        if: >
-          (github.event_name == 'push' && github.ref == 'refs/heads/codex/pr5-stable-bubble-combined') ||
-          (github.event_name == 'pull_request' && github.head_ref == 'codex/pr5-stable-bubble-combined')
+        if: github.event_name == 'push' && github.ref == 'refs/heads/codex/pr5-stable-bubble-combined'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RELEASE_TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
@@ -336,9 +334,19 @@ jobs:
             echo
             cat real-farol-validation.txt
           } > "$notes_file"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           else
-            gh release create "$tag" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file "$notes_file"
           fi
-          gh release upload "$tag" "$stable_apk" "$stable_sha" --clobber
+
+          published=false
+          for attempt in 1 2 3; do
+            if gh release upload "$tag" "$stable_apk" "$stable_sha" --repo "$GITHUB_REPOSITORY" --clobber; then
+              published=true
+              break
+            fi
+            sleep "$((attempt * 5))"
+          done
+          test "$published" = true
