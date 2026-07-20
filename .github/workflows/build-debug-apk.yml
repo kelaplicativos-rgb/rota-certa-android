@@ -96,17 +96,26 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate reader, drag and resource shortcuts
+      - name: Validate reader, drag and independent shortcut modules
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           controller="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
+          catalog="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
           trigger="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalAddressTrigger.kt"
           parser="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt"
+          modules=(
+            app/src/main/java/br/com/mapeiaia/rotacerta/AlertBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/SavedPlaceBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/ReadingBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/SettingsBubbleShortcutModule.kt
+          )
 
-          for file in "$service" "$main" "$controller" "$engine" "$trigger" "$parser"; do
+          for file in "$service" "$main" "$controller" "$catalog" "$engine" "$trigger" "$parser" "${modules[@]}"; do
             test -f "$file"
           done
 
@@ -120,24 +129,42 @@ jobs:
           grep -Fq 'ocrService.extractText(bitmap)' "$service"
 
           grep -Fq 'newView.setOnClickListener { toggleResourceShortcuts() }' "$service"
-          grep -Fq 'bubble_resource_shortcuts_runtime_0_1_117' "$service"
-          grep -Fq 'onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) }' "$service"
-          grep -Fq 'onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) }' "$service"
+          grep -Fq 'onShortcut = ::executeShortcutModule' "$service"
+          grep -Fq 'BubbleShortcutAction.CreateAlert' "$service"
+          grep -Fq 'BubbleShortcutAction.CreateSavedPlace' "$service"
+          grep -Fq 'BubbleShortcutAction.SaveRideCard' "$service"
+          grep -Fq 'defaultName = requireNotNull(spec.defaultName)' "$service"
+          grep -Fq 'BubbleShortcutCatalog.modules.joinToString' "$service"
+          grep -Fq 'KEY_RUNTIME_SHORTCUTS_OPEN' "$service"
           grep -Fq 'openSavedPlaceEditor(place: SavedPlace)' "$service"
           grep -Fq '.putExtra(EXTRA_OPEN_BUBBLE_GROUP, BUBBLE_GROUP_ALERTS_VALUE)' "$service"
 
-          grep -Fq 'contentDescription = description' "$controller"
-          grep -Fq '"Salvar alerta"' "$controller"
-          grep -Fq '"Salvar local"' "$controller"
+          grep -Fq 'interface BubbleShortcutModule' "$catalog"
+          grep -Fq 'BubbleShortcutCatalog' "$catalog"
+          grep -Fq 'modules.size == 6' "$catalog"
+          grep -Fq 'BubbleShortcutCatalog.modules.forEach' "$controller"
+          grep -Fq 'onShortcut(module.spec)' "$controller"
+          grep -Fq 'contentDescription = spec.label' "$controller"
+          if grep -Fq 'data class BubbleShortcutActions' "$controller" || grep -Fq 'BubbleShortcutActions(' "$service"; then
+            echo "ERRO: controlador ainda possui seis callbacks fixos."
+            exit 1
+          fi
+
+          grep -Fq 'label = "Salvar alerta"' "${modules[0]}"
+          grep -Fq 'defaultName = "Alerta"' "${modules[0]}"
+          grep -Fq 'label = "Salvar local"' "${modules[1]}"
+          grep -Fq 'defaultName = "Local salvo"' "${modules[1]}"
+          grep -Fq 'label = "Salvar card"' "${modules[2]}"
+          grep -Fq 'targetGroup = "destination"' "${modules[3]}"
+          grep -Fq 'targetGroup = "reading"' "${modules[4]}"
+          grep -Fq 'targetGroup = "general"' "${modules[5]}"
+
           grep -Fq 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller"
           grep -Fq 'popupButton("Editar")' "$controller"
           grep -Fq 'popupButton("Excluir")' "$controller"
           grep -Fq 'popupButton("Confirmar")' "$controller"
-
-          grep -Fq 'val proximityAlerts = alerts.filter { it.type == SavedPlaceType.ProximityAlert }' "$engine"
           grep -Fq 'popupShownThisApproach' "$engine"
           grep -Fq 'onSavedPlacePopup(alert, distanceMeters)' "$engine"
-          grep -Fq 'ignored_places=' "$engine"
 
           grep -Fq 'bubble_shortcut_navigation_0_1_117' "$main"
           grep -Fq 'Local para voltar depois, como estacionamento' "$main"
@@ -159,8 +186,9 @@ jobs:
           INSTANT_DRAG=preserved
           MAIN_BUBBLE_TAP=opens_resource_shortcuts
           RESOURCE_SHORTCUTS=6
-          SAVE_ALERT=proximity_monitored
-          SAVE_LOCAL=gps_bookmark_only
+          SHORTCUT_MODULES=6_independent
+          SAVE_ALERT=editable_proximity_alert
+          SAVE_LOCAL=editable_gps_bookmark_only
           SAVED_LOCAL_PROXIMITY_POPUP=disabled
           ALERT_POPUP_ACTIONS=close_edit_delete
           ALERT_POPUP_REPEAT=once_per_approach
@@ -188,7 +216,9 @@ jobs:
             "Central de bolinhas" \
             "Salvar alerta" \
             "Salvar local" \
-            "bubble.shortcuts.opened count=6" \
+            "Salvar card" \
+            "bubble.shortcuts.opened count=" \
+            "bubble.shortcut.execute id=" \
             "proximity.popup.shown id=" \
             "Alerta excluido." \
             "Local para voltar depois, como estacionamento" \
@@ -249,9 +279,9 @@ jobs:
           Commit: ${RELEASE_TARGET_SHA}
 
           Recursos 0.1.117:
-          - Bolinha principal abre seis atalhos leves.
+          - Seis atalhos independentes, um modulo para cada recurso.
           - Salvar alerta abre editor e gera popup de aproximacao com Editar/Excluir.
-          - Salvar local guarda estacionamento/local para GPS posterior e nao gera alerta.
+          - Salvar local abre editor e guarda um ponto de GPS sem gerar alerta.
           EOF
           cat universal-two-address-validation.txt >> stable-release-notes.md
           cat apk-validation.txt >> stable-release-notes.md
