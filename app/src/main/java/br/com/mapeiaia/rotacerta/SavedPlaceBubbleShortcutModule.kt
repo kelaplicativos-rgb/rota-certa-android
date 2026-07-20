@@ -5,6 +5,7 @@ object SavedPlaceBubbleShortcutModule : BubbleShortcutModule {
         id = "saved_place",
         emoji = "📍",
         label = "Salvar local",
+        displayLabel = "Local",
         action = BubbleShortcutAction.CreateSavedPlace,
         defaultName = "Local salvo",
         targetGroup = "alerts",
