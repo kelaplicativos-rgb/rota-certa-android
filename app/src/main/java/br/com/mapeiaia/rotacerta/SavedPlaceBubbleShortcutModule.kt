@@ -4,7 +4,7 @@ object SavedPlaceBubbleShortcutModule : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
         id = "saved_place",
         emoji = "📍",
-        label = "Local",
+        label = "Salvar local",
         action = BubbleShortcutAction.CreateSavedPlace,
         defaultName = "Local salvo",
         targetGroup = "alerts",
