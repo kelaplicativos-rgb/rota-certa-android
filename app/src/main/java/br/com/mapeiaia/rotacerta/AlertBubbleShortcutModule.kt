@@ -5,6 +5,7 @@ object AlertBubbleShortcutModule : BubbleShortcutModule {
         id = "alert",
         emoji = "⚠️",
         label = "Salvar alerta",
+        displayLabel = "Alerta",
         action = BubbleShortcutAction.CreateAlert,
         defaultName = "Alerta",
         targetGroup = "alerts",
