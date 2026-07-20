@@ -112,16 +112,20 @@ class BubbleShortcutOverlayController(
     ) {
         hideProximityAlert()
         BubbleShortcutCatalog.requireValid()
-        val menuSize = dp(238)
+
+        val columns = 3
+        val rows = (BubbleShortcutCatalog.modules.size + columns - 1) / columns
+        val menuWidth = dp(206)
+        val estimatedMenuHeight = dp(14 + rows * 66)
         val menu = GridLayout(context).apply {
-            columnCount = 3
-            rowCount = 2
+            columnCount = columns
+            rowCount = rows
             background = GradientDrawable().apply {
-                cornerRadius = dp(20).toFloat()
-                setColor(Color.argb(232, 25, 25, 25))
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.argb(238, 25, 25, 25))
                 setStroke(dp(1), Color.argb(220, 255, 255, 255))
             }
-            setPadding(dp(7), dp(7), dp(7), dp(7))
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             BubbleShortcutCatalog.modules.forEach { module ->
                 addView(shortcutBubble(module.spec) {
                     hideShortcuts()
@@ -131,31 +135,70 @@ class BubbleShortcutOverlayController(
             }
         }
 
-        val metrics = context.resources.displayMetrics
-        val rightX = anchor.x + dp(74)
+        val (menuX, menuY) = anchoredPosition(
+            anchor = anchor,
+            menuWidth = menuWidth,
+            menuHeight = estimatedMenuHeight,
+        )
         val params = WindowManager.LayoutParams(
-            menuSize,
+            menuWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (rightX + menuSize <= metrics.widthPixels) rightX else (anchor.x - menuSize - dp(8)).coerceAtLeast(0)
-            y = anchor.y.coerceIn(0, (metrics.heightPixels - dp(180)).coerceAtLeast(0))
+            x = menuX
+            y = menuY
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
-            trace("bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size}")
+            trace(
+                "bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size} " +
+                    "anchor=${anchor.x},${anchor.y},${anchor.width},${anchor.height} menu=$menuX,$menuY,$menuWidth,$estimatedMenuHeight",
+            )
+        }
+    }
+
+    /**
+     * Mantem a bolinha principal sempre visivel e com um pequeno espaco entre
+     * ela e a grade. Primeiro tenta direita/esquerda; em telas estreitas usa
+     * abaixo/acima, sem qualquer interseccao entre os dois retangulos.
+     */
+    private fun anchoredPosition(
+        anchor: WindowManager.LayoutParams,
+        menuWidth: Int,
+        menuHeight: Int,
+    ): Pair<Int, Int> {
+        val metrics = context.resources.displayMetrics
+        val safe = dp(4)
+        val gap = dp(8)
+        val anchorWidth = anchor.width.takeIf { it > 0 && it < metrics.widthPixels } ?: dp(66)
+        val anchorHeight = anchor.height.takeIf { it > 0 && it < metrics.heightPixels } ?: dp(66)
+        val rightX = anchor.x + anchorWidth + gap
+        val leftX = anchor.x - menuWidth - gap
+        val maxX = (metrics.widthPixels - menuWidth - safe).coerceAtLeast(safe)
+        val maxY = (metrics.heightPixels - menuHeight - safe).coerceAtLeast(safe)
+        val alignedY = anchor.y.coerceIn(safe, maxY)
+
+        return when {
+            rightX + menuWidth <= metrics.widthPixels - safe -> rightX to alignedY
+            leftX >= safe -> leftX to alignedY
+            anchor.y + anchorHeight + gap + menuHeight <= metrics.heightPixels - safe ->
+                anchor.x.coerceIn(safe, maxX) to (anchor.y + anchorHeight + gap)
+            else ->
+                anchor.x.coerceIn(safe, maxX) to (anchor.y - menuHeight - gap).coerceIn(safe, maxY)
         }
     }
 
     private fun shortcutBubble(spec: BubbleShortcutSpec, action: () -> Unit): TextView = TextView(context).apply {
         text = spec.displayText
-        textSize = 11f
+        textSize = 10f
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
+        includeFontPadding = false
+        maxLines = 2
         contentDescription = spec.label
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -163,8 +206,8 @@ class BubbleShortcutOverlayController(
             setStroke(dp(2), Color.argb(230, 205, 180, 255))
         }
         layoutParams = GridLayout.LayoutParams().apply {
-            width = dp(70)
-            height = dp(70)
+            width = dp(62)
+            height = dp(62)
             setMargins(dp(2), dp(2), dp(2), dp(2))
         }
         setOnClickListener { action() }
