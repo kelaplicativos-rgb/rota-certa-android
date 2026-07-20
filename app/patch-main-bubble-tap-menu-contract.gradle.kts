@@ -21,14 +21,14 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
 
-    // Compatibilidade final 0.1.117: em uma segunda invocacao do Gradle, o menu
-    // de atalhos ja esta aplicado. Nao restaurar o contrato antigo de Home direta.
-    if ("bubble_resource_shortcuts_0_1_117" in text) {
+    // Compatibilidade final 0.1.117: em uma segunda invocacao do Gradle, o
+    // runtime modular de atalhos ja esta aplicado. Nao restaurar Home direta.
+    if ("bubble_resource_shortcuts_runtime_0_1_117" in text) {
         listOf(
-            "newView.setOnClickListener { toggleActionMenu() }",
-            "bubble.shortcuts.opened count=6",
-            "resourceShortcutBubble(\"⚠️\\nAlerta\")",
-            "resourceShortcutBubble(\"📍\\nLocal\")",
+            "newView.setOnClickListener { toggleResourceShortcuts() }",
+            "BubbleShortcutActions(",
+            "onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) }",
+            "onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) }",
         ).forEach { marker ->
             if (marker !in text) throw GradleException("Atalhos 0.1.117 incompletos: $marker")
         }
