@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   runtime-ui:
-    name: Install, drag and verify resource shortcuts on Android
+    name: Install, drag and verify professional resource shortcuts on Android
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
@@ -47,6 +47,23 @@ jobs:
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace --console=plain
+
+      - name: Prepare 0.1.118 runtime smoke script
+        run: |
+          cp scripts/runtime_bubble_shortcuts_smoke_117.sh runtime-ui/runtime_bubble_shortcuts_smoke_118.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('runtime-ui/runtime_bubble_shortcuts_smoke_118.sh')
+          text = path.read_text()
+          old = 'Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes'
+          new = 'Salvar alerta|Salvar local|Salvar card|Destino|Leitura|WhatsApp da tela|Ajustes|Encerrar Rota Certa'
+          text = text.replace('runtime_shortcut_count" value="6', 'runtime_shortcut_count" value="8')
+          text = text.replace(old, new)
+          text = text.replace('RESOURCE_SHORTCUTS=6', 'RESOURCE_SHORTCUTS=8')
+          text = text.replace('SHORTCUT_MENU=lightweight', 'SHORTCUT_MENU=lightweight\nREADING_ACTION=toggle\nWHATSAPP_SCREEN_ACTION=visible\nSTOP_APPLICATION_ACTION=visible')
+          path.write_text(text)
+          PY
+          chmod +x runtime-ui/runtime_bubble_shortcuts_smoke_118.sh
 
       - name: Install Android emulator image and libraries
         run: |
@@ -90,7 +107,7 @@ jobs:
           }
           trap cleanup EXIT
           set +e
-          timeout --signal=TERM --kill-after=20s 480s bash scripts/runtime_bubble_shortcuts_smoke_117.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          timeout --signal=TERM --kill-after=20s 480s bash runtime-ui/runtime_bubble_shortcuts_smoke_118.sh > >(tee runtime-ui/runtime-script.log) 2>&1
           runtime_status=$?
           set -e
           echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
@@ -113,8 +130,11 @@ jobs:
           grep -Fq 'INSTANT_DRAG=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'DRAG_OPENED_HOME=false' runtime-ui/runtime-validation.txt
           grep -Fq 'MAIN_TAP=opened_resource_shortcuts' runtime-ui/runtime-validation.txt
-          grep -Fq 'RESOURCE_SHORTCUTS=6' runtime-ui/runtime-validation.txt
+          grep -Fq 'RESOURCE_SHORTCUTS=8' runtime-ui/runtime-validation.txt
           grep -Fq 'SHORTCUT_MENU=lightweight' runtime-ui/runtime-validation.txt
+          grep -Fq 'READING_ACTION=toggle' runtime-ui/runtime-validation.txt
+          grep -Fq 'WHATSAPP_SCREEN_ACTION=visible' runtime-ui/runtime-validation.txt
+          grep -Fq 'STOP_APPLICATION_ACTION=visible' runtime-ui/runtime-validation.txt
           grep -Fq 'SAVE_ALERT_ACTION=visible' runtime-ui/runtime-validation.txt
           grep -Fq 'SAVE_LOCAL_ACTION=visible' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
