@@ -7,7 +7,7 @@ import org.junit.Test
 
 class InAppBubbleImmediateStateContractTest {
     @Test
-    fun groupSelectionChangesComposeStateImmediately() {
+    fun professionalGroupSelectionChangesComposeStateImmediately() {
         val sourceFile = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
@@ -28,15 +28,23 @@ class InAppBubbleImmediateStateContractTest {
             "BUBBLE_GROUP_REPORTS -> TAB_HISTORY" in source,
         )
         assertTrue(
-            "Ferramentas precisam abrir o grupo proprio",
-            "BUBBLE_GROUP_TOOLS -> TAB_TOOLS" in source,
-        )
-        assertTrue(
             "Demais grupos precisam abrir configuracao filtrada",
             "else -> TAB_CONFIG" in source,
         )
         assertFalse(
-            "Central nao deve mais alternar configuracao diretamente no botao pequeno",
+            "Ferramentas nao pode possuir navegacao propria",
+            "BUBBLE_GROUP_TOOLS -> TAB_TOOLS" in source,
+        )
+        assertTrue(
+            "WhatsApp precisa executar imediatamente",
+            "onOpenWhatsApp" in source && "home.action whatsapp" in source,
+        )
+        assertTrue(
+            "Encerrar precisa executar imediatamente",
+            "onStopApplication" in source && "home.action stop_application" in source,
+        )
+        assertFalse(
+            "Central nao deve alternar configuracao pelo estado antigo",
             "QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)" in source,
         )
         assertFalse(
