@@ -8,7 +8,7 @@ import org.junit.Test
 
 class MainBubbleTapMenuContractTest {
     @Test
-    fun compiledSourceOpensSixIndependentResourceModules() {
+    fun compiledSourceOpensEightIndependentAnchoredResourceModules() {
         fun sourceFile(name: String): File = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
@@ -23,7 +23,9 @@ class MainBubbleTapMenuContractTest {
             "RideCardBubbleShortcutModule.kt",
             "DestinationBubbleShortcutModule.kt",
             "ReadingBubbleShortcutModule.kt",
+            "WhatsAppBubbleShortcutModule.kt",
             "SettingsBubbleShortcutModule.kt",
+            "StopBubbleShortcutModule.kt",
         )
         val modules = moduleNames.map(::sourceFile).map(File::readText)
 
@@ -33,7 +35,7 @@ class MainBubbleTapMenuContractTest {
         val overlayBlock = service.substring(overlayStart, overlayEnd)
 
         assertTrue(
-            "Toque principal precisa abrir os atalhos",
+            "Toque principal precisa abrir/fechar os atalhos",
             "newView.setOnClickListener { toggleResourceShortcuts() }" in overlayBlock,
         )
         assertFalse(
@@ -46,14 +48,17 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Alerta precisa possuir acao propria", "BubbleShortcutAction.CreateAlert" in service)
         assertTrue("Local precisa possuir acao propria", "BubbleShortcutAction.CreateSavedPlace" in service)
         assertTrue("Card precisa possuir acao propria", "BubbleShortcutAction.SaveRideCard" in service)
+        assertTrue("Leitura precisa alternar sem abrir Home", "BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()" in service)
+        assertTrue("WhatsApp precisa capturar telefone da tela", "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp()" in service)
+        assertTrue("Encerrar precisa abrir detalhes e desligar o servico", "BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()" in service)
         assertTrue("Arraste precisa fechar a grade", "hideResourceShortcuts()" in service)
         assertFalse("Callbacks fixos nao podem voltar", "BubbleShortcutActions(" in service)
 
         assertTrue("Catalogo modular ausente", "object BubbleShortcutCatalog" in catalog)
         assertTrue("Controlador precisa percorrer o catalogo", "BubbleShortcutCatalog.modules.forEach" in controller)
         assertTrue("Controlador precisa devolver o modulo", "onShortcut(module.spec)" in controller)
-        assertEquals("A grade precisa conter seis classes de modulo", 6, modules.size)
-        assertEquals("Cada modulo precisa ser diferente", 6, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals("A grade precisa conter oito classes de modulo", 8, modules.size)
+        assertEquals("Cada modulo precisa ser diferente", 8, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
 
         listOf(
             "Salvar alerta",
@@ -61,11 +66,17 @@ class MainBubbleTapMenuContractTest {
             "Salvar card",
             "Destino",
             "Leitura",
+            "WhatsApp da tela",
             "Ajustes",
+            "Encerrar Rota Certa",
         ).forEachIndexed { index, label ->
             assertTrue("Atalho ausente: $label", "label = \"$label\"" in modules[index])
         }
 
+        assertTrue("Posicao precisa considerar largura real da bolinha", "anchor.width.takeIf" in controller)
+        assertTrue("Grade precisa tentar direita da bolinha", "rightX + menuWidth" in controller)
+        assertTrue("Grade precisa tentar esquerda da bolinha", "leftX >= safe" in controller)
+        assertTrue("Tela estreita precisa usar abaixo/acima", "anchor.y + anchorHeight + gap" in controller)
         assertTrue("Popup de alerta precisa rejeitar Local", "if (alert.type != SavedPlaceType.ProximityAlert)" in controller)
         assertTrue("Popup precisa permitir editar", "popupButton(\"Editar\")" in controller)
         assertTrue("Popup precisa permitir excluir", "popupButton(\"Excluir\")" in controller)
