@@ -48,8 +48,8 @@ jobs:
           gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|BubbleShortcut|ProximityAlert)" gradle-test.log || true
-            tail -360 gradle-test.log
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|BubbleShortcut|ProfessionalBubble|ProximityAlert)" gradle-test.log || true
+            tail -400 gradle-test.log
           fi
           exit "$status"
 
@@ -83,8 +83,8 @@ jobs:
           gradle assembleDebug --no-daemon --stacktrace --console=plain > gradle-assemble.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|BubbleShortcut|ProximityAlert)" gradle-assemble.log || true
-            tail -360 gradle-assemble.log
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|BubbleShortcut|ProfessionalBubble|ProximityAlert)" gradle-assemble.log || true
+            tail -400 gradle-assemble.log
           fi
           exit "$status"
 
@@ -96,13 +96,14 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate reader, drag and independent shortcut modules
+      - name: Validate professional reader and bubble architecture
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           controller="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
           catalog="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt"
+          position="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutPositionPolicy.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
           trigger="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalAddressTrigger.kt"
           modules=(
@@ -111,10 +112,12 @@ jobs:
             app/src/main/java/br/com/mapeiaia/rotacerta/RideCardBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/ReadingBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/WhatsAppBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/SettingsBubbleShortcutModule.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/StopBubbleShortcutModule.kt
           )
 
-          for file in "$service" "$main" "$controller" "$catalog" "$engine" "$trigger" "${modules[@]}"; do
+          for file in "$service" "$main" "$controller" "$catalog" "$position" "$engine" "$trigger" "${modules[@]}"; do
             test -f "$file"
           done
 
@@ -127,28 +130,65 @@ jobs:
           grep -Fq 'onShortcut = ::executeShortcutModule' "$service"
           grep -Fq 'BubbleShortcutCatalog.modules.joinToString' "$service"
           grep -Fq 'KEY_RUNTIME_SHORTCUTS_OPEN' "$service"
+          grep -Fq 'BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp()' "$service"
+          grep -Fq 'BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()' "$service"
+          grep -Fq 'Settings.ACTION_APPLICATION_DETAILS_SETTINGS' "$service"
+          grep -Fq 'disableSelf()' "$service"
+          grep -Fq 'bubble_reading_gate_0_1_118' "$service"
           grep -Fq 'openSavedPlaceEditor(place: SavedPlace)' "$service"
           grep -Fq '.putExtra(EXTRA_OPEN_BUBBLE_GROUP, BUBBLE_GROUP_ALERTS_VALUE)' "$service"
 
           grep -Fq 'interface BubbleShortcutModule' "$catalog"
           grep -Fq 'BubbleShortcutCatalog' "$catalog"
-          grep -Fq 'modules.size == 6' "$catalog"
+          grep -Fq 'modules.size == 8' "$catalog"
           grep -Fq 'BubbleShortcutCatalog.modules.forEach' "$controller"
           grep -Fq 'onShortcut(module.spec)' "$controller"
           grep -Fq 'contentDescription = spec.label' "$controller"
+          grep -Fq 'BubbleShortcutPositionPolicy.place' "$controller"
+          grep -Fq 'rightX + menuWidth' "$position"
+          grep -Fq 'leftX >= safe' "$position"
           if grep -Fq 'data class BubbleShortcutActions' "$controller" || grep -Fq 'BubbleShortcutActions(' "$service"; then
-            echo "ERRO: controlador ainda possui seis callbacks fixos."
+            echo "ERRO: controlador ainda possui callbacks fixos."
             exit 1
           fi
 
           grep -Fq 'label = "Salvar alerta"' "${modules[0]}"
+          grep -Fq 'displayLabel = "Alerta"' "${modules[0]}"
           grep -Fq 'defaultName = "Alerta"' "${modules[0]}"
           grep -Fq 'label = "Salvar local"' "${modules[1]}"
+          grep -Fq 'displayLabel = "Local"' "${modules[1]}"
           grep -Fq 'defaultName = "Local salvo"' "${modules[1]}"
           grep -Fq 'label = "Salvar card"' "${modules[2]}"
           grep -Fq 'targetGroup = "destination"' "${modules[3]}"
-          grep -Fq 'targetGroup = "reading"' "${modules[4]}"
-          grep -Fq 'targetGroup = "general"' "${modules[5]}"
+          grep -Fq 'action = BubbleShortcutAction.ToggleReading' "${modules[4]}"
+          grep -Fq 'targetGroup = "access"' "${modules[4]}"
+          grep -Fq 'action = BubbleShortcutAction.OpenScreenWhatsApp' "${modules[5]}"
+          grep -Fq 'targetGroup = "general"' "${modules[6]}"
+          grep -Fq 'action = BubbleShortcutAction.StopApplication' "${modules[7]}"
+
+          grep -Fq 'professional_bubble_home_0_1_118' "$main"
+          grep -Fq 'Text("Operacao"' "$main"
+          grep -Fq 'Text("Sistema"' "$main"
+          grep -Fq 'Text("Acoes rapidas"' "$main"
+          grep -Fq 'Text("Suporte"' "$main"
+          grep -Fq 'ProfessionalBubbleItem("🟢", "WhatsApp"' "$main"
+          grep -Fq 'ProfessionalBubbleItem("🚗", "Coletor"' "$main"
+          grep -Fq 'ProfessionalBubbleItem("🧹", "Limpar"' "$main"
+          grep -Fq 'ProfessionalBubbleItem("🛠️", "Depurar"' "$main"
+          grep -Fq 'ProfessionalBubbleItem("⏹️", "Encerrar"' "$main"
+          grep -Fq 'BUBBLE_GROUP_ACCESS -> {' "$main"
+          grep -Fq 'Permissoes, leitura e GPS' "$main"
+          grep -Fq 'DiagnosticLogStore.dump()' "$main"
+          grep -Fq 'LINHA DO TEMPO COMPLETA DA EXECUCAO' "$main"
+          if grep -Fq '"Ferramentas" to BUBBLE_GROUP_TOOLS' "$main"; then
+            echo "ERRO: Ferramentas ainda aparece como categoria principal."
+            exit 1
+          fi
+          if grep -Fq '"Leitura" to BUBBLE_GROUP_READING' "$main"; then
+            echo "ERRO: Leitura ainda aparece como categoria principal."
+            exit 1
+          fi
 
           grep -Fq 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller"
           grep -Fq 'popupButton("Editar")' "$controller"
@@ -156,7 +196,6 @@ jobs:
           grep -Fq 'popupButton("Confirmar")' "$controller"
           grep -Fq 'popupShownThisApproach' "$engine"
           grep -Fq 'onSavedPlacePopup(alert, distanceMeters)' "$engine"
-          grep -Fq 'bubble_shortcut_navigation_0_1_117' "$main"
           grep -Fq 'Local para voltar depois, como estacionamento' "$main"
           grep -Fq 'highlighted || draftName.trim() != place.name' "$main"
 
@@ -165,9 +204,18 @@ jobs:
           MINIMUM_RECOGNIZED_ADDRESSES=2
           SCREEN_CHANGE_INVALIDATION=immediate
           INSTANT_DRAG=preserved
-          MAIN_BUBBLE_TAP=opens_resource_shortcuts
-          RESOURCE_SHORTCUTS=6
-          SHORTCUT_MODULES=6_independent
+          MAIN_BUBBLE_TAP=toggles_resource_shortcuts
+          RESOURCE_SHORTCUTS=8
+          SHORTCUT_MODULES=8_independent
+          SHORTCUT_POSITION=adjacent_without_overlap
+          READING_SHORTCUT=toggle_live_reading
+          WHATSAPP_SHORTCUT=capture_phone_from_screen
+          STOP_SHORTCUT=pause_and_open_android_app_details
+          HOME_LAYOUT=professional_logical_sections
+          HOME_READING=inside_permissions
+          HOME_TOOLS_CATEGORY=removed
+          HOME_QUICK_ACTIONS=whatsapp_collector_clipboard_debug
+          DEBUG_REPORT=full_in_memory_timeline
           SAVE_ALERT=editable_proximity_alert
           SAVE_LOCAL=editable_gps_bookmark_only
           SAVED_LOCAL_PROXIMITY_POPUP=disabled
@@ -194,11 +242,16 @@ jobs:
             "Salvar alerta" \
             "Salvar local" \
             "Salvar card" \
+            "WhatsApp da tela" \
+            "Encerrar Rota Certa" \
+            "Leitura pausada" \
+            "Permissoes, leitura e GPS" \
+            "Central de controle" \
+            "LINHA DO TEMPO COMPLETA DA EXECUCAO" \
             "bubble.shortcuts.opened count=" \
             "bubble.shortcut.execute id=" \
             "proximity.popup.shown id=" \
             "Alerta excluido." \
-            "Local para voltar depois, como estacionamento" \
             "universal.trigger source="
           do
             grep -Fq -- "$expected" apk-strings.txt || {
@@ -252,10 +305,14 @@ jobs:
           Run: ${GITHUB_RUN_NUMBER}
           Commit: ${RELEASE_TARGET_SHA}
 
-          Recursos 0.1.117:
-          - Seis atalhos independentes, um modulo para cada recurso.
-          - Salvar alerta abre editor e gera popup de aproximacao com Editar/Excluir.
-          - Salvar local abre editor e guarda um ponto de GPS sem gerar alerta.
+          Recursos 0.1.118:
+          - Oito atalhos independentes ancorados ao redor da bolinha principal.
+          - Leitura alterna imediatamente entre ativa e pausada.
+          - WhatsApp captura telefone brasileiro visivel na tela.
+          - Encerrar pausa leitura, alertas e abre os detalhes do aplicativo para confirmar Forcar interrupcao.
+          - Home organizada por Operacao, Sistema, Registros, Acoes rapidas e Suporte.
+          - Ferramentas removida como categoria e Leitura movida para Permissoes.
+          - Diagnostico exporta a linha do tempo completa mantida em memoria.
           EOF
           cat universal-two-address-validation.txt >> stable-release-notes.md
           cat apk-validation.txt >> stable-release-notes.md
