@@ -13,8 +13,6 @@ val inAppBubbleImmediateState by tasks.registering {
         if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
         var text = file.readText()
 
-        // Em uma segunda invocacao do Gradle, a fonte ja pode estar agrupada.
-        // Nao recoloque bubbleControlSettings nem os callbacks antigos.
         if ("grouped_bubble_home_0_1_115" in text) {
             listOf(
                 "grouped_bubble_state_0_1_115",
@@ -32,9 +30,7 @@ val inAppBubbleImmediateState by tasks.registering {
 
         if ("in_app_bubble_immediate_state_0_1_98" !in text) {
             val settingsAnchor = "    val settings by repository.settings.collectAsState(initial = AppSettings())\n"
-            if (settingsAnchor !in text) {
-                throw GradleException("Estado principal de configuracoes nao encontrado.")
-            }
+            if (settingsAnchor !in text) throw GradleException("Estado principal de configuracoes nao encontrado.")
             text = text.replaceFirst(
                 settingsAnchor,
                 settingsAnchor + """    var bubbleControlSettings by remember(settings) { mutableStateOf(settings) } // in_app_bubble_immediate_state_0_1_98
@@ -45,30 +41,24 @@ val inAppBubbleImmediateState by tasks.registering {
                 .takeIf { it >= 0 }
                 ?: text.indexOf("            UnifiedAppControlBubbles(")
             val callEnd = if (callStart >= 0) text.indexOf("                )", callStart) else -1
-            if (callStart < 0 || callEnd <= callStart) {
-                throw GradleException("Chamada da Central de bolinhas nao encontrada.")
-            }
+            if (callStart < 0 || callEnd <= callStart) throw GradleException("Chamada da Central de bolinhas nao encontrada.")
 
             var callBlock = text.substring(callStart, callEnd + "                )".length)
-            callBlock = callBlock.replaceFirst(
-                "settings = settings,",
-                "settings = bubbleControlSettings,",
-            )
+            callBlock = callBlock.replaceFirst("settings = settings,", "settings = bubbleControlSettings,")
 
-            val oldCallback = """                    onToggle = { toggle ->
-                         scope.launch { repository.saveSettings(QuickBubbleToggleReducer.toggle(settings, toggle)) }
-                     },
-"""
-            val newCallback = """                    onToggle = { toggle ->
-                         val updated = QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)
-                         bubbleControlSettings = updated
-                         scope.launch { repository.saveSettings(updated) }
-                     },
-"""
-            if (oldCallback !in callBlock) {
+            val oldCallbackRegex = Regex(
+                """onToggle\s*=\s*\{\s*toggle\s*->\s*scope\.launch\s*\{\s*repository\.saveSettings\(QuickBubbleToggleReducer\.toggle\(settings,\s*toggle\)\)\s*}\s*},?""",
+                RegexOption.DOT_MATCHES_ALL,
+            )
+            if (!oldCallbackRegex.containsMatchIn(callBlock)) {
                 throw GradleException("Callback antigo das bolinhas internas nao encontrado.")
             }
-            callBlock = callBlock.replaceFirst(oldCallback, newCallback)
+            val newCallback = """onToggle = { toggle ->
+                        val updated = QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)
+                        bubbleControlSettings = updated
+                        scope.launch { repository.saveSettings(updated) }
+                    },"""
+            callBlock = callBlock.replaceFirst(oldCallbackRegex, newCallback)
             text = text.substring(0, callStart) + callBlock + text.substring(callEnd + "                )".length)
         }
 
