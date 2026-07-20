@@ -34,7 +34,7 @@ fun enforceGroupedBubbleNavigation115(file: java.io.File) {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
                     onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
-                    diagnostic = diagnostic,
+                    diagnostic = null,
                     savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
                     highlightedSavedPlaceId = highlightedSavedPlaceId,
@@ -63,7 +63,7 @@ fun enforceGroupedBubbleNavigation115(file: java.io.File) {
                     onClearClipboard = { clearClipboard(context) },
                 )
                 TAB_HISTORY -> ReportsGroupScreen(
-                    diagnostic = diagnostic,
+                    diagnostic = null,
                     history = history,
                 )
                 else -> Unit
