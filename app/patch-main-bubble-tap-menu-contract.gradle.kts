@@ -1,8 +1,8 @@
-// Contrato final do toque na bolinha principal.
+// Contrato do toque na bolinha principal.
 //
-// A grade flutuante de bolinhas foi removida do clique principal. O toque simples
-// abre diretamente a Home do Rota Certa. O arraste continua sendo tratado pelo
-// BubbleTouchListener e nao abre o aplicativo.
+// Ate a versao 0.1.116 o toque simples abria diretamente a Home. A partir da
+// 0.1.117, quando o marcador de atalhos estiver presente, este patch preserva a
+// grade leve de recursos e apenas valida que o clique principal chama o menu.
 
 fun replaceMainBubbleRegion114(
     source: String,
@@ -20,6 +20,21 @@ fun replaceMainBubbleRegion114(
 fun enforceMainBubbleTapHomeContract(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
+
+    // Compatibilidade final 0.1.117: em uma segunda invocacao do Gradle, o menu
+    // de atalhos ja esta aplicado. Nao restaurar o contrato antigo de Home direta.
+    if ("bubble_resource_shortcuts_0_1_117" in text) {
+        listOf(
+            "newView.setOnClickListener { toggleActionMenu() }",
+            "bubble.shortcuts.opened count=6",
+            "resourceShortcutBubble(\"⚠️\\nAlerta\")",
+            "resourceShortcutBubble(\"📍\\nLocal\")",
+        ).forEach { marker ->
+            if (marker !in text) throw GradleException("Atalhos 0.1.117 incompletos: $marker")
+        }
+        file.writeText(text)
+        return
+    }
 
     val showOverlayStart = text.indexOf("    private fun showOverlay(")
     val removeOverlayStart = if (showOverlayStart >= 0) {
@@ -75,9 +90,6 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
         label = "desativacao do alternador do popup",
     )
 
-    // Remove toda a construcao da grade flutuante, inclusive botoes e chamada ao
-    // WindowManager. Caso algum codigo legado chame showActionMenu(), a Home e
-    // aberta diretamente e nenhuma segunda janela de overlay e criada.
     text = replaceMainBubbleRegion114(
         source = text,
         startToken = "    private fun showActionMenu() {",
@@ -136,7 +148,6 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
     file.writeText(text)
 }
 
-// O nome da tarefa e preservado porque outros modulos antigos dependem dele.
 val mainBubbleTapMenuContract by tasks.registering {
     val serviceFile = layout.projectDirectory.file(
         "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
@@ -147,8 +158,6 @@ val mainBubbleTapMenuContract by tasks.registering {
     doLast { enforceMainBubbleTapHomeContract(serviceFile.asFile) }
 }
 
-// Executa novamente imediatamente antes do compilador Kotlin. Assim nenhum patch
-// posterior consegue recolocar a grade ou toggleActionMenu() no clique principal.
 tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
     dependsOn(mainBubbleTapMenuContract)
     doFirst {
