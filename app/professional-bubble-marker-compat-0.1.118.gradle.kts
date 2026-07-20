@@ -1,3 +1,5 @@
+apply(from = "bubble-whatsapp-capture-compat-0.1.118.gradle.kts")
+
 // Compatibilidade de idempotencia da Home profissional 0.1.118.
 // As chamadas reais usam parametros posicionais. Os comentarios abaixo tambem
 // informam aos patches 0.1.97/0.1.115 que a estrutura antiga ja foi substituida
