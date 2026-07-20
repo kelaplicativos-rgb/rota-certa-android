@@ -85,7 +85,21 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
 
     val methodsAnchor = "    private fun openSavedPlaceEditor("
     if (methodsAnchor !in text) throw GradleException("Editor de locais nao encontrado para inserir atalhos.")
-    val shortcutMethods = """    private fun toggleResourceShortcuts() {
+    val shortcutMethods = """    private fun persistResourceShortcutState() {
+        val visible = shortcutOverlayController.shortcutsVisible
+        bubblePrefs.edit()
+            .putBoolean(KEY_RUNTIME_SHORTCUTS_OPEN, visible)
+            .putInt(KEY_RUNTIME_SHORTCUT_COUNT, if (visible) 6 else 0)
+            .putString(KEY_RUNTIME_SHORTCUT_LABELS, if (visible) RESOURCE_SHORTCUT_LABELS else "")
+            .apply()
+    }
+
+    private fun hideResourceShortcuts() {
+        shortcutOverlayController.hideShortcuts()
+        persistResourceShortcutState()
+    }
+
+    private fun toggleResourceShortcuts() {
         val params = overlayParams ?: return
         shortcutOverlayController.toggleShortcuts(
             anchor = params,
@@ -98,11 +112,13 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
                 onOpenSettings = { openResourceGroup(BUBBLE_GROUP_GENERAL_VALUE, TAB_CONFIG) },
             ),
         )
-        traceEvent("bubble.shortcuts.toggle")
+        persistResourceShortcutState()
+        traceEvent("bubble.shortcuts.toggle visible=" + shortcutOverlayController.shortcutsVisible)
     }
 
     private fun openResourceGroup(group: String, tab: String) {
         shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
         runCatching {
             startActivity(
                 Intent(this, MainActivity::class.java)
@@ -128,6 +144,7 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
                 },
             ),
         )
+        persistResourceShortcutState()
     }
 
 """
@@ -139,6 +156,7 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
         endToken = "    private fun toggleActionMenu() {",
         replacement = """    private fun openSavedPlaceEditor(place: SavedPlace) {
         shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
         runCatching {
             startActivity(
                 Intent(this, MainActivity::class.java)
@@ -161,7 +179,7 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
     if ("shortcutOverlayController.hideAll()" !in removeBlock) {
         removeBlock = removeBlock.replaceFirst(
             "        hideActionMenu()\n",
-            "        hideActionMenu()\n        shortcutOverlayController.hideAll()\n",
+            "        hideActionMenu()\n        shortcutOverlayController.hideAll()\n        persistResourceShortcutState()\n",
         )
     }
     text = text.substring(0, removeStart) + removeBlock + text.substring(paramsStart)
@@ -170,14 +188,18 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
     if (actionDownAnchor !in text) throw GradleException("Inicio do gesto instantaneo nao encontrado.")
     text = text.replaceFirst(
         actionDownAnchor,
-        "                    shortcutOverlayController.hideShortcuts()\n" + actionDownAnchor,
+        "                    hideResourceShortcuts()\n" + actionDownAnchor,
     )
 
     val companionAnchor = "        const val BUBBLE_PREFS = \"rota_certa_bubble\"\n"
     if (companionAnchor !in text) throw GradleException("Companion da bolinha nao encontrado.")
     text = text.replaceFirst(
         companionAnchor,
-        companionAnchor + """        const val EXTRA_OPEN_BUBBLE_GROUP = "open_bubble_group"
+        companionAnchor + """        const val KEY_RUNTIME_SHORTCUTS_OPEN = "runtime_shortcuts_open"
+        const val KEY_RUNTIME_SHORTCUT_COUNT = "runtime_shortcut_count"
+        const val KEY_RUNTIME_SHORTCUT_LABELS = "runtime_shortcut_labels"
+        const val RESOURCE_SHORTCUT_LABELS = "Salvar alerta|Salvar local|Salvar card|Abrir destino|Abrir leitura|Abrir ajustes"
+        const val EXTRA_OPEN_BUBBLE_GROUP = "open_bubble_group"
         const val BUBBLE_GROUP_GENERAL_VALUE = "general"
         const val BUBBLE_GROUP_READING_VALUE = "reading"
         const val BUBBLE_GROUP_DESTINATION_VALUE = "destination"
@@ -193,7 +215,9 @@ fun enforceBubbleResourceShortcutsRuntime117(file: java.io.File) {
         "onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) }",
         "onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) }",
         "showSavedAlertPopup(alert, distanceMeters)",
-        "shortcutOverlayController.hideShortcuts()",
+        "hideResourceShortcuts()",
+        "KEY_RUNTIME_SHORTCUTS_OPEN",
+        "RESOURCE_SHORTCUT_LABELS",
         "bubble_resource_shortcuts_runtime_0_1_117",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Runtime de atalhos incompleto: $marker")
