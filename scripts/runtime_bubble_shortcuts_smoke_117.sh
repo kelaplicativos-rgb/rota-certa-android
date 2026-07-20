@@ -82,7 +82,7 @@ for _ in $(seq 1 40); do
   adb shell run-as "$PACKAGE" cat "$PREFS_PATH" > "$OUT/shortcuts-prefs.xml" 2>/dev/null || true
   if grep -Fq '<boolean name="runtime_shortcuts_open" value="true"' "$OUT/shortcuts-prefs.xml" 2>/dev/null && \
      grep -Fq '<int name="runtime_shortcut_count" value="6"' "$OUT/shortcuts-prefs.xml" 2>/dev/null && \
-     grep -Fq 'Salvar alerta|Salvar local|Salvar card|Abrir destino|Abrir leitura|Abrir ajustes' "$OUT/shortcuts-prefs.xml" 2>/dev/null; then
+     grep -Fq 'Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes' "$OUT/shortcuts-prefs.xml" 2>/dev/null; then
     opened=true
     break
   fi
@@ -102,7 +102,7 @@ DRAG_DISPLACEMENT_Y=$dy
 DRAG_OPENED_HOME=false
 MAIN_TAP=opened_resource_shortcuts
 RESOURCE_SHORTCUTS=6
-SHORTCUT_LABELS=Salvar alerta|Salvar local|Salvar card|Abrir destino|Abrir leitura|Abrir ajustes
+SHORTCUT_LABELS=Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes
 SHORTCUT_MENU=lightweight
 SAVE_ALERT_ACTION=visible
 SAVE_LOCAL_ACTION=visible
