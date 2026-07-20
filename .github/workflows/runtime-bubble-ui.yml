@@ -67,6 +67,12 @@ jobs:
         run: |
           set -uo pipefail
           EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm | tee runtime-ui/kvm.txt
+          else
+            echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
+          fi
           "$EMULATOR_BIN" @rota_runtime \
             -no-window \
             -noaudio \
