@@ -14,6 +14,7 @@ class ProximityAlertEngine(
         radars: List<ImportedRadar>,
         coordinate: Coordinate,
         settings: AppSettings,
+        onSavedPlacePopup: (SavedPlace, Double) -> Unit = { _, _ -> },
         onDiagnostic: (ProximityAlertDiagnostic) -> Unit,
     ) {
         val now = nowProvider()
@@ -22,16 +23,17 @@ class ProximityAlertEngine(
         val movementBearing = previousCoordinate
             ?.takeIf { movementMeters != null && movementMeters >= MIN_MOVEMENT_FOR_BEARING_METERS }
             ?.let { GeoDistance.bearingDegrees(it, coordinate) }
-        val activeIds = alerts.map { it.id }.toSet() + radars.map { importedRadarKey(it) }.toSet()
+        val proximityAlerts = alerts.filter { it.type == SavedPlaceType.ProximityAlert }
+        val activeIds = proximityAlerts.map { it.id }.toSet() + radars.map { importedRadarKey(it) }.toSet()
         val runtimeCountBeforePrune = runtimeById.size
         runtimeById.keys.retainAll(activeIds)
         val removedRuntimeCount = runtimeCountBeforePrune - runtimeById.size
         trace(
             now = now,
-            message = "check.start alerts=${alerts.size} radars=${radars.size} removed_runtime=$removedRuntimeCount alerts_enabled=${settings.proximityAlertsEnabled} movement=${movementMeters?.roundToInt() ?: "unknown"}m bearing=${movementBearing?.roundToInt() ?: "unknown"}",
+            message = "check.start alerts=${proximityAlerts.size} ignored_places=${alerts.size - proximityAlerts.size} radars=${radars.size} removed_runtime=$removedRuntimeCount alerts_enabled=${settings.proximityAlertsEnabled} movement=${movementMeters?.roundToInt() ?: "unknown"}m bearing=${movementBearing?.roundToInt() ?: "unknown"}",
         )
         checkImportedRadars(radars, coordinate, settings, now, movementBearing, onDiagnostic)
-        checkSavedPlaceAlerts(alerts, coordinate, settings, now, onDiagnostic)
+        checkSavedPlaceAlerts(proximityAlerts, coordinate, settings, now, onSavedPlacePopup, onDiagnostic)
         lastCoordinate = coordinate
     }
 
@@ -40,6 +42,7 @@ class ProximityAlertEngine(
         coordinate: Coordinate,
         settings: AppSettings,
         now: Long,
+        onSavedPlacePopup: (SavedPlace, Double) -> Unit,
         onDiagnostic: (ProximityAlertDiagnostic) -> Unit,
     ) {
         alerts.forEach { alert ->
@@ -49,7 +52,7 @@ class ProximityAlertEngine(
             if (distanceMeters <= threshold) {
                 trace(
                     now = now,
-                    message = "saved_alert.near id=${alert.id} distance=${distanceMeters.roundToInt()}m threshold=${threshold}m spoken=${runtime.spokenCount}/$MAX_SAVED_PLACE_SPEECH_COUNT",
+                    message = "saved_alert.near id=${alert.id} distance=${distanceMeters.roundToInt()}m threshold=${threshold}m spoken=${runtime.spokenCount}/$MAX_SAVED_PLACE_SPEECH_COUNT popup=${runtime.popupShownThisApproach}",
                 )
                 if (!runtime.savedPlaceZoneInitialized) {
                     runtime.savedPlaceZoneInitialized = true
@@ -64,6 +67,11 @@ class ProximityAlertEngine(
                 if (runtime.savedPlaceMutedUntilExit) {
                     trace(now = now, message = "saved_alert.speak.skipped id=${alert.id} reason=waiting_exit_before_first_alert")
                     return@forEach
+                }
+                if (!runtime.popupShownThisApproach) {
+                    runtime.popupShownThisApproach = true
+                    onSavedPlacePopup(alert, distanceMeters)
+                    trace(now = now, message = "saved_alert.popup.shown id=${alert.id}")
                 }
                 if (runtime.canSpeak(now, MAX_SAVED_PLACE_SPEECH_COUNT)) {
                     trace(now = now, message = "saved_alert.speak.attempt id=${alert.id}")
@@ -85,7 +93,13 @@ class ProximityAlertEngine(
                     trace(now = now, message = "saved_alert.speak.skipped id=${alert.id} reason=limit_or_repeat_gap")
                 }
             } else if (distanceMeters > threshold + RESET_BUFFER_METERS) {
-                if (runtime.spokenCount > 0 || runtime.lastSpokenAtMillis > 0L || runtime.savedPlaceMutedUntilExit || runtime.savedPlaceInsideZone) {
+                if (
+                    runtime.spokenCount > 0 ||
+                    runtime.lastSpokenAtMillis > 0L ||
+                    runtime.savedPlaceMutedUntilExit ||
+                    runtime.savedPlaceInsideZone ||
+                    runtime.popupShownThisApproach
+                ) {
                     trace(now = now, message = "saved_alert.reset id=${alert.id} distance=${distanceMeters.roundToInt()}m")
                 }
                 runtime.resetSavedPlaceAfterExit(distanceMeters)
@@ -201,6 +215,7 @@ class ProximityAlertEngine(
         var savedPlaceZoneInitialized: Boolean = false,
         var savedPlaceMutedUntilExit: Boolean = false,
         var savedPlaceInsideZone: Boolean = false,
+        var popupShownThisApproach: Boolean = false,
     ) {
         fun canSpeak(now: Long, maxSpeechCount: Int): Boolean =
             spokenCount < maxSpeechCount && now - lastSpokenAtMillis >= REPEAT_GAP_MS
@@ -220,6 +235,7 @@ class ProximityAlertEngine(
             savedPlaceZoneInitialized = true
             savedPlaceMutedUntilExit = false
             savedPlaceInsideZone = false
+            popupShownThisApproach = false
         }
 
         fun reset() {
@@ -229,6 +245,7 @@ class ProximityAlertEngine(
             savedPlaceZoneInitialized = false
             savedPlaceMutedUntilExit = false
             savedPlaceInsideZone = false
+            popupShownThisApproach = false
         }
     }
 
