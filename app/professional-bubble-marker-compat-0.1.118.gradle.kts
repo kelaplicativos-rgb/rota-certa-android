@@ -1,7 +1,7 @@
 // Compatibilidade de idempotencia da Home profissional 0.1.118.
 // As chamadas reais usam parametros posicionais. Os comentarios abaixo tambem
-// informam aos patches 0.1.115 que a estrutura agrupada ja foi substituida de
-// forma intencional, evitando que ela seja reconstruida antes do compilador.
+// informam aos patches 0.1.97/0.1.115 que a estrutura antiga ja foi substituida
+// de forma intencional, evitando reconstrucao antes do compilador.
 val professionalBubbleMarkerCompat118 by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     inputs.file(mainFile)
@@ -24,10 +24,12 @@ val professionalBubbleMarkerCompat118 by tasks.registering {
 // grouped_settings_screen_0_1_115
 // grouped_card_always_open_0_1_115
 // grouped_reports_tools_0_1_115
+// Central de bolinhas
 // Cada bolinha abre um grupo
 // BUBBLE_GROUP_DESTINATION
 // selectedBubbleGroup
 // TextAlign.Center
+// bottomBar = {}
 """
         if ("professional_bubble_named_action_markers_0_1_118" !in text) {
             text += marker
