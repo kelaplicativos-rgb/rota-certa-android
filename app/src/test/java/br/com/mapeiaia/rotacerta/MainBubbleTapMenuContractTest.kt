@@ -16,6 +16,7 @@ class MainBubbleTapMenuContractTest {
 
         val service = sourceFile("LiveRideAccessibilityService.kt").readText()
         val controller = sourceFile("BubbleShortcutOverlayController.kt").readText()
+        val positionPolicy = sourceFile("BubbleShortcutPositionPolicy.kt").readText()
         val catalog = sourceFile("BubbleShortcutModule.kt").readText()
         val moduleNames = listOf(
             "AlertBubbleShortcutModule.kt",
@@ -49,7 +50,10 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Local precisa possuir acao propria", "BubbleShortcutAction.CreateSavedPlace" in service)
         assertTrue("Card precisa possuir acao propria", "BubbleShortcutAction.SaveRideCard" in service)
         assertTrue("Leitura precisa alternar sem abrir Home", "BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()" in service)
-        assertTrue("WhatsApp precisa capturar telefone da tela", "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp()" in service)
+        assertTrue(
+            "WhatsApp precisa capturar telefone da tela",
+            "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service,
+        )
         assertTrue("Encerrar precisa abrir detalhes e desligar o servico", "BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()" in service)
         assertTrue("Arraste precisa fechar a grade", "hideResourceShortcuts()" in service)
         assertFalse("Callbacks fixos nao podem voltar", "BubbleShortcutActions(" in service)
@@ -73,10 +77,11 @@ class MainBubbleTapMenuContractTest {
             assertTrue("Atalho ausente: $label", "label = \"$label\"" in modules[index])
         }
 
-        assertTrue("Posicao precisa considerar largura real da bolinha", "anchor.width.takeIf" in controller)
-        assertTrue("Grade precisa tentar direita da bolinha", "rightX + menuWidth" in controller)
-        assertTrue("Grade precisa tentar esquerda da bolinha", "leftX >= safe" in controller)
-        assertTrue("Tela estreita precisa usar abaixo/acima", "anchor.y + anchorHeight + gap" in controller)
+        assertTrue("Controlador precisa usar a politica isolada", "BubbleShortcutPositionPolicy.place" in controller)
+        assertTrue("Posicao precisa considerar largura real da bolinha", "anchorWidth" in controller)
+        assertTrue("Grade precisa tentar direita da bolinha", "rightX + menuWidth" in positionPolicy)
+        assertTrue("Grade precisa tentar esquerda da bolinha", "leftX >= safe" in positionPolicy)
+        assertTrue("Tela estreita precisa usar abaixo/acima", "anchorY + validAnchorHeight + horizontalGap" in positionPolicy)
         assertTrue("Popup de alerta precisa rejeitar Local", "if (alert.type != SavedPlaceType.ProximityAlert)" in controller)
         assertTrue("Popup precisa permitir editar", "popupButton(\"Editar\")" in controller)
         assertTrue("Popup precisa permitir excluir", "popupButton(\"Excluir\")" in controller)
