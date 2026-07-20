@@ -4,7 +4,7 @@ object AlertBubbleShortcutModule : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
         id = "alert",
         emoji = "⚠️",
-        label = "Alerta",
+        label = "Salvar alerta",
         action = BubbleShortcutAction.CreateAlert,
         defaultName = "Alerta",
         targetGroup = "alerts",
