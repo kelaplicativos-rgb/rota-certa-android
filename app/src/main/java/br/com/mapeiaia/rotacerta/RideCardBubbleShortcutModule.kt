@@ -4,7 +4,7 @@ object RideCardBubbleShortcutModule : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
         id = "ride_card",
         emoji = "💾",
-        label = "Card",
+        label = "Salvar card",
         action = BubbleShortcutAction.SaveRideCard,
     )
 }
