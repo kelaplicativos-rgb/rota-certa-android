@@ -5,8 +5,8 @@ object ReadingBubbleShortcutModule : BubbleShortcutModule {
         id = "reading",
         emoji = "👁",
         label = "Leitura",
-        action = BubbleShortcutAction.OpenReading,
-        targetGroup = "reading",
+        action = BubbleShortcutAction.ToggleReading,
+        targetGroup = "access",
         targetTab = "config",
     )
 }
