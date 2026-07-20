@@ -112,7 +112,7 @@ jobs:
 
           echo "RUNTIME_STAGE=script_invoking" >> runtime-ui/progress.txt
           set +e
-          bash -x scripts/runtime_bubble_ui_test_bounded.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          bash -x scripts/runtime_bubble_ui_test_bounded_116.sh > >(tee runtime-ui/runtime-script.log) 2>&1
           runtime_status=$?
           set -e
           echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
