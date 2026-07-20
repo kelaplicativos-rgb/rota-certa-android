@@ -135,10 +135,20 @@ class BubbleShortcutOverlayController(
             }
         }
 
-        val (menuX, menuY) = anchoredPosition(
-            anchor = anchor,
+        val metrics = context.resources.displayMetrics
+        val anchorWidth = anchor.width.takeIf { it > 0 && it < metrics.widthPixels } ?: dp(66)
+        val anchorHeight = anchor.height.takeIf { it > 0 && it < metrics.heightPixels } ?: dp(66)
+        val position = BubbleShortcutPositionPolicy.place(
+            anchorX = anchor.x,
+            anchorY = anchor.y,
+            anchorWidth = anchorWidth,
+            anchorHeight = anchorHeight,
             menuWidth = menuWidth,
             menuHeight = estimatedMenuHeight,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
+            gap = dp(8),
+            safeMargin = dp(4),
         )
         val params = WindowManager.LayoutParams(
             menuWidth,
@@ -148,46 +158,16 @@ class BubbleShortcutOverlayController(
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = menuX
-            y = menuY
+            x = position.x
+            y = position.y
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
             trace(
                 "bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size} " +
-                    "anchor=${anchor.x},${anchor.y},${anchor.width},${anchor.height} menu=$menuX,$menuY,$menuWidth,$estimatedMenuHeight",
+                    "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
+                    "menu=${position.x},${position.y},$menuWidth,$estimatedMenuHeight",
             )
-        }
-    }
-
-    /**
-     * Mantem a bolinha principal sempre visivel e com um pequeno espaco entre
-     * ela e a grade. Primeiro tenta direita/esquerda; em telas estreitas usa
-     * abaixo/acima, sem qualquer interseccao entre os dois retangulos.
-     */
-    private fun anchoredPosition(
-        anchor: WindowManager.LayoutParams,
-        menuWidth: Int,
-        menuHeight: Int,
-    ): Pair<Int, Int> {
-        val metrics = context.resources.displayMetrics
-        val safe = dp(4)
-        val gap = dp(8)
-        val anchorWidth = anchor.width.takeIf { it > 0 && it < metrics.widthPixels } ?: dp(66)
-        val anchorHeight = anchor.height.takeIf { it > 0 && it < metrics.heightPixels } ?: dp(66)
-        val rightX = anchor.x + anchorWidth + gap
-        val leftX = anchor.x - menuWidth - gap
-        val maxX = (metrics.widthPixels - menuWidth - safe).coerceAtLeast(safe)
-        val maxY = (metrics.heightPixels - menuHeight - safe).coerceAtLeast(safe)
-        val alignedY = anchor.y.coerceIn(safe, maxY)
-
-        return when {
-            rightX + menuWidth <= metrics.widthPixels - safe -> rightX to alignedY
-            leftX >= safe -> leftX to alignedY
-            anchor.y + anchorHeight + gap + menuHeight <= metrics.heightPixels - safe ->
-                anchor.x.coerceIn(safe, maxX) to (anchor.y + anchorHeight + gap)
-            else ->
-                anchor.x.coerceIn(safe, maxX) to (anchor.y - menuHeight - gap).coerceIn(safe, maxY)
         }
     }
 
