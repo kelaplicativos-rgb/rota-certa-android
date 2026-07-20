@@ -16,9 +16,9 @@ import kotlin.math.roundToInt
 /**
  * Janelas leves usadas pela bolinha principal.
  *
- * Salvar local e Salvar alerta sao recursos diferentes:
- * - Local: ponto para abrir no GPS depois; nunca gera voz ou popup de proximidade.
- * - Alerta: ponto monitorado; ao reentrar na area exibe popup editavel/excluivel.
+ * O controlador nao conhece regras de negocio. Cada recurso da grade possui um
+ * BubbleShortcutModule proprio; aqui apenas renderizamos o catalogo e devolvemos
+ * o modulo clicado ao servico.
  */
 class BubbleShortcutOverlayController(
     private val context: Context,
@@ -33,12 +33,12 @@ class BubbleShortcutOverlayController(
 
     fun toggleShortcuts(
         anchor: WindowManager.LayoutParams,
-        actions: BubbleShortcutActions,
+        onShortcut: (BubbleShortcutSpec) -> Unit,
     ) {
         if (shortcutView != null) {
             hideShortcuts()
         } else {
-            showShortcuts(anchor, actions)
+            showShortcuts(anchor, onShortcut)
         }
     }
 
@@ -120,9 +120,11 @@ class BubbleShortcutOverlayController(
 
     private fun showShortcuts(
         anchor: WindowManager.LayoutParams,
-        actions: BubbleShortcutActions,
+        onShortcut: (BubbleShortcutSpec) -> Unit,
     ) {
         hideProximityAlert()
+        BubbleShortcutCatalog.requireValid()
+
         val menuSize = dp(238)
         val menu = GridLayout(context).apply {
             columnCount = 3
@@ -133,30 +135,13 @@ class BubbleShortcutOverlayController(
                 setStroke(dp(1), Color.argb(220, 255, 255, 255))
             }
             setPadding(dp(7), dp(7), dp(7), dp(7))
-            addView(shortcutBubble("⚠️\nSalvar\nalerta", "Salvar alerta") {
-                hideShortcuts()
-                actions.onSaveAlert()
-            })
-            addView(shortcutBubble("📍\nSalvar\nlocal", "Salvar local") {
-                hideShortcuts()
-                actions.onSaveLocal()
-            })
-            addView(shortcutBubble("💾\nSalvar\ncard", "Salvar card") {
-                hideShortcuts()
-                actions.onSaveCard()
-            })
-            addView(shortcutBubble("🏠\nDestino", "Abrir destino") {
-                hideShortcuts()
-                actions.onOpenDestination()
-            })
-            addView(shortcutBubble("👁\nLeitura", "Abrir leitura") {
-                hideShortcuts()
-                actions.onOpenReading()
-            })
-            addView(shortcutBubble("⚙️\nAjustes", "Abrir ajustes") {
-                hideShortcuts()
-                actions.onOpenSettings()
-            })
+            BubbleShortcutCatalog.modules.forEach { module ->
+                addView(shortcutBubble(module.spec) {
+                    hideShortcuts()
+                    trace("bubble.shortcut.clicked id=${module.spec.id}")
+                    onShortcut(module.spec)
+                })
+            }
         }
 
         val metrics = context.resources.displayMetrics
@@ -178,21 +163,20 @@ class BubbleShortcutOverlayController(
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
-            trace("bubble.shortcuts.opened count=6")
+            trace("bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size}")
         }
     }
 
     private fun shortcutBubble(
-        label: String,
-        description: String,
+        spec: BubbleShortcutSpec,
         action: () -> Unit,
     ): TextView = TextView(context).apply {
-        text = label
+        text = spec.displayText
         textSize = 11f
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        contentDescription = description
+        contentDescription = spec.label
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.rgb(72, 64, 82))
@@ -260,15 +244,6 @@ class BubbleShortcutOverlayController(
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).roundToInt()
 }
-
-data class BubbleShortcutActions(
-    val onSaveAlert: () -> Unit,
-    val onSaveLocal: () -> Unit,
-    val onSaveCard: () -> Unit,
-    val onOpenDestination: () -> Unit,
-    val onOpenReading: () -> Unit,
-    val onOpenSettings: () -> Unit,
-)
 
 data class ProximityAlertPopupActions(
     val onEdit: (SavedPlace) -> Unit,
