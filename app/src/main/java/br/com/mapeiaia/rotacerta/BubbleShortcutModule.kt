@@ -5,8 +5,10 @@ enum class BubbleShortcutAction {
     CreateSavedPlace,
     SaveRideCard,
     OpenDestination,
-    OpenReading,
+    ToggleReading,
+    OpenScreenWhatsApp,
     OpenSettings,
+    StopApplication,
 }
 
 data class BubbleShortcutSpec(
@@ -14,12 +16,13 @@ data class BubbleShortcutSpec(
     val emoji: String,
     val label: String,
     val action: BubbleShortcutAction,
+    val displayLabel: String = label,
     val defaultName: String? = null,
     val targetGroup: String? = null,
     val targetTab: String? = null,
 ) {
     val displayText: String
-        get() = "$emoji\n${label.replace(" ", "\n")}"
+        get() = "$emoji\n$displayLabel"
 }
 
 interface BubbleShortcutModule {
@@ -33,11 +36,13 @@ object BubbleShortcutCatalog {
         RideCardBubbleShortcutModule,
         DestinationBubbleShortcutModule,
         ReadingBubbleShortcutModule,
+        WhatsAppBubbleShortcutModule,
         SettingsBubbleShortcutModule,
+        StopBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 6) { "A grade deve conter seis modulos." }
+        require(modules.size == 8) { "A grade deve conter oito modulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }
