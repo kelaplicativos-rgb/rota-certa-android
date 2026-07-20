@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   runtime-ui:
-    name: Install, tap and verify grouped bubbles on Android
+    name: Install, drag, tap and verify bubble on Android
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
@@ -63,7 +63,7 @@ jobs:
           grep -Fxq 'rota_runtime' runtime-ui/avd-list.txt
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
 
-      - name: Start emulator and run universal-address regression
+      - name: Start emulator and run drag regression
         id: runtime
         continue-on-error: true
         env:
@@ -126,7 +126,7 @@ jobs:
           path: runtime-ui/
           if-no-files-found: error
 
-      - name: Require successful grouped-bubble runtime simulation
+      - name: Require successful instant-drag runtime simulation
         if: always()
         run: |
           echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
@@ -142,10 +142,17 @@ jobs:
           grep -Fq 'DESTINATION_WITHOUT_MODEL=present' runtime-ui/runtime-validation.txt
           grep -Fq 'BUBBLE_STATE=active_not_gray' runtime-ui/runtime-validation.txt
           grep -Fq 'DESTINATION_RULE=last_complete_numbered_address' runtime-ui/runtime-validation.txt
+          grep -Fq 'INSTANT_DRAG=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'DRAG_OPENED_HOME=false' runtime-ui/runtime-validation.txt
+          grep -Fq 'ANALYSIS_DURING_GESTURE=paused' runtime-ui/runtime-validation.txt
+          grep -Fq 'OCR_THREAD=background' runtime-ui/runtime-validation.txt
           grep -Fq 'CLEAR_TO_GRAY=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'STALE_DESTINATION_AFTER_CLEAR=absent' runtime-ui/runtime-validation.txt
           grep -Fq 'MAIN_TAP=opened_home_direct' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_POPUP=absent' runtime-ui/runtime-validation.txt
+          test -s runtime-ui/bubble-drag-response-ms.txt
+          drag_ms="$(cat runtime-ui/bubble-drag-response-ms.txt)"
+          test "$drag_ms" -le 1200
           test -s runtime-ui/app-before.png
           test -s runtime-ui/app-rota-group.png
           test -s runtime-ui/app-appearance-group.png
