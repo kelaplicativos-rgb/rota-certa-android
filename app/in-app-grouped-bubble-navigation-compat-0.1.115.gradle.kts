@@ -1,27 +1,21 @@
 // Corrige o bloco `when (tab)` depois que patches antigos unificam Analise e
-// Ferramentas. A Home agrupada precisa de uma tela diferente para cada grupo.
+// Ferramentas. A correcao roda no fim da propria tarefa da Home agrupada para
+// evitar ciclos de dependencias entre os muitos patches Gradle legados.
 
-val fixGroupedBubbleNavigation115 by tasks.registering {
-    val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
-    inputs.file(mainFile)
-    outputs.upToDateWhen { false }
-    dependsOn("inAppGroupedBubbleHome115")
+fun enforceGroupedBubbleNavigation115(file: java.io.File) {
+    if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
+    var text = file.readText()
+    if ("grouped_navigation_compat_0_1_115" in text) return
 
-    doLast {
-        val file = mainFile.asFile
-        if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
-        var text = file.readText()
-        if ("grouped_navigation_compat_0_1_115" in text) return@doLast
+    val startToken = "            when (tab) {"
+    val endToken = "\n        }\n    }\n}\n\n// in_app_bubble_home_visible_0_1_97"
+    val start = text.indexOf(startToken)
+    val end = if (start >= 0) text.indexOf(endToken, start) else -1
+    if (start < 0 || end <= start) {
+        throw GradleException("Bloco when(tab) nao encontrado para navegacao agrupada.")
+    }
 
-        val startToken = "            when (tab) {"
-        val endToken = "\n        }\n    }\n}\n\n// in_app_bubble_home_visible_0_1_97"
-        val start = text.indexOf(startToken)
-        val end = if (start >= 0) text.indexOf(endToken, start) else -1
-        if (start < 0 || end <= start) {
-            throw GradleException("Bloco when(tab) nao encontrado para navegacao agrupada.")
-        }
-
-        val replacement = """            when (tab) {
+    val replacement = """            when (tab) {
                 TAB_ANALYSIS -> AnalysisScreen(
                     settings = settings,
                     latestResult = history.firstOrNull(),
@@ -75,28 +69,27 @@ val fixGroupedBubbleNavigation115 by tasks.registering {
                 else -> Unit
             } // grouped_navigation_compat_0_1_115"""
 
-        text = text.substring(0, start) + replacement + text.substring(end)
+    text = text.substring(0, start) + replacement + text.substring(end)
 
-        listOf(
-            "TAB_ANALYSIS -> AnalysisScreen(",
-            "TAB_CONFIG -> SettingsScreen(",
-            "TAB_TOOLS -> ToolsScreen(",
-            "TAB_HISTORY -> ReportsGroupScreen(",
-            "grouped_navigation_compat_0_1_115",
-        ).forEach { marker ->
-            if (marker !in text) throw GradleException("Navegacao agrupada incompleta: $marker")
-        }
-        if ("TAB_ANALYSIS, TAB_TOOLS -> ToolsScreen(" in text) {
-            throw GradleException("Regressao: Analise e Ferramentas ainda estao unificadas.")
-        }
-        file.writeText(text)
+    listOf(
+        "TAB_ANALYSIS -> AnalysisScreen(",
+        "TAB_CONFIG -> SettingsScreen(",
+        "TAB_TOOLS -> ToolsScreen(",
+        "TAB_HISTORY -> ReportsGroupScreen(",
+        "grouped_navigation_compat_0_1_115",
+    ).forEach { marker ->
+        if (marker !in text) throw GradleException("Navegacao agrupada incompleta: $marker")
     }
+    if ("TAB_ANALYSIS, TAB_TOOLS -> ToolsScreen(" in text) {
+        throw GradleException("Regressao: Analise e Ferramentas ainda estao unificadas.")
+    }
+    file.writeText(text)
 }
 
-fixGroupedBubbleNavigation115.configure {
-    mustRunAfter("inAppGroupedBubbleHome115")
-}
-
-tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-    dependsOn(fixGroupedBubbleNavigation115)
+tasks.named("inAppGroupedBubbleHome115").configure {
+    doLast {
+        enforceGroupedBubbleNavigation115(
+            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").asFile,
+        )
+    }
 }
