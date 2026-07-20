@@ -15,7 +15,7 @@ jobs:
   runtime-ui:
     name: Install, drag and verify professional resource shortcuts on Android
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 35
     env:
       ANDROID_AVD_HOME: ${{ github.workspace }}/.android/avd
 
@@ -101,9 +101,15 @@ jobs:
             > runtime-ui/emulator.log 2>&1 &
           emulator_pid=$!
           cleanup() {
-            adb emu kill >/dev/null 2>&1 || true
-            kill "$emulator_pid" >/dev/null 2>&1 || true
-            wait "$emulator_pid" >/dev/null 2>&1 || true
+            echo "RUNTIME_STAGE=cleanup" >> runtime-ui/progress.txt
+            timeout 8s adb emu kill >/dev/null 2>&1 || true
+            kill -TERM "$emulator_pid" >/dev/null 2>&1 || true
+            for _ in $(seq 1 10); do
+              kill -0 "$emulator_pid" >/dev/null 2>&1 || break
+              sleep 1
+            done
+            kill -KILL "$emulator_pid" >/dev/null 2>&1 || true
+            timeout 5s adb kill-server >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
           set +e
