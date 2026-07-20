@@ -2,7 +2,7 @@
 //
 // Ate a versao 0.1.116 o toque simples abria diretamente a Home. A partir da
 // 0.1.117, quando o marcador de atalhos estiver presente, este patch preserva a
-// grade leve de recursos e apenas valida que o clique principal chama o menu.
+// grade leve de recursos e valida o catalogo modular.
 
 fun replaceMainBubbleRegion114(
     source: String,
@@ -21,16 +21,21 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
 
-    // Compatibilidade final 0.1.117: em uma segunda invocacao do Gradle, o
-    // runtime modular de atalhos ja esta aplicado. Nao restaurar Home direta.
+    // Em uma segunda invocacao do Gradle, o runtime modular ja esta aplicado.
+    // Nao restaurar a Home direta nem exigir os antigos seis callbacks fixos.
     if ("bubble_resource_shortcuts_runtime_0_1_117" in text) {
         listOf(
             "newView.setOnClickListener { toggleResourceShortcuts() }",
-            "BubbleShortcutActions(",
-            "onSaveAlert = { saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert) }",
-            "onSaveLocal = { saveCurrentPlaceFromBubble(SavedPlaceType.Place) }",
+            "onShortcut = ::executeShortcutModule",
+            "BubbleShortcutAction.CreateAlert",
+            "BubbleShortcutAction.CreateSavedPlace",
+            "BubbleShortcutAction.SaveRideCard",
+            "BubbleShortcutCatalog.modules.joinToString",
         ).forEach { marker ->
-            if (marker !in text) throw GradleException("Atalhos 0.1.117 incompletos: $marker")
+            if (marker !in text) throw GradleException("Atalhos modulares 0.1.117 incompletos: $marker")
+        }
+        if ("BubbleShortcutActions(" in text || "onSaveAlert =" in text || "onSaveLocal =" in text) {
+            throw GradleException("Atalhos 0.1.117 regrediram para callbacks fixos.")
         }
         file.writeText(text)
         return
@@ -107,16 +112,8 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
         .replace("                traceEvent(\"bubble.menu.opened grid=true\")\n", "")
 
     val finalShowStart = text.indexOf("    private fun showOverlay(")
-    val finalShowEnd = if (finalShowStart >= 0) {
-        text.indexOf("\n    private fun removeOverlay()", finalShowStart)
-    } else {
-        -1
-    }
-    val finalShowBlock = if (finalShowStart >= 0 && finalShowEnd > finalShowStart) {
-        text.substring(finalShowStart, finalShowEnd)
-    } else {
-        ""
-    }
+    val finalShowEnd = if (finalShowStart >= 0) text.indexOf("\n    private fun removeOverlay()", finalShowStart) else -1
+    val finalShowBlock = if (finalShowStart >= 0 && finalShowEnd > finalShowStart) text.substring(finalShowStart, finalShowEnd) else ""
     val clickStart = text.indexOf("    private fun onMainBubbleClick() {")
     val clickEnd = if (clickStart >= 0) text.indexOf("    private fun toggleActionMenu() {", clickStart) else -1
     val clickBlock = if (clickStart >= 0 && clickEnd > clickStart) text.substring(clickStart, clickEnd) else ""
@@ -149,9 +146,7 @@ fun enforceMainBubbleTapHomeContract(file: java.io.File) {
 }
 
 val mainBubbleTapMenuContract by tasks.registering {
-    val serviceFile = layout.projectDirectory.file(
-        "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
-    )
+    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
     inputs.file(serviceFile)
     outputs.upToDateWhen { false }
     dependsOn("functionalBubbleIdempotenceFinal")
@@ -162,9 +157,7 @@ tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.c
     dependsOn(mainBubbleTapMenuContract)
     doFirst {
         enforceMainBubbleTapHomeContract(
-            layout.projectDirectory.file(
-                "src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt",
-            ).asFile,
+            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
         )
     }
 }
