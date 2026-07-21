@@ -230,8 +230,7 @@ object BubbleShortcutCatalog {
             BubbleShortcutAction.OpenPermissions,
             BubbleShortcutAction.OpenBackup,
             BubbleShortcutAction.OpenReports,
-            BubbleShortcutAction.OpenSettings,
-            -> openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))
+            BubbleShortcutAction.OpenSettings -> openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))
 
             BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp()
             BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()
@@ -313,6 +312,12 @@ object BubbleShortcutCatalog {
         } // auto_export_report_0_1_119
 """,
         )
+    }
+    // O validador profissional e executado novamente no inicio da compilacao.
+    // Mantemos o marcador original fora da chamada removida para que ele valide
+    // a estrutura existente sem tentar reconstruir o dashboard da Home.
+    if ("professional_bubble_home_0_1_118" !in main) {
+        main += "\n// professional_bubble_home_0_1_118\n"
     }
     if ("popup_only_control_center_0_1_119" !in main) {
         main += "\n// popup_only_control_center_0_1_119\n"
