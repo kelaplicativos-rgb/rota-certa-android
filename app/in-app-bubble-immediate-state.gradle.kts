@@ -1,6 +1,8 @@
 // Estado visual imediato para as bolinhas internas.
 // A interface antiga usava controles ON/OFF dentro dos circulos. A Home 0.1.115
 // usa selecao imediata de grupos e mantem os interruptores dentro de cada grupo.
+// A partir da 0.1.119, a grade da Home deixa de ser renderizada e a navegacao
+// acontece diretamente pelos modulos do popup da bolinha principal.
 
 val inAppBubbleImmediateState by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
@@ -12,6 +14,22 @@ val inAppBubbleImmediateState by tasks.registering {
         val file = mainFile.asFile
         if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
         var text = file.readText()
+
+        if ("popup_only_control_center_0_1_119" in text) {
+            listOf(
+                "auto_export_report_0_1_119",
+                "BUBBLE_GROUP_ACCESS -> {",
+                "LiveReadingCard(",
+                "DiagnosticLogStore.dump()",
+            ).forEach { marker ->
+                if (marker !in text) throw GradleException("Conteudo preservado do popup 0.1.119 ausente: $marker")
+            }
+            if ("selectedGroup = selectedBubbleGroup" in text || "onSelectGroup = { group ->" in text) {
+                throw GradleException("Regressao: a Central circular voltou a ser conectada na Home.")
+            }
+            file.writeText(text)
+            return@doLast
+        }
 
         if ("grouped_bubble_home_0_1_115" in text) {
             listOf(
