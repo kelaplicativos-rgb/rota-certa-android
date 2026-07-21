@@ -117,8 +117,8 @@ jobs:
             "somente os aplicativos marcados." \
             "Buscar aplicativo instalado" \
             "Salvar aplicativos selecionados" \
-            "Aplicativos que a bolinha vai ler" \
-            "Selecionar aplicativos instalados" \
+            "Aplicativos de corrida monitorados" \
+            "Buscar aplicativos instalados" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -152,7 +152,7 @@ jobs:
 
           Recursos 0.1.123:
           - O seletor de aplicativos instalados agora aparece dentro do modulo Cards da bolinha.
-          - O bloco "Aplicativos que a bolinha vai ler" fica acima dos modelos cadastrados.
+          - O bloco "Aplicativos de corrida monitorados" fica acima dos modelos cadastrados.
           - 99 Driver, Uber Driver e inDrive continuam reconhecidos previamente, mas somente os apps marcados sao lidos.
           - Mantidos o bloqueio de acessibilidade/OCR fora dos apps selecionados e o agrupamento de eventos repetidos.
           - Mantidos o indice espacial de radares, o alerta audiovisual e o rastreamento de trabalho local.
