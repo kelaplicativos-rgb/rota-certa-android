@@ -1,36 +1,50 @@
 package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProfessionalBubbleHome118ContractTest {
-    private fun mainSource(): String = listOf(
-        File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
-        File("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
-    ).firstOrNull(File::exists)?.readText() ?: error("MainActivity.kt nao encontrado")
+    private fun serviceSource(): String = listOf(
+        File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"),
+        File("app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"),
+    ).firstOrNull(File::exists)?.readText() ?: error("LiveRideAccessibilityService.kt nao encontrado")
 
     @Test
-    fun operationalContentRemainsAvailableAfterPopupTransfer() {
-        val source = mainSource()
+    fun operationalControlsWereTransferredToPopupCatalog() {
+        BubbleShortcutCatalog.requireValid()
+        val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
 
-        assertTrue("Grupo Permissoes precisa continuar disponivel", "BUBBLE_GROUP_ACCESS -> {" in source)
-        assertTrue("Leitura precisa continuar disponivel", "LiveReadingCard(" in source)
-        assertTrue("Localizacao precisa continuar disponivel", "AlwaysLocationPermissionCard(" in source)
-        assertTrue("Backup precisa continuar disponivel", "BUBBLE_GROUP_BACKUP ->" in source)
-        assertTrue("Relatorios precisam continuar disponiveis", "BUBBLE_GROUP_REPORTS ->" in source)
+        assertEquals(16, ids.size)
+        listOf(
+            "route",
+            "destination",
+            "alerts",
+            "appearance",
+            "permissions",
+            "backup",
+            "reports",
+            "whatsapp",
+            "collector",
+            "clear_clipboard",
+            "diagnostic",
+            "stop_app",
+            "alert",
+            "saved_place",
+            "ride_card",
+            "reading",
+        ).forEach { id -> assertTrue("Atalho transferido ausente: $id", id in ids) }
     }
 
     @Test
     fun diagnosticCanBeRequestedDirectlyFromPopup() {
-        val source = mainSource()
+        val service = serviceSource()
+        val diagnostic = BubbleShortcutCatalog.modules.first { it.spec.id == "diagnostic" }.spec
 
-        assertTrue("Exportacao precisa usar todos os eventos retidos", "DiagnosticLogStore.dump()" in source)
-        assertTrue("Titulo da linha do tempo ausente", "LINHA DO TEMPO COMPLETA DA EXECUCAO" in source)
-        assertTrue("Inicio da sessao precisa ser registrado", "app.session.started" in source)
-        assertTrue("Inicio da exportacao precisa ser registrado", "report.export.started" in source)
-        assertTrue("Fim da exportacao precisa ser registrado", "report.export.completed" in source)
-        assertTrue("Pedido vindo do popup precisa ser reconhecido", "auto_export_report_0_1_119" in source)
-        assertTrue("Arquivo padrao do relatorio ausente", "rota-certa-relatorio-completo.txt" in source)
+        assertEquals(BubbleShortcutAction.ExportDiagnostic, diagnostic.action)
+        assertTrue("Despacho do diagnostico ausente", "BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()" in service)
+        assertTrue("Pedido de exportacao precisa abrir Relatorios", ".putExtra(EXTRA_OPEN_BUBBLE_GROUP, \"reports\")" in service)
+        assertTrue("Exportacao automatica precisa ser solicitada", ".putExtra(\"auto_export_report\", true)" in service)
     }
 }
