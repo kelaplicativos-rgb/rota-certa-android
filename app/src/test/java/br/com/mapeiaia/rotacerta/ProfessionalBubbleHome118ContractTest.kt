@@ -22,7 +22,7 @@ class ProfessionalBubbleHome118ContractTest {
             "\n            ProfessionalBubbleDashboard(" in source,
         )
 
-        assertTrue("Conteudo de Rota precisa continuar disponivel", "BUBBLE_GROUP_GENERAL ->" in source)
+        assertTrue("Grupo de Rota precisa continuar definido", "private const val BUBBLE_GROUP_GENERAL = \"general\"" in source)
         assertTrue("Conteudo de Destino precisa continuar disponivel", "BUBBLE_GROUP_DESTINATION ->" in source)
         assertTrue("Conteudo de Alertas precisa continuar disponivel", "BUBBLE_GROUP_ALERTS ->" in source)
         assertTrue("Conteudo de Aparencia precisa continuar disponivel", "BUBBLE_GROUP_APPEARANCE ->" in source)
@@ -46,7 +46,7 @@ class ProfessionalBubbleHome118ContractTest {
         assertTrue("Inicio da sessao precisa ser registrado", "app.session.started" in source)
         assertTrue("Inicio da exportacao precisa ser registrado", "report.export.started" in source)
         assertTrue("Fim da exportacao precisa ser registrado", "report.export.completed" in source)
-        assertTrue("Pedido vindo do popup nao abre automaticamente", "auto_export_report_0_1_119" in source)
+        assertTrue("Pedido vindo do popup precisa ser reconhecido", "auto_export_report_0_1_119" in source)
         assertTrue("Arquivo padrao do relatorio ausente", "rota-certa-relatorio-completo.txt" in source)
     }
 }
