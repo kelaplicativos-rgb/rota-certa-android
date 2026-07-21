@@ -28,130 +28,117 @@ fun patchSelectedAppServiceFinal122(file: java.io.File) {
         )
     }
 
-    text = replaceSelectedAppRegion122(
-        text,
-        "    override fun onAccessibilityEvent(event: AccessibilityEvent?) {",
-        "    override fun onInterrupt()",
-        """    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!serviceReady || event == null) return
-        if (!currentSettings.appEnabled || !currentSettings.liveReadingEnabled) {
-            hardClearUniversalTwoAddress("Leitura ao vivo desligada.")
-            return
-        }
-        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) return
-
-        val packageName = normalizePackageName(event.packageName?.toString()) ?: currentRootPackageName()
-        activePackageName = packageName
-        if (!shouldScanPackage(packageName)) {
-            if (currentRadarColor != RadarColor.Idle || currentDistanceKm != null || lastSnapshotHash != null) {
-                hardClearUniversalTwoAddress("Aplicativo fora da selecao do usuario.")
-            }
-            return
-        }
-
-        val eventMode = accessibilityEventFloodGate.classify(
-            packageName = packageName,
-            eventType = event.eventType,
-            monitoredPackage = true,
+    val eventStart = text.indexOf("    override fun onAccessibilityEvent(event: AccessibilityEvent?) {")
+    val eventEnd = if (eventStart >= 0) text.indexOf("    override fun onInterrupt()", eventStart) else -1
+    if (eventStart < 0 || eventEnd < 0) throw GradleException("Evento final da acessibilidade nao encontrado.")
+    var eventRegion = text.substring(eventStart, eventEnd)
+    if ("selected_apps_event_gate_0_1_122" !in eventRegion) {
+        val candidateAnchor = "        val candidatePackage = eventPackage ?: rootPackage\n"
+        if (candidateAnchor !in eventRegion) throw GradleException("Pacote candidato do evento final nao encontrado.")
+        eventRegion = eventRegion.replaceFirst(
+            candidateAnchor,
+            candidateAnchor +
+                "        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) return\n",
         )
-        if (eventMode == AccessibilityEventMode.Ignore) return
-
-        traceEvent("selected.app.event package=${'$'}{packageName.orEmpty()} type=${'$'}{event.eventType}") // selected_apps_event_gate_0_1_122
-        scheduleVisibleTextAnalysis(delayMs = 0L, allowPopupCandidate = true)
-        requestScreenshotAnalysis(allowPopupCandidate = true)
+        eventRegion = eventRegion.replace(
+            "                traceEvent(\"universal.overlay.event ignored=true type=\" + event.eventType)\n",
+            "                Unit // selected_apps_overlay_quiet_0_1_122\n",
+        )
+        val resolvedAnchor = "        val resolvedPackage = candidatePackage ?: lastExternalWindowPackageName ?: return\n"
+        if (resolvedAnchor !in eventRegion) throw GradleException("Pacote resolvido do evento final nao encontrado.")
+        eventRegion = eventRegion.replaceFirst(
+            resolvedAnchor,
+            resolvedAnchor +
+                "        if (!shouldScanPackage(resolvedPackage)) {\n" +
+                "            if (universalForegroundPackageName != resolvedPackage) universalWindowGeneration += 1L\n" +
+                "            universalForegroundPackageName = resolvedPackage\n" +
+                "            activePackageName = resolvedPackage\n" +
+                "            lastExternalWindowPackageName = resolvedPackage\n" +
+                "            hardClearUniversalTwoAddress(\"Aplicativo fora da selecao do usuario.\")\n" +
+                "            return\n" +
+                "        }\n" +
+                "        if (accessibilityEventFloodGate.classify(\n" +
+                "                packageName = resolvedPackage,\n" +
+                "                eventType = event.eventType,\n" +
+                "                monitoredPackage = true,\n" +
+                "            ) == AccessibilityEventMode.Ignore\n" +
+                "        ) return // selected_apps_event_gate_0_1_122\n",
+        )
+        text = text.substring(0, eventStart) + eventRegion + text.substring(eventEnd)
     }
 
-""",
-        "evento filtrado pelos aplicativos selecionados",
-    )
-
-    text = replaceSelectedAppRegion122(
-        text,
-        "    private fun startContinuousScan() {",
-        "    private fun startProximityAlertMonitor()",
-        """    private fun startContinuousScan() {
-        if (continuousScanStarted || !serviceReady) return
-        continuousScanStarted = true
-        traceEvent("selected.app.scan.loop interval=${'$'}SCAN_LOOP_MS")
-        scope.launch {
-            while (serviceReady) {
-                val packageName = currentWindowPackageName()
-                if (!currentSettings.appEnabled || !currentSettings.liveReadingEnabled) {
-                    if (currentRadarColor != RadarColor.Idle || currentDistanceKm != null || lastSnapshotHash != null) {
-                        hardClearUniversalTwoAddress("Leitura ao vivo desligada.")
-                    }
-                } else if (!shouldScanPackage(packageName)) {
-                    if (currentRadarColor != RadarColor.Idle || currentDistanceKm != null || lastSnapshotHash != null) {
-                        hardClearUniversalTwoAddress("Aplicativo fora da selecao; leitura pausada.")
-                    }
-                } else {
-                    val visibleText = collectVisibleText(allowPopupCandidate = true)
-                    processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
-                    requestScreenshotAnalysis(allowPopupCandidate = true)
-                }
-                delay(SCAN_LOOP_MS)
-            }
-        }
-    } // selected_apps_scan_loop_0_1_122
-
-""",
-        "ciclo limitado aos aplicativos selecionados",
-    )
-
-    text = replaceSelectedAppRegion122(
-        text,
-        "    private fun scheduleVisibleTextAnalysis(",
-        "    private fun requestScreenshotAnalysis(",
-        """    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
-        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return
-        if (!shouldScanCurrentWindow()) return
-        analyzeJob?.cancel()
-        analyzeJob = scope.launch {
-            if (delayMs > 0L) delay(delayMs)
-            if (!shouldScanCurrentWindow()) return@launch
-            val visibleText = collectVisibleText(allowPopupCandidate = true)
-            processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
-        }
-    } // selected_apps_schedule_0_1_122
-
-""",
-        "agendamento limitado aos aplicativos selecionados",
-    )
-
-    text = text.replace(
-        "        if (!serviceReady || currentWindowPackageName() == this.packageName) return \"\"",
-        "        if (!serviceReady || !shouldScanCurrentWindow()) return \"\"",
-    )
-
-    val processOld = """    ) {
-        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return
-        if (currentWindowPackageName() == this.packageName) {
-            hardClearUniversalTwoAddress("Tela do proprio Rota Certa.")
-            return
-        }
-
-        val snapshotText = text.trim()
+    val scanStart = text.indexOf("    private fun startContinuousScan() {")
+    val scanEnd = if (scanStart >= 0) text.indexOf("    private fun startProximityAlertMonitor()", scanStart) else -1
+    if (scanStart < 0 || scanEnd < 0) throw GradleException("Ciclo final da leitura nao encontrado.")
+    var scanRegion = text.substring(scanStart, scanEnd)
+    if ("selected_apps_scan_loop_0_1_122" !in scanRegion) {
+        val oldCondition = """                        if (!UniversalFastReadPolicy.shouldScanLivePackage(
+                                packageName = expectedPackage,
+                                ownPackageName = this@LiveRideAccessibilityService.packageName,
+                            )
+                        ) {
 """
-    val processNew = """    ) {
-        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return
-        if (!shouldScanCurrentWindow()) {
-            if (currentRadarColor != RadarColor.Idle || currentDistanceKm != null || lastSnapshotHash != null) {
-                hardClearUniversalTwoAddress("Leitura recebida de aplicativo nao selecionado.")
-            }
-            return
-        }
-
-        val snapshotText = text.trim()
+        val newCondition = """                        if (!shouldScanPackage(expectedPackage) ||
+                            !UniversalFastReadPolicy.shouldScanLivePackage(
+                                packageName = expectedPackage,
+                                ownPackageName = this@LiveRideAccessibilityService.packageName,
+                            )
+                        ) { // selected_apps_scan_loop_0_1_122
 """
+        if (oldCondition !in scanRegion) throw GradleException("Portaria do ciclo final nao encontrada.")
+        scanRegion = scanRegion.replaceFirst(oldCondition, newCondition)
+        text = text.substring(0, scanStart) + scanRegion + text.substring(scanEnd)
+    }
+
+    val scheduleStart = text.indexOf("    private fun scheduleVisibleTextAnalysis(")
+    val scheduleEnd = if (scheduleStart >= 0) text.indexOf("    private fun requestScreenshotAnalysis(", scheduleStart) else -1
+    if (scheduleStart < 0 || scheduleEnd < 0) throw GradleException("Agendamento final da leitura nao encontrado.")
+    var scheduleRegion = text.substring(scheduleStart, scheduleEnd)
+    if ("selected_apps_schedule_0_1_122" !in scheduleRegion) {
+        val expectedAnchor = "        val expectedPackage = universalResolvedForegroundPackage() ?: return\n"
+        if (expectedAnchor !in scheduleRegion) throw GradleException("Pacote esperado do agendamento final nao encontrado.")
+        scheduleRegion = scheduleRegion.replaceFirst(
+            expectedAnchor,
+            expectedAnchor + "        if (!shouldScanPackage(expectedPackage)) return // selected_apps_schedule_0_1_122\n",
+        )
+        text = text.substring(0, scheduleStart) + scheduleRegion + text.substring(scheduleEnd)
+    }
+
+    val screenshotStart = text.indexOf("    private fun requestScreenshotAnalysis(")
+    val screenshotEnd = if (screenshotStart >= 0) text.indexOf("    private fun collectVisibleText(", screenshotStart) else -1
+    if (screenshotStart < 0 || screenshotEnd < 0) throw GradleException("OCR final nao encontrado.")
+    var screenshotRegion = text.substring(screenshotStart, screenshotEnd)
+    if ("selected_apps_ocr_gate_0_1_122" !in screenshotRegion) {
+        val requestedAnchor = "        val requestedPackage = ocrRequestToken.observedPackageName\n"
+        if (requestedAnchor !in screenshotRegion) throw GradleException("Pacote observado do OCR final nao encontrado.")
+        screenshotRegion = screenshotRegion.replaceFirst(
+            requestedAnchor,
+            requestedAnchor + "        if (!shouldScanPackage(requestedPackage)) return // selected_apps_ocr_gate_0_1_122\n",
+        )
+        text = text.substring(0, screenshotStart) + screenshotRegion + text.substring(screenshotEnd)
+    }
+
     val processStart = text.indexOf("    private suspend fun processRideText(")
     val processEnd = if (processStart >= 0) text.indexOf("    private fun resolveRidePackageForText(", processStart) else -1
     if (processStart < 0 || processEnd < 0) throw GradleException("Processamento final da leitura nao encontrado.")
-    val processRegion = text.substring(processStart, processEnd)
-    if (processOld in processRegion) {
-        val patchedRegion = processRegion.replaceFirst(processOld, processNew)
-        text = text.substring(0, processStart) + patchedRegion + text.substring(processEnd)
-    } else if ("Leitura recebida de aplicativo nao selecionado." !in processRegion) {
-        throw GradleException("Nao consegui proteger processRideText contra apps nao selecionados.")
+    var processRegion = text.substring(processStart, processEnd)
+    if ("selected_apps_process_gate_0_1_122" !in processRegion) {
+        val activeWindowBlock = """        if (!isUniversalExternalWindowActive()) {
+            hardClearUniversalTwoAddress("Janela atual nao permite leitura universal.")
+            return
+        }
+
+"""
+        if (activeWindowBlock !in processRegion) throw GradleException("Janela ativa do processamento final nao encontrada.")
+        processRegion = processRegion.replaceFirst(
+            activeWindowBlock,
+            activeWindowBlock +
+                "        if (!shouldScanCurrentWindow()) {\n" +
+                "            hardClearUniversalTwoAddress(\"Leitura recebida de aplicativo nao selecionado.\")\n" +
+                "            return // selected_apps_process_gate_0_1_122\n" +
+                "        }\n\n",
+        )
+        text = text.substring(0, processStart) + processRegion + text.substring(processEnd)
     }
 
     text = replaceSelectedAppRegion122(
@@ -172,10 +159,17 @@ fun patchSelectedAppServiceFinal122(file: java.io.File) {
         "portaria final dos aplicativos selecionados",
     )
 
-    text = text.replace(
-        "            addressSignature == universalActiveAddressSignature &&\n            currentWindowPackageName() != this.packageName",
-        "            addressSignature == universalActiveAddressSignature &&\n            shouldScanCurrentWindow()",
-    )
+    val freshnessStart = text.indexOf("    private fun isUniversalResultFresh(")
+    val freshnessEnd = if (freshnessStart >= 0) text.indexOf("    private fun hardClearUniversalTwoAddress(", freshnessStart) else -1
+    if (freshnessStart < 0 || freshnessEnd < 0) throw GradleException("Validade final da rota nao encontrada.")
+    var freshnessRegion = text.substring(freshnessStart, freshnessEnd)
+    if ("selected_apps_freshness_gate_0_1_122" !in freshnessRegion) {
+        freshnessRegion = freshnessRegion.replaceFirst(
+            "            isUniversalExternalWindowActive()",
+            "            isUniversalExternalWindowActive() &&\n            shouldScanCurrentWindow() // selected_apps_freshness_gate_0_1_122",
+        )
+        text = text.substring(0, freshnessStart) + freshnessRegion + text.substring(freshnessEnd)
+    }
 
     if ("radar_spatial_index_0_1_122" !in text) {
         val proximityStart = text.indexOf("    private suspend fun checkProximityAlerts(")
@@ -185,9 +179,7 @@ fun patchSelectedAppServiceFinal122(file: java.io.File) {
         }
         var proximityRegion = text.substring(proximityStart, proximityEnd)
         val coordinateAnchor = "        val coordinate = locationService.currentCoordinate() ?: return\n"
-        if (coordinateAnchor !in proximityRegion) {
-            throw GradleException("Coordenada do monitor de radares nao encontrada.")
-        }
+        if (coordinateAnchor !in proximityRegion) throw GradleException("Coordenada do monitor de radares nao encontrada.")
         proximityRegion = proximityRegion.replaceFirst(
             coordinateAnchor,
             coordinateAnchor +
@@ -207,13 +199,17 @@ fun patchSelectedAppServiceFinal122(file: java.io.File) {
         "selected_apps_event_gate_0_1_122",
         "selected_apps_scan_loop_0_1_122",
         "selected_apps_schedule_0_1_122",
+        "selected_apps_ocr_gate_0_1_122",
+        "selected_apps_process_gate_0_1_122",
         "selected_apps_store_0_1_122",
+        "selected_apps_freshness_gate_0_1_122",
         "radar_spatial_index_0_1_122",
         "AccessibilityEventFloodGate.isRelevantEventType",
         "SelectedRideAppStore.selectedPackages",
         "ImportedRadarSpatialIndex",
+        "radars = nearbyRadars",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Contrato 0.1.122 incompleto no servico: $marker")
+        if (marker !in text) throw GradleException("Contrato 0.1.122 incompleto no servico final: $marker")
     }
 
     file.writeText(text)
@@ -280,9 +276,7 @@ private fun InstalledRideAppsCard() {
         text = text.replace(anchor, block + anchor)
     }
 
-    if ("InstalledRideAppsCard()" !in text) {
-        throw GradleException("O card de aplicativos instalados nao foi ligado a tela Configuracoes.")
-    }
+    if ("InstalledRideAppsCard()" !in text) throw GradleException("O card de aplicativos instalados nao foi ligado a Configuracoes.")
     listOf(
         "Buscar aplicativos instalados",
         "Fora dessa lista, o Rota Certa nao coleta texto",
@@ -290,15 +284,22 @@ private fun InstalledRideAppsCard() {
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Interface 0.1.122 incompleta: $marker")
     }
-
     file.writeText(text)
 }
 
-tasks.named("universalTwoAddressRuntimeFinal").configure {
+tasks.named("radarWorkTracking121").configure {
     doLast {
         patchSelectedAppServiceFinal122(
             layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
         )
+        patchSelectedAppMainFinal122(
+            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").asFile,
+        )
+    }
+}
+
+tasks.matching { it.name == "workTrackingCardAnchorCleanup121" }.configureEach {
+    doLast {
         patchSelectedAppMainFinal122(
             layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").asFile,
         )
