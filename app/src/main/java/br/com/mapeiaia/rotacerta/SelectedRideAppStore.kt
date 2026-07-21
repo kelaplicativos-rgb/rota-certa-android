@@ -7,7 +7,8 @@ import java.util.Locale
  * Persistencia independente dos aplicativos escolhidos pelo usuario.
  *
  * A selecao do aplicativo controla onde a acessibilidade e o OCR podem rodar.
- * Os modelos de cards continuam servindo apenas para reconhecer a oferta.
+ * Nenhum aplicativo nasce marcado e configuracoes antigas jamais viram selecao
+ * automatica. Os modelos de cards sao opcionais e permanecem sob controle do usuario.
  */
 object SelectedRideAppStore {
     private const val PREFS_NAME = "rota_certa_selected_ride_apps"
@@ -23,10 +24,16 @@ object SelectedRideAppStore {
             .mapNotNull(::normalize)
             .toSortedSet()
 
+    /**
+     * Mantem a assinatura antiga para compatibilidade, mas nunca importa 99, Uber,
+     * inDrive ou pacotes extras das configuracoes legadas. A unica fonte valida e
+     * a escolha explicita salva pelo usuario.
+     */
     fun selectedPackages(context: Context, legacySettings: AppSettings? = null): Set<String> {
-        if (hasExplicitSelection(context)) return read(context)
-        return legacySettings?.let(::legacyPackages).orEmpty()
-    }
+        @Suppress("UNUSED_VARIABLE")
+        val ignoredLegacySettings = legacySettings
+        return read(context)
+    } // manual_selection_no_legacy_fallback_0_1_127
 
     fun save(context: Context, packages: Set<String>) {
         val normalized = packages.mapNotNull(::normalize).toSortedSet()
