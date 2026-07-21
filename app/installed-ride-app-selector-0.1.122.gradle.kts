@@ -175,21 +175,16 @@ private fun InstalledRideAppsCard() {
     }
 }
 
-val installedRideAppSelector122Predecessors = setOf(
-    "enforceUserRegisteredPackagesOnly",
-    "universalLastAddressFinalV2",
-    "universalLastAddressCompileFix",
-    "universalTwoAddressRuntimeFinal",
-    "popupNavigationLateCompile120",
-    "workTrackingCardAnchorCompat121",
-    "radarWorkTracking121",
-)
-
-tasks.matching { it.name in installedRideAppSelector122Predecessors }.configureEach {
-    val predecessor = this
-    installedRideAppSelector122Patch.configure {
-        mustRunAfter(predecessor)
-    }
+installedRideAppSelector122Patch.configure {
+    mustRunAfter(
+        "enforceUserRegisteredPackagesOnly",
+        "universalLastAddressFinalV2",
+        "universalLastAddressCompileFix",
+        "universalTwoAddressRuntimeFinal",
+        "popupNavigationLateCompile120",
+        "workTrackingCardAnchorCompat121",
+        "radarWorkTracking121",
+    )
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
