@@ -1,38 +1,122 @@
 // Rota Certa 0.1.124
-// Remove atrasos internos comprovados pelo diagnostico 0.1.123:
-// - nao reler DataStore antes de cada rota;
-// - pintar verde/vermelho antes de persistir o historico;
-// - ignorar expansoes temporarias de 4/6 enderecos do inDrive.
+// Correcao global do tempo e da limpeza da bolinha, sem distinguir aplicativos:
+// - qualquer leitura vazia ou card incompleto limpa imediatamente;
+// - somente um card com exatamente embarque e destino inicia a rota;
+// - qualquer mudanca no texto visivel invalida o resultado anterior;
+// - a rota usa as configuracoes ja carregadas em memoria;
+// - verde/vermelho aparecem antes da gravacao do historico;
+// - protecoes antigas que conservavam a cor anterior sao desativadas.
 
 fun patchInstantFarolDecision124(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado para o farol instantaneo 0.1.124.")
     var text = file.readText()
     val dollar = "$"
 
-    if ("private val rideCardSnapshotStabilizer = RideCardSnapshotStabilizer()" !in text) {
-        val fieldAnchor = "    private val accessibilityEventFloodGate = AccessibilityEventFloodGate()\n"
-        if (fieldAnchor !in text) throw GradleException("Campo do filtro de acessibilidade nao encontrado para o estabilizador.")
-        text = text.replaceFirst(
-            fieldAnchor,
-            "    private val rideCardSnapshotStabilizer = RideCardSnapshotStabilizer()\n" + fieldAnchor,
-        )
+    if ("global_continuous_empty_clear_0_1_124" !in text) {
+        val oldBlock = """                                val ignoreTransientOverlayEmpty = UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
+                                    text = visibleText,
+                                    rootPackageName = currentRootPackageName(),
+                                    effectivePackageName = expectedPackage,
+                                    ownPackageName = this@LiveRideAccessibilityService.packageName,
+                                )
+                                if (ignoreTransientOverlayEmpty) {
+                                    traceEvent("universal.accessibility transient_overlay_empty_ignored=true")
+                                } else {
+                                    processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
+                                }
+"""
+        val newBlock = """                                processRideText(
+                                    visibleText,
+                                    TextSource.Accessibility,
+                                    allowPopupCandidate = true,
+                                ) // global_continuous_empty_clear_0_1_124
+"""
+        if (oldBlock !in text) throw GradleException("Protecao de leitura vazia do ciclo continuo nao encontrada.")
+        text = text.replaceFirst(oldBlock, newBlock)
     }
 
-    if ("instant_farol_snapshot_stability_0_1_124" !in text) {
-        val triggerAnchor = "        val trigger = UniversalAddressTrigger.evaluate(snapshotText)\n"
-        if (triggerAnchor !in text) throw GradleException("Gatilho universal nao encontrado para estabilizar o card.")
-        val replacement = triggerAnchor + """        if (rideCardSnapshotStabilizer.shouldIgnore(
-                packageName = universalResolvedForegroundPackage(),
-                addressCount = trigger.addresses.size,
-                active = trigger.active,
-                nowMillis = System.currentTimeMillis(),
+    if ("global_scheduled_empty_clear_0_1_124" !in text) {
+        val oldBlock = """            val ignoreTransientOverlayEmpty = UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
+                text = visibleText,
+                rootPackageName = currentRootPackageName(),
+                effectivePackageName = expectedPackage,
+                ownPackageName = this@LiveRideAccessibilityService.packageName,
+            )
+            if (ignoreTransientOverlayEmpty) {
+                traceEvent("universal.accessibility transient_overlay_empty_ignored=true")
+                return@launch
+            }
+            processRideText(visibleText, TextSource.Accessibility, allowPopupCandidate = true)
+"""
+        val newBlock = """            processRideText(
+                visibleText,
+                TextSource.Accessibility,
+                allowPopupCandidate = true,
+            ) // global_scheduled_empty_clear_0_1_124
+"""
+        if (oldBlock !in text) throw GradleException("Protecao de leitura vazia agendada nao encontrada.")
+        text = text.replaceFirst(oldBlock, newBlock)
+    }
+
+    if ("global_exact_two_address_card_0_1_124" !in text) {
+        val oldActiveTrigger = "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112\n"
+        val newActiveTrigger = "        val activeTrigger = trigger.addresses.size == 2 && trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // global_exact_two_address_card_0_1_124\n"
+        if (oldActiveTrigger !in text) throw GradleException("Gatilho ativo universal nao encontrado.")
+        text = text.replaceFirst(oldActiveTrigger, newActiveTrigger)
+    }
+
+    if ("global_inactive_clear_now_0_1_124" !in text) {
+        val oldBlock = """        val readNowMillis = System.currentTimeMillis()
+        if (!activeTrigger && liveSource == UniversalLiveReadSource.Accessibility &&
+            UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(
+                hasActiveAddressSignature = universalActiveAddressSignature != null,
+                routeInFlight = universalRouteJob?.isActive == true,
+                lastActiveReadAtMillis = universalLastActiveReadAtMillis,
+                nowMillis = readNowMillis,
             )
         ) {
-            traceEvent("universal.snapshot.expansion_ignored addresses=${dollar}{trigger.addresses.size}")
+            traceEvent("universal.accessibility transient_empty_ignored_route_inflight=true")
             return
-        } // instant_farol_snapshot_stability_0_1_124
+        }
+        if (activeTrigger) {
+            universalLastActiveReadAtMillis = readNowMillis
+            universalActiveRidePackageName = universalResolvedForegroundPackage()
+        }
 """
-        text = text.replaceFirst(triggerAnchor, replacement)
+        val newBlock = """        val readNowMillis = System.currentTimeMillis()
+        if (!activeTrigger) {
+            hardClearUniversalTwoAddress(
+                "Card saiu, mudou ou nao possui exatamente embarque e destino; resultado removido imediatamente.",
+            )
+            return // global_inactive_clear_now_0_1_124
+        }
+        universalLastActiveReadAtMillis = readNowMillis
+        universalActiveRidePackageName = universalResolvedForegroundPackage()
+"""
+        if (oldBlock !in text) throw GradleException("Tolerancia de leitura transitoria nao encontrada.")
+        text = text.replaceFirst(oldBlock, newBlock)
+    }
+
+    if ("global_full_screen_hash_0_1_124" !in text) {
+        val oldHash = "        val analysisHash = listOf(trigger.addressSignature, trigger.destination.orEmpty()).joinToString(\"|\").hashCode()\n"
+        val newHash = "        val analysisHash = trigger.screenHash // global_full_screen_hash_0_1_124\n"
+        if (oldHash !in text) throw GradleException("Hash antigo do card nao encontrado.")
+        text = text.replaceFirst(oldHash, newHash)
+    }
+
+    if ("global_screen_change_clear_0_1_124" !in text) {
+        val oldRender = """            rememberBubbleReason("universal_waiting", "Dois enderecos numerados encontrados; calculando o ultimo destino.")
+            publishRuntimeValidationTrigger(trigger)
+            showOverlay(RadarColor.Default, distanceKm = null)
+            traceEvent("universal.screen.changed hash=${dollar}analysisHash yellow=true signature=${dollar}{trigger.addressSignature.hashCode()}")
+"""
+        val newRender = """            rememberBubbleReason("universal_waiting", "Tela alterada; resultado anterior removido e novo destino em calculo.")
+            publishRuntimeValidationTrigger(trigger)
+            showOverlay(RadarColor.Default, distanceKm = null) // global_screen_change_clear_0_1_124
+            traceEvent("universal.screen.changed hash=${dollar}analysisHash yellow=true immediate_clear=true signature=${dollar}{trigger.addressSignature.hashCode()}")
+"""
+        if (oldRender !in text) throw GradleException("Renderizacao da mudanca de tela nao encontrada.")
+        text = text.replaceFirst(oldRender, newRender)
     }
 
     if ("instant_farol_cached_settings_0_1_124" !in text) {
@@ -75,24 +159,61 @@ fun patchInstantFarolDecision124(file: java.io.File) {
         text = text.replaceFirst(oldResultBlock, newResultBlock)
     }
 
-    if ("instant_farol_snapshot_reset_0_1_124" !in text) {
-        val resetAnchor = "        universalLiveReadGate.reset()\n"
-        if (resetAnchor !in text) throw GradleException("Reset do leitor universal nao encontrado.")
-        text = text.replaceFirst(
-            resetAnchor,
-            resetAnchor + "        rideCardSnapshotStabilizer.reset() // instant_farol_snapshot_reset_0_1_124\n",
-        )
+    if ("global_no_transient_decision_keep_0_1_124" !in text) {
+        val oldCondition = """            val keepActiveDecisionForTransientInsufficient = computedRadarColor == RadarColor.Default &&
+                hasActiveRegisteredDecision() &&
+                shouldScanCurrentWindow()
+"""
+        val newCondition = "            val keepActiveDecisionForTransientInsufficient = false // global_no_transient_decision_keep_0_1_124\n"
+        if (oldCondition !in text) throw GradleException("Protecao legada da decisao ativa nao encontrada.")
+        text = text.replaceFirst(oldCondition, newCondition)
+    }
+
+    if ("global_idle_never_guarded_0_1_124" !in text) {
+        val oldGuard = """        if (shouldScanCurrentWindow() && hasActiveRegisteredDecision()) {
+            traceEvent("resetToIdle guarded active_ride_window reason=${dollar}reason")
+            return
+        }
+"""
+        val newGuard = "        Unit // global_idle_never_guarded_0_1_124\n"
+        if (oldGuard !in text) throw GradleException("Protecao legada do reset para cinza nao encontrada.")
+        text = text.replaceFirst(oldGuard, newGuard)
+    }
+
+    if ("global_overlay_idle_allowed_0_1_124" !in text) {
+        val oldGuard = """        if (color == RadarColor.Idle && currentRadarColor == RadarColor.Default && shouldScanCurrentWindow()) {
+            Unit
+            return
+        }
+"""
+        val newGuard = "        Unit // global_overlay_idle_allowed_0_1_124\n"
+        if (oldGuard !in text) throw GradleException("Protecao legada do overlay cinza nao encontrada.")
+        text = text.replaceFirst(oldGuard, newGuard)
     }
 
     listOf(
-        "RideCardSnapshotStabilizer()",
-        "instant_farol_snapshot_stability_0_1_124",
+        "global_continuous_empty_clear_0_1_124",
+        "global_scheduled_empty_clear_0_1_124",
+        "global_exact_two_address_card_0_1_124",
+        "global_inactive_clear_now_0_1_124",
+        "global_full_screen_hash_0_1_124",
+        "global_screen_change_clear_0_1_124",
         "instant_farol_cached_settings_0_1_124",
         "instant_farol_paint_before_history_0_1_124",
-        "instant_farol_snapshot_reset_0_1_124",
+        "global_no_transient_decision_keep_0_1_124",
+        "global_idle_never_guarded_0_1_124",
+        "global_overlay_idle_allowed_0_1_124",
         "scope.launch {\n                runCatching { repository.addAnalysis(result) }",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Contrato do farol instantaneo 0.1.124 incompleto: $marker")
+        if (marker !in text) throw GradleException("Contrato global do farol 0.1.124 incompleto: $marker")
+    }
+
+    listOf(
+        "transient_overlay_empty_ignored=true",
+        "transient_empty_ignored_route_inflight=true",
+        "resetToIdle guarded active_ride_window",
+    ).forEach { forbidden ->
+        if (forbidden in text) throw GradleException("Protecao antiga ainda conserva resultado: $forbidden")
     }
 
     file.writeText(text)
