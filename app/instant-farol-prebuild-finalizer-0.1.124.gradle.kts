@@ -1,6 +1,6 @@
 // Ultima verificacao da versao 0.1.124.
 // Executa como a ultima acao do preBuild para impedir que qualquer patch legado
-// restaure a protecao da cor anterior depois da limpeza global.
+// restaure a protecao da cor anterior ou remova o cache exato persistente.
 
 fun finalizeInstantFarolPreBuild124(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado no finalizador 0.1.124.")
@@ -45,6 +45,11 @@ fun finalizeInstantFarolPreBuild124(file: java.io.File) {
         "global_screen_change_clear_0_1_124",
         "instant_farol_cached_settings_0_1_124",
         "instant_farol_paint_before_history_0_1_124",
+        "persistent_route_cache_restore_0_1_124",
+        "persistent_route_cache_save_0_1_124",
+        "persistent_exact_route_cache_v1",
+        "universalRouteCache.importSnapshot(",
+        "universalRouteCache.exportSnapshot()",
         "global_idle_never_guarded_0_1_124",
         "global_overlay_idle_allowed_0_1_124",
     ).forEach { marker ->
