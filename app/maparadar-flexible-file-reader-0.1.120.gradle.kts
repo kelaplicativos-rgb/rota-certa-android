@@ -25,7 +25,8 @@ val mapaRadarFlexibleFileReader120 by tasks.registering {
         val file = mainFile.asFile
         if (!file.exists()) throw GradleException("MainActivity nao encontrada: ${file.path}")
         var text = file.readText()
-        if ("maparadar_flexible_file_reader_0_1_120" !in text) {
+
+        if ("parseMapaRadarFile(fileBytes)" !in text) {
             text = mapaRadar120ReplaceOnce(
                 source = text,
                 oldValue = """                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
@@ -42,20 +43,31 @@ val mapaRadarFlexibleFileReader120 by tasks.registering {
 """,
                 label = "leitura binaria do arquivo de radares",
             )
-
-            val oldPicker = """radarFilePicker.launch(arrayOf("text/*", "text/comma-separated-values", "application/octet-stream", "*/*"))"""
-            val newPicker = """radarFilePicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "application/octet-stream", "*/*"))"""
-            if (oldPicker in text) {
-                text = text.replace(oldPicker, newPicker)
-            }
-            file.writeText(text)
         }
+
+        if ("application/vnd.ms-excel" !in text) {
+            val expandedPicker = """radarFilePicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "application/octet-stream", "*/*"))"""
+            val oldPicker = """radarFilePicker.launch(arrayOf("text/*", "text/comma-separated-values", "application/octet-stream", "*/*"))"""
+            text = when {
+                oldPicker in text -> text.replace(oldPicker, expandedPicker)
+                else -> {
+                    val pickerRegex = Regex("""radarFilePicker\.launch\(arrayOf\([^\n]*\)\)""")
+                    if (!pickerRegex.containsMatchIn(text)) {
+                        throw GradleException("Ponto ausente para tipos MIME do importador de radares")
+                    }
+                    pickerRegex.replaceFirst(text, expandedPicker)
+                }
+            }
+        }
+
+        file.writeText(text)
 
         val finalText = file.readText()
         listOf(
             "parseMapaRadarFile(fileBytes)",
             "maparadar_flexible_file_reader_0_1_120",
             "application/vnd.ms-excel",
+            "text/csv",
         ).forEach { marker ->
             if (marker !in finalText) throw GradleException("Importacao flexivel incompleta: $marker")
         }
