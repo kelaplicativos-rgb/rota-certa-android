@@ -341,11 +341,8 @@ object BubbleShortcutCatalog {
     }
 }
 
-// O leitor universal precisa terminar primeiro; este e o ultimo ajuste visual e de atalhos.
-tasks.named("universalTwoAddressRuntimeFinal").configure {
-    mustRunAfter("professionalBubbleHome118", "bubbleResourceShortcutsRuntime117")
-}
-
+// O leitor universal ja e a ultima etapa do encadeamento legado. Este ajuste
+// depende apenas dele para evitar ciclos com as tarefas antigas de compatibilidade.
 val popupOnlyControlCenter119 by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
@@ -353,7 +350,7 @@ val popupOnlyControlCenter119 by tasks.registering {
     val controllerFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt")
     inputs.files(mainFile, serviceFile, catalogFile, controllerFile)
     outputs.upToDateWhen { false }
-    dependsOn("professionalBubbleHome118", "bubbleResourceShortcutsRuntime117", "universalTwoAddressRuntimeFinal")
+    dependsOn("universalTwoAddressRuntimeFinal")
     doLast {
         enforcePopupOnlyControlCenter119(
             mainFile.asFile,
@@ -365,7 +362,7 @@ val popupOnlyControlCenter119 by tasks.registering {
 }
 
 popupOnlyControlCenter119.configure {
-    mustRunAfter("professionalBubbleHome118", "bubbleResourceShortcutsRuntime117", "universalTwoAddressRuntimeFinal")
+    mustRunAfter("universalTwoAddressRuntimeFinal")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
