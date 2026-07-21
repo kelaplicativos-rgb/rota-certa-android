@@ -1,27 +1,19 @@
 // Compatibilidade com o validador de gesto do workflow 0.1.120.
-// O grep antigo interpreta a quebra de linha como dois padroes independentes.
-// Renomeamos apenas simbolos privados, mantendo o comportamento identico.
+// Mantem os simbolos internos exigidos pelo contrato 0.1.116. A comparacao
+// contigua que detecta a antiga piscada e feita corretamente no workflow.
 fun applyPopupGestureValidatorCompat120(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
-    text = text.replace("hideResourceShortcuts", "closeResourceShortcuts")
-    text = text.replace("bubbleGestureActive = true", "bubbleGestureActive = (true)")
     if ("popup_gesture_validator_compat_0_1_120" !in text) {
         text += "\n// popup_gesture_validator_compat_0_1_120\n"
     }
-    if ("hideResourceShortcuts()" in text) {
-        throw GradleException("Nome antigo de fechamento ainda presente.")
-    }
-    if ("bubbleGestureActive = true" in text) {
-        throw GradleException("Atribuicao ambigua para o grep ainda presente.")
-    }
     listOf(
-        "private fun closeResourceShortcuts()",
-        "closeResourceShortcuts() // popup_close_only_on_drag_0_1_120",
-        "bubbleGestureActive = (true)",
+        "private fun hideResourceShortcuts()",
+        "hideResourceShortcuts() // popup_close_only_on_drag_0_1_120",
+        "bubbleGestureActive = true",
         "popup_gesture_validator_compat_0_1_120",
     ).forEach { marker ->
-        if (marker !in text) throw GradleException("Compatibilidade de gesto incompleta: $marker")
+        if (marker !in text) throw GradleException("Contrato de gesto incompleto: $marker")
     }
     file.writeText(text)
 }
