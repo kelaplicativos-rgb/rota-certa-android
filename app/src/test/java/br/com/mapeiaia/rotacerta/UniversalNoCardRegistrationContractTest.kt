@@ -7,20 +7,19 @@ import org.junit.Test
 
 class UniversalNoCardRegistrationContractTest {
     @Test
-    fun cardRegistrationIsAbsentFromUiAndUniversalRuntime() {
+    fun cardRegistrationExistsInUiButDoesNotGateUniversalRuntime() {
         val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
 
         listOf(
-            "Modelos de cards",
-            "Anexar modelos de cards",
-            "Cadastrar texto lido como modelo",
-            "CardModelsCard(",
+            "Cards cadastrados",
+            "Anexar modelos de cards (prints)",
+            "RegisteredCardsModuleCard(",
             "cardModelPicker",
             "onRegisterRideCard",
-            "MonitoredAppsCard(",
-        ).forEach { forbidden ->
-            assertFalse("Recurso removido ainda aparece: $forbidden", forbidden in main)
+            "popup_navigation_card_state_0_1_120",
+        ).forEach { required ->
+            assertTrue("Recurso de Cards ausente: $required", required in main)
         }
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
@@ -34,12 +33,10 @@ class UniversalNoCardRegistrationContractTest {
             "selectedRidePackages",
             "currentCardTemplates",
         ).forEach { forbidden ->
-            assertFalse("Cadastro de cards ainda interfere na leitura: $forbidden", forbidden in processBlock)
+            assertFalse("Cadastro de cards nao pode bloquear a leitura universal: $forbidden", forbidden in processBlock)
         }
 
-        assertTrue("universal_no_card_registration_0_1_102" in main)
         assertTrue("universal_no_card_runtime_0_1_102" in service)
-        assertTrue("Leitura universal de tela: true" in main)
         assertTrue("currentCardTemplates = emptyList()" in service)
     }
 
