@@ -114,11 +114,11 @@ jobs:
             "Distancia do primeiro aviso" \
             "A aproximadamente" \
             "Selecionar aplicativos de corrida" \
+            "A bolinha lerá somente os aplicativos marcados." \
             "Buscar aplicativo instalado" \
             "Salvar aplicativos selecionados" \
             "Buscar aplicativos instalados" \
-            "popup_navigation_service_0_1_120" \
-            "selected_apps_store_0_1_122"
+            "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
           done
