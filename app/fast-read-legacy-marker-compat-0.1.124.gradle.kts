@@ -1,12 +1,13 @@
-// Compatibilidade idempotente entre o validador 0.1.108 e a limpeza global 0.1.124.
+// Compatibilidade idempotente entre validadores antigos e a limpeza global 0.1.124.
 // Os marcadores existem apenas como comentarios entre invocacoes do Gradle.
 // Antes do patch 0.1.124 eles sao removidos, para que nenhuma verificacao os
-// confunda com comportamento ativo; ao final sao recolocados para o validador
-// legado da proxima invocacao.
+// confunda com comportamento ativo; ao final sao recolocados para os validadores
+// legados da proxima invocacao.
 
 val legacyFastReadMarkerLines124 = listOf(
     "// UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(",
     "// universal.accessibility transient_overlay_empty_ignored=true",
+    "// universal_ride_evidence_gate_0_1_112",
     "// fast_read_legacy_marker_compat_0_1_124",
 )
 
