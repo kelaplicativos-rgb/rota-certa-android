@@ -83,7 +83,7 @@ fun patchUniversalNoPreRegisteredGates126(serviceFile: java.io.File, mainFile: j
                 )
                 repository.saveSettings(currentSettings)
             }
-            currentCardTemplates = emptyList() // pre_registered_runtime_cleanup_0_1_126
+            currentCardTemplates = emptyList() // pre_registered_runtime_cleanup_0_1_126 universal_optional_card_model_migration_0_1_101
 """
         service = service.substring(0, start) + replacement + service.substring(end)
     }
@@ -136,6 +136,7 @@ fun patchUniversalNoPreRegisteredGates126(serviceFile: java.io.File, mainFile: j
         "pre_registered_gates.removed cards=",
         "SelectedRideAppStore.save(applicationContext, emptySet())",
         "currentCardTemplates = emptyList()",
+        "universal_optional_card_model_migration_0_1_101",
         "universal_package_content_gate_0_1_126",
         "CorePackageMonitor.classify(",
         "classification.canScan",
