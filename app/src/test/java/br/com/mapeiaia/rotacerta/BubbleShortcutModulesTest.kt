@@ -8,7 +8,7 @@ import org.junit.Test
 
 class BubbleShortcutModulesTest {
     @Test
-    fun catalogContainsSixteenIndependentModulesInDisplayOrder() {
+    fun catalogContainsFifteenIndependentModulesInDisplayOrder() {
         BubbleShortcutCatalog.requireValid()
 
         assertEquals(
@@ -16,62 +16,61 @@ class BubbleShortcutModulesTest {
                 "route",
                 "destination",
                 "alerts",
+                "saved_places",
+                "radars",
                 "appearance",
                 "permissions",
                 "backup",
-                "reports",
                 "whatsapp",
                 "collector",
                 "clear_clipboard",
                 "diagnostic",
                 "stop_app",
-                "alert",
-                "saved_place",
-                "ride_card",
+                "cards",
                 "reading",
             ),
             BubbleShortcutCatalog.modules.map { it.spec.id },
         )
-        assertEquals(16, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
-        assertEquals(16, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
-        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "settings" })
+        assertEquals(15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals(15, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reports" })
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "alert" })
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "saved_place" })
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "ride_card" })
     }
 
     @Test
-    fun homeControlActionsWereTransferredToPopup() {
-        val transferred = BubbleShortcutCatalog.modules.take(12).map { it.spec.displayLabel }
-        assertEquals(
-            listOf(
-                "Rota",
-                "Destino",
-                "Alertas",
-                "Aparência",
-                "Permissão",
-                "Backup",
-                "Relatórios",
-                "WhatsApp",
-                "Coletor",
-                "Limpar",
-                "Depurar",
-                "Encerrar",
-            ),
-            transferred,
-        )
+    fun alertsPlacesRadarsAndCardsUseIndependentDestinations() {
+        val alerts = AlertsManagementBubbleShortcutModule.spec
+        assertEquals(BubbleShortcutAction.OpenAlerts, alerts.action)
+        assertEquals("alerts", alerts.targetGroup)
+        assertEquals("config", alerts.targetTab)
+
+        val places = SavedPlacesManagementBubbleShortcutModule.spec
+        assertEquals(BubbleShortcutAction.OpenSavedPlaces, places.action)
+        assertEquals("saved_places", places.targetGroup)
+        assertEquals("config", places.targetTab)
+
+        val radars = RadarsManagementBubbleShortcutModule.spec
+        assertEquals(BubbleShortcutAction.OpenRadars, radars.action)
+        assertEquals("radars", radars.targetGroup)
+        assertEquals("config", radars.targetTab)
+
+        val cards = CardsManagementBubbleShortcutModule.spec
+        assertEquals(BubbleShortcutAction.OpenCards, cards.action)
+        assertEquals("cards", cards.targetGroup)
+        assertEquals("config", cards.targetTab)
     }
 
     @Test
-    fun alertAndSavedPlaceKeepEditableQuickActions() {
-        val alert = AlertBubbleShortcutModule.spec
-        assertEquals("Alerta", alert.defaultName)
-        assertEquals("alerts", alert.targetGroup)
-        assertEquals(BubbleShortcutAction.CreateAlert, alert.action)
-        assertEquals("Alerta", alert.displayLabel)
+    fun routeAndDestinationDoNotOpenTheSameModule() {
+        val route = RouteBubbleShortcutModule.spec
+        assertEquals("general", route.targetGroup)
+        assertEquals("config", route.targetTab)
 
-        val local = SavedPlaceBubbleShortcutModule.spec
-        assertEquals("Local salvo", local.defaultName)
-        assertEquals("alerts", local.targetGroup)
-        assertEquals(BubbleShortcutAction.CreateSavedPlace, local.action)
-        assertEquals("Local", local.displayLabel)
+        val destination = DestinationBubbleShortcutModule.spec
+        assertEquals("destination", destination.targetGroup)
+        assertEquals("analysis", destination.targetTab)
     }
 
     @Test
@@ -92,14 +91,15 @@ class BubbleShortcutModulesTest {
             RouteBubbleShortcutModule.spec,
             DestinationBubbleShortcutModule.spec,
             AlertsManagementBubbleShortcutModule.spec,
+            SavedPlacesManagementBubbleShortcutModule.spec,
+            RadarsManagementBubbleShortcutModule.spec,
             AppearanceBubbleShortcutModule.spec,
             PermissionsBubbleShortcutModule.spec,
             BackupBubbleShortcutModule.spec,
-            ReportsBubbleShortcutModule.spec,
+            CardsManagementBubbleShortcutModule.spec,
         ).forEach { spec ->
             assertTrue(!spec.targetGroup.isNullOrBlank())
             assertTrue(!spec.targetTab.isNullOrBlank())
         }
-        assertNull(RideCardBubbleShortcutModule.spec.targetGroup)
     }
 }
