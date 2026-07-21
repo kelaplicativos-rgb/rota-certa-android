@@ -121,7 +121,7 @@ fun enforceInstantBubbleDrag116(file: java.io.File) {
             val manager = windowManager ?: return false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    bubbleGestureActive = (true)
+                    bubbleGestureActive = true
                     bubbleDragStartedAtMillis = event.eventTime
                     analyzeJob?.cancel()
                     downRawX = event.rawX
