@@ -20,7 +20,7 @@ fun findBalancedCallEnd120(source: String, start: Int): Int {
     return -1
 }
 
-fun enforcePopupNavigationFinalCompile120(file: java.io.File) {
+fun applyPopupNavigationLateCompile120(file: java.io.File) {
     if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
     var text = file.readText()
 
@@ -96,23 +96,15 @@ ${closingIndent}"""
     file.writeText(text)
 }
 
-val popupNavigationFinalCompile120 by tasks.registering {
+val popupNavigationLateCompile120 by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     inputs.file(mainFile)
     outputs.upToDateWhen { false }
-    dependsOn(
-        "popupNavigationCardState120",
-        "professionalBubbleImportCompat118",
-        "universal99CardAddresses111",
-        "universal99CardContinuation111",
-        "universalRideCardEvidence112",
-        "universalFragmentedStreetStart113",
-        "workflowCompatMarkers118",
-    )
-    doLast { enforcePopupNavigationFinalCompile120(mainFile.asFile) }
+    dependsOn("popupNavigationCardState120")
+    doLast { applyPopupNavigationLateCompile120(mainFile.asFile) }
 }
 
-popupNavigationFinalCompile120.configure {
+popupNavigationLateCompile120.configure {
     mustRunAfter(
         "popupNavigationCardState120",
         "professionalBubbleImportCompat118",
@@ -125,5 +117,5 @@ popupNavigationFinalCompile120.configure {
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-    dependsOn(popupNavigationFinalCompile120)
+    dependsOn(popupNavigationLateCompile120)
 }
