@@ -94,6 +94,24 @@ adb shell dumpsys accessibility > "$OUT/accessibility-shortcuts.txt"
 overlay_count="$(grep -c 'type=TYPE_ACCESSIBILITY_OVERLAY' "$OUT/accessibility-shortcuts.txt" || true)"
 [ "$overlay_count" -ge 2 ]
 
+# O segundo toque precisa fechar de verdade. Antes, ACTION_DOWN escondia o menu e
+# o performClick o abria novamente, causando o efeito de piscar.
+adb shell input tap "$nx" "$ny"
+closed=false
+for _ in $(seq 1 40); do
+  adb shell run-as "$PACKAGE" cat "$PREFS_PATH" > "$OUT/shortcuts-closed-prefs.xml" 2>/dev/null || true
+  if grep -Fq '<boolean name="runtime_shortcuts_open" value="false"' "$OUT/shortcuts-closed-prefs.xml" 2>/dev/null && \
+     grep -Fq '<int name="runtime_shortcut_count" value="0"' "$OUT/shortcuts-closed-prefs.xml" 2>/dev/null; then
+    closed=true
+    break
+  fi
+  sleep 0.10
+done
+[ "$closed" = true ]
+adb shell dumpsys accessibility > "$OUT/accessibility-after-close.txt"
+closed_overlay_count="$(grep -c 'type=TYPE_ACCESSIBILITY_OVERLAY' "$OUT/accessibility-after-close.txt" || true)"
+[ "$closed_overlay_count" -lt "$overlay_count" ]
+
 cat > "$OUT/runtime-validation.txt" <<EOF
 INSTANT_DRAG=approved
 DRAG_RESPONSE_MS=$drag_ms
@@ -101,6 +119,7 @@ DRAG_DISPLACEMENT_X=$dx
 DRAG_DISPLACEMENT_Y=$dy
 DRAG_OPENED_HOME=false
 MAIN_TAP=opened_resource_shortcuts
+SECOND_TAP_CLOSED=approved
 RESOURCE_SHORTCUTS=6
 SHORTCUT_LABELS=Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes
 SHORTCUT_MENU=lightweight
