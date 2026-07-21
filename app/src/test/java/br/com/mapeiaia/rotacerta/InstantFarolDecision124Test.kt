@@ -37,11 +37,26 @@ class InstantFarolDecision124Test {
     }
 
     @Test
-    fun inDriveExpandedSnapshotsDoNotRestartCurrentRoute() {
+    fun anySelectedApplicationUsesSameImmediateClearContract() {
+        val service = serviceSource()
+        val start = service.indexOf("private suspend fun processRideText(")
+        val end = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", start)
+        val region = service.substring(start, end)
+
+        assertTrue("Card precisa exigir exatamente dois enderecos", "global_exact_two_address_card_0_1_124" in region)
+        assertTrue("Leitura incompleta precisa limpar imediatamente", "global_inactive_clear_now_0_1_124" in region)
+        assertTrue("Qualquer mudanca da tela precisa invalidar o resultado", "global_full_screen_hash_0_1_124" in region)
+        assertFalse("Contrato nao pode citar pacote especifico", "sinet.startup.indriver" in region)
+        assertFalse("Contrato nao pode tolerar leitura vazia", "transient_empty_ignored_route_inflight=true" in service)
+        assertFalse("Contrato nao pode proteger a cor anterior", "resetToIdle guarded active_ride_window" in service)
+    }
+
+    @Test
+    fun emptyAccessibilityReadsAreAlwaysDeliveredToClearPipeline() {
         val service = serviceSource()
 
-        assertTrue("Estabilizador nao foi conectado", "RideCardSnapshotStabilizer()" in service)
-        assertTrue("Portaria de snapshots intermediarios ausente", "instant_farol_snapshot_stability_0_1_124" in service)
-        assertTrue("Reset do estabilizador ausente", "instant_farol_snapshot_reset_0_1_124" in service)
+        assertTrue("Ciclo continuo precisa encaminhar leitura vazia", "global_continuous_empty_clear_0_1_124" in service)
+        assertTrue("Agendamento precisa encaminhar leitura vazia", "global_scheduled_empty_clear_0_1_124" in service)
+        assertFalse("Leitura vazia nao pode ser ignorada", "transient_overlay_empty_ignored=true" in service)
     }
 }
