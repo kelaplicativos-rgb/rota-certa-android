@@ -2,7 +2,7 @@
 // Cria uma ancora temporaria dentro da primeira Column do ToolsScreen, deixa o
 // patch 0.1.121 inserir o card e remove a ancora antes da compilacao.
 
-private const val temporaryToolsTitle121 = "        Text(\"Ferramentas\", fontWeight = FontWeight.Bold)\n"
+val temporaryToolsTitle121 = "        Text(\"Ferramentas\", fontWeight = FontWeight.Bold)\n"
 
 fun insertTemporaryToolsAnchor121(file: java.io.File) {
     var text = file.readText()
