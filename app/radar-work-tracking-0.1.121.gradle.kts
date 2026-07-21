@@ -76,7 +76,7 @@ fun patchProximityEngine121(file: java.io.File) {
         text = replaceRequired121(
             text,
             "        if (runtime.canSpeak(now, MAX_IMPORTED_RADAR_SPEECH_COUNT)) {\n",
-            "        if (!runtime.popupShownThisApproach) {\n            runtime.popupShownThisApproach = true\n            onImportedRadarDetected(radar, distanceMeters)\n            trace(now = now, message = \"imported_radar.signal.shown id=${radar.id}\")\n        }\n        if (runtime.canSpeak(now, MAX_IMPORTED_RADAR_SPEECH_COUNT)) {\n",
+            "        if (!runtime.popupShownThisApproach) {\n            runtime.popupShownThisApproach = true\n            onImportedRadarDetected(radar, distanceMeters)\n            trace(now = now, message = \"imported_radar.signal.shown id=${'$'}{radar.id}\")\n        }\n        if (runtime.canSpeak(now, MAX_IMPORTED_RADAR_SPEECH_COUNT)) {\n",
             "sinal unico do radar",
         )
         text = replaceRequired121(
@@ -107,7 +107,7 @@ fun patchOverlayController121(file: java.io.File) {
 
         val container = alertContainer()
         container.addView(TextView(context).apply {
-            text = "⚠️  ${importedRadarTypeLabel(radar.type)}"
+            text = "⚠️  ${'$'}{importedRadarTypeLabel(radar.type)}"
             textSize = 19f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
@@ -115,7 +115,7 @@ fun patchOverlayController121(file: java.io.File) {
         })
         radar.speedKmh?.let { speed ->
             container.addView(TextView(context).apply {
-                text = "Limite $speed km/h"
+                text = "Limite ${'$'}speed km/h"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 typeface = Typeface.DEFAULT_BOLD
@@ -123,7 +123,7 @@ fun patchOverlayController121(file: java.io.File) {
             })
         }
         container.addView(TextView(context).apply {
-            text = "A aproximadamente ${distanceMeters.roundToInt()} m"
+            text = "A aproximadamente ${'$'}{distanceMeters.roundToInt()} m"
             textSize = 14f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(4), 0, dp(8))
@@ -145,7 +145,7 @@ fun patchOverlayController121(file: java.io.File) {
         }
         if (runCatching { windowManager.addView(container, params) }.isSuccess) {
             alertPopupView = container
-            trace("imported_radar.popup.shown id=${radar.id} distance=${distanceMeters.roundToInt()}")
+            trace("imported_radar.popup.shown id=${'$'}{radar.id} distance=${'$'}{distanceMeters.roundToInt()}")
         }
     }
 
@@ -157,7 +157,7 @@ fun patchOverlayController121(file: java.io.File) {
             "popup visual do radar",
         )
     }
-    listOf("showImportedRadarAlert", "Limite $speed km/h", "imported_radar.popup.shown").forEach { marker ->
+    listOf("showImportedRadarAlert", "Limite ${'$'}speed km/h", "imported_radar.popup.shown").forEach { marker ->
         if (marker !in text) throw GradleException("Popup do radar incompleto: $marker")
     }
     file.writeText(text)
@@ -203,7 +203,7 @@ fun patchLiveService121(file: java.io.File) {
         radarDetectionCue.play()
         shortcutOverlayController.showImportedRadarAlert(radar, distanceMeters)
         persistResourceShortcutState()
-        traceEvent("imported_radar.signal audio=true popup=true id=${radar.id}")
+        traceEvent("imported_radar.signal audio=true popup=true id=${'$'}{radar.id}")
     }
 
 """
