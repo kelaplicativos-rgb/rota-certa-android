@@ -52,7 +52,10 @@ class InstantFarolDecision124Test {
             "Contrato nao pode executar tolerancia de leitura vazia",
             "UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in region,
         )
-        assertFalse("Contrato nao pode proteger a cor anterior", "resetToIdle guarded active_ride_window" in service)
+        assertFalse(
+            "Contrato nao pode executar guard que conserva a cor anterior",
+            "if (shouldScanCurrentWindow() && hasActiveRegisteredDecision())" in service,
+        )
     }
 
     @Test
