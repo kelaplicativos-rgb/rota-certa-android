@@ -58,24 +58,20 @@ fun patchInstantFarolDecision124(file: java.io.File) {
         text = text.replaceFirst(oldBlock, newBlock)
     }
 
-    if ("global_single_passenger_gate_0_1_124" !in text) {
-        val liveSourceAnchor = "        val liveSource = when (source)\n"
-        if (liveSourceAnchor !in text) throw GradleException("Ponto do passageiro unico nao encontrado.")
-        val passengerBlock = """        val passengerIdentity = RidePassengerIdentityPolicy.evaluate(snapshotText)
+    if ("global_single_passenger_gate_0_1_124" !in text ||
+        "global_passenger_and_addresses_card_0_1_124" !in text
+    ) {
+        val oldActiveTrigger = "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112\n"
+        if (oldActiveTrigger !in text) throw GradleException("Gatilho ativo universal nao encontrado.")
+        val passengerAndActiveBlock = """        val passengerIdentity = RidePassengerIdentityPolicy.evaluate(snapshotText)
         if (!passengerIdentity.accepted && trigger.addresses.size >= 2) {
             traceEvent(
                 "universal.passenger accepted=false count=${dollar}{passengerIdentity.candidates.size} reason=${dollar}{passengerIdentity.reason}",
             )
         } // global_single_passenger_gate_0_1_124
+        val activeTrigger = trigger.addresses.size >= 2 && trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted && passengerIdentity.accepted // global_passenger_and_addresses_card_0_1_124
 """
-        text = text.replaceFirst(liveSourceAnchor, passengerBlock + liveSourceAnchor)
-    }
-
-    if ("global_passenger_and_addresses_card_0_1_124" !in text) {
-        val oldActiveTrigger = "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112\n"
-        val newActiveTrigger = "        val activeTrigger = trigger.addresses.size >= 2 && trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted && passengerIdentity.accepted // global_passenger_and_addresses_card_0_1_124\n"
-        if (oldActiveTrigger !in text) throw GradleException("Gatilho ativo universal nao encontrado.")
-        text = text.replaceFirst(oldActiveTrigger, newActiveTrigger)
+        text = text.replaceFirst(oldActiveTrigger, passengerAndActiveBlock)
     }
 
     if ("global_inactive_clear_now_0_1_124" !in text) {
