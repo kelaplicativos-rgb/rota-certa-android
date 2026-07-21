@@ -54,7 +54,11 @@ $indentedCall
 
     text = text.replace(
         "ExpandableCard(title = \"Aplicativos de corrida\", initiallyExpanded = true)",
+        "ExpandableCard(title = \"Aplicativos de corrida monitorados\", initiallyExpanded = true)",
+    )
+    text = text.replace(
         "ExpandableCard(title = \"Aplicativos que a bolinha vai ler\", initiallyExpanded = true)",
+        "ExpandableCard(title = \"Aplicativos de corrida monitorados\", initiallyExpanded = true)",
     )
     text = text.replace(
         "BUBBLE_GROUP_CARDS -> \"Cadastre, confira e remova modelos de cards.\"",
@@ -69,7 +73,7 @@ $indentedCall
         "BUBBLE_GROUP_CARDS -> Column(",
         "InstalledRideAppsCard()",
         "RegisteredCardsModuleCard(",
-        "Aplicativos que a bolinha vai ler",
+        "Aplicativos de corrida monitorados",
         "Buscar aplicativos instalados",
         "cards_selected_apps_visible_0_1_123",
     ).forEach { marker ->
