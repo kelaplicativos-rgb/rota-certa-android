@@ -122,6 +122,10 @@ jobs:
             "Tela com varias corridas/passageiros" \
             "Passageiro unico nao identificado" \
             "resultado removido imediatamente" \
+            "persistent_exact_route_cache_v1" \
+            "universal.route.cache restored=" \
+            "universal.route.cache persisted=" \
+            "RC_ROUTE_CACHE_V1" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -156,13 +160,15 @@ jobs:
           Recursos 0.1.124:
           - Correcao do atraso entre a leitura do card e a cor verde/vermelha.
           - Configuracoes ja carregadas em memoria sao usadas sem reler o armazenamento antes de cada rota.
-          - A bolinha recebe verde/vermelho antes da gravacao assincorna do historico.
+          - A bolinha recebe verde/vermelho antes da gravacao assincrona do historico.
           - Qualquer mudanca, card ausente ou leitura vazia remove imediatamente o resultado anterior.
           - A regra e global e igual para todos os aplicativos selecionados.
           - Somente uma identidade de passageiro com pelo menos embarque e destino libera o calculo.
           - Telas com varios passageiros/pedidos nao chamam geocodificacao nem rota.
           - O amarelo foi mantido apenas como indicador visual de analise.
-          - O cache de geocodificacao e rotas da sessao continua ativo para destinos repetidos.
+          - Rotas exatas calculadas ficam persistidas por ate 14 dias e sobrevivem ao reinicio do servico.
+          - Endereco, coordenadas e raio fazem parte da chave; mudar o raio impede reutilizar uma decisao antiga incompatível.
+          - O cache nao baixa um mapa completo e nunca usa estimativa regional para decidir verde/vermelho.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
