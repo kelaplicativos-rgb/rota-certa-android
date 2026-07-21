@@ -81,7 +81,7 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.120':
+          if version_name != '0.1.121':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
@@ -109,6 +109,10 @@ jobs:
             "Leitura ao vivo PAUSADA" \
             "Somente pontos que geram aviso de aproximacao." \
             "Somente locais salvos para consultar ou voltar depois. Nao geram alerta." \
+            "Rastreamento de trabalho" \
+            "Rastreamento de trabalho ativo" \
+            "Distancia do primeiro aviso" \
+            "A aproximadamente" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -140,16 +144,16 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.120:
-          - Quinze atalhos independentes no popup da bolinha.
-          - Segundo toque fecha o popup sem piscar ou abrir novamente.
-          - Aplicativo inicia no modulo Permissoes para liberar Acessibilidade.
-          - Rota abre Controle geral e Destino abre endereco/raio.
-          - Alertas mostra apenas alertas de proximidade.
-          - Locais mostra apenas locais salvos, sem alerta.
-          - Radares e Cards possuem modulos independentes.
-          - Relatorios e atalhos duplicados foram removidos.
-          - Leitura mostra confirmacao longa ao ativar ou pausar.
+          Recursos 0.1.121:
+          - Enderecos iniciados por Passagem sao reconhecidos nos cards do inDrive.
+          - Radares importados disparam bip curto, voz e popup visual uma vez por aproximacao.
+          - O popup do radar mostra tipo, limite de velocidade, distancia e botao Fechar.
+          - O ciclo de proximidade foi reduzido de 15 segundos para 2 segundos.
+          - A direcao do radar usa uma trilha recente de coordenadas para reduzir oscilacoes do GPS.
+          - A distancia padrao do primeiro aviso passou para 500 metros e continua configuravel.
+          - Novo Rastreamento de trabalho local com iniciar/parar, distancia, tempo, pontos GPS e tracado diario.
+          - O rastreamento permanece visivel por notificacao e nao compartilha a localizacao com familiares ou servidores.
+          - Mantidos os quinze atalhos independentes e as protecoes de frescor do OCR da versao 0.1.120.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
