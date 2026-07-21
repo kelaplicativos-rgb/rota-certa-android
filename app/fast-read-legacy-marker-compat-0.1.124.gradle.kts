@@ -8,6 +8,7 @@ val legacyFastReadMarkerLines124 = listOf(
     "// UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(",
     "// universal.accessibility transient_overlay_empty_ignored=true",
     "// universal_ride_evidence_gate_0_1_112",
+    "// transient_empty_ignored_route_inflight=true",
     "// fast_read_legacy_marker_compat_0_1_124",
 )
 
