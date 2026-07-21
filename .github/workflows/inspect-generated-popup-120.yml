@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - codex/pr5-stable-bubble-combined
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
