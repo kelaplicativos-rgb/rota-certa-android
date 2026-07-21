@@ -1,6 +1,6 @@
 // Ultima camada de compilacao 0.1.120.
 // Executa depois dos patches legados que ainda podem reconstruir chamadas da
-// SettingsScreen e garante que o modulo de Cards receba os dados reais.
+// SettingsScreen/AnalysisScreen e garante que Cards receba os dados reais.
 
 fun findBalancedCallEnd120(source: String, start: Int): Int {
     val open = source.indexOf('(', start)
@@ -20,18 +20,33 @@ fun findBalancedCallEnd120(source: String, start: Int): Int {
     return -1
 }
 
-fun applyPopupNavigationLateCompile120(file: java.io.File) {
-    if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
-    var text = file.readText()
-
-    // Defaults mantem qualquer chamada legada compilavel. A chamada principal
-    // abaixo recebe os valores reais e continua totalmente funcional.
-    val settingsStart = text.indexOf("@Composable\nprivate fun SettingsScreen(")
-    val settingsEnd = if (settingsStart >= 0) text.indexOf(") {", settingsStart) else -1
-    if (settingsStart < 0 || settingsEnd <= settingsStart) {
-        throw GradleException("Assinatura SettingsScreen nao encontrada.")
+fun addCardArgumentsToCall120(source: String, marker: String): String {
+    val callStart = source.indexOf(marker)
+    val callEnd = if (callStart >= 0) findBalancedCallEnd120(source, callStart) else -1
+    if (callStart < 0 || callEnd <= callStart) {
+        throw GradleException("Chamada nao encontrada para $marker")
     }
-    var signature = text.substring(settingsStart, settingsEnd)
+    var call = source.substring(callStart, callEnd + 1)
+    if ("cardTemplates = cardTemplates" in call) return source
+
+    val closingIndent = call.substringAfterLast('\n').takeWhile(Char::isWhitespace)
+    val argumentIndent = closingIndent + "    "
+    val args = """
+${argumentIndent}cardTemplates = cardTemplates,
+${argumentIndent}templateStatus = templateStatus,
+${argumentIndent}unreadTemplatePrints = unreadTemplatePrints,
+${argumentIndent}onPickCardModels = { cardModelPicker.launch("image/*") },
+${argumentIndent}onDeleteCardModel = ::deleteCardModel,
+${closingIndent}"""
+    call = call.dropLast(1) + args + ")"
+    return source.substring(0, callStart) + call + source.substring(callEnd + 1)
+}
+
+fun addCardDefaultsToSignature120(source: String, signatureToken: String): String {
+    val start = source.indexOf(signatureToken)
+    val end = if (start >= 0) source.indexOf(") {", start) else -1
+    if (start < 0 || end <= start) throw GradleException("Assinatura nao encontrada: $signatureToken")
+    var signature = source.substring(start, end)
     signature = signature
         .replace(
             "    cardTemplates: List<RideCardTemplate>,\n",
@@ -53,44 +68,49 @@ fun applyPopupNavigationLateCompile120(file: java.io.File) {
             "    onDeleteCardModel: (RideCardTemplate) -> Unit,\n",
             "    onDeleteCardModel: (RideCardTemplate) -> Unit = {},\n",
         )
-    text = text.substring(0, settingsStart) + signature + text.substring(settingsEnd)
+    return source.substring(0, start) + signature + source.substring(end)
+}
 
-    // Injeta os dados reais na navegacao principal, independentemente do
-    // formato/espacamento reconstruido pelos patches anteriores.
-    val tabMarker = "TAB_CONFIG -> SettingsScreen("
-    val callStart = text.indexOf(tabMarker)
-    val callEnd = if (callStart >= 0) findBalancedCallEnd120(text, callStart) else -1
-    if (callStart < 0 || callEnd <= callStart) {
-        throw GradleException("Chamada principal SettingsScreen nao encontrada.")
-    }
-    var call = text.substring(callStart, callEnd + 1)
-    if ("cardTemplates = cardTemplates" !in call) {
-        val closingIndent = call.substringAfterLast('\n').takeWhile(Char::isWhitespace)
-        val argumentIndent = closingIndent + "    "
-        val args = """
-${argumentIndent}cardTemplates = cardTemplates,
-${argumentIndent}templateStatus = templateStatus,
-${argumentIndent}unreadTemplatePrints = unreadTemplatePrints,
-${argumentIndent}onPickCardModels = { cardModelPicker.launch("image/*") },
-${argumentIndent}onDeleteCardModel = ::deleteCardModel,
-${closingIndent}"""
-        call = call.dropLast(1) + args + ")"
-        text = text.substring(0, callStart) + call + text.substring(callEnd + 1)
-    }
+fun applyPopupNavigationLateCompile120(file: java.io.File) {
+    if (!file.exists()) throw GradleException("MainActivity.kt nao encontrado.")
+    var text = file.readText()
+
+    // Defaults protegem qualquer chamada reconstruida por patches antigos.
+    text = addCardDefaultsToSignature120(text, "@Composable\nprivate fun SettingsScreen(")
+    text = addCardDefaultsToSignature120(text, "@Composable\nprivate fun AnalysisScreen(")
+
+    // As chamadas principais recebem os valores reais e permanecem funcionais.
+    text = addCardArgumentsToCall120(text, "TAB_CONFIG -> SettingsScreen(")
+    text = addCardArgumentsToCall120(text, "TAB_ANALYSIS -> AnalysisScreen(")
 
     if ("popup_navigation_final_compile_0_1_120" !in text) {
         text += "\n// popup_navigation_final_compile_0_1_120\n"
     }
 
+    val configStart = text.indexOf("TAB_CONFIG -> SettingsScreen(")
+    val configEnd = if (configStart >= 0) findBalancedCallEnd120(text, configStart) else -1
+    val analysisStart = text.indexOf("TAB_ANALYSIS -> AnalysisScreen(")
+    val analysisEnd = if (analysisStart >= 0) findBalancedCallEnd120(text, analysisStart) else -1
+    val configCall = if (configStart >= 0 && configEnd > configStart) text.substring(configStart, configEnd) else ""
+    val analysisCall = if (analysisStart >= 0 && analysisEnd > analysisStart) text.substring(analysisStart, analysisEnd) else ""
+
     listOf(
         "cardTemplates: List<RideCardTemplate> = emptyList()",
         "templateStatus: String = \"\"",
         "onPickCardModels: () -> Unit = {}",
-        "cardTemplates = cardTemplates",
-        "onPickCardModels = { cardModelPicker.launch(\"image/*\") }",
         "popup_navigation_final_compile_0_1_120",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Ligacao final de Cards incompleta: $marker")
+    }
+    listOf(
+        "cardTemplates = cardTemplates",
+        "templateStatus = templateStatus",
+        "unreadTemplatePrints = unreadTemplatePrints",
+        "onPickCardModels = { cardModelPicker.launch(\"image/*\") }",
+        "onDeleteCardModel = ::deleteCardModel",
+    ).forEach { marker ->
+        if (marker !in configCall) throw GradleException("SettingsScreen sem argumento real: $marker")
+        if (marker !in analysisCall) throw GradleException("AnalysisScreen sem argumento real: $marker")
     }
 
     file.writeText(text)
