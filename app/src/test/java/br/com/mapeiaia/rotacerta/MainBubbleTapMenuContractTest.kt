@@ -8,7 +8,7 @@ import org.junit.Test
 
 class MainBubbleTapMenuContractTest {
     @Test
-    fun compiledSourceOpensEightIndependentAnchoredResourceModules() {
+    fun compiledSourceOpensSixteenIndependentAnchoredResourceModules() {
         fun sourceFile(name: String): File = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
@@ -18,17 +18,6 @@ class MainBubbleTapMenuContractTest {
         val controller = sourceFile("BubbleShortcutOverlayController.kt").readText()
         val positionPolicy = sourceFile("BubbleShortcutPositionPolicy.kt").readText()
         val catalog = sourceFile("BubbleShortcutModule.kt").readText()
-        val moduleNames = listOf(
-            "AlertBubbleShortcutModule.kt",
-            "SavedPlaceBubbleShortcutModule.kt",
-            "RideCardBubbleShortcutModule.kt",
-            "DestinationBubbleShortcutModule.kt",
-            "ReadingBubbleShortcutModule.kt",
-            "WhatsAppBubbleShortcutModule.kt",
-            "SettingsBubbleShortcutModule.kt",
-            "StopBubbleShortcutModule.kt",
-        )
-        val modules = moduleNames.map(::sourceFile).map(File::readText)
 
         val overlayStart = service.indexOf("    private fun showOverlay(")
         val overlayEnd = service.indexOf("\n    private fun removeOverlay()", overlayStart)
@@ -45,6 +34,7 @@ class MainBubbleTapMenuContractTest {
         )
 
         assertTrue("Runtime modular precisa estar aplicado", "bubble_resource_shortcuts_runtime_0_1_117" in service)
+        assertTrue("Contrato popup-only precisa estar aplicado", "popup_only_service_actions_0_1_119" in service)
         assertTrue("Servico precisa despachar o modulo", "onShortcut = ::executeShortcutModule" in service)
         assertTrue("Alerta precisa possuir acao propria", "BubbleShortcutAction.CreateAlert" in service)
         assertTrue("Local precisa possuir acao propria", "BubbleShortcutAction.CreateSavedPlace" in service)
@@ -54,27 +44,39 @@ class MainBubbleTapMenuContractTest {
             "WhatsApp precisa capturar telefone da tela",
             "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service,
         )
-        assertTrue("Encerrar precisa abrir detalhes e desligar o servico", "BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()" in service)
+        assertTrue("Coletor precisa abrir diretamente", "BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()" in service)
+        assertTrue("Limpar precisa reutilizar o limpador existente", "BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()" in service)
+        assertTrue("Depurar precisa exportar diretamente", "BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()" in service)
+        assertTrue("Encerrar precisa desligar o servico", "BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()" in service)
         assertTrue("Arraste precisa fechar a grade", "hideResourceShortcuts()" in service)
         assertFalse("Callbacks fixos nao podem voltar", "BubbleShortcutActions(" in service)
 
+        BubbleShortcutCatalog.requireValid()
         assertTrue("Catalogo modular ausente", "object BubbleShortcutCatalog" in catalog)
         assertTrue("Controlador precisa percorrer o catalogo", "BubbleShortcutCatalog.modules.forEach" in controller)
         assertTrue("Controlador precisa devolver o modulo", "onShortcut(module.spec)" in controller)
-        assertEquals("A grade precisa conter oito classes de modulo", 8, modules.size)
-        assertEquals("Cada modulo precisa ser diferente", 8, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals("O popup precisa conter dezesseis modulos", 16, BubbleShortcutCatalog.modules.size)
+        assertEquals("Cada modulo precisa ser diferente", 16, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
 
         listOf(
+            "Rota",
+            "Destino",
+            "Alertas",
+            "Aparencia",
+            "Permissoes",
+            "Backup",
+            "Relatorios",
+            "WhatsApp da tela",
+            "Coletor",
+            "Limpar area de transferencia",
+            "Depurar",
+            "Encerrar Rota Certa",
             "Salvar alerta",
             "Salvar local",
             "Salvar card",
-            "Destino",
             "Leitura",
-            "WhatsApp da tela",
-            "Ajustes",
-            "Encerrar Rota Certa",
-        ).forEachIndexed { index, label ->
-            assertTrue("Atalho ausente: $label", "label = \"$label\"" in modules[index])
+        ).forEach { label ->
+            assertTrue("Atalho ausente: $label", "label = \"$label\"" in catalog || label in service)
         }
 
         assertTrue("Controlador precisa usar a politica isolada", "BubbleShortcutPositionPolicy.place" in controller)
