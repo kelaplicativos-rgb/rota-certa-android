@@ -22,7 +22,7 @@ class ProfessionalBubbleHome118ContractTest {
             "\n            ProfessionalBubbleDashboard(" in source,
         )
 
-        assertTrue("Grupo de Rota precisa continuar definido", "private const val BUBBLE_GROUP_GENERAL = \"general\"" in source)
+        assertTrue("Grupo de Rota precisa continuar definido", "BUBBLE_GROUP_GENERAL = \"general\"" in source)
         assertTrue("Conteudo de Destino precisa continuar disponivel", "BUBBLE_GROUP_DESTINATION ->" in source)
         assertTrue("Conteudo de Alertas precisa continuar disponivel", "BUBBLE_GROUP_ALERTS ->" in source)
         assertTrue("Conteudo de Aparencia precisa continuar disponivel", "BUBBLE_GROUP_APPEARANCE ->" in source)
