@@ -49,7 +49,8 @@ class ProfessionalBubbleHome118ContractTest {
         assertTrue("Modulo de Alertas ausente", "BUBBLE_GROUP_ALERTS -> SavedPlacesModuleCard(" in main)
         assertTrue("Modulo de Locais ausente", "BUBBLE_GROUP_SAVED_PLACES -> SavedPlacesModuleCard(" in main)
         assertTrue("Modulo de Radares ausente", "BUBBLE_GROUP_RADARS -> RadarImportCard(" in main)
-        assertTrue("Modulo de Cards ausente", "BUBBLE_GROUP_CARDS -> CardModelsCard(" in main)
+        assertTrue("Modulo de Cards ausente", "BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard(" in main)
+        assertTrue("Modulo de Cards precisa listar modelos", "registered_cards_module_0_1_120" in main)
         assertTrue("Filtro por tipo precisa existir", "val items = savedPlaces.filter { it.type == type }" in main)
         assertTrue("Inicio em Permissoes ausente", "startup_permissions_0_1_120" in main)
     }
