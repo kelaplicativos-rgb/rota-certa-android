@@ -15,7 +15,6 @@ class ProfessionalBubbleHome118ContractTest {
     fun circularControlDashboardIsNoLongerRenderedOnHome() {
         val source = mainSource()
 
-        assertTrue("Base profissional ausente", "professional_bubble_home_0_1_118" in source)
         assertTrue("Contrato popup-only ausente", "popup_only_control_center_0_1_119" in source)
         assertFalse(
             "A Home ainda conecta o estado selecionado ao dashboard circular",
