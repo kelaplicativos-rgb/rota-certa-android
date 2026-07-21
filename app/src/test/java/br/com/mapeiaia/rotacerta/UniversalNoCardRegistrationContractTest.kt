@@ -7,19 +7,24 @@ import org.junit.Test
 
 class UniversalNoCardRegistrationContractTest {
     @Test
-    fun cardRegistrationExistsInUiButDoesNotGateUniversalRuntime() {
+    fun cardRegistrationIsRemovedAndCannotGateUniversalRuntime() {
         val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
 
         listOf(
-            "Cards cadastrados",
-            "Anexar modelos de cards (prints)",
-            "RegisteredCardsModuleCard(",
-            "cardModelPicker",
-            "onRegisterRideCard",
-            "popup_navigation_card_state_0_1_120",
+            "Cards pre-cadastrados foram apagados",
+            "Nenhum modelo pre-cadastrado controla a bolinha",
+            "no_pre_registered_cards_ui_0_1_126",
+            "no_registered_cards_module_0_1_126",
         ).forEach { required ->
-            assertTrue("Recurso de Cards ausente: $required", required in main)
+            assertTrue("Contrato universal de cards ausente: $required", required in main)
+        }
+
+        listOf(
+            "Anexar modelos de cards (prints)",
+            "Modelos cadastrados: ${'$'}{cardTemplates.size}",
+        ).forEach { removed ->
+            assertFalse("Cadastro antigo de cards ainda aparece na interface: $removed", removed in main)
         }
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
@@ -38,6 +43,7 @@ class UniversalNoCardRegistrationContractTest {
 
         assertTrue("universal_no_card_runtime_0_1_102" in service)
         assertTrue("currentCardTemplates = emptyList()" in service)
+        assertTrue("pre_registered_runtime_cleanup_0_1_126" in service)
     }
 
     @Test
