@@ -48,7 +48,10 @@ class InstantFarolDecision124Test {
         assertTrue("Leitura incompleta precisa limpar imediatamente", "global_inactive_clear_now_0_1_124" in region)
         assertTrue("Qualquer mudanca da tela precisa invalidar o resultado", "global_full_screen_hash_0_1_124" in region)
         assertFalse("Contrato nao pode citar pacote especifico", "sinet.startup.indriver" in region)
-        assertFalse("Contrato nao pode tolerar leitura vazia", "transient_empty_ignored_route_inflight=true" in service)
+        assertFalse(
+            "Contrato nao pode executar tolerancia de leitura vazia",
+            "UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in region,
+        )
         assertFalse("Contrato nao pode proteger a cor anterior", "resetToIdle guarded active_ride_window" in service)
     }
 
@@ -60,7 +63,13 @@ class InstantFarolDecision124Test {
         assertTrue("Reset para cinza nao pode ser bloqueado", "global_idle_never_guarded_0_1_124" in service)
         assertTrue("Overlay cinza precisa ser permitido", "global_overlay_idle_allowed_0_1_124" in service)
         assertFalse("Bloco executavel nao pode ignorar leitura vazia", "if (ignoreTransientOverlayEmpty)" in service)
-        assertFalse("Rota em andamento nao pode proteger leitura vazia", "transient_empty_ignored_route_inflight=true" in service)
+        assertFalse(
+            "Rota em andamento nao pode proteger leitura vazia",
+            "UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in service.substring(
+                service.indexOf("private suspend fun processRideText("),
+                service.indexOf("private suspend fun analyzeUniversalTwoAddress("),
+            ),
+        )
     }
 
     @Test
