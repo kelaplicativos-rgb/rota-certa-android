@@ -13,12 +13,14 @@ val legacyFastReadMarkerLines124 = listOf(
 
 fun stripLegacyFastReadMarkers124(file: java.io.File) {
     if (!file.exists()) return
-    var text = file.readText()
-    legacyFastReadMarkerLines124.forEach { marker ->
-        text = text.replace("$marker\n", "")
-        text = text.replace(marker, "")
-    }
-    file.writeText(text)
+    val original = file.readText()
+    val hadTrailingNewline = original.endsWith("\n")
+    val cleaned = original
+        .lines()
+        .filterNot { line -> line.trim() in legacyFastReadMarkerLines124 }
+        .joinToString("\n")
+        .trimEnd('\n')
+    file.writeText(cleaned + if (hadTrailingNewline) "\n" else "")
 }
 
 fun appendLegacyFastReadMarkers124(file: java.io.File) {
