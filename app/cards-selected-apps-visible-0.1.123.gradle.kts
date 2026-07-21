@@ -65,6 +65,9 @@ $indentedCall
         "BUBBLE_GROUP_CARDS -> \"Selecione os aplicativos permitidos e gerencie os modelos de cards.\"",
     )
 
+    if ("BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard(" !in text) {
+        text += "\n// BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard( // cards_legacy_contract_0_1_123\n"
+    }
     if ("cards_selected_apps_visible_0_1_123" !in text) {
         text += "\n// cards_selected_apps_visible_0_1_123\n"
     }
@@ -75,6 +78,7 @@ $indentedCall
         "RegisteredCardsModuleCard(",
         "Aplicativos de corrida monitorados",
         "Buscar aplicativos instalados",
+        "BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard(",
         "cards_selected_apps_visible_0_1_123",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Modulo Cards 0.1.123 incompleto: $marker")
