@@ -7,49 +7,45 @@ import org.junit.Test
 
 class InAppBubbleImmediateStateContractTest {
     @Test
-    fun professionalGroupSelectionChangesComposeStateImmediately() {
-        val sourceFile = listOf(
-            File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
-            File("app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"),
-        ).firstOrNull(File::exists) ?: error("MainActivity.kt nao encontrado")
+    fun popupNavigationReplacesHomeGroupSelection() {
+        fun sourceFile(name: String): File = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
+        ).firstOrNull(File::exists) ?: error("$name nao encontrado")
 
-        val source = sourceFile.readText()
-        assertTrue("Estado de grupo precisa existir", "grouped_bubble_state_0_1_115" in source)
-        assertTrue(
-            "Toque precisa atualizar o grupo selecionado imediatamente",
-            "selectedBubbleGroup = group" in source,
-        )
-        assertTrue(
-            "Destino precisa abrir o grupo de endereco e raio",
-            "BUBBLE_GROUP_DESTINATION -> TAB_ANALYSIS" in source,
-        )
-        assertTrue(
-            "Relatorios precisam abrir o historico agrupado",
-            "BUBBLE_GROUP_REPORTS -> TAB_HISTORY" in source,
-        )
-        assertTrue(
-            "Demais grupos precisam abrir configuracao filtrada",
-            "else -> TAB_CONFIG" in source,
-        )
+        val main = sourceFile("MainActivity.kt").readText()
+        val service = sourceFile("LiveRideAccessibilityService.kt").readText()
+        val catalog = sourceFile("BubbleShortcutModule.kt").readText()
+
+        assertTrue("Contrato popup-only precisa existir", "popup_only_control_center_0_1_119" in main)
         assertFalse(
-            "Ferramentas nao pode possuir navegacao propria",
-            "BUBBLE_GROUP_TOOLS -> TAB_TOOLS" in source,
+            "A Home nao pode renderizar a Central de bolinhas",
+            "\n            ProfessionalBubbleDashboard(" in main,
+        )
+        assertTrue(
+            "Destino precisa navegar diretamente pelo popup",
+            "BubbleShortcutAction.OpenDestination" in service &&
+                "openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))" in service,
+        )
+        assertTrue(
+            "Relatorios precisam navegar ao historico pelo popup",
+            "object ReportsBubbleShortcutModule" in catalog && "targetTab = \"history\"" in catalog,
+        )
+        assertTrue(
+            "Permissoes precisam navegar a configuracao filtrada",
+            "object PermissionsBubbleShortcutModule" in catalog && "targetGroup = \"access\"" in catalog,
         )
         assertTrue(
             "WhatsApp precisa executar imediatamente",
-            "onOpenWhatsApp" in source && "home.action whatsapp" in source,
+            "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service,
         )
         assertTrue(
             "Encerrar precisa executar imediatamente",
-            "onStopApplication" in source && "home.action stop_application" in source,
+            "BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()" in service,
         )
         assertFalse(
-            "Central nao deve alternar configuracao pelo estado antigo",
-            "QuickBubbleToggleReducer.toggle(bubbleControlSettings, toggle)" in source,
-        )
-        assertFalse(
-            "Estado antigo da grade ON/OFF nao deve permanecer ativo",
-            "settings = bubbleControlSettings," in source,
+            "Estado antigo da grade ON/OFF nao deve controlar a Home",
+            "settings = bubbleControlSettings," in main,
         )
     }
 }
