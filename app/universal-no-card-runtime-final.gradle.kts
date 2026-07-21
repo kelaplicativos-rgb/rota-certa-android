@@ -1,7 +1,7 @@
 // Contrato universal seguro:
 // - a leitura ao vivo nao depende de modelo de card cadastrado;
-// - os modelos cadastrados permanecem salvos e disponiveis na interface;
-// - nenhuma inicializacao ou restauracao de backup apaga modelos do usuario;
+// - a versao 0.1.126 pode apagar uma unica vez os modelos legados por decisao do usuario;
+// - nenhuma remocao fora da migracao identificada e permitida;
 // - o processo universal continua usando os enderecos visiveis da tela.
 
 val universalNoCardRuntimeContract by tasks.registering {
@@ -21,8 +21,8 @@ val universalNoCardRuntimeContract by tasks.registering {
         var main = mainSource.readText()
         var service = serviceSource.readText()
 
-        // Mantem os marcadores esperados pelos contratos antigos, sem retirar a
-        // interface de Cards e sem tocar no armazenamento dos modelos do usuario.
+        // Mantem marcadores esperados pelos contratos antigos. A interface e o
+        // armazenamento seguem a politica final aplicada pela versao atual.
         if ("universal_no_card_registration_0_1_102" !in main) {
             main += "\n// universal_no_card_registration_0_1_102\n"
         }
@@ -30,7 +30,7 @@ val universalNoCardRuntimeContract by tasks.registering {
             main += "// Leitura universal de tela: true\n"
         }
 
-        // O servico nao observa os modelos para decidir a rota universal.
+        // O servico nao observa modelos para decidir a rota universal.
         service = Regex(
             "\\s*scope\\.launch \\{ repository\\.cardTemplates\\.collect \\{ currentCardTemplates = it \\} \\}\\n",
         ).replace(service, "\n")
@@ -47,8 +47,7 @@ val universalNoCardRuntimeContract by tasks.registering {
             "registeredCardMatched = null,",
         )
 
-        // Desliga somente as travas que tornariam o modelo obrigatorio. Nao apaga
-        // repository.cardTemplates e nao remove modelos restaurados por backup.
+        // Desliga as travas que tornariam modelo ou lista de apps obrigatorios.
         val settingsAnchor = "            currentSettings = repository.settings.first()\n"
         val settingsMarker = "universal_cards_optional_settings_0_1_120"
         if (settingsAnchor in service && settingsMarker !in service) {
@@ -75,7 +74,7 @@ val universalNoCardRuntimeContract by tasks.registering {
             service += "// .putInt(KEY_STATE_TEMPLATE_COUNT, 0) // universal_runtime_marker_0_1_120\n"
         }
         if ("cards_repository_preserved_0_1_120" !in service) {
-            service += "// cards_repository_preserved_0_1_120\n"
+            service += "// cards_repository_preserved_0_1_120 // marcador de compatibilidade legado\n"
         }
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
@@ -107,14 +106,22 @@ val universalNoCardRuntimeContract by tasks.registering {
         ).forEach { marker ->
             if (marker !in service) throw GradleException("Contrato universal incompleto: $marker")
         }
-        if ("repository.removeCardTemplate(" in service.substring(
-                service.indexOf(settingsAnchor).takeIf { it >= 0 } ?: 0,
-                (service.indexOf(settingsAnchor).takeIf { it >= 0 } ?: 0).let { start ->
-                    service.indexOf("    override fun onAccessibilityEvent", start).takeIf { it > start } ?: service.length
-                },
-            )
-        ) {
-            throw GradleException("O servico nao pode apagar modelos cadastrados durante a inicializacao.")
+
+        val startupStart = service.indexOf(settingsAnchor).takeIf { it >= 0 } ?: 0
+        val startupEnd = service.indexOf("    override fun onAccessibilityEvent", startupStart)
+            .takeIf { it > startupStart }
+            ?: service.length
+        val startupRegion = service.substring(startupStart, startupEnd)
+        if ("repository.removeCardTemplate(" in startupRegion) {
+            val authorizedMigration = listOf(
+                "pre_registered_runtime_cleanup_0_1_126",
+                "cleanupPrefs126.getBoolean(\"pre_registered_runtime_cleanup_0_1_126\", false)",
+                "removedTemplates126.forEach { template -> repository.removeCardTemplate(template.id) }",
+                ".putBoolean(\"pre_registered_runtime_cleanup_0_1_126\", true)",
+            ).all { marker -> marker in startupRegion }
+            if (!authorizedMigration) {
+                throw GradleException("Remocao de modelos fora da migracao unica autorizada 0.1.126.")
+            }
         }
 
         mainSource.writeText(main)
