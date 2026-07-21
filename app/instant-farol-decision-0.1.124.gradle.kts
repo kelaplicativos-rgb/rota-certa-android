@@ -1,7 +1,7 @@
 // Rota Certa 0.1.124
 // Correcao global do tempo e da limpeza da bolinha, sem distinguir aplicativos:
 // - qualquer leitura vazia ou card incompleto limpa imediatamente;
-// - somente um card com exatamente embarque e destino inicia a rota;
+// - somente um card com um passageiro identificavel e pelo menos embarque/destino inicia a rota;
 // - qualquer mudanca no texto visivel invalida o resultado anterior;
 // - a rota usa as configuracoes ja carregadas em memoria;
 // - verde/vermelho aparecem antes da gravacao do historico;
@@ -58,9 +58,22 @@ fun patchInstantFarolDecision124(file: java.io.File) {
         text = text.replaceFirst(oldBlock, newBlock)
     }
 
-    if ("global_exact_two_address_card_0_1_124" !in text) {
+    if ("global_single_passenger_gate_0_1_124" !in text) {
+        val liveSourceAnchor = "        val liveSource = when (source)\n"
+        if (liveSourceAnchor !in text) throw GradleException("Ponto do passageiro unico nao encontrado.")
+        val passengerBlock = """        val passengerIdentity = RidePassengerIdentityPolicy.evaluate(snapshotText)
+        if (!passengerIdentity.accepted && trigger.addresses.size >= 2) {
+            traceEvent(
+                "universal.passenger accepted=false count=${dollar}{passengerIdentity.candidates.size} reason=${dollar}{passengerIdentity.reason}",
+            )
+        } // global_single_passenger_gate_0_1_124
+"""
+        text = text.replaceFirst(liveSourceAnchor, passengerBlock + liveSourceAnchor)
+    }
+
+    if ("global_passenger_and_addresses_card_0_1_124" !in text) {
         val oldActiveTrigger = "        val activeTrigger = trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // universal_ride_evidence_gate_0_1_112\n"
-        val newActiveTrigger = "        val activeTrigger = trigger.addresses.size == 2 && trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted // global_exact_two_address_card_0_1_124\n"
+        val newActiveTrigger = "        val activeTrigger = trigger.addresses.size >= 2 && trigger.active && !trigger.destination.isNullOrBlank() && rideEvidence.accepted && passengerIdentity.accepted // global_passenger_and_addresses_card_0_1_124\n"
         if (oldActiveTrigger !in text) throw GradleException("Gatilho ativo universal nao encontrado.")
         text = text.replaceFirst(oldActiveTrigger, newActiveTrigger)
     }
@@ -85,9 +98,12 @@ fun patchInstantFarolDecision124(file: java.io.File) {
 """
         val newBlock = """        val readNowMillis = System.currentTimeMillis()
         if (!activeTrigger) {
-            hardClearUniversalTwoAddress(
-                "Card saiu, mudou ou nao possui exatamente embarque e destino; resultado removido imediatamente.",
-            )
+            val clearReason = when {
+                passengerIdentity.candidates.size > 1 -> "Tela com varias corridas/passageiros; resultado removido imediatamente."
+                passengerIdentity.candidates.isEmpty() && trigger.addresses.size >= 2 -> "Passageiro unico nao identificado; resultado removido imediatamente."
+                else -> "Card saiu, mudou ou nao possui embarque e destino; resultado removido imediatamente."
+            }
+            hardClearUniversalTwoAddress(clearReason)
             return // global_inactive_clear_now_0_1_124
         }
         universalLastActiveReadAtMillis = readNowMillis
@@ -194,7 +210,8 @@ fun patchInstantFarolDecision124(file: java.io.File) {
     listOf(
         "global_continuous_empty_clear_0_1_124",
         "global_scheduled_empty_clear_0_1_124",
-        "global_exact_two_address_card_0_1_124",
+        "global_single_passenger_gate_0_1_124",
+        "global_passenger_and_addresses_card_0_1_124",
         "global_inactive_clear_now_0_1_124",
         "global_full_screen_hash_0_1_124",
         "global_screen_change_clear_0_1_124",
