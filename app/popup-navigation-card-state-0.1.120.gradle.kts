@@ -9,23 +9,21 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
     var app = text.substring(appStart, appEnd)
 
     if ("val cardTemplates by repository.cardTemplates.collectAsState" !in app) {
-        val anchor = "    val diagnostic by repository.diagnostic.collectAsState(initial = null)\n"
-        if (anchor !in app) throw GradleException("Estado diagnostic nao encontrado.")
-        app = app.replaceFirst(
-            anchor,
-            anchor + "    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())\n",
-        )
+        val anchor = Regex("(?m)^\\s*val settings by repository\\.settings\\.collectAsState.*$").find(app)
+            ?: throw GradleException("Estado principal settings nao encontrado.")
+        val addition = "\n    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())"
+        app = app.substring(0, anchor.range.last + 1) + addition + app.substring(anchor.range.last + 1)
     }
 
     if ("val ocrService = remember { OcrService(context) }" !in app) {
-        val anchor = "    val radarImportSummary by repository.radarImportSummary.collectAsState(initial = RadarImportSummary())\n"
-        if (anchor !in app) throw GradleException("Estado radarImportSummary nao encontrado.")
-        app = app.replaceFirst(anchor, anchor + "    val ocrService = remember { OcrService(context) }\n")
+        val anchor = Regex("(?m)^\\s*val locationService = remember \\{ DeviceLocationService\\(context\\) }.*$").find(app)
+            ?: throw GradleException("locationService nao encontrado.")
+        app = app.substring(0, anchor.range.first) + "    val ocrService = remember { OcrService(context) }\n" + app.substring(anchor.range.first)
     }
 
     if ("var templateStatus by remember" !in app) {
-        val anchor = "    var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }\n"
-        if (anchor !in app) throw GradleException("Estado liveEnabled nao encontrado.")
+        val anchor = "    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())\n"
+        if (anchor !in app) throw GradleException("Estado cardTemplates nao encontrado para status.")
         app = app.replaceFirst(
             anchor,
             anchor + """    var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${'$'}{cardTemplates.size}") }
@@ -34,10 +32,12 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
         )
     }
 
-    if ("fun registerRideCard(packageName: String?, text: String)" !in app) {
-        val anchor = "    fun renameSavedPlace(place: SavedPlace, name: String) {\n"
-        if (anchor !in app) throw GradleException("Funcao renameSavedPlace nao encontrada.")
-        val functions = """    fun registerRideCard(packageName: String?, text: String) {
+    val functionsAnchor = Regex("(?m)^\\s*val locationPermissionLauncher = rememberLauncherForActivityResult\\(").find(app)
+        ?: throw GradleException("locationPermissionLauncher nao encontrado.")
+    val missingFunctions = buildString {
+        if ("fun registerRideCard(packageName: String?, text: String)" !in app) {
+            append(
+                """    fun registerRideCard(packageName: String?, text: String) {
         if (text.isBlank()) {
             Toast.makeText(context, "Nao ha texto lido para cadastrar", Toast.LENGTH_SHORT).show()
             return
@@ -51,7 +51,12 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
         }
     }
 
-    fun deleteCardModel(template: RideCardTemplate) {
+""",
+            )
+        }
+        if ("fun deleteCardModel(template: RideCardTemplate)" !in app) {
+            append(
+                """    fun deleteCardModel(template: RideCardTemplate) {
         scope.launch {
             repository.removeCardTemplate(template.id)
             templateStatus = "Modelo removido: ${'$'}{template.name}"
@@ -59,28 +64,17 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
         }
     }
 
-"""
-        app = app.replaceFirst(anchor, functions + anchor)
-    } else if ("fun deleteCardModel(template: RideCardTemplate)" !in app) {
-        val anchor = "    fun renameSavedPlace(place: SavedPlace, name: String) {\n"
-        if (anchor !in app) throw GradleException("Funcao renameSavedPlace nao encontrada para deleteCardModel.")
-        app = app.replaceFirst(
-            anchor,
-            """    fun deleteCardModel(template: RideCardTemplate) {
-        scope.launch {
-            repository.removeCardTemplate(template.id)
-            templateStatus = "Modelo removido: ${'$'}{template.name}"
-            Toast.makeText(context, templateStatus, Toast.LENGTH_LONG).show()
+""",
+            )
         }
     }
-
-""" + anchor,
-        )
+    if (missingFunctions.isNotEmpty()) {
+        app = app.substring(0, functionsAnchor.range.first) + missingFunctions + app.substring(functionsAnchor.range.first)
     }
 
     if ("val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents())" !in app) {
-        val anchor = "    val radarFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->\n"
-        if (anchor !in app) throw GradleException("radarFilePicker nao encontrado.")
+        val anchor = Regex("(?m)^\\s*val (radarFilePicker|backupFileCreator) = rememberLauncherForActivityResult").find(app)
+            ?: throw GradleException("Ponto de insercao do seletor de cards nao encontrado.")
         val picker = """    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch {
@@ -110,7 +104,7 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
     }
 
 """
-        app = app.replaceFirst(anchor, picker + anchor)
+        app = app.substring(0, anchor.range.first) + picker + app.substring(anchor.range.first)
     }
 
     if ("LaunchedEffect(cardTemplates.size)" !in app) {
@@ -134,6 +128,7 @@ fun enforcePopupNavigationCardState120(file: java.io.File) {
     }
     listOf(
         "val cardTemplates by repository.cardTemplates.collectAsState",
+        "val ocrService = remember { OcrService(context) }",
         "var templateStatus by remember",
         "fun registerRideCard(packageName: String?, text: String)",
         "fun deleteCardModel(template: RideCardTemplate)",
