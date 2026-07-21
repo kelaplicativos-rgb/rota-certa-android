@@ -24,9 +24,9 @@ val inAppBubbleImmediateState by tasks.registering {
             ).forEach { marker ->
                 if (marker !in text) throw GradleException("Conteudo preservado do popup 0.1.119 ausente: $marker")
             }
-            if ("selectedGroup = selectedBubbleGroup" in text || "onSelectGroup = { group ->" in text) {
-                throw GradleException("Regressao: a Central circular voltou a ser conectada na Home.")
-            }
+            // A definicao ProfessionalBubbleDashboard pode permanecer compilada
+            // por compatibilidade. A ausencia da chamada real e verificada pela
+            // tarefa popupOnlyControlCenter119 e pelo workflow de arquitetura.
             file.writeText(text)
             return@doLast
         }
