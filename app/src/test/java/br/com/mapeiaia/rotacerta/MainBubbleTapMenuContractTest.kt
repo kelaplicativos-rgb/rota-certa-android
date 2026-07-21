@@ -18,6 +18,16 @@ class MainBubbleTapMenuContractTest {
         val controller = sourceFile("BubbleShortcutOverlayController.kt").readText()
         val positionPolicy = sourceFile("BubbleShortcutPositionPolicy.kt").readText()
         val catalog = sourceFile("BubbleShortcutModule.kt").readText()
+        val externalModules = listOf(
+            "AlertBubbleShortcutModule.kt",
+            "SavedPlaceBubbleShortcutModule.kt",
+            "RideCardBubbleShortcutModule.kt",
+            "DestinationBubbleShortcutModule.kt",
+            "ReadingBubbleShortcutModule.kt",
+            "WhatsAppBubbleShortcutModule.kt",
+            "StopBubbleShortcutModule.kt",
+        ).joinToString("\n") { sourceFile(it).readText() }
+        val allShortcutSources = catalog + "\n" + externalModules
 
         val overlayStart = service.indexOf("    private fun showOverlay(")
         val overlayEnd = service.indexOf("\n    private fun removeOverlay()", overlayStart)
@@ -76,7 +86,7 @@ class MainBubbleTapMenuContractTest {
             "Salvar card",
             "Leitura",
         ).forEach { label ->
-            assertTrue("Atalho ausente: $label", "label = \"$label\"" in catalog || label in service)
+            assertTrue("Atalho ausente: $label", "label = \"$label\"" in allShortcutSources)
         }
 
         assertTrue("Controlador precisa usar a politica isolada", "BubbleShortcutPositionPolicy.place" in controller)
