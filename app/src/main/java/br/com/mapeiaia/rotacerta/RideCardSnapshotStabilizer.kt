@@ -3,70 +3,36 @@ package br.com.mapeiaia.rotacerta
 import java.util.Locale
 
 /**
- * Evita que leituras intermediarias do inDrive, contendo enderecos antigos e
- * novos ao mesmo tempo, cancelem uma rota valida que acabou de ser iniciada.
+ * Portaria estrita para snapshots do inDrive.
  *
- * Um card normal do inDrive apresenta exatamente embarque e destino. Durante a
- * animacao de troca, a arvore de acessibilidade pode expor 4 ou 6 enderecos por
- * alguns instantes. Esses snapshots expandidos sao ignorados por uma janela
- * curta, mas um novo snapshot exato com dois enderecos sempre entra
- * imediatamente.
+ * Um card valido apresenta exatamente dois enderecos: embarque e destino.
+ * Durante a troca de cards, a arvore de acessibilidade pode misturar o card
+ * anterior e o novo, expondo 4 ou 6 enderecos. Esses snapshots ambiguos nunca
+ * podem conservar a cor anterior nem iniciar uma rota incorreta.
  */
-class RideCardSnapshotStabilizer(
-    private val expansionWindowMillis: Long = DEFAULT_EXPANSION_WINDOW_MILLIS,
-) {
-    private var activePackageName: String? = null
-    private var lastExactTwoAtMillis: Long = NO_TIMESTAMP
-
+class RideCardSnapshotStabilizer {
     fun shouldIgnore(
         packageName: String?,
         addressCount: Int,
         active: Boolean,
         nowMillis: Long,
     ): Boolean {
+        @Suppress("UNUSED_VARIABLE")
+        val observationTime = nowMillis
         val normalizedPackage = packageName
             ?.trim()
             ?.lowercase(Locale.ROOT)
             ?.takeIf(String::isNotBlank)
 
-        if (normalizedPackage != PACKAGE_INDRIVE_DRIVER) {
-            reset()
-            return false
-        }
-
-        if (activePackageName != normalizedPackage) {
-            reset()
-            activePackageName = normalizedPackage
-        }
-
-        if (!active) return false
-
-        if (addressCount == EXPECTED_INDRIVE_ADDRESS_COUNT) {
-            lastExactTwoAtMillis = nowMillis
-            return false
-        }
-
-        if (addressCount <= EXPECTED_INDRIVE_ADDRESS_COUNT || lastExactTwoAtMillis == NO_TIMESTAMP) {
-            return false
-        }
-
-        val elapsed = nowMillis - lastExactTwoAtMillis
-        if (elapsed < 0L) {
-            lastExactTwoAtMillis = NO_TIMESTAMP
-            return false
-        }
-        return elapsed <= expansionWindowMillis
+        return normalizedPackage == PACKAGE_INDRIVE_DRIVER &&
+            active &&
+            addressCount != EXPECTED_INDRIVE_ADDRESS_COUNT
     }
 
-    fun reset() {
-        activePackageName = null
-        lastExactTwoAtMillis = NO_TIMESTAMP
-    }
+    fun reset() = Unit
 
     companion object {
-        const val DEFAULT_EXPANSION_WINDOW_MILLIS = 2_800L
         private const val EXPECTED_INDRIVE_ADDRESS_COUNT = 2
         private const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
-        private const val NO_TIMESTAMP = Long.MIN_VALUE
     }
 }
