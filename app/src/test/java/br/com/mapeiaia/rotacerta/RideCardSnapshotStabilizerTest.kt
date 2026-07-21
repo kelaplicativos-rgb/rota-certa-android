@@ -11,45 +11,27 @@ class RideCardSnapshotStabilizerTest {
     fun exactTwoAddressesAlwaysEnterImmediately() {
         val stabilizer = RideCardSnapshotStabilizer()
 
-        assertFalse(
-            stabilizer.shouldIgnore(
-                packageName = packageName,
-                addressCount = 2,
-                active = true,
-                nowMillis = 1_000L,
-            ),
-        )
-        assertFalse(
-            stabilizer.shouldIgnore(
-                packageName = packageName,
-                addressCount = 2,
-                active = true,
-                nowMillis = 1_100L,
-            ),
-        )
+        assertFalse(stabilizer.shouldIgnore(packageName, addressCount = 2, active = true, nowMillis = 1_000L))
     }
 
     @Test
-    fun expandedTransitionSnapshotsAreIgnoredInsideWindow() {
+    fun expandedInDriveSnapshotsAreAlwaysRejected() {
         val stabilizer = RideCardSnapshotStabilizer()
-        stabilizer.shouldIgnore(packageName, addressCount = 2, active = true, nowMillis = 1_000L)
 
-        assertTrue(stabilizer.shouldIgnore(packageName, addressCount = 4, active = true, nowMillis = 2_100L))
-        assertTrue(stabilizer.shouldIgnore(packageName, addressCount = 6, active = true, nowMillis = 2_800L))
+        assertTrue(stabilizer.shouldIgnore(packageName, addressCount = 4, active = true, nowMillis = 1_000L))
+        assertTrue(stabilizer.shouldIgnore(packageName, addressCount = 6, active = true, nowMillis = 9_000L))
     }
 
     @Test
-    fun expandedSnapshotIsAcceptedAfterProtectionWindow() {
-        val stabilizer = RideCardSnapshotStabilizer(expansionWindowMillis = 2_800L)
-        stabilizer.shouldIgnore(packageName, addressCount = 2, active = true, nowMillis = 1_000L)
-
-        assertFalse(stabilizer.shouldIgnore(packageName, addressCount = 4, active = true, nowMillis = 3_801L))
-    }
-
-    @Test
-    fun otherApplicationsAreNeverRestrictedByInDriveRule() {
+    fun inactiveSnapshotIsHandledByImmediateClearPipeline() {
         val stabilizer = RideCardSnapshotStabilizer()
-        stabilizer.shouldIgnore(packageName, addressCount = 2, active = true, nowMillis = 1_000L)
+
+        assertFalse(stabilizer.shouldIgnore(packageName, addressCount = 0, active = false, nowMillis = 1_000L))
+    }
+
+    @Test
+    fun otherApplicationsAreNotRestrictedToTwoAddresses() {
+        val stabilizer = RideCardSnapshotStabilizer()
 
         assertFalse(
             stabilizer.shouldIgnore(
