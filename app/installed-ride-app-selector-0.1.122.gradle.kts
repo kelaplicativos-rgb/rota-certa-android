@@ -175,15 +175,20 @@ private fun InstalledRideAppsCard() {
     }
 }
 
-gradle.projectsEvaluated {
-    val prerequisitePatches = tasks.matching { task ->
-        task.name != installedRideAppSelector122Patch.name &&
-            (task.name.contains("patch", ignoreCase = true) ||
-                task.name.contains("compat", ignoreCase = true) ||
-                task.name.contains("enforce", ignoreCase = true))
-    }
+val installedRideAppSelector122Predecessors = setOf(
+    "enforceUserRegisteredPackagesOnly",
+    "universalLastAddressFinalV2",
+    "universalLastAddressCompileFix",
+    "universalTwoAddressRuntimeFinal",
+    "popupNavigationLateCompile120",
+    "workTrackingCardAnchorCompat121",
+    "radarWorkTracking121",
+)
+
+tasks.matching { it.name in installedRideAppSelector122Predecessors }.configureEach {
+    val predecessor = this
     installedRideAppSelector122Patch.configure {
-        dependsOn(prerequisitePatches)
+        mustRunAfter(predecessor)
     }
 }
 
