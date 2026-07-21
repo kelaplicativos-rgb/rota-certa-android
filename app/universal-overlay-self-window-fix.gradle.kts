@@ -156,10 +156,16 @@ val universalOverlayWindowResolver by tasks.registering {
             text += "\n// universal_overlay_self_window_fix_0_1_106\n"
         }
 
+        if (
+            "universal.overlay.event ignored=true" !in text &&
+            "selected_apps_overlay_quiet_0_1_122" !in text
+        ) {
+            throw GradleException("Correcao de overlay incompleta: marcador de overlay ausente")
+        }
+
         listOf(
             "UniversalWindowPackageResolver.resolve(",
             "UniversalWindowPackageResolver.isOwnMainActivityEvent(",
-            "universal.overlay.event ignored=true",
             "universal_stable_foreground_event_0_1_101",
             "universal_overlay_event_guard_0_1_106",
             "universal_overlay_window_resolver_0_1_106",
