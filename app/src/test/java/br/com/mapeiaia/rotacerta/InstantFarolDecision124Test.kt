@@ -43,7 +43,8 @@ class InstantFarolDecision124Test {
         val end = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", start)
         val region = service.substring(start, end)
 
-        assertTrue("Card precisa exigir exatamente dois enderecos", "global_exact_two_address_card_0_1_124" in region)
+        assertTrue("Card precisa exigir passageiro unico", "global_single_passenger_gate_0_1_124" in region)
+        assertTrue("Card precisa exigir passageiro e enderecos", "global_passenger_and_addresses_card_0_1_124" in region)
         assertTrue("Leitura incompleta precisa limpar imediatamente", "global_inactive_clear_now_0_1_124" in region)
         assertTrue("Qualquer mudanca da tela precisa invalidar o resultado", "global_full_screen_hash_0_1_124" in region)
         assertFalse("Contrato nao pode citar pacote especifico", "sinet.startup.indriver" in region)
@@ -58,5 +59,11 @@ class InstantFarolDecision124Test {
         assertTrue("Ciclo continuo precisa encaminhar leitura vazia", "global_continuous_empty_clear_0_1_124" in service)
         assertTrue("Agendamento precisa encaminhar leitura vazia", "global_scheduled_empty_clear_0_1_124" in service)
         assertFalse("Leitura vazia nao pode ser ignorada", "transient_overlay_empty_ignored=true" in service)
+    }
+
+    @Test
+    fun yellowWaitingStateRemainsAvailable() {
+        val service = serviceSource()
+        assertTrue("Amarelo precisa continuar indicando analise", "showOverlay(RadarColor.Default, distanceKm = null)" in service)
     }
 }
