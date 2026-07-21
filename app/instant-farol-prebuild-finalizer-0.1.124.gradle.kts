@@ -52,10 +52,12 @@ fun finalizeInstantFarolPreBuild124(file: java.io.File) {
     }
 
     listOf(
-        "transient_empty_ignored_route_inflight=true",
-        "resetToIdle guarded active_ride_window",
-    ).forEach { forbidden ->
-        if (forbidden in text) throw GradleException("Finalizador 0.1.124 encontrou protecao antiga: $forbidden")
+        "traceEvent(\"universal.accessibility transient_empty_ignored_route_inflight=true\")",
+        "traceEvent(\"resetToIdle guarded active_ride_window reason=",
+    ).forEach { forbiddenExecutable ->
+        if (forbiddenExecutable in text) {
+            throw GradleException("Finalizador 0.1.124 encontrou protecao executavel antiga: $forbiddenExecutable")
+        }
     }
 
     file.writeText(text)
