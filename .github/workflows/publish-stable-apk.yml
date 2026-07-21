@@ -63,11 +63,13 @@ jobs:
           echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
           GITHUB_RUN_NUMBER="$gradle_run_number" gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Validate version, contents and hash
+      - name: Validate universal policy, version and APK contents
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           metadata="app/build/outputs/apk/debug/output-metadata.json"
+          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           test -f "$apk"
           test -f "$metadata"
 
@@ -81,11 +83,32 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.125':
+          if version_name != '0.1.126':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
           PY
+
+          grep -Fq 'universal_package_content_gate_0_1_126' "$service"
+          grep -Fq 'CorePackageMonitor.classify(' "$service"
+          grep -Fq 'classification.canScan' "$service"
+          grep -Fq 'pre_registered_runtime_cleanup_0_1_126' "$service"
+          grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
+          grep -Fq 'currentCardTemplates = emptyList()' "$service"
+          grep -Fq 'universal.card.scope selected_index=' "$service"
+          grep -Fq 'subsecond_exact_red_lower_bound_0_1_125' "$service"
+          if grep -Fq 'normalized in selectedPackages' "$service"; then
+            echo 'ERRO: lista de aplicativos ainda controla a bolinha.'
+            exit 1
+          fi
+          if grep -Fq 'Aplicativo fora da selecao do usuario.' "$service"; then
+            echo 'ERRO: motivo cego antigo ainda existe.'
+            exit 1
+          fi
+          grep -Fq 'Filtro por aplicativos pre-cadastrados: removido' "$main"
+          grep -Fq 'Modelos de cards como requisito: removidos' "$main"
+          grep -Fq 'Nao existem aplicativos pre-cadastrados' "$main"
+          grep -Fq 'Cards pre-cadastrados foram apagados' "$main"
 
           tmp_dir="$(mktemp -d)"
           unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
@@ -96,38 +119,13 @@ jobs:
             "Alertas" \
             "Locais" \
             "Radares" \
-            "Aparencia" \
-            "Permissoes" \
-            "Backup" \
-            "WhatsApp da tela" \
-            "Coletor" \
-            "Limpar area de transferencia" \
             "Depurar" \
-            "Encerrar Rota Certa" \
-            "Cards cadastrados" \
             "Leitura ao vivo ATIVADA" \
-            "Leitura ao vivo PAUSADA" \
-            "Somente pontos que geram aviso de aproximacao." \
-            "Somente locais salvos para consultar ou voltar depois. Nao geram alerta." \
-            "Rastreamento de trabalho" \
-            "Rastreamento de trabalho ativo" \
-            "Distancia do primeiro aviso" \
-            "A aproximadamente" \
-            "Selecionar aplicativos de corrida" \
-            "somente os aplicativos marcados." \
-            "Buscar aplicativo instalado" \
-            "Salvar aplicativos selecionados" \
-            "Aplicativos de corrida monitorados" \
-            "Buscar aplicativos instalados" \
-            "Tela com varias corridas/passageiros" \
-            "Passageiro unico nao identificado" \
-            "resultado removido imediatamente" \
             "universal.card.scope selected_index=" \
-            "primeiro_card_completo_visivel" \
-            "persistent_exact_route_cache_v1" \
-            "universal.route.cache restored=" \
-            "universal.route.cache persisted=" \
-            "RC_ROUTE_CACHE_V1" \
+            "universal.fast_red exact_lower_bound=true" \
+            "pre_registered_gates.removed cards=" \
+            "Filtro por aplicativos pre-cadastrados: removido" \
+            "Modelos de cards como requisito: removidos" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -159,15 +157,15 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.125:
-          - Corrige a leitura de telas do inDrive que exibem varios pedidos simultaneamente.
-          - Isola o primeiro card completo visivel antes de contar passageiro e enderecos.
-          - Impede misturar o passageiro de um pedido com o destino de outro.
-          - Titulos como Nova notificacao deixam de ser classificados como passageiro.
-          - Cards abaixo da oferta selecionada nao apagam a cor do primeiro card completo.
-          - Mantem limpeza imediata ao sair do card e bloqueio de respostas atrasadas.
-          - Mantem cache exato persistente e vermelho antecipado matematicamente seguro.
-          - Verde continua dependendo de rota exata calculada ou recuperada do cache.
+          Recursos 0.1.126:
+          - Remove a lista de aplicativos do caminho critico da bolinha.
+          - Apaga selecoes antigas de apps e modelos de cards armazenados na primeira inicializacao.
+          - Remove 99, Uber e inDrive como opcoes fixas pre-cadastradas.
+          - Pacotes comuns sao avaliados pelo conteudo real do card.
+          - Sistema, launcher, teclado, Google Maps e Waze continuam bloqueados.
+          - Substitui o motivo generico de app fora da selecao pelo motivo real do bloqueio.
+          - Mantem o primeiro card completo visivel, cache exato e vermelho antecipado seguro.
+          - O relatorio informa explicitamente a politica universal sem aumentar o volume de logs.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
