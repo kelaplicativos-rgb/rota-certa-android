@@ -18,16 +18,13 @@ class ProfessionalBubbleHome118ContractTest {
         assertTrue("Base profissional ausente", "professional_bubble_home_0_1_118" in source)
         assertTrue("Contrato popup-only ausente", "popup_only_control_center_0_1_119" in source)
         assertFalse(
-            "A Home ainda chama a grade ProfessionalBubbleDashboard",
-            "\n            ProfessionalBubbleDashboard(" in source,
+            "A Home ainda conecta o estado selecionado ao dashboard circular",
+            "selectedGroup = selectedBubbleGroup" in source,
         )
-
-        assertTrue("Grupo de Rota precisa continuar definido", "BUBBLE_GROUP_GENERAL = \"general\"" in source)
-        assertTrue("Conteudo de Destino precisa continuar disponivel", "BUBBLE_GROUP_DESTINATION ->" in source)
-        assertTrue("Conteudo de Alertas precisa continuar disponivel", "BUBBLE_GROUP_ALERTS ->" in source)
-        assertTrue("Conteudo de Aparencia precisa continuar disponivel", "BUBBLE_GROUP_APPEARANCE ->" in source)
-        assertTrue("Conteudo de Backup precisa continuar disponivel", "BUBBLE_GROUP_BACKUP ->" in source)
-        assertTrue("Conteudo de Relatorios precisa continuar disponivel", "BUBBLE_GROUP_REPORTS ->" in source)
+        assertFalse(
+            "A Home ainda entrega callback de selecao para a grade circular",
+            "onSelectGroup = { group ->" in source,
+        )
 
         val accessStart = source.indexOf("            BUBBLE_GROUP_ACCESS -> {")
         val accessEnd = source.indexOf("            BUBBLE_GROUP_BACKUP ->", accessStart)
