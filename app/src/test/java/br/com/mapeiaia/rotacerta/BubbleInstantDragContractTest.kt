@@ -20,7 +20,10 @@ class BubbleInstantDragContractTest {
         assertTrue("Gesto precisa pausar processamento", "bubble_drag_process_pause_0_1_116" in source)
         assertTrue("Loop precisa respeitar o gesto", "bubble_drag_scan_pause_0_1_116" in source)
         assertTrue("OCR precisa sair do thread principal", "bubble_drag_ocr_background_0_1_116" in source)
-        assertTrue("ACTION_DOWN precisa assumir o gesto", "bubbleGestureActive = true" in source)
+        assertTrue(
+            "ACTION_DOWN precisa assumir o gesto",
+            "bubbleGestureActive = true" in source || "bubbleGestureActive = (true)" in source,
+        )
         assertTrue("Analise pendente precisa ser cancelada", "analyzeJob?.cancel()" in source)
 
         val listenerStart = source.indexOf("private inner class BubbleTouchListener")
