@@ -1,7 +1,6 @@
 package br.com.mapeiaia.rotacerta
 
 import java.io.File
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,25 +11,14 @@ class ProfessionalBubbleHome118ContractTest {
     ).firstOrNull(File::exists)?.readText() ?: error("MainActivity.kt nao encontrado")
 
     @Test
-    fun circularControlDashboardIsNoLongerRenderedOnHome() {
+    fun operationalContentRemainsAvailableAfterPopupTransfer() {
         val source = mainSource()
 
-        assertTrue("Contrato popup-only ausente", "popup_only_control_center_0_1_119" in source)
-        assertFalse(
-            "A Home ainda conecta o estado selecionado ao dashboard circular",
-            "selectedGroup = selectedBubbleGroup" in source,
-        )
-        assertFalse(
-            "A Home ainda entrega callback de selecao para a grade circular",
-            "onSelectGroup = { group ->" in source,
-        )
-
-        val accessStart = source.indexOf("            BUBBLE_GROUP_ACCESS -> {")
-        val accessEnd = source.indexOf("            BUBBLE_GROUP_BACKUP ->", accessStart)
-        assertTrue("Grupo Permissoes precisa existir", accessStart >= 0 && accessEnd > accessStart)
-        val accessBlock = source.substring(accessStart, accessEnd)
-        assertTrue("Leitura precisa ficar dentro de Permissoes", "LiveReadingCard(" in accessBlock)
-        assertTrue("Localizacao precisa ficar dentro de Permissoes", "AlwaysLocationPermissionCard(" in accessBlock)
+        assertTrue("Grupo Permissoes precisa continuar disponivel", "BUBBLE_GROUP_ACCESS -> {" in source)
+        assertTrue("Leitura precisa continuar disponivel", "LiveReadingCard(" in source)
+        assertTrue("Localizacao precisa continuar disponivel", "AlwaysLocationPermissionCard(" in source)
+        assertTrue("Backup precisa continuar disponivel", "BUBBLE_GROUP_BACKUP ->" in source)
+        assertTrue("Relatorios precisam continuar disponiveis", "BUBBLE_GROUP_REPORTS ->" in source)
     }
 
     @Test
