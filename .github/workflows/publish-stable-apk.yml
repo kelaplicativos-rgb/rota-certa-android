@@ -81,7 +81,7 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.124':
+          if version_name != '0.1.125':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
@@ -122,6 +122,8 @@ jobs:
             "Tela com varias corridas/passageiros" \
             "Passageiro unico nao identificado" \
             "resultado removido imediatamente" \
+            "universal.card.scope selected_index=" \
+            "primeiro_card_completo_visivel" \
             "persistent_exact_route_cache_v1" \
             "universal.route.cache restored=" \
             "universal.route.cache persisted=" \
@@ -157,18 +159,15 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.124:
-          - Correcao do atraso entre a leitura do card e a cor verde/vermelha.
-          - Configuracoes ja carregadas em memoria sao usadas sem reler o armazenamento antes de cada rota.
-          - A bolinha recebe verde/vermelho antes da gravacao assincrona do historico.
-          - Qualquer mudanca, card ausente ou leitura vazia remove imediatamente o resultado anterior.
-          - A regra e global e igual para todos os aplicativos selecionados.
-          - Somente uma identidade de passageiro com pelo menos embarque e destino libera o calculo.
-          - Telas com varios passageiros/pedidos nao chamam geocodificacao nem rota.
-          - O amarelo foi mantido apenas como indicador visual de analise.
-          - Rotas exatas calculadas ficam persistidas por ate 14 dias e sobrevivem ao reinicio do servico.
-          - Endereco, coordenadas e raio fazem parte da chave; mudar o raio impede reutilizar uma decisao antiga incompatível.
-          - O cache nao baixa um mapa completo e nunca usa estimativa regional para decidir verde/vermelho.
+          Recursos 0.1.125:
+          - Corrige a leitura de telas do inDrive que exibem varios pedidos simultaneamente.
+          - Isola o primeiro card completo visivel antes de contar passageiro e enderecos.
+          - Impede misturar o passageiro de um pedido com o destino de outro.
+          - Titulos como Nova notificacao deixam de ser classificados como passageiro.
+          - Cards abaixo da oferta selecionada nao apagam a cor do primeiro card completo.
+          - Mantem limpeza imediata ao sair do card e bloqueio de respostas atrasadas.
+          - Mantem cache exato persistente e vermelho antecipado matematicamente seguro.
+          - Verde continua dependendo de rota exata calculada ou recuperada do cache.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
