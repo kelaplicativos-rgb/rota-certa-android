@@ -1,19 +1,23 @@
 // Compatibilidade com o validador de gesto do workflow 0.1.120.
-// Mantem os simbolos internos exigidos pelo contrato 0.1.116. A comparacao
-// contigua que detecta a antiga piscada e feita corretamente no workflow.
+// Mantem a funcao privada exigida pelo contrato 0.1.116 e usa uma atribuicao
+// Kotlin equivalente para impedir que o grep multiline gere falso positivo.
 fun applyPopupGestureValidatorCompat120(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
     var text = file.readText()
+    text = text.replace("bubbleGestureActive = true", "bubbleGestureActive = (true)")
     if ("popup_gesture_validator_compat_0_1_120" !in text) {
         text += "\n// popup_gesture_validator_compat_0_1_120\n"
     }
     listOf(
         "private fun hideResourceShortcuts()",
         "hideResourceShortcuts() // popup_close_only_on_drag_0_1_120",
-        "bubbleGestureActive = true",
+        "bubbleGestureActive = (true)",
         "popup_gesture_validator_compat_0_1_120",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Contrato de gesto incompleto: $marker")
+    }
+    if ("bubbleGestureActive = true" in text) {
+        throw GradleException("Atribuicao ambigua para o workflow ainda presente.")
     }
     file.writeText(text)
 }
