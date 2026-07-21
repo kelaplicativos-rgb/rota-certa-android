@@ -96,7 +96,7 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate professional reader and popup-only architecture
+      - name: Validate separated popup architecture
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
@@ -106,18 +106,14 @@ jobs:
           position="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutPositionPolicy.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
           trigger="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalAddressTrigger.kt"
-          modules=(
-            app/src/main/java/br/com/mapeiaia/rotacerta/AlertBubbleShortcutModule.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/SavedPlaceBubbleShortcutModule.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardBubbleShortcutModule.kt
+          external_modules=(
             app/src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/ReadingBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/WhatsAppBubbleShortcutModule.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/SettingsBubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/StopBubbleShortcutModule.kt
           )
 
-          for file in "$service" "$main" "$controller" "$catalog" "$position" "$engine" "$trigger" "${modules[@]}"; do
+          for file in "$service" "$main" "$controller" "$catalog" "$position" "$engine" "$trigger" "${external_modules[@]}"; do
             test -f "$file"
           done
 
@@ -130,76 +126,82 @@ jobs:
           grep -Fq 'onShortcut = ::executeShortcutModule' "$service"
           grep -Fq 'BubbleShortcutCatalog.modules.joinToString' "$service"
           grep -Fq 'KEY_RUNTIME_SHORTCUTS_OPEN' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenRoute' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenDestination' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenAlerts' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenSavedPlaces' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenRadars' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenCards' "$service"
           grep -Fq 'BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()' "$service"
-          grep -Fq 'BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp()' "$service"
+          grep -Fq 'BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()' "$service"
           grep -Fq 'BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()' "$service"
           grep -Fq 'BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()' "$service"
           grep -Fq 'BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()' "$service"
           grep -Fq 'BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()' "$service"
-          grep -Fq 'Settings.ACTION_APPLICATION_DETAILS_SETTINGS' "$service"
-          grep -Fq 'disableSelf()' "$service"
-          grep -Fq 'bubble_reading_gate_0_1_118' "$service"
-          grep -Fq 'openSavedPlaceEditor(place: SavedPlace)' "$service"
-          grep -Fq '.putExtra(EXTRA_OPEN_BUBBLE_GROUP, BUBBLE_GROUP_ALERTS_VALUE)' "$service"
-          grep -Fq 'popup_only_service_actions_0_1_119' "$service"
+          grep -Fq 'popup_navigation_service_0_1_120' "$service"
+          grep -Fq 'popup_close_only_on_drag_0_1_120' "$service"
+          grep -Fq 'reading_visible_feedback_0_1_120' "$service"
+          grep -Fq 'Leitura ao vivo ATIVADA' "$service"
+          grep -Fq 'Leitura ao vivo PAUSADA' "$service"
+          grep -Fq 'if (place.type == SavedPlaceType.ProximityAlert) "alerts" else "saved_places"' "$service"
+          if grep -Fq $'hideResourceShortcuts()\n                    bubbleGestureActive = true' "$service"; then
+            echo "ERRO: ACTION_DOWN ainda fecha o popup e provoca a reabertura/piscada."
+            exit 1
+          fi
 
           grep -Fq 'interface BubbleShortcutModule' "$catalog"
-          grep -Fq 'BubbleShortcutCatalog' "$catalog"
-          grep -Fq 'modules.size == 16' "$catalog"
+          grep -Fq 'object BubbleShortcutCatalog' "$catalog"
+          grep -Fq 'modules.size == 15' "$catalog"
           grep -Fq 'RouteBubbleShortcutModule' "$catalog"
           grep -Fq 'AlertsManagementBubbleShortcutModule' "$catalog"
+          grep -Fq 'SavedPlacesManagementBubbleShortcutModule' "$catalog"
+          grep -Fq 'RadarsManagementBubbleShortcutModule' "$catalog"
           grep -Fq 'AppearanceBubbleShortcutModule' "$catalog"
           grep -Fq 'PermissionsBubbleShortcutModule' "$catalog"
           grep -Fq 'BackupBubbleShortcutModule' "$catalog"
-          grep -Fq 'ReportsBubbleShortcutModule' "$catalog"
           grep -Fq 'CollectorBubbleShortcutModule' "$catalog"
           grep -Fq 'ClearClipboardBubbleShortcutModule' "$catalog"
           grep -Fq 'DiagnosticBubbleShortcutModule' "$catalog"
+          grep -Fq 'CardsManagementBubbleShortcutModule' "$catalog"
+          modules_block="$(sed -n '/val modules: List/,/^    )/p' "$catalog")"
+          for forbidden in ReportsBubbleShortcutModule AlertBubbleShortcutModule SavedPlaceBubbleShortcutModule RideCardBubbleShortcutModule; do
+            if grep -Fq "$forbidden" <<<"$modules_block"; then
+              echo "ERRO: modulo duplicado ou removido ainda esta no popup: $forbidden"
+              exit 1
+            fi
+          done
+
           grep -Fq 'BubbleShortcutCatalog.modules.forEach' "$controller"
           grep -Fq 'onShortcut(module.spec)' "$controller"
           grep -Fq 'contentDescription = spec.label' "$controller"
           grep -Fq 'BubbleShortcutPositionPolicy.place' "$controller"
-          grep -Fq 'popup_only_shortcut_grid_0_1_119' "$controller"
           grep -Fq 'rightX + menuWidth' "$position"
           grep -Fq 'leftX >= safe' "$position"
-          if grep -Fq 'data class BubbleShortcutActions' "$controller" || grep -Fq 'BubbleShortcutActions(' "$service"; then
-            echo "ERRO: controlador ainda possui callbacks fixos."
-            exit 1
-          fi
 
-          grep -Fq 'label = "Salvar alerta"' "${modules[0]}"
-          grep -Fq 'displayLabel = "Alerta"' "${modules[0]}"
-          grep -Fq 'defaultName = "Alerta"' "${modules[0]}"
-          grep -Fq 'label = "Salvar local"' "${modules[1]}"
-          grep -Fq 'displayLabel = "Local"' "${modules[1]}"
-          grep -Fq 'defaultName = "Local salvo"' "${modules[1]}"
-          grep -Fq 'label = "Salvar card"' "${modules[2]}"
-          grep -Fq 'targetGroup = "destination"' "${modules[3]}"
-          grep -Fq 'action = BubbleShortcutAction.ToggleReading' "${modules[4]}"
-          grep -Fq 'targetGroup = "access"' "${modules[4]}"
-          grep -Fq 'action = BubbleShortcutAction.OpenScreenWhatsApp' "${modules[5]}"
-          grep -Fq 'action = BubbleShortcutAction.StopApplication' "${modules[7]}"
-
-          grep -Fq 'professional_bubble_home_0_1_118' "$main"
-          grep -Fq 'popup_only_control_center_0_1_119' "$main"
-          grep -Fq 'auto_export_report_0_1_119' "$main"
+          grep -Fq 'popup_navigation_main_0_1_120' "$main"
+          grep -Fq 'startup_permissions_0_1_120' "$main"
+          grep -Fq 'mutableStateOf(TAB_CONFIG)' "$main"
+          grep -Fq 'mutableStateOf(BUBBLE_GROUP_ACCESS)' "$main"
+          grep -Fq 'BUBBLE_GROUP_SAVED_PLACES' "$main"
+          grep -Fq 'BUBBLE_GROUP_RADARS' "$main"
+          grep -Fq 'BUBBLE_GROUP_CARDS' "$main"
+          grep -Fq 'BUBBLE_GROUP_ALERTS -> SavedPlacesModuleCard(' "$main"
+          grep -Fq 'BUBBLE_GROUP_SAVED_PLACES -> SavedPlacesModuleCard(' "$main"
+          grep -Fq 'BUBBLE_GROUP_RADARS -> RadarImportCard(' "$main"
+          grep -Fq 'BUBBLE_GROUP_CARDS -> CardModelsCard(' "$main"
+          grep -Fq 'val items = savedPlaces.filter { it.type == type }' "$main"
+          grep -Fq 'Somente pontos que geram aviso de aproximacao.' "$main"
+          grep -Fq 'Somente locais salvos para consultar ou voltar depois. Nao geram alerta.' "$main"
           if grep -Fq '            ProfessionalBubbleDashboard(' "$main"; then
-            echo "ERRO: a grade circular da Central de controle ainda aparece na Home."
+            echo "ERRO: a grade circular ainda aparece na Home."
             exit 1
           fi
-          grep -Fq 'BUBBLE_GROUP_ACCESS -> {' "$main"
-          grep -Fq 'Permissoes, leitura e GPS' "$main"
-          grep -Fq 'DiagnosticLogStore.dump()' "$main"
-          grep -Fq 'LINHA DO TEMPO COMPLETA DA EXECUCAO' "$main"
 
           grep -Fq 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller"
           grep -Fq 'popupButton("Editar")' "$controller"
           grep -Fq 'popupButton("Excluir")' "$controller"
-          grep -Fq 'popupButton("Confirmar")' "$controller"
           grep -Fq 'popupShownThisApproach' "$engine"
           grep -Fq 'onSavedPlacePopup(alert, distanceMeters)' "$engine"
-          grep -Fq 'Local para voltar depois, como estacionamento' "$main"
-          grep -Fq 'highlighted || draftName.trim() != place.name' "$main"
 
           cat > universal-two-address-validation.txt <<'EOF'
           UNIVERSAL_SCREEN_READING=enabled
@@ -207,21 +209,24 @@ jobs:
           SCREEN_CHANGE_INVALIDATION=immediate
           INSTANT_DRAG=preserved
           MAIN_BUBBLE_TAP=toggles_resource_shortcuts
-          RESOURCE_SHORTCUTS=16
-          SHORTCUT_MODULES=16_independent
-          POPUP_HOME_ACTIONS=transferred
-          HOME_CONTROL_MENU=removed
-          SHORTCUT_POSITION=adjacent_without_overlap
-          READING_SHORTCUT=toggle_live_reading
+          SECOND_TAP_CLOSE=validated
+          RESOURCE_SHORTCUTS=15
+          SHORTCUT_MODULES=15_independent
+          REPORT_SHORTCUT=removed
+          DUPLICATE_ALERT_SHORTCUT=removed
+          ROUTE_MODULE=general_control
+          DESTINATION_MODULE=destination_radius
+          ALERTS_MODULE=proximity_only
+          SAVED_PLACES_MODULE=places_only
+          RADARS_MODULE=independent
+          CARDS_MODULE=registered_models
+          APP_START=permissions
+          READING_SHORTCUT=visible_feedback
           WHATSAPP_SHORTCUT=capture_phone_from_screen
           COLLECTOR_SHORTCUT=open_directly
           CLIPBOARD_SHORTCUT=clear_directly
           DIAGNOSTIC_SHORTCUT=export_directly
           STOP_SHORTCUT=pause_and_open_android_app_details
-          DEBUG_REPORT=full_in_memory_timeline
-          SAVE_ALERT=editable_proximity_alert
-          SAVE_LOCAL=editable_gps_bookmark_only
-          SAVED_LOCAL_PROXIMITY_POPUP=disabled
           ALERT_POPUP_ACTIONS=close_edit_delete
           ALERT_POPUP_REPEAT=once_per_approach
           EOF
@@ -245,24 +250,22 @@ jobs:
             "Rota" \
             "Destino" \
             "Alertas" \
+            "Locais" \
+            "Radares" \
             "Aparencia" \
             "Permissoes" \
             "Backup" \
-            "Relatorios" \
             "WhatsApp da tela" \
             "Coletor" \
             "Limpar area de transferencia" \
             "Depurar" \
             "Encerrar Rota Certa" \
-            "Salvar alerta" \
-            "Salvar local" \
-            "Salvar card" \
-            "Leitura pausada" \
-            "LINHA DO TEMPO COMPLETA DA EXECUCAO" \
-            "bubble.shortcuts.opened count=" \
-            "bubble.shortcut.execute id=" \
-            "proximity.popup.shown id=" \
-            "Alerta excluido." \
+            "Cards cadastrados" \
+            "Leitura ao vivo ATIVADA" \
+            "Leitura ao vivo PAUSADA" \
+            "Somente pontos que geram aviso de aproximacao." \
+            "Somente locais salvos para consultar ou voltar depois. Nao geram alerta." \
+            "popup_navigation_service_0_1_120" \
             "universal.trigger source="
           do
             grep -Fq -- "$expected" apk-strings.txt || {
@@ -316,13 +319,14 @@ jobs:
           Run: ${GITHUB_RUN_NUMBER}
           Commit: ${RELEASE_TARGET_SHA}
 
-          Recursos 0.1.119:
-          - Dezesseis atalhos independentes no popup da bolinha principal.
-          - As doze bolinhas da antiga Central de controle foram transferidas ao popup.
-          - A grade circular deixou de ser exibida na Home.
-          - Salvar alerta, local, card e alternar leitura continuam disponiveis no popup.
-          - WhatsApp, Coletor, Limpar, Depurar e Encerrar executam diretamente.
-          - Leitura universal por dois enderecos e limpeza imediata foram preservadas.
+          Recursos 0.1.120:
+          - Quinze atalhos independentes no popup da bolinha principal.
+          - Segundo toque fecha o popup sem piscar ou reabrir.
+          - Aplicativo inicia em Permissoes para liberar a Acessibilidade.
+          - Rota e Destino abrem modulos diferentes.
+          - Alertas, Locais, Radares e Cards possuem modulos separados.
+          - Relatorios e atalhos duplicados de Alerta, Local e Card foram removidos.
+          - Leitura mostra confirmacao visivel ao ativar ou pausar.
           EOF
           cat universal-two-address-validation.txt >> stable-release-notes.md
           cat apk-validation.txt >> stable-release-notes.md
