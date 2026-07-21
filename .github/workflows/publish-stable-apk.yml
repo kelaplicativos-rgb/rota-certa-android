@@ -81,6 +81,8 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
+          if version_name != '0.1.120':
+              raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
           PY
@@ -89,15 +91,25 @@ jobs:
           unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
           strings "$tmp_dir"/classes*.dex > stable-apk-strings.txt
           for expected in \
-            "Salvar alerta" \
-            "Salvar local" \
-            "Salvar card" \
+            "Rota" \
+            "Destino" \
+            "Alertas" \
+            "Locais" \
+            "Radares" \
+            "Aparencia" \
+            "Permissoes" \
+            "Backup" \
             "WhatsApp da tela" \
+            "Coletor" \
+            "Limpar area de transferencia" \
+            "Depurar" \
             "Encerrar Rota Certa" \
-            "Leitura pausada" \
-            "Permissoes, leitura e GPS" \
-            "Central de controle" \
-            "LINHA DO TEMPO COMPLETA DA EXECUCAO"
+            "Cards cadastrados" \
+            "Leitura ao vivo ATIVADA" \
+            "Leitura ao vivo PAUSADA" \
+            "Somente pontos que geram aviso de aproximacao." \
+            "Somente locais salvos para consultar ou voltar depois. Nao geram alerta." \
+            "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
           done
@@ -128,14 +140,16 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.118:
-          - Oito atalhos independentes ao redor da bolinha principal.
-          - Leitura alterna imediatamente entre ativa e pausada.
-          - WhatsApp captura telefone brasileiro visivel na tela.
-          - Encerrar pausa leitura e alertas e abre os detalhes do aplicativo para confirmar Forcar interrupcao.
-          - Home organizada por Operacao, Sistema, Registros, Acoes rapidas e Suporte.
-          - Leitura dentro de Permissoes e categoria Ferramentas removida.
-          - Diagnostico com linha do tempo completa mantida em memoria.
+          Recursos 0.1.120:
+          - Quinze atalhos independentes no popup da bolinha.
+          - Segundo toque fecha o popup sem piscar ou abrir novamente.
+          - Aplicativo inicia no modulo Permissoes para liberar Acessibilidade.
+          - Rota abre Controle geral e Destino abre endereco/raio.
+          - Alertas mostra apenas alertas de proximidade.
+          - Locais mostra apenas locais salvos, sem alerta.
+          - Radares e Cards possuem modulos independentes.
+          - Relatorios e atalhos duplicados foram removidos.
+          - Leitura mostra confirmacao longa ao ativar ou pausar.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
