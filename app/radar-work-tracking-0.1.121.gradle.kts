@@ -227,24 +227,44 @@ fun patchLiveService121(file: java.io.File) {
     file.writeText(text)
 }
 
+fun findBalancedCallEnd121(source: String, start: Int): Int {
+    val open = source.indexOf('(', start)
+    if (open < 0) return -1
+    var depth = 0
+    for (index in open until source.length) {
+        when (source[index]) {
+            '(' -> depth += 1
+            ')' -> {
+                depth -= 1
+                if (depth == 0) return index
+            }
+        }
+    }
+    return -1
+}
+
 fun patchMainActivity121(file: java.io.File) {
     var text = file.readText()
     if ("work_tracking_ui_0_1_121" !in text) {
         if ("onOpenWorkTracking =" !in text) {
-            text = replaceRequired121(
-                text,
-                "                    onOpenBlaBlaCarCollector = {\n                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))\n                    },\n                    onClearClipboard = { clearClipboard(context) },\n",
-                "                    onOpenBlaBlaCarCollector = {\n                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))\n                    },\n                    onOpenWorkTracking = {\n                        context.startActivity(Intent(context, WorkTrackingActivity::class.java))\n                    },\n                    onClearClipboard = { clearClipboard(context) },\n",
-                "abertura do rastreamento",
-            )
+            val callStart = text.indexOf("TAB_TOOLS -> ToolsScreen(")
+            val callEnd = if (callStart >= 0) findBalancedCallEnd121(text, callStart) else -1
+            if (callStart < 0 || callEnd <= callStart) throw GradleException("Chamada ToolsScreen ausente.")
+            val call = text.substring(callStart, callEnd + 1)
+            val closingIndent = call.substringAfterLast('\n').takeWhile(Char::isWhitespace)
+            val argumentIndent = closingIndent + "    "
+            val updatedCall = call.dropLast(closingIndent.length + 1) +
+                "${argumentIndent}onOpenWorkTracking = { context.startActivity(Intent(context, WorkTrackingActivity::class.java)) },\n" +
+                closingIndent + ")"
+            text = text.substring(0, callStart) + updatedCall + text.substring(callEnd + 1)
         }
         if ("onOpenWorkTracking: () -> Unit" !in text) {
-            text = replaceRequired121(
-                text,
-                "private fun ToolsScreen(\n    onOpenBlaBlaCarCollector: () -> Unit,\n    onClearClipboard: () -> Unit,\n",
-                "private fun ToolsScreen(\n    onOpenBlaBlaCarCollector: () -> Unit,\n    onOpenWorkTracking: () -> Unit,\n    onClearClipboard: () -> Unit,\n",
-                "assinatura das ferramentas",
-            )
+            val signatureStart = text.indexOf("private fun ToolsScreen(")
+            val signatureEnd = if (signatureStart >= 0) text.indexOf(") {", signatureStart) else -1
+            if (signatureStart < 0 || signatureEnd <= signatureStart) throw GradleException("Assinatura ToolsScreen ausente.")
+            text = text.substring(0, signatureEnd) +
+                "    onOpenWorkTracking: () -> Unit = {},\n" +
+                text.substring(signatureEnd)
         }
         if ("Text(\"Rastreamento de trabalho\"" !in text) {
             val card = """        Card(modifier = Modifier.fillMaxWidth()) {
@@ -276,6 +296,7 @@ fun patchMainActivity121(file: java.io.File) {
     }
     listOf(
         "onOpenWorkTracking =",
+        "onOpenWorkTracking: () -> Unit",
         "WorkTrackingActivity::class.java",
         "Abrir rastreamento",
         "Distancia do primeiro aviso",
