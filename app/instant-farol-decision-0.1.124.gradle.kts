@@ -5,6 +5,7 @@
 // - qualquer mudanca no texto visivel invalida o resultado anterior;
 // - a rota usa as configuracoes ja carregadas em memoria;
 // - verde/vermelho aparecem antes da gravacao do historico;
+// - rotas exatas calculadas permanecem em cache por ate 14 dias;
 // - protecoes antigas que conservavam a cor anterior sao desativadas.
 
 fun patchInstantFarolDecision124(file: java.io.File) {
@@ -56,6 +57,17 @@ fun patchInstantFarolDecision124(file: java.io.File) {
 """
         if (oldBlock !in text) throw GradleException("Protecao de leitura vazia agendada nao encontrada.")
         text = text.replaceFirst(oldBlock, newBlock)
+    }
+
+    if ("persistent_route_cache_restore_0_1_124" !in text) {
+        val prefsAnchor = "        bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)\n"
+        if (prefsAnchor !in text) throw GradleException("Inicializacao das preferencias nao encontrada para restaurar o cache.")
+        val restoreBlock = prefsAnchor + """        val restoredExactRoutes = universalRouteCache.importSnapshot(
+            bubblePrefs.getString("persistent_exact_route_cache_v1", "").orEmpty(),
+        )
+        traceEvent("universal.route.cache restored=${dollar}restoredExactRoutes") // persistent_route_cache_restore_0_1_124
+"""
+        text = text.replaceFirst(prefsAnchor, restoreBlock)
     }
 
     if ("global_single_passenger_gate_0_1_124" !in text ||
@@ -142,6 +154,20 @@ fun patchInstantFarolDecision124(file: java.io.File) {
         )
     }
 
+    if ("persistent_route_cache_save_0_1_124" !in text) {
+        val storedAnchor = "            traceEvent(\"universal.route.cache stored=true\")\n"
+        if (storedAnchor !in text) throw GradleException("Gravacao da rota exata no cache de memoria nao encontrada.")
+        val saveBlock = storedAnchor + """            scope.launch(Dispatchers.IO) {
+                val exactRouteSnapshot = universalRouteCache.exportSnapshot()
+                bubblePrefs.edit()
+                    .putString("persistent_exact_route_cache_v1", exactRouteSnapshot)
+                    .apply()
+                traceEvent("universal.route.cache persisted=${dollar}{universalRouteCache.entryCount()}")
+            } // persistent_route_cache_save_0_1_124
+"""
+        text = text.replaceFirst(storedAnchor, saveBlock)
+    }
+
     if ("instant_farol_paint_before_history_0_1_124" !in text) {
         val oldResultBlock = """        if (universalAnalysisDeduper.shouldPersist(persistenceSignature)) {
             repository.addAnalysis(result)
@@ -206,12 +232,16 @@ fun patchInstantFarolDecision124(file: java.io.File) {
     listOf(
         "global_continuous_empty_clear_0_1_124",
         "global_scheduled_empty_clear_0_1_124",
+        "persistent_route_cache_restore_0_1_124",
+        "persistent_exact_route_cache_v1",
         "global_single_passenger_gate_0_1_124",
         "global_passenger_and_addresses_card_0_1_124",
         "global_inactive_clear_now_0_1_124",
         "global_full_screen_hash_0_1_124",
         "global_screen_change_clear_0_1_124",
         "instant_farol_cached_settings_0_1_124",
+        "persistent_route_cache_save_0_1_124",
+        "universalRouteCache.exportSnapshot()",
         "instant_farol_paint_before_history_0_1_124",
         "global_no_transient_decision_keep_0_1_124",
         "global_idle_never_guarded_0_1_124",
