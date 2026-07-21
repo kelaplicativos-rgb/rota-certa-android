@@ -6,11 +6,9 @@ import java.util.Locale
 /**
  * Distingue um card individual de uma tela com varias ofertas.
  *
- * A decisao nao depende do aplicativo. Uma identidade de passageiro e uma linha
- * curta com nome humano, sem numeros, moeda, endereco ou comandos da interface,
- * acompanhada por uma nota de usuario ou quantidade de avaliacoes nas linhas
- * seguintes. Exatamente uma identidade libera o card; duas ou mais caracterizam
- * lista de pedidos e impedem o calculo.
+ * Uma identidade valida e uma linha curta com nome humano cujo proximo dado
+ * visivel e imediatamente uma nota ou quantidade de avaliacoes. Esse requisito
+ * impede que titulos como "Nova notificacao" sejam confundidos com passageiro.
  */
 data class RidePassengerIdentityDecision(
     val accepted: Boolean,
@@ -35,9 +33,15 @@ object RidePassengerIdentityPolicy {
         "pix",
         "dinheiro",
         "pedido de viagem",
+        "pedidos de viagem",
         "nova corrida",
+        "nova notificação",
+        "nova notificacao",
+        "mostrar novos pedidos",
         "corrida",
         "passageiro",
+        "demanda",
+        "desempenho",
     )
 
     fun evaluate(text: String): RidePassengerIdentityDecision {
@@ -51,10 +55,9 @@ object RidePassengerIdentityPolicy {
         val candidates = buildList {
             lines.forEachIndexed { index, line ->
                 if (!looksLikeHumanName(line)) return@forEachIndexed
-                val following = lines.drop(index + 1).take(CONTEXT_LINE_COUNT)
-                val hasIdentityContext = following.any { value ->
-                    ratingRegex.matches(value.replace(',', '.')) || reviewCountRegex.matches(value)
-                }
+                val immediate = lines.getOrNull(index + 1).orEmpty()
+                val hasIdentityContext =
+                    ratingRegex.matches(immediate.replace(',', '.')) || reviewCountRegex.matches(immediate)
                 if (hasIdentityContext) add(line)
             }
         }.distinctBy(::canonical)
@@ -99,7 +102,6 @@ object RidePassengerIdentityPolicy {
         .replace(Regex("\\s+"), " ")
         .trim()
 
-    private const val CONTEXT_LINE_COUNT = 2
     private const val MIN_NAME_WORDS = 1
     private const val MAX_NAME_WORDS = 4
     private const val MIN_NAME_LENGTH = 2
