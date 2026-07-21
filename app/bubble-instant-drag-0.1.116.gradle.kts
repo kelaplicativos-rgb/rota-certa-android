@@ -121,7 +121,7 @@ fun enforceInstantBubbleDrag116(file: java.io.File) {
             val manager = windowManager ?: return false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    bubbleGestureActive = true
+                    bubbleGestureActive = (true)
                     bubbleDragStartedAtMillis = event.eventTime
                     analyzeJob?.cancel()
                     downRawX = event.rawX
@@ -189,9 +189,14 @@ fun enforceInstantBubbleDrag116(file: java.io.File) {
         text = listenerRegex.replaceFirst(text, listenerReplacement + "    private fun dp")
     }
 
+    val gestureActiveAssignmentPresent =
+        "bubbleGestureActive = true" in text || "bubbleGestureActive = (true)" in text
+    if (!gestureActiveAssignmentPresent) {
+        throw GradleException("Arraste instantaneo incompleto: atribuicao bubbleGestureActive")
+    }
+
     listOf(
         "bubble_instant_drag_0_1_116",
-        "bubbleGestureActive = true",
         "analyzeJob?.cancel()",
         "bubble_drag_accessibility_pause_0_1_116",
         "bubble_drag_screenshot_pause_0_1_116",
