@@ -221,12 +221,17 @@ fun patchInstantFarolDecision124(file: java.io.File) {
         if (marker !in text) throw GradleException("Contrato global do farol 0.1.124 incompleto: $marker")
     }
 
-    listOf(
-        "transient_overlay_empty_ignored=true",
-        "transient_empty_ignored_route_inflight=true",
-        "resetToIdle guarded active_ride_window",
-    ).forEach { forbidden ->
-        if (forbidden in text) throw GradleException("Protecao antiga ainda conserva resultado: $forbidden")
+    val processStart = text.indexOf("    private suspend fun processRideText(")
+    val processEnd = if (processStart >= 0) text.indexOf("    private suspend fun analyzeUniversalTwoAddress(", processStart) else -1
+    val processRegion = if (processStart >= 0 && processEnd > processStart) text.substring(processStart, processEnd) else ""
+    if ("UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in processRegion) {
+        throw GradleException("Finalizador 0.1.124 encontrou tolerancia executavel de leitura vazia.")
+    }
+    if ("if (ignoreTransientOverlayEmpty)" in text) {
+        throw GradleException("Finalizador 0.1.124 encontrou descarte executavel de leitura vazia.")
+    }
+    if ("if (shouldScanCurrentWindow() && hasActiveRegisteredDecision())" in text) {
+        throw GradleException("Finalizador 0.1.124 encontrou guard executavel que conserva a cor.")
     }
 
     file.writeText(text)
