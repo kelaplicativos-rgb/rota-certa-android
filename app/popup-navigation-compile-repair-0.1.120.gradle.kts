@@ -69,61 +69,64 @@ fun enforcePopupNavigationCompileRepair120(serviceFile: java.io.File, mainFile: 
 
     var main = mainFile.readText()
 
-    // Garante os argumentos na chamada principal de SettingsScreen.
+    // Garante os argumentos na chamada principal de SettingsScreen usando
+    // savedPlaces/onRename como ancoras estaveis, mesmo sem cardTemplates antigo.
     val callStart = main.indexOf("                TAB_CONFIG -> SettingsScreen(")
     val callEnd = if (callStart >= 0) main.indexOf("                TAB_TOOLS ->", callStart) else -1
     if (callStart < 0 || callEnd <= callStart) throw GradleException("Chamada SettingsScreen nao encontrada.")
     var call = main.substring(callStart, callEnd)
     if ("templateStatus = templateStatus" !in call) {
-        val anchor = "                    cardTemplates = cardTemplates,\n"
-        if (anchor !in call) throw GradleException("Argumento cardTemplates nao encontrado na chamada.")
-        call = call.replaceFirst(
-            anchor,
-            anchor + """                    templateStatus = templateStatus,
-                    unreadTemplatePrints = unreadTemplatePrints,
-                    onPickCardModels = { cardModelPicker.launch("image/*") },
-                    onDeleteCardModel = ::deleteCardModel,
-""",
-        )
+        val anchor = Regex("(?m)^\\s*savedPlaces\\s*=\\s*savedPlaces,\\s*$").find(call)
+            ?: throw GradleException("Argumento savedPlaces nao encontrado na chamada.")
+        val indent = anchor.value.takeWhile(Char::isWhitespace).substringAfterLast('\n')
+        val addition = buildString {
+            if ("cardTemplates = cardTemplates" !in call) append(indent + "cardTemplates = cardTemplates,\n")
+            append(indent + "templateStatus = templateStatus,\n")
+            append(indent + "unreadTemplatePrints = unreadTemplatePrints,\n")
+            append(indent + "onPickCardModels = { cardModelPicker.launch(\"image/*\") },\n")
+            append(indent + "onDeleteCardModel = ::deleteCardModel,\n")
+        }
+        call = call.substring(0, anchor.range.first) + addition + call.substring(anchor.range.first)
     }
     if ("onCreateSavedPlace =" !in call) {
-        val anchor = "                    onRegisterRideCard = ::registerRideCard,\n"
-        if (anchor !in call) throw GradleException("Argumento onRegisterRideCard nao encontrado na chamada.")
-        call = call.replaceFirst(
-            anchor,
-            anchor + """                    onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },
-                    onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },
-""",
-        )
+        val anchor = Regex("(?m)^\\s*onRenameSavedPlace\\s*=.*$").find(call)
+            ?: throw GradleException("Argumento onRenameSavedPlace nao encontrado na chamada.")
+        val indent = anchor.value.takeWhile(Char::isWhitespace).substringAfterLast('\n')
+        val addition = buildString {
+            if ("onRegisterRideCard =" !in call) append(indent + "onRegisterRideCard = ::registerRideCard,\n")
+            append(indent + "onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },\n")
+            append(indent + "onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },\n")
+        }
+        call = call.substring(0, anchor.range.first) + addition + call.substring(anchor.range.first)
     }
     main = main.substring(0, callStart) + call + main.substring(callEnd)
 
-    // Garante os parametros na assinatura de SettingsScreen.
+    // Garante os parametros na assinatura de SettingsScreen pelas mesmas ancoras.
     val settingsStart = main.indexOf("@Composable\nprivate fun SettingsScreen(")
     val settingsBody = if (settingsStart >= 0) main.indexOf(") {", settingsStart) else -1
     if (settingsStart < 0 || settingsBody <= settingsStart) throw GradleException("Assinatura SettingsScreen nao encontrada.")
     var signature = main.substring(settingsStart, settingsBody)
     if ("templateStatus: String" !in signature) {
-        val anchor = "    cardTemplates: List<RideCardTemplate>,\n"
-        if (anchor !in signature) throw GradleException("Parametro cardTemplates nao encontrado.")
-        signature = signature.replaceFirst(
-            anchor,
-            anchor + """    templateStatus: String,
-    unreadTemplatePrints: Int,
-    onPickCardModels: () -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
-""",
-        )
+        val anchor = "    savedPlaces: List<SavedPlace>,\n"
+        if (anchor !in signature) throw GradleException("Parametro savedPlaces nao encontrado.")
+        val addition = buildString {
+            if ("cardTemplates: List<RideCardTemplate>" !in signature) append("    cardTemplates: List<RideCardTemplate>,\n")
+            append("    templateStatus: String,\n")
+            append("    unreadTemplatePrints: Int,\n")
+            append("    onPickCardModels: () -> Unit,\n")
+            append("    onDeleteCardModel: (RideCardTemplate) -> Unit,\n")
+        }
+        signature = signature.replaceFirst(anchor, addition + anchor)
     }
     if ("onCreateSavedPlace: () -> Unit" !in signature) {
-        val anchor = "    onRegisterRideCard: (String?, String) -> Unit,\n"
-        if (anchor !in signature) throw GradleException("Parametro onRegisterRideCard nao encontrado.")
-        signature = signature.replaceFirst(
-            anchor,
-            anchor + """    onCreateSavedPlace: () -> Unit,
-    onCreateProximityAlert: () -> Unit,
-""",
-        )
+        val anchor = "    onRenameSavedPlace: (SavedPlace, String) -> Unit,\n"
+        if (anchor !in signature) throw GradleException("Parametro onRenameSavedPlace nao encontrado.")
+        val addition = buildString {
+            if ("onRegisterRideCard: (String?, String) -> Unit" !in signature) append("    onRegisterRideCard: (String?, String) -> Unit,\n")
+            append("    onCreateSavedPlace: () -> Unit,\n")
+            append("    onCreateProximityAlert: () -> Unit,\n")
+        }
+        signature = signature.replaceFirst(anchor, addition + anchor)
     }
     main = main.substring(0, settingsStart) + signature + main.substring(settingsBody)
 
