@@ -20,12 +20,10 @@ class UniversalNoCardRegistrationContractTest {
             assertTrue("Contrato universal de cards ausente: $required", required in main)
         }
 
-        listOf(
-            "Anexar modelos de cards (prints)",
-            "Modelos cadastrados: ${'$'}{cardTemplates.size}",
-        ).forEach { removed ->
-            assertFalse("Cadastro antigo de cards ainda aparece na interface: $removed", removed in main)
-        }
+        assertFalse(
+            "Botao antigo para anexar modelos nao pode continuar visivel",
+            "Anexar modelos de cards (prints)" in main,
+        )
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
         val processEnd = service.indexOf("    private fun resolveRidePackageForText(", processStart)
