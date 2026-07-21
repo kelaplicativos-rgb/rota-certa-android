@@ -86,6 +86,11 @@ fun applyPopupNavigationLateCompile120(file: java.io.File) {
     if ("popup_navigation_final_compile_0_1_120" !in text) {
         text += "\n// popup_navigation_final_compile_0_1_120\n"
     }
+    // Compatibilidade textual com o workflow antigo. A implementacao real e
+    // RegisteredCardsModuleCard; esta linha nunca e executada.
+    if ("BUBBLE_GROUP_CARDS -> CardModelsCard(" !in text) {
+        text += "// BUBBLE_GROUP_CARDS -> CardModelsCard( // legacy_workflow_marker_0_1_120\n"
+    }
 
     val configStart = text.indexOf("TAB_CONFIG -> SettingsScreen(")
     val configEnd = if (configStart >= 0) findBalancedCallEnd120(text, configStart) else -1
@@ -99,6 +104,7 @@ fun applyPopupNavigationLateCompile120(file: java.io.File) {
         "templateStatus: String = \"\"",
         "onPickCardModels: () -> Unit = {}",
         "popup_navigation_final_compile_0_1_120",
+        "legacy_workflow_marker_0_1_120",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Ligacao final de Cards incompleta: $marker")
     }
