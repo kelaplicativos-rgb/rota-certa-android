@@ -1,5 +1,6 @@
-// Repara referencias auxiliares da interface depois da remocao integral dos
-// modelos de cards. Nao altera o processamento da bolinha universal.
+// Repara referencias auxiliares da interface sem remover o modulo de Cards.
+// Os modelos permanecem opcionais para a leitura universal e preservados para
+// consulta, cadastro, backup e restauracao pelo usuario.
 val universalNoCardCompileRepair by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
     inputs.file(mainFile)
@@ -53,19 +54,15 @@ val universalNoCardCompileRepair by tasks.registering {
         if ("universal_no_card_compile_repair_0_1_102" !in text) {
             text += "\n// universal_no_card_compile_repair_0_1_102\n"
         }
-
-        listOf(
-            "Modelos de cards",
-            "Anexar modelos de cards",
-            "Cadastrar texto lido como modelo",
-            "CardModelsCard(",
-            "cardModelPicker",
-            "MonitoredAppsCard(",
-        ).forEach { forbidden ->
-            if (forbidden in text) throw GradleException("Recurso de cards ainda presente: $forbidden")
+        if ("cards_ui_allowed_compile_0_1_120" !in text) {
+            text += "// cards_ui_allowed_compile_0_1_120\n"
         }
+
         if (Regex("LaunchedEffect\\(launchIntent\\)\\s*LaunchedEffect\\(launchIntent\\)").containsMatchIn(text)) {
             throw GradleException("LaunchedEffect duplicado")
+        }
+        if ("repository.cardTemplates.first().forEach { template ->\n            repository.removeCardTemplate(template.id)" in text) {
+            throw GradleException("A interface nao pode apagar modelos de Cards automaticamente.")
         }
 
         file.writeText(text)
