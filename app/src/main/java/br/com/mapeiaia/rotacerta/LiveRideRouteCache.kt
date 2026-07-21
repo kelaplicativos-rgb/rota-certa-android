@@ -2,10 +2,6 @@ package br.com.mapeiaia.rotacerta
 
 import java.text.Normalizer
 import java.util.Locale
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 
 class LiveRideRouteCache(
@@ -22,7 +18,7 @@ class LiveRideRouteCache(
         key ?: return null
         val entry = entries[key] ?: return null
         val age = nowMillis() - entry.createdAtMillis
-        if (age !in 0L..ttlMillis) {
+        if (age > ttlMillis) {
             entries.remove(key)
             return null
         }
@@ -51,39 +47,10 @@ class LiveRideRouteCache(
     }
 
     @Synchronized
-    fun exportSnapshot(): String {
-        if (entries.isEmpty()) return ""
-        val snapshot = Snapshot(
-            entries = entries.map { (key, entry) -> SnapshotEntry(key = key, entry = entry) },
-        )
-        return snapshotJson.encodeToString(snapshot)
-    }
-
-    @Synchronized
-    fun importSnapshot(payload: String): Int {
-        if (payload.isBlank()) return 0
-        val snapshot = runCatching { snapshotJson.decodeFromString<Snapshot>(payload) }.getOrNull()
-            ?: return 0
-        val now = nowMillis()
-        entries.clear()
-        snapshot.entries.forEach { snapshotEntry ->
-            val age = now - snapshotEntry.entry.createdAtMillis
-            if (age in 0L..ttlMillis && snapshotEntry.entry.destinationCoordinate != null) {
-                entries[snapshotEntry.key] = snapshotEntry.entry
-            }
-        }
-        return entries.size
-    }
-
-    @Synchronized
-    fun entryCount(): Int = entries.size
-
-    @Synchronized
     fun clear() {
         entries.clear()
     }
 
-    @Serializable
     data class Key(
         val destination: String,
         val homeCoordinate: String,
@@ -106,7 +73,6 @@ class LiveRideRouteCache(
         val ageMillis: Long = 0L,
     )
 
-    @Serializable
     private data class Entry(
         val destinationCoordinate: Coordinate?,
         val homeCoordinate: Coordinate?,
@@ -116,26 +82,9 @@ class LiveRideRouteCache(
         val createdAtMillis: Long,
     )
 
-    @Serializable
-    private data class SnapshotEntry(
-        val key: Key,
-        val entry: Entry,
-    )
-
-    @Serializable
-    private data class Snapshot(
-        val version: Int = SNAPSHOT_VERSION,
-        val entries: List<SnapshotEntry> = emptyList(),
-    )
-
     companion object {
         const val ROUTE_CACHE_TTL_DAYS: Long = 14L
         const val ROUTE_CACHE_TTL_MILLIS: Long = ROUTE_CACHE_TTL_DAYS * 24L * 60L * 60L * 1000L
-        private const val SNAPSHOT_VERSION = 1
-        private val snapshotJson = Json {
-            ignoreUnknownKeys = true
-            encodeDefaults = true
-        }
 
         fun keyFor(
             fields: RideFields,
