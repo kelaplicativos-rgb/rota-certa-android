@@ -53,12 +53,14 @@ class InstantFarolDecision124Test {
     }
 
     @Test
-    fun emptyAccessibilityReadsAreAlwaysDeliveredToClearPipeline() {
+    fun emptyAccessibilityReadsCannotKeepThePreviousDecision() {
         val service = serviceSource()
 
-        assertTrue("Ciclo continuo precisa encaminhar leitura vazia", "global_continuous_empty_clear_0_1_124" in service)
-        assertTrue("Agendamento precisa encaminhar leitura vazia", "global_scheduled_empty_clear_0_1_124" in service)
+        assertTrue("Limpeza imediata global precisa existir", "global_inactive_clear_now_0_1_124" in service)
+        assertTrue("Reset para cinza nao pode ser bloqueado", "global_idle_never_guarded_0_1_124" in service)
+        assertTrue("Overlay cinza precisa ser permitido", "global_overlay_idle_allowed_0_1_124" in service)
         assertFalse("Leitura vazia nao pode ser ignorada", "transient_overlay_empty_ignored=true" in service)
+        assertFalse("Rota em andamento nao pode proteger leitura vazia", "transient_empty_ignored_route_inflight=true" in service)
     }
 
     @Test
