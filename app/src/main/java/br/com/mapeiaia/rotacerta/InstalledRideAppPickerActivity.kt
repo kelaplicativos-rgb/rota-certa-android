@@ -42,32 +42,61 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class InstalledRideAppPickerActivity : ComponentActivity() {
+    private val settingsRepository by lazy { SettingsRepository(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 InstalledRideAppPickerScreen(
                     onClose = ::finish,
-                    onSave = { packages ->
-                        SelectedRideAppStore.save(applicationContext, packages)
-                        Toast.makeText(
-                            applicationContext,
-                            if (packages.isEmpty()) {
-                                "Nenhum aplicativo selecionado. A leitura ao vivo ficou pausada."
-                            } else {
-                                "${packages.size} aplicativo(s) selecionado(s) para leitura."
-                            },
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        finish()
-                    },
+                    onSave = ::saveSelectedApplications,
                 )
             }
+        }
+    }
+
+    private fun saveSelectedApplications(packages: Set<String>) {
+        lifecycleScope.launch {
+            val normalized = packages.mapNotNull(SelectedRideAppStore::normalize).toSortedSet()
+            SelectedRideAppStore.save(applicationContext, normalized)
+
+            val current = settingsRepository.settings.first()
+            val knownPackages = setOf(
+                SelectedRideAppStore.PACKAGE_99_DRIVER,
+                SelectedRideAppStore.PACKAGE_UBER_DRIVER,
+                SelectedRideAppStore.PACKAGE_INDRIVE_DRIVER,
+            )
+            settingsRepository.saveSettings(
+                current.copy(
+                    restrictToSelectedRideApps = true,
+                    monitor99 = SelectedRideAppStore.PACKAGE_99_DRIVER in normalized,
+                    monitorUber = SelectedRideAppStore.PACKAGE_UBER_DRIVER in normalized,
+                    monitorInDrive = SelectedRideAppStore.PACKAGE_INDRIVE_DRIVER in normalized,
+                    extraMonitoredPackages = normalized
+                        .filterNot(knownPackages::contains)
+                        .joinToString(","),
+                ),
+            )
+
+            Toast.makeText(
+                applicationContext,
+                if (normalized.isEmpty()) {
+                    "Nenhum aplicativo selecionado. A leitura ao vivo ficou pausada."
+                } else {
+                    "${normalized.size} aplicativo(s) selecionado(s) para leitura."
+                },
+                Toast.LENGTH_LONG,
+            ).show()
+            finish()
         }
     }
 }
@@ -85,7 +114,14 @@ private fun InstalledRideAppPickerScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val packageManager = context.packageManager
     var applications by remember { mutableStateOf<List<InstalledRideAppInfo>>(emptyList()) }
-    var selectedPackages by remember { mutableStateOf(SelectedRideAppStore.read(context)) }
+    var selectedPackages by remember {
+        mutableStateOf(
+            SelectedRideAppStore.selectedPackages(
+                context = context,
+                legacySettings = null,
+            ),
+        )
+    }
     var search by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
 
