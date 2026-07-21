@@ -120,7 +120,7 @@ val universalRouteInflightProtection120 by tasks.registering {
             incomingPackageName = resolvedPackage,
         )
         if (protectActiveRoute) {
-            traceEvent("universal.foreground ignored_foreign_event_during_route=true incoming=$resolvedPackage active=${universalActiveRidePackageName.orEmpty()}")
+            traceEvent("universal.foreground ignored_foreign_event_during_route=true incoming=${'$'}resolvedPackage active=${'$'}{universalActiveRidePackageName.orEmpty()}")
             return
         }
         val previousObservedPackage = universalForegroundPackageName
