@@ -57,10 +57,6 @@ $indentedCall
         "ExpandableCard(title = \"Aplicativos que a bolinha vai ler\", initiallyExpanded = true)",
     )
     text = text.replace(
-        "Text(\"Buscar aplicativos instalados\")",
-        "Text(\"Selecionar aplicativos instalados\")",
-    )
-    text = text.replace(
         "BUBBLE_GROUP_CARDS -> \"Cadastre, confira e remova modelos de cards.\"",
         "BUBBLE_GROUP_CARDS -> \"Selecione os aplicativos permitidos e gerencie os modelos de cards.\"",
     )
@@ -74,7 +70,7 @@ $indentedCall
         "InstalledRideAppsCard()",
         "RegisteredCardsModuleCard(",
         "Aplicativos que a bolinha vai ler",
-        "Selecionar aplicativos instalados",
+        "Buscar aplicativos instalados",
         "cards_selected_apps_visible_0_1_123",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Modulo Cards 0.1.123 incompleto: $marker")
