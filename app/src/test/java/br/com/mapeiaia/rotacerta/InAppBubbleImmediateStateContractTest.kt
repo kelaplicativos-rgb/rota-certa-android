@@ -31,7 +31,8 @@ class InAppBubbleImmediateStateContractTest {
         assertTrue("Servico precisa navegar pelos grupos", "openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))" in service)
 
         assertTrue("Locais e alertas precisam usar tela filtrada", "separate_saved_place_modules_0_1_120" in main)
-        assertTrue("Cards precisam abrir CardModelsCard", "BUBBLE_GROUP_CARDS -> CardModelsCard(" in main)
+        assertTrue("Cards precisam abrir o modulo cadastrado", "BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard(" in main)
+        assertTrue("Estado funcional de Cards precisa existir", "popup_navigation_card_state_0_1_120" in main)
         assertFalse("Relatorios nao podem permanecer no popup", "ReportsBubbleShortcutModule," in catalog.substringAfter("val modules:"))
         assertFalse("Alerta rapido duplicado nao pode permanecer", "AlertBubbleShortcutModule," in catalog.substringAfter("val modules:"))
         assertFalse("Estado antigo ON/OFF nao deve controlar a Home", "settings = bubbleControlSettings," in main)
