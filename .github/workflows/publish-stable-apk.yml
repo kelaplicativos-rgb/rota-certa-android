@@ -81,7 +81,7 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.122':
+          if version_name != '0.1.123':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
@@ -117,7 +117,8 @@ jobs:
             "somente os aplicativos marcados." \
             "Buscar aplicativo instalado" \
             "Salvar aplicativos selecionados" \
-            "Buscar aplicativos instalados" \
+            "Aplicativos que a bolinha vai ler" \
+            "Selecionar aplicativos instalados" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -149,14 +150,12 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.122:
-          - Nova tela para buscar os aplicativos realmente instalados no celular.
-          - Selecao por nome, icone e pacote, com busca e marcacao multipla.
-          - A bolinha, a acessibilidade, o OCR e a leitura de cards operam somente nos aplicativos selecionados.
-          - Aplicativos nao selecionados deixam de gerar coleta de texto, prints e diagnosticos repetidos.
-          - Eventos duplicados de acessibilidade sao agrupados antes de chegar ao leitor.
-          - A base de mais de 18 mil radares agora usa indice espacial e entrega ao motor apenas radares proximos.
-          - Mantidos o alerta audiovisual dos radares e o rastreamento de trabalho local da versao 0.1.121.
+          Recursos 0.1.123:
+          - O seletor de aplicativos instalados agora aparece dentro do modulo Cards da bolinha.
+          - O bloco "Aplicativos que a bolinha vai ler" fica acima dos modelos cadastrados.
+          - 99 Driver, Uber Driver e inDrive continuam reconhecidos previamente, mas somente os apps marcados sao lidos.
+          - Mantidos o bloqueio de acessibilidade/OCR fora dos apps selecionados e o agrupamento de eventos repetidos.
+          - Mantidos o indice espacial de radares, o alerta audiovisual e o rastreamento de trabalho local.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
