@@ -81,7 +81,7 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.123':
+          if version_name != '0.1.124':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
@@ -119,6 +119,9 @@ jobs:
             "Salvar aplicativos selecionados" \
             "Aplicativos de corrida monitorados" \
             "Buscar aplicativos instalados" \
+            "Tela com varias corridas/passageiros" \
+            "Passageiro unico nao identificado" \
+            "resultado removido imediatamente" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -150,12 +153,16 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.123:
-          - O seletor de aplicativos instalados agora aparece dentro do modulo Cards da bolinha.
-          - O bloco "Aplicativos de corrida monitorados" fica acima dos modelos cadastrados.
-          - 99 Driver, Uber Driver e inDrive continuam reconhecidos previamente, mas somente os apps marcados sao lidos.
-          - Mantidos o bloqueio de acessibilidade/OCR fora dos apps selecionados e o agrupamento de eventos repetidos.
-          - Mantidos o indice espacial de radares, o alerta audiovisual e o rastreamento de trabalho local.
+          Recursos 0.1.124:
+          - Correcao do atraso entre a leitura do card e a cor verde/vermelha.
+          - Configuracoes ja carregadas em memoria sao usadas sem reler o armazenamento antes de cada rota.
+          - A bolinha recebe verde/vermelho antes da gravacao assincorna do historico.
+          - Qualquer mudanca, card ausente ou leitura vazia remove imediatamente o resultado anterior.
+          - A regra e global e igual para todos os aplicativos selecionados.
+          - Somente uma identidade de passageiro com pelo menos embarque e destino libera o calculo.
+          - Telas com varios passageiros/pedidos nao chamam geocodificacao nem rota.
+          - O amarelo foi mantido apenas como indicador visual de analise.
+          - O cache de geocodificacao e rotas da sessao continua ativo para destinos repetidos.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
