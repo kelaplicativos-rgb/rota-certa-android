@@ -20,36 +20,46 @@ class DecisionEngine {
             return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
         }
 
-        if (destinationCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
-        }
+        val hasExactAddressRoute = homeDistanceKm != null || alternativeDistanceKm != null
+        if (destinationCoordinate == null && !hasExactAddressRoute) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada ou rota exata confiavel.")
+        } // exact_address_route_without_blocking_geocode_0_1_128
 
         if (homeCoordinate == null && alternativeCoordinate == null) {
             return result(fields, fullText, Recommendation.InsufficientData, "Configure a casa ou o alfinete com coordenada confiavel.")
         }
 
-        val distanceToHome = homeCoordinate?.let { homeDistanceKm ?: haversineKm(destinationCoordinate, it) }
-        val distanceToAlternative = alternativeCoordinate?.let { alternativeDistanceKm ?: haversineKm(destinationCoordinate, it) }
+        val needsHomeDistance = homeCoordinate != null
+        val needsAlternativeDistance = alternativeCoordinate != null
+        if ((needsHomeDistance && homeDistanceKm == null) || (needsAlternativeDistance && alternativeDistanceKm == null)) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.InsufficientData,
+                reason = "Distancia real do Google Maps indisponivel; calculo em linha reta proibido.",
+            )
+        }
+
+        val distanceToHome = if (needsHomeDistance) homeDistanceKm else null
+        val distanceToAlternative = if (needsAlternativeDistance) alternativeDistanceKm else null
 
         if (distanceToHome == null && distanceToAlternative == null) {
             return result(
                 fields = fields,
                 fullText = fullText,
                 recommendation = Recommendation.InsufficientData,
-                reason = "Nao foi possivel calcular a distancia do destino final.",
+                reason = "Nao foi possivel calcular a distancia real do destino final pelo Google Maps.",
             )
         }
 
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
-        val usedApproximation = (homeCoordinate != null && homeDistanceKm == null) || (alternativeCoordinate != null && alternativeDistanceKm == null)
-        val distanceSource = if (usedApproximation) "aproximada" else "Google Maps"
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
         val reason = when {
-            insideHome -> "Destino final dentro do raio da casa por distancia $distanceSource."
-            insideAlternative -> "Destino final dentro do raio do alfinete por distancia $distanceSource."
-            else -> "Destino final fora dos raios configurados por distancia $distanceSource."
+            insideHome -> "Destino final dentro do raio da casa por rota real do Google Maps."
+            insideAlternative -> "Destino final dentro do raio do alfinete por rota real do Google Maps."
+            else -> "Destino final fora dos raios configurados por rota real do Google Maps."
         }
 
         return result(
@@ -87,6 +97,4 @@ class DecisionEngine {
         pickupToHomeKm = pickupToHomeKm,
         pickupToAlternativeKm = pickupToAlternativeKm,
     )
-
-    private fun haversineKm(a: Coordinate, b: Coordinate): Double = GeoDistance.meters(a, b) / 1000.0
 }

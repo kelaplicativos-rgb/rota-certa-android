@@ -1,0 +1,185 @@
+name: Runtime Bubble UI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - codex/pr5-stable-bubble-combined
+
+concurrency:
+  group: runtime-bubble-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-ui:
+    name: Install and verify separated popup controls on Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_AVD_HOME: ${{ github.workspace }}/.android/avd
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Prepare runtime evidence directory
+        run: |
+          mkdir -p runtime-ui "$ANDROID_AVD_HOME"
+          echo "RUNTIME_STAGE=prepared" > runtime-ui/progress.txt
+          echo "HEAD_SHA=${GITHUB_SHA}" >> runtime-ui/progress.txt
+
+      - name: Build APK for runtime simulation
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: gradle assembleDebug --no-daemon --stacktrace --console=plain
+
+      - name: Validate generated 0.1.127 contract before emulator
+        run: |
+          set -euo pipefail
+          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          catalog="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt"
+          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          grep -Fq 'popup_navigation_main_0_1_120' "$main"
+          grep -Fq 'startup_permissions_0_1_120' "$main"
+          grep -Fq 'modules.size == 15' "$catalog"
+          grep -Fq 'popup_close_only_on_drag_0_1_120' "$service"
+          grep -Fq 'reading_visible_feedback_0_1_120' "$service"
+          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
+          grep -Fq 'const val SCAN_LOOP_MS = 350L' "$service"
+          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
+          grep -Fq 'Buscar por nome ou endereco' "$main"
+          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
+            echo 'ERRO: @Composable duplicado nos fontes usados pelo emulador.'
+            exit 1
+          fi
+          if grep -Fq '            ProfessionalBubbleDashboard(' "$main"; then
+            echo 'A grade circular ainda esta sendo renderizada na Home.' >&2
+            exit 1
+          fi
+
+      - name: Prepare runtime smoke script
+        run: |
+          cp scripts/runtime_bubble_shortcuts_smoke_117.sh runtime-ui/runtime_bubble_shortcuts_smoke_127.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('runtime-ui/runtime_bubble_shortcuts_smoke_127.sh')
+          text = path.read_text()
+          old = 'Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes'
+          new = 'Rota|Destino|Alertas|Locais|Radares|Aparencia|Permissoes|Backup|WhatsApp da tela|Coletor|Limpar area de transferencia|Depurar|Encerrar Rota Certa|Cards cadastrados|Leitura'
+          text = text.replace('runtime_shortcut_count" value="6', 'runtime_shortcut_count" value="15')
+          text = text.replace(old, new)
+          text = text.replace('RESOURCE_SHORTCUTS=6', 'RESOURCE_SHORTCUTS=15')
+          text = text.replace(
+              'SHORTCUT_MENU=lightweight',
+              'SHORTCUT_MENU=lightweight\nMODULE_SEPARATION=approved\nAPP_START=permissions\nREPORT_SHORTCUT=removed\nDUPLICATE_ALERT_SHORTCUT=removed\nREADING_FEEDBACK=visible\nSTRICT_MANUAL_APPS_AND_CARDS=approved\nSAVED_PLACES_SEARCH=approved',
+          )
+          path.write_text(text)
+          PY
+          chmod +x runtime-ui/runtime_bubble_shortcuts_smoke_127.sh
+
+      - name: Install Android emulator image and libraries
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libgl1 libx11-6 libxcomposite1 libxcursor1 libxi6 libxtst6 libnss3
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "system-images;android-34;default;x86_64"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --force --name rota_runtime --package "system-images;android-34;default;x86_64" --device pixel_2
+
+      - name: Start emulator and run shortcut smoke test
+        id: runtime
+        continue-on-error: true
+        env:
+          RUNTIME_UI_DIR: runtime-ui
+          RUNTIME_APK: app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          set -uo pipefail
+          EMULATOR_BIN="$ANDROID_SDK_ROOT/emulator/emulator"
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm | tee runtime-ui/kvm.txt
+          else
+            echo "KVM_NOT_AVAILABLE" | tee runtime-ui/kvm.txt
+          fi
+          "$EMULATOR_BIN" @rota_runtime \
+            -no-window \
+            -noaudio \
+            -no-boot-anim \
+            -no-snapshot \
+            -wipe-data \
+            -gpu swiftshader_indirect \
+            -accel auto \
+            > runtime-ui/emulator.log 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            echo "RUNTIME_STAGE=cleanup" >> runtime-ui/progress.txt
+            timeout 8s adb emu kill >/dev/null 2>&1 || true
+            kill -TERM "$emulator_pid" >/dev/null 2>&1 || true
+            for _ in $(seq 1 10); do
+              kill -0 "$emulator_pid" >/dev/null 2>&1 || break
+              sleep 1
+            done
+            kill -KILL "$emulator_pid" >/dev/null 2>&1 || true
+            timeout 5s adb kill-server >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          set +e
+          timeout --signal=TERM --kill-after=20s 480s bash runtime-ui/runtime_bubble_shortcuts_smoke_127.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          runtime_status=$?
+          set -e
+          echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
+          exit "$runtime_status"
+
+      - name: Upload Android screenshots and validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-bubble-shortcuts-validation
+          path: runtime-ui/
+          if-no-files-found: error
+
+      - name: Require successful shortcut runtime simulation
+        if: always()
+        run: |
+          echo "Runtime action outcome: ${{ steps.runtime.outcome }}"
+          test "${{ steps.runtime.outcome }}" = "success"
+          test -f runtime-ui/runtime-validation.txt
+          grep -Fq 'INSTANT_DRAG=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'DRAG_OPENED_HOME=false' runtime-ui/runtime-validation.txt
+          grep -Fq 'MAIN_TAP=opened_resource_shortcuts' runtime-ui/runtime-validation.txt
+          grep -Fq 'SECOND_TAP_CLOSED=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'RESOURCE_SHORTCUTS=15' runtime-ui/runtime-validation.txt
+          grep -Fq 'SHORTCUT_MENU=lightweight' runtime-ui/runtime-validation.txt
+          grep -Fq 'MODULE_SEPARATION=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'APP_START=permissions' runtime-ui/runtime-validation.txt
+          grep -Fq 'REPORT_SHORTCUT=removed' runtime-ui/runtime-validation.txt
+          grep -Fq 'DUPLICATE_ALERT_SHORTCUT=removed' runtime-ui/runtime-validation.txt
+          grep -Fq 'READING_FEEDBACK=visible' runtime-ui/runtime-validation.txt
+          grep -Fq 'STRICT_MANUAL_APPS_AND_CARDS=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'SAVED_PLACES_SEARCH=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
+          test -s runtime-ui/bubble-drag-response-ms.txt
+          drag_ms="$(cat runtime-ui/bubble-drag-response-ms.txt)"
+          test "$drag_ms" -le 1200
+          test -s runtime-ui/shortcuts.png

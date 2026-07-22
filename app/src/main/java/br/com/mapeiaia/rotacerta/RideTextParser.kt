@@ -12,6 +12,8 @@ class RideTextParser {
     private val roadCodeRegex = Regex("""^[A-Z]{2}-\d{3}$""")
     private val mapPointRegex = Regex("""^[AB]\s+(.+)""", RegexOption.IGNORE_CASE)
     private val markerOnlyRegex = Regex("""^[AB]$""", RegexOption.IGNORE_CASE)
+    private val passengerCountLineRegex = Regex("""^\(?\d{1,5}\)?(?:\s+agora mesmo|\s+\d{1,3}\s*min\.?)?$""", RegexOption.IGNORE_CASE)
+    private val ratingLineRegex = Regex("""^\d(?:[,.]\d{1,2})$""")
     private val addressWords = listOf(
         "rua",
         "r.",
@@ -31,6 +33,10 @@ class RideTextParser {
         "estacao",
         "estação",
         "comercial",
+        "restaurante",
+        "lanchonete",
+        "mercado",
+        "hospital",
     )
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
@@ -131,11 +137,18 @@ class RideTextParser {
                 if (started) break
                 continue
             }
+            if (isInDriveMetaLine(line)) continue
 
             val address = buildAddressBlock(lines, index, line)
             if (address != null) {
                 started = true
                 if (addresses.none { it.equals(address, ignoreCase = true) }) addresses += address
+                continue
+            }
+
+            val placeDestination = if (started && addresses.size == 1) buildInDrivePlaceDestinationBlock(lines, index, line) else null
+            if (placeDestination != null) {
+                addresses += placeDestination
                 continue
             }
 
@@ -147,6 +160,45 @@ class RideTextParser {
             pickup = addresses.first(),
             destination = addresses.last { !it.equals(addresses.first(), ignoreCase = true) },
         )
+    }
+
+    private fun buildInDrivePlaceDestinationBlock(lines: List<String>, startIndex: Int, rawFirstLine: String): String? {
+        if (startIndex !in lines.indices) return null
+        val firstLine = cleanAddressLine(rawFirstLine)
+        if (!looksLikeInDrivePlaceDestination(firstLine)) return null
+
+        val parts = mutableListOf(firstLine)
+        var nextIndex = startIndex + 1
+        while (nextIndex < lines.size && parts.size < 3) {
+            val next = cleanAddressLine(lines[nextIndex])
+            if (!isAddressContinuation(next, parts.last())) break
+            parts += next
+            nextIndex += 1
+        }
+        return parts.joinToString(" ").replace(Regex("""\s+"""), " ").trim()
+    }
+
+    private fun looksLikeInDrivePlaceDestination(value: String): Boolean {
+        if (value.length < 8 || isNoise(value) || isInDriveMetaLine(value) || isRideMarker(value)) return false
+        val normalized = value.lowercase()
+        val hasLetters = normalized.any { it.isLetter() }
+        val hasLocality = normalized.contains("(") && normalized.contains(")") ||
+            normalized.contains("sao paulo") ||
+            normalized.contains("são paulo") ||
+            normalized.contains(" - sp") ||
+            normalized.contains("state of") ||
+            normalized.contains("district")
+        val hasPlaceWord = listOf(
+            "restaurante",
+            "lanchonete",
+            "mercado",
+            "shopping",
+            "hospital",
+            "escola",
+            "consultoria",
+            "comercial",
+        ).any { normalized.contains(it) }
+        return hasLetters && (hasLocality || hasPlaceWord)
     }
 
     private fun isInDriveOfferBoundary(line: String): Boolean {
@@ -365,7 +417,7 @@ class RideTextParser {
                     return sameLineValue
                 }
                 findAddressCandidates(lines.drop(index + 1).take(6)).firstOrNull()?.let { return it }
-                lines.getOrNull(index + 1)?.takeIf { it.length >= 5 && !isNoise(it) }?.let { return it }
+                lines.getOrNull(index + 1)?.takeIf { it.length >= 5 && !isNoise(it) && !isInDriveMetaLine(it) }?.let { return it }
             }
         }
         return null
@@ -412,7 +464,7 @@ class RideTextParser {
     private fun nextAddressLineIndex(lines: List<String>, startIndex: Int): Int? =
         (startIndex until lines.size).firstOrNull { index ->
             val candidate = cleanAddressLine(lines[index])
-            candidate.isNotBlank() && !isNoise(candidate) && !isRideMarker(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
+            candidate.isNotBlank() && !isNoise(candidate) && !isInDriveMetaLine(candidate) && !isRideMarker(candidate) && !roadCodeRegex.matches(candidate) && !markerOnlyRegex.matches(candidate)
         }
 
     private fun cleanAddressLine(value: String): String {
@@ -425,7 +477,7 @@ class RideTextParser {
     }
 
     private fun isAddressContinuation(value: String, previousLine: String): Boolean {
-        if (value.length < 2 || isNoise(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
+        if (value.length < 2 || isNoise(value) || isInDriveMetaLine(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
         if (value.equals("A", ignoreCase = true) || value.equals("B", ignoreCase = true)) return false
         if (mapPointRegex.find(value) != null) return false
 
@@ -450,11 +502,11 @@ class RideTextParser {
     }
 
     private fun looksLikeAddress(value: String): Boolean {
-        if (isNoise(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
+        if (isNoise(value) || isInDriveMetaLine(value) || isRideMarker(value) || roadCodeRegex.matches(value)) return false
         val normalized = value.lowercase()
         val hasAddressWord = addressWords.any { normalized.contains(it) }
         val hasAddressNumber = Regex("""\b\d{1,5}\b""").containsMatchIn(value) &&
-            listOf(",", "-", "(", ")").any { value.contains(it) }
+            listOf(",", "-").any { value.contains(it) }
         return hasAddressWord || hasAddressNumber
     }
 
@@ -483,7 +535,24 @@ class RideTextParser {
             normalized.contains("pedido de viagem") ||
             normalized.contains("preço") ||
             normalized.contains("preco") ||
-            normalized.contains("tarifa")
+            normalized.contains("tarifa") ||
+            normalized.contains("reclamar") ||
+            normalized.contains("ocultar") ||
+            normalized.contains("escolher no mapa")
+    }
+
+    private fun isInDriveMetaLine(value: String): Boolean {
+        val normalized = value.lowercase().trim()
+        return passengerCountLineRegex.matches(normalized) ||
+            ratingLineRegex.matches(normalized) ||
+            normalized == "agora mesmo" ||
+            normalized.endsWith(" agora mesmo") ||
+            normalized.contains("nova notificação") ||
+            normalized.contains("nova notificacao") ||
+            normalized.contains("ative outras tarifas") ||
+            normalized.contains("configurar tarifas") ||
+            normalized.contains("demanda") ||
+            normalized.contains("desempenho")
     }
 
     private fun isRideMarker(value: String): Boolean {
