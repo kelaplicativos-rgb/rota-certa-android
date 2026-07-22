@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'version.properties'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
@@ -50,18 +51,18 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Build tested APK with monotonic version code
+      - name: Build, test and lint the single stable version
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -euo pipefail
-          publisher_run="$GITHUB_RUN_NUMBER"
-          gradle_run_number="$((3000 + publisher_run))"
-          expected_version_code="$((1000 + gradle_run_number))"
-          echo "PUBLISHER_RUN_NUMBER=$publisher_run" >> "$GITHUB_ENV"
-          echo "GRADLE_RUN_NUMBER=$gradle_run_number" >> "$GITHUB_ENV"
-          echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
-          GITHUB_RUN_NUMBER="$gradle_run_number" gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace --console=plain
+          source version.properties
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          echo "PUBLISHER_RUN_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "EXPECTED_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "EXPECTED_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          gradle clean testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace --console=plain
 
       - name: Validate final 0.1.127 contract and APK
         run: |
@@ -75,7 +76,7 @@ jobs:
           test -f "$apk"
           test -f "$metadata"
 
-          python3 - "$metadata" "$EXPECTED_VERSION_CODE" <<'PY'
+          python3 - "$metadata" "$EXPECTED_VERSION_CODE" "$EXPECTED_VERSION_NAME" <<'PY'
           import json, sys
           from pathlib import Path
           data = json.loads(Path(sys.argv[1]).read_text())
@@ -85,11 +86,16 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.127':
-              raise SystemExit(f'versionName incorreto: {version_name}')
+          expected_name = sys.argv[3]
+          if version_name != expected_name:
+              raise SystemExit(f'versionName incorreto: atual={version_name} esperado={expected_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
           PY
+
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk" | tee stable-apk-signature.txt
 
           grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
           grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
@@ -159,6 +165,9 @@ jobs:
           FAST_RED_EXACT_ROUTE_CONTINUES=approved
           FALLBACK_SCAN_INTERVAL_MS=120
           HARDCODED_SAO_PAULO_GEOCODING=removed
+          UNIFIED_VERSION_CODE=approved
+          CLEAN_BUILD=approved
+          LINT_ERRORS=0
           EOF
 
       - name: Publish stable GitHub release
@@ -192,6 +201,8 @@ jobs:
           - O vermelho geometrico aparece imediatamente e a rota exata continua para preencher o km.
           - A geocodificacao nao inventa Sao Paulo quando a cidade nao foi informada.
           - O ciclo de seguranca de 120 ms foi preservado.
+          - Debug, auditoria e publicacao usam o mesmo versionCode.
+          - Clean build, testes e Android Lint sao obrigatorios antes da publicacao.
           EOF
           cat final-0127-stable-validation.txt >> stable-release-notes.md
 
@@ -239,6 +250,7 @@ jobs:
           path: |
             published/rota-certa-stable-debug.apk
             rota-certa-stable-debug.apk.sha256
+            stable-apk-signature.txt
             stable-publication-verification.txt
             stable-release-notes.md
             final-0127-stable-validation.txt
