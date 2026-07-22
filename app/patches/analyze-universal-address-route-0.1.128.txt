@@ -12,8 +12,8 @@
         val cacheKey = LiveRideRouteCache.keyFor(
             fields = fields,
             settings = settings,
-            packageName = null,
-            cardSignature = null,
+            packageName = universalActiveRidePackageName,
+            cardSignature = manualActiveCardTemplateId127,
         )
         val cached = universalRouteCache.get(cacheKey)
         if (cached != null) {
@@ -54,8 +54,13 @@
         }
         if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
 
-        val (homeFast128, alternativeFast128) = coroutineScope {
-            val homeDeferred128 = async {
+        val parallelResult128 = coroutineScope {
+            val destinationCoordinateDeferred128 = async {
+                val started128 = System.currentTimeMillis()
+                val coordinate128 = fields.destination?.let { geocodeBest(it, region, settings) }
+                coordinate128 to (System.currentTimeMillis() - started128)
+            }
+            val homeRouteDeferred127 = async {
                 val started128 = System.currentTimeMillis()
                 val route128 = if (homeCoordinate != null && destinationAddress128.isNotBlank() && apiKey128.isNotBlank()) {
                     googleMapsService.drivingDistanceFromAddress(
@@ -66,7 +71,7 @@
                 } else null
                 route128 to (System.currentTimeMillis() - started128)
             }
-            val alternativeDeferred128 = async {
+            val alternativeRouteDeferred127 = async {
                 val started128 = System.currentTimeMillis()
                 val route128 = if (alternativeCoordinate != null && destinationAddress128.isNotBlank() && apiKey128.isNotBlank()) {
                     googleMapsService.drivingDistanceFromAddress(
@@ -77,14 +82,62 @@
                 } else null
                 route128 to (System.currentTimeMillis() - started128)
             }
-            homeDeferred128.await() to alternativeDeferred128.await()
-        } // direct_address_routes_parallel_0_1_128
 
+            val destinationGeocode128 = destinationCoordinateDeferred128.await()
+            if (isUniversalResultFresh(generation, screenHash, addressSignature)) {
+                val lowerBound128 = ExactRadiusLowerBoundPolicy.evaluate(
+                    destinationCoordinate = destinationGeocode128.first,
+                    settings = settings,
+                    homeCoordinate = homeCoordinate,
+                    alternativeCoordinate = alternativeCoordinate,
+                )
+                if (lowerBound128.definitelyOutside) {
+                    val fastOutsideResult128 = AnalysisResult(
+                        createdAtMillis = System.currentTimeMillis(),
+                        extractedText = snapshotText,
+                        fields = fields,
+                        recommendation = Recommendation.OutsideRadius,
+                        reason = "Destino certamente fora dos raios: a distancia minima possivel ja ultrapassa o limite configurado.",
+                    )
+                    rememberBubbleReason("universal_fast_red", fastOutsideResult128.reason)
+                    showOverlay(RadarColor.Red, distanceKm = null)
+                    traceEvent("universal.fast_red provisional=true exact_route_continues=true")
+                    LiveFailureTraceStore.recordStep(
+                        stage = "route.lower_bound.fast_red",
+                        details = "exact_route_continues=true; lower_bound_km=${lowerBound128.nearestLowerBoundKm}",
+                        packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+                        generation = generation,
+                        screenHash = screenHash,
+                    ) // subsecond_exact_red_lower_bound_0_1_125 fast_red_continues_exact_route_0_1_127
+                }
+            }
+
+            Triple(
+                destinationGeocode128,
+                homeRouteDeferred127.await(),
+                alternativeRouteDeferred127.await(),
+            ) // parallel_exact_routes_0_1_127 direct_address_routes_parallel_0_1_128
+        }
+        if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+
+        val destinationGeocode128 = parallelResult128.first
+        val homeFast128 = parallelResult128.second
+        val alternativeFast128 = parallelResult128.third
         var destinationCoordinate = homeFast128.first?.originCoordinate
             ?: alternativeFast128.first?.originCoordinate
+            ?: destinationGeocode128.first
         var homeDistanceKm = homeFast128.first?.distanceKm
         var alternativeDistanceKm = alternativeFast128.first?.distanceKm
 
+        LiveFailureTraceStore.recordGeocode(
+            label = "destination.parallel",
+            query = destinationAddress128,
+            coordinate = destinationGeocode128.first?.let { coordinate -> "${coordinate.latitude},${coordinate.longitude}" },
+            elapsedMillis = destinationGeocode128.second,
+            packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+            generation = generation,
+            screenHash = screenHash,
+        )
         LiveFailureTraceStore.recordRoute(
             label = "home.address_fast",
             distanceKm = homeDistanceKm,
@@ -102,38 +155,22 @@
             screenHash = screenHash,
         )
 
-        val needsDestinationFallback128 = destinationCoordinate == null
         val needsHomeFallback128 = homeCoordinate != null && homeDistanceKm == null
         val needsAlternativeFallback128 = alternativeCoordinate != null && alternativeDistanceKm == null
-        if (needsDestinationFallback128 || needsHomeFallback128 || needsAlternativeFallback128) {
-            val geocodeStartedAt128 = System.currentTimeMillis()
-            val fallbackCoordinate128 = destinationCoordinate
-                ?: fields.destination?.let { geocodeBest(it, region, settings) }
-            if (destinationCoordinate == null) destinationCoordinate = fallbackCoordinate128
-            LiveFailureTraceStore.recordGeocode(
-                label = "destination.fallback",
-                query = destinationAddress128,
-                coordinate = fallbackCoordinate128?.let { coordinate -> "${coordinate.latitude},${coordinate.longitude}" },
-                elapsedMillis = System.currentTimeMillis() - geocodeStartedAt128,
-                packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
-                generation = generation,
-                screenHash = screenHash,
-            )
-            if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
-
-            val (homeFallback128, alternativeFallback128) = coroutineScope {
-                val homeDeferred128 = async {
+        if (destinationCoordinate != null && (needsHomeFallback128 || needsAlternativeFallback128)) {
+            val fallbackRoutes128 = coroutineScope {
+                val homeFallbackDeferred128 = async {
                     if (!needsHomeFallback128) null
-                    else routeDistanceKm(fallbackCoordinate128, homeCoordinate, settings)
+                    else routeDistanceKm(destinationCoordinate, homeCoordinate, settings)
                 }
-                val alternativeDeferred128 = async {
+                val alternativeFallbackDeferred128 = async {
                     if (!needsAlternativeFallback128) null
-                    else routeDistanceKm(fallbackCoordinate128, alternativeCoordinate, settings)
+                    else routeDistanceKm(destinationCoordinate, alternativeCoordinate, settings)
                 }
-                homeDeferred128.await() to alternativeDeferred128.await()
+                homeFallbackDeferred128.await() to alternativeFallbackDeferred128.await()
             }
-            if (homeDistanceKm == null) homeDistanceKm = homeFallback128
-            if (alternativeDistanceKm == null) alternativeDistanceKm = alternativeFallback128
+            if (homeDistanceKm == null) homeDistanceKm = fallbackRoutes128.first
+            if (alternativeDistanceKm == null) alternativeDistanceKm = fallbackRoutes128.second
             traceEvent(
                 "universal.route address_fast_fallback=true destination=${destinationCoordinate != null} home=${homeDistanceKm != null} alternative=${alternativeDistanceKm != null}",
             )
@@ -146,30 +183,11 @@
 
         LiveFailureTraceStore.recordStep(
             stage = "route.address_fast.summary",
-            details = "elapsed_ms=${System.currentTimeMillis() - fullStartedAt128}; destination=${destinationCoordinate != null}; home=${homeDistanceKm?.toString() ?: "null"}; alternative=${alternativeDistanceKm?.toString() ?: "null"}; fallback=${needsDestinationFallback128 || needsHomeFallback128 || needsAlternativeFallback128}",
+            details = "elapsed_ms=${System.currentTimeMillis() - fullStartedAt128}; destination=${destinationCoordinate != null}; home=${homeDistanceKm?.toString() ?: "null"}; alternative=${alternativeDistanceKm?.toString() ?: "null"}; fallback=${needsHomeFallback128 || needsAlternativeFallback128}",
             packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
             generation = generation,
             screenHash = screenHash,
-        ) // direct_address_route_timing_0_1_128
-
-        val exactLowerBound = ExactRadiusLowerBoundPolicy.evaluate(
-            destinationCoordinate = destinationCoordinate,
-            settings = settings,
-            homeCoordinate = homeCoordinate,
-            alternativeCoordinate = alternativeCoordinate,
-        )
-        if (exactLowerBound.definitelyOutside && homeDistanceKm == null && alternativeDistanceKm == null) {
-            val fastOutsideResult = AnalysisResult(
-                createdAtMillis = System.currentTimeMillis(),
-                extractedText = snapshotText,
-                fields = fields,
-                recommendation = Recommendation.OutsideRadius,
-                reason = "Destino certamente fora dos raios: a distancia minima possivel ja ultrapassa o limite configurado.",
-            )
-            rememberBubbleReason("universal_fast_red", fastOutsideResult.reason)
-            showOverlay(RadarColor.Red, distanceKm = null)
-            traceEvent("universal.fast_red provisional=true exact_route_continues=true")
-        }
+        ) // direct_address_route_timing_0_1_128 direct_address_route_fast_path_0_1_128
 
         if (
             destinationCoordinate != null &&
