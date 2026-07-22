@@ -29,15 +29,17 @@ val inDriveCardFamily128 by tasks.registering {
                 throw GradleException("Contrato final de card aberto do inDrive nao encontrado.")
             }
 
-            val functionRegion = source.substring(functionStart, functionEnd)
-            val oldLine = "        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2\n"
-            if (oldLine !in functionRegion) {
-                throw GradleException("Condicao final dos extremos da rota inDrive nao encontrada.")
+            var functionRegion = source.substring(functionStart, functionEnd)
+            val returnAnchor = "        return hasRouteStructure &&\n"
+            if (returnAnchor !in functionRegion) {
+                throw GradleException("Retorno final do contrato inDrive nao encontrado.")
             }
-            val newLine = "        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 ||\n" +
-                "            routeMarkerInlineRegex.findAll(rawText).count() >= 2 || addressCount >= 2 // indrive_locked_popup_two_addresses_0_1_128\n"
-            val updatedRegion = functionRegion.replaceFirst(oldLine, newLine)
-            source = source.substring(0, functionStart) + updatedRegion + source.substring(functionEnd)
+            functionRegion = functionRegion.replaceFirst(
+                returnAnchor,
+                "        val hasTwoAddressPopup128 = addressCount >= 2 // indrive_locked_popup_two_addresses_0_1_128\n" +
+                    "        return (hasRouteStructure || hasTwoAddressPopup128) &&\n",
+            )
+            source = source.substring(0, functionStart) + functionRegion + source.substring(functionEnd)
         }
 
         listOf(
@@ -46,6 +48,7 @@ val inDriveCardFamily128 by tasks.registering {
             "if (isInDriveListingScreen(normalized, rawText)) return false",
             "hasPrimaryAction",
             "moneyCount >= 1",
+            "return (hasRouteStructure || hasTwoAddressPopup128)",
         ).forEach { marker ->
             if (marker !in source) throw GradleException("Contrato inDrive 0.1.128 incompleto: $marker")
         }
