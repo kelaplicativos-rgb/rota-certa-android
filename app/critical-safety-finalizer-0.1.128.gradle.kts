@@ -1,16 +1,41 @@
 // Rota Certa 0.1.128 — finalizador de seguranca da etapa critica.
 // Deve ser aplicado por ultimo no build principal, depois do patch de tela bloqueada.
 //
-// Impede duas regressoes:
+// Impede tres regressoes:
 // 1) a protecao especifica do keyguard nao amplia a tolerancia GLOBAL;
-// 2) a captura automatica nao ocupa a mesma trava usada pelo OCR.
+// 2) a captura automatica nao ocupa a mesma trava usada pelo OCR;
+// 3) patches legados nao removem o match obrigatorio do mesmo pacote.
+
+fun replaceFinalFunction128(source: String, signature: String, replacement: String): String {
+    val start = source.indexOf(signature)
+    if (start < 0) throw GradleException("Funcao final ausente: $signature")
+    val braceStart = source.indexOf('{', start)
+    if (braceStart < 0) throw GradleException("Corpo final ausente: $signature")
+    var depth = 0
+    var index = braceStart
+    while (index < source.length) {
+        when (source[index]) {
+            '{' -> depth += 1
+            '}' -> {
+                depth -= 1
+                if (depth == 0) {
+                    return source.substring(0, start) + replacement + source.substring(index + 1)
+                }
+            }
+        }
+        index += 1
+    }
+    throw GradleException("Fim da funcao final ausente: $signature")
+}
 
 fun patchCriticalSafetyFinalizer128(
     serviceFile: java.io.File,
     guardFile: java.io.File,
+    matcherFile: java.io.File,
 ) {
     if (!serviceFile.exists()) throw GradleException("LiveRideAccessibilityService.kt ausente no finalizador 0.1.128.")
     if (!guardFile.exists()) throw GradleException("UniversalRuntimeGuards.kt ausente no finalizador 0.1.128.")
+    if (!matcherFile.exists()) throw GradleException("RideCardTemplateMatcher.kt ausente no finalizador 0.1.128.")
 
     var guard = guardFile.readText()
     guard = guard.replace(
@@ -63,6 +88,66 @@ fun patchCriticalSafetyFinalizer128(
         throw GradleException("A trava original do OCR foi removida indevidamente.")
     }
     serviceFile.writeText(service)
+
+    var matcher = matcherFile.readText()
+    val matcherReplacement = """    fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch? {
+        val normalizedPackage = packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: return null
+        val liveFeatures = deterministicFeaturesFor(text)
+        if (liveFeatures.size < 3) return null
+
+        return templates
+            .asSequence()
+            .filter { template ->
+                template.packageName?.trim()?.lowercase(Locale.ROOT) == normalizedPackage
+            } // final_same_package_template_filter_0_1_128
+            .mapNotNull { template ->
+                val required = template.requiredFeatures
+                    .filterNot { it.startsWith("adaptive.") }
+                    .toSet()
+                if (required.isEmpty()) return@mapNotNull null
+                val matched = required.intersect(liveFeatures)
+                val score = matched.size.toDouble() / required.size.coerceAtLeast(1)
+                RideCardTemplateMatch(template = template, score = score, matchedFeatures = matched.toList().sorted())
+            }
+            .filter { match ->
+                val required = match.template.requiredFeatures
+                    .filterNot { it.startsWith("adaptive.") }
+                    .toSet()
+                val matched = match.matchedFeatures.toSet()
+                val matchedStrict = strictCardFeatures.intersect(matched)
+                val strongInDriveLockedPopup128 =
+                    normalizedPackage == INDRIVE_PACKAGE &&
+                        "card.contract.indrive_opened_single" in liveFeatures &&
+                        ("card.contract.indrive_opened_single" in required ||
+                            "card.contract.indrive_individual" in required) &&
+                        "card.crop.route_block" in liveFeatures &&
+                        "card.route.two_addresses" in liveFeatures &&
+                        "valor em reais" in liveFeatures &&
+                        ("aceitar por" in liveFeatures ||
+                            "ofereca sua tarifa" in liveFeatures ||
+                            "ofereça sua tarifa" in liveFeatures)
+                strongInDriveLockedPopup128 || // final_indrive_locked_popup_match_0_1_128
+                    (match.matchedFeatures.size >= 3 &&
+                        matchedStrict.size >= 2 &&
+                        match.score >= 0.25)
+            }
+            .maxByOrNull { it.score }
+    } // final_manual_same_package_matcher_0_1_128
+"""
+    matcher = replaceFinalFunction128(
+        matcher,
+        "    fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch?",
+        matcherReplacement,
+    )
+    listOf(
+        "final_same_package_template_filter_0_1_128",
+        "final_indrive_locked_popup_match_0_1_128",
+        "final_manual_same_package_matcher_0_1_128",
+        "indrive_locked_popup_two_addresses_0_1_128",
+    ).forEach { marker ->
+        if (marker !in matcher) throw GradleException("Matcher final 0.1.128 incompleto: $marker")
+    }
+    matcherFile.writeText(matcher)
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
@@ -70,6 +155,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         patchCriticalSafetyFinalizer128(
             serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
             guardFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/UniversalRuntimeGuards.kt").asFile,
+            matcherFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt").asFile,
         )
     }
 }
