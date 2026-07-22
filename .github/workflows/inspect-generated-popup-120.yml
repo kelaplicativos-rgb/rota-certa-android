@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - codex/pr5-stable-bubble-combined
+      - codex/rota-certa-0.1.127-strict-final
   pull_request:
     branches: [main]
 
@@ -44,27 +45,32 @@ jobs:
         run: |
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          matcher="app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt"
+          guard="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalRuntimeGuards.kt"
           controller="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
           {
             echo "MAIN_LINES=$(wc -l < "$main")"
             echo "SERVICE_LINES=$(wc -l < "$service")"
+            echo "MATCHER_LINES=$(wc -l < "$matcher")"
             grep -nF 'BUBBLE_GROUP_CARDS' "$main" || true
-            grep -nF 'SavedPlacesModuleCard' "$main" || true
             grep -nF 'Buscar por nome ou endereco' "$main" || true
-            grep -nF 'saved_places_search_name_address_0_1_127' "$main" || true
             grep -nF 'Modelos de cards obrigatorios' "$main" || true
             grep -nF 'manual_registered_card_gate_0_1_127' "$service" || true
-            grep -nF 'const val SCAN_LOOP_MS = 350L' "$service" || true
-            grep -nF 'compile_final_cleanup_0_1_127' "$main" || true
+            grep -nF 'locked_popup_event_before_package_block_0_1_128' "$service" || true
+            grep -nF 'automatic_capture_before_model_match_0_1_128' "$service" || true
+            grep -nF 'direct_address_route_fast_path_0_1_128' "$service" || true
+            grep -nF 'indrive_locked_popup_two_addresses_0_1_128' "$matcher" || true
+            grep -nF 'isInDriveOpenedCardContract' "$matcher" || true
+            grep -nF 'ROUTE_INFLIGHT_GRACE_MILLIS' "$guard" || true
             grep -nF 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller" || true
             grep -nF 'popupShownThisApproach' "$engine" || true
           } > generated-markers.txt
           cat generated-markers.txt
 
-          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
           grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
-          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          grep -Fq 'locked_popup_event_before_package_block_0_1_128' "$service"
+          grep -Fq 'indrive_locked_popup_two_addresses_0_1_128' "$matcher"
           if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
             echo 'ERRO: @Composable duplicado nos fontes finais.'
             exit 1
@@ -77,6 +83,9 @@ jobs:
           path: |
             app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalRuntimeGuards.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt
