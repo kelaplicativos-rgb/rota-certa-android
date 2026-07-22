@@ -24,7 +24,7 @@ data class AppSettings(
     val liveReadingEnabled: Boolean = true,
     val homeTargetEnabled: Boolean = true,
     val alternativeTargetEnabled: Boolean = true,
-    val requireRegisteredRideCard: Boolean = true,
+    val requireRegisteredRideCard: Boolean = false,
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
 )
@@ -136,17 +136,9 @@ data class AnalysisResult(
     val fields: RideFields,
     val recommendation: Recommendation,
     val reason: String,
-    // Os nomes abaixo sao mantidos no arquivo serializado para preservar backups antigos.
-    // Semanticamente, ambos representam distancia do DESTINO final ate Casa/Alfinete.
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
-) {
-    val destinationToHomeKm: Double?
-        get() = pickupToHomeKm
-
-    val destinationToAlternativeKm: Double?
-        get() = pickupToAlternativeKm
-}
+)
 
 @Serializable
 data class LiveDiagnostic(
@@ -159,7 +151,7 @@ data class LiveDiagnostic(
     val reason: String = "",
     val restrictToSelectedRideApps: Boolean = true,
     val selectedPackages: List<String> = emptyList(),
-    val registeredCardRequired: Boolean = true,
+    val registeredCardRequired: Boolean = false,
     val registeredCardMatched: String? = null,
     val textLength: Int = 0,
     val textHash: Int? = null,
