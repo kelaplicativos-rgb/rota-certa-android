@@ -11,6 +11,10 @@ on:
       - 'gradle.properties'
       - '.github/workflows/publish-stable-apk.yml'
 
+concurrency:
+  group: publish-stable-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -63,7 +67,7 @@ jobs:
           echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
           GITHUB_RUN_NUMBER="$gradle_run_number" gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Validate manual selection, optional cards and exact route
+      - name: Validate strict manual apps, cards and saved places search
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
@@ -94,37 +98,45 @@ jobs:
           grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
           grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
           grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
-          grep -Fq 'SelectedRideAppStore.read(applicationContext)' "$service"
           grep -Fq 'normalized in selectedPackages' "$service"
-          grep -Fq 'manual_cards_preserved_0_1_127' "$service"
-          grep -Fq 'manual_cards_observer_0_1_127' "$service"
-          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
-          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
-          grep -Fq 'exact_route_continues=true' "$service"
-          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
+
+          grep -Fq 'manual_registered_card_required_migration_0_1_127' "$service"
+          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
+          grep -Fq 'templates = packageCardTemplates' "$service"
+          grep -Fq 'manual.card.gate accepted=false reason=no_template' "$service"
+          grep -Fq 'manual.card.gate accepted=false reason=no_match' "$service"
+          grep -Fq 'manual.card.gate accepted=true' "$service"
+          grep -Fq 'manual_registered_card_freshness_0_1_127' "$service"
+          grep -Fq 'Modelos de cards obrigatorios' "$main"
+          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
+          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+
+          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
+          grep -Fq 'Buscar por nome ou endereco' "$main"
+          grep -Fq 'place.name.lowercase(Locale.ROOT).contains(query)' "$main"
+          grep -Fq 'place.address.lowercase(Locale.ROOT).contains(query)' "$main"
+          grep -Fq 'Text("GPS")' "$main"
+          grep -Fq 'Text("Salvar")' "$main"
+          grep -Fq 'Text("Apagar")' "$main"
+
+          grep -Fq 'const val SCAN_LOOP_MS = 350L' "$service"
           grep -Fq 'internal fun geocodeQueries' "$maps"
           grep -Fq 'containsExplicitLocality' "$maps"
-          grep -Fq 'Buscar aplicativos instalados' "$main"
-          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
-          grep -Fq 'Modelos de cards opcionais' "$main"
-          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
-          grep -Fq 'Anexar modelos de cards (prints)' "$main"
-          grep -Fq 'manual_ui_annotation_cleanup_0_1_127' "$main"
-
-          if grep -Fq 'manual_registered_card_gate_0_1_127' "$service"; then
-            echo 'ERRO: modelo de card voltou a ser obrigatorio.'
+          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          if grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"; then
+            echo 'ERRO: polling agressivo de 120 ms voltou.'
+            exit 1
+          fi
+          if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
+            echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
             exit 1
           fi
           if grep -Fq 'removedTemplates126.forEach' "$service"; then
             echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
             exit 1
           fi
-          if grep -Fq $'return\n        } // subsecond_exact_red_lower_bound_0_1_125' "$service"; then
-            echo 'ERRO: vermelho rapido ainda interrompe a rota exata.'
-            exit 1
-          fi
-          if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
-            echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
+          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
+            echo 'ERRO: anotacao @Composable duplicada voltou.'
             exit 1
           fi
 
@@ -132,18 +144,17 @@ jobs:
           unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
           strings "$tmp_dir"/classes*.dex > stable-apk-strings.txt
           for expected in \
-            "Rota" \
-            "Destino" \
-            "Alertas" \
-            "Locais" \
-            "Radares" \
             "Buscar aplicativos instalados" \
             "Nenhum aplicativo vem marcado" \
-            "Modelos de cards opcionais" \
+            "Modelos de cards obrigatorios" \
             "Anexar modelos de cards (prints)" \
-            "manual_selection.ready selected=" \
-            "universal.screen.cosmetic_change ignored=true" \
-            "universal.fast_red provisional=true exact_route_continues=true" \
+            "Buscar por nome ou endereco" \
+            "Nenhum local encontrado por nome ou endereco" \
+            "manual.card.gate accepted=false reason=no_template" \
+            "manual.card.gate accepted=false reason=no_match" \
+            "manual.card.gate accepted=true" \
+            "adaptive_fallback_scan_0_1_127" \
+            "saved_places_search_name_address_0_1_127" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -153,16 +164,17 @@ jobs:
           sha256sum rota-certa-stable-debug.apk > rota-certa-stable-debug.apk.sha256
           wc -c < rota-certa-stable-debug.apk > stable-size.txt
 
-          cat > manual-optional-stable-validation.txt <<'EOF'
+          cat > strict-stable-validation.txt <<'EOF'
           MANUAL_APP_SELECTION=required
           PRESELECTED_APPS=0
-          REGISTERED_CARD_MODEL=optional
-          PRE_REGISTERED_CARD_MODELS=0
-          DESTRUCTIVE_CARD_CLEANUP=blocked
-          STABLE_CARD_SIGNATURE=approved
-          FAST_RED_EXACT_ROUTE_CONTINUES=approved
-          FALLBACK_SCAN_INTERVAL_MS=120
+          REGISTERED_CARD_MODEL=required
+          SAME_PACKAGE_MODEL_MATCH=required
+          ROUTE_WITHOUT_MODEL=blocked
+          SAVED_PLACES_SEARCH=name_and_address
+          SAVED_PLACE_ACTIONS=edit_delete_gps
+          FALLBACK_SCAN_INTERVAL_MS=350
           HARDCODED_SAO_PAULO_GEOCODING=removed
+          DUPLICATE_COMPOSABLE=removed
           EOF
 
       - name: Publish stable GitHub release
@@ -189,16 +201,19 @@ jobs:
 
           Recursos 0.1.127:
           - O aplicativo nasce sem nenhum app de corrida selecionado.
-          - O usuario volta a escolher manualmente quais aplicativos a bolinha pode ler.
-          - O cadastro de modelos de cards volta a existir e nasce vazio.
-          - Modelos de cards sao opcionais e usados somente quando o usuario decidir ensinar um formato.
-          - Modelos criados pelo usuario nao sao apagados durante a inicializacao.
-          - Mudancas cosmeticas da lista nao cancelam a rota do mesmo passageiro/destino.
-          - O vermelho geometrico aparece imediatamente e a rota exata continua para preencher o km.
-          - A geocodificacao nao inventa Sao Paulo quando a cidade nao foi informada.
-          - O ciclo de seguranca de 120 ms foi preservado.
+          - Acessibilidade, screenshot e OCR rodam somente no aplicativo escolhido manualmente.
+          - O cadastro de modelos de cards nasce vazio.
+          - Verde, vermelho, geocodificacao e rota exigem um modelo cadastrado do mesmo pacote.
+          - App selecionado sem modelo ou card sem correspondencia permanece amarelo e nao consulta rota.
+          - Locais salvos e alertas podem ser buscados por nome ou endereco.
+          - O item localizado mantem os botoes GPS, Salvar e Apagar.
+          - Modelos salvos pelo usuario deixam de ser apagados pela migracao 0.1.126.
+          - O ciclo continuo foi reduzido de 120 ms para 350 ms; eventos de acessibilidade continuam imediatos.
+          - A geocodificacao nao inventa mais Sao Paulo quando a cidade nao foi informada.
+          - Anotacoes Compose duplicadas sao removidas no passo final de compilacao.
+          - Somente este workflow publica a release estavel; o build de debug apenas valida e envia artefato.
           EOF
-          cat manual-optional-stable-validation.txt >> stable-release-notes.md
+          cat strict-stable-validation.txt >> stable-release-notes.md
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "Rota Certa Stable Debug" --notes-file stable-release-notes.md
@@ -252,5 +267,5 @@ jobs:
             rota-certa-stable-debug.apk.sha256
             stable-publication-verification.txt
             stable-release-notes.md
-            manual-optional-stable-validation.txt
+            strict-stable-validation.txt
           if-no-files-found: error
