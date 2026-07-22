@@ -1,8 +1,8 @@
-// Ajustes de regressao para a liberacao universal:
+// Ajustes de regressao para a liberacao universal historica:
 // - preserva bloqueio de feeds com varias ofertas;
 // - evita que mapas/telas estruturais fracas virem card;
-// - atualiza testes que ainda exigiam trava por pacote ou crop;
-// - torna patches legados do inDrive idempotentes entre test e assemble.
+// - mantem compatibilidade com versoes antigas;
+// - a partir da 0.1.128, nao altera o teste estrito de mesmo aplicativo.
 
 val openAllAppsAllScreensFixPatch by tasks.registering {
     val sourceRoot = layout.projectDirectory.dir("src/main/java/br/com/mapeiaia/rotacerta")
@@ -13,6 +13,7 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
     val contractTestFile = testRoot.file("core/CoreRideCardContractsTest.kt")
     val legacyInDrivePatchFile = layout.projectDirectory.file("patch-indrive-card-contract-match.gradle.kts")
     val legacyMarkerlessPatchFile = layout.projectDirectory.file("patch-indrive-markerless-live-card.gradle.kts")
+    val strictSamePackage128 = layout.projectDirectory.file("version-0.1.128.gradle.kts").asFile.exists()
 
     inputs.files(
         cardMatchEngineFile,
@@ -47,25 +48,40 @@ val openAllAppsAllScreensFixPatch by tasks.registering {
             "open_all_strong_visual_signature_0_1_94",
         )
 
-        replaceRequired(
-            matcherTestFile.asFile,
-            "    fun doesNotMatchDifferentRideAppPackage() {\n",
-            "    fun matchesRegisteredCardAcrossDifferentAppPackage() { // open_all_cross_package_test_0_1_94\n",
-            "open_all_cross_package_test_0_1_94",
-        )
-        replaceRequired(
-            matcherTestFile.asFile,
-            "        assertNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
-            "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
-            "open_all_cross_package_assert_0_1_94",
-        )
-        var matcherTest = matcherTestFile.asFile.readText()
-        if ("open_all_cross_package_assert_0_1_94" !in matcherTest) {
-            matcherTest = matcherTest.replace(
-                "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
-                "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template))) // open_all_cross_package_assert_0_1_94\n",
+        if (!strictSamePackage128) {
+            replaceRequired(
+                matcherTestFile.asFile,
+                "    fun doesNotMatchDifferentRideAppPackage() {\n",
+                "    fun matchesRegisteredCardAcrossDifferentAppPackage() { // open_all_cross_package_test_0_1_94\n",
+                "open_all_cross_package_test_0_1_94",
             )
-            matcherTestFile.asFile.writeText(matcherTest)
+            replaceRequired(
+                matcherTestFile.asFile,
+                "        assertNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
+                "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
+                "open_all_cross_package_assert_0_1_94",
+            )
+            var matcherTest = matcherTestFile.asFile.readText()
+            if ("open_all_cross_package_assert_0_1_94" !in matcherTest) {
+                matcherTest = matcherTest.replace(
+                    "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))\n",
+                    "        assertNotNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template))) // open_all_cross_package_assert_0_1_94\n",
+                )
+                matcherTestFile.asFile.writeText(matcherTest)
+            }
+        } else {
+            val matcherTest = matcherTestFile.asFile.readText()
+            if ("doesNotMatchDifferentRideAppPackage" !in matcherTest ||
+                "assertNull(RideCardTemplateMatcher.match(sample, \"com.app99.driver\", listOf(template)))" !in matcherTest
+            ) {
+                throw GradleException("Contrato estrito de mesmo aplicativo foi alterado antes do guard 0.1.128.")
+            }
+            matcherTestFile.asFile.writeText(
+                matcherTest.replace(
+                    "fun doesNotMatchDifferentRideAppPackage() {",
+                    "fun doesNotMatchDifferentRideAppPackage() { // strict_same_package_open_all_test_guard_0_1_128",
+                ),
+            )
         }
 
         replaceRequired(
