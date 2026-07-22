@@ -123,10 +123,14 @@ jobs:
             echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
             exit 1
           fi
-          if grep -Fq $'return\n        } // subsecond_exact_red_lower_bound_0_1_125' "$service"; then
-            echo 'ERRO: vermelho rapido ainda interrompe a rota exata.'
-            exit 1
-          fi
+          python3 - "$service" <<'PY'
+          import sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text()
+          forbidden = "return\n        } // subsecond_exact_red_lower_bound_0_1_125"
+          if forbidden in text:
+              raise SystemExit('ERRO: vermelho rapido ainda interrompe a rota exata.')
+          PY
           if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
             echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
             exit 1
