@@ -40,35 +40,65 @@ jobs:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle :app:preBuild --no-daemon --stacktrace --console=plain
 
-      - name: Record exact markers
+      - name: Validate and record exact optional-contract markers
         run: |
+          set -euo pipefail
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           controller="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
-          {
-            echo "MAIN_LINES=$(wc -l < "$main")"
-            echo "SERVICE_LINES=$(wc -l < "$service")"
-            grep -nF 'BUBBLE_GROUP_CARDS' "$main" || true
-            grep -nF 'SavedPlacesModuleCard' "$main" || true
-            grep -nF 'Buscar por nome ou endereco' "$main" || true
-            grep -nF 'saved_places_search_name_address_0_1_127' "$main" || true
-            grep -nF 'Modelos de cards obrigatorios' "$main" || true
-            grep -nF 'manual_registered_card_gate_0_1_127' "$service" || true
-            grep -nF 'const val SCAN_LOOP_MS = 350L' "$service" || true
-            grep -nF 'compile_final_cleanup_0_1_127' "$main" || true
-            grep -nF 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller" || true
-            grep -nF 'popupShownThisApproach' "$engine" || true
-          } > generated-markers.txt
-          cat generated-markers.txt
 
-          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
-          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
-          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
+          grep -Fq 'manual_cards_preserved_0_1_127' "$service"
+          grep -Fq 'manual_cards_observer_0_1_127' "$service"
+          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
+          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
+          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
+          grep -Fq 'manual_optional_contract_finalizer_0_1_127' "$service"
+
+          grep -Fq 'Buscar aplicativos instalados' "$main"
+          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
+          grep -Fq 'Modelos de cards opcionais' "$main"
+          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
+          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+          grep -Fq 'manual_optional_contract_finalizer_0_1_127' "$main"
+
+          for forbidden in \
+            'manual_registered_card_gate_0_1_127' \
+            'manual_registered_card_required_migration_0_1_127' \
+            'manual_registered_card_freshness_0_1_127' \
+            'Modelos de cards obrigatorios' \
+            'const val SCAN_LOOP_MS = 350L'
+          do
+            if grep -Fq "$forbidden" "$service" || grep -Fq "$forbidden" "$main"; then
+              echo "ERRO: contrato invertido presente nos fontes finais: $forbidden"
+              exit 1
+            fi
+          done
+
           if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
             echo 'ERRO: @Composable duplicado nos fontes finais.'
             exit 1
           fi
+
+          {
+            echo "MAIN_LINES=$(wc -l < "$main")"
+            echo "SERVICE_LINES=$(wc -l < "$service")"
+            echo "MANUAL_APP_SELECTION=required"
+            echo "PRESELECTED_APPS=0"
+            echo "CARD_MODELS=optional"
+            echo "PRE_REGISTERED_CARD_MODELS=0"
+            echo "SCAN_LOOP_MS=120"
+            echo "FAST_RED_EXACT_ROUTE_CONTINUES=true"
+            grep -nF 'Buscar aplicativos instalados' "$main"
+            grep -nF 'Modelos de cards opcionais' "$main"
+            grep -nF 'manual_selected_apps_gate_0_1_127' "$service"
+            grep -nF 'stable_card_signature_route_0_1_127' "$service"
+            grep -nF 'fast_red_continues_exact_route_0_1_127' "$service"
+            grep -nF 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller" || true
+            grep -nF 'popupShownThisApproach' "$engine" || true
+          } > generated-markers.txt
+          cat generated-markers.txt
 
       - name: Upload generated source evidence
         uses: actions/upload-artifact@v4
