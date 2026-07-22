@@ -87,26 +87,40 @@ class GoogleMapsService {
         }
     }
 
-    private fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
+    /**
+     * Monta consultas sem inventar uma cidade fixa.
+     *
+     * Antes, qualquer endereco sem cidade era tentado primeiro em Sao Paulo, o que
+     * podia gravar coordenadas erradas no cache quando o motorista estava em outro
+     * municipio ou estado. Agora a cidade do aparelho/configuracao tem prioridade;
+     * quando ela nao existe, a busca permanece nacional e conserva o texto original.
+     */
+    internal fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
         val cleanQuery = query.trim().replace(Regex("""\s+"""), " ")
         if (cleanQuery.isBlank()) return emptyList()
 
-        val country = region.country.ifBlank { "Brasil" }
-        val regionCity = region.city.takeIf { it.isNotBlank() }
-        val alreadyHasCity = cleanQuery.contains("sao paulo", ignoreCase = true) ||
-            cleanQuery.contains("são paulo", ignoreCase = true)
-        val defaultCity = if (alreadyHasCity) null else "São Paulo, SP"
+        val country = region.country.trim().ifBlank { "Brasil" }
+        val regionCity = region.city.trim().takeIf { it.isNotBlank() }
+        val queryAlreadyContainsRegion = containsExplicitLocality(cleanQuery)
 
         return buildList {
-            if (regionCity != null && !alreadyHasCity) add("$cleanQuery, $regionCity, $country")
-            defaultCity?.let { add("$cleanQuery, $it, $country") }
-            if (!alreadyHasCity) add("$cleanQuery, São Paulo - SP, $country")
+            if (regionCity != null && !queryAlreadyContainsRegion) {
+                add("$cleanQuery, $regionCity, $country")
+            }
             add("$cleanQuery, $country")
             add(cleanQuery)
         }
             .map { it.trim().replace(Regex("""\s+"""), " ") }
             .filter { it.isNotBlank() }
             .distinctBy { it.lowercase(Locale.ROOT) }
+    }
+
+    private fun containsExplicitLocality(query: String): Boolean {
+        val normalized = query.lowercase(Locale.ROOT)
+        val statePattern = Regex("""(?:^|[,\s-])(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)(?:$|[,\s-])""", RegexOption.IGNORE_CASE)
+        return statePattern.containsMatchIn(normalized) ||
+            Regex("""\b\d{5}-?\d{3}\b""").containsMatchIn(normalized) ||
+            normalized.contains(" brasil")
     }
 
     private fun requestGeocode(scopedQuery: String, apiKey: String): Coordinate? {
