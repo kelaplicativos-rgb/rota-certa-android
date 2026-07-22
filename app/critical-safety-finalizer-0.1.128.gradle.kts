@@ -1,5 +1,5 @@
 // Rota Certa 0.1.128 — finalizador de seguranca da etapa critica.
-// Roda como finalizador do preBuild, depois de todos os doLast dos patches.
+// Deve ser aplicado por ultimo no build principal, depois do patch de tela bloqueada.
 //
 // Impede duas regressoes:
 // 1) a protecao especifica do keyguard nao amplia a tolerancia GLOBAL;
@@ -65,15 +65,11 @@ fun patchCriticalSafetyFinalizer128(
     serviceFile.writeText(service)
 }
 
-val criticalSafetyFinalizer128 by tasks.registering {
+tasks.matching { it.name == "preBuild" }.configureEach {
     doLast {
         patchCriticalSafetyFinalizer128(
             serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
             guardFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/UniversalRuntimeGuards.kt").asFile,
         )
     }
-}
-
-tasks.matching { it.name == "preBuild" }.configureEach {
-    finalizedBy(criticalSafetyFinalizer128)
 }
