@@ -1,7 +1,10 @@
 // Rota Certa 0.1.128
-// Reconhece variacoes reais do card inDrive sem remover o modelo manual obrigatorio.
-// Elementos volateis (tempo, km de aproximacao e layout) nao podem invalidar uma
-// oferta que conserva o mesmo pacote, dois enderecos e os controles fortes da corrida.
+// Reconhece a variacao real do pop-up inDrive sobre a tela bloqueada.
+//
+// O contrato 0.1.86 ja bloqueia listas e exige card individual, acao primaria,
+// valor e sinais do inDrive. O erro observado era mais especifico: o pop-up
+// fornece dois enderecos completos, mas nao fornece linhas isoladas A/B.
+// Portanto, dois enderecos reconhecidos tambem constituem dois extremos da rota.
 
 val inDriveCardFamily128 by tasks.registering {
     val matcherFile = layout.projectDirectory.file(
@@ -15,82 +18,44 @@ val inDriveCardFamily128 by tasks.registering {
         if (!file.exists()) throw GradleException("RideCardTemplateMatcher.kt nao encontrado.")
         var source = file.readText()
 
-        if ("indrive_offer_family_features_0_1_128" !in source) {
-            val riskAnchor = "        val hasRiskArea = \"area de risco\" in normalized\n"
-            if (riskAnchor !in source) throw GradleException("Ancora de caracteristicas do inDrive nao encontrada.")
-            source = source.replaceFirst(
-                riskAnchor,
-                riskAnchor + """        val hasStrongInDriveOfferFamily =
-            "pedido de viagem" in normalized &&
-                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized) &&
-                moneyCount >= 1 &&
-                addressCount >= 2 // indrive_offer_family_features_0_1_128
-""",
-            )
+        if ("indrive_locked_popup_two_addresses_0_1_128" !in source) {
+            val functionStart = source.indexOf("    private fun isInDriveOpenedCardContract(")
+            val functionEnd = if (functionStart >= 0) {
+                source.indexOf("    private fun isInDriveIndividualContract(", functionStart)
+            } else {
+                -1
+            }
+            if (functionStart < 0 || functionEnd < 0) {
+                throw GradleException("Contrato final de card aberto do inDrive nao encontrado.")
+            }
 
-            val routeBlockAnchor = "        if (hasRouteBlock) features += \"card.crop.route_block\"\n"
-            if (routeBlockAnchor !in source) throw GradleException("Marcador do bloco de rota nao encontrado.")
-            source = source.replaceFirst(
-                routeBlockAnchor,
-                """        if (hasStrongInDriveOfferFamily) features += "card.indrive.offer_two_addresses"
-        if (hasRouteBlock || hasStrongInDriveOfferFamily) features += "card.crop.route_block"
-""",
-            )
-        }
-
-        if ("indrive_same_package_family_match_0_1_128" !in source) {
-            val filterAnchor = """                if (universalPackage) {
-                    looksLikeLearnableRideCard(text) &&
-                        cropOk &&
-                        match.score >= UNIVERSAL_MIN_SCORE &&
-                        match.matchedFeatures.size >= required.size.coerceAtMost(UNIVERSAL_MIN_FEATURES).coerceAtLeast(MIN_FEATURES)
-                } else {
-                    samePackage &&
-                        cropOk &&
-                        (structuralOk || "card.route.marked_stops" in match.matchedFeatures) &&
-                        match.score >= MIN_SCORE &&
-                        match.matchedFeatures.size >= MIN_FEATURES
-                }
-"""
-            if (filterAnchor !in source) throw GradleException("Filtro final do matcher nao encontrado.")
-            source = source.replaceFirst(
-                filterAnchor,
-                """                val strongInDriveFamily128 =
-                    normalizedPackage == INDRIVE_PACKAGE &&
-                        samePackage &&
-                        "card.indrive.offer_two_addresses" in liveFeatures &&
-                        "card.crop.route_block" in match.matchedFeatures &&
-                        "card.route.two_addresses" in match.matchedFeatures &&
-                        "pedido de viagem" in match.matchedFeatures &&
-                        ("aceitar por" in match.matchedFeatures || "ofereca sua tarifa" in match.matchedFeatures) &&
-                        "valor em reais" in match.matchedFeatures
-                if (universalPackage) {
-                    looksLikeLearnableRideCard(text) &&
-                        cropOk &&
-                        match.score >= UNIVERSAL_MIN_SCORE &&
-                        match.matchedFeatures.size >= required.size.coerceAtMost(UNIVERSAL_MIN_FEATURES).coerceAtLeast(MIN_FEATURES)
-                } else {
-                    strongInDriveFamily128 || // indrive_same_package_family_match_0_1_128
-                        (samePackage &&
-                            cropOk &&
-                            (structuralOk || "card.route.marked_stops" in match.matchedFeatures) &&
-                            match.score >= MIN_SCORE &&
-                            match.matchedFeatures.size >= MIN_FEATURES)
-                }
-""",
-            )
+            val functionRegion = source.substring(functionStart, functionEnd)
+            val oldLine = "        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2\n"
+            if (oldLine !in functionRegion) {
+                throw GradleException("Condicao final dos extremos da rota inDrive nao encontrada.")
+            }
+            val newLine = "        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 ||\n" +
+                "            routeMarkerInlineRegex.findAll(rawText).count() >= 2 || addressCount >= 2 // indrive_locked_popup_two_addresses_0_1_128\n"
+            val updatedRegion = functionRegion.replaceFirst(oldLine, newLine)
+            source = source.substring(0, functionStart) + updatedRegion + source.substring(functionEnd)
         }
 
         listOf(
-            "indrive_offer_family_features_0_1_128",
-            "card.indrive.offer_two_addresses",
-            "indrive_same_package_family_match_0_1_128",
-            "samePackage",
+            "indrive_locked_popup_two_addresses_0_1_128",
+            "private fun isInDriveOpenedCardContract",
+            "if (isInDriveListingScreen(normalized, rawText)) return false",
+            "hasPrimaryAction",
+            "moneyCount >= 1",
         ).forEach { marker ->
-            if (marker !in source) throw GradleException("Matcher inDrive 0.1.128 incompleto: $marker")
+            if (marker !in source) throw GradleException("Contrato inDrive 0.1.128 incompleto: $marker")
         }
+
         file.writeText(source)
     }
+}
+
+inDriveCardFamily128.configure {
+    mustRunAfter("inDriveCardContractMatch")
 }
 
 tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
