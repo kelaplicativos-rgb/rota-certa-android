@@ -64,15 +64,34 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Test and build exact APK
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      - name: Prepare monotonic version
         run: |
           set -euo pipefail
           gradle_run_number="$((5000 + GITHUB_RUN_NUMBER))"
           expected_version_code="$((1000 + gradle_run_number))"
+          echo "GRADLE_RUN_NUMBER=$gradle_run_number" >> "$GITHUB_ENV"
           echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
-          GITHUB_RUN_NUMBER="$gradle_run_number" gradle clean testDebugUnitTest assembleDebug --no-daemon --stacktrace --console=plain
+
+      - name: Run unit tests on clean sources
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+
+      - name: Restore exact sources before APK build
+        run: |
+          set -euo pipefail
+          git reset --hard "$TARGET_SHA"
+          git clean -fd app/src
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Build exact APK from fresh sources
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean assembleDebug --no-daemon --stacktrace --console=plain
 
       - name: Validate generated strict contract
         run: |
@@ -185,6 +204,7 @@ jobs:
           FALLBACK_SCAN_INTERVAL_MS=350
           HARDCODED_SAO_PAULO_GEOCODING=removed
           DUPLICATE_COMPOSABLE=removed
+          TEST_AND_APK_SOURCE_TREES=isolated_clean
           EOF
 
       - name: Publish stable APK
@@ -217,6 +237,7 @@ jobs:
           - Geocodificacao sem tendencia fixa para Sao Paulo.
           - Ciclo de seguranca em 350 ms, mantendo eventos de acessibilidade imediatos.
           - Fontes finais sem anotacoes Compose duplicadas.
+          - Testes e APK construidos em arvores de fonte limpas e independentes.
           EOF
           cat strict-validation.txt >> release-notes.md
 
