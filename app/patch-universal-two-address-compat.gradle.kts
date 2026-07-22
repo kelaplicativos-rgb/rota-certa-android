@@ -1,13 +1,13 @@
 // Compatibilidade final do leitor universal:
 // - mantem a trava de idempotencia;
 // - mantem os metadados e a sonda de validacao;
-// - modelos de cards nascem zerados e sao obrigatorios para liberar rota/cor;
+// - modelos de cards nascem zerados, podem ser cadastrados manualmente e sao opcionais;
 // - aplicativos monitorados nascem zerados e dependem da selecao manual;
-// - dois enderecos so liberam rota quando pertencem a um modelo cadastrado.
+// - dois enderecos so liberam rota quando existem sinais reais de corrida.
 //
-// O contrato ativo e: o usuario escolhe o aplicativo, cadastra o modelo do card,
-// o leitor valida o mesmo pacote e o modelo correspondente, usa o ultimo endereco
-// como destino e calcula ate o endereco definido pelo usuario.
+// O contrato ativo e: o usuario escolhe o aplicativo; quando necessario, pode
+// cadastrar um modelo do card. O leitor valida passageiro e dois enderecos, usa
+// o ultimo como destino e calcula ate o endereco definido pelo usuario.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
 apply(from = "in-app-bubble-immediate-state.gradle.kts")
@@ -68,10 +68,8 @@ apply(from = "subsecond-exact-red-0.1.125.gradle.kts")
 apply(from = "primary-visible-card-scope-0.1.125.gradle.kts")
 apply(from = "universal-no-pre-registered-gates-0.1.126.gradle.kts")
 apply(from = "selected-app-legacy-idempotence-0.1.126.gradle.kts")
+apply(from = "manual-apps-cards-anchor-compat-0.1.127.gradle.kts")
 apply(from = "manual-apps-cards-exact-route-0.1.127.gradle.kts")
-apply(from = "manual-registered-card-migration-fix-0.1.127.gradle.kts")
-apply(from = "manual-apps-registered-cards-required-0.1.127.gradle.kts")
-apply(from = "runtime-efficiency-finalizer-0.1.127.gradle.kts")
 apply(from = "version-0.1.101.gradle.kts")
 apply(from = "version-0.1.102.gradle.kts")
 apply(from = "version-0.1.103.gradle.kts")
