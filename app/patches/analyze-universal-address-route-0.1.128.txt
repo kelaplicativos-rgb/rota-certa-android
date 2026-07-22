@@ -1,0 +1,211 @@
+    private suspend fun analyzeUniversalTwoAddress(
+        snapshotText: String,
+        fields: RideFields,
+        screenHash: Int,
+        addressSignature: String,
+        generation: Long,
+    ) {
+        val settings = currentSettings // instant_farol_cached_settings_0_1_124
+        if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+
+        val region = DeviceRegion(country = "Brasil")
+        val cacheKey = LiveRideRouteCache.keyFor(
+            fields = fields,
+            settings = settings,
+            packageName = null,
+            cardSignature = null,
+        )
+        val cached = universalRouteCache.get(cacheKey)
+        if (cached != null) {
+            traceEvent("universal.route.cache hit=true age=${cached.ageMillis}ms")
+            val cachedResult = decisionEngine.decide(
+                fields = fields,
+                settings = settings,
+                destinationCoordinate = cached.destinationCoordinate,
+                homeCoordinate = cached.homeCoordinate,
+                alternativeCoordinate = cached.alternativeCoordinate,
+                fullText = snapshotText,
+                homeDistanceKm = cached.homeDistanceKm,
+                alternativeDistanceKm = cached.alternativeDistanceKm,
+            )
+            applyUniversalTwoAddressResult(cachedResult, screenHash, addressSignature, generation)
+            return
+        }
+
+        traceEvent("universal.route.cache hit=false")
+        val fullStartedAt128 = System.currentTimeMillis()
+        val apiKey128 = settings.googleMapsApiKey.ifBlank { BuildConfig.GOOGLE_MAPS_API_KEY }
+        val destinationAddress128 = fields.destination.orEmpty().trim()
+
+        val (homeCoordinate, alternativeCoordinate) = coroutineScope {
+            val homeTarget128 = async {
+                if (!settings.homeTargetEnabled) null
+                else settings.homeCoordinate ?: settings.homeAddress
+                    .takeIf(String::isNotBlank)
+                    ?.let { geocodeBest(it, region, settings) }
+            }
+            val alternativeTarget128 = async {
+                if (!settings.alternativeTargetEnabled) null
+                else settings.alternativeCoordinate ?: settings.alternativeAddress
+                    .takeIf(String::isNotBlank)
+                    ?.let { geocodeBest(it, region, settings) }
+            }
+            homeTarget128.await() to alternativeTarget128.await()
+        }
+        if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+
+        val (homeFast128, alternativeFast128) = coroutineScope {
+            val homeDeferred128 = async {
+                val started128 = System.currentTimeMillis()
+                val route128 = if (homeCoordinate != null && destinationAddress128.isNotBlank() && apiKey128.isNotBlank()) {
+                    googleMapsService.drivingDistanceFromAddress(
+                        originAddress = destinationAddress128,
+                        destination = homeCoordinate,
+                        apiKey = apiKey128,
+                    )
+                } else null
+                route128 to (System.currentTimeMillis() - started128)
+            }
+            val alternativeDeferred128 = async {
+                val started128 = System.currentTimeMillis()
+                val route128 = if (alternativeCoordinate != null && destinationAddress128.isNotBlank() && apiKey128.isNotBlank()) {
+                    googleMapsService.drivingDistanceFromAddress(
+                        originAddress = destinationAddress128,
+                        destination = alternativeCoordinate,
+                        apiKey = apiKey128,
+                    )
+                } else null
+                route128 to (System.currentTimeMillis() - started128)
+            }
+            homeDeferred128.await() to alternativeDeferred128.await()
+        } // direct_address_routes_parallel_0_1_128
+
+        var destinationCoordinate = homeFast128.first?.originCoordinate
+            ?: alternativeFast128.first?.originCoordinate
+        var homeDistanceKm = homeFast128.first?.distanceKm
+        var alternativeDistanceKm = alternativeFast128.first?.distanceKm
+
+        LiveFailureTraceStore.recordRoute(
+            label = "home.address_fast",
+            distanceKm = homeDistanceKm,
+            elapsedMillis = homeFast128.second,
+            packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+            generation = generation,
+            screenHash = screenHash,
+        )
+        LiveFailureTraceStore.recordRoute(
+            label = "alternative.address_fast",
+            distanceKm = alternativeDistanceKm,
+            elapsedMillis = alternativeFast128.second,
+            packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+            generation = generation,
+            screenHash = screenHash,
+        )
+
+        val needsDestinationFallback128 = destinationCoordinate == null
+        val needsHomeFallback128 = homeCoordinate != null && homeDistanceKm == null
+        val needsAlternativeFallback128 = alternativeCoordinate != null && alternativeDistanceKm == null
+        if (needsDestinationFallback128 || needsHomeFallback128 || needsAlternativeFallback128) {
+            val geocodeStartedAt128 = System.currentTimeMillis()
+            val fallbackCoordinate128 = destinationCoordinate
+                ?: fields.destination?.let { geocodeBest(it, region, settings) }
+            if (destinationCoordinate == null) destinationCoordinate = fallbackCoordinate128
+            LiveFailureTraceStore.recordGeocode(
+                label = "destination.fallback",
+                query = destinationAddress128,
+                coordinate = fallbackCoordinate128?.let { coordinate -> "${coordinate.latitude},${coordinate.longitude}" },
+                elapsedMillis = System.currentTimeMillis() - geocodeStartedAt128,
+                packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+                generation = generation,
+                screenHash = screenHash,
+            )
+            if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+
+            val (homeFallback128, alternativeFallback128) = coroutineScope {
+                val homeDeferred128 = async {
+                    if (!needsHomeFallback128) null
+                    else routeDistanceKm(fallbackCoordinate128, homeCoordinate, settings)
+                }
+                val alternativeDeferred128 = async {
+                    if (!needsAlternativeFallback128) null
+                    else routeDistanceKm(fallbackCoordinate128, alternativeCoordinate, settings)
+                }
+                homeDeferred128.await() to alternativeDeferred128.await()
+            }
+            if (homeDistanceKm == null) homeDistanceKm = homeFallback128
+            if (alternativeDistanceKm == null) alternativeDistanceKm = alternativeFallback128
+            traceEvent(
+                "universal.route address_fast_fallback=true destination=${destinationCoordinate != null} home=${homeDistanceKm != null} alternative=${alternativeDistanceKm != null}",
+            )
+        } else {
+            traceEvent(
+                "universal.route address_fast=true elapsed=${System.currentTimeMillis() - fullStartedAt128}ms",
+            )
+        }
+        if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+
+        LiveFailureTraceStore.recordStep(
+            stage = "route.address_fast.summary",
+            details = "elapsed_ms=${System.currentTimeMillis() - fullStartedAt128}; destination=${destinationCoordinate != null}; home=${homeDistanceKm?.toString() ?: "null"}; alternative=${alternativeDistanceKm?.toString() ?: "null"}; fallback=${needsDestinationFallback128 || needsHomeFallback128 || needsAlternativeFallback128}",
+            packageName = universalActiveRidePackageName ?: currentWindowPackageName(),
+            generation = generation,
+            screenHash = screenHash,
+        ) // direct_address_route_timing_0_1_128
+
+        val exactLowerBound = ExactRadiusLowerBoundPolicy.evaluate(
+            destinationCoordinate = destinationCoordinate,
+            settings = settings,
+            homeCoordinate = homeCoordinate,
+            alternativeCoordinate = alternativeCoordinate,
+        )
+        if (exactLowerBound.definitelyOutside && homeDistanceKm == null && alternativeDistanceKm == null) {
+            val fastOutsideResult = AnalysisResult(
+                createdAtMillis = System.currentTimeMillis(),
+                extractedText = snapshotText,
+                fields = fields,
+                recommendation = Recommendation.OutsideRadius,
+                reason = "Destino certamente fora dos raios: a distancia minima possivel ja ultrapassa o limite configurado.",
+            )
+            rememberBubbleReason("universal_fast_red", fastOutsideResult.reason)
+            showOverlay(RadarColor.Red, distanceKm = null)
+            traceEvent("universal.fast_red provisional=true exact_route_continues=true")
+        }
+
+        if (
+            destinationCoordinate != null &&
+            (homeDistanceKm != null || alternativeDistanceKm != null)
+        ) {
+            universalRouteCache.put(
+                cacheKey,
+                LiveRideRouteCache.CachedRoute(
+                    destinationCoordinate = destinationCoordinate,
+                    homeCoordinate = homeCoordinate,
+                    alternativeCoordinate = alternativeCoordinate,
+                    homeDistanceKm = homeDistanceKm,
+                    alternativeDistanceKm = alternativeDistanceKm,
+                ),
+            )
+            traceEvent("universal.route.cache stored=true")
+            scope.launch(Dispatchers.IO) {
+                val exactRouteSnapshot = universalRouteCache.exportSnapshot()
+                bubblePrefs.edit()
+                    .putString("persistent_exact_route_cache_v1", exactRouteSnapshot)
+                    .apply()
+                traceEvent("universal.route.cache persisted=${universalRouteCache.entryCount()}")
+            }
+        } else {
+            traceEvent("universal.route.cache stored=false reason=no_exact_distance")
+        }
+
+        val result = decisionEngine.decide(
+            fields = fields,
+            settings = settings,
+            destinationCoordinate = destinationCoordinate,
+            homeCoordinate = homeCoordinate,
+            alternativeCoordinate = alternativeCoordinate,
+            fullText = snapshotText,
+            homeDistanceKm = homeDistanceKm,
+            alternativeDistanceKm = alternativeDistanceKm,
+        )
+        applyUniversalTwoAddressResult(result, screenHash, addressSignature, generation)
+    } // direct_address_route_fast_path_0_1_128
