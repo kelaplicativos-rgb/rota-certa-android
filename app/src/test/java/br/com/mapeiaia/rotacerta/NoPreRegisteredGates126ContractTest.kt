@@ -13,32 +13,31 @@ class NoPreRegisteredGates126ContractTest {
         ?: error("$path nao encontrado")
 
     @Test
-    fun liveReaderNoLongerDependsOnSelectedAppsOrRegisteredCards() {
+    fun noAppIsPreselectedButManualSelectionControlsReading() {
         val service = source("LiveRideAccessibilityService.kt")
         val scanStart = service.indexOf("private fun shouldScanPackage(")
         val scanEnd = service.indexOf("private fun selectedRidePackages", scanStart)
         val scanRegion = service.substring(scanStart, scanEnd)
 
-        assertTrue("Leitura deve usar a portaria universal do Core", "CorePackageMonitor.classify(" in scanRegion)
-        assertTrue("Decisao deve respeitar somente a classificacao real do pacote", "classification.canScan" in scanRegion)
-        assertFalse("Lista selecionada nao pode controlar o farol", "SelectedRideAppStore.selectedPackages" in scanRegion)
-        assertFalse("Pertencimento a lista nao pode controlar o farol", "normalized in selectedPackages" in scanRegion)
-        assertTrue("Limpeza unica de apps e cards precisa existir", "pre_registered_runtime_cleanup_0_1_126" in service)
-        assertTrue("Templates antigos precisam ser removidos", "repository.removeCardTemplate(template.id)" in service)
-        assertTrue("Selecao antiga precisa ser zerada", "SelectedRideAppStore.save(applicationContext, emptySet())" in service)
-        assertFalse("Motivo cego antigo nao pode continuar", "Aplicativo fora da selecao do usuario." in service)
+        assertTrue("Pacotes passivos continuam classificados pelo Core", "CorePackageMonitor.classify(" in scanRegion)
+        assertTrue("Selecao deve vir somente do armazenamento manual", "SelectedRideAppStore.read(applicationContext)" in scanRegion)
+        assertTrue("Somente pacote escolhido pode ser lido", "normalized in selectedPackages" in scanRegion)
+        assertTrue("Instalacao sem escolha precisa criar selecao vazia", "SelectedRideAppStore.save(applicationContext, emptySet())" in service)
+        assertTrue("Cards manuais devem ser preservados", "currentCardTemplates = repository.cardTemplates.first()" in service)
+        assertFalse("A versao nova nao pode apagar modelos do usuario", "removedTemplates126.forEach" in service)
+        assertFalse("A versao nova nao pode remover modelo durante a inicializacao", "repository.removeCardTemplate(template.id)" in service)
     }
 
     @Test
-    fun interfaceAndReportExplainUniversalPolicy() {
+    fun interfaceRestoresManualPickerAndOptionalCardModels() {
         val main = source("MainActivity.kt")
 
-        assertTrue("Interface deve informar ausencia de apps pre-cadastrados", "Nao existem aplicativos pre-cadastrados" in main)
-        assertTrue("Interface deve informar que cards pre-cadastrados foram apagados", "Cards pre-cadastrados foram apagados" in main)
-        assertTrue("Relatorio deve registrar a politica nova", "Filtro por aplicativos pre-cadastrados: removido" in main)
-        assertTrue("Relatorio deve registrar que modelos nao sao requisito", "Modelos de cards como requisito: removidos" in main)
-        assertTrue("Relatorio deve explicar a regra real do card", "pacote externo comum + passageiro + pelo menos dois enderecos" in main)
-        assertFalse("Seletor antigo de apps nao deve continuar visivel", "Buscar aplicativos instalados" in main)
-        assertFalse("Chaves fixas de 99, Uber e inDrive nao devem continuar na interface", "SettingsSwitchRow(\"99 Motorista\"" in main)
+        assertTrue("Seletor manual de apps precisa estar visivel", "Buscar aplicativos instalados" in main)
+        assertTrue("Tela deve explicar que nenhum app nasce marcado", "Nenhum aplicativo vem marcado" in main)
+        assertTrue("Cadastro opcional de cards precisa estar visivel", "Anexar modelos de cards (prints)" in main)
+        assertTrue("Tela deve explicar que nenhum modelo nasce cadastrado", "Nenhum modelo nasce cadastrado" in main)
+        assertTrue("Relatorio deve declarar ausencia de pre-cadastros", "Aplicativos pre-cadastrados: nenhum" in main)
+        assertTrue("Relatorio deve listar a selecao manual", "Selecao manual de apps obrigatoria: true" in main)
+        assertFalse("Chaves fixas de 99, Uber e inDrive nao devem voltar", "SettingsSwitchRow(\"99 Motorista\"" in main)
     }
 }
