@@ -1,6 +1,6 @@
-// Ultima verificacao da versao 0.1.124.
-// Executa como a ultima acao do preBuild para impedir que qualquer patch legado
-// restaure a protecao da cor anterior ou remova o cache exato persistente.
+// Ultima verificacao da versao 0.1.124, preservada na arquitetura 0.1.128.
+// O controlador unico da bolinha substitui a antiga guarda textual do overlay,
+// mantendo o retorno cinza permitido somente por comandos confirmados/forcados.
 
 fun finalizeInstantFarolPreBuild124(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado no finalizador 0.1.124.")
@@ -28,13 +28,25 @@ fun finalizeInstantFarolPreBuild124(file: java.io.File) {
             return
         }
 """
-        if (oldGuard !in text) {
-            throw GradleException("A protecao final do overlay cinza mudou de formato.")
+        when {
+            oldGuard in text -> {
+                text = text.replaceFirst(
+                    oldGuard,
+                    "        Unit // global_overlay_idle_allowed_0_1_124\n",
+                )
+            }
+            "single_bubble_render_coordinator_0_1_128" in text -> {
+                val coordinatorAnchor = "        if (!serviceReady) return\n        val manager = windowManager ?: return\n"
+                if (coordinatorAnchor !in text) {
+                    throw GradleException("Ponto do controlador unico da bolinha nao encontrado.")
+                }
+                text = text.replaceFirst(
+                    coordinatorAnchor,
+                    "        Unit // global_overlay_idle_allowed_0_1_124\n" + coordinatorAnchor,
+                )
+            }
+            else -> throw GradleException("A protecao final do overlay cinza mudou de formato.")
         }
-        text = text.replaceFirst(
-            oldGuard,
-            "        Unit // global_overlay_idle_allowed_0_1_124\n",
-        )
     }
 
     listOf(
