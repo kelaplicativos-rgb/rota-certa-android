@@ -13,17 +13,22 @@ class SubsecondExactRedGeneratedContractTest {
         ?: error("LiveRideAccessibilityService.kt nao encontrado")
 
     @Test
-    fun definitelyOutsideDestinationTurnsRedBeforeAnyRouteRequest() {
+    fun definitelyOutsideDestinationTurnsRedThenContinuesExactRouteForKm() {
         val service = serviceSource()
         val analysisStart = service.indexOf("private suspend fun analyzeUniversalTwoAddress(")
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val region = service.substring(analysisStart, analysisEnd)
-        val fastApply = region.indexOf("fastOutsideResult")
+        val fastApply = region.indexOf("showOverlay(RadarColor.Red, distanceKm = null)")
         val firstRoute = region.indexOf("val homeRouteStartedAt")
 
-        assertTrue("Politica de limite geometrico precisa estar no codigo gerado", "subsecond_exact_red_lower_bound_0_1_125" in region)
-        assertTrue("Vermelho exato precisa ser aplicado antes da primeira rota", fastApply >= 0 && fastApply < firstRoute)
-        assertTrue("Fluxo comprovadamente fora precisa encerrar antes da API", "return\n        } // subsecond_exact_red_lower_bound_0_1_125" in region)
+        assertTrue("Politica geometrica precisa continuar no codigo", "subsecond_exact_red_lower_bound_0_1_125" in region)
+        assertTrue("Vermelho provisório precisa aparecer antes da rota", fastApply >= 0 && fastApply < firstRoute)
+        assertTrue("Rota exata precisa continuar para preencher o km", "fast_red_continues_exact_route_0_1_127" in region)
+        assertTrue("Diagnostico deve registrar continuacao da rota", "exact_route_continues=true" in region)
+        assertFalse(
+            "Fluxo fora nao pode mais encerrar antes da consulta exata",
+            "return\n        } // subsecond_exact_red_lower_bound_0_1_125" in region,
+        )
         assertFalse("Linha reta jamais pode liberar verde", "fastInsideResult" in region)
     }
 }
