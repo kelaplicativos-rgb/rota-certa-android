@@ -262,3 +262,8 @@ apply(from = "patch-main-bubble-tap-menu-contract.gradle.kts")
 apply(from = "patch-in-app-bubble-home-final.gradle.kts")
 apply(from = "patch-universal-two-address-runtime-final.gradle.kts")
 apply(from = "patch-universal-two-address-compat.gradle.kts")
+
+// Etapa 1 da versao 0.1.128: aplica os patches somente depois de todos os
+// restauradores e finalizadores antigos, evitando que outro patch reabra o bug.
+apply(from = "indrive-card-family-0.1.128.gradle.kts")
+apply(from = "locked-popup-fast-route-capture-0.1.128.gradle.kts")
