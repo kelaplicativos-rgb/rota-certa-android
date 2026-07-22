@@ -2,8 +2,12 @@ name: Build Debug APK
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - 'codex/**'
 
 permissions:
   contents: write
@@ -47,6 +51,7 @@ jobs:
           fi
 
       - name: Record debug APK run start
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           CURRENT_SHA="$(git rev-parse HEAD)"
@@ -65,7 +70,14 @@ jobs:
       - name: Run unit tests
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: gradle testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|MainActivity|LiveRideAccessibilityService|patchResourceGroups|patchLiveRideBubble)" gradle-test.log || tail -160 gradle-test.log
+          fi
+          exit "$status"
 
       - name: Build debug APK
         env:
@@ -80,6 +92,7 @@ jobs:
           if-no-files-found: error
 
       - name: Record latest APK run link
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           set -euo pipefail
           CURRENT_SHA="$(git rev-parse HEAD)"

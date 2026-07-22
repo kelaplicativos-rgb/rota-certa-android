@@ -23,6 +23,31 @@ class RideScreenTextClassifierTest {
     }
 
     @Test
+    fun ignoresRotaCertaDiagnosticCopiedIntoAnotherApp() {
+        val text = """
+            ROTA CERTA DIAGNOSTICO
+            Versao: 0.1.36 (37)
+            Pacote: sinet.startup.indriver
+            Etapa: screen_changed
+            Cor: amarelo
+            Motivo: A imagem/texto da tela mudou; aguardando confirmar o card cadastrado.
+            --- LOGS ---
+            parser.name=indrive-order-card pickup=(346) Agora mesmo destination=(114) fare=R$ 41
+            --- TEXTO LIDO ---
+            Pedidos de viagem
+            R$ 41
+            Travessa Farias 31 (Jardim Nove de Julho)
+        """.trimIndent()
+
+        assertEquals(
+            "Diagnostico do Rota Certa detectado; nenhum card de chamada ativo.",
+            RideScreenTextClassifier.ignoreReason(text),
+        )
+        assertTrue(RideScreenTextClassifier.shouldIgnore(text))
+        assertFalse(RideScreenTextClassifier.looksLikeRideCard(text))
+    }
+
+    @Test
     fun ignoresAndroidSystemShadeMixedWithUberMapNoise() {
         val text = """
             GigU
