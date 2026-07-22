@@ -8,6 +8,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: inspect-generated-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -47,16 +51,24 @@ jobs:
             echo "SERVICE_LINES=$(wc -l < "$service")"
             grep -nF 'BUBBLE_GROUP_CARDS' "$main" || true
             grep -nF 'SavedPlacesModuleCard' "$main" || true
-            grep -nF 'Somente pontos que geram aviso de aproximacao.' "$main" || true
-            grep -nF 'Somente locais salvos para consultar ou voltar depois. Nao geram alerta.' "$main" || true
-            grep -nF 'ProfessionalBubbleDashboard(' "$main" || true
+            grep -nF 'Buscar por nome ou endereco' "$main" || true
+            grep -nF 'saved_places_search_name_address_0_1_127' "$main" || true
+            grep -nF 'Modelos de cards obrigatorios' "$main" || true
+            grep -nF 'manual_registered_card_gate_0_1_127' "$service" || true
+            grep -nF 'const val SCAN_LOOP_MS = 350L' "$service" || true
+            grep -nF 'compile_final_cleanup_0_1_127' "$main" || true
             grep -nF 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller" || true
-            grep -nF 'popupButton("Editar")' "$controller" || true
-            grep -nF 'popupButton("Excluir")' "$controller" || true
             grep -nF 'popupShownThisApproach' "$engine" || true
-            grep -nF 'onSavedPlacePopup(alert, distanceMeters)' "$engine" || true
           } > generated-markers.txt
           cat generated-markers.txt
+
+          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
+          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
+          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
+            echo 'ERRO: @Composable duplicado nos fontes finais.'
+            exit 1
+          fi
 
       - name: Upload generated source evidence
         uses: actions/upload-artifact@v4
