@@ -15,12 +15,17 @@ data class AppSettings(
     val alternativeCoordinate: Coordinate? = null,
     val bubbleOpacity: Double = 1.0,
     val bubbleDarkMode: Boolean = false,
-    val restrictToSelectedRideApps: Boolean = false,
-    val monitor99: Boolean = true,
-    val monitorUber: Boolean = true,
-    val monitorInDrive: Boolean = true,
+    val restrictToSelectedRideApps: Boolean = true,
+    val monitor99: Boolean = false,
+    val monitorUber: Boolean = false,
+    val monitorInDrive: Boolean = false,
     val extraMonitoredPackages: String = "",
+    val appEnabled: Boolean = true,
+    val liveReadingEnabled: Boolean = true,
+    val homeTargetEnabled: Boolean = true,
+    val alternativeTargetEnabled: Boolean = true,
     val requireRegisteredRideCard: Boolean = true,
+    val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
 )
 
@@ -131,9 +136,17 @@ data class AnalysisResult(
     val fields: RideFields,
     val recommendation: Recommendation,
     val reason: String,
+    // Nomes antigos mantidos no JSON para restaurar backups existentes.
+    // Semanticamente, estas distancias partem do destino final da corrida.
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
-)
+) {
+    val destinationToHomeKm: Double?
+        get() = pickupToHomeKm
+
+    val destinationToAlternativeKm: Double?
+        get() = pickupToAlternativeKm
+}
 
 @Serializable
 data class LiveDiagnostic(
@@ -144,7 +157,7 @@ data class LiveDiagnostic(
     val stage: String = "",
     val bubbleColor: String = "amarelo",
     val reason: String = "",
-    val restrictToSelectedRideApps: Boolean = false,
+    val restrictToSelectedRideApps: Boolean = true,
     val selectedPackages: List<String> = emptyList(),
     val registeredCardRequired: Boolean = true,
     val registeredCardMatched: String? = null,
@@ -157,4 +170,5 @@ data class LiveDiagnostic(
     val homeDistanceKm: Double? = null,
     val alternativeDistanceKm: Double? = null,
     val error: String? = null,
+    val diagnosticLog: String = "",
 )

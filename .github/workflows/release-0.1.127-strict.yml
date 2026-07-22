@@ -1,0 +1,225 @@
+name: Release 0.1.127 Strict
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/rota-certa-0.1.127-strict-final
+    paths:
+      - 'app/**'
+      - 'scripts/validate_release_0127.sh'
+      - '.github/workflows/release-0.1.127-strict.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'scripts/validate_release_0127.sh'
+      - '.github/workflows/release-0.1.127-strict.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+
+concurrency:
+  group: release-0127-strict-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, build, publish and verify 0.1.127
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'codex/rota-certa-0.1.127-strict-final')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Prepare monotonic version
+        run: |
+          set -euo pipefail
+          gradle_run_number="$((5000 + GITHUB_RUN_NUMBER))"
+          expected_version_code="$((1000 + gradle_run_number))"
+          echo "GRADLE_RUN_NUMBER=$gradle_run_number" >> "$GITHUB_ENV"
+          echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
+
+      - name: Run unit tests on clean sources
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+
+      - name: Restore exact sources before APK build
+        run: |
+          set -euo pipefail
+          git reset --hard "$TARGET_SHA"
+          git clean -fd app/src
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Build exact APK from fresh sources
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean assembleDebug --no-daemon --stacktrace --console=plain
+
+      - name: Upload candidate APK before validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.127-candidate-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Validate source DEX version and stable signature
+        run: |
+          bash scripts/validate_release_0127.sh \
+            app/build/outputs/apk/debug/output-metadata.json \
+            "$EXPECTED_VERSION_CODE" \
+            app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish stable APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="rota-certa-stable-debug"
+          version_name="$(cat version-name.txt)"
+          version_code="$(cat version-code.txt)"
+          apk_sha="$(awk '{print $1}' rota-certa-stable-debug.apk.sha256)"
+          apk_size="$(cat apk-size.txt)"
+          signer_sha="$(cat signer-certificate-sha256.txt)"
+
+          cat > release-notes.md <<EOF
+          Rota Certa Stable Debug APK
+
+          Version: ${version_name}
+          VersionCode: ${version_code}
+          Commit: ${TARGET_SHA}
+          APK SHA-256: ${apk_sha}
+          APK size: ${apk_size} bytes
+          Signing certificate SHA-256: ${signer_sha}
+
+          0.1.127:
+          - Instalacao sem aplicativos de corrida selecionados.
+          - Leitura, screenshot e OCR somente no aplicativo escolhido manualmente.
+          - Card cadastrado do mesmo aplicativo obrigatorio para rota, verde ou vermelho.
+          - Busca de Locais salvos e Alertas por nome ou endereco.
+          - Acessibilidade processada primeiro; OCR usado como fallback de 90 ms.
+          - Rotas exatas dos alvos calculadas em paralelo.
+          - Cache invalido de falha de rota bloqueado; cache valido aplicado antes do amarelo.
+          - Saida do card dentro do app selecionado retorna diretamente para amarelo, sem quadro cinza.
+          - Amarelo estavel nao e redesenhado em leituras vazias repetidas.
+          - Diagnostico em memoria com fila de custo constante.
+          - Geocodificacao sem tendencia fixa para Sao Paulo.
+          - Ciclo de seguranca em 350 ms, mantendo eventos de acessibilidade imediatos.
+          - Testes e APK construidos em arvores de fonte limpas e independentes.
+          - Assinatura debug estavel recriada depois do clean e validada no APK.
+          EOF
+          cat strict-validation.txt >> release-notes.md
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "/repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" \
+              -f sha="$TARGET_SHA" \
+              -F force=true >/dev/null
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Rota Certa Stable Debug" \
+              --notes-file release-notes.md
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "Rota Certa Stable Debug" \
+              --notes-file release-notes.md
+          fi
+
+          gh release upload "$tag" \
+            rota-certa-stable-debug.apk \
+            rota-certa-stable-debug.apk.sha256 \
+            signer-certificate-sha256.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Verify published bytes and certificate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p published
+          gh release download rota-certa-stable-debug \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'rota-certa-stable-debug.apk' \
+            --dir published \
+            --clobber
+
+          cmp --silent rota-certa-stable-debug.apk published/rota-certa-stable-debug.apk
+          local_sha="$(sha256sum rota-certa-stable-debug.apk | awk '{print $1}')"
+          published_sha="$(sha256sum published/rota-certa-stable-debug.apk | awk '{print $1}')"
+          test "$local_sha" = "$published_sha"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
+            published/rota-certa-stable-debug.apk | tee published-apk-signature.txt
+          published_cert="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' published-apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$published_cert"
+          test "$published_cert" = "$(cat signer-certificate-sha256.txt)"
+
+          cat > publication-proof.txt <<EOF
+          STABLE_RELEASE=approved
+          VERSION_NAME=$(cat version-name.txt)
+          VERSION_CODE=$(cat version-code.txt)
+          COMMIT=${TARGET_SHA}
+          APK_SHA256=${published_sha}
+          APK_SIZE_BYTES=$(wc -c < published/rota-certa-stable-debug.apk)
+          SIGNER_CERTIFICATE_SHA256=${published_cert}
+          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/rota-certa-stable-debug/rota-certa-stable-debug.apk
+          EOF
+          cat publication-proof.txt
+
+      - name: Upload proof and APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.127-strict-proof
+          path: |
+            published/rota-certa-stable-debug.apk
+            rota-certa-stable-debug.apk.sha256
+            signer-certificate-sha256.txt
+            apk-signature.txt
+            published-apk-signature.txt
+            strict-validation.txt
+            release-notes.md
+            publication-proof.txt
+          if-no-files-found: error

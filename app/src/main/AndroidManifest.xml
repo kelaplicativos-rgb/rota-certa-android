@@ -4,10 +4,27 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:restoreAnyVersion="false"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
+        <activity
+            android:name=".InstalledRideAppPickerActivity"
+            android:exported="false"
+            android:label="Selecionar aplicativos de corrida" />
+        <activity
+            android:name=".BlaBlaCarCollectorActivity"
+            android:exported="false"
+            android:label="Assistente de Viagens" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
