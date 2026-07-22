@@ -24,7 +24,7 @@ data class AppSettings(
     val liveReadingEnabled: Boolean = true,
     val homeTargetEnabled: Boolean = true,
     val alternativeTargetEnabled: Boolean = true,
-    val requireRegisteredRideCard: Boolean = false,
+    val requireRegisteredRideCard: Boolean = true,
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
 )
@@ -136,9 +136,17 @@ data class AnalysisResult(
     val fields: RideFields,
     val recommendation: Recommendation,
     val reason: String,
+    // Nomes antigos mantidos no JSON para restaurar backups existentes.
+    // Semanticamente, estas distancias partem do destino final da corrida.
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
-)
+) {
+    val destinationToHomeKm: Double?
+        get() = pickupToHomeKm
+
+    val destinationToAlternativeKm: Double?
+        get() = pickupToAlternativeKm
+}
 
 @Serializable
 data class LiveDiagnostic(
@@ -151,7 +159,7 @@ data class LiveDiagnostic(
     val reason: String = "",
     val restrictToSelectedRideApps: Boolean = true,
     val selectedPackages: List<String> = emptyList(),
-    val registeredCardRequired: Boolean = false,
+    val registeredCardRequired: Boolean = true,
     val registeredCardMatched: String? = null,
     val textLength: Int = 0,
     val textHash: Int? = null,
