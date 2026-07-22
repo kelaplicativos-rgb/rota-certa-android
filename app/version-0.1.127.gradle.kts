@@ -20,3 +20,7 @@ apply(from = "selected-app-waiting-yellow-0.1.127.gradle.kts")
 apply(from = "atomic-selected-app-yellow-0.1.127.gradle.kts")
 apply(from = "yellow-idempotent-no-redraw-0.1.127.gradle.kts")
 apply(from = "stable-debug-signing-prepare-0.1.127.gradle.kts")
+
+// Etapa 2: a interface regional e aplicada depois dos restauradores de tela
+// 0.1.127 e antes dos patches 0.1.128 que alteram apenas servico/matcher.
+apply(from = "region-acceleration-ui-0.1.128.gradle.kts")
