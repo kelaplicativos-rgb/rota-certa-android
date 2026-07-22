@@ -15,7 +15,6 @@ fun prepareLegacy126ForStrict127(serviceFile: java.io.File, mainFile: java.io.Fi
     if (!mainFile.exists()) throw GradleException("Interface ausente no preflight estrito 0.1.127.")
 
     var service = serviceFile.readText()
-    var main = mainFile.readText()
 
     if (strictSelectedGate127 in service) {
         service = service.replace(strictSelectedGate127, protectedSelectedGate127)
@@ -23,6 +22,8 @@ fun prepareLegacy126ForStrict127(serviceFile: java.io.File, mainFile: java.io.Fi
 
     // Nao antecipa pre_registered_runtime_cleanup_0_1_126: o patch historico
     // precisa criar o bloco para o restaurador 0.1.127 remove-lo no mesmo preBuild.
+    // A interface tambem nao recebe marcadores antecipados: o patch 0.1.126 deve
+    // criar seu bloco real para o restaurador manual substitui-lo integralmente.
     val serviceMarkers = listOf(
         "pre_registered_gates.removed cards=",
         "SelectedRideAppStore.save(applicationContext, emptySet())",
@@ -40,24 +41,8 @@ fun prepareLegacy126ForStrict127(serviceFile: java.io.File, mainFile: java.io.Fi
         }
     }
 
-    val mainMarkers = listOf(
-        "no_pre_registered_apps_ui_0_1_126",
-        "no_selected_apps_picker_ui_0_1_126",
-        "no_pre_registered_cards_ui_0_1_126",
-        "no_registered_cards_module_0_1_126",
-        "diagnostic_policy_no_pre_registered_0_1_126",
-        "Filtro por aplicativos pre-cadastrados: removido",
-        "Modelos de cards como requisito: removidos",
-    )
-    mainMarkers.forEach { marker ->
-        if (marker !in main) {
-            main += "\n// $marker // legacy_marker_only_strict_0_1_127\n"
-        }
-    }
-
     service += "\n// strict_legacy_126_preflight_ready_0_1_127\n"
     serviceFile.writeText(service)
-    mainFile.writeText(main)
 }
 
 fun finalizeLegacy126ForStrict127(serviceFile: java.io.File) {
