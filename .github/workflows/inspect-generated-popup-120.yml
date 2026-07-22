@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - codex/pr5-stable-bubble-combined
+      - codex/rota-certa-0.1.128-fast-cache-screenoff
   pull_request:
     branches: [main]
 
@@ -44,17 +45,21 @@ jobs:
         run: |
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          matcher="app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt"
           controller="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
           engine="app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt"
           {
             echo "MAIN_LINES=$(wc -l < "$main")"
             echo "SERVICE_LINES=$(wc -l < "$service")"
+            echo "MATCHER_LINES=$(wc -l < "$matcher")"
             grep -nF 'BUBBLE_GROUP_CARDS' "$main" || true
             grep -nF 'SavedPlacesModuleCard' "$main" || true
             grep -nF 'Buscar por nome ou endereco' "$main" || true
             grep -nF 'saved_places_search_name_address_0_1_127' "$main" || true
             grep -nF 'Modelos de cards obrigatorios' "$main" || true
             grep -nF 'manual_registered_card_gate_0_1_127' "$service" || true
+            grep -nF 'direct_address_route_matrix_runtime_0_1_128' "$service" || true
+            grep -nF 'indrive_same_package_family_match_0_1_128' "$matcher" || true
             grep -nF 'const val SCAN_LOOP_MS = 350L' "$service" || true
             grep -nF 'compile_final_cleanup_0_1_127' "$main" || true
             grep -nF 'if (alert.type != SavedPlaceType.ProximityAlert)' "$controller" || true
@@ -77,8 +82,13 @@ jobs:
           path: |
             app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/core/CoreCardMatchEngine.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
             app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt
+            app/src/test/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcherTest.kt
+            app/src/test/java/br/com/mapeiaia/rotacerta/InstantFarolDecision124Test.kt
+            app/src/test/java/br/com/mapeiaia/rotacerta/NoPreRegisteredGates126ContractTest.kt
             generated-markers.txt
           if-no-files-found: error
