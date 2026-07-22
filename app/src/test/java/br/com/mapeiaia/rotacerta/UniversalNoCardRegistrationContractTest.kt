@@ -7,23 +7,19 @@ import org.junit.Test
 
 class UniversalNoCardRegistrationContractTest {
     @Test
-    fun cardRegistrationIsRemovedAndCannotGateUniversalRuntime() {
+    fun cardRegistrationExistsButRemainsOptionalForRuntime() {
         val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
 
         listOf(
-            "Cards pre-cadastrados foram apagados",
-            "Nenhum modelo pre-cadastrado controla a bolinha",
-            "no_pre_registered_cards_ui_0_1_126",
-            "no_registered_cards_module_0_1_126",
+            "Modelos de cards opcionais",
+            "Anexar modelos de cards (prints)",
+            "Modelos cadastrados:",
+            "manual_card_models_restored_0_1_127",
+            "registered_cards_module_restored_0_1_127",
         ).forEach { required ->
-            assertTrue("Contrato universal de cards ausente: $required", required in main)
+            assertTrue("Cadastro opcional de cards ausente: $required", required in main)
         }
-
-        assertFalse(
-            "Botao antigo para anexar modelos nao pode continuar visivel",
-            "Anexar modelos de cards (prints)" in main,
-        )
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
         val processEnd = service.indexOf("    private fun resolveRidePackageForText(", processStart)
@@ -33,15 +29,14 @@ class UniversalNoCardRegistrationContractTest {
         listOf(
             "RideCardTemplateMatcher",
             "RegisteredCardAddressGate",
-            "selectedRidePackages",
             "currentCardTemplates",
         ).forEach { forbidden ->
-            assertFalse("Cadastro de cards nao pode bloquear a leitura universal: $forbidden", forbidden in processBlock)
+            assertFalse("Modelo opcional nao pode bloquear a leitura do card real: $forbidden", forbidden in processBlock)
         }
 
-        assertTrue("universal_no_card_runtime_0_1_102" in service)
-        assertTrue("currentCardTemplates = emptyList()" in service)
-        assertTrue("pre_registered_runtime_cleanup_0_1_126" in service)
+        assertTrue("Modelos manuais precisam ser carregados", "currentCardTemplates = repository.cardTemplates.first()" in service)
+        assertTrue("Alteracoes manuais precisam ser observadas", "repository.cardTemplates.collect { currentCardTemplates = it }" in service)
+        assertFalse("Inicializacao nao pode apagar modelos", "removedTemplates126.forEach" in service)
     }
 
     @Test
