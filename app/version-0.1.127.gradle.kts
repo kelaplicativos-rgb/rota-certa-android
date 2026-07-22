@@ -20,3 +20,6 @@ apply(from = "selected-app-waiting-yellow-0.1.127.gradle.kts")
 apply(from = "atomic-selected-app-yellow-0.1.127.gradle.kts")
 apply(from = "yellow-idempotent-no-redraw-0.1.127.gradle.kts")
 apply(from = "stable-debug-signing-prepare-0.1.127.gradle.kts")
+
+// Evolucao de desempenho sem quebrar o contrato manual 0.1.127.
+apply(from = "version-0.1.128.gradle.kts")
