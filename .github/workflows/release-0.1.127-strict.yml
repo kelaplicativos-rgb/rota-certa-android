@@ -7,6 +7,7 @@ on:
       - codex/rota-certa-0.1.127-strict-final
     paths:
       - 'app/**'
+      - 'scripts/validate_release_0127.sh'
       - '.github/workflows/release-0.1.127-strict.yml'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -15,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'scripts/validate_release_0127.sh'
       - '.github/workflows/release-0.1.127-strict.yml'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -93,170 +95,19 @@ jobs:
           set -euo pipefail
           GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Validate generated source, APK and stable signature
+      - name: Upload candidate APK before validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.127-candidate-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Validate source DEX version and stable signature
         run: |
-          set -euo pipefail
-          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
-          store="app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideAppStore.kt"
-          maps="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
-          cache="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideRouteCache.kt"
-          diagnostics="app/src/main/java/br/com/mapeiaia/rotacerta/DiagnosticLogStore.kt"
-          signing_patch="app/stable-debug-signing-prepare-0.1.127.gradle.kts"
-          signing_source="app/debug-signing/rota-certa-debug.keystore.b64"
-          apk="app/build/outputs/apk/debug/app-debug.apk"
-          metadata="app/build/outputs/apk/debug/output-metadata.json"
-
-          test -f "$apk"
-          test -f "$metadata"
-          unzip -tq "$apk" >/dev/null
-
-          python3 - "$metadata" "$EXPECTED_VERSION_CODE" <<'PY'
-          import json, sys
-          from pathlib import Path
-          data = json.loads(Path(sys.argv[1]).read_text())
-          element = data['elements'][0]
-          actual = int(element['versionCode'])
-          expected = int(sys.argv[2])
-          if actual != expected:
-              raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
-          if element['versionName'] != '0.1.127':
-              raise SystemExit(f"versionName incorreto: {element['versionName']}")
-          Path('version-name.txt').write_text(element['versionName'])
-          Path('version-code.txt').write_text(str(actual))
-          PY
-
-          # Contrato manual e portao de cards.
-          grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
-          grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
-          grep -Fq 'normalized in selectedPackages' "$service"
-          grep -Fq 'manual_registered_card_required_migration_0_1_127' "$service"
-          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
-          grep -Fq 'templates = packageCardTemplates' "$service"
-          grep -Fq 'manual.card.gate accepted=false reason=no_template' "$service"
-          grep -Fq 'manual.card.gate accepted=false reason=no_match' "$service"
-          grep -Fq 'manual.card.gate accepted=true' "$service"
-          grep -Fq 'manual_registered_card_freshness_0_1_127' "$service"
-          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
-          grep -Fq 'Buscar aplicativos instalados' "$main"
-          grep -Fq 'Modelos de cards obrigatorios' "$main"
-          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
-          grep -Fq 'Anexar modelos de cards (prints)' "$main"
-
-          # Busca de locais e alertas.
-          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
-          grep -Fq 'Buscar por nome ou endereco' "$main"
-          grep -Fq 'place.name.lowercase(Locale.ROOT).contains(query)' "$main"
-          grep -Fq 'place.address.lowercase(Locale.ROOT).contains(query)' "$main"
-          grep -Fq 'Text("GPS")' "$main"
-          grep -Fq 'Text("Salvar")' "$main"
-          grep -Fq 'Text("Apagar")' "$main"
-
-          # Caminho rapido e estabilidade visual.
-          grep -Fq 'const val SCAN_LOOP_MS = 350L' "$service"
-          grep -Fq 'accessibility_first_ocr_fallback_0_1_127' "$service"
-          grep -Fq 'deferred_ocr_fallback_90ms_0_1_127' "$service"
-          grep -Fq 'accessibility_confirmed_cancel_ocr_0_1_127' "$service"
-          grep -Fq 'parallel_exact_routes_0_1_127' "$service"
-          grep -Fq 'instant_cache_before_yellow_0_1_127' "$service"
-          grep -Fq 'selected_app_clear_to_yellow_0_1_127' "$service"
-          grep -Fq 'atomic_selected_app_clear_color_0_1_127' "$service"
-          grep -Fq 'atomic_hard_clear_single_paint_0_1_127' "$service"
-          grep -Fq 'yellow_waiting_not_active_data_0_1_127' "$service"
-          grep -Fq 'route_cache_requires_exact_distance_0_1_127' "$cache"
-          grep -Fq 'route_cache_import_requires_exact_distance_0_1_127' "$cache"
-          grep -Fq 'diagnostic_ring_buffer_o1_0_1_127' "$diagnostics"
-          grep -Fq 'stable_debug_signing_after_clean_0_1_127' "$signing_patch"
-          grep -Fq 'internal fun geocodeQueries' "$maps"
-          grep -Fq 'containsExplicitLocality' "$maps"
-          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
-
-          if grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"; then
-            echo 'ERRO: polling de 120 ms voltou.'
-            exit 1
-          fi
-          if grep -Fq 'removedTemplates126.forEach' "$service"; then
-            echo 'ERRO: modelos ainda sao apagados na inicializacao.'
-            exit 1
-          fi
-          if grep -Fq 'fastInsideResult' "$service"; then
-            echo 'ERRO: aproximacao geometrica nao pode liberar verde.'
-            exit 1
-          fi
-          if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
-            echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
-            exit 1
-          fi
-          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
-            echo 'ERRO: @Composable duplicado.'
-            exit 1
-          fi
-
-          # O DEX valida somente textos e caminhos que realmente existem em runtime.
-          tmp_dir="$(mktemp -d)"
-          unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
-          strings "$tmp_dir"/classes*.dex > apk-strings.txt
-          for expected in \
-            "Buscar aplicativos instalados" \
-            "Nenhum aplicativo vem marcado" \
-            "Modelos de cards obrigatorios" \
-            "Anexar modelos de cards (prints)" \
-            "Buscar por nome ou endereco" \
-            "Nenhum local encontrado por nome ou endereco" \
-            "manual.card.gate accepted=false reason=no_template" \
-            "manual.card.gate accepted=false reason=no_match" \
-            "manual.card.gate accepted=true" \
-            "universal.route.cache before_yellow=true" \
-            "Aplicativo selecionado ativo; aguardando um card cadastrado correspondente." \
-            "universal.clear immediate=true target=" \
-            "universal.scan.loop interval="
-          do
-            grep -Fq -- "$expected" apk-strings.txt
-          done
-
-          # Prova de que o APK usa exatamente a chave debug estavel existente.
-          mkdir -p signing-proof
-          base64 --decode "$signing_source" > signing-proof/expected.keystore
-          keytool -list -v \
-            -keystore signing-proof/expected.keystore \
-            -storepass rotacerta \
-            -alias rotacerta-debug > signing-proof/expected-key.txt
-          apksigner verify --verbose --print-certs "$apk" > apk-signature.txt
-          expected_cert="$(sed -n 's/^[[:space:]]*SHA256: //p' signing-proof/expected-key.txt | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          apk_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apk-signature.txt | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          test -n "$expected_cert"
-          test -n "$apk_cert"
-          test "$expected_cert" = "$apk_cert"
-          printf '%s\n' "$apk_cert" > signer-certificate-sha256.txt
-
-          cp "$apk" rota-certa-stable-debug.apk
-          sha256sum rota-certa-stable-debug.apk > rota-certa-stable-debug.apk.sha256
-          wc -c < rota-certa-stable-debug.apk > apk-size.txt
-
-          cat > strict-validation.txt <<'EOF'
-          VERSION=0.1.127
-          MANUAL_APP_SELECTION=required
-          PRESELECTED_APPS=0
-          REGISTERED_CARD_MODEL=required
-          SAME_PACKAGE_MODEL_MATCH=required
-          ROUTE_WITHOUT_MODEL=blocked
-          SAVED_PLACES_SEARCH=name_and_address
-          SAVED_PLACE_ACTIONS=edit_delete_gps
-          ACCESSIBILITY_FIRST=approved
-          OCR_FALLBACK_DELAY_MS=90
-          EXACT_ROUTES_PARALLEL=approved
-          VALID_ROUTE_CACHE_BEFORE_YELLOW=approved
-          POISONED_ROUTE_CACHE=blocked
-          SELECTED_APP_WITHOUT_CARD=yellow
-          ATOMIC_COLOR_TRANSITION=approved
-          STABLE_YELLOW_NO_REDRAW=approved
-          DIAGNOSTIC_BUFFER=constant_time
-          FALLBACK_SCAN_INTERVAL_MS=350
-          HARDCODED_SAO_PAULO_GEOCODING=removed
-          DUPLICATE_COMPOSABLE=removed
-          STABLE_DEBUG_SIGNATURE=verified
-          TEST_AND_APK_SOURCE_TREES=isolated_clean
-          EOF
+          bash scripts/validate_release_0127.sh \
+            app/build/outputs/apk/debug/output-metadata.json \
+            "$EXPECTED_VERSION_CODE" \
+            app/build/outputs/apk/debug/app-debug.apk
 
       - name: Publish stable APK
         env:
@@ -299,9 +150,12 @@ jobs:
           cat strict-validation.txt >> release-notes.md
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "/repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" \
+              -f sha="$TARGET_SHA" \
+              -F force=true >/dev/null
             gh release edit "$tag" \
               --repo "$GITHUB_REPOSITORY" \
-              --target "$TARGET_SHA" \
               --title "Rota Certa Stable Debug" \
               --notes-file release-notes.md
           else
@@ -311,6 +165,7 @@ jobs:
               --title "Rota Certa Stable Debug" \
               --notes-file release-notes.md
           fi
+
           gh release upload "$tag" \
             rota-certa-stable-debug.apk \
             rota-certa-stable-debug.apk.sha256 \
@@ -318,7 +173,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --clobber
 
-      - name: Verify published bytes
+      - name: Verify published bytes and certificate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -329,12 +184,16 @@ jobs:
             --pattern 'rota-certa-stable-debug.apk' \
             --dir published \
             --clobber
+
           cmp --silent rota-certa-stable-debug.apk published/rota-certa-stable-debug.apk
           local_sha="$(sha256sum rota-certa-stable-debug.apk | awk '{print $1}')"
           published_sha="$(sha256sum published/rota-certa-stable-debug.apk | awk '{print $1}')"
           test "$local_sha" = "$published_sha"
-          apksigner verify --verbose --print-certs published/rota-certa-stable-debug.apk > published-apk-signature.txt
-          published_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' published-apk-signature.txt | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+
+          apksigner verify --verbose --print-certs \
+            published/rota-certa-stable-debug.apk | tee published-apk-signature.txt
+          published_cert="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' published-apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$published_cert"
           test "$published_cert" = "$(cat signer-certificate-sha256.txt)"
 
           cat > publication-proof.txt <<EOF
