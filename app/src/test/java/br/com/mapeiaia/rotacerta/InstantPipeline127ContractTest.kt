@@ -31,17 +31,16 @@ class InstantPipeline127ContractTest {
     }
 
     @Test
-    fun exactRoutesForConfiguredTargetsRunConcurrently() {
+    fun exactRoutesForConfiguredTargetsUseOneAddressMatrixCall() {
         val service = serviceSource()
         val analysisStart = service.indexOf("private suspend fun analyzeUniversalTwoAddress(")
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val analysisRegion = service.substring(analysisStart, analysisEnd)
 
-        assertTrue("Rotas precisam compartilhar um coroutineScope", "parallel_exact_routes_0_1_127" in analysisRegion)
-        assertTrue("Rota principal precisa ser assincrona", "val homeRouteDeferred127 = async" in analysisRegion)
-        assertTrue("Rota alternativa precisa ser assincrona", "val alternativeRouteDeferred127 = async" in analysisRegion)
-        assertTrue("As duas respostas precisam ser aguardadas juntas", "homeRouteDeferred127.await() to alternativeRouteDeferred127.await()" in analysisRegion)
-        assertFalse("Bloco sequencial antigo nao pode permanecer", "val homeRouteStartedAt" in analysisRegion)
+        assertTrue("Casa e Alfinete precisam compartilhar a mesma matriz", "direct_address_route_matrix_runtime_0_1_128" in analysisRegion)
+        assertTrue("A origem precisa ser o endereco captado", "originAddress = destinationQuery" in analysisRegion)
+        assertTrue("Geocodificacao deve aquecer em segundo plano", "background_geocode_warm_0_1_128" in analysisRegion)
+        assertTrue("Falha da matriz deve manter fallback exato", "fallback=coordinate" in analysisRegion)
         assertFalse("Linha reta nao pode liberar verde", "fastInsideResult" in analysisRegion)
     }
 
