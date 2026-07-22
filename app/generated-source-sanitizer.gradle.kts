@@ -42,25 +42,12 @@ val generatedSourceSanitizer by tasks.registering {
     }
 }
 
+// Somente os dois geradores que criam os trechos corrigidos precisam anteceder
+// o sanitizador. Evita capturar tarefas internas do Android/Gradle por nome.
 generatedSourceSanitizer.configure {
     mustRunAfter(
-        tasks.matching { task ->
-            task.name != name &&
-                task.name !in setOf("preBuild", "assemble", "assembleDebug") &&
-                !task.name.startsWith("compile") &&
-                !task.name.startsWith("test") &&
-                !task.name.startsWith("lint") &&
-                (
-                    task.name.contains("patch", ignoreCase = true) ||
-                        task.name.contains("fix", ignoreCase = true) ||
-                        task.name.contains("final", ignoreCase = true) ||
-                        task.name.contains("strict", ignoreCase = true) ||
-                        task.name.contains("cleanup", ignoreCase = true) ||
-                        task.name.contains("guard", ignoreCase = true) ||
-                        task.name.contains("runtime", ignoreCase = true) ||
-                        task.name.startsWith("enforce", ignoreCase = true)
-                    )
-        },
+        "patchBubbleRenderStability",
+        "patchFinalDiagnosticCleanup",
     )
 }
 
