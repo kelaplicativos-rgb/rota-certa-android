@@ -54,6 +54,7 @@ manualOptionalModelsFinalizer127.configure {
     mustRunAfter(
         tasks.matching { task ->
             task.name != name &&
+                task.name != "universalTwoAddressRuntimeFinal" &&
                 task.name !in setOf("preBuild", "assemble", "assembleDebug") &&
                 !task.name.startsWith("compile") &&
                 !task.name.startsWith("test") &&
