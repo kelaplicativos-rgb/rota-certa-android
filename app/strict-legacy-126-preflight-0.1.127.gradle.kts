@@ -1,10 +1,10 @@
 // Rota Certa 0.1.127
 // Compatibilidade transitória para o validador universal legado da 0.1.126.
 //
-// O código-fonte atual já segue o contrato estrito (aplicativo escolhido e card
-// cadastrado obrigatório). O patch 0.1.126 é executado antes do finalizador atual
-// e rejeita esse estado. Esta tarefa oferece somente marcadores textuais durante
-// o preBuild e restaura a expressão estrita ao terminar. Nenhum modelo é apagado.
+// O patch 0.1.126 ainda precisa montar seu bloco historico para que o restaurador
+// 0.1.127 o substitua de forma deterministica. Esta tarefa protege somente os
+// marcadores e a expressao da selecao manual durante essa passagem. Ao final,
+// confirma que nenhuma limpeza destrutiva permaneceu no aplicativo.
 
 private val strictSelectedGate127 = "normalized in selectedPackages"
 private val protectedSelectedGate127 =
@@ -21,8 +21,9 @@ fun prepareLegacy126ForStrict127(serviceFile: java.io.File, mainFile: java.io.Fi
         service = service.replace(strictSelectedGate127, protectedSelectedGate127)
     }
 
+    // Nao antecipa pre_registered_runtime_cleanup_0_1_126: o patch historico
+    // precisa criar o bloco para o restaurador 0.1.127 remove-lo no mesmo preBuild.
     val serviceMarkers = listOf(
-        "pre_registered_runtime_cleanup_0_1_126",
         "pre_registered_gates.removed cards=",
         "SelectedRideAppStore.save(applicationContext, emptySet())",
         "currentCardTemplates = emptyList()",
