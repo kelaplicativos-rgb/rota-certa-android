@@ -163,12 +163,21 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           apk=$(find app/build/outputs/apk -type f -name '*.apk' | head -1)
-          if [ -z "$apk" ]; then
-            echo "No APK generated." | tee audit/apk-validation.txt
-            exit 0
-          fi
+          test -n "$apk"
+          test -f "$apk"
+          source version.properties
+          aapt_bin="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          apksigner_bin="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$aapt_bin"
+          test -x "$apksigner_bin"
+          app_id=$(apkanalyzer manifest application-id "$apk")
+          version_code=$(apkanalyzer manifest version-code "$apk")
+          version_name=$(apkanalyzer manifest version-name "$apk")
+          test "$app_id" = "br.com.mapeiaia.rotacerta"
+          test "$version_code" = "$VERSION_CODE"
+          test "$version_name" = "$VERSION_NAME"
           {
             echo "path=$apk"
             echo "bytes=$(wc -c < "$apk" | tr -d ' ')"
@@ -177,15 +186,15 @@ jobs:
             echo "native_abis=$(unzip -l "$apk" | awk '$4 ~ /^lib\/[^/]+\/.*\.so$/ {split($4,a,"/"); print a[2]}' | sort -u | paste -sd, -)"
             echo
             echo "--- apkanalyzer ---"
-            apkanalyzer manifest application-id "$apk" 2>&1 || true
-            apkanalyzer manifest version-code "$apk" 2>&1 || true
-            apkanalyzer manifest version-name "$apk" 2>&1 || true
+            echo "$app_id"
+            echo "$version_code"
+            echo "$version_name"
             echo
             echo "--- aapt badging ---"
-            aapt dump badging "$apk" 2>&1 | head -40 || true
+            "$aapt_bin" dump badging "$apk" | head -40
             echo
             echo "--- signature ---"
-            apksigner verify --verbose --print-certs "$apk" 2>&1 || true
+            "$apksigner_bin" verify --verbose --print-certs "$apk"
           } | tee audit/apk-validation.txt
 
       - name: Upload complete stable audit package
