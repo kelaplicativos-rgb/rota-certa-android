@@ -196,3 +196,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         )
     }
 }
+
+// Registrado depois do doLast acima; sua limpeza roda somente quando a captura
+// e a trava independente ja existem no fonte final do servico.
+apply(from = "automatic-capture-cleanup-finalizer-0.1.128.gradle.kts")
