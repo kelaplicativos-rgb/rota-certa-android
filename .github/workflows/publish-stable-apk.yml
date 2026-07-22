@@ -63,13 +63,14 @@ jobs:
           echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
           GITHUB_RUN_NUMBER="$gradle_run_number" gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Validate universal policy, version and APK contents
+      - name: Validate manual selection, optional cards and exact route continuation
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           metadata="app/build/outputs/apk/debug/output-metadata.json"
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          store="app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideAppStore.kt"
           test -f "$apk"
           test -f "$metadata"
 
@@ -83,32 +84,41 @@ jobs:
           if actual != expected:
               raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
           version_name = element['versionName']
-          if version_name != '0.1.126':
+          if version_name != '0.1.127':
               raise SystemExit(f'versionName incorreto: {version_name}')
           Path('version-name.txt').write_text(str(version_name))
           Path('version-code.txt').write_text(str(actual))
           PY
 
-          grep -Fq 'universal_package_content_gate_0_1_126' "$service"
-          grep -Fq 'CorePackageMonitor.classify(' "$service"
-          grep -Fq 'classification.canScan' "$service"
-          grep -Fq 'pre_registered_runtime_cleanup_0_1_126' "$service"
-          grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
-          grep -Fq 'currentCardTemplates = emptyList()' "$service"
+          grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
+          grep -Fq 'manual_selection_storage_ready_0_1_127' "$service"
+          grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
+          grep -Fq 'SelectedRideAppStore.read(applicationContext)' "$service"
+          grep -Fq 'normalized in selectedPackages' "$service"
+          grep -Fq 'currentCardTemplates = repository.cardTemplates.first()' "$service"
+          grep -Fq 'repository.cardTemplates.collect { currentCardTemplates = it }' "$service"
+          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
+          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
+          grep -Fq 'exact_route_continues=true' "$service"
           grep -Fq 'universal.card.scope selected_index=' "$service"
-          grep -Fq 'subsecond_exact_red_lower_bound_0_1_125' "$service"
-          if grep -Fq 'normalized in selectedPackages' "$service"; then
-            echo 'ERRO: lista de aplicativos ainda controla a bolinha.'
+          if grep -Fq 'removedTemplates126.forEach' "$service"; then
+            echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
             exit 1
           fi
-          if grep -Fq 'Aplicativo fora da selecao do usuario.' "$service"; then
-            echo 'ERRO: motivo cego antigo ainda existe.'
+          if grep -Fq $'return\n        } // subsecond_exact_red_lower_bound_0_1_125' "$service"; then
+            echo 'ERRO: vermelho rapido ainda interrompe a rota exata.'
             exit 1
           fi
-          grep -Fq 'Filtro por aplicativos pre-cadastrados: removido' "$main"
-          grep -Fq 'Modelos de cards como requisito: removidos' "$main"
-          grep -Fq 'Nao existem aplicativos pre-cadastrados' "$main"
-          grep -Fq 'Cards pre-cadastrados foram apagados' "$main"
+          grep -Fq 'Buscar aplicativos instalados' "$main"
+          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
+          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
+          grep -Fq 'Aplicativos pre-cadastrados: nenhum' "$main"
+          grep -Fq 'Selecao manual de apps obrigatoria: true' "$main"
+          if grep -Fq 'SettingsSwitchRow("99 Motorista"' "$main"; then
+            echo 'ERRO: 99 voltou como chave fixa pre-cadastrada.'
+            exit 1
+          fi
 
           tmp_dir="$(mktemp -d)"
           unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
@@ -121,11 +131,13 @@ jobs:
             "Radares" \
             "Depurar" \
             "Leitura ao vivo ATIVADA" \
-            "universal.card.scope selected_index=" \
-            "universal.fast_red exact_lower_bound=true" \
-            "pre_registered_gates.removed cards=" \
-            "Filtro por aplicativos pre-cadastrados: removido" \
-            "Modelos de cards como requisito: removidos" \
+            "Buscar aplicativos instalados" \
+            "Nenhum aplicativo vem marcado" \
+            "Anexar modelos de cards (prints)" \
+            "Nenhum modelo nasce cadastrado" \
+            "manual_selection.ready selected=" \
+            "universal.screen.cosmetic_change ignored=true" \
+            "universal.fast_red provisional=true exact_route_continues=true" \
             "popup_navigation_service_0_1_120"
           do
             grep -Fq -- "$expected" stable-apk-strings.txt
@@ -157,15 +169,16 @@ jobs:
           APK SHA-256: ${apk_sha}
           APK size: ${apk_size} bytes
 
-          Recursos 0.1.126:
-          - Remove a lista de aplicativos do caminho critico da bolinha.
-          - Apaga selecoes antigas de apps e modelos de cards armazenados na primeira inicializacao.
-          - Remove 99, Uber e inDrive como opcoes fixas pre-cadastradas.
-          - Pacotes comuns sao avaliados pelo conteudo real do card.
-          - Sistema, launcher, teclado, Google Maps e Waze continuam bloqueados.
-          - Substitui o motivo generico de app fora da selecao pelo motivo real do bloqueio.
-          - Mantem o primeiro card completo visivel, cache exato e vermelho antecipado seguro.
-          - O relatorio informa explicitamente a politica universal sem aumentar o volume de logs.
+          Recursos 0.1.127:
+          - Restaura a tela onde o usuario escolhe manualmente quais aplicativos a bolinha pode ler.
+          - Nenhum aplicativo nasce selecionado ou pre-cadastrado.
+          - Restaura o cadastro e a exclusao manual de modelos de cards.
+          - Nenhum modelo nasce cadastrado e o uso de modelos continua opcional.
+          - Remove a limpeza destrutiva de modelos introduzida na 0.1.126.
+          - Mantem o primeiro card completo visivel quando ha varias ofertas.
+          - Mudancas cosmeticas na lista nao cancelam a rota do mesmo passageiro/destino.
+          - O vermelho geometrico aparece imediatamente, mas a rota exata continua para preencher o km.
+          - O relatorio informa apps selecionados, quantidade de modelos e tentativas de rota.
           EOF
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
