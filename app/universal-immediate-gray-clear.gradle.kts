@@ -13,6 +13,17 @@ val universalImmediateGrayClear by tasks.registering {
         if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado.")
         var text = file.readText()
 
+        // Compatibilidade com a migracao antiga: os modelos continuam opcionais,
+        // mas agora podem ser aprendidos automaticamente por print.
+        if ("universal_optional_card_model_migration_0_1_101" !in text) {
+            val modelAnchor = "            currentCardTemplates = repository.cardTemplates.first()"
+            if (modelAnchor !in text) throw GradleException("Carregamento dos modelos de cards nao encontrado.")
+            text = text.replaceFirst(
+                modelAnchor,
+                "$modelAnchor // universal_optional_card_model_migration_0_1_101",
+            )
+        }
+
         val clearStart = text.indexOf("    private fun hardClearUniversalTwoAddress(")
         val clearEnd = if (clearStart >= 0) text.indexOf("\n    private fun ", clearStart + 10) else -1
         if (clearStart < 0 || clearEnd <= clearStart) {
