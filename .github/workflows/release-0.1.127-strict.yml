@@ -60,6 +60,7 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -190,7 +191,7 @@ jobs:
           published_sha="$(sha256sum published/rota-certa-stable-debug.apk | awk '{print $1}')"
           test "$local_sha" = "$published_sha"
 
-          apksigner verify --verbose --print-certs \
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs \
             published/rota-certa-stable-debug.apk | tee published-apk-signature.txt
           published_cert="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' published-apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           test -n "$published_cert"
