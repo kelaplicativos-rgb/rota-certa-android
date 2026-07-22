@@ -99,7 +99,7 @@ jobs:
           path: gradle-assemble.log
           if-no-files-found: ignore
 
-      - name: Validate strict manual reading contract
+      - name: Validate manual app selection and optional cards
         run: |
           set -euo pipefail
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
@@ -118,32 +118,44 @@ jobs:
           grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
           grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
           grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
+          grep -Fq 'SelectedRideAppStore.read(applicationContext)' "$service"
           grep -Fq 'normalized in selectedPackages' "$service"
-
-          # Cards: nenhum modelo nasce pronto e o mesmo pacote precisa corresponder.
-          grep -Fq 'manual_registered_card_required_migration_0_1_127' "$service"
-          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
-          grep -Fq 'templates = packageCardTemplates' "$service"
-          grep -Fq 'manual.card.gate accepted=false reason=no_template' "$service"
-          grep -Fq 'manual.card.gate accepted=false reason=no_match' "$service"
-          grep -Fq 'manual.card.gate accepted=true' "$service"
-          grep -Fq 'manual_registered_card_freshness_0_1_127' "$service"
-          grep -Fq 'Modelos de cards obrigatorios' "$main"
           grep -Fq 'Nenhum aplicativo vem marcado' "$main"
-          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+          grep -Fq 'Buscar aplicativos instalados' "$main"
 
-          # Desempenho: eventos continuam imediatos e o loop e somente fallback.
-          grep -Fq 'const val SCAN_LOOP_MS = 350L' "$service"
-          if grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"; then
-            echo 'ERRO: polling agressivo de 120 ms voltou.'
+          # Cards: nenhum modelo nasce pronto; cadastro manual existe e e opcional.
+          grep -Fq 'manual_cards_preserved_0_1_127' "$service"
+          grep -Fq 'manual_cards_observer_0_1_127' "$service"
+          grep -Fq 'Modelos de cards opcionais' "$main"
+          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
+          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+          if grep -Fq 'manual_registered_card_gate_0_1_127' "$service"; then
+            echo 'ERRO: modelo de card voltou a ser obrigatorio.'
             exit 1
           fi
+          if grep -Fq 'removedTemplates126.forEach' "$service"; then
+            echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
+            exit 1
+          fi
+
+          # Rota: o mesmo passageiro/destino sobrevive a mudancas cosmeticas da lista.
+          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
+          grep -Fq 'universal.screen.cosmetic_change ignored=true' "$service"
+          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
+          grep -Fq 'exact_route_continues=true' "$service"
+          if grep -Fq $'return\n        } // subsecond_exact_red_lower_bound_0_1_125' "$service"; then
+            echo 'ERRO: vermelho rapido ainda interrompe a rota exata.'
+            exit 1
+          fi
+
+          # Desempenho: eventos imediatos e fallback de 120 ms preservados.
+          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
 
           # Geocodificacao nao pode inventar Sao Paulo em endereco ambiguo.
           grep -Fq 'internal fun geocodeQueries' "$maps"
           grep -Fq 'containsExplicitLocality' "$maps"
           if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
-            echo 'ERRO: viés fixo para São Paulo voltou à geocodificação.'
+            echo 'ERRO: vies fixo para Sao Paulo voltou a geocodificacao.'
             exit 1
           fi
 
@@ -152,22 +164,18 @@ jobs:
           grep -Fq 'BubbleShortcutCatalog.modules.forEach' "$controller"
           grep -Fq 'popupShownThisApproach' "$engine"
 
-          if grep -Fq 'removedTemplates126.forEach' "$service"; then
-            echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
-            exit 1
-          fi
-
-          cat > strict-reading-validation.txt <<'EOF'
-          STRICT_MANUAL_APP_SELECTION=approved
+          cat > manual-optional-validation.txt <<'EOF'
+          MANUAL_APP_SELECTION=approved
           NO_APP_PRESELECTED=approved
-          REGISTERED_CARD_REQUIRED=approved
-          SAME_PACKAGE_TEMPLATE_REQUIRED=approved
-          NO_ROUTE_WITHOUT_CARD_MATCH=approved
-          FALLBACK_SCAN_INTERVAL_MS=350
+          OPTIONAL_CARD_MODELS=approved
+          NO_DESTRUCTIVE_CARD_CLEANUP=approved
+          STABLE_CARD_SIGNATURE=approved
+          FAST_RED_EXACT_ROUTE_CONTINUES=approved
+          FALLBACK_SCAN_INTERVAL_MS=120
           HARDCODED_SAO_PAULO_GEOCODING=removed
           DEBUG_WORKFLOW_RELEASE_PUBLICATION=disabled
           EOF
-          cat strict-reading-validation.txt
+          cat manual-optional-validation.txt
 
       - name: Validate debug APK contents
         run: |
@@ -187,12 +195,11 @@ jobs:
             "Cards cadastrados" \
             "Buscar aplicativos instalados" \
             "Nenhum aplicativo vem marcado" \
-            "Modelos de cards obrigatorios" \
+            "Modelos de cards opcionais" \
             "Anexar modelos de cards (prints)" \
-            "manual.card.gate accepted=true" \
-            "manual.card.gate accepted=false reason=no_template" \
-            "manual.card.gate accepted=false reason=no_match" \
-            "adaptive_fallback_scan_0_1_127"
+            "manual_selection.ready selected=" \
+            "universal.screen.cosmetic_change ignored=true" \
+            "universal.fast_red provisional=true exact_route_continues=true"
           do
             grep -Fq -- "$expected" apk-strings.txt
           done
@@ -201,7 +208,7 @@ jobs:
             echo "APK=$apk"
             echo "APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')"
             echo "APK_SIZE_BYTES=$(wc -c < "$apk")"
-            cat strict-reading-validation.txt
+            cat manual-optional-validation.txt
           } > apk-validation.txt
           cat apk-validation.txt
 
@@ -210,7 +217,7 @@ jobs:
         with:
           name: rota-certa-validations
           path: |
-            strict-reading-validation.txt
+            manual-optional-validation.txt
             apk-validation.txt
             real-farol-validation.txt
           if-no-files-found: error
