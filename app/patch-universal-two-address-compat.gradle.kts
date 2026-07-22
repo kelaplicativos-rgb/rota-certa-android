@@ -1,13 +1,13 @@
 // Compatibilidade final do leitor universal:
 // - mantem a trava de idempotencia;
 // - mantem os metadados e a sonda de validacao;
-// - nao exige modelo de card cadastrado;
+// - modelos de cards sao opcionais e cadastrados somente pelo usuario;
+// - aplicativos monitorados nascem zerados e dependem da selecao manual;
 // - dois enderecos so liberam rota quando existem sinais reais de corrida.
 //
-// O contrato ativo e: localizar pelo menos dois enderecos reconheciveis, validar
-// que a tela e uma oferta de corrida, usar o ultimo como destino e calcular ate
-// o endereco definido pelo usuario. Fotos, documentos e listas de enderecos sem
-// evidencia de corrida permanecem cinza e nao chamam geocodificacao/rotas.
+// O contrato ativo e: o usuario escolhe o aplicativo, o leitor localiza pelo
+// menos dois enderecos, valida que a tela e uma oferta de corrida, usa o ultimo
+// como destino e calcula ate o endereco definido pelo usuario.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
 apply(from = "in-app-bubble-immediate-state.gradle.kts")
@@ -68,6 +68,7 @@ apply(from = "subsecond-exact-red-0.1.125.gradle.kts")
 apply(from = "primary-visible-card-scope-0.1.125.gradle.kts")
 apply(from = "universal-no-pre-registered-gates-0.1.126.gradle.kts")
 apply(from = "selected-app-legacy-idempotence-0.1.126.gradle.kts")
+apply(from = "manual-apps-cards-exact-route-0.1.127.gradle.kts")
 apply(from = "version-0.1.101.gradle.kts")
 apply(from = "version-0.1.102.gradle.kts")
 apply(from = "version-0.1.103.gradle.kts")
@@ -94,3 +95,4 @@ apply(from = "version-0.1.123.gradle.kts")
 apply(from = "version-0.1.124.gradle.kts")
 apply(from = "version-0.1.125.gradle.kts")
 apply(from = "version-0.1.126.gradle.kts")
+apply(from = "version-0.1.127.gradle.kts")
