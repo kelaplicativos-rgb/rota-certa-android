@@ -76,11 +76,27 @@ jobs:
           echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
 
       - name: Run unit tests on clean sources
+        id: unit_tests
+        continue-on-error: true
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
-          set -euo pipefail
-          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          set -o pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee unit-test.log
+
+      - name: Upload unit-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.128-unit-test-log
+          path: |
+            unit-test.log
+            app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+
+      - name: Stop after failed unit tests
+        if: steps.unit_tests.outcome != 'success'
+        run: exit 1
 
       - name: Restore exact sources before APK build
         run: |
