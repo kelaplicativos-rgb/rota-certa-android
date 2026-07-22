@@ -16,6 +16,7 @@ val prepareStableDebugKeystore127 by tasks.registering {
     description = "Recria a chave debug estavel depois da limpeza do build."
     inputs.file(stableDebugKeystoreSource127)
     outputs.file(stableDebugKeystoreOutput127)
+    mustRunAfter("clean")
 
     doLast {
         if (!stableDebugKeystoreSource127.exists()) {
@@ -29,13 +30,6 @@ val prepareStableDebugKeystore127 by tasks.registering {
         if (!stableDebugKeystoreOutput127.exists() || stableDebugKeystoreOutput127.length() == 0L) {
             throw GradleException("Nao foi possivel preparar a chave debug estavel.")
         }
-    }
-}
-
-tasks.matching { task -> task.name == "clean" }.configureEach {
-    val cleanTask127 = this
-    prepareStableDebugKeystore127.configure {
-        mustRunAfter(cleanTask127)
     }
 }
 
