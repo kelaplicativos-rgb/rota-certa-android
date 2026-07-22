@@ -46,11 +46,11 @@ class GoogleMapsGeocodingScopeTest {
     }
 
     @Test
-    fun appSettingsStartWithManualAppsAndOptionalCards() {
+    fun appSettingsStartWithStrictManualGates() {
         val settings = AppSettings()
 
         assertTrue(settings.restrictToSelectedRideApps)
-        assertFalse(settings.requireRegisteredRideCard)
+        assertTrue(settings.requireRegisteredRideCard)
         assertFalse(settings.monitor99)
         assertFalse(settings.monitorUber)
         assertFalse(settings.monitorInDrive)
