@@ -11,3 +11,4 @@ defaultConfig127.javaClass.methods
 apply(from = "manual-strict-contract-finalizer-0.1.127.gradle.kts")
 apply(from = "saved-places-search-0.1.127.gradle.kts")
 apply(from = "compile-final-cleanup-0.1.127.gradle.kts")
+apply(from = "strict-model-default-finalizer-0.1.127.gradle.kts")
