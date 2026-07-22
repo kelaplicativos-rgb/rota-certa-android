@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "RotaCerta"
 include(":app")
+include(":runtimefixture")

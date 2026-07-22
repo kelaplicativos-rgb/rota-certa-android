@@ -246,7 +246,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
 
     LaunchedEffect(launchIntent) {
         val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
-        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_HISTORY) {
+        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
             tab = requestedTab
         }
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
@@ -276,6 +276,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
             NavigationBar {
                 NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
                 NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
+                NavigationBarItem(selected = tab == TAB_TOOLS, onClick = { tab = TAB_TOOLS }, label = { Text("Ferramentas") }, icon = {})
                 NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})
             }
         },
@@ -332,6 +333,12 @@ fun RotaCertaApp(launchIntent: Intent?) {
                             radarImportStatus = "Radares importados removidos."
                         }
                     },
+                )
+                TAB_TOOLS -> ToolsScreen(
+                    onOpenBlaBlaCarCollector = {
+                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
+                    },
+                    onClearClipboard = { clearClipboard(context) },
                 )
                 TAB_HISTORY -> HistoryScreen(history)
             }
@@ -595,14 +602,6 @@ private fun DiagnosticExpander(
         if (diagnostic == null) {
             Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("Cor: ${diagnostic.bubbleColor}")
-            Text("Etapa: ${diagnostic.stage}")
-            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
-            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
-            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
-            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
-                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
-            }
             Button(
                 onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -612,6 +611,14 @@ private fun DiagnosticExpander(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Copiar diagnostico")
+            }
+            Text("Cor: ${diagnostic.bubbleColor}")
+            Text("Etapa: ${diagnostic.stage}")
+            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
+            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
+            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
+            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
+                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(
                 enabled = diagnostic.textPreview.isNotBlank(),
@@ -799,6 +806,7 @@ private fun SettingsScreen(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Configuracoes", fontWeight = FontWeight.Bold)
+        SystemControlCard(settings = draft, onChange = ::saveDraft)
         AlwaysLocationPermissionCard(
             hasAlwaysPermission = hasAlwaysLocationPermission(context),
             onOpenLocationSettings = { openAppLocationSettings(context) },
@@ -837,6 +845,33 @@ private fun SettingsScreen(
             onRestoreBackup = onRestoreBackup,
         )
         Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+    }
+}
+
+@Composable
+private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    ExpandableCard(title = "Controle geral", initiallyExpanded = true) {
+        SettingsSwitchRow(
+            label = "Rota Certa ligado",
+            checked = settings.appEnabled,
+            onCheckedChange = { enabled -> onChange(settings.copy(appEnabled = enabled)) },
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Falar radares e proximidade", modifier = Modifier.weight(1f))
+            Switch(
+                checked = settings.appEnabled && settings.proximityAlertsEnabled,
+                enabled = settings.appEnabled,
+                onCheckedChange = { enabled -> onChange(settings.copy(proximityAlertsEnabled = enabled)) },
+            )
+        }
+        Text(
+            if (settings.appEnabled) {
+                "Desligue apenas quando quiser pausar leitura ao vivo e avisos. A bolinha fica em espera."
+            } else {
+                "Rota Certa esta pausado: leitura ao vivo e avisos de proximidade ficam desligados."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -1091,6 +1126,40 @@ private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Uni
 }
 
 @Composable
+private fun ToolsScreen(
+    onOpenBlaBlaCarCollector: () -> Unit,
+    onClearClipboard: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Ferramentas", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir coletor")
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Area de transferencia", fontWeight = FontWeight.Bold)
+                Text(
+                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
+                    Text("Limpar area de transferencia")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HistoryScreen(history: List<AnalysisResult>) {
     if (history.isEmpty()) {
         Text("Nenhuma analise salva ainda.")
@@ -1107,6 +1176,21 @@ private fun HistoryScreen(history: List<AnalysisResult>) {
                 }
             }
         }
+    }
+}
+
+private fun clearClipboard(context: Context) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            clipboard.clearPrimaryClip()
+        } else {
+            clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+        }
+    }.onSuccess {
+        Toast.makeText(context, "Area de transferencia limpa.", Toast.LENGTH_SHORT).show()
+    }.onFailure {
+        Toast.makeText(context, "Nao foi possivel limpar a area de transferencia.", Toast.LENGTH_SHORT).show()
     }
 }
 

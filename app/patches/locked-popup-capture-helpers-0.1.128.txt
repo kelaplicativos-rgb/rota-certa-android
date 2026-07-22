@@ -1,0 +1,71 @@
+    private fun activeLockedRidePackage128(nowMillis: Long = System.currentTimeMillis()): String? {
+        if (nowMillis > lockedPopupLeaseUntilMillis128) return null
+        if (universalActiveAddressSignature == null) return null
+        return normalizePackageName(universalActiveRidePackageName)
+            ?.takeIf { shouldScanPackage(it) }
+    }
+
+    private fun isTransientSystemWindowPackage128(packageName: String?): Boolean {
+        val normalized128 = normalizePackageName(packageName) ?: return false
+        return normalized128 == "com.android.systemui" ||
+            normalized128 == "com.samsung.android.systemui" ||
+            normalized128.contains("launcher") ||
+            normalized128.contains("keyguard")
+    } // locked_popup_transient_packages_0_1_128
+
+    private fun requestAutomaticRideCapture128(
+        packageName: String,
+        text: String,
+        pickup: String?,
+        destination: String?,
+        screenHash: Int,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || text.isBlank()) return
+        val now128 = System.currentTimeMillis()
+        val signature128 = "$packageName|$screenHash|${text.hashCode()}"
+        if (signature128 == lastAutomaticCaptureSignature128 &&
+            now128 - lastAutomaticCaptureAtMillis128 < AUTOMATIC_CAPTURE_DEDUPE_MILLIS_128
+        ) return
+        if (!screenshotInProgress.compareAndSet(false, true)) return
+        lastAutomaticCaptureSignature128 = signature128
+        lastAutomaticCaptureAtMillis128 = now128
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        val bitmap128 = screenshot.toSoftwareBitmap()
+                        screenshotInProgress.set(false)
+                        if (bitmap128 == null) return
+                        scope.launch(Dispatchers.IO) {
+                            val fare128 = Regex("R\\$\\s*[0-9]+(?:[,.][0-9]+)?", RegexOption.IGNORE_CASE)
+                                .findAll(text)
+                                .map { it.value }
+                                .lastOrNull()
+                            val saved128 = automaticRideCaptureStore128.save(
+                                bitmap = bitmap128,
+                                packageName = packageName,
+                                text = text,
+                                pickup = pickup,
+                                destination = destination,
+                                fare = fare128,
+                            )
+                            traceEvent(
+                                "automatic.capture saved=${saved128 != null} package=$packageName hash=$screenHash retention_days=${AutomaticRideCaptureStore.DEFAULT_RETENTION_DAYS}",
+                            )
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        screenshotInProgress.set(false)
+                        traceEvent("automatic.capture failed code=$errorCode")
+                    }
+                },
+            )
+        }.onFailure { error128 ->
+            screenshotInProgress.set(false)
+            traceEvent("automatic.capture error=${error128::class.java.simpleName}")
+        }
+    } // automatic_ride_capture_runtime_0_1_128
+
