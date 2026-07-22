@@ -91,7 +91,11 @@ fun patchCriticalSafetyFinalizer128(
 
     var matcher = matcherFile.readText()
     val matcherReplacement = """    fun match(text: String, packageName: String?, templates: List<RideCardTemplate>): RideCardTemplateMatch? {
-        val normalizedPackage = packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: return null
+        val normalizedPackage = packageName
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.takeIf { it.isNotBlank() }
+            ?: UNIVERSAL_LEARNED_PACKAGE
         val liveFeatures = deterministicFeaturesFor(text)
         if (liveFeatures.size < 3) return null
 
@@ -114,13 +118,13 @@ fun patchCriticalSafetyFinalizer128(
                     .filterNot { it.startsWith("adaptive.") }
                     .toSet()
                 val matched = match.matchedFeatures.toSet()
+                val matchedStructural = structuralFeatures.intersect(matched)
                 val matchedStrict = strictCardFeatures.intersect(matched)
                 val strongInDriveLockedPopup128 =
                     normalizedPackage == INDRIVE_PACKAGE &&
                         "card.contract.indrive_opened_single" in liveFeatures &&
                         ("card.contract.indrive_opened_single" in required ||
                             "card.contract.indrive_individual" in required) &&
-                        "card.crop.route_block" in liveFeatures &&
                         "card.route.two_addresses" in liveFeatures &&
                         "valor em reais" in liveFeatures &&
                         ("aceitar por" in liveFeatures ||
@@ -128,7 +132,7 @@ fun patchCriticalSafetyFinalizer128(
                             "ofereça sua tarifa" in liveFeatures)
                 strongInDriveLockedPopup128 || // final_indrive_locked_popup_match_0_1_128
                     (match.matchedFeatures.size >= 3 &&
-                        matchedStrict.size >= 2 &&
+                        (matchedStructural.size >= 2 || matchedStrict.isNotEmpty()) &&
                         match.score >= 0.25)
             }
             .maxByOrNull { it.score }
