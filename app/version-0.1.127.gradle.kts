@@ -24,3 +24,6 @@ apply(from = "stable-debug-signing-prepare-0.1.127.gradle.kts")
 // Etapa 2: a interface regional e aplicada depois dos restauradores de tela
 // 0.1.127 e antes dos patches 0.1.128 que alteram apenas servico/matcher.
 apply(from = "region-acceleration-ui-0.1.128.gradle.kts")
+
+// Etapa 3: galeria das capturas automaticas no mesmo modulo dos modelos manuais.
+apply(from = "automatic-capture-gallery-0.1.128.gradle.kts")
