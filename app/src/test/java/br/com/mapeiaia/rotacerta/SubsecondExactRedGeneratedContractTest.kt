@@ -19,11 +19,17 @@ class SubsecondExactRedGeneratedContractTest {
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val region = service.substring(analysisStart, analysisEnd)
         val fastApply = region.indexOf("showOverlay(RadarColor.Red, distanceKm = null)")
-        val firstRoute = region.indexOf("val homeRouteStartedAt")
+        val parallelExactRoute = region.indexOf(
+            "val (homeRouteResult127, alternativeRouteResult127) = coroutineScope",
+        )
 
         assertTrue("Politica geometrica precisa continuar no codigo", "subsecond_exact_red_lower_bound_0_1_125" in region)
-        assertTrue("Vermelho provisório precisa aparecer antes da rota", fastApply >= 0 && fastApply < firstRoute)
+        assertTrue(
+            "Vermelho provisorio precisa aparecer antes das rotas exatas paralelas",
+            fastApply >= 0 && parallelExactRoute >= 0 && fastApply < parallelExactRoute,
+        )
         assertTrue("Rota exata precisa continuar para preencher o km", "fast_red_continues_exact_route_0_1_127" in region)
+        assertTrue("Rotas exatas devem ser paralelas", "parallel_exact_routes_0_1_127" in region)
         assertTrue("Diagnostico deve registrar continuacao da rota", "exact_route_continues=true" in region)
         assertFalse(
             "Fluxo fora nao pode mais encerrar antes da consulta exata",
