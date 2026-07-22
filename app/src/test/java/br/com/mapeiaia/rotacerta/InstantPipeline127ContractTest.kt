@@ -31,16 +31,18 @@ class InstantPipeline127ContractTest {
     }
 
     @Test
-    fun exactRoutesForConfiguredTargetsRunConcurrently() {
+    fun exactRoutesAndDestinationGeocodeRunConcurrently() {
         val service = serviceSource()
         val analysisStart = service.indexOf("private suspend fun analyzeUniversalTwoAddress(")
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val analysisRegion = service.substring(analysisStart, analysisEnd)
 
-        assertTrue("Rotas precisam compartilhar um coroutineScope", "parallel_exact_routes_0_1_127" in analysisRegion)
+        assertTrue("Geocodificacao do destino deve iniciar junto das rotas", "val destinationCoordinateDeferred128 = async" in analysisRegion)
         assertTrue("Rota principal precisa ser assincrona", "val homeRouteDeferred127 = async" in analysisRegion)
         assertTrue("Rota alternativa precisa ser assincrona", "val alternativeRouteDeferred127 = async" in analysisRegion)
-        assertTrue("As duas respostas precisam ser aguardadas juntas", "homeRouteDeferred127.await() to alternativeRouteDeferred127.await()" in analysisRegion)
+        assertTrue("As rotas devem permanecer no mesmo coroutineScope", "direct_address_routes_parallel_0_1_128" in analysisRegion)
+        assertTrue("Contrato historico de rotas paralelas deve permanecer", "parallel_exact_routes_0_1_127" in analysisRegion)
+        assertTrue("As duas rotas devem ser aguardadas somente depois de iniciadas", "homeRouteDeferred127.await()" in analysisRegion && "alternativeRouteDeferred127.await()" in analysisRegion)
         assertFalse("Bloco sequencial antigo nao pode permanecer", "val homeRouteStartedAt" in analysisRegion)
         assertFalse("Linha reta nao pode liberar verde", "fastInsideResult" in analysisRegion)
     }
