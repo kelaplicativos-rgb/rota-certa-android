@@ -9,6 +9,10 @@ on:
       - main
       - 'codex/**'
 
+concurrency:
+  group: build-debug-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Este workflow apenas testa e entrega artefato. A release estavel pertence ao
 # publish-stable-apk.yml, evitando dois builds disputando o mesmo download.
 permissions:
