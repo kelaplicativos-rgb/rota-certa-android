@@ -6,6 +6,7 @@ defaultConfig127.javaClass.methods
     .first { method -> method.name == "setVersionName" && method.parameterCount == 1 }
     .invoke(defaultConfig127, "0.1.127")
 
-// Ultimo aplicador da versao: nenhuma etapa posterior pode reabrir leitura universal,
-// tornar cards opcionais ou restaurar o polling de 120 ms.
+// Ultimos aplicadores da versao: nenhuma etapa posterior pode reabrir leitura universal,
+// tornar cards opcionais, restaurar polling agressivo ou remover a busca de locais.
 apply(from = "manual-strict-contract-finalizer-0.1.127.gradle.kts")
+apply(from = "saved-places-search-0.1.127.gradle.kts")
