@@ -25,5 +25,6 @@ apply(from = "stable-debug-signing-prepare-0.1.127.gradle.kts")
 // 0.1.127 e antes dos patches 0.1.128 que alteram apenas servico/matcher.
 apply(from = "region-acceleration-ui-0.1.128.gradle.kts")
 
-// Etapa 3: galeria das capturas automaticas no mesmo modulo dos modelos manuais.
-apply(from = "automatic-capture-gallery-0.1.128.gradle.kts")
+// Etapa 3: somente a interface da galeria e aplicada aqui. A limpeza periodica
+// entra no finalizador do servico, depois que a captura automatica foi criada.
+apply(from = "automatic-capture-gallery-ui-0.1.128.gradle.kts")
