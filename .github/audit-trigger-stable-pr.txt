@@ -3,3 +3,4 @@ Re-run after circular Gradle finalizer dependency fix.
 Re-run after Android Lint runtime-safety fixes.
 Re-run after narrowing generated-source task ordering.
 Re-run after unified versionCode 4066 and clean signing fix.
+Re-run with mandatory APK identity and signature verification.
