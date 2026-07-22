@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/pr5-full-audit-20260722
+  pull_request:
+    branches:
+      - codex/radar-txt-approach-alert-fix
   workflow_dispatch:
 
 permissions:
@@ -58,7 +61,7 @@ jobs:
           done
           {
             echo "commit=$(git rev-parse HEAD)"
-            echo "branch=${GITHUB_REF_NAME}"
+            echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
             echo "tracked_files=$(git ls-files | wc -l | tr -d ' ')"
             echo "text_lines=$(awk -F '\t' 'NR>1 {sum += $3} END {print sum+0}' audit/inventory.tsv)"
             echo "bytes=$(awk -F '\t' 'NR>1 {sum += $2} END {print sum+0}' audit/inventory.tsv)"
