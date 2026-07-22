@@ -6,8 +6,8 @@
 // e rejeita esse estado. Esta tarefa oferece somente marcadores textuais durante
 // o preBuild e restaura a expressão estrita ao terminar. Nenhum modelo é apagado.
 
-private const val strictSelectedGate127 = "normalized in selectedPackages"
-private const val protectedSelectedGate127 =
+private val strictSelectedGate127 = "normalized in selectedPackages"
+private val protectedSelectedGate127 =
     "normalized /* strict_legacy_126_preflight_0_1_127 */ in selectedPackages"
 
 fun prepareLegacy126ForStrict127(serviceFile: java.io.File, mainFile: java.io.File) {
