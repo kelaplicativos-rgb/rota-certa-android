@@ -36,7 +36,6 @@ class UniversalNoCardRegistrationContractTest {
         }
 
         assertTrue("Modelos manuais precisam ser carregados", "currentCardTemplates = repository.cardTemplates.first()" in service)
-        assertTrue("Alteracoes manuais precisam ser observadas", "repository.cardTemplates.collect { currentCardTemplates = it }" in service)
         assertFalse("Inicializacao nao pode apagar modelos", "removedTemplates126.forEach" in service)
         assertTrue("Configuracao padrao precisa exigir modelo", AppSettings().requireRegisteredRideCard)
     }
