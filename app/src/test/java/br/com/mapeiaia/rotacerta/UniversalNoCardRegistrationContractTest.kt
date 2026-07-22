@@ -7,17 +7,17 @@ import org.junit.Test
 
 class UniversalNoCardRegistrationContractTest {
     @Test
-    fun cardRegistrationExistsButRemainsOptionalForRuntime() {
+    fun cardRegistrationExistsAndBlocksRuntimeUntilSamePackageMatch() {
         val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
 
         listOf(
-            "Modelos de cards opcionais",
+            "Modelos de cards obrigatorios",
             "Anexar modelos de cards (prints)",
             "Modelos cadastrados:",
             "Nenhum modelo nasce cadastrado",
         ).forEach { required ->
-            assertTrue("Cadastro opcional de cards ausente: $required", required in main)
+            assertTrue("Cadastro obrigatorio de cards ausente: $required", required in main)
         }
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
@@ -26,18 +26,19 @@ class UniversalNoCardRegistrationContractTest {
         val processBlock = service.substring(processStart, processEnd)
 
         listOf(
-            "RideCardTemplateMatcher",
-            "RegisteredCardAddressGate",
-            "currentCardTemplates",
             "manual_registered_card_gate_0_1_127",
-        ).forEach { forbidden ->
-            assertFalse("Modelo opcional nao pode bloquear a leitura do card real: $forbidden", forbidden in processBlock)
+            "templates = packageCardTemplates",
+            "reason=no_template",
+            "reason=no_match",
+            "manual.card.gate accepted=true",
+        ).forEach { required ->
+            assertTrue("Portaria de modelo cadastrado ausente: $required", required in processBlock)
         }
 
         assertTrue("Modelos manuais precisam ser carregados", "currentCardTemplates = repository.cardTemplates.first()" in service)
         assertTrue("Alteracoes manuais precisam ser observadas", "repository.cardTemplates.collect { currentCardTemplates = it }" in service)
         assertFalse("Inicializacao nao pode apagar modelos", "removedTemplates126.forEach" in service)
-        assertFalse("Configuracao padrao nao pode exigir modelo", AppSettings().requireRegisteredRideCard)
+        assertTrue("Configuracao padrao precisa exigir modelo", AppSettings().requireRegisteredRideCard)
     }
 
     @Test
