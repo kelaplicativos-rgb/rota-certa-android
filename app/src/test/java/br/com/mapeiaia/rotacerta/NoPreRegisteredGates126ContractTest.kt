@@ -13,7 +13,7 @@ class NoPreRegisteredGates126ContractTest {
         ?: error("$path nao encontrado")
 
     @Test
-    fun noAppIsPreselectedButManualSelectionControlsReading() {
+    fun noAppIsPreselectedAndOnlyManualPackagesCanBeRead() {
         val service = source("LiveRideAccessibilityService.kt")
         val scanStart = service.indexOf("private fun shouldScanPackage(")
         val scanEnd = service.indexOf("private fun selectedRidePackages", scanStart)
@@ -29,15 +29,37 @@ class NoPreRegisteredGates126ContractTest {
     }
 
     @Test
-    fun interfaceRestoresManualPickerAndOptionalCardModels() {
+    fun registeredModelFromTheSamePackageIsRequiredBeforeRouteOrColor() {
+        val service = source("LiveRideAccessibilityService.kt")
+
+        assertTrue("A configuracao precisa exigir card cadastrado", "requireRegisteredRideCard = true" in service)
+        assertTrue("O match precisa usar apenas modelos do pacote selecionado", "templates = packageCardTemplates" in service)
+        assertTrue("Sem modelo a rota deve ser bloqueada", "reason=no_template" in service)
+        assertTrue("Sem correspondencia a rota deve ser bloqueada", "reason=no_match" in service)
+        assertTrue("A rota so continua depois do match", "manual.card.gate accepted=true" in service)
+        assertTrue("Resultado antigo deve depender do modelo ainda ativo", "manual_registered_card_freshness_0_1_127" in service)
+    }
+
+    @Test
+    fun interfaceStartsEmptyAndExplainsBothManualSteps() {
         val main = source("MainActivity.kt")
 
         assertTrue("Seletor manual de apps precisa estar visivel", "Buscar aplicativos instalados" in main)
         assertTrue("Tela deve explicar que nenhum app nasce marcado", "Nenhum aplicativo vem marcado" in main)
-        assertTrue("Cadastro opcional de cards precisa estar visivel", "Anexar modelos de cards (prints)" in main)
+        assertTrue("Cadastro de cards precisa estar visivel", "Anexar modelos de cards (prints)" in main)
         assertTrue("Tela deve explicar que nenhum modelo nasce cadastrado", "Nenhum modelo nasce cadastrado" in main)
+        assertTrue("Tela deve declarar modelos obrigatorios", "Modelos de cards obrigatorios" in main)
         assertTrue("Relatorio deve declarar ausencia de pre-cadastros", "Aplicativos pre-cadastrados: nenhum" in main)
         assertTrue("Relatorio deve listar a selecao manual", "Selecao manual de apps obrigatoria: true" in main)
+        assertTrue("Relatorio deve declarar card obrigatorio", "Modelos de cards obrigatorios: true" in main)
         assertFalse("Chaves fixas de 99, Uber e inDrive nao devem voltar", "SettingsSwitchRow(\"99 Motorista\"" in main)
+    }
+
+    @Test
+    fun continuousScanIsFallbackRatherThanAggressivePolling() {
+        val service = source("LiveRideAccessibilityService.kt")
+
+        assertTrue("O ciclo de seguranca precisa usar 350 ms", "const val SCAN_LOOP_MS = 350L" in service)
+        assertFalse("Polling de 120 ms nao pode voltar", "const val SCAN_LOOP_MS = 120L" in service)
     }
 }
