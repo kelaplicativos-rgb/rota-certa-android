@@ -10,3 +10,6 @@ defaultConfig128.javaClass.methods
 apply(from = "fast-cache-screenoff-matcher-compat-0.1.128.gradle.kts")
 apply(from = "fast-cache-screenoff-0.1.128.gradle.kts")
 apply(from = "fast-cache-screenoff-freshness-cleanup-0.1.128.gradle.kts")
+
+// Evolucao de captura automatica, sem alterar o caminho rapido 0.1.128.
+apply(from = "version-0.1.129.gradle.kts")
