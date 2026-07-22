@@ -52,6 +52,7 @@ jobs:
             echo "MAIN_LINES=$(wc -l < "$main")"
             echo "SERVICE_LINES=$(wc -l < "$service")"
             echo "MATCHER_LINES=$(wc -l < "$matcher")"
+            find app/src/main/java/br/com/mapeiaia/rotacerta -maxdepth 2 -type f -name '*.kt' -printf '%P\n' | sort
             grep -nF 'BUBBLE_GROUP_CARDS' "$main" || true
             grep -nF 'SavedPlacesModuleCard' "$main" || true
             grep -nF 'Buscar por nome ou endereco' "$main" || true
@@ -80,15 +81,7 @@ jobs:
         with:
           name: generated-popup-120-source
           path: |
-            app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/core/CoreCardMatchEngine.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/ProximityAlertEngine.kt
-            app/src/test/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcherTest.kt
-            app/src/test/java/br/com/mapeiaia/rotacerta/InstantFarolDecision124Test.kt
-            app/src/test/java/br/com/mapeiaia/rotacerta/NoPreRegisteredGates126ContractTest.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/
+            app/src/test/java/br/com/mapeiaia/rotacerta/
             generated-markers.txt
           if-no-files-found: error
