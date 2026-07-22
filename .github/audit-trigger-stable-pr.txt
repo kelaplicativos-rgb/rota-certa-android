@@ -1,3 +1,4 @@
 Trigger definitive stable branch audit on 2026-07-22.
 Re-run after circular Gradle finalizer dependency fix.
 Re-run after Android Lint runtime-safety fixes.
+Re-run after narrowing generated-source task ordering.
