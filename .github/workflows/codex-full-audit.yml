@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/full-audit-20260722
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -48,7 +51,7 @@ jobs:
           done
           {
             echo "commit=$(git rev-parse HEAD)"
-            echo "branch=${GITHUB_REF_NAME}"
+            echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
             echo "tracked_files=$(git ls-files | wc -l | tr -d ' ')"
             echo "text_lines=$(awk -F '\t' 'NR>1 {sum += $3} END {print sum+0}' audit/inventory.tsv)"
             echo "bytes=$(awk -F '\t' 'NR>1 {sum += $2} END {print sum+0}' audit/inventory.tsv)"
@@ -99,7 +102,8 @@ jobs:
                   out.write(f'- {kind}: {count}\n')
               out.write('\n## Details\n\n')
               for item in findings:
-                  out.write(f"- `{item['kind']}` `{item['path']}:{item['line']}` — `{item['snippet'].replace('`', "'")}`\n")
+                  safe = item['snippet'].replace('`', "'")
+                  out.write(f"- `{item['kind']}` `{item['path']}:{item['line']}` — `{safe}`\n")
           PY
 
       - name: Compile, test and lint
@@ -111,8 +115,8 @@ jobs:
           ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug --stacktrace 2>&1 | tee audit/gradle-checks.log
           status=${PIPESTATUS[0]}
           echo "gradle_exit_code=$status" >> audit/summary.properties
-          find app/build/reports -type f -maxdepth 8 -print 2>/dev/null | sort > audit/generated-reports.txt || true
-          find app/build/outputs -type f -maxdepth 8 -print 2>/dev/null | sort > audit/generated-outputs.txt || true
+          find app/build/reports -maxdepth 8 -type f -print 2>/dev/null | sort > audit/generated-reports.txt || true
+          find app/build/outputs -maxdepth 8 -type f -print 2>/dev/null | sort > audit/generated-outputs.txt || true
           exit "$status"
 
       - name: Collect reports and APK even when checks fail
