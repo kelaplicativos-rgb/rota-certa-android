@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - codex/pr5-stable-bubble-combined
+      - codex/rota-certa-0.1.127-strict-final
     paths:
       - 'app/**'
       - '.github/workflows/release-0.1.127-strict.yml'
@@ -33,7 +33,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.head_ref == 'codex/pr5-stable-bubble-combined')
+       github.head_ref == 'codex/rota-certa-0.1.127-strict-final')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
