@@ -1,0 +1,205 @@
+name: Release 0.1.129 Auto Capture
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/rota-certa-0.1.129-auto-card-capture
+    paths:
+      - 'app/**'
+      - 'scripts/validate_release_0129.sh'
+      - '.github/workflows/release-0.1.129-auto-capture.yml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'scripts/validate_release_0129.sh'
+      - '.github/workflows/release-0.1.129-auto-capture.yml'
+
+concurrency:
+  group: release-0129-capture-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, build, publish and verify 0.1.129
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'codex/rota-certa-0.1.129-auto-card-capture')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Prepare monotonic version
+        run: |
+          set -euo pipefail
+          gradle_run_number="$((7000 + GITHUB_RUN_NUMBER))"
+          expected_version_code="$((1000 + gradle_run_number))"
+          echo "GRADLE_RUN_NUMBER=$gradle_run_number" >> "$GITHUB_ENV"
+          echo "EXPECTED_VERSION_CODE=$expected_version_code" >> "$GITHUB_ENV"
+
+      - name: Run unit tests on clean sources
+        id: unit_tests
+        continue-on-error: true
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -o pipefail
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee unit-test-0129.log
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.129-test-diagnostics
+          path: |
+            unit-test-0129.log
+            app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+
+      - name: Stop after failed tests
+        if: steps.unit_tests.outcome != 'success'
+        run: exit 1
+
+      - name: Restore exact sources before APK build
+        run: |
+          git reset --hard "$TARGET_SHA"
+          git clean -fd app/src
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Build exact APK from fresh sources
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          GITHUB_RUN_NUMBER="$GRADLE_RUN_NUMBER" gradle clean assembleDebug --no-daemon --stacktrace --console=plain
+
+      - name: Upload candidate APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.129-candidate-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Validate automatic capture APK
+        run: |
+          bash scripts/validate_release_0129.sh \
+            app/build/outputs/apk/debug/output-metadata.json \
+            "$EXPECTED_VERSION_CODE" \
+            app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish stable APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="rota-certa-stable-debug"
+          version_name="$(cat version-name.txt)"
+          version_code="$(cat version-code.txt)"
+          apk_sha="$(awk '{print $1}' rota-certa-stable-debug.apk.sha256)"
+          apk_size="$(cat apk-size.txt)"
+          signer_sha="$(cat signer-certificate-sha256.txt)"
+          cat > release-notes.md <<EOF2
+          Rota Certa Stable Debug APK
+
+          Version: ${version_name}
+          VersionCode: ${version_code}
+          Commit: ${TARGET_SHA}
+          APK SHA-256: ${apk_sha}
+          APK size: ${apk_size} bytes
+          Signing certificate SHA-256: ${signer_sha}
+
+          0.1.129:
+          - Captura automática de cada card confirmado por modelo manual do mesmo aplicativo.
+          - Captura paralela, sem bloquear a leitura, a rota, a cor ou o quilômetro.
+          - Imagens guardadas no armazenamento privado do Rota Certa.
+          - Deduplicação por aplicativo e conteúdo do card.
+          - Exclusão automática após 14 dias e limite de 30 capturas.
+          - Galeria dentro de Modelos de cards.
+          - Conversão de uma captura em modelo manual com um toque.
+          - Detalhes de valor, embarque e destino, com atalhos para mapa e copiar.
+          - Mantidos rota direta, cache persistente e proteção de tela bloqueada da 0.1.128.
+          EOF2
+          cat capture-validation.txt >> release-notes.md
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api --method PATCH "/repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$TARGET_SHA" -F force=true >/dev/null
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "Rota Certa Stable Debug" --notes-file release-notes.md
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" rota-certa-stable-debug.apk rota-certa-stable-debug.apk.sha256 signer-certificate-sha256.txt --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify published bytes and certificate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p published
+          gh release download rota-certa-stable-debug --repo "$GITHUB_REPOSITORY" --pattern 'rota-certa-stable-debug.apk' --dir published --clobber
+          cmp --silent rota-certa-stable-debug.apk published/rota-certa-stable-debug.apk
+          local_sha="$(sha256sum rota-certa-stable-debug.apk | awk '{print $1}')"
+          published_sha="$(sha256sum published/rota-certa-stable-debug.apk | awk '{print $1}')"
+          test "$local_sha" = "$published_sha"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs published/rota-certa-stable-debug.apk | tee published-apk-signature.txt
+          published_cert="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' published-apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$published_cert" = "$(cat signer-certificate-sha256.txt)"
+          cat > publication-proof.txt <<EOF2
+          STABLE_RELEASE=approved
+          VERSION_NAME=$(cat version-name.txt)
+          VERSION_CODE=$(cat version-code.txt)
+          COMMIT=${TARGET_SHA}
+          APK_SHA256=${published_sha}
+          APK_SIZE_BYTES=$(wc -c < published/rota-certa-stable-debug.apk)
+          SIGNER_CERTIFICATE_SHA256=${published_cert}
+          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/rota-certa-stable-debug/rota-certa-stable-debug.apk
+          EOF2
+          cat publication-proof.txt
+
+      - name: Upload final proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-0.1.129-auto-capture-proof
+          path: |
+            published/rota-certa-stable-debug.apk
+            rota-certa-stable-debug.apk.sha256
+            signer-certificate-sha256.txt
+            apk-signature.txt
+            published-apk-signature.txt
+            capture-validation.txt
+            release-notes.md
+            publication-proof.txt
+          if-no-files-found: error
