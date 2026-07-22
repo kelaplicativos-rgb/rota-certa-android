@@ -14,10 +14,17 @@ import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
+/** Resultado de uma unica chamada do Routes API usando o endereco do card. */
+data class AddressRouteResult(
+    val distanceKm: Double,
+    val originCoordinate: Coordinate? = null,
+)
+
 class GoogleMapsService {
     private val json = Json { ignoreUnknownKeys = true }
     private val geocodeCache = ConcurrentHashMap<String, Coordinate>()
     private val routeCache = ConcurrentHashMap<String, Double>()
+    private val addressRouteCache = ConcurrentHashMap<String, AddressRouteResult>()
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank() || apiKey.isBlank()) return@withContext null
@@ -65,23 +72,92 @@ class GoogleMapsService {
         distanceKm
     }
 
-    private fun requestDrivingDistance(body: String, apiKey: String): Double? {
+    /**
+     * Caminho rapido: entrega o endereco textual diretamente ao Routes API.
+     *
+     * O proprio endpoint resolve o endereco e calcula a rota na mesma chamada. Isso evita
+     * esperar primeiro o Geocoding API e somente depois iniciar o Routes API, removendo uma
+     * viagem de rede do primeiro calculo de cada destino.
+     */
+    suspend fun drivingDistanceFromAddress(
+        originAddress: String,
+        destination: Coordinate,
+        apiKey: String,
+    ): AddressRouteResult? = withContext(Dispatchers.IO) {
+        val cleanAddress = originAddress.trim().replace(Regex("\\s+"), " ")
+        if (cleanAddress.isBlank() || apiKey.isBlank()) return@withContext null
+        val cacheKey = listOf(
+            cleanAddress.lowercase(Locale.ROOT),
+            String.format(Locale.US, "%.6f", destination.latitude),
+            String.format(Locale.US, "%.6f", destination.longitude),
+        ).joinToString("|")
+        addressRouteCache[cacheKey]?.let { return@withContext it }
+
+        val body = String.format(
+            Locale.US,
+            """
+            {
+              "origin": {"address": %s},
+              "destination": {"location": {"latLng": {"latitude": %.7f, "longitude": %.7f}}},
+              "travelMode": "DRIVE",
+              "routingPreference": "TRAFFIC_UNAWARE",
+              "languageCode": "pt-BR",
+              "units": "METRIC"
+            }
+            """.trimIndent(),
+            cleanAddress.asJsonString(),
+            destination.latitude,
+            destination.longitude,
+        )
+
+        val result = requestWithRetry(attempts = FAST_REQUEST_ATTEMPTS) {
+            requestAddressRoute(body, apiKey)
+        }
+        if (result != null) addressRouteCache[cacheKey] = result
+        result
+    }
+
+    private fun requestDrivingDistance(body: String, apiKey: String): Double? =
+        requestRouteResponse(
+            body = body,
+            apiKey = apiKey,
+            fieldMask = "routes.distanceMeters",
+            connectTimeoutMillis = CONNECT_TIMEOUT_MS,
+            readTimeoutMillis = READ_TIMEOUT_MS,
+        )?.let(::parseDistanceKm)
+
+    private fun requestAddressRoute(body: String, apiKey: String): AddressRouteResult? =
+        requestRouteResponse(
+            body = body,
+            apiKey = apiKey,
+            fieldMask = "routes.distanceMeters,routes.legs.startLocation",
+            connectTimeoutMillis = FAST_CONNECT_TIMEOUT_MS,
+            readTimeoutMillis = FAST_READ_TIMEOUT_MS,
+        )?.let(::parseAddressRoute)
+
+    private fun requestRouteResponse(
+        body: String,
+        apiKey: String,
+        fieldMask: String,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+    ): String? {
         val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
+            connectTimeout = connectTimeoutMillis
+            readTimeout = readTimeoutMillis
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("X-Goog-Api-Key", apiKey.trim())
-            setRequestProperty("X-Goog-FieldMask", "routes.distanceMeters")
+            setRequestProperty("X-Goog-FieldMask", fieldMask)
             setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+            setRequestProperty("Connection", "keep-alive")
         }
 
         return try {
             connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             if (connection.responseCode !in 200..299) return null
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            parseDistanceKm(response)
+            connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
         }
@@ -139,6 +215,7 @@ class GoogleMapsService {
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+            setRequestProperty("Connection", "keep-alive")
         }
 
         return try {
@@ -166,20 +243,54 @@ class GoogleMapsService {
     }
 
     private fun parseDistanceKm(body: String): Double? {
-        val root = json.parseToJsonElement(body).jsonObject
-        val distanceMeters = root["routes"]?.jsonArray
+        val route = json.parseToJsonElement(body).jsonObject["routes"]?.jsonArray
             ?.firstOrNull()?.jsonObject
-            ?.get("distanceMeters")?.jsonPrimitive
-            ?.intOrNull
             ?: return null
+        val distanceMeters = route["distanceMeters"]?.jsonPrimitive?.intOrNull ?: return null
         return distanceMeters / 1000.0
     }
 
-    private fun <T> requestWithRetry(block: () -> T?): T? {
-        repeat(REQUEST_ATTEMPTS) { attempt ->
+    private fun parseAddressRoute(body: String): AddressRouteResult? {
+        val route = json.parseToJsonElement(body).jsonObject["routes"]?.jsonArray
+            ?.firstOrNull()?.jsonObject
+            ?: return null
+        val distanceMeters = route["distanceMeters"]?.jsonPrimitive?.intOrNull ?: return null
+        val startLatLng = route["legs"]?.jsonArray
+            ?.firstOrNull()?.jsonObject
+            ?.get("startLocation")?.jsonObject
+            ?.get("latLng")?.jsonObject
+        val latitude = startLatLng?.get("latitude")?.jsonPrimitive?.doubleOrNull
+        val longitude = startLatLng?.get("longitude")?.jsonPrimitive?.doubleOrNull
+        val originCoordinate = if (latitude != null && longitude != null) Coordinate(latitude, longitude) else null
+        return AddressRouteResult(
+            distanceKm = distanceMeters / 1000.0,
+            originCoordinate = originCoordinate,
+        )
+    }
+
+    private fun String.asJsonString(): String = buildString(length + 2) {
+        append('"')
+        for (character in this@asJsonString) {
+            when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(character)
+            }
+        }
+        append('"')
+    }
+
+    private fun <T> requestWithRetry(
+        attempts: Int = REQUEST_ATTEMPTS,
+        block: () -> T?,
+    ): T? {
+        repeat(attempts.coerceAtLeast(1)) { attempt ->
             val result = runCatching(block).getOrNull()
             if (result != null) return result
-            if (attempt < REQUEST_ATTEMPTS - 1) Thread.sleep(RETRY_DELAY_MS)
+            if (attempt < attempts - 1) Thread.sleep(RETRY_DELAY_MS)
         }
         return null
     }
@@ -187,7 +298,10 @@ class GoogleMapsService {
     private companion object {
         const val CONNECT_TIMEOUT_MS = 2_500
         const val READ_TIMEOUT_MS = 4_000
+        const val FAST_CONNECT_TIMEOUT_MS = 1_800
+        const val FAST_READ_TIMEOUT_MS = 2_800
         const val REQUEST_ATTEMPTS = 2
+        const val FAST_REQUEST_ATTEMPTS = 1
         const val RETRY_DELAY_MS = 120L
     }
 }
