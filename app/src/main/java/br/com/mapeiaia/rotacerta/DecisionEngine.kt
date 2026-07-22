@@ -20,9 +20,10 @@ class DecisionEngine {
             return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
         }
 
-        if (destinationCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
-        }
+        val hasExactAddressRoute = homeDistanceKm != null || alternativeDistanceKm != null
+        if (destinationCoordinate == null && !hasExactAddressRoute) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada ou rota exata confiavel.")
+        } // exact_address_route_without_blocking_geocode_0_1_128
 
         if (homeCoordinate == null && alternativeCoordinate == null) {
             return result(fields, fullText, Recommendation.InsufficientData, "Configure a casa ou o alfinete com coordenada confiavel.")
