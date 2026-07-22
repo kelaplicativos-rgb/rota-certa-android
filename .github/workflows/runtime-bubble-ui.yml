@@ -8,6 +8,10 @@ on:
     branches:
       - codex/pr5-stable-bubble-combined
 
+concurrency:
+  group: runtime-bubble-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -48,8 +52,9 @@ jobs:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle assembleDebug --no-daemon --stacktrace --console=plain
 
-      - name: Prepare 0.1.120 runtime smoke script
+      - name: Validate generated 0.1.127 contract before emulator
         run: |
+          set -euo pipefail
           main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           catalog="app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt"
           service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
@@ -58,14 +63,26 @@ jobs:
           grep -Fq 'modules.size == 15' "$catalog"
           grep -Fq 'popup_close_only_on_drag_0_1_120' "$service"
           grep -Fq 'reading_visible_feedback_0_1_120' "$service"
-          if grep -Fq '            ProfessionalBubbleDashboard(' "$main"; then
-            echo "A grade circular ainda esta sendo renderizada na Home." >&2
+          grep -Fq 'manual_registered_card_gate_0_1_127' "$service"
+          grep -Fq 'const val SCAN_LOOP_MS = 350L' "$service"
+          grep -Fq 'saved_places_search_name_address_0_1_127' "$main"
+          grep -Fq 'Buscar por nome ou endereco' "$main"
+          grep -Fq 'compile_final_cleanup_0_1_127' "$main"
+          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
+            echo 'ERRO: @Composable duplicado nos fontes usados pelo emulador.'
             exit 1
           fi
-          cp scripts/runtime_bubble_shortcuts_smoke_117.sh runtime-ui/runtime_bubble_shortcuts_smoke_120.sh
+          if grep -Fq '            ProfessionalBubbleDashboard(' "$main"; then
+            echo 'A grade circular ainda esta sendo renderizada na Home.' >&2
+            exit 1
+          fi
+
+      - name: Prepare runtime smoke script
+        run: |
+          cp scripts/runtime_bubble_shortcuts_smoke_117.sh runtime-ui/runtime_bubble_shortcuts_smoke_127.sh
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('runtime-ui/runtime_bubble_shortcuts_smoke_120.sh')
+          path = Path('runtime-ui/runtime_bubble_shortcuts_smoke_127.sh')
           text = path.read_text()
           old = 'Salvar alerta|Salvar local|Salvar card|Destino|Leitura|Ajustes'
           new = 'Rota|Destino|Alertas|Locais|Radares|Aparencia|Permissoes|Backup|WhatsApp da tela|Coletor|Limpar area de transferencia|Depurar|Encerrar Rota Certa|Cards cadastrados|Leitura'
@@ -74,11 +91,11 @@ jobs:
           text = text.replace('RESOURCE_SHORTCUTS=6', 'RESOURCE_SHORTCUTS=15')
           text = text.replace(
               'SHORTCUT_MENU=lightweight',
-              'SHORTCUT_MENU=lightweight\nMODULE_SEPARATION=approved\nAPP_START=permissions\nREPORT_SHORTCUT=removed\nDUPLICATE_ALERT_SHORTCUT=removed\nREADING_FEEDBACK=visible',
+              'SHORTCUT_MENU=lightweight\nMODULE_SEPARATION=approved\nAPP_START=permissions\nREPORT_SHORTCUT=removed\nDUPLICATE_ALERT_SHORTCUT=removed\nREADING_FEEDBACK=visible\nSTRICT_MANUAL_APPS_AND_CARDS=approved\nSAVED_PLACES_SEARCH=approved',
           )
           path.write_text(text)
           PY
-          chmod +x runtime-ui/runtime_bubble_shortcuts_smoke_120.sh
+          chmod +x runtime-ui/runtime_bubble_shortcuts_smoke_127.sh
 
       - name: Install Android emulator image and libraries
         run: |
@@ -128,7 +145,7 @@ jobs:
           }
           trap cleanup EXIT
           set +e
-          timeout --signal=TERM --kill-after=20s 480s bash runtime-ui/runtime_bubble_shortcuts_smoke_120.sh > >(tee runtime-ui/runtime-script.log) 2>&1
+          timeout --signal=TERM --kill-after=20s 480s bash runtime-ui/runtime_bubble_shortcuts_smoke_127.sh > >(tee runtime-ui/runtime-script.log) 2>&1
           runtime_status=$?
           set -e
           echo "RUNTIME_SCRIPT_EXIT=$runtime_status" >> runtime-ui/progress.txt
@@ -159,6 +176,8 @@ jobs:
           grep -Fq 'REPORT_SHORTCUT=removed' runtime-ui/runtime-validation.txt
           grep -Fq 'DUPLICATE_ALERT_SHORTCUT=removed' runtime-ui/runtime-validation.txt
           grep -Fq 'READING_FEEDBACK=visible' runtime-ui/runtime-validation.txt
+          grep -Fq 'STRICT_MANUAL_APPS_AND_CARDS=approved' runtime-ui/runtime-validation.txt
+          grep -Fq 'SAVED_PLACES_SEARCH=approved' runtime-ui/runtime-validation.txt
           grep -Fq 'FLOATING_RUNTIME=approved' runtime-ui/runtime-validation.txt
           test -s runtime-ui/bubble-drag-response-ms.txt
           drag_ms="$(cat runtime-ui/bubble-drag-response-ms.txt)"
