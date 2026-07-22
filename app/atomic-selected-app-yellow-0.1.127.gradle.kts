@@ -30,6 +30,7 @@ fun patchAtomicSelectedAppYellow127(serviceFile: java.io.File) {
     if (!serviceFile.exists()) throw GradleException("LiveRideAccessibilityService.kt nao encontrado para limpeza atomica 0.1.127.")
 
     var service = serviceFile.readText()
+    val dollar = "$"
 
     if ("atomic_selected_app_clear_color_0_1_127" !in service) {
         val oldInactiveBlock = """            hardClearUniversalTwoAddress(clearReason)
@@ -83,7 +84,7 @@ fun patchAtomicSelectedAppYellow127(serviceFile: java.io.File) {
             lastBubbleStateReason != targetReason127
         LiveFailureTraceStore.recordStep(
             stage = "session.clear",
-            details = "reason=$reason; target=${targetColor127.diagnosticLabel}; had_data=$hadData; generation_before=$universalScreenGeneration; color=${currentRadarColor.diagnosticLabel}; km=${currentDistanceKm?.toString() ?: "none"}",
+            details = "reason=${dollar}reason; target=${dollar}{targetColor127.diagnosticLabel}; had_data=${dollar}hadData; generation_before=${dollar}universalScreenGeneration; color=${dollar}{currentRadarColor.diagnosticLabel}; km=${dollar}{currentDistanceKm?.toString() ?: "none"}",
             packageName = currentWindowPackageName(),
             generation = universalScreenGeneration,
             screenHash = lastSnapshotHash,
@@ -126,7 +127,7 @@ fun patchAtomicSelectedAppYellow127(serviceFile: java.io.File) {
             }
         }
         if (hadData) traceEvent(
-            "universal.clear immediate=true target=${targetColor127.diagnosticLabel} reason=$reason",
+            "universal.clear immediate=true target=${dollar}{targetColor127.diagnosticLabel} reason=${dollar}reason",
         )
     } // universal_stable_clear_0_1_101
 """
