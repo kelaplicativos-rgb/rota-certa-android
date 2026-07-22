@@ -1,0 +1,135 @@
+name: Codex PR5 Full Repository Audit
+
+on:
+  pull_request:
+    branches:
+      - codex/radar-txt-approach-alert-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout complete repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Inventory every tracked file and line
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          printf 'path\tbytes\tlines\tmime\tsha256\n' > audit/inventory.tsv
+          git ls-files -z | while IFS= read -r -d '' path; do
+            bytes=$(wc -c < "$path" | tr -d ' ')
+            mime=$(file --brief --mime-type "$path" 2>/dev/null || printf 'unknown')
+            if grep -Iq . "$path" 2>/dev/null || [ ! -s "$path" ]; then
+              lines=$(wc -l < "$path" | tr -d ' ')
+            else
+              lines=0
+            fi
+            hash=$(sha256sum "$path" | cut -d' ' -f1)
+            printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$bytes" "$lines" "$mime" "$hash" >> audit/inventory.tsv
+          done
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            echo "tracked_files=$(git ls-files | wc -l | tr -d ' ')"
+            echo "text_lines=$(awk -F '\t' 'NR>1 {sum += $3} END {print sum+0}' audit/inventory.tsv)"
+            echo "bytes=$(awk -F '\t' 'NR>1 {sum += $2} END {print sum+0}' audit/inventory.tsv)"
+          } > audit/summary.properties
+          git ls-files -z | tar --null -T - -czf audit/tracked-source-before-build.tar.gz
+
+      - name: Static risk scan before build patches
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          root = pathlib.Path('.')
+          findings = []
+          patterns = [
+              ('TODO_FIXME', re.compile(r'\b(?:TODO|FIXME|HACK|XXX)\b')),
+              ('FORCE_UNWRAP', re.compile(r'!!')),
+              ('GLOBAL_SCOPE', re.compile(r'\bGlobalScope\b')),
+              ('BLOCKING_CALL', re.compile(r'\b(?:Thread\.sleep|runBlocking)\b')),
+              ('EMPTY_CATCH', re.compile(r'catch\s*\([^)]*\)\s*\{\s*\}')),
+              ('DEBUG_LOG', re.compile(r'\b(?:Log\.[vdiew]|println|printStackTrace)\s*\(')),
+              ('SUPPRESSION', re.compile(r'@Suppress\s*\(')),
+              ('HARDCODED_HTTP', re.compile(r'http://[^\s\"\']+')),
+              ('POSSIBLE_SECRET', re.compile(r'(?i)(?:api[_-]?key|secret|token|password)\s*[=:]\s*[\"\'][^\"\']{8,}[\"\']')),
+          ]
+          suffixes = {'.kt', '.kts', '.java', '.xml', '.gradle', '.properties', '.pro', '.json', '.yml', '.yaml', '.md', '.txt', '.sh'}
+          for path in sorted(root.rglob('*')):
+              if not path.is_file() or '.git' in path.parts or 'build' in path.parts or 'audit' in path.parts:
+                  continue
+              if path.suffix.lower() not in suffixes and path.name not in {'gradlew', 'proguard-rules.pro'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for no, line in enumerate(text.splitlines(), 1):
+                  for kind, pattern in patterns:
+                      if pattern.search(line):
+                          findings.append({'kind': kind, 'path': str(path), 'line': no, 'snippet': line.strip()[:500]})
+          pathlib.Path('audit/static-findings-before-build.json').write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+
+      - name: Compile, test, lint and assemble patched source
+        shell: bash
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set +e
+          gradle clean testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee audit/gradle-checks.log
+          status=${PIPESTATUS[0]}
+          echo "gradle_exit_code=$status" >> audit/summary.properties
+          exit "$status"
+
+      - name: Capture effective source after Gradle patch tasks
+        if: always()
+        shell: bash
+        run: |
+          git diff -- app/src app/build.gradle.kts '*.gradle.kts' > audit/effective-build-patches.diff || true
+          git status --short > audit/git-status-after-build.txt
+          tar -czf audit/effective-source-after-build.tar.gz app/src app/build.gradle.kts ./*.gradle.kts 2>/dev/null || true
+          find app/build/reports -maxdepth 8 -type f -print 2>/dev/null | sort > audit/generated-reports.txt || true
+          find app/build/outputs -maxdepth 8 -type f -print 2>/dev/null | sort > audit/generated-outputs.txt || true
+          mkdir -p audit/collected
+          cp -R app/build/reports audit/collected/ 2>/dev/null || true
+          cp -R app/build/test-results audit/collected/ 2>/dev/null || true
+          cp -R app/build/outputs/apk audit/collected/ 2>/dev/null || true
+
+      - name: Upload complete PR5 audit package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-pr5-full-audit-${{ github.run_number }}
+          path: audit/
+          if-no-files-found: error
+          retention-days: 30
