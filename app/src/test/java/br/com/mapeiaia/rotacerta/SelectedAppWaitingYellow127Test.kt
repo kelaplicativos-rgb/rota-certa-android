@@ -31,7 +31,7 @@ class SelectedAppWaitingYellow127Test {
     }
 
     @Test
-    fun hardClearPaintsOnlyTheResolvedTargetColor() {
+    fun hardClearPaintsOnlyTheResolvedTargetColorAndKeepsYellowIdempotent() {
         val service = serviceSource()
         val clearStart = service.indexOf("private fun hardClearUniversalTwoAddress(")
         val clearEnd = service.indexOf("private fun universalResolvedForegroundPackage(", clearStart)
@@ -40,6 +40,11 @@ class SelectedAppWaitingYellow127Test {
         assertTrue("Limpeza precisa aceitar alvo de espera", "keepWaitingYellow: Boolean = false" in clearRegion)
         assertTrue("Alvo amarelo deve ser escolhido atomicamente", "if (keepWaitingYellow) RadarColor.Default else RadarColor.Idle" in clearRegion)
         assertTrue("Pintura atomica precisa estar marcada", "atomic_hard_clear_single_paint_0_1_127" in clearRegion)
+        assertTrue("Amarelo nao pode ser tratado como decisao ativa", "yellow_waiting_not_active_data_0_1_127" in clearRegion)
+        assertTrue(
+            "Somente verde ou vermelho devem contar como cor de decisao",
+            "currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red" in clearRegion,
+        )
         assertEquals(
             "Limpeza deve chamar showOverlay somente uma vez",
             1,
