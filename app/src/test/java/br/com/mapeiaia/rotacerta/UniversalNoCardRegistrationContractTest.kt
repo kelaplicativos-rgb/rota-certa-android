@@ -15,8 +15,7 @@ class UniversalNoCardRegistrationContractTest {
             "Modelos de cards opcionais",
             "Anexar modelos de cards (prints)",
             "Modelos cadastrados:",
-            "manual_card_models_restored_0_1_127",
-            "registered_cards_module_restored_0_1_127",
+            "Nenhum modelo nasce cadastrado",
         ).forEach { required ->
             assertTrue("Cadastro opcional de cards ausente: $required", required in main)
         }
@@ -30,6 +29,7 @@ class UniversalNoCardRegistrationContractTest {
             "RideCardTemplateMatcher",
             "RegisteredCardAddressGate",
             "currentCardTemplates",
+            "manual_registered_card_gate_0_1_127",
         ).forEach { forbidden ->
             assertFalse("Modelo opcional nao pode bloquear a leitura do card real: $forbidden", forbidden in processBlock)
         }
@@ -37,6 +37,7 @@ class UniversalNoCardRegistrationContractTest {
         assertTrue("Modelos manuais precisam ser carregados", "currentCardTemplates = repository.cardTemplates.first()" in service)
         assertTrue("Alteracoes manuais precisam ser observadas", "repository.cardTemplates.collect { currentCardTemplates = it }" in service)
         assertFalse("Inicializacao nao pode apagar modelos", "removedTemplates126.forEach" in service)
+        assertFalse("Configuracao padrao nao pode exigir modelo", AppSettings().requireRegisteredRideCard)
     }
 
     @Test
