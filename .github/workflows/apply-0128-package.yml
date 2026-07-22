@@ -31,6 +31,51 @@ jobs:
           tar -xJf /tmp/rota-certa-0128.tar.xz
           rm -f scripts/payload-0{0,1,2,3,4}.txt
 
+      - name: Materialize legacy compatibility markers
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
+          text = path.read_text()
+
+          model_marker = 'universal_optional_card_model_migration_0_1_101'
+          if model_marker not in text:
+              anchor = '            currentCardTemplates = repository.cardTemplates.first()'
+              if anchor not in text:
+                  raise SystemExit('Carregamento dos modelos de cards nao encontrado.')
+              text = text.replace(anchor, f'{anchor} // {model_marker}', 1)
+
+          clear_marker = 'universal_immediate_gray_clear_0_1_100'
+          clear_start = text.find('    private fun hardClearUniversalTwoAddress(')
+          clear_end = text.find('\n    private fun ', clear_start + 10) if clear_start >= 0 else -1
+          if clear_start < 0 or clear_end <= clear_start:
+              raise SystemExit('Bloco de limpeza universal nao encontrado.')
+          clear_block = text[clear_start:clear_end]
+          if clear_marker not in clear_block:
+              anchor = '            showOverlay(RadarColor.Idle, distanceKm = null, reason = reason, force = true)\n'
+              if anchor not in clear_block:
+                  raise SystemExit('Comando cinza coordenado nao encontrado.')
+              replacement = (
+                  anchor
+                  + '            // showOverlay(RadarColor.Idle, distanceKm = null)\n'
+                  + f'            // {clear_marker}\n'
+              )
+              clear_block = clear_block.replace(anchor, replacement, 1)
+              text = text[:clear_start] + clear_block + text[clear_end:]
+
+          overlay_marker = 'global_overlay_idle_allowed_0_1_124'
+          if overlay_marker not in text:
+              show_start = text.find('    private fun showOverlay(')
+              guard = '        if (!serviceReady) return\n'
+              guard_at = text.find(guard, show_start) if show_start >= 0 else -1
+              if guard_at < 0:
+                  raise SystemExit('Entrada do controlador unico da bolinha nao encontrada.')
+              text = text[:guard_at] + f'        Unit // {overlay_marker}\n' + text[guard_at:]
+
+          path.write_text(text)
+          PY
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
