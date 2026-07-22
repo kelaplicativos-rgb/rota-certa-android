@@ -20,3 +20,7 @@ apply(from = "selected-app-waiting-yellow-0.1.127.gradle.kts")
 apply(from = "atomic-selected-app-yellow-0.1.127.gradle.kts")
 apply(from = "yellow-idempotent-no-redraw-0.1.127.gradle.kts")
 apply(from = "stable-debug-signing-prepare-0.1.127.gradle.kts")
+
+// Registrado cedo, mas executado como finalizador do preBuild. Assim ele sempre
+// roda depois dos patches 0.1.128 conectados no build principal.
+apply(from = "critical-safety-finalizer-0.1.128.gradle.kts")
