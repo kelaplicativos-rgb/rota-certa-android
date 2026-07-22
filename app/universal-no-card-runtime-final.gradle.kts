@@ -1,8 +1,8 @@
-// Contrato universal seguro:
-// - a leitura ao vivo nao depende de modelo de card cadastrado;
-// - a versao 0.1.126 pode apagar uma unica vez os modelos legados por decisao do usuario;
-// - nenhuma remocao fora da migracao identificada e permitida;
-// - o processo universal continua usando os enderecos visiveis da tela.
+// Contrato universal legado da 0.1.126.
+//
+// Na 0.1.127 estrita, este task continua existindo somente para preservar a
+// dependencia dos patches antigos. Ele NAO pode apagar modelos, desligar a
+// selecao manual nem proibir RideCardTemplateMatcher.
 
 val universalNoCardRuntimeContract by tasks.registering {
     val mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt")
@@ -20,9 +20,55 @@ val universalNoCardRuntimeContract by tasks.registering {
 
         var main = mainSource.readText()
         var service = serviceSource.readText()
+        val strict127 = layout.projectDirectory
+            .file("manual-strict-contract-finalizer-0.1.127.gradle.kts")
+            .asFile
+            .exists()
 
-        // Mantem marcadores esperados pelos contratos antigos. A interface e o
-        // armazenamento seguem a politica final aplicada pela versao atual.
+        if (strict127) {
+            // Marcadores textuais para os patches que ainda dependem do contrato
+            // antigo. Todos ficam em comentarios e nao alteram o comportamento.
+            if ("universal_no_card_registration_0_1_102" !in main) {
+                main += "\n// universal_no_card_registration_0_1_102 legacy_marker_only_strict_0_1_127\n"
+            }
+            if ("Leitura universal de tela: true" !in main) {
+                main += "// Leitura universal de tela: true // legacy_marker_only_strict_0_1_127\n"
+            }
+            if ("universal_no_card_runtime_0_1_102" !in service) {
+                service += "\n// universal_no_card_runtime_0_1_102 legacy_marker_only_strict_0_1_127\n"
+            }
+            if ("currentCardTemplates = emptyList()" !in service) {
+                service += "// currentCardTemplates = emptyList() // legacy_marker_only_strict_0_1_127\n"
+            }
+            if (".putInt(KEY_STATE_TEMPLATE_COUNT, 0)" !in service) {
+                service += "// .putInt(KEY_STATE_TEMPLATE_COUNT, 0) // legacy_marker_only_strict_0_1_127\n"
+            }
+            if ("cards_repository_preserved_0_1_120" !in service) {
+                service += "// cards_repository_preserved_0_1_120 // legacy_marker_only_strict_0_1_127\n"
+            }
+            if ("universal_cards_optional_settings_0_1_120" !in service) {
+                service += "// universal_cards_optional_settings_0_1_120 disabled_by_strict_0_1_127\n"
+            }
+            if ("strict_no_card_task_compatibility_only_0_1_127" !in service) {
+                service += "// strict_no_card_task_compatibility_only_0_1_127\n"
+            }
+
+            listOf(
+                "universal_no_card_runtime_0_1_102",
+                "currentCardTemplates = emptyList()",
+                ".putInt(KEY_STATE_TEMPLATE_COUNT, 0)",
+                "cards_repository_preserved_0_1_120",
+                "strict_no_card_task_compatibility_only_0_1_127",
+            ).forEach { marker ->
+                if (marker !in service) throw GradleException("Marcador legado ausente na compatibilidade estrita: $marker")
+            }
+
+            mainSource.writeText(main)
+            serviceSource.writeText(service)
+            return@doLast
+        }
+
+        // Comportamento historico mantido fora da versao estrita.
         if ("universal_no_card_registration_0_1_102" !in main) {
             main += "\n// universal_no_card_registration_0_1_102\n"
         }
@@ -30,7 +76,6 @@ val universalNoCardRuntimeContract by tasks.registering {
             main += "// Leitura universal de tela: true\n"
         }
 
-        // O servico nao observa modelos para decidir a rota universal.
         service = Regex(
             "\\s*scope\\.launch \\{ repository\\.cardTemplates\\.collect \\{ currentCardTemplates = it \\} \\}\\n",
         ).replace(service, "\n")
@@ -47,7 +92,6 @@ val universalNoCardRuntimeContract by tasks.registering {
             "registeredCardMatched = null,",
         )
 
-        // Desliga as travas que tornariam modelo ou lista de apps obrigatorios.
         val settingsAnchor = "            currentSettings = repository.settings.first()\n"
         val settingsMarker = "universal_cards_optional_settings_0_1_120"
         if (settingsAnchor in service && settingsMarker !in service) {
