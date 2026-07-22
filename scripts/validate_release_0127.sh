@@ -170,7 +170,23 @@ keytool -exportcert \
   -alias rotacerta-debug \
   -file signing-proof/expected.cer >/dev/null
 expected_cert="$(sha256sum signing-proof/expected.cer | awk '{print $1}')"
-apksigner verify --verbose --print-certs "$apk" | tee apk-signature.txt
+
+apksigner_bin="${APKSIGNER_BIN:-}"
+if [ -z "$apksigner_bin" ] && [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" ]; then
+  apksigner_bin="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+fi
+if [ -z "$apksigner_bin" ] && [ -n "${ANDROID_SDK_ROOT:-}" ] && [ -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" ]; then
+  apksigner_bin="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+fi
+if [ -z "$apksigner_bin" ]; then
+  apksigner_bin="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -type f -name apksigner -perm -u+x 2>/dev/null | sort -V | tail -1 || true)"
+fi
+if [ -z "$apksigner_bin" ] || [ ! -x "$apksigner_bin" ]; then
+  echo 'MISSING_APKSIGNER=true'
+  exit 1
+fi
+echo "APKSIGNER_BIN=$apksigner_bin"
+"$apksigner_bin" verify --verbose --print-certs "$apk" | tee apk-signature.txt
 apk_cert="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 expected_cert="$(printf '%s' "$expected_cert" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 echo "EXPECTED_SIGNER_CERTIFICATE_SHA256=$expected_cert"
