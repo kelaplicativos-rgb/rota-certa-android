@@ -1,0 +1,135 @@
+name: Codex Full Repository Audit
+
+on:
+  push:
+    branches:
+      - codex/full-audit-20260722
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout complete repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Inventory every tracked file and line
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          printf 'path\tbytes\tlines\tmime\tsha256\n' > audit/inventory.tsv
+          git ls-files -z | while IFS= read -r -d '' path; do
+            bytes=$(wc -c < "$path" | tr -d ' ')
+            mime=$(file --brief --mime-type "$path" 2>/dev/null || printf 'unknown')
+            if grep -Iq . "$path" 2>/dev/null || [ ! -s "$path" ]; then
+              lines=$(wc -l < "$path" | tr -d ' ')
+            else
+              lines=0
+            fi
+            hash=$(sha256sum "$path" | cut -d' ' -f1)
+            printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$bytes" "$lines" "$mime" "$hash" >> audit/inventory.tsv
+          done
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "tracked_files=$(git ls-files | wc -l | tr -d ' ')"
+            echo "text_lines=$(awk -F '\t' 'NR>1 {sum += $3} END {print sum+0}' audit/inventory.tsv)"
+            echo "bytes=$(awk -F '\t' 'NR>1 {sum += $2} END {print sum+0}' audit/inventory.tsv)"
+          } > audit/summary.properties
+          git ls-files -z | tar --null -T - -czf audit/tracked-source.tar.gz
+
+      - name: Run repository-wide static risk scan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+
+          root = pathlib.Path('.')
+          findings = []
+          patterns = [
+              ('TODO_FIXME', re.compile(r'\b(?:TODO|FIXME|HACK|XXX)\b')),
+              ('FORCE_UNWRAP', re.compile(r'!!')),
+              ('GLOBAL_SCOPE', re.compile(r'\bGlobalScope\b')),
+              ('BLOCKING_CALL', re.compile(r'\b(?:Thread\.sleep|runBlocking)\b')),
+              ('EMPTY_CATCH', re.compile(r'catch\s*\([^)]*\)\s*\{\s*\}')),
+              ('DEBUG_LOG', re.compile(r'\b(?:Log\.[vdiew]|println|printStackTrace)\s*\(')),
+              ('SUPPRESSION', re.compile(r'@Suppress\s*\(')),
+              ('HARDCODED_HTTP', re.compile(r'http://[^\s\"\']+')),
+              ('POSSIBLE_SECRET', re.compile(r'(?i)(?:api[_-]?key|secret|token|password)\s*[=:]\s*[\"\'][^\"\']{8,}[\"\']')),
+          ]
+          suffixes = {'.kt', '.kts', '.java', '.xml', '.gradle', '.properties', '.pro', '.json', '.yml', '.yaml', '.md', '.txt', '.sh'}
+          for path in sorted(root.rglob('*')):
+              if not path.is_file() or '.git' in path.parts or 'build' in path.parts or 'audit' in path.parts:
+                  continue
+              if path.suffix.lower() not in suffixes and path.name not in {'gradlew', 'proguard-rules.pro'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for no, line in enumerate(text.splitlines(), 1):
+                  for kind, pattern in patterns:
+                      if pattern.search(line):
+                          findings.append({'kind': kind, 'path': str(path), 'line': no, 'snippet': line.strip()[:500]})
+          pathlib.Path('audit/static-findings.json').write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding='utf-8')
+          counts = {}
+          for item in findings:
+              counts[item['kind']] = counts.get(item['kind'], 0) + 1
+          with pathlib.Path('audit/static-findings.md').open('w', encoding='utf-8') as out:
+              out.write('# Static findings\n\n')
+              out.write(f'Total: {len(findings)}\n\n')
+              for kind, count in sorted(counts.items()):
+                  out.write(f'- {kind}: {count}\n')
+              out.write('\n## Details\n\n')
+              for item in findings:
+                  out.write(f"- `{item['kind']}` `{item['path']}:{item['line']}` — `{item['snippet'].replace('`', "'")}`\n")
+          PY
+
+      - name: Compile, test and lint
+        id: gradle_checks
+        shell: bash
+        run: |
+          set +e
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug --stacktrace 2>&1 | tee audit/gradle-checks.log
+          status=${PIPESTATUS[0]}
+          echo "gradle_exit_code=$status" >> audit/summary.properties
+          find app/build/reports -type f -maxdepth 8 -print 2>/dev/null | sort > audit/generated-reports.txt || true
+          find app/build/outputs -type f -maxdepth 8 -print 2>/dev/null | sort > audit/generated-outputs.txt || true
+          exit "$status"
+
+      - name: Collect reports and APK even when checks fail
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p audit/collected
+          cp -R app/build/reports audit/collected/ 2>/dev/null || true
+          cp -R app/build/test-results audit/collected/ 2>/dev/null || true
+          cp -R app/build/outputs/apk audit/collected/ 2>/dev/null || true
+          git status --short > audit/git-status-after-build.txt
+
+      - name: Upload complete audit package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-full-audit-${{ github.run_number }}
+          path: audit/
+          if-no-files-found: error
+          retention-days: 30
