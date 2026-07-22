@@ -23,9 +23,20 @@ val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_0
 val appVersionCode = ciVersionCode ?: 37
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
-if (stableDebugKeystoreSource.exists()) {
-    stableDebugKeystoreFile.parentFile.mkdirs()
-    stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))
+val prepareStableDebugKeystore by tasks.registering {
+    inputs.file(stableDebugKeystoreSource)
+    outputs.file(stableDebugKeystoreFile)
+    mustRunAfter("clean")
+
+    doLast {
+        check(stableDebugKeystoreSource.exists()) {
+            "Stable debug keystore source is missing: ${stableDebugKeystoreSource.path}"
+        }
+        stableDebugKeystoreFile.parentFile.mkdirs()
+        stableDebugKeystoreFile.writeBytes(
+            Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()),
+        )
+    }
 }
 
 android {
@@ -224,6 +235,10 @@ val patchLiveRideAccessibilityService by tasks.registering {
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(patchLiveRideAccessibilityService)
+}
+
+tasks.matching { it.name == "validateSigningDebug" }.configureEach {
+    dependsOn(prepareStableDebugKeystore)
 }
 
 fun String.escapeForBuildConfig(): String =
