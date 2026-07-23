@@ -120,11 +120,15 @@ jobs:
         if: steps.build.outputs.status != '0'
         run: |
           set -euo pipefail
+          find app/build/test-results/testDebugUnitTest -type f -name '*.xml' -print -exec cat {} \; > test-results-0128.xml.txt || true
+          git diff -- app/src/main/java app/src/test/java app/build.gradle.kts version.properties > effective-source-0128.diff || true
+          tar -czf effective-source-0128.tar.gz app/src/main/java app/src/test/java app/build.gradle.kts version.properties
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B agent/rota-certa-0.1.128-failure-recognized
-          git add validation-failure-0128-recognized.txt
-          git commit -m "Record recognized Rota Certa 0.1.128 validation failure"
+          git add validation-failure-0128-recognized.txt test-results-0128.xml.txt effective-source-0128.diff
+          git add -f effective-source-0128.tar.gz
+          git commit -m "Record detailed Rota Certa 0.1.128 validation failure"
           git push origin agent/rota-certa-0.1.128-failure-recognized --force
           exit 1
 
@@ -189,6 +193,9 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             validation-success-0128-recognized.txt
             validation-failure-0128-recognized.txt
+            test-results-0128.xml.txt
+            effective-source-0128.diff
+            effective-source-0128.tar.gz
             apk-badging-0128-recognized.txt
             apk-signature-0128-recognized.txt
             gradle-0128-recognized.log
