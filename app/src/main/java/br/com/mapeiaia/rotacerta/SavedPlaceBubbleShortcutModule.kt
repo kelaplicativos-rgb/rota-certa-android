@@ -7,7 +7,7 @@ object SavedPlaceBubbleShortcutModule : BubbleShortcutModule {
         label = "Salvar local",
         displayLabel = "Local",
         action = BubbleShortcutAction.CreateSavedPlace,
-        defaultName = "Local salvo",
+        defaultName = "",
         targetGroup = "alerts",
         targetTab = "config",
     )
