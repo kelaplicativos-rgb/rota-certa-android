@@ -45,7 +45,7 @@ class AutomaticRideCapture129Test {
     @Test
     fun generatedServiceDefersMatchedCaptureUntilAfterFarolAndNeverBlocksRoute() {
         val service = sourceFile("LiveRideAccessibilityService.kt").readText()
-        val accepted = service.indexOf("manual.card.gate accepted=true")
+        val manualGate = service.indexOf("manual_registered_card_gate_0_1_127")
         val deferred = service.indexOf("automatic_capture_after_farol_final_checklist_6")
         val routeLaunch = service.indexOf("universalRouteJob = scope.launch", deferred)
         val applyResult = service.indexOf("private suspend fun applyUniversalTwoAddressResult")
@@ -55,7 +55,7 @@ class AutomaticRideCapture129Test {
         val helperEnd = service.indexOf("private fun requestScreenshotAnalysis(", helperStart)
         val helper = service.substring(helperStart, helperEnd)
 
-        assertTrue("match manual deve vir antes de memorizar a captura", accepted >= 0 && deferred > accepted)
+        assertTrue("portaria manual deve vir antes de memorizar a captura", manualGate >= 0 && deferred > manualGate)
         assertTrue("rota deve iniciar sem aguardar screenshot", routeLaunch > deferred)
         assertTrue("captura deve ser liberada somente depois do overlay", overlay > applyResult && releaseCapture > overlay)
         assertTrue("captura precisa recusar rota ativa", "universalRouteJob?.isActive == true" in helper)
