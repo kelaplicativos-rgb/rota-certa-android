@@ -90,3 +90,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         )
     }
 }
+
+// Usabilidade é aplicada somente depois de validar que o caminho crítico continua intacto.
+apply(from = "general-controls-ui-final-checklist-7.gradle.kts")
+apply(from = "popup-catalog-locals-final-checklist-7.gradle.kts")
