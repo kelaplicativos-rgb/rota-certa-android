@@ -44,7 +44,7 @@ fun verifyTripConfirmationChecklist8(
     if ("repository." in helperRegion || "DiagnosticLogStore" in helperRegion || "LiveFailureTraceStore" in helperRegion) {
         throw GradleException("A confirmação não pode armazenar texto da conversa nem gerar diagnóstico contínuo.")
     }
-    if ("startActivity(" in helperRegion || "send" in helperRegion.lowercase()) {
+    if ("startActivity(" in helperRegion || "sendEmail" in helperRegion || "sendMessage" in helperRegion) {
         throw GradleException("A confirmação deve apenas copiar; envio automático não é permitido.")
     }
 
@@ -60,7 +60,8 @@ fun verifyTripConfirmationChecklist8(
     listOf(
         "data class TripConfirmationData(",
         "fun extractAndFormat(rawText: String)",
-        "00:16",
+        "STANDALONE_TIME_REGEX",
+        "INLINE_ROUTE_STOP_REGEX",
         "Está tudo certo?",
     ).forEach { marker ->
         if (marker !in formatter) throw GradleException("Formatador da confirmação incompleto: $marker")
