@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 enum class BubbleShortcutAction {
+    CopyTripConfirmation,
     CreateAlert,
     CreateSavedPlace,
     SaveRideCard,
@@ -37,12 +38,13 @@ object BubbleShortcutCatalog {
         DestinationBubbleShortcutModule,
         ReadingBubbleShortcutModule,
         WhatsAppBubbleShortcutModule,
+        TripConfirmationBubbleShortcutModule,
         SettingsBubbleShortcutModule,
         StopBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 8) { "A grade deve conter oito modulos." }
+        require(modules.size == 9) { "A grade-base deve conter nove modulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }
