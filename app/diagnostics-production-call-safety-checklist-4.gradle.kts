@@ -76,11 +76,16 @@ fun productionLogCallEndChecklist4(source: String, openParen: Int): Int {
 fun removeProductionLogCallChecklist4(source: String, name: String): String {
     var text = source
     var cursor = 0
+    val replacement = if (name.contains("Log.")) {
+        "0 /* production_android_log_removed_checklist_4 */"
+    } else {
+        "Unit /* production_log_removed_checklist_4 */"
+    }
     while (true) {
         val start = nextProductionLogCallChecklist4(text, name, cursor)
         if (start < 0) return text
         val end = productionLogCallEndChecklist4(text, start + name.length)
-        text = text.substring(0, start) + "Unit /* production_log_removed_checklist_4 */" + text.substring(end + 1)
+        text = text.substring(0, start) + replacement + text.substring(end + 1)
         cursor = start + 1
     }
 }
