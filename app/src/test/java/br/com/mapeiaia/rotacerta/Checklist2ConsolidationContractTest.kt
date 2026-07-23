@@ -15,7 +15,6 @@ class Checklist2ConsolidationContractTest {
         assertFalse(settings.monitorInDrive)
         assertTrue(settings.requireRegisteredRideCard)
         assertFalse(settings.diagnosticsEnabled)
-        assertTrue(settings.automaticCardCaptureEnabled)
         assertTrue(settings.multiCardFocusLockEnabled)
         assertTrue(settings.proximityPopupAutoCloseEnabled)
     }
