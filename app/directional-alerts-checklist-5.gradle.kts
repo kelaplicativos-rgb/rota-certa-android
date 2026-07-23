@@ -125,7 +125,8 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
     text = text.substring(0, monitorStart) + replacement + text.substring(scheduleStart)
 
     val companionAnchor = "    private companion object {\n"
-    if ("DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5" !in text) {
+    val activeConstantDeclaration = "        const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L\n"
+    if (activeConstantDeclaration !in text) {
         if (companionAnchor !in text) throw GradleException("Companion do serviço ausente para constantes direcionais.")
         val constants = """        const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L
         const val DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5 = 1_500L
@@ -143,7 +144,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         "PreciseNavigationTracker",
         "DirectionalProximityAlertEngine",
         "DirectionalAlertOverlayController",
-        "DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5",
+        "const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Contrato direcional ausente no serviço: $marker")
     }
