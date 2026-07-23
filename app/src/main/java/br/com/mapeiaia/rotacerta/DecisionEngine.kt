@@ -43,31 +43,16 @@ class DecisionEngine {
 
         val distanceToHome = if (needsHomeDistance) homeDistanceKm else null
         val distanceToAlternative = if (needsAlternativeDistance) alternativeDistanceKm else null
-
-        if (distanceToHome == null && distanceToAlternative == null) {
-            return result(
-                fields = fields,
-                fullText = fullText,
-                recommendation = Recommendation.InsufficientData,
-                reason = "Nao foi possivel calcular a distancia real do destino final pelo Google Maps.",
-            )
-        }
-
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
+        val safeAlternativeLabel = alternativeLabel?.trim()?.takeIf { it.isNotBlank() } ?: "alfinete"
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
-        val safeAlternativeLabel = alternativeLabel?.trim().takeUnless(String?::isNullOrBlank) ?: "alfinete"
         val reason = when {
-            insideHome && insideAlternative -> {
-                if (distanceToHome!! <= distanceToAlternative!!) {
-                    "Destino final dentro do raio da Casa por rota real do Google Maps."
-                } else {
-                    "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
-                }
-            }
-            insideHome -> "Destino final dentro do raio da Casa por rota real do Google Maps."
+            insideHome && insideAlternative && distanceToHome!! <= distanceToAlternative!! ->
+                "Destino final dentro do raio da Casa por rota real do Google Maps."
             insideAlternative -> "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
+            insideHome -> "Destino final dentro do raio da Casa por rota real do Google Maps."
             else -> "Destino final fora dos raios configurados por rota real do Google Maps."
         }
 
@@ -78,6 +63,82 @@ class DecisionEngine {
             reason = reason,
             pickupToHomeKm = distanceToHome,
             pickupToAlternativeKm = distanceToAlternative,
+        )
+    }
+
+    fun decideWorkRegion(
+        fields: RideFields,
+        settings: AppSettings,
+        fullText: String,
+        homeTargetActive: Boolean,
+        homeDistanceKm: Double?,
+        pinRoutes: List<WorkRegionPinRoute>,
+    ): AnalysisResult {
+        val destinationText = fields.destination.orEmpty()
+        if (destinationText.isBlank()) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
+        }
+        if (hasAvoidedKeyword(destinationText, settings.avoidedKeywords)) {
+            return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
+        }
+
+        val activePins = if (settings.alternativeTargetEnabled) pinRoutes else emptyList()
+        if (!homeTargetActive && activePins.isEmpty()) {
+            return result(
+                fields,
+                fullText,
+                Recommendation.InsufficientData,
+                "Ligue Casa ou cadastre e ligue pelo menos um alfinete na regiao de trabalho.",
+            )
+        }
+
+        val insideCandidates = buildList {
+            if (homeTargetActive && homeDistanceKm != null && homeDistanceKm <= settings.homeRadiusKm) {
+                add(WorkRegionWinner("Casa", homeDistanceKm, isHome = true))
+            }
+            activePins.forEach { route ->
+                val distance = route.distanceKm ?: return@forEach
+                if (distance <= settings.alternativeRadiusKm) {
+                    add(WorkRegionWinner(route.pin.address, distance, isHome = false))
+                }
+            }
+        }
+        val nearestPinDistance = activePins.mapNotNull(WorkRegionPinRoute::distanceKm).minOrNull()
+        val winner = insideCandidates.minByOrNull(WorkRegionWinner::distanceKm)
+        if (winner != null) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.GoodRide,
+                reason = if (winner.isHome) {
+                    "Destino final dentro do raio da Casa por rota real do Google Maps."
+                } else {
+                    "Destino final dentro do raio do alfinete ${winner.label} por rota real do Google Maps."
+                },
+                pickupToHomeKm = homeDistanceKm,
+                pickupToAlternativeKm = nearestPinDistance,
+            )
+        }
+
+        val allExact = (!homeTargetActive || homeDistanceKm != null) && activePins.all { it.distanceKm != null }
+        if (!allExact) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.InsufficientData,
+                reason = "Uma ou mais distancias exatas da regiao de trabalho ainda nao ficaram disponiveis.",
+                pickupToHomeKm = homeDistanceKm,
+                pickupToAlternativeKm = nearestPinDistance,
+            )
+        }
+
+        return result(
+            fields = fields,
+            fullText = fullText,
+            recommendation = Recommendation.OutsideRadius,
+            reason = "Destino final fora da Casa e de todos os alfinetes ligados por rota real do Google Maps.",
+            pickupToHomeKm = homeDistanceKm,
+            pickupToAlternativeKm = nearestPinDistance,
         )
     }
 
@@ -105,5 +166,11 @@ class DecisionEngine {
         reason = reason,
         pickupToHomeKm = pickupToHomeKm,
         pickupToAlternativeKm = pickupToAlternativeKm,
+    )
+
+    private data class WorkRegionWinner(
+        val label: String,
+        val distanceKm: Double,
+        val isHome: Boolean,
     )
 }
