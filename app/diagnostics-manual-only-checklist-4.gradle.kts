@@ -30,7 +30,7 @@ fun findNextCodeCallChecklist4(source: String, callName: String, startAt: Int): 
                 }
             }
             source.startsWith(callName, index) &&
-                (index == 0 || !source[index - 1].isLetterOrDigit() && source[index - 1] != '_') &&
+                (index == 0 || (!source[index - 1].isLetterOrDigit() && source[index - 1] != '_')) &&
                 source.getOrNull(index + callName.length) == '(' -> {
                 val lineStart = source.lastIndexOf('\n', index - 1).let { if (it < 0) 0 else it + 1 }
                 val linePrefix = source.substring(lineStart, index)
@@ -94,14 +94,14 @@ fun replaceRuntimeCallsChecklist4(source: String, callName: String): String {
         val openParen = start + callName.length
         val end = findCallEndChecklist4(text, openParen)
         text = text.substring(0, start) + "Unit /* diagnostics_off_checklist_4 */" + text.substring(end + 1)
-        cursor = start + 40
+        cursor = start + 1
     }
 }
 
 fun patchServiceDiagnosticsChecklist4(file: java.io.File) {
     if (!file.exists()) throw GradleException("LiveRideAccessibilityService.kt ausente no checklist 4.")
     var text = file.readText()
-    listOf(
+    val continuousCalls = listOf(
         "traceEvent",
         "DiagnosticLogStore.record",
         "LiveFailureTraceStore.recordRead",
@@ -111,11 +111,14 @@ fun patchServiceDiagnosticsChecklist4(file: java.io.File) {
         "LiveFailureTraceStore.recordRoute",
         "LiveFailureTraceStore.recordDecision",
         "repository.saveDiagnostic",
-    ).forEach { callName ->
+    )
+    continuousCalls.forEach { callName ->
         text = replaceRuntimeCallsChecklist4(text, callName)
     }
-    if ("DiagnosticLogStore.record(" in text || "LiveFailureTraceStore.record" in text) {
-        throw GradleException("Instrumentacao continua ainda presente no servico apos checklist 4.")
+    continuousCalls.forEach { callName ->
+        if (findNextCodeCallChecklist4(text, callName, 0) >= 0) {
+            throw GradleException("Instrumentacao continua ainda presente no servico: $callName")
+        }
     }
     file.writeText(text)
 }
