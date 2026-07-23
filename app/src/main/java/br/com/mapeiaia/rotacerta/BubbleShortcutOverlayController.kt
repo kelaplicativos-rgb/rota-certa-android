@@ -16,15 +16,15 @@ import kotlin.math.roundToInt
 /**
  * Janelas leves usadas pela bolinha principal.
  *
- * O controlador nao conhece regras de negocio. Cada recurso da grade possui um
- * BubbleShortcutModule proprio; aqui apenas renderizamos o catalogo e devolvemos
- * o modulo clicado ao servico.
+ * O tamanho é lido somente quando a janela abre, portanto mudar a preferência não
+ * interfere na leitura dos cards nem no caminho crítico do farol.
  */
 class BubbleShortcutOverlayController(
     private val context: Context,
     private val windowManager: WindowManager,
     private val trace: (String) -> Unit = {},
 ) {
+    private val appearanceStore = PopupAppearanceStore(context)
     private var shortcutView: View? = null
     private var alertPopupView: View? = null
 
@@ -57,40 +57,43 @@ class BubbleShortcutOverlayController(
         hideShortcuts()
         hideProximityAlert()
 
-        val container = alertContainer()
+        val scale = appearanceStore.scale()
+        val container = alertContainer(scale)
         container.addView(TextView(context).apply {
             text = "⚠️  ${alert.name}"
-            textSize = 19f
+            textSize = scaledSp(19f, scale)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             contentDescription = "Alerta ${alert.name}"
         })
         container.addView(TextView(context).apply {
             text = "A aproximadamente ${distanceMeters.roundToInt()} m"
-            textSize = 14f
+            textSize = scaledSp(14f, scale)
             setTextColor(Color.LTGRAY)
-            setPadding(0, dp(4), 0, dp(8))
+            setPadding(0, scaledDp(4, scale), 0, scaledDp(8, scale))
         })
         container.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(popupButton("Fechar") { hideProximityAlert(); actions.onDismiss() })
-            addView(popupButton("Editar") { hideProximityAlert(); actions.onEdit(alert) })
-            addView(popupButton("Excluir") { showDeleteConfirmation(alert, actions) })
+            addView(popupButton("Fechar", scale) { hideProximityAlert(); actions.onDismiss() })
+            addView(popupButton("Editar", scale) { hideProximityAlert(); actions.onEdit(alert) })
+            addView(popupButton("Excluir", scale) { showDeleteConfirmation(alert, actions, scale) })
         })
 
+        val metrics = context.resources.displayMetrics
+        val requestedWidth = scaledDp(310, scale)
         val params = WindowManager.LayoutParams(
-            dp(310).coerceAtMost(context.resources.displayMetrics.widthPixels - dp(24)),
+            requestedWidth.coerceAtMost(metrics.widthPixels - dp(24)),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = dp(72)
+            y = scaledDp(72, scale)
         }
         if (runCatching { windowManager.addView(container, params) }.isSuccess) {
             alertPopupView = container
-            trace("proximity.popup.shown id=${alert.id} distance=${distanceMeters.roundToInt()}")
+            trace("proximity.popup.shown id=${alert.id} distance=${distanceMeters.roundToInt()} scale=$scale")
         }
     }
 
@@ -113,21 +116,28 @@ class BubbleShortcutOverlayController(
         hideProximityAlert()
         BubbleShortcutCatalog.requireValid()
 
-        val columns = 3
+        val scale = appearanceStore.scale()
+        val columns = if (scale >= LARGE_SCALE_TWO_COLUMNS) 2 else 3
         val rows = (BubbleShortcutCatalog.modules.size + columns - 1) / columns
-        val menuWidth = dp(206)
-        val estimatedMenuHeight = dp(14 + rows * 66)
+        val bubbleSize = scaledDp(62, scale)
+        val itemMargin = scaledDp(2, scale)
+        val panelPadding = scaledDp(6, scale)
+        val metrics = context.resources.displayMetrics
+        val naturalWidth = columns * (bubbleSize + itemMargin * 2) + panelPadding * 2
+        val menuWidth = naturalWidth.coerceAtMost(metrics.widthPixels - dp(16))
+        val estimatedMenuHeight = rows * (bubbleSize + itemMargin * 2) + panelPadding * 2
+
         val menu = GridLayout(context).apply {
             columnCount = columns
             rowCount = rows
             background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
+                cornerRadius = scaledDp(18, scale).toFloat()
                 setColor(Color.argb(238, 25, 25, 25))
-                setStroke(dp(1), Color.argb(220, 255, 255, 255))
+                setStroke(scaledDp(1, scale).coerceAtLeast(1), Color.argb(220, 255, 255, 255))
             }
-            setPadding(dp(6), dp(6), dp(6), dp(6))
+            setPadding(panelPadding, panelPadding, panelPadding, panelPadding)
             BubbleShortcutCatalog.modules.forEach { module ->
-                addView(shortcutBubble(module.spec) {
+                addView(shortcutBubble(module.spec, bubbleSize, itemMargin, scale) {
                     hideShortcuts()
                     trace("bubble.shortcut.clicked id=${module.spec.id}")
                     onShortcut(module.spec)
@@ -135,7 +145,6 @@ class BubbleShortcutOverlayController(
             }
         }
 
-        val metrics = context.resources.displayMetrics
         val anchorWidth = anchor.width.takeIf { it > 0 && it < metrics.widthPixels } ?: dp(66)
         val anchorHeight = anchor.height.takeIf { it > 0 && it < metrics.heightPixels } ?: dp(66)
         val position = BubbleShortcutPositionPolicy.place(
@@ -147,7 +156,7 @@ class BubbleShortcutOverlayController(
             menuHeight = estimatedMenuHeight,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels,
-            gap = dp(8),
+            gap = scaledDp(8, scale),
             safeMargin = dp(4),
         )
         val params = WindowManager.LayoutParams(
@@ -166,14 +175,20 @@ class BubbleShortcutOverlayController(
             trace(
                 "bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size} " +
                     "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
-                    "menu=${position.x},${position.y},$menuWidth,$estimatedMenuHeight",
+                    "menu=${position.x},${position.y},$menuWidth,$estimatedMenuHeight scale=$scale columns=$columns",
             )
         }
     }
 
-    private fun shortcutBubble(spec: BubbleShortcutSpec, action: () -> Unit): TextView = TextView(context).apply {
+    private fun shortcutBubble(
+        spec: BubbleShortcutSpec,
+        bubbleSize: Int,
+        itemMargin: Int,
+        scale: Double,
+        action: () -> Unit,
+    ): TextView = TextView(context).apply {
         text = spec.displayText
-        textSize = 10f
+        textSize = scaledSp(10f, scale).coerceIn(9f, 17f)
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
@@ -183,60 +198,85 @@ class BubbleShortcutOverlayController(
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.rgb(72, 64, 82))
-            setStroke(dp(2), Color.argb(230, 205, 180, 255))
+            setStroke(scaledDp(2, scale).coerceAtLeast(1), Color.argb(230, 205, 180, 255))
         }
         layoutParams = GridLayout.LayoutParams().apply {
-            width = dp(62)
-            height = dp(62)
-            setMargins(dp(2), dp(2), dp(2), dp(2))
+            width = bubbleSize
+            height = bubbleSize
+            setMargins(itemMargin, itemMargin, itemMargin, itemMargin)
         }
         setOnClickListener { action() }
     }
 
-    private fun showDeleteConfirmation(alert: SavedPlace, actions: ProximityAlertPopupActions) {
+    private fun showDeleteConfirmation(
+        alert: SavedPlace,
+        actions: ProximityAlertPopupActions,
+        scale: Double,
+    ) {
         val parent = alertPopupView as? LinearLayout ?: return
         parent.removeAllViews()
         parent.addView(TextView(context).apply {
             text = "⚠️ Excluir \"${alert.name}\"?"
-            textSize = 18f
+            textSize = scaledSp(18f, scale)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(10))
+            setPadding(0, 0, 0, scaledDp(10, scale))
         })
         parent.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(popupButton("Cancelar") { hideProximityAlert() })
-            addView(popupButton("Confirmar") { hideProximityAlert(); actions.onDelete(alert) })
+            addView(popupButton("Cancelar", scale) { hideProximityAlert() })
+            addView(popupButton("Confirmar", scale) { hideProximityAlert(); actions.onDelete(alert) })
         })
     }
 
-    private fun alertContainer(): LinearLayout = LinearLayout(context).apply {
+    private fun alertContainer(scale: Double): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         background = GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = scaledDp(18, scale).toFloat()
             setColor(Color.argb(246, 38, 38, 38))
-            setStroke(dp(3), Color.rgb(255, 193, 7))
+            setStroke(scaledDp(3, scale).coerceAtLeast(1), Color.rgb(255, 193, 7))
         }
-        setPadding(dp(14), dp(12), dp(14), dp(12))
+        setPadding(
+            scaledDp(14, scale),
+            scaledDp(12, scale),
+            scaledDp(14, scale),
+            scaledDp(12, scale),
+        )
     }
 
-    private fun popupButton(label: String, action: () -> Unit): TextView = TextView(context).apply {
+    private fun popupButton(label: String, scale: Double, action: () -> Unit): TextView = TextView(context).apply {
         text = label
-        textSize = 14f
+        textSize = scaledSp(14f, scale).coerceAtMost(20f)
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
         contentDescription = label
-        setPadding(dp(8), dp(9), dp(8), dp(9))
-        layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) }
+        setPadding(
+            scaledDp(8, scale),
+            scaledDp(9, scale),
+            scaledDp(8, scale),
+            scaledDp(9, scale),
+        )
+        layoutParams = LinearLayout.LayoutParams(0, scaledDp(42, scale), 1f).apply {
+            val margin = scaledDp(3, scale)
+            setMargins(margin, 0, margin, 0)
+        }
         background = GradientDrawable().apply {
-            cornerRadius = dp(12).toFloat()
+            cornerRadius = scaledDp(12, scale).toFloat()
             setColor(Color.rgb(79, 68, 88))
         }
         setOnClickListener { action() }
     }
 
+    private fun scaledDp(value: Int, scale: Double): Int = dp((value * scale).roundToInt())
+
+    private fun scaledSp(value: Float, scale: Double): Float = (value * scale.toFloat())
+
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
+
+    private companion object {
+        const val LARGE_SCALE_TWO_COLUMNS = 1.35
+    }
 }
 
 data class ProximityAlertPopupActions(
