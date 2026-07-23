@@ -231,19 +231,10 @@ fun patchStrictSelectedAppReadChecklist1(serviceFile: java.io.File) {
     serviceFile.writeText(service)
 }
 
-val strictSelectedAppReadChecklist1 by tasks.registering {
-    outputs.upToDateWhen { false }
-    doLast {
-        patchStrictSelectedAppReadChecklist1(
-            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
-        )
-    }
-}
-
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(strictSelectedAppReadChecklist1)
     doLast {
-        // Reaplica por ultimo, depois dos finalizadores historicos ligados ao preBuild.
+        // Executa somente aqui: por estar aplicado por ultimo, roda depois dos
+        // finalizadores historicos e nao altera os pontos de ancoragem deles.
         patchStrictSelectedAppReadChecklist1(
             layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
         )
