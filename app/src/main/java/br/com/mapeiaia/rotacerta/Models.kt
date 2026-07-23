@@ -28,7 +28,6 @@ data class AppSettings(
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
     val diagnosticsEnabled: Boolean = false,
-    val automaticCardCaptureEnabled: Boolean = true,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
 )
