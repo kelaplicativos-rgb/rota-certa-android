@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,8 +34,23 @@ class DirectionalProximityAlertEngineChecklist5Test {
         engine.check(emptyList(), listOf(radar), fix(longitude = 0.0015, heading = 270.0), settings(), { visual = it })
         engine.check(emptyList(), listOf(radar), fix(longitude = 0.0010, heading = 270.0), settings(), { visual = it })
 
-        assertEquals(null, visual)
+        assertNull(visual)
         assertEquals(0, speech.radarCalls)
+    }
+
+    @Test
+    fun `mudanca para sentido contrario remove painel imediatamente`() {
+        val speech = FakeSpeech()
+        val engine = DirectionalProximityAlertEngine(speech) { NOW }
+        val radar = eastboundRadar()
+        var visual: DirectionalAlertVisual? = null
+
+        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0015, heading = 90.0), settings(), { visual = it })
+        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0010, heading = 90.0), settings(), { visual = it })
+        assertNotNull(visual)
+
+        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0009, heading = 270.0), settings(), { visual = it })
+        assertNull(visual)
     }
 
     @Test
