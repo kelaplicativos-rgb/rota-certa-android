@@ -34,14 +34,24 @@ class SettingsRepository(private val context: Context) {
     private val monitorUber = booleanPreferencesKey("monitor_uber")
     private val monitorInDrive = booleanPreferencesKey("monitor_indrive")
     private val extraMonitoredPackages = stringPreferencesKey("extra_monitored_packages")
+    private val appEnabled = booleanPreferencesKey("app_enabled")
+    private val liveReadingEnabled = booleanPreferencesKey("live_reading_enabled")
+    private val homeTargetEnabled = booleanPreferencesKey("home_target_enabled")
+    private val alternativeTargetEnabled = booleanPreferencesKey("alternative_target_enabled")
     private val requireRegisteredRideCard = booleanPreferencesKey("require_registered_ride_card")
+    private val proximityAlertsEnabled = booleanPreferencesKey("proximity_alerts_enabled")
     private val proximityAlertDistanceMeters = intPreferencesKey("proximity_alert_distance_meters")
+    private val diagnosticsEnabled = booleanPreferencesKey("diagnostics_enabled")
+    private val automaticCardCaptureEnabled = booleanPreferencesKey("automatic_card_capture_enabled")
+    private val multiCardFocusLockEnabled = booleanPreferencesKey("multi_card_focus_lock_enabled")
+    private val proximityPopupAutoCloseEnabled = booleanPreferencesKey("proximity_popup_auto_close_enabled")
     private val history = stringPreferencesKey("history")
     private val liveDiagnostic = stringPreferencesKey("live_diagnostic")
     private val rideCardTemplates = stringPreferencesKey("ride_card_templates")
     private val capturedRideScreens = stringPreferencesKey("captured_ride_screens")
     private val savedPlacesKey = stringPreferencesKey("saved_places")
     private val importedRadarsKey = stringPreferencesKey("imported_radars")
+    private val quickRepliesKey = stringPreferencesKey("quick_replies")
     private val json = Json { ignoreUnknownKeys = true }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -58,13 +68,22 @@ class SettingsRepository(private val context: Context) {
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
             bubbleOpacity = prefs[bubbleOpacity] ?: 1.0,
             bubbleDarkMode = prefs[bubbleDarkMode] ?: false,
-            restrictToSelectedRideApps = prefs[restrictToSelectedRideApps] ?: false,
-            monitor99 = prefs[monitor99] ?: true,
-            monitorUber = prefs[monitorUber] ?: true,
-            monitorInDrive = prefs[monitorInDrive] ?: true,
+            restrictToSelectedRideApps = prefs[restrictToSelectedRideApps] ?: true,
+            monitor99 = prefs[monitor99] ?: false,
+            monitorUber = prefs[monitorUber] ?: false,
+            monitorInDrive = prefs[monitorInDrive] ?: false,
             extraMonitoredPackages = prefs[extraMonitoredPackages].orEmpty(),
+            appEnabled = prefs[appEnabled] ?: true,
+            liveReadingEnabled = prefs[liveReadingEnabled] ?: true,
+            homeTargetEnabled = prefs[homeTargetEnabled] ?: true,
+            alternativeTargetEnabled = prefs[alternativeTargetEnabled] ?: true,
             requireRegisteredRideCard = prefs[requireRegisteredRideCard] ?: true,
-            proximityAlertDistanceMeters = prefs[proximityAlertDistanceMeters] ?: 200,
+            proximityAlertsEnabled = prefs[proximityAlertsEnabled] ?: true,
+            proximityAlertDistanceMeters = (prefs[proximityAlertDistanceMeters] ?: 200).coerceIn(200, 1000),
+            diagnosticsEnabled = prefs[diagnosticsEnabled] ?: false,
+            automaticCardCaptureEnabled = prefs[automaticCardCaptureEnabled] ?: true,
+            multiCardFocusLockEnabled = prefs[multiCardFocusLockEnabled] ?: true,
+            proximityPopupAutoCloseEnabled = prefs[proximityPopupAutoCloseEnabled] ?: true,
         )
     }
 
@@ -97,6 +116,12 @@ class SettingsRepository(private val context: Context) {
             .getOrDefault(emptyList())
     }
 
+    val quickReplies: Flow<List<QuickReply>> = context.dataStore.data.map { prefs ->
+        runCatching { json.decodeFromString<List<QuickReply>>(prefs[quickRepliesKey].orEmpty()) }
+            .getOrDefault(emptyList())
+            .sortedWith(compareByDescending<QuickReply> { it.updatedAtMillis }.thenBy { it.title })
+    }
+
     val radarImportSummary: Flow<RadarImportSummary> = importedRadars.map { radars ->
         RadarImportSummary(
             count = radars.size,
@@ -119,8 +144,17 @@ class SettingsRepository(private val context: Context) {
             prefs[monitorUber] = settings.monitorUber
             prefs[monitorInDrive] = settings.monitorInDrive
             prefs[extraMonitoredPackages] = settings.extraMonitoredPackages.trim()
+            prefs[appEnabled] = settings.appEnabled
+            prefs[liveReadingEnabled] = settings.liveReadingEnabled
+            prefs[homeTargetEnabled] = settings.homeTargetEnabled
+            prefs[alternativeTargetEnabled] = settings.alternativeTargetEnabled
             prefs[requireRegisteredRideCard] = settings.requireRegisteredRideCard
+            prefs[proximityAlertsEnabled] = settings.proximityAlertsEnabled
             prefs[proximityAlertDistanceMeters] = settings.proximityAlertDistanceMeters.coerceIn(200, 1000)
+            prefs[diagnosticsEnabled] = settings.diagnosticsEnabled
+            prefs[automaticCardCaptureEnabled] = settings.automaticCardCaptureEnabled
+            prefs[multiCardFocusLockEnabled] = settings.multiCardFocusLockEnabled
+            prefs[proximityPopupAutoCloseEnabled] = settings.proximityPopupAutoCloseEnabled
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
                 prefs.remove(googleMapsApiKey)
             } else {
@@ -197,6 +231,24 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun upsertQuickReply(reply: QuickReply) {
+        if (reply.text.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<QuickReply>>(prefs[quickRepliesKey].orEmpty()) }
+                .getOrDefault(emptyList())
+            val updated = listOf(reply) + current.filterNot { it.id == reply.id }
+            prefs[quickRepliesKey] = json.encodeToString(updated.take(100))
+        }
+    }
+
+    suspend fun removeQuickReply(replyId: String) {
+        context.dataStore.edit { prefs ->
+            val current = runCatching { json.decodeFromString<List<QuickReply>>(prefs[quickRepliesKey].orEmpty()) }
+                .getOrDefault(emptyList())
+            prefs[quickRepliesKey] = json.encodeToString(current.filterNot { it.id == replyId })
+        }
+    }
+
     suspend fun replaceImportedRadars(radars: List<ImportedRadar>) {
         context.dataStore.edit { prefs ->
             prefs[importedRadarsKey] = json.encodeToString(radars.take(MAX_IMPORTED_RADARS))
@@ -225,6 +277,7 @@ class SettingsRepository(private val context: Context) {
             capturedScreens = capturedScreens.first(),
             savedPlaces = savedPlaces.first(),
             importedRadars = importedRadars.first(),
+            quickReplies = quickReplies.first(),
         )
         return json.encodeToString(backup)
     }
@@ -238,6 +291,7 @@ class SettingsRepository(private val context: Context) {
             prefs[capturedRideScreens] = json.encodeToString(backup.capturedScreens.take(20))
             prefs[savedPlacesKey] = json.encodeToString(backup.savedPlaces.take(200))
             prefs[importedRadarsKey] = json.encodeToString(backup.importedRadars.take(MAX_IMPORTED_RADARS))
+            prefs[quickRepliesKey] = json.encodeToString(backup.quickReplies.take(100))
             prefs.remove(liveDiagnostic)
         }
         return backup
