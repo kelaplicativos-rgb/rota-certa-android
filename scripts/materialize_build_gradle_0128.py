@@ -89,6 +89,7 @@ if receiver_marker not in service:
             quickReplyFilter,
             ContextCompat.RECEIVER_NOT_EXPORTED,
         ) // quick_reply_receiver_not_exported_0_1_128
+        // quick_replies_accessibility_fill_0_1_128: o receptor encaminha o texto ao QuickReplyAccessibilityFiller.
 '''
     if old not in service:
         raise SystemExit("Registro antigo de quickReplyReceiver nao encontrado")
