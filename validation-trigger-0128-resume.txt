@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation with explicit Android build-tools wrappers.
+Trigger source-only publication of the fully validated Rota Certa 0.1.128 candidate.
