@@ -90,3 +90,5 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         verifyPopupAndPlacesChecklist7(catalog, service, overlay)
     }
 }
+
+apply(from = "general-controls-group-routing-final-checklist-7.gradle.kts")
