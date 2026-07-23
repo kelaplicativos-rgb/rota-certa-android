@@ -12,7 +12,6 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -48,7 +47,7 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
 
     fun currentFix(nowMillis: Long = System.currentTimeMillis()): PreciseNavigationFix? {
         val fix = latestFix ?: return null
-        return fix.takeIf { nowMillis - it.timestampMillis <= MAX_FIX_AGE_MILLIS }
+        return fix.takeIf { nowMillis - it.timestampMillis in 0L..MAX_FIX_AGE_MILLIS }
     }
 
     @SuppressLint("MissingPermission")
@@ -72,7 +71,7 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
             } else false
         }.getOrDefault(false)
 
-        runCatching {
+        val networkRegistered = runCatching {
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER,
@@ -81,8 +80,9 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
                     this,
                     Looper.getMainLooper(),
                 )
-            }
-        }
+                true
+            } else false
+        }.getOrDefault(false)
 
         val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         if (rotationSensor != null) {
@@ -90,7 +90,12 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
         }
 
         bootstrapLastKnownLocation()
-        return gpsRegistered || latestFix != null
+        val active = gpsRegistered || networkRegistered || latestFix != null
+        if (!active) {
+            runCatching { sensorManager.unregisterListener(this) }
+            started.set(false)
+        }
+        return active
     }
 
     fun stop() {
@@ -183,7 +188,7 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
             .filter { location ->
                 location.hasAccuracy() &&
                     location.accuracy <= BOOTSTRAP_MAX_ACCURACY_METERS &&
-                    now - location.time <= BOOTSTRAP_MAX_AGE_MILLIS
+                    now - location.time in 0L..BOOTSTRAP_MAX_AGE_MILLIS
             }
             .minWithOrNull(compareBy<Location> { it.accuracy }.thenByDescending { it.time })
             ?.let(::onLocationChanged)
