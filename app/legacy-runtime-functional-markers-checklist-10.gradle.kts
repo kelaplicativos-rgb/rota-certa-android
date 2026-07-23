@@ -32,3 +32,5 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         )
     }
 }
+
+apply(from = "final-kotlin-compile-repair-checklist-10.gradle.kts")
