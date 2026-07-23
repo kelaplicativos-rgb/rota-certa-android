@@ -27,6 +27,10 @@ data class AppSettings(
     val requireRegisteredRideCard: Boolean = true,
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
+    val diagnosticsEnabled: Boolean = false,
+    val automaticCardCaptureEnabled: Boolean = true,
+    val multiCardFocusLockEnabled: Boolean = true,
+    val proximityPopupAutoCloseEnabled: Boolean = true,
 )
 
 @Serializable
@@ -41,6 +45,7 @@ data class RotaCertaBackup(
     val capturedScreens: List<CapturedRideScreen> = emptyList(),
     val savedPlaces: List<SavedPlace> = emptyList(),
     val importedRadars: List<ImportedRadar> = emptyList(),
+    val quickReplies: List<QuickReply> = emptyList(),
 )
 
 @Serializable
@@ -84,6 +89,15 @@ data class CapturedRideScreen(
     val pickup: String? = null,
     val destination: String? = null,
     val fare: String? = null,
+)
+
+@Serializable
+data class QuickReply(
+    val id: String,
+    val title: String = "",
+    val text: String,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
 )
 
 @Serializable
@@ -137,7 +151,7 @@ data class AnalysisResult(
     val recommendation: Recommendation,
     val reason: String,
     // Nomes antigos mantidos no JSON para restaurar backups existentes.
-    // Semanticamente, estas distancias partem do destino final da corrida.
+    // Semanticamente, estas distâncias partem do destino final da corrida.
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
 ) {
