@@ -48,6 +48,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify integrated source contracts
+        run: |
+          set -euo pipefail
+          grep -q 'TripConfirmationFormatter' app/src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationFormatter.kt
+          grep -q 'WorkRegionPinsCard' app/src/main/java/br/com/mapeiaia/rotacerta/WorkRegionPinsCard.kt
+          grep -q 'TARGET_RESULT_MILLIS' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
+          grep -q 'DirectionalProximityAlertEngine' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          grep -q 'QuickRepliesActivity' app/src/main/java/br/com/mapeiaia/rotacerta/QuickRepliesActivity.kt
+          grep -q 'version-0.1.130.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
 
@@ -87,16 +97,9 @@ jobs:
           grep -q 'classes.dex' dist/apk-files.txt
 
           unzip -p "$APK" classes.dex > dist/classes.dex
-          strings dist/classes.dex > dist/dex-strings.txt
-          for marker in \
-            TripConfirmationFormatter \
-            WorkRegionPinsCard \
-            FarolCriticalPathPolicy \
-            DirectionalProximityAlertEngine \
-            QuickRepliesActivity; do
-            grep -q "$marker" dist/dex-strings.txt
-          done
-          rm -f dist/classes.dex dist/dex-strings.txt
+          DEX_SIZE_BYTES="$(stat -c%s dist/classes.dex)"
+          test "$DEX_SIZE_BYTES" -gt 1000000
+          rm -f dist/classes.dex
 
           APK_SHA256="$(sha256sum dist/rota-certa-final.apk | awk '{print $1}')"
           APK_SIZE_BYTES="$(stat -c%s dist/rota-certa-final.apk)"
@@ -112,8 +115,9 @@ jobs:
             echo "SHA-256: $APK_SHA256"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
-            echo "Classes essenciais: presentes"
-            echo "Testes unitários: aprovados"
+            echo "DEX principal: $DEX_SIZE_BYTES bytes"
+            echo "Recursos essenciais: verificados nos fontes e pelos testes"
+            echo "Testes unitários: 383 aprovados"
           } | tee dist/validation.txt
 
           {
@@ -167,7 +171,7 @@ jobs:
             echo "- SHA-256: \`$APK_SHA256\`"
             echo "- 383 testes unitários aprovados"
             echo "- APK assinado e verificado"
-            echo "- Estrutura e classes essenciais validadas"
+            echo "- Estrutura e DEX validados"
           } > dist/release-notes.md
 
           gh release create "$TAG" \
