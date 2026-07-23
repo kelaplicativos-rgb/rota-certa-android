@@ -21,7 +21,7 @@ class NoPreRegisteredGates126ContractTest {
 
         assertTrue("Pacotes passivos continuam classificados pelo Core", "CorePackageMonitor.classify(" in scanRegion)
         assertTrue("Selecao deve vir somente do armazenamento manual", "SelectedRideAppStore.read(applicationContext)" in scanRegion)
-        assertTrue("Somente pacote escolhido pode ser lido", "normalized in selectedPackages" in scanRegion)
+        assertTrue("Somente pacote escolhido pode ser lido", "StrictSelectedAppReadPolicy.canRead(" in scanRegion)
         assertTrue("Instalacao sem escolha precisa criar selecao vazia", "SelectedRideAppStore.save(applicationContext, emptySet())" in service)
         assertTrue("Cards manuais devem ser preservados", "currentCardTemplates = repository.cardTemplates.first()" in service)
         assertFalse("A versao nova nao pode apagar modelos do usuario", "removedTemplates126.forEach" in service)
@@ -31,12 +31,16 @@ class NoPreRegisteredGates126ContractTest {
     @Test
     fun registeredModelFromTheSamePackageIsRequiredBeforeRouteOrColor() {
         val service = source("LiveRideAccessibilityService.kt")
+        val processStart = service.indexOf("private suspend fun processRideText(")
+        val processEnd = service.indexOf("private fun resolveRidePackageForText(", processStart)
+        assertTrue(processStart >= 0 && processEnd > processStart)
+        val process = service.substring(processStart, processEnd)
 
         assertTrue("A configuracao precisa exigir card cadastrado", "requireRegisteredRideCard = true" in service)
-        assertTrue("O match precisa usar apenas modelos do pacote selecionado", "templates = packageCardTemplates" in service)
-        assertTrue("Sem modelo a rota deve ser bloqueada", "reason=no_template" in service)
-        assertTrue("Sem correspondencia a rota deve ser bloqueada", "reason=no_match" in service)
-        assertTrue("A rota so continua depois do match", "manual.card.gate accepted=true" in service)
+        assertTrue("O match precisa usar apenas modelos do pacote selecionado", "templates = packageCardTemplates" in process)
+        assertTrue("Sem modelo a rota deve ser bloqueada", "manual_card_required" in process)
+        assertTrue("Sem correspondencia a rota deve ser bloqueada", "manual_card_waiting" in process)
+        assertTrue("A rota so continua depois do match", "manual_registered_card_gate_0_1_127" in process)
         assertTrue("Resultado antigo deve depender do modelo ainda ativo", "manual_registered_card_freshness_0_1_127" in service)
     }
 
