@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,13 +16,18 @@ class PrimaryVisibleCardGeneratedContractTest {
     fun selectorRunsBeforeAddressTriggerAndPassengerGate() {
         val service = serviceSource()
         val processStart = service.indexOf("private suspend fun processRideText(")
-        val selector = service.indexOf("PrimaryVisibleRideCardSelector.select(fullSnapshotText)", processStart)
-        val trigger = service.indexOf("UniversalAddressTrigger.evaluate(snapshotText)", processStart)
-        val passenger = service.indexOf("RidePassengerIdentityPolicy.evaluate(snapshotText)", processStart)
+        val processEnd = service.indexOf("private fun resolveRidePackageForText(", processStart)
+        assertTrue(processStart >= 0 && processEnd > processStart)
+        val process = service.substring(processStart, processEnd)
 
-        assertTrue("Marcador do escopo primario ausente", "primary_visible_card_scope_0_1_125" in service)
-        assertTrue("Seletor deve executar antes do gatilho de enderecos", selector >= processStart && selector < trigger)
-        assertTrue("Gatilho deve usar o texto ja isolado antes da identidade", trigger < passenger)
-        assertTrue("Trace da selecao precisa existir", "universal.card.scope selected_index=" in service)
+        val selector = process.indexOf("PrimaryVisibleRideCardSelector.select(fullSnapshotText)")
+        val trigger = process.indexOf("UniversalAddressTrigger.evaluate(snapshotText)")
+        val passenger = process.indexOf("RidePassengerIdentityPolicy.evaluate(snapshotText)")
+
+        assertTrue("Marcador do escopo primario ausente", "primary_visible_card_scope_0_1_125" in process)
+        assertTrue("Seletor deve executar antes do gatilho de enderecos", selector >= 0 && selector < trigger)
+        assertTrue("Gatilho deve usar o texto ja isolado antes da identidade", trigger >= 0 && trigger < passenger)
+        assertTrue("Avaliação pesada deve ficar fora da thread principal", "withContext(Dispatchers.Default)" in process)
+        assertFalse("Trace contínuo da seleção não pode voltar", "traceEvent(\"universal.card.scope" in process)
     }
 }
