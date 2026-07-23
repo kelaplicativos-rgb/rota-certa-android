@@ -45,6 +45,17 @@ fun verifyChecklist6FinalContract(
         throw GradleException("Captura temporária voltou a executar OCR.")
     }
 
+    val scanStart = service.indexOf("private fun startContinuousScan()")
+    val scanEnd = service.indexOf("private fun startProximityAlertMonitor()", scanStart)
+    if (scanStart < 0 || scanEnd < 0) throw GradleException("Ciclo de segurança final não localizado.")
+    val scanRegion = service.substring(scanStart, scanEnd)
+    if ("requestScreenshotAnalysis(" in scanRegion) {
+        throw GradleException("Ciclo de segurança voltou a solicitar OCR imediatamente.")
+    }
+    if ("scheduleScreenshotFallback127" !in scanRegion) {
+        throw GradleException("Ciclo de segurança perdeu o fallback controlado de OCR.")
+    }
+
     if ("@Composable\n@Composable\nprivate fun AutomaticRideCaptureGallery129" in main) {
         throw GradleException("Anotação Compose duplicada na galeria final.")
     }
