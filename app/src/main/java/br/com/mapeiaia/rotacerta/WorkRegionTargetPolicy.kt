@@ -61,9 +61,9 @@ object WorkRegionTargetPolicy {
     }
 
     fun remove(settings: AppSettings, pinId: String): AppSettings = settings.copy(
-        workRegionPins = editablePins(settings).filterNot { it.id == pinId || (pinId == LEGACY_PIN_ID && it.id == LEGACY_PIN_ID) },
-        alternativeAddress = if (pinId == LEGACY_PIN_ID) "" else settings.alternativeAddress,
-        alternativeCoordinate = if (pinId == LEGACY_PIN_ID) null else settings.alternativeCoordinate,
+        workRegionPins = editablePins(settings).filterNot { it.id == pinId },
+        alternativeAddress = "",
+        alternativeCoordinate = null,
     )
 
     fun setEnabled(settings: AppSettings, pinId: String, enabled: Boolean): AppSettings {
@@ -114,4 +114,9 @@ object WorkRegionTargetPolicy {
 data class WorkRegionPinDistance(
     val pin: WorkRegionPin,
     val distanceKm: Double,
+)
+
+data class WorkRegionPinRoute(
+    val pin: WorkRegionPin,
+    val distanceKm: Double?,
 )
