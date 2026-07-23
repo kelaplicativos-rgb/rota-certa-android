@@ -8,7 +8,7 @@ import org.junit.Test
 
 class BubbleShortcutModulesTest {
     @Test
-    fun catalogContainsFifteenIndependentModulesInDisplayOrder() {
+    fun catalogContainsSixteenIndependentModulesInDisplayOrder() {
         BubbleShortcutCatalog.requireValid()
 
         assertEquals(
@@ -27,12 +27,13 @@ class BubbleShortcutModulesTest {
                 "diagnostic",
                 "quick_replies",
                 "stop_app",
+                "manual_card_capture",
                 "cards",
             ),
             BubbleShortcutCatalog.modules.map { it.spec.id },
         )
-        assertEquals(15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
-        assertEquals(15, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
+        assertEquals(16, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals(16, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "permissions" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reading" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reports" })
@@ -84,8 +85,10 @@ class BubbleShortcutModulesTest {
         assertEquals(BubbleShortcutAction.ExportDiagnostic, DiagnosticBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.StopApplication, StopBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.OpenQuickReplies, QuickRepliesBubbleShortcutModule.spec.action)
+        assertEquals(BubbleShortcutAction.SaveRideCard, ManualRideCardCaptureBubbleShortcutModule.spec.action)
         assertNull(WhatsAppBubbleShortcutModule.spec.targetGroup)
         assertNull(TripConfirmationBubbleShortcutModule.spec.targetGroup)
+        assertNull(ManualRideCardCaptureBubbleShortcutModule.spec.targetGroup)
         assertNull(StopBubbleShortcutModule.spec.targetGroup)
     }
 
