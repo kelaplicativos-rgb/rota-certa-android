@@ -20,6 +20,7 @@ object ExactRadiusLowerBoundPolicy {
         settings: AppSettings,
         homeCoordinate: Coordinate?,
         alternativeCoordinate: Coordinate?,
+        additionalAlternativeCoordinates: List<Coordinate> = emptyList(),
     ): ExactRadiusLowerBoundDecision {
         destinationCoordinate ?: return ExactRadiusLowerBoundDecision(false, null, 0)
 
@@ -32,13 +33,18 @@ object ExactRadiusLowerBoundPolicy {
                     ),
                 )
             }
-            if (settings.alternativeTargetEnabled && alternativeCoordinate != null) {
-                add(
-                    TargetLowerBound(
-                        distanceKm = GeoDistance.meters(destinationCoordinate, alternativeCoordinate) / 1000.0,
-                        radiusKm = settings.alternativeRadiusKm,
-                    ),
-                )
+
+            if (settings.alternativeTargetEnabled) {
+                (listOfNotNull(alternativeCoordinate) + additionalAlternativeCoordinates)
+                    .distinctBy { coordinate -> "%.6f,%.6f".format(coordinate.latitude, coordinate.longitude) }
+                    .forEach { coordinate ->
+                        add(
+                            TargetLowerBound(
+                                distanceKm = GeoDistance.meters(destinationCoordinate, coordinate) / 1000.0,
+                                radiusKm = settings.alternativeRadiusKm,
+                            ),
+                        )
+                    }
             }
         }
 
