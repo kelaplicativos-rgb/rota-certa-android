@@ -11,6 +11,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         val fields = """    private lateinit var preciseNavigationTrackerChecklist5: PreciseNavigationTracker
     private lateinit var directionalAlertEngineChecklist5: DirectionalProximityAlertEngine
     private lateinit var directionalAlertOverlayChecklist5: DirectionalAlertOverlayController
+    private val directionalRadarSpatialIndexChecklist5 = ImportedRadarSpatialIndex()
     private var missingPreciseFixSinceChecklist5: Long = 0L
     // directional_alert_fields_checklist_5
 """
@@ -35,6 +36,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         if (destroyAnchor !in text) throw GradleException("onDestroy não encontrado para alertas direcionais.")
         val cleanup = """        if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
         if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
+        directionalRadarSpatialIndexChecklist5.clear()
         // directional_alert_destroy_checklist_5
 """
         text = text.replaceFirst(destroyAnchor, destroyAnchor + cleanup)
@@ -60,6 +62,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
                     preciseNavigationTrackerChecklist5.stop()
                     directionalAlertOverlayChecklist5.hide()
                     missingPreciseFixSinceChecklist5 = 0L
+                    if (radars.isEmpty()) directionalRadarSpatialIndexChecklist5.clear()
                     delay(DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5)
                     continue
                 }
@@ -91,9 +94,18 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         }
         missingPreciseFixSinceChecklist5 = 0L
 
+        val searchRadiusMeters = currentSettings.proximityAlertDistanceMeters
+            .coerceIn(200, 1000)
+            .toDouble() + DIRECTIONAL_RADAR_QUERY_BUFFER_METERS_CHECKLIST_5
+        val nearbyRadars = directionalRadarSpatialIndexChecklist5.query(
+            source = radars,
+            center = fix.coordinate,
+            radiusMeters = searchRadiusMeters,
+        ).radars
+
         directionalAlertEngineChecklist5.check(
             alerts = alerts,
-            radars = radars,
+            radars = nearbyRadars,
             fix = fix,
             settings = currentSettings,
             onVisual = { visual ->
@@ -131,6 +143,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         val constants = """        const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L
         const val DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5 = 1_500L
         const val PRECISE_FIX_OVERLAY_GRACE_MILLIS_CHECKLIST_5 = 1_800L
+        const val DIRECTIONAL_RADAR_QUERY_BUFFER_METERS_CHECKLIST_5 = 220.0
 """
         text = text.replaceFirst(companionAnchor, companionAnchor + constants)
     }
@@ -144,6 +157,7 @@ fun patchDirectionalAlertServiceChecklist5(file: java.io.File) {
         "PreciseNavigationTracker",
         "DirectionalProximityAlertEngine",
         "DirectionalAlertOverlayController",
+        "directionalRadarSpatialIndexChecklist5.query",
         "const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L",
     ).forEach { marker ->
         if (marker !in text) throw GradleException("Contrato direcional ausente no serviço: $marker")
