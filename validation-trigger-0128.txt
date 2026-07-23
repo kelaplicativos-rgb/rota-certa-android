@@ -1,1 +1,1 @@
-Trigger materialized validation for Rota Certa 0.1.128.
+Trigger materialized validation for Rota Certa 0.1.128 v2.
