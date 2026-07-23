@@ -17,7 +17,7 @@ class ProfessionalBubbleHome118ContractTest {
         BubbleShortcutCatalog.requireValid()
         val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
 
-        assertEquals(15, ids.size)
+        assertEquals(16, ids.size)
         listOf(
             "route",
             "destination",
@@ -33,6 +33,7 @@ class ProfessionalBubbleHome118ContractTest {
             "diagnostic",
             "quick_replies",
             "stop_app",
+            "manual_card_capture",
             "cards",
         ).forEach { id -> assertTrue("Atalho ausente: $id", id in ids) }
 
@@ -68,14 +69,20 @@ class ProfessionalBubbleHome118ContractTest {
         val service = source("LiveRideAccessibilityService.kt")
         val diagnostic = BubbleShortcutCatalog.modules.first { it.spec.id == "diagnostic" }.spec
         val tripCopy = BubbleShortcutCatalog.modules.first { it.spec.id == "copy_trip_confirmation" }.spec
+        val manualCapture = BubbleShortcutCatalog.modules.first { it.spec.id == "manual_card_capture" }.spec
 
         assertEquals(BubbleShortcutAction.ExportDiagnostic, diagnostic.action)
         assertEquals(BubbleShortcutAction.CopyTripConfirmation, tripCopy.action)
+        assertEquals(BubbleShortcutAction.SaveRideCard, manualCapture.action)
         assertTrue("Despacho do diagnostico ausente", "BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()" in service)
         assertTrue("Exportacao automatica precisa ser solicitada", ".putExtra(\"auto_export_report\", true)" in service)
         assertTrue(
             "Copia da confirmacao precisa permanecer manual",
             "BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8()" in service,
+        )
+        assertTrue(
+            "Captura do card precisa permanecer manual",
+            "BubbleShortcutAction.SaveRideCard -> captureAndRegisterRideCardManualChecklist12()" in service,
         )
     }
 }
