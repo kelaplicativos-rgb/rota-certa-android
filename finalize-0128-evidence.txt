@@ -1,0 +1,19 @@
+--- FINALIZE LOG ---
+Finalizador 0.1.128 ambiguo ou ausente: []
+--- FEATURE MARKERS ---
+QuickReplyAccessibilityFiller.apply=missing
+automatic_card_capture_0_1_128=present
+cache_first_before_yellow_0_1_128=present
+single_bubble_render_coordinator_0_1_128=present
+false_clear_confirmation_0_1_128=present
+proximity_auto_close_runtime_0_1_128=present
+multi_card_focus_lock_0_1_128=present
+parallel_geocode_route_0_1_128=present
+geocode_cache_0_1_128=present
+--- REGEX LINES ---
+681:            .map { it.lowercase(Locale.ROOT).replace(Regex("\s+"), " ").trim() }
+690:                .replace(Regex("\s+"), " ")
+1561:            .replace(Regex("\\s+"), " ")
+1765:            .replace(Regex("\\s+"), " ")
+--- QUICK REPLY LINES ---
+162:            if (text.isNotBlank()) scope.launch { applyQuickReplyToFocusedField(text) }
