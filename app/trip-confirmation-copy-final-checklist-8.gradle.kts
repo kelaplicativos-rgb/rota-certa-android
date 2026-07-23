@@ -103,7 +103,7 @@ fun patchTripConfirmationServiceChecklist8(file: java.io.File) {
             return
         }
 
-        val accessibilityText = collectVisibleTextForAction()
+        val accessibilityText = collectTripConfirmationVisibleTextChecklist8()
         val immediateMessage = TripConfirmationFormatter.extractAndFormat(accessibilityText)
         if (immediateMessage != null) {
             copyTripConfirmationToClipboardChecklist8(immediateMessage)
@@ -112,6 +112,22 @@ fun patchTripConfirmationServiceChecklist8(file: java.io.File) {
         }
         requestTripConfirmationOcrChecklist8(accessibilityText, attempt = 0)
     }
+
+    /**
+     * Leitura manual, executada somente após o toque em Copiar viagem.
+     * Não altera shouldScanPackage, não alimenta o farol e não fica em loop.
+     */
+    private fun collectTripConfirmationVisibleTextChecklist8(): String {
+        val root = rootInActiveWindow ?: return ""
+        val lines = mutableListOf<String>()
+        collectNodeText(root, lines)
+        return lines
+            .asSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+            .joinToString("\n")
+    } // manual_trip_tree_read_checklist_8
 
     private fun requestTripConfirmationOcrChecklist8(accessibilityText: String, attempt: Int) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -194,8 +210,9 @@ fun patchTripConfirmationServiceChecklist8(file: java.io.File) {
     listOf(
         "trip_confirmation_action_checklist_8",
         "trip_confirmation_copy_complete_checklist_8",
+        "manual_trip_tree_read_checklist_8",
         "TripConfirmationFormatter.extractAndFormat",
-        "collectVisibleTextForAction()",
+        "collectTripConfirmationVisibleTextChecklist8()",
         "ocrService.extractText",
         "ClipData.newPlainText(\"Confirmação da viagem\"",
     ).forEach { marker ->
