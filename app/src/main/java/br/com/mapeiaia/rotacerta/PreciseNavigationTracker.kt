@@ -14,6 +14,8 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.os.Looper
+import android.view.Surface
+import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
@@ -32,6 +34,7 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
     private val appContext = context.applicationContext
     private val locationManager = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private val sensorManager = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val started = AtomicBoolean(false)
 
     @Volatile
@@ -40,9 +43,13 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
     @Volatile
     private var magneticHeadingDegrees: Double? = null
 
+    @Volatile
+    private var compassAccuracy: Int = SensorManager.SENSOR_STATUS_UNRELIABLE
+
     private var lastAcceptedLocation: Location? = null
     private var smoothedHeadingDegrees: Double? = null
     private val rotationMatrix = FloatArray(9)
+    private val adjustedRotationMatrix = FloatArray(9)
     private val orientation = FloatArray(3)
 
     fun currentFix(nowMillis: Long = System.currentTimeMillis()): PreciseNavigationFix? {
@@ -122,15 +129,17 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
             ?.toDouble()
             ?.let(GeoDistance::normalizeDegrees)
 
-        val compassTrueHeading = magneticHeadingDegrees?.let { magnetic ->
-            val declination = GeomagneticField(
-                location.latitude.toFloat(),
-                location.longitude.toFloat(),
-                location.altitude.toFloat(),
-                location.time,
-            ).declination.toDouble()
-            GeoDistance.normalizeDegrees(magnetic + declination)
-        }
+        val compassTrueHeading = magneticHeadingDegrees
+            ?.takeIf { compassAccuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM }
+            ?.let { magnetic ->
+                val declination = GeomagneticField(
+                    location.latitude.toFloat(),
+                    location.longitude.toFloat(),
+                    location.altitude.toFloat(),
+                    location.time,
+                ).declination.toDouble()
+                GeoDistance.normalizeDegrees(magnetic + declination)
+            }
 
         val headingCandidate = when {
             gpsBearing != null && compassTrueHeading != null -> circularBlend(gpsBearing, compassTrueHeading, GPS_HEADING_WEIGHT)
@@ -163,21 +172,41 @@ class PreciseNavigationTracker(context: Context) : LocationListener, SensorEvent
 
     override fun onSensorChanged(event: SensorEvent) {
         if (!started.get() || event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+        if (event.accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE) return
+        compassAccuracy = event.accuracy
         runCatching {
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-            SensorManager.getOrientation(rotationMatrix, orientation)
+            val matrix = remapForDisplayRotation(rotationMatrix)
+            SensorManager.getOrientation(matrix, orientation)
             val azimuth = Math.toDegrees(orientation[0].toDouble())
             magneticHeadingDegrees = GeoDistance.normalizeDegrees(azimuth)
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        if (sensor?.type == Sensor.TYPE_ROTATION_VECTOR) compassAccuracy = accuracy
+    }
 
     @Deprecated("Deprecated in Android")
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
 
     override fun onProviderEnabled(provider: String) = Unit
     override fun onProviderDisabled(provider: String) = Unit
+
+    @Suppress("DEPRECATION")
+    private fun remapForDisplayRotation(source: FloatArray): FloatArray {
+        val axes = when (windowManager.defaultDisplay.rotation) {
+            Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
+            Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
+            Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
+            else -> return source
+        }
+        return if (SensorManager.remapCoordinateSystem(source, axes.first, axes.second, adjustedRotationMatrix)) {
+            adjustedRotationMatrix
+        } else {
+            source
+        }
+    }
 
     @SuppressLint("MissingPermission")
     private fun bootstrapLastKnownLocation() {
