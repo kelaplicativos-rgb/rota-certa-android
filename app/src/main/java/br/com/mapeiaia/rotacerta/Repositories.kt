@@ -42,7 +42,6 @@ class SettingsRepository(private val context: Context) {
     private val proximityAlertsEnabled = booleanPreferencesKey("proximity_alerts_enabled")
     private val proximityAlertDistanceMeters = intPreferencesKey("proximity_alert_distance_meters")
     private val diagnosticsEnabled = booleanPreferencesKey("diagnostics_enabled")
-    private val automaticCardCaptureEnabled = booleanPreferencesKey("automatic_card_capture_enabled")
     private val multiCardFocusLockEnabled = booleanPreferencesKey("multi_card_focus_lock_enabled")
     private val proximityPopupAutoCloseEnabled = booleanPreferencesKey("proximity_popup_auto_close_enabled")
     private val history = stringPreferencesKey("history")
@@ -81,7 +80,6 @@ class SettingsRepository(private val context: Context) {
             proximityAlertsEnabled = prefs[proximityAlertsEnabled] ?: true,
             proximityAlertDistanceMeters = (prefs[proximityAlertDistanceMeters] ?: 200).coerceIn(200, 1000),
             diagnosticsEnabled = prefs[diagnosticsEnabled] ?: false,
-            automaticCardCaptureEnabled = prefs[automaticCardCaptureEnabled] ?: true,
             multiCardFocusLockEnabled = prefs[multiCardFocusLockEnabled] ?: true,
             proximityPopupAutoCloseEnabled = prefs[proximityPopupAutoCloseEnabled] ?: true,
         )
@@ -152,7 +150,6 @@ class SettingsRepository(private val context: Context) {
             prefs[proximityAlertsEnabled] = settings.proximityAlertsEnabled
             prefs[proximityAlertDistanceMeters] = settings.proximityAlertDistanceMeters.coerceIn(200, 1000)
             prefs[diagnosticsEnabled] = settings.diagnosticsEnabled
-            prefs[automaticCardCaptureEnabled] = settings.automaticCardCaptureEnabled
             prefs[multiCardFocusLockEnabled] = settings.multiCardFocusLockEnabled
             prefs[proximityPopupAutoCloseEnabled] = settings.proximityPopupAutoCloseEnabled
             if (settings.googleMapsApiKey.isBlank() || settings.googleMapsApiKey == BuildConfig.GOOGLE_MAPS_API_KEY) {
