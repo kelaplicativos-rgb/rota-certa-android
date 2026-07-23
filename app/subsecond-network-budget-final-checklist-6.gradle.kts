@@ -3,18 +3,24 @@
 fun patchSubsecondNetworkBudgetChecklist6(file: java.io.File) {
     if (!file.exists()) throw GradleException("GoogleMapsService.kt ausente no checklist 6.")
     var text = file.readText()
-    text = text.replace(
-        Regex("const val CONNECT_TIMEOUT_MS = [0-9_]+"),
-        "const val CONNECT_TIMEOUT_MS = 350 // subsecond_connect_budget_checklist_6",
-    )
-    text = text.replace(
-        Regex("const val READ_TIMEOUT_MS = [0-9_]+"),
-        "const val READ_TIMEOUT_MS = 600 // subsecond_read_budget_checklist_6",
-    )
-    text = text.replace(
-        Regex("const val ROUTE_REQUEST_ATTEMPTS = [0-9_]+"),
-        "const val ROUTE_REQUEST_ATTEMPTS = 1 // single_route_attempt_checklist_6",
-    )
+    if ("subsecond_connect_budget_checklist_6" !in text) {
+        text = text.replace(
+            Regex("const val CONNECT_TIMEOUT_MS = [0-9_]+"),
+            "const val CONNECT_TIMEOUT_MS = 350 // subsecond_connect_budget_checklist_6",
+        )
+    }
+    if ("subsecond_read_budget_checklist_6" !in text) {
+        text = text.replace(
+            Regex("const val READ_TIMEOUT_MS = [0-9_]+"),
+            "const val READ_TIMEOUT_MS = 600 // subsecond_read_budget_checklist_6",
+        )
+    }
+    if ("single_route_attempt_checklist_6" !in text) {
+        text = text.replace(
+            Regex("const val ROUTE_REQUEST_ATTEMPTS = [0-9_]+"),
+            "const val ROUTE_REQUEST_ATTEMPTS = 1 // single_route_attempt_checklist_6",
+        )
+    }
     listOf(
         "subsecond_connect_budget_checklist_6",
         "subsecond_read_budget_checklist_6",
