@@ -10,6 +10,7 @@ class DecisionEngine {
         fullText: String,
         homeDistanceKm: Double? = null,
         alternativeDistanceKm: Double? = null,
+        alternativeLabel: String? = null,
     ): AnalysisResult {
         val destinationText = fields.destination.orEmpty()
         if (destinationText.isBlank()) {
@@ -23,10 +24,10 @@ class DecisionEngine {
         val hasExactAddressRoute = homeDistanceKm != null || alternativeDistanceKm != null
         if (destinationCoordinate == null && !hasExactAddressRoute) {
             return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada ou rota exata confiavel.")
-        } // exact_address_route_without_blocking_geocode_0_1_128
+        }
 
         if (homeCoordinate == null && alternativeCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Configure a casa ou o alfinete com coordenada confiavel.")
+            return result(fields, fullText, Recommendation.InsufficientData, "Configure a Casa ou pelo menos um alfinete com coordenada confiavel.")
         }
 
         val needsHomeDistance = homeCoordinate != null
@@ -56,9 +57,17 @@ class DecisionEngine {
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
+        val safeAlternativeLabel = alternativeLabel?.trim().takeUnless(String?::isNullOrBlank) ?: "alfinete"
         val reason = when {
-            insideHome -> "Destino final dentro do raio da casa por rota real do Google Maps."
-            insideAlternative -> "Destino final dentro do raio do alfinete por rota real do Google Maps."
+            insideHome && insideAlternative -> {
+                if (distanceToHome!! <= distanceToAlternative!!) {
+                    "Destino final dentro do raio da Casa por rota real do Google Maps."
+                } else {
+                    "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
+                }
+            }
+            insideHome -> "Destino final dentro do raio da Casa por rota real do Google Maps."
+            insideAlternative -> "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
             else -> "Destino final fora dos raios configurados por rota real do Google Maps."
         }
 
