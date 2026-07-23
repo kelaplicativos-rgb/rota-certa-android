@@ -21,6 +21,7 @@ object ManualTechnicalReportBuilder {
         val appContext = context.applicationContext
         val bubble = appContext.getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
         val selectedPackages = SelectedRideAppStore.read(appContext).toList().sorted()
+        val workPins = WorkRegionTargetPolicy.editablePins(settings)
         val now = System.currentTimeMillis()
         val stateUpdatedAt = bubble.getLong(KEY_STATE_UPDATED_AT, 0L)
 
@@ -74,13 +75,18 @@ object ManualTechnicalReportBuilder {
             appendLine("Texto do OCR: tamanho=${bubble.getInt(KEY_STATE_OCR_TEXT_LENGTH, 0)} hash=${bubble.text(KEY_STATE_OCR_TEXT_HASH)}")
             appendLine()
 
-            appendLine("--- DESTINOS CONFIGURADOS ---")
+            appendLine("--- REGIAO DE TRABALHO ---")
             appendLine("Casa ativa: ${settings.homeTargetEnabled}")
             appendLine("Casa: ${settings.homeAddress.ifBlank { "nao informada" }}")
-            appendLine("Raio casa: ${settings.homeRadiusKm} km")
-            appendLine("Alfinete ativo: ${settings.alternativeTargetEnabled}")
-            appendLine("Alfinete: ${settings.alternativeAddress.ifBlank { "nao informado" }}")
-            appendLine("Raio alfinete: ${settings.alternativeRadiusKm} km")
+            appendLine("Raio Casa: ${settings.homeRadiusKm} km")
+            appendLine("Grupo de alfinetes ativo: ${settings.alternativeTargetEnabled}")
+            appendLine("Raio compartilhado dos alfinetes: ${settings.alternativeRadiusKm} km")
+            appendLine("Alfinetes cadastrados: ${workPins.size}")
+            if (workPins.isEmpty()) appendLine("- nenhum")
+            workPins.forEach { pin ->
+                val coordinate = pin.coordinate?.let { "${it.latitude},${it.longitude}" } ?: "nao validada"
+                appendLine("- ${if (pin.enabled) "ON" else "OFF"} | ${pin.address} | $coordinate")
+            }
             appendLine()
 
             appendLine("Observacao: este arquivo e um retrato manual. Nenhuma trilha de eventos fica sendo acumulada durante o uso normal.")
