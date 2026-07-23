@@ -2,16 +2,21 @@ name: Build Debug APK
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+  push:
+    branches:
+      - main
+      - 'codex/**'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build and validate debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -36,41 +41,159 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Check Google Maps secret
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: |
-          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
-            echo "GOOGLE_MAPS_API_KEY secret is empty. APK will still build; configure the key inside the app."
-          else
-            echo "GOOGLE_MAPS_API_KEY secret found."
-          fi
-
-      - name: Record debug APK run start
-        run: |
-          set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: pending"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record debug APK run start" || exit 0
-          git push
-
       - name: Run unit tests
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: gradle testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain > gradle-test.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException)" gradle-test.log || true
+            tail -400 gradle-test.log
+          fi
+          exit "$status"
+
+      - name: Upload unit-test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-log
+          path: gradle-test.log
+          if-no-files-found: ignore
+
+      - name: Run real farol route simulation
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          REAL_FAROL_REPORT: real-farol-validation.txt
+        run: python3 scripts/real_farol_route_gate.py
+
+      - name: Upload real farol validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-farol-validation
+          path: real-farol-validation.txt
+          if-no-files-found: error
 
       - name: Build debug APK
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --stacktrace --console=plain > gradle-assemble.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException)" gradle-assemble.log || true
+            tail -400 gradle-assemble.log
+          fi
+          exit "$status"
+
+      - name: Upload assemble failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-assemble-log
+          path: gradle-assemble.log
+          if-no-files-found: ignore
+
+      - name: Validate final 0.1.127 contract
+        run: |
+          set -euo pipefail
+          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          store="app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideAppStore.kt"
+          maps="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
+
+          grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
+          grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
+          grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
+          grep -Fq 'normalized in selectedPackages' "$service"
+          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
+          grep -Fq 'Buscar aplicativos instalados' "$main"
+
+          grep -Fq 'manual_cards_preserved_0_1_127' "$service"
+          grep -Fq 'manual_cards_observer_0_1_127' "$service"
+          grep -Fq 'Modelos de cards opcionais' "$main"
+          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
+          grep -Fq 'Anexar modelos de cards (prints)' "$main"
+          if grep -Fq 'manual_registered_card_gate_0_1_127' "$service"; then
+            echo 'ERRO: modelo de card voltou a ser obrigatorio.'
+            exit 1
+          fi
+          if grep -Fq 'removedTemplates126.forEach' "$service"; then
+            echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
+            exit 1
+          fi
+
+          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
+          grep -Fq 'universal.screen.cosmetic_change ignored=true' "$service"
+          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
+          grep -Fq 'exact_route_continues=true' "$service"
+          if grep -Fq $'return\n        } // subsecond_exact_red_lower_bound_0_1_125' "$service"; then
+            echo 'ERRO: vermelho rapido ainda interrompe a rota exata.'
+            exit 1
+          fi
+
+          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
+          grep -Fq 'internal fun geocodeQueries' "$maps"
+          grep -Fq 'containsExplicitLocality' "$maps"
+          if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
+            echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
+            exit 1
+          fi
+          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
+            echo 'ERRO: anotacao @Composable duplicada voltou.'
+            exit 1
+          fi
+
+          cat > final-0127-validation.txt <<'EOF'
+          MANUAL_APP_SELECTION=approved
+          PRESELECTED_APPS=0
+          REGISTERED_CARD_MODEL=optional
+          PRE_REGISTERED_CARD_MODELS=0
+          NO_DESTRUCTIVE_CARD_CLEANUP=approved
+          STABLE_CARD_SIGNATURE=approved
+          FAST_RED_EXACT_ROUTE_CONTINUES=approved
+          FALLBACK_SCAN_INTERVAL_MS=120
+          HARDCODED_SAO_PAULO_GEOCODING=removed
+          EOF
+
+      - name: Validate debug APK contents
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          tmp_dir="$(mktemp -d)"
+          unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
+          strings "$tmp_dir"/classes*.dex > apk-strings.txt
+          for expected in \
+            "Buscar aplicativos instalados" \
+            "Nenhum aplicativo vem marcado" \
+            "Modelos de cards opcionais" \
+            "Anexar modelos de cards (prints)" \
+            "manual_selection.ready selected=" \
+            "universal.screen.cosmetic_change ignored=true" \
+            "universal.fast_red provisional=true exact_route_continues=true"
+          do
+            grep -Fq -- "$expected" apk-strings.txt
+          done
+          {
+            echo "APK=$apk"
+            echo "APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')"
+            echo "APK_SIZE_BYTES=$(wc -c < "$apk")"
+            cat final-0127-validation.txt
+          } > apk-validation.txt
+
+      - name: Upload validations
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-validations
+          path: |
+            final-0127-validation.txt
+            apk-validation.txt
+            real-farol-validation.txt
+          if-no-files-found: error
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -78,19 +201,3 @@ jobs:
           name: rota-certa-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-      - name: Record latest APK run link
-        run: |
-          set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: rota-certa-debug-apk"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record latest debug APK run" || exit 0
-          git push

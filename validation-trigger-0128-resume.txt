@@ -1,0 +1,1 @@
+Trigger the recognized source-only publisher for fully validated Rota Certa 0.1.128.

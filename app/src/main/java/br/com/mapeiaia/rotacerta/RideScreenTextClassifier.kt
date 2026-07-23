@@ -58,6 +58,9 @@ object RideScreenTextClassifier {
 
     fun ignoreReason(text: String): String? {
         val normalized = text.normalizedForMatch()
+        if (looksLikeRotaCertaDiagnostic(normalized)) {
+            return "Diagnostico do Rota Certa detectado; nenhum card de chamada ativo."
+        }
         if (looksLikeAndroidSystemShade(normalized)) {
             return "Tela do sistema/atalhos Android detectada; nenhum card de chamada ativo."
         }
@@ -96,6 +99,11 @@ object RideScreenTextClassifier {
         return hasRideKeyword && (hasRouteSignal || hasAddressSignal) ||
             hasFareAmount && hasRouteSignal && hasAddressSignal
     }
+
+    private fun looksLikeRotaCertaDiagnostic(normalized: String): Boolean =
+        normalized.contains("rota certa diagnostico") &&
+            normalized.contains("texto lido") &&
+            normalized.contains("pacote:")
 
     private fun looksLikeAndroidSystemShade(normalized: String): Boolean {
         val systemHits = listOf(

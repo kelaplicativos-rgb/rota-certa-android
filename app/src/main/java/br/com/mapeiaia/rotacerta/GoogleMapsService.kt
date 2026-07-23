@@ -12,25 +12,25 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 class GoogleMapsService {
     private val json = Json { ignoreUnknownKeys = true }
-    private val geocodeCache = mutableMapOf<String, Coordinate?>()
-    private val routeCache = mutableMapOf<String, Double?>()
+    private val geocodeCache = ConcurrentHashMap<String, Coordinate>()
+    private val routeCache = ConcurrentHashMap<String, Double>()
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank() || apiKey.isBlank()) return@withContext null
 
         geocodeQueries(query, region).forEach { scopedQuery ->
             val cacheKey = scopedQuery.lowercase(Locale.ROOT)
-            if (geocodeCache.containsKey(cacheKey)) {
-                geocodeCache[cacheKey]?.let { return@withContext it }
-                return@forEach
-            }
+            geocodeCache[cacheKey]?.let { return@withContext it }
 
-            val coordinate = requestGeocode(scopedQuery, apiKey)
-            geocodeCache[cacheKey] = coordinate
-            if (coordinate != null) return@withContext coordinate
+            val coordinate = requestWithRetry { requestGeocode(scopedQuery, apiKey) }
+            if (coordinate != null) {
+                geocodeCache[cacheKey] = coordinate
+                return@withContext coordinate
+            }
         }
 
         null
@@ -60,51 +60,67 @@ class GoogleMapsService {
             destination.longitude,
         )
 
-        val distanceKm = runCatching {
-            val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = ROUTE_TIMEOUT_MS
-                readTimeout = ROUTE_TIMEOUT_MS
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("X-Goog-Api-Key", apiKey.trim())
-                setRequestProperty("X-Goog-FieldMask", "routes.distanceMeters")
-            }
-
-            try {
-                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                if (connection.responseCode !in 200..299) return@runCatching null
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                parseDistanceKm(response)
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
-
-        routeCache[cacheKey] = distanceKm
+        val distanceKm = requestWithRetry { requestDrivingDistance(body, apiKey) }
+        if (distanceKm != null) routeCache[cacheKey] = distanceKm
         distanceKm
     }
 
-    private fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
+    private fun requestDrivingDistance(body: String, apiKey: String): Double? {
+        val connection = (URL("https://routes.googleapis.com/directions/v2:computeRoutes").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("X-Goog-Api-Key", apiKey.trim())
+            setRequestProperty("X-Goog-FieldMask", "routes.distanceMeters")
+            setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+        }
+
+        return try {
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            if (connection.responseCode !in 200..299) return null
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            parseDistanceKm(response)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Monta consultas sem inventar uma cidade fixa.
+     *
+     * Antes, qualquer endereco sem cidade era tentado primeiro em Sao Paulo, o que
+     * podia gravar coordenadas erradas no cache quando o motorista estava em outro
+     * municipio ou estado. Agora a cidade do aparelho/configuracao tem prioridade;
+     * quando ela nao existe, a busca permanece nacional e conserva o texto original.
+     */
+    internal fun geocodeQueries(query: String, region: DeviceRegion): List<String> {
         val cleanQuery = query.trim().replace(Regex("""\s+"""), " ")
         if (cleanQuery.isBlank()) return emptyList()
 
-        val country = region.country.ifBlank { "Brasil" }
-        val regionCity = region.city.takeIf { it.isNotBlank() }
-        val alreadyHasCity = cleanQuery.contains("sao paulo", ignoreCase = true) ||
-            cleanQuery.contains("são paulo", ignoreCase = true)
-        val defaultCity = if (alreadyHasCity) null else "São Paulo, SP"
+        val country = region.country.trim().ifBlank { "Brasil" }
+        val regionCity = region.city.trim().takeIf { it.isNotBlank() }
+        val queryAlreadyContainsRegion = containsExplicitLocality(cleanQuery)
 
         return buildList {
-            if (regionCity != null && !alreadyHasCity) add("$cleanQuery, $regionCity, $country")
-            defaultCity?.let { add("$cleanQuery, $it, $country") }
-            if (!alreadyHasCity) add("$cleanQuery, São Paulo - SP, $country")
+            if (regionCity != null && !queryAlreadyContainsRegion) {
+                add("$cleanQuery, $regionCity, $country")
+            }
             add("$cleanQuery, $country")
             add(cleanQuery)
         }
             .map { it.trim().replace(Regex("""\s+"""), " ") }
             .filter { it.isNotBlank() }
             .distinctBy { it.lowercase(Locale.ROOT) }
+    }
+
+    private fun containsExplicitLocality(query: String): Boolean {
+        val normalized = query.lowercase(Locale.ROOT)
+        val statePattern = Regex("""(?:^|[,\s-])(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)(?:$|[,\s-])""", RegexOption.IGNORE_CASE)
+        return statePattern.containsMatchIn(normalized) ||
+            Regex("""\b\d{5}-?\d{3}\b""").containsMatchIn(normalized) ||
+            normalized.contains(" brasil")
     }
 
     private fun requestGeocode(scopedQuery: String, apiKey: String): Coordinate? {
@@ -118,21 +134,20 @@ class GoogleMapsService {
                 "&key=$encodedKey",
         )
 
-        return runCatching {
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = GEOCODE_TIMEOUT_MS
-                readTimeout = GEOCODE_TIMEOUT_MS
-            }
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
+        }
 
-            try {
-                if (connection.responseCode !in 200..299) return@runCatching null
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                parseCoordinate(body)
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
+        return try {
+            if (connection.responseCode !in 200..299) return null
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            parseCoordinate(body)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun parseCoordinate(body: String): Coordinate? {
@@ -160,8 +175,19 @@ class GoogleMapsService {
         return distanceMeters / 1000.0
     }
 
+    private fun <T> requestWithRetry(block: () -> T?): T? {
+        repeat(REQUEST_ATTEMPTS) { attempt ->
+            val result = runCatching(block).getOrNull()
+            if (result != null) return result
+            if (attempt < REQUEST_ATTEMPTS - 1) Thread.sleep(RETRY_DELAY_MS)
+        }
+        return null
+    }
+
     private companion object {
-        const val GEOCODE_TIMEOUT_MS = 900
-        const val ROUTE_TIMEOUT_MS = 900
+        const val CONNECT_TIMEOUT_MS = 2_500
+        const val READ_TIMEOUT_MS = 4_000
+        const val REQUEST_ATTEMPTS = 2
+        const val RETRY_DELAY_MS = 120L
     }
 }

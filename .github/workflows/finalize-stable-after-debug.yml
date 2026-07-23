@@ -1,0 +1,72 @@
+name: Finalize Stable APK After Debug
+
+on:
+  push:
+    branches:
+      - codex/pr5-stable-bubble-combined
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: finalize-stable-apk-preferred-branch
+  cancel-in-progress: true
+
+jobs:
+  finalize-stable:
+    name: Wait for debug and republish authoritative stable APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Wait for Build Debug APK from the same commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            run_json="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "Build Debug APK" \
+              --commit "$TARGET_SHA" \
+              --limit 1 \
+              --json databaseId,status,conclusion,headSha)"
+
+            run_count="$(jq 'length' <<<"$run_json")"
+            if [ "$run_count" -eq 0 ]; then
+              echo "Build Debug ainda nao apareceu para $TARGET_SHA."
+              sleep 15
+              continue
+            fi
+
+            status="$(jq -r '.[0].status' <<<"$run_json")"
+            conclusion="$(jq -r '.[0].conclusion // ""' <<<"$run_json")"
+            run_id="$(jq -r '.[0].databaseId' <<<"$run_json")"
+            echo "Build Debug run=$run_id status=$status conclusion=$conclusion"
+
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" != "success" ]; then
+                echo "Build Debug falhou; APK estavel nao sera publicado."
+                exit 1
+              fi
+              break
+            fi
+
+            if [ "$attempt" -eq 120 ]; then
+              echo "Tempo excedido aguardando Build Debug."
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Trigger authoritative stable publisher after debug publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish-stable-apk.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref codex/pr5-stable-bubble-combined
+          echo "Publicador estavel oficial acionado depois do Build Debug."
