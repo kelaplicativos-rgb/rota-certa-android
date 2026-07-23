@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 persisted finalizer validation.
+Trigger Rota Certa 0.1.128 clean build materialization.
