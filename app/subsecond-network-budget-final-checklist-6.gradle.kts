@@ -32,3 +32,6 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         )
     }
 }
+
+// Registrado aqui para manter o aplicador principal da etapa compacto.
+apply(from = "capture-store-temp-safety-checklist-6.gradle.kts")
