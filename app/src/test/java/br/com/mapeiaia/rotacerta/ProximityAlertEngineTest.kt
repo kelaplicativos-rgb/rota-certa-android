@@ -8,7 +8,12 @@ import org.junit.Test
 class ProximityAlertEngineTest {
     @Before
     fun setUp() {
+        DiagnosticRuntimeGate.endManualCapture()
         DiagnosticLogStore.clear()
+        DiagnosticRuntimeGate.beginManualCapture(
+            durationMillis = 10_000L,
+            nowMillis = Long.MAX_VALUE / 2,
+        )
     }
 
     @Test
