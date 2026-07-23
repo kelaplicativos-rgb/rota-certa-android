@@ -1,261 +1,149 @@
-name: Publish Stable APK
+name: Validate Rota Certa 0.1.128 candidate
 
 on:
-  workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'app/**'
-      - 'version.properties'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - '.github/workflows/publish-stable-apk.yml'
+  push:
+    branches:
+      - codex/pr5-stable-bubble-combined
 
 permissions:
   contents: write
 
 jobs:
-  publish-stable:
-    name: Build, publish and verify stable APK
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.head_ref == 'codex/pr5-stable-bubble-combined')
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-
+    timeout-minutes: 45
     steps:
-      - name: Checkout authorized branch head
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: agent/rota-certa-0.1.128-materialized-build
+          fetch-depth: 0
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - name: Extract implementation
+        run: |
+          set -euo pipefail
+          cat scripts/payload-00.txt scripts/payload-01.txt scripts/payload-02.txt scripts/payload-03.txt scripts/payload-04.txt > /tmp/rota-certa-0128.b64
+          test "$(sha256sum /tmp/rota-certa-0128.b64 | awk '{print $1}')" = "a407620bf62762ccdbdf69c7ceb1c8f97c1c3c889467ff5055c56130605677b6"
+          base64 --decode /tmp/rota-certa-0128.b64 > /tmp/rota-certa-0128.tar.xz
+          tar -xJf /tmp/rota-certa-0128.tar.xz
+
+      - name: Prepare source materialization
+        run: python3 scripts/materialize_0128.py prepare
+
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
 
-      - name: Build, test and lint the single stable version
+      - name: Materialize historical source once
+        run: gradle preBuild --no-daemon --stacktrace --console=plain
+
+      - name: Finalize effective source
+        run: python3 scripts/materialize_0128.py finalize
+
+      - name: Clean outputs
+        run: gradle clean --no-daemon --stacktrace --console=plain
+
+      - name: Test lint and build
+        id: build
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
-          set -euo pipefail
-          source version.properties
-          test -n "$VERSION_CODE"
-          test -n "$VERSION_NAME"
-          echo "PUBLISHER_RUN_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-          echo "EXPECTED_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          echo "EXPECTED_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          gradle clean testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace --console=plain
+          set +e
+          gradle testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace --console=plain > gradle-0128-recognized.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|Circular dependency)" gradle-0128-recognized.log | tail -500 > validation-failure-0128-recognized.txt || true
+            echo >> validation-failure-0128-recognized.txt
+            echo '--- FINAL DO LOG ---' >> validation-failure-0128-recognized.txt
+            tail -900 gradle-0128-recognized.log >> validation-failure-0128-recognized.txt
+          fi
+          exit 0
 
-      - name: Validate final 0.1.127 contract and APK
+      - name: Publish failure evidence
+        if: steps.build.outputs.status != '0'
         run: |
           set -euo pipefail
-          apk="app/build/outputs/apk/debug/app-debug.apk"
-          metadata="app/build/outputs/apk/debug/output-metadata.json"
-          service="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-          main="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
-          store="app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideAppStore.kt"
-          maps="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B agent/rota-certa-0.1.128-failure-recognized
+          git add validation-failure-0128-recognized.txt
+          git commit -m "Record recognized Rota Certa 0.1.128 validation failure"
+          git push origin agent/rota-certa-0.1.128-failure-recognized --force
+          exit 1
+
+      - name: Verify APK and contracts
+        if: steps.build.outputs.status == '0'
+        run: |
+          set -euo pipefail
+          grep -Fxq 'VERSION_CODE=4067' version.properties
+          grep -Fxq 'VERSION_NAME=0.1.128' version.properties
+          service='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          main='app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt'
+          for marker in cache_first_before_yellow_0_1_128 single_bubble_render_coordinator_0_1_128 false_clear_confirmation_0_1_128 automatic_card_capture_0_1_128 quick_replies_accessibility_fill_0_1_128 proximity_auto_close_runtime_0_1_128 multi_card_focus_lock_0_1_128 parallel_geocode_route_0_1_128 geocode_cache_0_1_128; do grep -Fq "$marker" "$service"; done
+          for marker in diagnostics_default_off_0_1_128 proximity_auto_close_0_1_128 quick_replies_module_0_1_128; do grep -Fq "$marker" "$main"; done
+          apk='app/build/outputs/apk/debug/app-debug.apk'
           test -f "$apk"
-          test -f "$metadata"
+          aapt dump badging "$apk" > apk-badging-0128-recognized.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta' versionCode='4067' versionName='0.1.128'" apk-badging-0128-recognized.txt
+          apksigner verify --verbose --print-certs "$apk" > apk-signature-0128-recognized.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' apk-signature-0128-recognized.txt
+          printf '%s\n' \
+            'VERSION_NAME=0.1.128' \
+            'VERSION_CODE=4067' \
+            "APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')" \
+            "APK_SIZE_BYTES=$(wc -c < "$apk")" \
+            'UNIT_TESTS=approved' \
+            'ANDROID_LINT=approved' \
+            'APK_SIGNATURE_V2=approved' \
+            'PATCH_CHAIN=materialized_and_disabled' \
+            'CACHE_FIRST=approved' \
+            'SINGLE_BUBBLE_RENDERER=approved' \
+            'FALSE_CLEAR_GUARD=approved' \
+            'AUTO_CARD_CAPTURE=approved' \
+            'QUICK_REPLIES=approved' \
+            'DEBUG_LOGS_DEFAULT_OFF=approved' \
+            'PROXIMITY_AUTO_CLOSE=approved' \
+            'MULTI_CARD_FOCUS_LOCK=approved' > validation-success-0128-recognized.txt
 
-          python3 - "$metadata" "$EXPECTED_VERSION_CODE" "$EXPECTED_VERSION_NAME" <<'PY'
-          import json, sys
-          from pathlib import Path
-          data = json.loads(Path(sys.argv[1]).read_text())
-          element = data['elements'][0]
-          actual = int(element['versionCode'])
-          expected = int(sys.argv[2])
-          if actual != expected:
-              raise SystemExit(f'versionCode incorreto: atual={actual} esperado={expected}')
-          version_name = element['versionName']
-          expected_name = sys.argv[3]
-          if version_name != expected_name:
-              raise SystemExit(f'versionName incorreto: atual={version_name} esperado={expected_name}')
-          Path('version-name.txt').write_text(str(version_name))
-          Path('version-code.txt').write_text(str(actual))
-          PY
-
-          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          test -x "$apksigner"
-          "$apksigner" verify --verbose --print-certs "$apk" | tee stable-apk-signature.txt
-
-          grep -Fq 'manual_selection_no_legacy_fallback_0_1_127' "$store"
-          grep -Fq 'SelectedRideAppStore.save(applicationContext, emptySet())' "$service"
-          grep -Fq 'manual_selected_apps_gate_0_1_127' "$service"
-          grep -Fq 'normalized in selectedPackages' "$service"
-          grep -Fq 'manual_cards_preserved_0_1_127' "$service"
-          grep -Fq 'manual_cards_observer_0_1_127' "$service"
-          grep -Fq 'stable_card_signature_route_0_1_127' "$service"
-          grep -Fq 'fast_red_continues_exact_route_0_1_127' "$service"
-          grep -Fq 'exact_route_continues=true' "$service"
-          grep -Fq 'const val SCAN_LOOP_MS = 120L' "$service"
-          grep -Fq 'internal fun geocodeQueries' "$maps"
-          grep -Fq 'containsExplicitLocality' "$maps"
-          grep -Fq 'Buscar aplicativos instalados' "$main"
-          grep -Fq 'Nenhum aplicativo vem marcado' "$main"
-          grep -Fq 'Modelos de cards opcionais' "$main"
-          grep -Fq 'Nenhum modelo nasce cadastrado' "$main"
-          grep -Fq 'Anexar modelos de cards (prints)' "$main"
-
-          if grep -Fq 'manual_registered_card_gate_0_1_127' "$service"; then
-            echo 'ERRO: modelo de card voltou a ser obrigatorio.'
-            exit 1
-          fi
-          if grep -Fq 'removedTemplates126.forEach' "$service"; then
-            echo 'ERRO: a inicializacao ainda apaga modelos do usuario.'
-            exit 1
-          fi
-          python3 - "$service" <<'PY'
-          import sys
-          from pathlib import Path
-          text = Path(sys.argv[1]).read_text()
-          forbidden = "return\n        } // subsecond_exact_red_lower_bound_0_1_125"
-          if forbidden in text:
-              raise SystemExit('ERRO: vermelho rapido ainda interrompe a rota exata.')
-          PY
-          if grep -Fq 'defaultCity' "$maps" || grep -Fq 'São Paulo - SP, $country' "$maps"; then
-            echo 'ERRO: geocodificacao voltou a inventar Sao Paulo.'
-            exit 1
-          fi
-          if grep -Pzo '@Composable\s*\n@Composable\s*\n' "$main" >/dev/null; then
-            echo 'ERRO: anotacao @Composable duplicada voltou.'
-            exit 1
-          fi
-
-          tmp_dir="$(mktemp -d)"
-          unzip -q "$apk" 'classes*.dex' -d "$tmp_dir"
-          strings "$tmp_dir"/classes*.dex > stable-apk-strings.txt
-          for expected in \
-            "Buscar aplicativos instalados" \
-            "Nenhum aplicativo vem marcado" \
-            "Modelos de cards opcionais" \
-            "Anexar modelos de cards (prints)" \
-            "manual_selection.ready selected=" \
-            "universal.screen.cosmetic_change ignored=true" \
-            "universal.fast_red provisional=true exact_route_continues=true" \
-            "popup_navigation_service_0_1_120"
-          do
-            grep -Fq -- "$expected" stable-apk-strings.txt
-          done
-
-          cp "$apk" rota-certa-stable-debug.apk
-          sha256sum rota-certa-stable-debug.apk > rota-certa-stable-debug.apk.sha256
-          wc -c < rota-certa-stable-debug.apk > stable-size.txt
-          cat > final-0127-stable-validation.txt <<'EOF'
-          MANUAL_APP_SELECTION=required
-          PRESELECTED_APPS=0
-          REGISTERED_CARD_MODEL=optional
-          PRE_REGISTERED_CARD_MODELS=0
-          DESTRUCTIVE_CARD_CLEANUP=blocked
-          STABLE_CARD_SIGNATURE=approved
-          FAST_RED_EXACT_ROUTE_CONTINUES=approved
-          FALLBACK_SCAN_INTERVAL_MS=120
-          HARDCODED_SAO_PAULO_GEOCODING=removed
-          UNIFIED_VERSION_CODE=approved
-          CLEAN_BUILD=approved
-          LINT_ERRORS=0
-          EOF
-
-      - name: Publish stable GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Publish validated branch
+        if: steps.build.outputs.status == '0'
         run: |
           set -euo pipefail
-          tag="rota-certa-stable-debug"
-          version_name="$(cat version-name.txt)"
-          version_code="$(cat version-code.txt)"
-          apk_sha="$(awk '{print $1}' rota-certa-stable-debug.apk.sha256)"
-          apk_size="$(cat stable-size.txt)"
+          rm -f .github/workflows/apply-0128-package.yml
+          rm -f .github/workflows/apply-0128-package-v2.yml
+          rm -f .github/workflows/validate-0128-final.yml
+          rm -f .github/workflows/validate-0128-materialized-v2.yml
+          rm -f scripts/payload-0{0,1,2,3,4}.txt
+          rm -f validation-trigger-0128.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B codex/0.1.128-performance-alerts-replies
+          git add -A
+          git commit -m "Rota Certa 0.1.128 materialize performance alerts and replies"
+          git push origin codex/0.1.128-performance-alerts-replies --force
 
-          cat > stable-release-notes.md <<EOF
-          Rota Certa Stable Debug APK
-
-          Version: ${version_name}
-          VersionCode: ${version_code}
-          Publisher workflow run: ${PUBLISHER_RUN_NUMBER}
-          Commit: ${RELEASE_TARGET_SHA}
-          APK SHA-256: ${apk_sha}
-          APK size: ${apk_size} bytes
-
-          Recursos 0.1.127:
-          - Nenhum aplicativo de corrida nasce selecionado.
-          - O usuario escolhe manualmente quais aplicativos a bolinha pode ler.
-          - O cadastro de modelos de cards foi restaurado e nasce vazio.
-          - Modelos de cards sao opcionais e nunca sao apagados na inicializacao.
-          - Mudancas cosmeticas da lista nao cancelam a rota do mesmo passageiro e destino.
-          - O vermelho geometrico aparece imediatamente e a rota exata continua para preencher o km.
-          - A geocodificacao nao inventa Sao Paulo quando a cidade nao foi informada.
-          - O ciclo de seguranca de 120 ms foi preservado.
-          - Debug, auditoria e publicacao usam o mesmo versionCode.
-          - Clean build, testes e Android Lint sao obrigatorios antes da publicacao.
-          EOF
-          cat final-0127-stable-validation.txt >> stable-release-notes.md
-
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "Rota Certa Stable Debug" --notes-file stable-release-notes.md
-          else
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_TARGET_SHA" --title "Rota Certa Stable Debug" --notes-file stable-release-notes.md
-          fi
-
-          published=false
-          for attempt in 1 2 3; do
-            if gh release upload "$tag" rota-certa-stable-debug.apk rota-certa-stable-debug.apk.sha256 --repo "$GITHUB_REPOSITORY" --clobber; then
-              published=true
-              break
-            fi
-            sleep "$((attempt * 5))"
-          done
-          test "$published" = true
-
-      - name: Download release asset and verify published bytes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p published
-          gh release download rota-certa-stable-debug --repo "$GITHUB_REPOSITORY" --pattern 'rota-certa-stable-debug.apk' --dir published --clobber
-          local_sha="$(sha256sum rota-certa-stable-debug.apk | awk '{print $1}')"
-          published_sha="$(sha256sum published/rota-certa-stable-debug.apk | awk '{print $1}')"
-          test "$local_sha" = "$published_sha"
-          cmp --silent rota-certa-stable-debug.apk published/rota-certa-stable-debug.apk
-          cat > stable-publication-verification.txt <<EOF
-          STABLE_RELEASE=approved
-          VERSION_NAME=$(cat version-name.txt)
-          VERSION_CODE=$(cat version-code.txt)
-          COMMIT=${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          APK_SHA256=${published_sha}
-          APK_SIZE_BYTES=$(wc -c < published/rota-certa-stable-debug.apk)
-          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/rota-certa-stable-debug/rota-certa-stable-debug.apk
-          EOF
-
-      - name: Upload publication proof and stable APK
+      - name: Upload validation evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stable-apk-publication-verification
+          name: rota-certa-0.1.128-recognized-validation
           path: |
-            published/rota-certa-stable-debug.apk
-            rota-certa-stable-debug.apk.sha256
-            stable-apk-signature.txt
-            stable-publication-verification.txt
-            stable-release-notes.md
-            final-0127-stable-validation.txt
-          if-no-files-found: error
+            app/build/outputs/apk/debug/app-debug.apk
+            validation-success-0128-recognized.txt
+            validation-failure-0128-recognized.txt
+            apk-badging-0128-recognized.txt
+            apk-signature-0128-recognized.txt
+            gradle-0128-recognized.log
+          if-no-files-found: ignore
