@@ -43,25 +43,32 @@ class AutomaticRideCapture129Test {
     }
 
     @Test
-    fun generatedServiceCapturesOnlyAfterStrictManualMatchAndNeverBlocksRoute() {
+    fun generatedServiceDefersMatchedCaptureUntilAfterFarolAndNeverBlocksRoute() {
         val service = sourceFile("LiveRideAccessibilityService.kt").readText()
         val accepted = service.indexOf("manual.card.gate accepted=true")
-        val captureCall = service.indexOf("automatic_capture_after_manual_match_0_1_129")
-        val routeLaunch = service.indexOf("universalRouteJob = scope.launch", captureCall)
+        val deferred = service.indexOf("automatic_capture_after_farol_final_checklist_6")
+        val routeLaunch = service.indexOf("universalRouteJob = scope.launch", deferred)
+        val applyResult = service.indexOf("private suspend fun applyUniversalTwoAddressResult")
+        val overlay = service.indexOf("overlay_before_storage_final_checklist_6", applyResult)
+        val releaseCapture = service.indexOf("releaseMatchedCaptureFinalChecklist6", overlay)
         val helperStart = service.indexOf("private fun requestAutomaticRideCapture129(")
         val helperEnd = service.indexOf("private fun requestScreenshotAnalysis(", helperStart)
         val helper = service.substring(helperStart, helperEnd)
 
-        assertTrue("match manual deve vir antes da captura", accepted >= 0 && captureCall > accepted)
-        assertTrue("rota deve continuar depois do disparo nao bloqueante", routeLaunch > captureCall)
-        assertTrue("captura precisa de fila separada", "automaticCaptureInProgress129" in helper)
+        assertTrue("match manual deve vir antes de memorizar a captura", accepted >= 0 && deferred > accepted)
+        assertTrue("rota deve iniciar sem aguardar screenshot", routeLaunch > deferred)
+        assertTrue("captura deve ser liberada somente depois do overlay", overlay > applyResult && releaseCapture > overlay)
+        assertTrue("captura precisa recusar rota ativa", "universalRouteJob?.isActive == true" in helper)
         assertTrue("gravação precisa ocorrer em IO", "scope.launch(Dispatchers.IO)" in helper)
-        assertFalse("captura automatica nao deve executar OCR", "ocrService.extractText" in helper)
-        assertTrue("falha de captura nao pode cancelar rota", "automatic.capture failed_code=" in helper)
+        assertFalse("captura automática não deve executar OCR", "ocrService.extractText" in helper)
+        assertFalse(
+            "assinatura antiga não pode continuar no caminho crítico",
+            "requestAutomaticRideCapture129(\n                snapshotText" in service,
+        )
     }
 
     @Test
-    fun storageIsPrivateDeduplicatedAndUiLivesInsideCardModels() {
+    fun storageIsPrivateDeduplicatedAndUiSeparatesCandidatesFromMatchedCards() {
         val store = sourceFile("AutomaticRideCaptureStore.kt").readText()
         val main = sourceFile("MainActivity.kt").readText()
 
@@ -69,9 +76,11 @@ class AutomaticRideCapture129Test {
         assertTrue("capturas repetidas precisam ser deduplicadas", "AutomaticRideCapturePolicy.isDuplicate" in store)
         assertTrue("arquivos antigos precisam ser removidos", "cleanupExpired" in store)
         assertTrue("limite evita consumo indefinido", "MAX_CAPTURES = 30" in store)
+        assertTrue("candidatas devem ter retenção menor", "CANDIDATE_RETENTION_DAYS = 7" in store)
         assertTrue("galeria deve estar dentro de Modelos de cards", "automatic_capture_gallery_inside_models_0_1_129" in main)
-        assertTrue("usuario deve poder transformar captura em modelo", "Usar como modelo de card" in main)
+        assertTrue("candidatas devem poder virar modelo", "Confirmar e cadastrar como modelo" in main)
+        assertTrue("reconhecidos não devem duplicar modelo", "não criam modelos duplicados" in main)
         assertTrue("detalhes devem ter atalho de mapa", "Abrir destino no mapa" in main)
-        assertTrue("detalhes devem poder ser copiados", "Copiar detalhes da corrida" in main)
+        assertTrue("detalhes devem poder ser copiados", "Copiar detalhes" in main)
     }
 }
