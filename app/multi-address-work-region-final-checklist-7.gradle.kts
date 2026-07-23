@@ -65,7 +65,7 @@ fun patchMultiAddressMainChecklist7(file: java.io.File) {
     val radiusStart = if (legacyStart >= 0) main.indexOf("        RadiusSlider(\"Raio casa\"", legacyStart) else -1
     if (legacyStart >= 0 && radiusStart > legacyStart) {
         val replacement = """        Text(
-            \"Os endereços dos alfinetes são gerenciados em Região de trabalho.\",
+            "Os endereços dos alfinetes são gerenciados em Região de trabalho.",
             style = MaterialTheme.typography.bodySmall,
         )
 
@@ -98,7 +98,7 @@ fun patchMultiAddressServiceChecklist7(file: java.io.File) {
         val settings = currentSettings // instant_farol_cached_settings_0_1_124
         if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
 
-        val region = DeviceRegion(country = \"Brasil\")
+        val region = DeviceRegion(country = "Brasil")
         val homeCoordinate = if (settings.homeTargetEnabled) {
             settings.homeCoordinate
                 ?: settings.homeAddress.takeIf(String::isNotBlank)?.let { geocodeBest(it, region, settings) }
