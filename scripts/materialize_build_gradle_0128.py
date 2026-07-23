@@ -3,7 +3,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_FILE = ROOT / "app/build.gradle.kts"
 VERSION_FILE = ROOT / "version.properties"
-MATCHER_FILE = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt"
+SOURCE_ROOT = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta"
+MATCHER_FILE = SOURCE_ROOT / "RideCardTemplateMatcher.kt"
+SERVICE_FILE = SOURCE_ROOT / "LiveRideAccessibilityService.kt"
 
 matcher = MATCHER_FILE.read_text()
 matcher_changed = False
@@ -63,6 +65,34 @@ if contract_marker not in matcher:
 
 if matcher_changed:
     MATCHER_FILE.write_text(matcher)
+
+service = SERVICE_FILE.read_text()
+receiver_marker = "quick_reply_receiver_not_exported_0_1_128"
+if receiver_marker not in service:
+    import_anchor = "import androidx.annotation.RequiresApi\n"
+    if "import androidx.core.content.ContextCompat\n" not in service:
+        if import_anchor not in service:
+            raise SystemExit("Ponto de importacao ContextCompat nao encontrado")
+        service = service.replace(import_anchor, import_anchor + "import androidx.core.content.ContextCompat\n", 1)
+    old = '''        val quickReplyFilter = IntentFilter(ACTION_APPLY_QUICK_REPLY)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(quickReplyReceiver, quickReplyFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(quickReplyReceiver, quickReplyFilter)
+        }
+'''
+    new = '''        val quickReplyFilter = IntentFilter(ACTION_APPLY_QUICK_REPLY)
+        ContextCompat.registerReceiver(
+            this,
+            quickReplyReceiver,
+            quickReplyFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        ) // quick_reply_receiver_not_exported_0_1_128
+'''
+    if old not in service:
+        raise SystemExit("Registro antigo de quickReplyReceiver nao encontrado")
+    SERVICE_FILE.write_text(service.replace(old, new, 1))
 
 VERSION_FILE.write_text("VERSION_CODE=4067\nVERSION_NAME=0.1.128\n")
 
