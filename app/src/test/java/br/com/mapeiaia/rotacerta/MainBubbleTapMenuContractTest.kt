@@ -8,7 +8,7 @@ import org.junit.Test
 
 class MainBubbleTapMenuContractTest {
     @Test
-    fun compiledSourceOpensFourteenIndependentAnchoredResourceModules() {
+    fun compiledSourceOpensFifteenIndependentAnchoredResourceModules() {
         fun sourceFile(name: String): File = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
@@ -21,6 +21,7 @@ class MainBubbleTapMenuContractTest {
         val externalModules = listOf(
             "DestinationBubbleShortcutModule.kt",
             "WhatsAppBubbleShortcutModule.kt",
+            "TripConfirmationBubbleShortcutModule.kt",
             "StopBubbleShortcutModule.kt",
         ).joinToString("\n") { sourceFile(it).readText() }
         val allShortcutSources = catalog + "\n" + externalModules
@@ -50,6 +51,10 @@ class MainBubbleTapMenuContractTest {
             "BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()" in service,
         )
         assertTrue("WhatsApp precisa capturar telefone da tela", "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service)
+        assertTrue(
+            "Confirmacao precisa copiar a viagem sob demanda",
+            "BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8()" in service,
+        )
         assertTrue("Coletor precisa abrir diretamente", "BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()" in service)
         assertTrue("Limpar precisa reutilizar o limpador existente", "BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()" in service)
         assertTrue("Depurar precisa exportar diretamente", "BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()" in service)
@@ -66,8 +71,8 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Catalogo modular ausente", "object BubbleShortcutCatalog" in catalog)
         assertTrue("Controlador precisa percorrer o catalogo", "BubbleShortcutCatalog.modules.forEach" in controller)
         assertTrue("Controlador precisa devolver o modulo", "onShortcut(module.spec)" in controller)
-        assertEquals("O popup precisa conter quatorze modulos", 14, BubbleShortcutCatalog.modules.size)
-        assertEquals("Cada modulo precisa ser diferente", 14, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals("O popup precisa conter quinze modulos", 15, BubbleShortcutCatalog.modules.size)
+        assertEquals("Cada modulo precisa ser diferente", 15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
 
         listOf(
             "Rota",
@@ -78,6 +83,7 @@ class MainBubbleTapMenuContractTest {
             "Aparencia",
             "Backup",
             "WhatsApp da tela",
+            "Copiar confirmação da viagem",
             "Coletor",
             "Limpar area de transferencia",
             "Depurar",
