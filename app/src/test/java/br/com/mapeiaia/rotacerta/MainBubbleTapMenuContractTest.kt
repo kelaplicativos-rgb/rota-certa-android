@@ -8,7 +8,7 @@ import org.junit.Test
 
 class MainBubbleTapMenuContractTest {
     @Test
-    fun compiledSourceOpensFifteenIndependentAnchoredResourceModules() {
+    fun compiledSourceOpensFourteenIndependentAnchoredResourceModules() {
         fun sourceFile(name: String): File = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
@@ -20,7 +20,6 @@ class MainBubbleTapMenuContractTest {
         val catalog = sourceFile("BubbleShortcutModule.kt").readText()
         val externalModules = listOf(
             "DestinationBubbleShortcutModule.kt",
-            "ReadingBubbleShortcutModule.kt",
             "WhatsAppBubbleShortcutModule.kt",
             "StopBubbleShortcutModule.kt",
         ).joinToString("\n") { sourceFile(it).readText() }
@@ -46,12 +45,11 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Locais precisam abrir modulo proprio", "BubbleShortcutAction.OpenSavedPlaces" in service)
         assertTrue("Radares precisam abrir modulo proprio", "BubbleShortcutAction.OpenRadars" in service)
         assertTrue("Cards precisam abrir modulo proprio", "BubbleShortcutAction.OpenCards" in service)
-        assertTrue("Leitura precisa alternar sem abrir Home", "BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()" in service)
-        assertTrue("Leitura precisa dar retorno visivel", "reading_visible_feedback_0_1_120" in service)
         assertTrue(
-            "WhatsApp precisa capturar telefone da tela",
-            "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service,
+            "Leitura interna deve permanecer para compatibilidade, embora fora do popup",
+            "BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()" in service,
         )
+        assertTrue("WhatsApp precisa capturar telefone da tela", "BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()" in service)
         assertTrue("Coletor precisa abrir diretamente", "BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()" in service)
         assertTrue("Limpar precisa reutilizar o limpador existente", "BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()" in service)
         assertTrue("Depurar precisa exportar diretamente", "BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()" in service)
@@ -68,8 +66,8 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Catalogo modular ausente", "object BubbleShortcutCatalog" in catalog)
         assertTrue("Controlador precisa percorrer o catalogo", "BubbleShortcutCatalog.modules.forEach" in controller)
         assertTrue("Controlador precisa devolver o modulo", "onShortcut(module.spec)" in controller)
-        assertEquals("O popup precisa conter quinze modulos", 15, BubbleShortcutCatalog.modules.size)
-        assertEquals("Cada modulo precisa ser diferente", 15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals("O popup precisa conter quatorze modulos", 14, BubbleShortcutCatalog.modules.size)
+        assertEquals("Cada modulo precisa ser diferente", 14, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
 
         listOf(
             "Rota",
@@ -78,19 +76,20 @@ class MainBubbleTapMenuContractTest {
             "Locais",
             "Radares",
             "Aparencia",
-            "Permissoes",
             "Backup",
             "WhatsApp da tela",
             "Coletor",
             "Limpar area de transferencia",
             "Depurar",
+            "Respostas rápidas",
             "Encerrar Rota Certa",
             "Cards cadastrados",
-            "Leitura",
         ).forEach { label ->
             assertTrue("Atalho ausente: $label", "label = \"$label\"" in allShortcutSources)
         }
 
+        assertFalse("Permissao deve ficar em controles gerais", BubbleShortcutCatalog.modules.any { it.spec.id == "permissions" })
+        assertFalse("Leitura deve ficar em controles gerais", BubbleShortcutCatalog.modules.any { it.spec.id == "reading" })
         assertFalse("Relatorios nao podem permanecer no popup", BubbleShortcutCatalog.modules.any { it.spec.id == "reports" })
         assertFalse("Alerta duplicado nao pode permanecer", BubbleShortcutCatalog.modules.any { it.spec.id == "alert" })
         assertFalse("Salvar local duplicado nao pode permanecer", BubbleShortcutCatalog.modules.any { it.spec.id == "saved_place" })
@@ -101,8 +100,9 @@ class MainBubbleTapMenuContractTest {
         assertTrue("Grade precisa tentar direita da bolinha", "rightX + menuWidth" in positionPolicy)
         assertTrue("Grade precisa tentar esquerda da bolinha", "leftX >= safe" in positionPolicy)
         assertTrue("Tela estreita precisa usar abaixo/acima", "anchorY + validAnchorHeight + horizontalGap" in positionPolicy)
+        assertTrue("Popup grande precisa usar duas colunas", "LARGE_SCALE_TWO_COLUMNS" in controller)
         assertTrue("Popup de alerta precisa rejeitar Local", "if (alert.type != SavedPlaceType.ProximityAlert)" in controller)
-        assertTrue("Popup precisa permitir editar", "popupButton(\"Editar\")" in controller)
-        assertTrue("Popup precisa permitir excluir", "popupButton(\"Excluir\")" in controller)
+        assertTrue("Popup precisa permitir editar", "popupButton(\"Editar\", scale)" in controller)
+        assertTrue("Popup precisa permitir excluir", "popupButton(\"Excluir\", scale)" in controller)
     }
 }
