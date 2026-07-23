@@ -1,1 +1,1 @@
-Trigger exact Rota Certa 0.1.128 materializer evidence.
+Trigger Rota Certa 0.1.128 dynamic finalizer validation.
