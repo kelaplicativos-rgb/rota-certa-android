@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,7 +27,10 @@ class InstantPipeline127ContractTest {
             "Evento nao deve iniciar OCR simultaneamente com a arvore de acessibilidade",
             "requestScreenshotAnalysis(allowPopupCandidate = true)" in eventRegion,
         )
-        assertTrue("Fallback deve permanecer abaixo de 100 ms", "delay(90L)" in service)
+        assertTrue(
+            "Fallback precisa usar o orçamento subsegundo centralizado",
+            "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS)" in service,
+        )
         assertTrue("Leitura aceita deve cancelar OCR pendente", "accessibility_confirmed_cancel_ocr_0_1_127" in service)
     }
 
@@ -37,10 +41,12 @@ class InstantPipeline127ContractTest {
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val analysisRegion = service.substring(analysisStart, analysisEnd)
 
-        assertTrue("Casa e Alfinete precisam compartilhar a mesma matriz", "direct_address_route_matrix_runtime_0_1_128" in analysisRegion)
-        assertTrue("A origem precisa ser o endereco captado", "originAddress = destinationQuery" in analysisRegion)
-        assertTrue("Geocodificacao deve aquecer em segundo plano", "background_geocode_warm_0_1_128" in analysisRegion)
-        assertTrue("Falha da matriz deve manter fallback exato", "fallback=coordinate" in analysisRegion)
+        assertTrue("Casa e alfinetes precisam compartilhar a mesma matriz", "multi_address_route_matrix_final_checklist_7" in analysisRegion)
+        assertTrue("A origem precisa ser o destino captado", "originAddress = fields.destination.orEmpty()" in analysisRegion)
+        assertTrue("Alvos previamente resolvidos precisam alimentar a matriz", "resolvedPins.mapNotNull(WorkRegionPin::coordinate)" in analysisRegion)
+        assertTrue("Decisão final precisa considerar Casa e alfinetes", "decisionEngine.decideWorkRegion(" in analysisRegion)
+        assertEquals(1, Regex("drivingDistancesFromAddressKm\\(").findAll(analysisRegion).count())
+        assertFalse("Chamadas sequenciais por alvo não podem voltar", "routeDistanceKm(" in analysisRegion)
         assertFalse("Linha reta nao pode liberar verde", "fastInsideResult" in analysisRegion)
     }
 
