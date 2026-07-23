@@ -1,0 +1,199 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:34:9: Variable 'service' is never used
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:35:9: Variable 'dollar' is never used
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:38:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:92:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:102:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:119:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:125:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:135:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:149:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:152:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:156:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:158:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:172:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:174:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:184:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:186:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:202:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:204:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:223:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:225:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:237:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:242:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:254:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/universal-no-pre-registered-gates-0.1.126.gradle.kts:255:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:35:9: Variable 'service' is never used
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:36:9: Variable 'dollar' is never used
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:41:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:79:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:88:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:107:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:109:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:115:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:117:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:140:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:142:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:158:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:159:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:160:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:161:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:162:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:163:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:164:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:165:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:166:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:167:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:170:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:171:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:209:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:210:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:212:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:231:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:233:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:274:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:276:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:283:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:285:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:325:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:327:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:344:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:346:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:352:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:361:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:367:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:376:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:386:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:387:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:391:5: Unreachable code
+w: file:///home/runner/work/rota-certa-android/rota-certa-android/app/manual-apps-cards-exact-route-0.1.127.gradle.kts:392:5: Unreachable code
+
+> Task :app:inDriveCardContractMatch SKIPPED
+> Task :app:patchLiveRideAccessibilityService SKIPPED
+> Task :app:patchLiveRideOverlayStability SKIPPED
+> Task :app:patchLiveRideBubbleActions SKIPPED
+> Task :app:patchResourceGroupsCompileFix SKIPPED
+> Task :app:patchBubbleShortcutClipboard SKIPPED
+> Task :app:patchUxPlacesAlertsRadars SKIPPED
+> Task :app:patchLiveReadingCardRestore SKIPPED
+> Task :app:patchBubbleCardParity SKIPPED
+> Task :app:patchHideInsufficientResultCard SKIPPED
+> Task :app:patchFastPopupAnalysis SKIPPED
+> Task :app:patchRemoveLiveDiagnostics SKIPPED
+> Task :app:patchManualSupportReport SKIPPED
+> Task :app:patchFinalDiagnosticCleanup SKIPPED
+> Task :app:patchVideoBubbleHardening SKIPPED
+> Task :app:patchBubbleStateReport SKIPPED
+> Task :app:liveRideWindowEventGuard SKIPPED
+> Task :app:keepDecisionDuringTransientText SKIPPED
+> Task :app:patchBubbleStateReportCompileFix SKIPPED
+> Task :app:patchFactoryCleanNoFlicker SKIPPED
+> Task :app:globalLightDiagnostics SKIPPED
+> Task :app:hardClearUnregisteredCardDecision SKIPPED
+> Task :app:modularLiveBubbleCore SKIPPED
+> Task :app:noStickyDecisionCleanup SKIPPED
+> Task :app:corePackageMonitorPatch SKIPPED
+> Task :app:patchBubbleRenderStability SKIPPED
+> Task :app:passiveEventCompileFix SKIPPED
+> Task :app:liveCardAnalysisRaceFix SKIPPED
+> Task :app:liveResultFreshnessGuard SKIPPED
+> Task :app:rotaCertaCoreGate SKIPPED
+> Task :app:coreBubbleDecisionPatch SKIPPED
+> Task :app:coreBubblePresenterPatch SKIPPED
+> Task :app:coreBubbleStatePatch SKIPPED
+> Task :app:coreCardMatchEnginePatch SKIPPED
+> Task :app:coreScreenReadEngineInlinePatch SKIPPED
+> Task :app:coreLiveAnalysisPipelinePatch SKIPPED
+> Task :app:coreVisibleCardLifecyclePatch SKIPPED
+> Task :app:patchScreenPhoneWhatsApp SKIPPED
+> Task :app:reportStaleLifecycleFix SKIPPED
+> Task :app:reportStaleLifecycleCompileFix SKIPPED
+> Task :app:giguInspiredLiveReaderPatch SKIPPED
+> Task :app:giguCoreClassificationPatch SKIPPED
+> Task :app:inDriveAddressWrapPatch SKIPPED
+> Task :app:inDriveMarkerlessLiveCardFix SKIPPED
+> Task :app:latestCardWinsPatch SKIPPED
+> Task :app:openAllAppsAllScreensPatch SKIPPED
+> Task :app:openAllAppsAllScreensFixPatch SKIPPED
+> Task :app:patchCardCropGuidance SKIPPED
+> Task :app:sameCardRouteCoalescingPatch SKIPPED
+> Task :app:universalLastAddressFinalV2 SKIPPED
+> Task :app:universalLastAddressCompileFix SKIPPED
+> Task :app:unifiedBubbleControlCenterFinal SKIPPED
+> Task :app:unifiedBubbleCompileFinal SKIPPED
+> Task :app:functionalBubbleTogglesFinal SKIPPED
+> Task :app:functionalBubbleIdempotenceFinal SKIPPED
+> Task :app:mainBubbleTapMenuContract SKIPPED
+> Task :app:inAppBubbleHomeFinal SKIPPED
+> Task :app:universalLastAddressFinalPatch SKIPPED
+> Task :app:manualOptionalModelsFinalizer127 SKIPPED
+> Task :app:universalTwoAddressRuntimeFinal SKIPPED
+> Task :app:universalOverlayRuntimeMetadata
+> Task :app:inAppBubbleImmediateState
+> Task :app:universalRuntimeStateProbe SKIPPED
+> Task :app:universalImmediateGrayClear
+> Task :app:universalOptionalModelContract
+> Task :app:universalRuntimeStabilityGuard
+> Task :app:universalFlattenedAddressBoundaryGuard
+> Task :app:universalIdempotenceCompatibilityGuard
+> Task :app:universalNoCardAnchorCompat
+> Task :app:universalNoCardProcessAnchorCompat
+> Task :app:universalNoCardRuntimeContract
+> Task :app:universalNoCardCompileRepair
+> Task :app:sessionDiagnosticV2
+> Task :app:sessionDiagnosticRetention
+> Task :app:universalOverlayWindowResolver
+> Task :app:universalPoiDestinationBoundary
+> Task :app:universalFastReadRuntime108
+> Task :app:universalFastReadRuntime109
+> Task :app:universal111IdempotenceCompat
+> Task :app:universalFastReadRuntime110
+> Task :app:bubbleInstantDrag116
+> Task :app:bubbleResourceShortcutsRuntime117
+> Task :app:bubbleShortcutLegacyClickCompat117
+> Task :app:prepareGroupedTabAnchor115
+> Task :app:inAppGroupedBubbleHome115
+> Task :app:bubbleShortcutNavigation117
+> Task :app:bubbleWhatsAppCaptureCompat118
+> Task :app:professionalBubbleMarkerCompat118
+> Task :app:professionalBubbleHome118
+> Task :app:fullSessionDiagnostic118
+> Task :app:generatedSourceSanitizer
+> Task :app:hideMonitoredAppsCard SKIPPED
+> Task :app:liveCardRouteLink SKIPPED
+> Task :app:popupOnlyControlCenter119
+> Task :app:popupOnlyCompileCleanup119
+> Task :app:popupNavigationSeparation120
+> Task :app:popupNavigationProfessionalCompat120
+> Task :app:popupNavigationCompileRepair120
+> Task :app:popupNavigationCardState120
+> Task :app:professionalBubbleImportCompat118
+> Task :app:universal99CardAddresses111
+> Task :app:universal99CardContinuation111
+> Task :app:universalRideCardEvidence112
+> Task :app:universalFragmentedStreetStart113
+> Task :app:workflowCompatMarkers118
+> Task :app:popupNavigationLateCompile120
+> Task :app:popupGestureValidatorCompat120
+> Task :app:universalOcrFreshness120
+> Task :app:universalRouteInflightProtection120
+> Task :app:mapaRadarFlexibleFileReader120
+> Task :app:persistLiveEventTrace SKIPPED
+> Task :app:persistentBubbleStateTrace SKIPPED
+> Task :app:workTrackingCardAnchorCompat121
+
+> Task :app:radarWorkTracking121 SKIPPED
+radarWorkTracking121 ignorado: politica universal 0.1.126 ja aplicada.
+
+> Task :app:workTrackingCardAnchorCleanup121 SKIPPED
+workTrackingCardAnchorCleanup121 ignorado: politica universal 0.1.126 ja aplicada.
+
+> Task :app:preBuild
+> Task :runtimefixture:preBuild UP-TO-DATE
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1784808722860.json
+
+BUILD SUCCESSFUL in 1m 10s
+49 actionable tasks: 49 executed
