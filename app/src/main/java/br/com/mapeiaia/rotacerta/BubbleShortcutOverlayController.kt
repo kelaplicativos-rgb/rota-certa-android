@@ -7,9 +7,11 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.roundToInt
 
@@ -126,8 +128,11 @@ class BubbleShortcutOverlayController(
         val naturalWidth = columns * (bubbleSize + itemMargin * 2) + panelPadding * 2
         val menuWidth = naturalWidth.coerceAtMost(metrics.widthPixels - dp(16))
         val estimatedMenuHeight = rows * (bubbleSize + itemMargin * 2) + panelPadding * 2
+        val maxMenuHeight = (metrics.heightPixels - dp(24)).coerceAtLeast(dp(180))
+        val visibleMenuHeight = estimatedMenuHeight.coerceAtMost(maxMenuHeight)
+        val needsVerticalScroll = estimatedMenuHeight > maxMenuHeight
 
-        val menu = GridLayout(context).apply {
+        val grid = GridLayout(context).apply {
             columnCount = columns
             rowCount = rows
             background = GradientDrawable().apply {
@@ -145,6 +150,24 @@ class BubbleShortcutOverlayController(
             }
         }
 
+        val menu: View = if (needsVerticalScroll) {
+            ScrollView(context).apply {
+                isFillViewport = false
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                clipToPadding = false
+                addView(
+                    grid,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            }
+        } else {
+            grid
+        }
+
         val anchorWidth = anchor.width.takeIf { it > 0 && it < metrics.widthPixels } ?: dp(66)
         val anchorHeight = anchor.height.takeIf { it > 0 && it < metrics.heightPixels } ?: dp(66)
         val position = BubbleShortcutPositionPolicy.place(
@@ -153,7 +176,7 @@ class BubbleShortcutOverlayController(
             anchorWidth = anchorWidth,
             anchorHeight = anchorHeight,
             menuWidth = menuWidth,
-            menuHeight = estimatedMenuHeight,
+            menuHeight = visibleMenuHeight,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels,
             gap = scaledDp(8, scale),
@@ -161,7 +184,7 @@ class BubbleShortcutOverlayController(
         )
         val params = WindowManager.LayoutParams(
             menuWidth,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (needsVerticalScroll) visibleMenuHeight else WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT,
@@ -175,7 +198,8 @@ class BubbleShortcutOverlayController(
             trace(
                 "bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size} " +
                     "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
-                    "menu=${position.x},${position.y},$menuWidth,$estimatedMenuHeight scale=$scale columns=$columns",
+                    "menu=${position.x},${position.y},$menuWidth,$visibleMenuHeight " +
+                    "estimatedHeight=$estimatedMenuHeight scroll=$needsVerticalScroll scale=$scale columns=$columns",
             )
         }
     }
@@ -270,7 +294,7 @@ class BubbleShortcutOverlayController(
 
     private fun scaledDp(value: Int, scale: Double): Int = dp((value * scale).roundToInt())
 
-    private fun scaledSp(value: Float, scale: Double): Float = (value * scale.toFloat())
+    private fun scaledSp(value: Float, scale: Double): Float = value * scale.toFloat()
 
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
 
