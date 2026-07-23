@@ -11,7 +11,6 @@ object WorkRegionTargetPolicy {
         val explicit = settings.workRegionPins
             .filter { it.address.isNotBlank() }
             .distinctBy { identity(it) }
-            .take(MAX_PINS)
             .toMutableList()
 
         val legacyAddress = settings.alternativeAddress.trim()
@@ -28,11 +27,13 @@ object WorkRegionTargetPolicy {
             if (explicit.none { identity(it) == identity(legacy) }) explicit += legacy
         }
 
-        return explicit.sortedWith(
-            compareBy<WorkRegionPin> { normalize(it.address) }
-                .thenBy { it.createdAtMillis }
-                .thenBy { it.id },
-        )
+        return explicit
+            .sortedWith(
+                compareBy<WorkRegionPin> { normalize(it.address) }
+                    .thenBy { it.createdAtMillis }
+                    .thenBy { it.id },
+            )
+            .take(MAX_PINS)
     }
 
     fun activePins(settings: AppSettings): List<WorkRegionPin> {
@@ -61,7 +62,7 @@ object WorkRegionTargetPolicy {
     }
 
     fun remove(settings: AppSettings, pinId: String): AppSettings = settings.copy(
-        workRegionPins = editablePins(settings).filterNot { it.id == pinId },
+        workRegionPins = editablePins(settings).filterNot { it.id == pinId }.take(MAX_PINS),
         alternativeAddress = "",
         alternativeCoordinate = null,
     )
@@ -71,7 +72,7 @@ object WorkRegionTargetPolicy {
             if (pin.id == pinId) pin.copy(enabled = enabled) else pin
         }
         return settings.copy(
-            workRegionPins = migrated,
+            workRegionPins = migrated.take(MAX_PINS),
             alternativeAddress = "",
             alternativeCoordinate = null,
         )
