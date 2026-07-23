@@ -1,0 +1,446 @@
+5:FAILURE: Build failed with an exception.
+7:* What went wrong:
+441:BUILD FAILED in 1m 9s
+
+--- FINAL DO LOG ---
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/validation-1784765891567.json
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Circular dependency between the following tasks:
+:app:bubbleInstantDrag116
+\--- :app:universalFastReadRuntime110
+     +--- :app:universal111IdempotenceCompat
+     |    \--- :app:universalFastReadRuntime109
+     |         \--- :app:universalFastReadRuntime108
+     |              +--- :app:universalOverlayWindowResolver
+     |              |    \--- :app:sessionDiagnosticRetention
+     |              |         \--- :app:sessionDiagnosticV2
+     |              |              +--- :app:universalNoCardCompileRepair
+     |              |              |    \--- :app:universalNoCardRuntimeContract
+     |              |              |         +--- :app:universalIdempotenceCompatibilityGuard
+     |              |              |         |    \--- :app:universalFlattenedAddressBoundaryGuard
+     |              |              |         |         \--- :app:universalRuntimeStabilityGuard
+     |              |              |         |              +--- :app:universalImmediateGrayClear
+     |              |              |         |              |    \--- :app:universalRuntimeStateProbe
+     |              |              |         |              |         \--- :app:inAppBubbleImmediateState
+     |              |              |         |              |              \--- :app:universalOverlayRuntimeMetadata
+     |              |              |         |              |                   \--- :app:universalTwoAddressRuntimeFinal
+     |              |              |         |              |                        +--- :app:finalizeRotaCerta0128EffectiveSource
+     |              |              |         |              |                        |    +--- :app:manualOptionalModelsFinalizer127
+     |              |              |         |              |                        |    |    \--- :app:finalizeRotaCerta0128EffectiveSource (*)
+     |              |              |         |              |                        |    +--- :app:preBuild
+     |              |              |         |              |                        |    |    +--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleResourceShortcutsRuntime117
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleShortcutLegacyClickCompat117
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleShortcutNavigation117
+     |              |              |         |              |                        |    |    |    \--- :app:inAppGroupedBubbleHome115
+     |              |              |         |              |                        |    |    |         +--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    |         \--- :app:prepareGroupedTabAnchor115
+     |              |              |         |              |                        |    |    |              \--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleWhatsAppCaptureCompat118
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    +--- :app:fullSessionDiagnostic118
+     |              |              |         |              |                        |    |    |    +--- :app:professionalBubbleHome118
+     |              |              |         |              |                        |    |    |    |    +--- :app:bubbleShortcutNavigation117 (*)
+     |              |              |         |              |                        |    |    |    |    +--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    |    |    +--- :app:professionalBubbleMarkerCompat118
+     |              |              |         |              |                        |    |    |    |    |    \--- :app:bubbleShortcutNavigation117 (*)
+     |              |              |         |              |                        |    |    |    |    \--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    |    \--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    +--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    +--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    +--- :app:manualOptionalModelsFinalizer127 (*)
+     |              |              |         |              |                        |    |    +--- :app:mapaRadarFlexibleFileReader120
+     |              |              |         |              |                        |    |    |    \--- :app:universalRouteInflightProtection120
+     |              |              |         |              |                        |    |    |         \--- :app:universalOcrFreshness120
+     |              |              |         |              |                        |    |    |              \--- :app:popupGestureValidatorCompat120
+     |              |              |         |              |                        |    |    |                   +--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    |                   +--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    |                   \--- :app:popupNavigationLateCompile120
+     |              |              |         |              |                        |    |    |                        +--- :app:popupNavigationCardState120
+     |              |              |         |              |                        |    |    |                        |    \--- :app:popupNavigationCompileRepair120
+     |              |              |         |              |                        |    |    |                        |         \--- :app:popupNavigationProfessionalCompat120
+     |              |              |         |              |                        |    |    |                        |              \--- :app:popupNavigationSeparation120
+     |              |              |         |              |                        |    |    |                        |                   \--- :app:popupOnlyCompileCleanup119
+     |              |              |         |              |                        |    |    |                        |                        +--- :app:bubbleWhatsAppCaptureCompat118 (*)
+     |              |              |         |              |                        |    |    |                        |                        \--- :app:popupOnlyControlCenter119
+     |              |              |         |              |                        |    |    |                        |                             \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:professionalBubbleImportCompat118
+     |              |              |         |              |                        |    |    |                        |    \--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universal99CardAddresses111
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universal99CardContinuation111
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universalFragmentedStreetStart113
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universalRideCardEvidence112
+     |              |              |         |              |                        |    |    |                        |         \--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    |    |                        \--- :app:workflowCompatMarkers118
+     |              |              |         |              |                        |    |    |                             \--- :app:bubbleWhatsAppCaptureCompat118 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupGestureValidatorCompat120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationCardState120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationCompileRepair120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationProfessionalCompat120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationSeparation120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupOnlyCompileCleanup119 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupOnlyControlCenter119 (*)
+     |              |              |         |              |                        |    |    +--- :app:prepareGroupedTabAnchor115 (*)
+     |              |              |         |              |                        |    |    +--- :app:professionalBubbleHome118 (*)
+     |              |              |         |              |                        |    |    +--- :app:professionalBubbleImportCompat118 (*)
+     |              |              |         |              |                        |    |    +--- :app:radarWorkTracking121
+     |              |              |         |              |                        |    |    |    +--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    |    +--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    |    \--- :app:workTrackingCardAnchorCompat121
+     |              |              |         |              |                        |    |    |         \--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    +--- :app:sessionDiagnosticRetention (*)
+     |              |              |         |              |                        |    |    +--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    +--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    |    +--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime108 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime109 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFragmentedStreetStart113 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    |    +--- :app:universalNoCardCompileRepair (*)
+     |              |              |         |              |                        |    |    +--- :app:universalNoCardRuntimeContract (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOcrFreshness120 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOverlayRuntimeMetadata (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    |    +--- :app:universalPoiDestinationBoundary
+     |              |              |         |              |                        |    |    |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    |    |    \--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRouteInflightProtection120 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRuntimeStabilityGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRuntimeStateProbe (*)
+     |              |              |         |              |                        |    |    +--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        |    |    +--- :app:workTrackingCardAnchorCleanup121
+     |              |              |         |              |                        |    |    |    \--- :app:radarWorkTracking121 (*)
+     |              |              |         |              |                        |    |    \--- :app:workflowCompatMarkers118 (*)
+     |              |              |         |              |                        |    +--- :app:universal111IdempotenceCompat (*)
+     |              |              |         |              |                        |    +--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    +--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime108 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime109 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalFragmentedStreetStart113 (*)
+     |              |              |         |              |                        |    +--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardAnchorCompat
+     |              |              |         |              |                        |    |    \--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardCompileRepair (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardProcessAnchorCompat
+     |              |              |         |              |                        |    |    \--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardRuntimeContract (*)
+     |              |              |         |              |                        |    +--- :app:universalOcrFreshness120 (*)
+     |              |              |         |              |                        |    +--- :app:universalOptionalModelContract
+     |              |              |         |              |                        |    |    \--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    +--- :app:universalOverlayRuntimeMetadata (*)
+     |              |              |         |              |                        |    +--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    +--- :app:universalPoiDestinationBoundary (*)
+     |              |              |         |              |                        |    +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    +--- :app:universalRouteInflightProtection120 (*)
+     |              |              |         |              |                        |    +--- :app:universalRuntimeStabilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalRuntimeStateProbe (*)
+     |              |              |         |              |                        |    \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        \--- :app:manualOptionalModelsFinalizer127 (*)
+     |              |              |         |              \--- :app:universalOptionalModelContract (*)
+     |              |              |         +--- :app:universalNoCardAnchorCompat (*)
+     |              |              |         \--- :app:universalNoCardProcessAnchorCompat (*)
+     |              |              \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              \--- :app:universalPoiDestinationBoundary (*)
+     \--- :app:universalFastReadRuntime109 (*)
+
+(*) - details omitted (listed previously)
+
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.CircularReferenceException: Circular dependency between the following tasks:
+:app:bubbleInstantDrag116
+\--- :app:universalFastReadRuntime110
+     +--- :app:universal111IdempotenceCompat
+     |    \--- :app:universalFastReadRuntime109
+     |         \--- :app:universalFastReadRuntime108
+     |              +--- :app:universalOverlayWindowResolver
+     |              |    \--- :app:sessionDiagnosticRetention
+     |              |         \--- :app:sessionDiagnosticV2
+     |              |              +--- :app:universalNoCardCompileRepair
+     |              |              |    \--- :app:universalNoCardRuntimeContract
+     |              |              |         +--- :app:universalIdempotenceCompatibilityGuard
+     |              |              |         |    \--- :app:universalFlattenedAddressBoundaryGuard
+     |              |              |         |         \--- :app:universalRuntimeStabilityGuard
+     |              |              |         |              +--- :app:universalImmediateGrayClear
+     |              |              |         |              |    \--- :app:universalRuntimeStateProbe
+     |              |              |         |              |         \--- :app:inAppBubbleImmediateState
+     |              |              |         |              |              \--- :app:universalOverlayRuntimeMetadata
+     |              |              |         |              |                   \--- :app:universalTwoAddressRuntimeFinal
+     |              |              |         |              |                        +--- :app:finalizeRotaCerta0128EffectiveSource
+     |              |              |         |              |                        |    +--- :app:manualOptionalModelsFinalizer127
+     |              |              |         |              |                        |    |    \--- :app:finalizeRotaCerta0128EffectiveSource (*)
+     |              |              |         |              |                        |    +--- :app:preBuild
+     |              |              |         |              |                        |    |    +--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleResourceShortcutsRuntime117
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleShortcutLegacyClickCompat117
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleShortcutNavigation117
+     |              |              |         |              |                        |    |    |    \--- :app:inAppGroupedBubbleHome115
+     |              |              |         |              |                        |    |    |         +--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    |         \--- :app:prepareGroupedTabAnchor115
+     |              |              |         |              |                        |    |    |              \--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    +--- :app:bubbleWhatsAppCaptureCompat118
+     |              |              |         |              |                        |    |    |    \--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    +--- :app:fullSessionDiagnostic118
+     |              |              |         |              |                        |    |    |    +--- :app:professionalBubbleHome118
+     |              |              |         |              |                        |    |    |    |    +--- :app:bubbleShortcutNavigation117 (*)
+     |              |              |         |              |                        |    |    |    |    +--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    |    |    +--- :app:professionalBubbleMarkerCompat118
+     |              |              |         |              |                        |    |    |    |    |    \--- :app:bubbleShortcutNavigation117 (*)
+     |              |              |         |              |                        |    |    |    |    \--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    |    \--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    +--- :app:inAppBubbleImmediateState (*)
+     |              |              |         |              |                        |    |    +--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    +--- :app:manualOptionalModelsFinalizer127 (*)
+     |              |              |         |              |                        |    |    +--- :app:mapaRadarFlexibleFileReader120
+     |              |              |         |              |                        |    |    |    \--- :app:universalRouteInflightProtection120
+     |              |              |         |              |                        |    |    |         \--- :app:universalOcrFreshness120
+     |              |              |         |              |                        |    |    |              \--- :app:popupGestureValidatorCompat120
+     |              |              |         |              |                        |    |    |                   +--- :app:bubbleInstantDrag116 (*)
+     |              |              |         |              |                        |    |    |                   +--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    |                   \--- :app:popupNavigationLateCompile120
+     |              |              |         |              |                        |    |    |                        +--- :app:popupNavigationCardState120
+     |              |              |         |              |                        |    |    |                        |    \--- :app:popupNavigationCompileRepair120
+     |              |              |         |              |                        |    |    |                        |         \--- :app:popupNavigationProfessionalCompat120
+     |              |              |         |              |                        |    |    |                        |              \--- :app:popupNavigationSeparation120
+     |              |              |         |              |                        |    |    |                        |                   \--- :app:popupOnlyCompileCleanup119
+     |              |              |         |              |                        |    |    |                        |                        +--- :app:bubbleWhatsAppCaptureCompat118 (*)
+     |              |              |         |              |                        |    |    |                        |                        \--- :app:popupOnlyControlCenter119
+     |              |              |         |              |                        |    |    |                        |                             \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:professionalBubbleImportCompat118
+     |              |              |         |              |                        |    |    |                        |    \--- :app:inAppGroupedBubbleHome115 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universal99CardAddresses111
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universal99CardContinuation111
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universalFragmentedStreetStart113
+     |              |              |         |              |                        |    |    |                        |    \--- :app:universalRideCardEvidence112
+     |              |              |         |              |                        |    |    |                        |         \--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    |    |                        +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    |    |                        \--- :app:workflowCompatMarkers118
+     |              |              |         |              |                        |    |    |                             \--- :app:bubbleWhatsAppCaptureCompat118 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupGestureValidatorCompat120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationCardState120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationCompileRepair120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationProfessionalCompat120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupNavigationSeparation120 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupOnlyCompileCleanup119 (*)
+     |              |              |         |              |                        |    |    +--- :app:popupOnlyControlCenter119 (*)
+     |              |              |         |              |                        |    |    +--- :app:prepareGroupedTabAnchor115 (*)
+     |              |              |         |              |                        |    |    +--- :app:professionalBubbleHome118 (*)
+     |              |              |         |              |                        |    |    +--- :app:professionalBubbleImportCompat118 (*)
+     |              |              |         |              |                        |    |    +--- :app:radarWorkTracking121
+     |              |              |         |              |                        |    |    |    +--- :app:bubbleResourceShortcutsRuntime117 (*)
+     |              |              |         |              |                        |    |    |    +--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    |    \--- :app:workTrackingCardAnchorCompat121
+     |              |              |         |              |                        |    |    |         \--- :app:popupNavigationLateCompile120 (*)
+     |              |              |         |              |                        |    |    +--- :app:sessionDiagnosticRetention (*)
+     |              |              |         |              |                        |    |    +--- :app:sessionDiagnosticV2 (*)
+     |              |              |         |              |                        |    |    +--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    |    +--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime108 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime109 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalFragmentedStreetStart113 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    |    +--- :app:universalNoCardCompileRepair (*)
+     |              |              |         |              |                        |    |    +--- :app:universalNoCardRuntimeContract (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOcrFreshness120 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOverlayRuntimeMetadata (*)
+     |              |              |         |              |                        |    |    +--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    |    +--- :app:universalPoiDestinationBoundary
+     |              |              |         |              |                        |    |    |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    |    |    \--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRouteInflightProtection120 (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRuntimeStabilityGuard (*)
+     |              |              |         |              |                        |    |    +--- :app:universalRuntimeStateProbe (*)
+     |              |              |         |              |                        |    |    +--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        |    |    +--- :app:workTrackingCardAnchorCleanup121
+     |              |              |         |              |                        |    |    |    \--- :app:radarWorkTracking121 (*)
+     |              |              |         |              |                        |    |    \--- :app:workflowCompatMarkers118 (*)
+     |              |              |         |              |                        |    +--- :app:universal111IdempotenceCompat (*)
+     |              |              |         |              |                        |    +--- :app:universal99CardAddresses111 (*)
+     |              |              |         |              |                        |    +--- :app:universal99CardContinuation111 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime108 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime109 (*)
+     |              |              |         |              |                        |    +--- :app:universalFastReadRuntime110 (*)
+     |              |              |         |              |                        |    +--- :app:universalFlattenedAddressBoundaryGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalFragmentedStreetStart113 (*)
+     |              |              |         |              |                        |    +--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardAnchorCompat
+     |              |              |         |              |                        |    |    \--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardCompileRepair (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardProcessAnchorCompat
+     |              |              |         |              |                        |    |    \--- :app:universalIdempotenceCompatibilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalNoCardRuntimeContract (*)
+     |              |              |         |              |                        |    +--- :app:universalOcrFreshness120 (*)
+     |              |              |         |              |                        |    +--- :app:universalOptionalModelContract
+     |              |              |         |              |                        |    |    \--- :app:universalImmediateGrayClear (*)
+     |              |              |         |              |                        |    +--- :app:universalOverlayRuntimeMetadata (*)
+     |              |              |         |              |                        |    +--- :app:universalOverlayWindowResolver (*)
+     |              |              |         |              |                        |    +--- :app:universalPoiDestinationBoundary (*)
+     |              |              |         |              |                        |    +--- :app:universalRideCardEvidence112 (*)
+     |              |              |         |              |                        |    +--- :app:universalRouteInflightProtection120 (*)
+     |              |              |         |              |                        |    +--- :app:universalRuntimeStabilityGuard (*)
+     |              |              |         |              |                        |    +--- :app:universalRuntimeStateProbe (*)
+     |              |              |         |              |                        |    \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              |              |         |              |                        \--- :app:manualOptionalModelsFinalizer127 (*)
+     |              |              |         |              \--- :app:universalOptionalModelContract (*)
+     |              |              |         +--- :app:universalNoCardAnchorCompat (*)
+     |              |              |         \--- :app:universalNoCardProcessAnchorCompat (*)
+     |              |              \--- :app:universalTwoAddressRuntimeFinal (*)
+     |              \--- :app:universalPoiDestinationBoundary (*)
+     \--- :app:universalFastReadRuntime109 (*)
+
+(*) - details omitted (listed previously)
+
+	at org.gradle.execution.plan.DetermineExecutionPlanAction.onOrderingCycle(DetermineExecutionPlanAction.java:295)
+	at org.gradle.execution.plan.DetermineExecutionPlanAction.processNodeQueue(DetermineExecutionPlanAction.java:187)
+	at org.gradle.execution.plan.DetermineExecutionPlanAction.run(DetermineExecutionPlanAction.java:93)
+	at org.gradle.execution.plan.DefaultExecutionPlan.determineExecutionPlan(DefaultExecutionPlan.java:223)
+	at org.gradle.internal.build.DefaultBuildWorkPreparer.populateWorkGraph(DefaultBuildWorkPreparer.java:43)
+	at org.gradle.internal.build.BuildOperationFiringBuildWorkPreparer$PopulateWorkGraph.populateTaskGraph(BuildOperationFiringBuildWorkPreparer.java:106)
+	at org.gradle.internal.build.BuildOperationFiringBuildWorkPreparer$PopulateWorkGraph.run(BuildOperationFiringBuildWorkPreparer.java:92)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.internal.build.BuildOperationFiringBuildWorkPreparer.populateWorkGraph(BuildOperationFiringBuildWorkPreparer.java:67)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.lambda$populateWorkGraph$8(DefaultBuildLifecycleController.java:189)
+	at org.gradle.internal.model.StateTransitionController.lambda$inState$1(StateTransitionController.java:99)
+	at org.gradle.internal.model.StateTransitionController.lambda$inState$2(StateTransitionController.java:114)
+	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
+	at org.gradle.internal.model.StateTransitionController.inState(StateTransitionController.java:110)
+	at org.gradle.internal.model.StateTransitionController.inState(StateTransitionController.java:98)
+	at org.gradle.internal.build.DefaultBuildLifecycleController.populateWorkGraph(DefaultBuildLifecycleController.java:189)
+	at org.gradle.internal.build.DefaultBuildWorkGraphController$DefaultBuildWorkGraph.populateWorkGraph(DefaultBuildWorkGraphController.java:169)
+	at org.gradle.composite.internal.DefaultBuildController.populateWorkGraph(DefaultBuildController.java:76)
+	at org.gradle.composite.internal.DefaultIncludedBuildTaskGraph$DefaultBuildTreeWorkGraphBuilder.withWorkGraph(DefaultIncludedBuildTaskGraph.java:153)
+	at org.gradle.internal.buildtree.DefaultBuildTreeWorkPreparer.lambda$scheduleRequestedTasks$1(DefaultBuildTreeWorkPreparer.java:41)
+	at org.gradle.composite.internal.DefaultIncludedBuildTaskGraph$DefaultBuildTreeWorkGraph$1.run(DefaultIncludedBuildTaskGraph.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.composite.internal.DefaultIncludedBuildTaskGraph$DefaultBuildTreeWorkGraph.scheduleWork(DefaultIncludedBuildTaskGraph.java:204)
+	at org.gradle.internal.buildtree.DefaultBuildTreeWorkPreparer.scheduleRequestedTasks(DefaultBuildTreeWorkPreparer.java:37)
+	at org.gradle.internal.cc.impl.VintageBuildTreeWorkController$scheduleAndRunRequestedTasks$1.apply(VintageBuildTreeWorkController.kt:36)
+	at org.gradle.internal.cc.impl.VintageBuildTreeWorkController$scheduleAndRunRequestedTasks$1.apply(VintageBuildTreeWorkController.kt:35)
+	at org.gradle.composite.internal.DefaultIncludedBuildTaskGraph.withNewWorkGraph(DefaultIncludedBuildTaskGraph.java:112)
+	at org.gradle.internal.cc.impl.VintageBuildTreeWorkController.scheduleAndRunRequestedTasks(VintageBuildTreeWorkController.kt:35)
+	at org.gradle.internal.buildtree.DefaultBuildTreeLifecycleController.lambda$scheduleAndRunTasks$1(DefaultBuildTreeLifecycleController.java:77)
+	at org.gradle.internal.buildtree.DefaultBuildTreeLifecycleController.lambda$runBuild$4(DefaultBuildTreeLifecycleController.java:120)
+	at org.gradle.internal.model.StateTransitionController.lambda$transition$6(StateTransitionController.java:169)
+	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
+	at org.gradle.internal.model.StateTransitionController.lambda$transition$7(StateTransitionController.java:169)
+	at org.gradle.internal.work.DefaultSynchronizer.withLock(DefaultSynchronizer.java:44)
+	at org.gradle.internal.model.StateTransitionController.transition(StateTransitionController.java:169)
+	at org.gradle.internal.buildtree.DefaultBuildTreeLifecycleController.runBuild(DefaultBuildTreeLifecycleController.java:117)
+	at org.gradle.internal.buildtree.DefaultBuildTreeLifecycleController.scheduleAndRunTasks(DefaultBuildTreeLifecycleController.java:77)
+	at org.gradle.internal.buildtree.DefaultBuildTreeLifecycleController.scheduleAndRunTasks(DefaultBuildTreeLifecycleController.java:72)
+	at org.gradle.tooling.internal.provider.ExecuteBuildActionRunner.run(ExecuteBuildActionRunner.java:31)
+	at org.gradle.launcher.exec.ChainingBuildActionRunner.run(ChainingBuildActionRunner.java:35)
+	at org.gradle.internal.buildtree.ProblemReportingBuildActionRunner.run(ProblemReportingBuildActionRunner.java:49)
+	at org.gradle.launcher.exec.BuildOutcomeReportingBuildActionRunner.run(BuildOutcomeReportingBuildActionRunner.java:65)
+	at org.gradle.tooling.internal.provider.FileSystemWatchingBuildActionRunner.run(FileSystemWatchingBuildActionRunner.java:140)
+	at org.gradle.launcher.exec.BuildCompletionNotifyingBuildActionRunner.run(BuildCompletionNotifyingBuildActionRunner.java:41)
+	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.lambda$execute$0(RootBuildLifecycleBuildActionExecutor.java:54)
+	at org.gradle.composite.internal.DefaultRootBuildState.run(DefaultRootBuildState.java:130)
+	at org.gradle.launcher.exec.RootBuildLifecycleBuildActionExecutor.execute(RootBuildLifecycleBuildActionExecutor.java:54)
+	at org.gradle.internal.buildtree.InitDeprecationLoggingActionExecutor.execute(InitDeprecationLoggingActionExecutor.java:62)
+	at org.gradle.internal.buildtree.InitProblems.execute(InitProblems.java:36)
+	at org.gradle.internal.buildtree.DefaultBuildTreeContext.execute(DefaultBuildTreeContext.java:40)
+	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.lambda$execute$0(BuildTreeLifecycleBuildActionExecutor.java:71)
+	at org.gradle.internal.buildtree.BuildTreeState.run(BuildTreeState.java:60)
+	at org.gradle.launcher.exec.BuildTreeLifecycleBuildActionExecutor.execute(BuildTreeLifecycleBuildActionExecutor.java:71)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:61)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor$3.call(RunAsBuildOperationBuildActionExecutor.java:57)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.launcher.exec.RunAsBuildOperationBuildActionExecutor.execute(RunAsBuildOperationBuildActionExecutor.java:57)
+	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.lambda$execute$0(RunAsWorkerThreadBuildActionExecutor.java:36)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:263)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.launcher.exec.RunAsWorkerThreadBuildActionExecutor.execute(RunAsWorkerThreadBuildActionExecutor.java:36)
+	at org.gradle.tooling.internal.provider.continuous.ContinuousBuildActionExecutor.execute(ContinuousBuildActionExecutor.java:110)
+	at org.gradle.tooling.internal.provider.SubscribableBuildActionExecutor.execute(SubscribableBuildActionExecutor.java:64)
+	at org.gradle.internal.session.DefaultBuildSessionContext.execute(DefaultBuildSessionContext.java:46)
+	at org.gradle.internal.buildprocess.execution.BuildSessionLifecycleBuildActionExecutor$ActionImpl.apply(BuildSessionLifecycleBuildActionExecutor.java:92)
+	at org.gradle.internal.buildprocess.execution.BuildSessionLifecycleBuildActionExecutor$ActionImpl.apply(BuildSessionLifecycleBuildActionExecutor.java:80)
+	at org.gradle.internal.session.BuildSessionState.run(BuildSessionState.java:71)
+	at org.gradle.internal.buildprocess.execution.BuildSessionLifecycleBuildActionExecutor.execute(BuildSessionLifecycleBuildActionExecutor.java:62)
+	at org.gradle.internal.buildprocess.execution.BuildSessionLifecycleBuildActionExecutor.execute(BuildSessionLifecycleBuildActionExecutor.java:41)
+	at org.gradle.internal.buildprocess.execution.StartParamsValidatingActionExecutor.execute(StartParamsValidatingActionExecutor.java:64)
+	at org.gradle.internal.buildprocess.execution.StartParamsValidatingActionExecutor.execute(StartParamsValidatingActionExecutor.java:32)
+	at org.gradle.internal.buildprocess.execution.SessionFailureReportingActionExecutor.execute(SessionFailureReportingActionExecutor.java:51)
+	at org.gradle.internal.buildprocess.execution.SessionFailureReportingActionExecutor.execute(SessionFailureReportingActionExecutor.java:39)
+	at org.gradle.internal.buildprocess.execution.SetupLoggingActionExecutor.execute(SetupLoggingActionExecutor.java:47)
+	at org.gradle.internal.buildprocess.execution.SetupLoggingActionExecutor.execute(SetupLoggingActionExecutor.java:31)
+	at org.gradle.launcher.daemon.server.exec.ExecuteBuild.doBuild(ExecuteBuild.java:70)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.WatchForDisconnection.execute(WatchForDisconnection.java:39)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.ResetDeprecationLogger.execute(ResetDeprecationLogger.java:29)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.RequestStopIfSingleUsedDaemon.execute(RequestStopIfSingleUsedDaemon.java:35)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.ForwardClientInput.lambda$execute$0(ForwardClientInput.java:40)
+	at org.gradle.internal.daemon.clientinput.ClientInputForwarder.forwardInput(ClientInputForwarder.java:80)
+	at org.gradle.launcher.daemon.server.exec.ForwardClientInput.execute(ForwardClientInput.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.LogAndCheckHealth.execute(LogAndCheckHealth.java:53)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.LogToClient.doBuild(LogToClient.java:63)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.EstablishBuildEnvironment.doBuild(EstablishBuildEnvironment.java:84)
+	at org.gradle.launcher.daemon.server.exec.BuildCommandOnly.execute(BuildCommandOnly.java:37)
+	at org.gradle.launcher.daemon.server.api.DaemonCommandExecution.proceed(DaemonCommandExecution.java:104)
+	at org.gradle.launcher.daemon.server.exec.StartBuildOrRespondWithBusy$1.run(StartBuildOrRespondWithBusy.java:52)
+	at org.gradle.launcher.daemon.server.DaemonStateCoordinator.lambda$runCommand$0(DaemonStateCoordinator.java:321)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+
+
+BUILD FAILED in 1m 9s
