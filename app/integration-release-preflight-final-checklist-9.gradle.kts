@@ -174,11 +174,12 @@ fun verifyScrollablePopupChecklist9(file: java.io.File) {
     val overlay = file.readText()
     listOf(
         "import android.widget.ScrollView",
+        "import android.view.ViewGroup",
         "maxMenuHeight",
         "visibleMenuHeight",
         "needsVerticalScroll",
         "View.OVER_SCROLL_IF_CONTENT_SCROLLS",
-        "ScrollView.LayoutParams(",
+        "ViewGroup.LayoutParams(",
     ).forEach { marker ->
         if (marker !in overlay) throw GradleException("Popup grande sem rolagem segura: $marker")
     }
