@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +97,20 @@ if receiver_marker not in service:
     SERVICE_FILE.write_text(service.replace(old, new, 1))
 
 VERSION_FILE.write_text("VERSION_CODE=4067\nVERSION_NAME=0.1.128\n")
+
+tools_dir = Path("/tmp/rota-certa-android-build-tools")
+tools_dir.mkdir(parents=True, exist_ok=True)
+for tool_name in ("aapt", "apksigner"):
+    wrapper = tools_dir / tool_name
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        f'exec "$ANDROID_HOME/build-tools/35.0.0/{tool_name}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+github_path = os.environ.get("GITHUB_PATH")
+if github_path:
+    with open(github_path, "a", encoding="utf-8") as handle:
+        handle.write(str(tools_dir) + "\n")
 
 BUILD_FILE.write_text(r'''import java.util.Base64
 import java.util.Properties
