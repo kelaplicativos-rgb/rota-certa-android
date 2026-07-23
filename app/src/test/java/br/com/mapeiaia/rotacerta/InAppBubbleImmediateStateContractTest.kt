@@ -7,7 +7,7 @@ import org.junit.Test
 
 class InAppBubbleImmediateStateContractTest {
     @Test
-    fun popupNavigationUsesIndependentModulesAndStartsInPermissions() {
+    fun popupNavigationUsesIndependentModulesAndStartsInGeneralControls() {
         fun sourceFile(name: String): File = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/$name"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
@@ -18,9 +18,10 @@ class InAppBubbleImmediateStateContractTest {
         val catalog = sourceFile("BubbleShortcutModule.kt").readText()
 
         assertTrue("Contrato 0.1.120 precisa existir", "popup_navigation_main_0_1_120" in main)
-        assertTrue("Aplicativo precisa iniciar em Permissoes", "startup_permissions_0_1_120" in main)
-        assertTrue("Permissoes precisam ser o grupo inicial", "mutableStateOf(BUBBLE_GROUP_ACCESS)" in main)
+        assertTrue("Compatibilidade de inicialização precisa permanecer", "startup_permissions_0_1_120" in main)
+        assertTrue("Controles gerais precisam ser o grupo inicial", "mutableStateOf(BUBBLE_GROUP_GENERAL)" in main)
         assertTrue("A aba inicial precisa ser Config", "mutableStateOf(TAB_CONFIG)" in main)
+        assertTrue("Permissão antiga precisa redirecionar ao geral", "legacy_access_groups_to_general_checklist_7" in main)
 
         assertTrue("Rota precisa abrir Controle geral", "targetGroup = \"general\"" in catalog && "targetTab = \"config\"" in catalog)
         assertTrue("Destino precisa continuar independente", "targetGroup = \"destination\"" in sourceFile("DestinationBubbleShortcutModule.kt").readText())
