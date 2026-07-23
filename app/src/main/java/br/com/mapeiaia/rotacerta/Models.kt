@@ -24,6 +24,7 @@ data class AppSettings(
     val liveReadingEnabled: Boolean = true,
     val homeTargetEnabled: Boolean = true,
     val alternativeTargetEnabled: Boolean = true,
+    val workRegionPins: List<WorkRegionPin> = emptyList(),
     val requireRegisteredRideCard: Boolean = true,
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 200,
@@ -51,6 +52,15 @@ data class RotaCertaBackup(
 data class Coordinate(
     val latitude: Double,
     val longitude: Double,
+)
+
+@Serializable
+data class WorkRegionPin(
+    val id: String,
+    val address: String,
+    val coordinate: Coordinate? = null,
+    val enabled: Boolean = true,
+    val createdAtMillis: Long = 0L,
 )
 
 @Serializable
