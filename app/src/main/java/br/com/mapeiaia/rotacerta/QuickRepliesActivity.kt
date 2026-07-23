@@ -36,24 +36,39 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 class QuickRepliesActivity : ComponentActivity() {
+    private val targetPackageName: String?
+        get() = QuickReplyTargetPolicy.normalize(
+            intent?.getStringExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE),
+        )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 QuickRepliesScreen(
                     repository = remember { SettingsRepository(applicationContext) },
-                    onApply = { text ->
-                        sendBroadcast(
-                            Intent(ACTION_APPLY_QUICK_REPLY)
-                                .setPackage(packageName)
-                                .putExtra(EXTRA_QUICK_REPLY_TEXT, text),
-                        )
-                        finish()
-                    },
-                    onClose = ::finish,
+                    onApply = ::applyReply,
+                    onClose = ::closeAndRevealPreviousApp,
                 )
             }
         }
+    }
+
+    private fun applyReply(text: String) {
+        sendBroadcast(
+            Intent(ACTION_APPLY_QUICK_REPLY)
+                .setPackage(packageName)
+                .putExtra(EXTRA_QUICK_REPLY_TEXT, text)
+                .putExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE, targetPackageName),
+        )
+        closeAndRevealPreviousApp()
+    }
+
+    private fun closeAndRevealPreviousApp() {
+        // A Activity foi aberta sobre outro aplicativo. Colocar a tarefa do
+        // Rota Certa em segundo plano devolve imediatamente a tela anterior.
+        moveTaskToBack(true)
+        finish()
     }
 }
 
@@ -80,10 +95,18 @@ private fun QuickRepliesScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Respostas rápidas", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(
+                "Respostas rápidas",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
             OutlinedButton(onClick = onClose) { Text("Fechar") }
         }
-        Text("Toque em Usar para preencher a caixa de mensagem que estava aberta.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Toque em Usar para voltar e preencher a caixa de mensagem que estava aberta.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         OutlinedTextField(
             value = search,
             onValueChange = { search = it },
@@ -154,8 +177,20 @@ private fun QuickReplyEditorDialog(
         title = { Text(if (initialText.isBlank()) "Nova resposta" else "Editar resposta") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(text, { text = it }, label = { Text("Mensagem completa") }, modifier = Modifier.fillMaxWidth(), minLines = 4)
+                OutlinedTextField(
+                    title,
+                    { title = it },
+                    label = { Text("Nome") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    text,
+                    { text = it },
+                    label = { Text("Mensagem completa") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                )
             }
         },
         confirmButton = {
@@ -167,3 +202,4 @@ private fun QuickReplyEditorDialog(
 
 const val ACTION_APPLY_QUICK_REPLY = "br.com.mapeiaia.rotacerta.APPLY_QUICK_REPLY"
 const val EXTRA_QUICK_REPLY_TEXT = "quick_reply_text"
+const val EXTRA_QUICK_REPLY_TARGET_PACKAGE = "quick_reply_target_package"
