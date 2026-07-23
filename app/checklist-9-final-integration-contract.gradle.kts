@@ -34,11 +34,19 @@ fun verifyFinalIntegrationChecklist9(
         "general_controls_final_checklist_7",
         "popup_scale_ui_final_checklist_7",
         "Gerar e compartilhar relatorio",
+        "saving = savingHomeAddressChecklist9,",
+        "onSave = ::saveHomeAddressValidatedChecklist9,",
     ).forEach { marker ->
         if (marker !in main) throw GradleException("Interface integrada incompleta: $marker")
     }
-    if ("onSave = { saveQuickSettings(quickSettings) }" in main) {
-        throw GradleException("Casa voltou a ser salva sem coordenada pré-validada.")
+    val homeCallStart = main.indexOf("        HomeDecisionCard(")
+    val homeCallEnd = if (homeCallStart >= 0) main.indexOf("\n    )", homeCallStart) else -1
+    if (homeCallStart < 0 || homeCallEnd <= homeCallStart) {
+        throw GradleException("Chamada ativa da Casa não localizada.")
+    }
+    val homeCallRegion = main.substring(homeCallStart, homeCallEnd)
+    if ("onSave = { saveQuickSettings(quickSettings) }" in homeCallRegion) {
+        throw GradleException("Casa ativa voltou a ser salva sem coordenada pré-validada.")
     }
     listOf(
         "KeyboardActions(onDone = { addAddress() })",
