@@ -32,6 +32,7 @@ fun verifyFinalIntegrationChecklist9(
         "KeyboardActions(onDone = { addAddress() })",
         "general_controls_final_checklist_7",
         "popup_scale_ui_final_checklist_7",
+        "Gerar e compartilhar relatorio",
     ).forEach { marker ->
         if (marker !in main) throw GradleException("Interface integrada incompleta: $marker")
     }
@@ -63,13 +64,13 @@ fun verifyFinalIntegrationChecklist9(
     listOf(
         "strict_selected_app_policy_checklist_1",
         "quick_reply_receiver_checklist_3",
-        "manual_technical_report_ui_checklist_4",
-        "directional_alert_monitor_final_checklist_5",
+        "directional_alert_monitor_checklist_5",
         "overlay_before_storage_final_checklist_6",
         "ocr_outside_critical_path_final_checklist_6",
         "low_priority_capture_final_checklist_6",
         "multi_address_route_matrix_final_checklist_7",
         "trip_confirmation_copy_complete_checklist_8",
+        "manual_trip_tree_read_checklist_8",
     ).forEach { marker ->
         if (marker !in service) throw GradleException("Serviço integrado perdeu contrato: $marker")
     }
@@ -104,6 +105,9 @@ fun verifyFinalIntegrationChecklist9(
     val tripRegion = service.substring(tripStart, tripEnd)
     if ("repository." in tripRegion || "startActivity(" in tripRegion) {
         throw GradleException("Cópia da viagem não pode armazenar conversa nem enviar automaticamente.")
+    }
+    if ("collectVisibleTextForAction()" in tripRegion) {
+        throw GradleException("Cópia da viagem voltou a depender dos aplicativos selecionados do farol.")
     }
 
     listOf(
@@ -153,7 +157,8 @@ fun verifyFinalIntegrationChecklist9(
     listOf(
         "DirectionalAlertPolicy",
         "shouldClose",
-        "speechSucceeded",
+        "if (!spoken) return",
+        "runtime.recordSpoken(now)",
     ).forEach { marker ->
         if (marker !in directionalEngine) throw GradleException("Alerta direcional perdeu proteção: $marker")
     }
