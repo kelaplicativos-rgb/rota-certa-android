@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation after repairing the regex generator before execution.
+Trigger Rota Certa 0.1.128 validation with observable tolerant regex generator repair.
