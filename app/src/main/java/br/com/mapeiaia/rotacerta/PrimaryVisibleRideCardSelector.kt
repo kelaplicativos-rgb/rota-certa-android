@@ -9,18 +9,10 @@ data class PrimaryVisibleRideCardSelection(
     val selectedIndex: Int,
     val passengerName: String?,
     val reason: String,
+    val cardSignature: String = "",
 )
 
-/**
- * Isola o primeiro pedido completo visivel quando a acessibilidade entrega uma
- * lista inteira de corridas como um unico texto.
- *
- * A selecao e conservadora: so recorta quando existem pelo menos dois blocos
- * inequivocos de passageiro (nome seguido imediatamente de nota/avaliacoes).
- * Dentro da lista, escolhe o primeiro bloco que contem pelo menos dois enderecos.
- * Se nao houver lista comprovada, preserva o texto original para nao alterar os
- * layouts de Uber, 99 ou cards individuais.
- */
+/** Isola cards completos sem misturar passageiro, embarque e destino. */
 object PrimaryVisibleRideCardSelector {
     private val ratingRegex = Regex("^[0-5](?:[.,]\\d{1,2})?$")
     private val reviewCountRegex = Regex("^\\(?\\d{1,6}\\)?(?:\\s+avalia(?:c|ç)(?:ao|ão|oes|ões))?$")
@@ -30,54 +22,69 @@ object PrimaryVisibleRideCardSelector {
         RegexOption.IGNORE_CASE,
     )
 
-    fun select(text: String): PrimaryVisibleRideCardSelection {
+    fun select(text: String): PrimaryVisibleRideCardSelection =
+        completeCards(text).firstOrNull() ?: unchanged(text.trim(), if (text.isBlank()) "texto_vazio" else "card_individual_ou_layout_sem_lista")
+
+    fun completeCards(text: String): List<PrimaryVisibleRideCardSelection> {
         val original = text.trim()
-        if (original.isBlank()) return unchanged(original, "texto_vazio")
-
-        val lines = original
-            .replace('\u00A0', ' ')
-            .replace('\u202F', ' ')
-            .lines()
-            .map { line -> Normalizer.normalize(line, Normalizer.Form.NFC).trim() }
-            .filter(String::isNotBlank)
-
+        if (original.isBlank()) return emptyList()
+        val lines = normalizedLines(original)
         val anchors = lines.indices.filter { index -> isPassengerAnchor(lines, index) }
-        if (anchors.size < 2) return unchanged(original, "card_individual_ou_layout_sem_lista")
 
-        anchors.forEachIndexed { cardIndex, startIndex ->
-            val endIndex = anchors.getOrNull(cardIndex + 1) ?: lines.size
-            val blockLines = lines.subList(startIndex, endIndex)
-            val blockText = blockLines.joinToString("\n").trim()
-            val trigger = UniversalAddressTrigger.evaluate(blockText)
-            if (trigger.addresses.size >= 2 && !trigger.destination.isNullOrBlank()) {
-                return PrimaryVisibleRideCardSelection(
-                    selectedText = blockText,
-                    cardCount = anchors.size,
-                    selectedIndex = cardIndex,
-                    passengerName = lines[startIndex],
-                    reason = "primeiro_card_completo_visivel",
+        if (anchors.size < 2) {
+            val trigger = UniversalAddressTrigger.evaluate(original)
+            val passenger = RidePassengerIdentityPolicy.evaluate(original).candidates.singleOrNull()
+            return if (trigger.addresses.size >= 2 && !trigger.destination.isNullOrBlank()) {
+                listOf(
+                    PrimaryVisibleRideCardSelection(
+                        selectedText = original,
+                        cardCount = 1,
+                        selectedIndex = 0,
+                        passengerName = passenger,
+                        reason = "card_individual_ou_layout_sem_lista",
+                        cardSignature = signature(passenger, trigger.addressSignature),
+                    ),
                 )
+            } else {
+                emptyList()
             }
         }
 
-        return PrimaryVisibleRideCardSelection(
-            selectedText = original,
-            cardCount = anchors.size,
-            selectedIndex = -1,
-            passengerName = null,
-            reason = "lista_detectada_sem_card_completo",
-        )
+        val complete = mutableListOf<PrimaryVisibleRideCardSelection>()
+        anchors.forEachIndexed { cardIndex, startIndex ->
+            val endIndex = anchors.getOrNull(cardIndex + 1) ?: lines.size
+            val blockText = lines.subList(startIndex, endIndex).joinToString("\n").trim()
+            val trigger = UniversalAddressTrigger.evaluate(blockText)
+            if (trigger.addresses.size >= 2 && !trigger.destination.isNullOrBlank()) {
+                val passenger = lines[startIndex]
+                complete += PrimaryVisibleRideCardSelection(
+                    selectedText = blockText,
+                    cardCount = anchors.size,
+                    selectedIndex = cardIndex,
+                    passengerName = passenger,
+                    reason = if (cardIndex == 0) "primeiro_card_completo_visivel" else "card_completo_visivel",
+                    cardSignature = signature(passenger, trigger.addressSignature),
+                )
+            }
+        }
+        return complete
     }
+
+    private fun normalizedLines(text: String): List<String> = text
+        .replace('\u00A0', ' ')
+        .replace('\u202F', ' ')
+        .lines()
+        .map { line -> Normalizer.normalize(line, Normalizer.Form.NFC).trim() }
+        .filter(String::isNotBlank)
 
     private fun isPassengerAnchor(lines: List<String>, index: Int): Boolean {
         val name = lines.getOrNull(index) ?: return false
         if (!looksLikeHumanName(name)) return false
-
         val immediate = lines.getOrNull(index + 1).orEmpty()
-        val hasImmediateRating = ratingRegex.matches(immediate.replace(',', '.'))
+        val normalizedRating = immediate.replace(',', '.')
+        val hasImmediateRating = ratingRegex.matches(normalizedRating)
         val hasImmediateReviewCount = reviewCountRegex.matches(immediate)
         if (!hasImmediateRating && !hasImmediateReviewCount) return false
-
         if (hasImmediateRating) {
             val reviewContext = lines.drop(index + 2).take(2)
             if (reviewContext.any(reviewCountRegex::matches)) return true
@@ -96,11 +103,22 @@ object PrimaryVisibleRideCardSelector {
         return words.all(nameTokenRegex::matches) && words.any { it.length >= 2 }
     }
 
+    private fun signature(passenger: String?, addressSignature: String): String =
+        canonical(passenger.orEmpty()) + "|" + canonical(addressSignature)
+
+    private fun canonical(value: String): String = Normalizer
+        .normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .replace(Regex("[^a-z0-9|]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
     private fun unchanged(text: String, reason: String) = PrimaryVisibleRideCardSelection(
         selectedText = text,
         cardCount = if (text.isBlank()) 0 else 1,
         selectedIndex = 0,
         passengerName = null,
         reason = reason,
+        cardSignature = "",
     )
 }

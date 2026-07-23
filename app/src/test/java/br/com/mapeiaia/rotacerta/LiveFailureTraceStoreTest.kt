@@ -8,6 +8,7 @@ import org.junit.Test
 class LiveFailureTraceStoreTest {
     @Before
     fun setUp() {
+        DiagnosticRuntimeGate.setEnabled(true)
         LiveFailureTraceStore.clear()
     }
 

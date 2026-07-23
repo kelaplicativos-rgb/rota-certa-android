@@ -33,6 +33,7 @@ fun patchUniversalNoPreRegisteredGates126(serviceFile: java.io.File, mainFile: j
 
     var service = serviceFile.readText()
     val dollar = "$"
+    return // performance_core_0_1_128 disables universal_no_pre_registered_0_1_126
 
     if ("pre_registered_runtime_cleanup_0_1_126" !in service) {
         val settingsAnchor = "            currentSettings = repository.settings.first()\n"

@@ -44,6 +44,7 @@ object LiveFailureTraceStore {
         generation: Long?,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         val cleanText = text.trim().take(MAX_TEXT_LENGTH)
         val cleanAddresses = addresses
             .map { it.replace(Regex("\\s+"), " ").trim() }
@@ -63,13 +64,20 @@ object LiveFailureTraceStore {
                 nowMillis = nowMillis,
             )
             session.lastAtMillis = nowMillis
-            if (cleanPackage.isNotBlank()) session.packageName = cleanPackage
-            if (screenHash != null) session.screenHash = screenHash
-            if (generation != null) session.generation = generation
-            session.activeTrigger = active
-            session.addresses = cleanAddresses
-            session.addressSignature = addressSignature
-            session.destination = destination?.trim()?.takeIf { it.isNotBlank() }
+            val cleanDestination = destination?.trim()?.takeIf { it.isNotBlank() }
+            val hasStoredRead = !session.accessibility?.text.isNullOrBlank() || !session.ocr?.text.isNullOrBlank()
+            val samePackage = cleanPackage.isBlank() || session.packageName.isBlank() || cleanPackage == session.packageName
+            if (cleanPackage.isNotBlank() && (session.packageName.isBlank() || cleanAddresses.isNotEmpty() || !hasStoredRead)) {
+                session.packageName = cleanPackage
+            }
+            if (screenHash != null && (cleanAddresses.isNotEmpty() || session.screenHash == null || samePackage)) session.screenHash = screenHash
+            if (generation != null && (cleanAddresses.isNotEmpty() || session.generation == null || samePackage)) session.generation = generation
+            if (cleanAddresses.isNotEmpty() || (session.addresses.isEmpty() && samePackage)) {
+                session.activeTrigger = active
+                session.addresses = cleanAddresses
+                session.addressSignature = addressSignature
+                session.destination = cleanDestination
+            } // session_retains_meaningful_read_v2
 
             val snapshot = ReadSnapshot(
                 capturedAtMillis = nowMillis,
@@ -80,9 +88,13 @@ object LiveFailureTraceStore {
                 "ocr" -> session.ocr
                 else -> session.accessibility
             }
-            when (normalizedSource.lowercase(Locale.ROOT)) {
-                "ocr" -> session.ocr = snapshot
-                else -> session.accessibility = snapshot
+            val mayReplaceStoredSource = cleanText.isNotBlank() &&
+                (cleanAddresses.isNotEmpty() || previous == null || samePackage)
+            if (mayReplaceStoredSource) {
+                when (normalizedSource.lowercase(Locale.ROOT)) {
+                    "ocr" -> session.ocr = snapshot
+                    else -> session.accessibility = snapshot
+                }
             }
 
             val readChanged = previous?.hash != snapshot.hash ||
@@ -115,6 +127,7 @@ object LiveFailureTraceStore {
         screenHash: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         val clean = oneLine(message)
         if (clean.isBlank()) return
         synchronized(lock) {
@@ -125,7 +138,11 @@ object LiveFailureTraceStore {
                 nowMillis = nowMillis,
             )
             session.lastAtMillis = nowMillis
-            if (!packageName.isNullOrBlank()) session.packageName = packageName
+            if (!packageName.isNullOrBlank() &&
+                session.addresses.isEmpty() &&
+                session.accessibility?.text.isNullOrBlank() &&
+                session.ocr?.text.isNullOrBlank()
+            ) session.packageName = packageName // session_preserves_origin_package_v2
             if (generation != null) session.generation = generation
             if (screenHash != null) session.screenHash = screenHash
 
@@ -158,6 +175,7 @@ object LiveFailureTraceStore {
         screenHash: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         synchronized(lock) {
             val session = currentSessionLocked() ?: newSessionLocked(
                 packageName = packageName.orEmpty(),
@@ -166,7 +184,11 @@ object LiveFailureTraceStore {
                 nowMillis = nowMillis,
             )
             session.lastAtMillis = nowMillis
-            if (!packageName.isNullOrBlank()) session.packageName = packageName
+            if (!packageName.isNullOrBlank() &&
+                session.addresses.isEmpty() &&
+                session.accessibility?.text.isNullOrBlank() &&
+                session.ocr?.text.isNullOrBlank()
+            ) session.packageName = packageName // session_preserves_origin_package_v2
             if (generation != null) session.generation = generation
             if (screenHash != null) session.screenHash = screenHash
             val cleanStage = stage.trim().ifBlank { "STEP" }.uppercase(Locale.ROOT)
@@ -188,6 +210,7 @@ object LiveFailureTraceStore {
         screenHash: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         val result = coordinate?.takeIf { it.isNotBlank() } ?: "nao localizado"
         synchronized(lock) {
             val session = currentSessionLocked() ?: newSessionLocked(
@@ -219,6 +242,7 @@ object LiveFailureTraceStore {
         screenHash: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         val distanceText = distanceKm?.let { String.format(Locale("pt", "BR"), "%.3f km", it) } ?: "nao calculada"
         synchronized(lock) {
             val session = currentSessionLocked() ?: newSessionLocked(
@@ -248,6 +272,7 @@ object LiveFailureTraceStore {
         screenHash: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         synchronized(lock) {
             val session = currentSessionLocked() ?: newSessionLocked(
                 packageName = packageName.orEmpty(),
@@ -360,9 +385,14 @@ object LiveFailureTraceStore {
         val textHash = text.hashCode()
         val shouldStart = when {
             current == null -> true
-            current.endedAtMillis != null && text.isNotBlank() -> true
+            current.endedAtMillis != null && text.isNotBlank() &&
+                (addressSignature.isNotBlank() ||
+                    (current.accessibility?.text.isNullOrBlank() && current.ocr?.text.isNullOrBlank())) -> true
             addressSignature.isNotBlank() && current.addressSignature.isNotBlank() && addressSignature != current.addressSignature -> true
-            packageName.isNotBlank() && current.packageName.isNotBlank() && packageName != current.packageName && text.isNotBlank() -> true
+            packageName.isNotBlank() && current.packageName.isNotBlank() && packageName != current.packageName &&
+                text.isNotBlank() &&
+                (addressSignature.isNotBlank() ||
+                    (current.accessibility?.text.isNullOrBlank() && current.ocr?.text.isNullOrBlank())) -> true // session_start_guard_v2
             addressSignature.isBlank() && text.isNotBlank() &&
                 current.lastReadTextHash != null && current.lastReadTextHash != textHash &&
                 nowMillis - current.lastAtMillis >= EMPTY_READ_NEW_SESSION_GAP_MS -> true
@@ -406,11 +436,31 @@ object LiveFailureTraceStore {
     private fun currentSessionLocked(): TraceSession? = currentSessionId?.let { id -> sessions.lastOrNull { it.id == id } }
 
     private fun selectRelevantSessionLocked(): TraceSession? =
-        sessions.lastOrNull { session ->
-            session.addresses.isNotEmpty() ||
-                !session.accessibility?.text.isNullOrBlank() ||
-                !session.ocr?.text.isNullOrBlank()
-        } ?: sessions.lastOrNull()
+        sessions.lastOrNull(::looksLikeRideAttempt) ?: sessions.lastOrNull { session ->
+            session.events.any { event ->
+                event.stage in setOf("SCREENSHOT_FAIL", "ERROR", "DISCARDED")
+            } || !session.accessibility?.text.isNullOrBlank() || !session.ocr?.text.isNullOrBlank()
+        } ?: sessions.lastOrNull() // session_selects_ride_attempt_v2
+
+    private fun looksLikeRideAttempt(session: TraceSession): Boolean {
+        if (session.addresses.isNotEmpty()) return true
+        val combinedText = listOfNotNull(session.accessibility?.text, session.ocr?.text)
+            .joinToString(" ")
+            .lowercase(Locale.ROOT)
+        return listOf(
+            "pedido de viagem",
+            "solicitacao de viagem",
+            "solicitação de viagem",
+            "aceitar por",
+            "ofereca sua tarifa",
+            "ofereça sua tarifa",
+            "preco justo",
+            "preço justo",
+            "corrida",
+            "embarque",
+            "destino",
+        ).any(combinedText::contains)
+    }
 
     private fun addEventLocked(session: TraceSession, stage: String, details: String, nowMillis: Long) {
         val cleanDetails = oneLine(details).take(MAX_DETAIL_LENGTH)

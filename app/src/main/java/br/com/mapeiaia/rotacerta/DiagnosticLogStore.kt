@@ -21,6 +21,7 @@ object DiagnosticLogStore {
     fun attach(@Suppress("UNUSED_PARAMETER") context: Context) = Unit
 
     fun record(source: String, message: String, nowMillis: Long = System.currentTimeMillis()) {
+        if (!DiagnosticRuntimeGate.isEnabled()) return
         val cleanSource = source
             .trim()
             .ifBlank { "unknown" }
@@ -37,10 +38,13 @@ object DiagnosticLogStore {
         }
     }
 
-    fun dump(maxEvents: Int = MaxEvents): String = synchronized(lock) {
+    fun dump(maxEvents: Int = MaxEvents): String {
+        if (!DiagnosticRuntimeGate.isEnabled()) return ""
+        return synchronized(lock) {
         events
             .takeLast(maxEvents.coerceIn(1, MaxEvents))
             .joinToString("\n")
+        }
     }
 
     fun clear() {

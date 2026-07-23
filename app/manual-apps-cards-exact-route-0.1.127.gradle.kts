@@ -34,6 +34,7 @@ fun patchManualAppsCardsExactRoute127(serviceFile: java.io.File, mainFile: java.
 
     var service = serviceFile.readText()
     val dollar = "$"
+    return // performance_core_0_1_128 disables manual_exact_rewrite_0_1_127
 
     // A limpeza destrutiva da 0.1.126 e substituida por uma inicializacao vazia,
     // que preserva escolhas e modelos criados manualmente depois da atualizacao.

@@ -9,6 +9,7 @@ import org.junit.Test
 class DiagnosticLogStoreTest {
     @Before
     fun setUp() {
+        DiagnosticRuntimeGate.setEnabled(true)
         DiagnosticLogStore.clear()
     }
 

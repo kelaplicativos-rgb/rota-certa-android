@@ -26,7 +26,11 @@ data class AppSettings(
     val alternativeTargetEnabled: Boolean = true,
     val requireRegisteredRideCard: Boolean = false,
     val proximityAlertsEnabled: Boolean = true,
-    val proximityAlertDistanceMeters: Int = 200,
+    val proximityAlertDistanceMeters: Int = 500,
+    val diagnosticsEnabled: Boolean = false,
+    val automaticCardCaptureEnabled: Boolean = true,
+    val multiCardFocusLockEnabled: Boolean = true,
+    val proximityPopupAutoCloseEnabled: Boolean = true,
 )
 
 @Serializable
@@ -41,6 +45,7 @@ data class RotaCertaBackup(
     val capturedScreens: List<CapturedRideScreen> = emptyList(),
     val savedPlaces: List<SavedPlace> = emptyList(),
     val importedRadars: List<ImportedRadar> = emptyList(),
+    val quickReplies: List<QuickReply> = emptyList(),
 )
 
 @Serializable
@@ -84,6 +89,22 @@ data class CapturedRideScreen(
     val pickup: String? = null,
     val destination: String? = null,
     val fare: String? = null,
+    val imagePath: String? = null,
+    val autoCaptured: Boolean = false,
+    val cropLeft: Int? = null,
+    val cropTop: Int? = null,
+    val cropRight: Int? = null,
+    val cropBottom: Int? = null,
+)
+
+
+@Serializable
+data class QuickReply(
+    val id: String,
+    val title: String = "",
+    val text: String,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
 )
 
 @Serializable
@@ -164,3 +185,7 @@ data class LiveDiagnostic(
     val error: String? = null,
     val diagnosticLog: String = "",
 )
+
+// universal_defaults_v2_0_1_95
+
+// manual_models_optional_finalizer_0_1_127

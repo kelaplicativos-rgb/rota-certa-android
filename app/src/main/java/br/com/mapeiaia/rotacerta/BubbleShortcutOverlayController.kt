@@ -10,6 +10,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import kotlin.math.roundToInt
 
@@ -27,6 +28,9 @@ class BubbleShortcutOverlayController(
 ) {
     private var shortcutView: View? = null
     private var alertPopupView: View? = null
+    private var activePopupId: String? = null
+    private var alertDistanceView: TextView? = null
+    private var alertProgressView: ProgressBar? = null
 
     val shortcutsVisible: Boolean
         get() = shortcutView != null
@@ -49,14 +53,27 @@ class BubbleShortcutOverlayController(
         alert: SavedPlace,
         distanceMeters: Double,
         actions: ProximityAlertPopupActions,
+    ) = showOrUpdateProximityAlert(
+        alert = alert,
+        distanceMeters = distanceMeters,
+        firstAlertDistanceMeters = alert.alertDistanceMeters ?: 500,
+        actions = actions,
+    )
+
+    fun showOrUpdateProximityAlert(
+        alert: SavedPlace,
+        distanceMeters: Double,
+        firstAlertDistanceMeters: Int,
+        actions: ProximityAlertPopupActions,
     ) {
-        if (alert.type != SavedPlaceType.ProximityAlert) {
-            trace("proximity.popup.ignored_non_alert id=${alert.id}")
+        if (alert.type != SavedPlaceType.ProximityAlert) return
+        val popupId = "saved:${alert.id}"
+        if (activePopupId == popupId && alertPopupView != null) {
+            updateDistance(distanceMeters, firstAlertDistanceMeters)
             return
         }
         hideShortcuts()
         hideProximityAlert()
-
         val container = alertContainer()
         container.addView(TextView(context).apply {
             text = "⚠️  ${alert.name}"
@@ -65,9 +82,20 @@ class BubbleShortcutOverlayController(
             typeface = Typeface.DEFAULT_BOLD
             contentDescription = "Alerta ${alert.name}"
         })
+        alertDistanceView = TextView(context).apply {
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(6), 0, dp(4))
+        }.also(container::addView)
+        alertProgressView = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = firstAlertDistanceMeters.coerceAtLeast(1)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
+            setPadding(0, 0, 0, dp(4))
+        }.also(container::addView)
         container.addView(TextView(context).apply {
-            text = "A aproximadamente ${distanceMeters.roundToInt()} m"
-            textSize = 14f
+            text = "O popup fecha automaticamente depois que voce passar pelo ponto."
+            textSize = 12f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(4), 0, dp(8))
         })
@@ -77,28 +105,94 @@ class BubbleShortcutOverlayController(
             addView(popupButton("Editar") { hideProximityAlert(); actions.onEdit(alert) })
             addView(popupButton("Excluir") { showDeleteConfirmation(alert, actions) })
         })
-
-        val params = WindowManager.LayoutParams(
-            dp(310).coerceAtMost(context.resources.displayMetrics.widthPixels - dp(24)),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = dp(72)
-        }
+        val params = popupLayoutParams()
         if (runCatching { windowManager.addView(container, params) }.isSuccess) {
             alertPopupView = container
+            activePopupId = popupId
+            updateDistance(distanceMeters, firstAlertDistanceMeters)
             trace("proximity.popup.shown id=${alert.id} distance=${distanceMeters.roundToInt()}")
         }
     }
 
-    fun hideProximityAlert() {
+    fun showImportedRadarAlert(
+        radar: ImportedRadar,
+        distanceMeters: Double,
+        firstAlertDistanceMeters: Int = 500,
+        onDismiss: () -> Unit = {},
+    ) {
+        val popupId = "radar:${radar.id}"
+        if (activePopupId == popupId && alertPopupView != null) {
+            updateDistance(distanceMeters, firstAlertDistanceMeters)
+            return
+        }
+        hideShortcuts()
+        hideProximityAlert()
+        val container = alertContainer()
+        container.addView(TextView(context).apply {
+            text = "⚠️  ${importedRadarTypeLabel(radar.type)}"
+            textSize = 19f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        radar.speedKmh?.let { speed ->
+            container.addView(TextView(context).apply {
+                text = "Limite $speed km/h"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+            })
+        }
+        alertDistanceView = TextView(context).apply {
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(6), 0, dp(4))
+        }.also(container::addView)
+        alertProgressView = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = firstAlertDistanceMeters.coerceAtLeast(1)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
+        }.also(container::addView)
+        container.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(popupButton("Fechar") { hideProximityAlert(); onDismiss() })
+        })
+        if (runCatching { windowManager.addView(container, popupLayoutParams()) }.isSuccess) {
+            alertPopupView = container
+            activePopupId = popupId
+            updateDistance(distanceMeters, firstAlertDistanceMeters)
+            trace("imported_radar.popup.shown id=${radar.id} distance=${distanceMeters.roundToInt()}")
+        }
+    }
+
+    fun hideProximityAlert(expectedId: String? = null) {
+        if (expectedId != null && activePopupId != "saved:$expectedId" && activePopupId != "radar:$expectedId") return
         val view = alertPopupView ?: return
         runCatching { windowManager.removeView(view) }
         alertPopupView = null
+        activePopupId = null
+        alertDistanceView = null
+        alertProgressView = null
         trace("proximity.popup.closed")
+    }
+
+    private fun updateDistance(distanceMeters: Double, firstAlertDistanceMeters: Int) {
+        val rounded = distanceMeters.roundToInt().coerceAtLeast(0)
+        alertDistanceView?.text = if (rounded <= 5) "Agora" else "$rounded m"
+        alertProgressView?.let { progress ->
+            progress.max = firstAlertDistanceMeters.coerceAtLeast(1)
+            progress.progress = (firstAlertDistanceMeters - rounded).coerceIn(0, progress.max)
+        }
+    }
+
+    private fun popupLayoutParams() = WindowManager.LayoutParams(
+        dp(310).coerceAtMost(context.resources.displayMetrics.widthPixels - dp(24)),
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+        PixelFormat.TRANSLUCENT,
+    ).apply {
+        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        y = dp(72)
     }
 
     fun hideAll() {
@@ -115,8 +209,8 @@ class BubbleShortcutOverlayController(
 
         val columns = 3
         val rows = (BubbleShortcutCatalog.modules.size + columns - 1) / columns
-        val menuWidth = dp(206)
-        val estimatedMenuHeight = dp(14 + rows * 66)
+        val menuWidth = dp(194)
+        val estimatedMenuHeight = dp(14 + rows * 58)
         val menu = GridLayout(context).apply {
             columnCount = columns
             rowCount = rows
@@ -173,7 +267,7 @@ class BubbleShortcutOverlayController(
 
     private fun shortcutBubble(spec: BubbleShortcutSpec, action: () -> Unit): TextView = TextView(context).apply {
         text = spec.displayText
-        textSize = 10f
+        textSize = 9.5f
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
@@ -186,8 +280,8 @@ class BubbleShortcutOverlayController(
             setStroke(dp(2), Color.argb(230, 205, 180, 255))
         }
         layoutParams = GridLayout.LayoutParams().apply {
-            width = dp(62)
-            height = dp(62)
+            width = dp(54)
+            height = dp(54)
             setMargins(dp(2), dp(2), dp(2), dp(2))
         }
         setOnClickListener { action() }
@@ -244,3 +338,7 @@ data class ProximityAlertPopupActions(
     val onDelete: (SavedPlace) -> Unit,
     val onDismiss: () -> Unit = {},
 )
+
+// popup_only_shortcut_grid_0_1_119
+
+// popup_close_after_tap_0_1_120

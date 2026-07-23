@@ -8,6 +8,7 @@ import org.junit.Test
 class ProximityAlertEngineTest {
     @Before
     fun setUp() {
+        DiagnosticRuntimeGate.setEnabled(true)
         DiagnosticLogStore.clear()
     }
 

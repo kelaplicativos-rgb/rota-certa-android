@@ -172,4 +172,60 @@ class UniversalScreenAddressParserTest {
 
         assertEquals("Rua Doutor Paulo - Centro, Tres Coracoes - MG", fields.destination)
     }
+
+    @Test
+    fun wrappedNeighborhoodAfterDanglingSaoIsJoined() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            Av. Mateo Bei, Sao Mateus, Sao
+            12 minutos (3.4 km)
+            Rua Pedro da Lomba, 188, Sao
+            Rafael, Sao Paulo
+            """.trimIndent(),
+        )
+
+        assertEquals("Av. Mateo Bei, Sao Mateus, Sao", fields.pickup)
+        assertEquals("Rua Pedro da Lomba, 188, Sao Rafael, Sao Paulo", fields.destination)
+    }
+
+
+    @Test
+    fun realInDrivePickupSplitAfterAvenidaIsRecomposed() {
+        val fields = UniversalScreenAddressParser.parse(
+            """
+            Pedido de viagem
+            R$ 2,3/km  ~1,4 km
+            R$ 15
+            Comercial Esperanca - Sao
+            Paulo Sao Mateus (Avenida
+            Mateo Bei - Cidade Sao Mateus,
+            Sao Paulo - State of Sao Paulo)
+            Av. Maria Luiza Americano, 2673
+            (Cidade Lider)
+            PIX
+            Aceitar por R$ 15
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            "Avenida Mateo Bei - Cidade Sao Mateus, Sao Paulo - State of Sao Paulo",
+            fields.pickup,
+        )
+        assertEquals("Av. Maria Luiza Americano, 2673 (Cidade Lider)", fields.destination)
+    }
+
+    @Test
+    fun isolatedStreetWordWithoutContinuationDoesNotBecomeAddress() {
+        val addresses = UniversalScreenAddressParser.findAddresses(
+            """
+            Catalogo de vias
+            Avenida
+            Produto em promocao
+            Rua
+            """.trimIndent(),
+        )
+
+        assertTrue(addresses.isEmpty())
+    }
+
 }

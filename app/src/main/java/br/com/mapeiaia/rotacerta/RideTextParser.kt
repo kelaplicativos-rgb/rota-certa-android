@@ -37,6 +37,7 @@ class RideTextParser {
         "lanchonete",
         "mercado",
         "hospital",
+        "passagem",
     )
     private val pickupMarkers = listOf("embarque", "partida", "origem", "buscar", "coleta", "pickup")
     private val destinationMarkers = listOf("destino final", "destino", "chegada", "final", "desembarque", "dropoff", "para onde", "ir para")
@@ -67,10 +68,9 @@ class RideTextParser {
         }
 
         val addresses = findAddressCandidates(lines)
-        val pickup = findAddressAfterMarker(lines, pickupMarkers) ?: addresses.firstOrNull()
-        val destination = findAddressAfterMarker(lines, destinationMarkers) ?: addresses.asReversed().firstOrNull {
-            !it.equals(pickup, ignoreCase = true)
-        }
+        val pickup = findAddressAfterMarker(lines, pickupMarkers)
+            ?: addresses.firstOrNull()?.takeIf { addresses.size > 1 }
+        val destination = findAddressAfterMarker(lines, destinationMarkers) ?: addresses.lastOrNull()
 
         return RideParseResult(
             fields = RideFields(
@@ -133,6 +133,9 @@ class RideTextParser {
         var started = false
         for (index in fareIndex + 1 until lines.size) {
             val line = lines[index]
+            if (index > fareIndex + 1 && isAddressContinuation(cleanAddressLine(line), cleanAddressLine(lines[index - 1]))) {
+                continue
+            }
             if (isActionLine(line) || isInDriveOfferBoundary(line)) {
                 if (started) break
                 continue
@@ -437,6 +440,9 @@ class RideTextParser {
         val candidates = mutableListOf<String>()
 
         lines.forEachIndexed { index, rawLine ->
+            if (index > 0 && isAddressContinuation(cleanAddressLine(rawLine), cleanAddressLine(lines[index - 1]))) {
+                return@forEachIndexed
+            }
             buildAddressBlock(lines, index, rawLine)?.let { candidates += it }
         }
 
@@ -486,11 +492,16 @@ class RideTextParser {
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
+        val previousEndsWithConnector = listOf(" de", " da", " do", " das", " dos").any { previousNormalized.endsWith(it) }
+        val startsWithBareHouseNumber = Regex("""^\d{1,6}(?:[-/][\p{L}\d]+|[\p{L}])?(?:\s|,|\()""", RegexOption.IGNORE_CASE)
+            .containsMatchIn(value)
 
-        if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
+        if (looksLikeAddress(value) && !previousEndsWithStreetType && !previousEndsWithConnector && !startsWithBareHouseNumber) return false
 
         return previous.endsWith(",") ||
             previousEndsWithStreetType ||
+            previousEndsWithConnector ||
+            startsWithBareHouseNumber ||
             previousHasOpenParenthesis ||
             normalized.startsWith("(") ||
             normalized.startsWith("da ") ||

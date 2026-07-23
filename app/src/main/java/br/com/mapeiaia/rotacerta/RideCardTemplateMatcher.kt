@@ -238,6 +238,14 @@ object RideCardTemplateMatcher {
             hasTwoMarkers = hasTwoMarkers,
             endpointTextLines = endpointTextLines,
         )
+        val hasOpenedMarkerlessInDriveContract =
+            "pedido de viagem" in normalized &&
+                "pedidos de viagem" !in normalized &&
+                addressCount >= 2 &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized)
+        if (hasOpenedMarkerlessInDriveContract) {
+            features += "card.contract.indrive_opened_single" // markerless_opened_indrive_contract_0_1_128
+        }
         if (hasRouteBlock) features += "card.crop.route_block"
         return features
     }
@@ -253,6 +261,12 @@ object RideCardTemplateMatcher {
         endpointTextLines: Int,
     ): Boolean {
         if (ownAppMarkers.any { marker -> marker in normalized }) return false
+        val hasOpenedMarkerlessInDriveCard =
+            "pedido de viagem" in normalized &&
+                "pedidos de viagem" !in normalized &&
+                addressCount >= 2 &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized)
+        if (hasOpenedMarkerlessInDriveCard) return true // markerless_opened_indrive_route_block_0_1_128
         if (timeDistanceCount >= 2 && addressCount >= 1) return true
         if (timeDistanceCount >= 1 && addressCount >= 2) return true
         if (hasMarkers && distanceCount >= 1 && addressCount >= 2) return true
