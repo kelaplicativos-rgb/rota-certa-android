@@ -25,6 +25,9 @@ fun replaceCaptureUiFunctionChecklist6(source: String, signature: String, replac
 fun patchCaptureLibraryUiFinalChecklist6(mainFile: java.io.File) {
     if (!mainFile.exists()) throw GradleException("MainActivity.kt ausente para a biblioteca de capturas.")
     var main = mainFile.readText()
+    if ("capture_library_split_final_checklist_6" in main &&
+        "capture_card_component_final_checklist_6" in main
+    ) return
     val dollar = "$"
 
     val replacement = """@Composable
@@ -192,7 +195,7 @@ private fun AutomaticRideCaptureCardChecklist6(
 
     main = replaceCaptureUiFunctionChecklist6(
         source = main,
-        signature = "private fun AutomaticRideCaptureGallery129()",
+        signature = "@Composable\nprivate fun AutomaticRideCaptureGallery129()",
         replacement = replacement,
     )
 
