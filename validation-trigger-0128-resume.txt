@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation after documenting the quick reply fill contract.
+Trigger Rota Certa 0.1.128 validation with explicit Android build-tools wrappers.
