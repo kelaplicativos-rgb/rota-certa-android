@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta
 
+import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
 import java.text.SimpleDateFormat
@@ -93,7 +94,7 @@ object ManualTechnicalReportBuilder {
         SimpleDateFormat("dd/MM/yyyy HH:mm:ss.SSS", Locale("pt", "BR")).format(Date(millis))
 
     private fun isAccessibilityEnabled(context: Context): Boolean {
-        val component = "${context.packageName}/${LiveRideAccessibilityService::class.java.name}"
+        val component = ComponentName(context, LiveRideAccessibilityService::class.java).flattenToString()
         val enabledServices = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
