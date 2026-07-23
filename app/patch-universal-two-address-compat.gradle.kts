@@ -98,3 +98,7 @@ apply(from = "version-0.1.124.gradle.kts")
 apply(from = "version-0.1.125.gradle.kts")
 apply(from = "version-0.1.126.gradle.kts")
 apply(from = "version-0.1.127.gradle.kts")
+
+// Deve permanecer como ultimo aplicador: nenhuma versao ou compatibilidade
+// posterior pode reabrir leitura, OCR, screenshot ou rota fora da selecao manual.
+apply(from = "strict-selected-app-read-checklist-1.gradle.kts")
