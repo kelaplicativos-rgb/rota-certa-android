@@ -16,7 +16,7 @@ concurrency:
 env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
-  EXPECTED_VERSION: 0.1.132
+  EXPECTED_VERSION: 0.1.133
   GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
 jobs:
@@ -54,16 +54,16 @@ jobs:
           set -euo pipefail
           grep -q 'TripConfirmationFormatter' app/src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationFormatter.kt
           grep -q 'WorkRegionPinsCard' app/src/main/java/br/com/mapeiaia/rotacerta/WorkRegionPinsCard.kt
-          grep -q 'TARGET_RESULT_MILLIS' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
+          grep -q 'TARGET_RESULT_MILLIS = 850L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
+          grep -q 'OCR_FALLBACK_DELAY_MILLIS = 40L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'DirectionalProximityAlertEngine' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
           grep -q 'QuickRepliesActivity' app/src/main/java/br/com/mapeiaia/rotacerta/QuickRepliesActivity.kt
           grep -q 'GoogleMapsApiKeyPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsApiKeyPolicy.kt
-          grep -q 'RealWorldRideCardMatchPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/RealWorldRideCardMatchPolicy.kt
-          grep -q 'SelectedRideOverlayWindowPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideOverlayWindowPolicy.kt
-          grep -q 'FullScreenRideCapturePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/FullScreenRideCapturePolicy.kt
+          grep -q 'SimpleSavedAppFarolPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt
           grep -q 'ManualRideCardCapturePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCapturePolicy.kt
           grep -q 'ManualRideCardCaptureBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCaptureBubbleShortcutModule.kt
-          grep -q 'version-0.1.132.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'simple-saved-app-fast-farol-final-checklist-13.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'version-0.1.133.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
@@ -107,6 +107,10 @@ jobs:
           unzip -p "$APK" classes.dex > dist/classes.dex
           DEX_SIZE_BYTES="$(stat -c%s dist/classes.dex)"
           test "$DEX_SIZE_BYTES" -gt 1000000
+          strings dist/classes.dex > dist/dex-strings.txt
+          grep -q 'SimpleSavedAppFarolPolicy' dist/dex-strings.txt
+          grep -q 'A tela mudou; cor e quilometros anteriores removidos imediatamente.' dist/dex-strings.txt
+          grep -q 'Dois enderecos identificados; calculando o ultimo destino.' dist/dex-strings.txt
           rm -f dist/classes.dex
 
           APK_SHA256="$(sha256sum dist/rota-certa-final.apk | awk '{print $1}')"
@@ -122,11 +126,14 @@ jobs:
             echo "Tamanho: $APK_SIZE_BYTES bytes ($APK_SIZE_MB MB)"
             echo "SHA-256: $APK_SHA256"
             echo "Google Maps API: incluída no BuildConfig"
-            echo "Captura manual de card: validada nos contratos e testes"
+            echo "Contrato do farol: aplicativo salvo + dois endereços; último endereço é o destino"
+            echo "Modelo visual/passageiro/preço: fora do caminho crítico"
+            echo "Mudança de tela: limpeza imediata de cor e km"
+            echo "Cache exato: aplicado antes do amarelo"
+            echo "Orçamento alvo: 850 ms"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
-            echo "Recursos essenciais: verificados nos fontes e pelos testes"
             echo "Testes unitários: aprovados"
           } | tee dist/validation.txt
 
@@ -172,18 +179,20 @@ jobs:
           {
             echo "## Rota Certa ${VERSION_NAME}"
             echo
-            echo "Build integrado e validado automaticamente após o relatório real da sessão."
+            echo "Farol simplificado após a validação real do usuário."
             echo
             echo "- Pacote: \`$EXPECTED_PACKAGE\`"
             echo "- Version code: \`$VERSION_CODE\`"
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
+            echo "- Aplicativo capturado é salvo automaticamente"
+            echo "- Dois endereços iniciam a rota e o último é o destino"
+            echo "- Modelo, passageiro e preço não bloqueiam a decisão"
+            echo "- Mudança de tela limpa cor e km imediatamente"
+            echo "- Cache exato é aplicado antes do amarelo"
             echo "- Chave Google Maps API incluída no build"
-            echo "- Bolinha Capturar card salva print completo e cria modelo"
-            echo "- Testes unitários aprovados"
-            echo "- APK assinado e verificado"
-            echo "- Estrutura e DEX validados"
+            echo "- APK assinado, testado e verificado"
           } > dist/release-notes.md
 
           gh release create "$TAG" \
