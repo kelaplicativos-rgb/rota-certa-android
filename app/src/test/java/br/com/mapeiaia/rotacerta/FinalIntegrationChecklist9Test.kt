@@ -13,7 +13,7 @@ class FinalIntegrationChecklist9Test {
     ).firstOrNull(File::exists)?.readText() ?: error("$name não encontrado")
 
     @Test
-    fun accessiblePopupRemainsUsableWithFifteenModules() {
+    fun accessiblePopupRemainsUsableWithSixteenModules() {
         val overlay = source("BubbleShortcutOverlayController.kt")
 
         assertTrue("popup grande precisa de ScrollView", "import android.widget.ScrollView" in overlay)
@@ -68,9 +68,10 @@ class FinalIntegrationChecklist9Test {
         BubbleShortcutCatalog.requireValid()
         val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
 
-        assertEquals(15, ids.size)
+        assertEquals(16, ids.size)
         assertTrue("Copiar viagem ausente", "copy_trip_confirmation" in ids)
         assertTrue("Respostas rápidas ausentes", "quick_replies" in ids)
+        assertTrue("Captura manual de card ausente", "manual_card_capture" in ids)
         assertFalse("Leitura deve ficar em Controles gerais", "reading" in ids)
         assertFalse("Permissão deve ficar em Controles gerais", "permissions" in ids)
         assertEquals(ids.size, ids.distinct().size)
