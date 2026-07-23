@@ -38,7 +38,8 @@ fun verifySimpleFarolChecklist13(root: java.io.File) {
     }
     listOf(
         "SimpleSavedAppFarolPolicy.evaluate",
-        "evaluationChecklist13.addresses",
+        "evaluationChecklist13.active",
+        "evaluationChecklist13.pickup",
         "evaluationChecklist13.destination",
         "cachedDrivingDistancesFromAddressKm",
     ).forEach { required ->
