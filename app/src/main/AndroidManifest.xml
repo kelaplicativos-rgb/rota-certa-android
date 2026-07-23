@@ -22,6 +22,11 @@
             android:exported="false"
             android:label="Selecionar aplicativos de corrida" />
         <activity
+            android:name=".QuickRepliesActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="Respostas rápidas" />
+        <activity
             android:name=".BlaBlaCarCollectorActivity"
             android:exported="false"
             android:label="Assistente de Viagens" />
