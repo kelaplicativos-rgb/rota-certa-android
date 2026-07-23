@@ -16,7 +16,8 @@ concurrency:
 env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
-  EXPECTED_VERSION: 0.1.130
+  EXPECTED_VERSION: 0.1.131
+  GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
 jobs:
   build-test-validate-release:
@@ -56,7 +57,11 @@ jobs:
           grep -q 'TARGET_RESULT_MILLIS' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'DirectionalProximityAlertEngine' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
           grep -q 'QuickRepliesActivity' app/src/main/java/br/com/mapeiaia/rotacerta/QuickRepliesActivity.kt
-          grep -q 'version-0.1.130.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'GoogleMapsApiKeyPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsApiKeyPolicy.kt
+          grep -q 'RealWorldRideCardMatchPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/RealWorldRideCardMatchPolicy.kt
+          grep -q 'SelectedRideOverlayWindowPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SelectedRideOverlayWindowPolicy.kt
+          grep -q 'FullScreenRideCapturePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/FullScreenRideCapturePolicy.kt
+          grep -q 'version-0.1.131.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
@@ -69,7 +74,7 @@ jobs:
       - name: Build final signed debug APK
         run: ./gradlew clean :app:assembleDebug --stacktrace
 
-      - name: Validate package, version, signature and APK contents
+      - name: Validate package, version, API key, signature and APK contents
         shell: bash
         run: |
           set -euo pipefail
@@ -77,6 +82,7 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
 
           mkdir -p dist
           cp "$APK" dist/rota-certa-final.apk
@@ -113,11 +119,12 @@ jobs:
             echo "Version code: $VERSION_CODE"
             echo "Tamanho: $APK_SIZE_BYTES bytes ($APK_SIZE_MB MB)"
             echo "SHA-256: $APK_SHA256"
+            echo "Google Maps API: incluída no BuildConfig"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
             echo "Recursos essenciais: verificados nos fontes e pelos testes"
-            echo "Testes unitários: 383 aprovados"
+            echo "Testes unitários: aprovados"
           } | tee dist/validation.txt
 
           {
@@ -162,14 +169,15 @@ jobs:
           {
             echo "## Rota Certa ${VERSION_NAME}"
             echo
-            echo "Build integrado e validado automaticamente."
+            echo "Build integrado e validado automaticamente após o teste real em vídeo."
             echo
             echo "- Pacote: \`$EXPECTED_PACKAGE\`"
             echo "- Version code: \`$VERSION_CODE\`"
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
-            echo "- 383 testes unitários aprovados"
+            echo "- Chave Google Maps API incluída no build"
+            echo "- Testes unitários aprovados"
             echo "- APK assinado e verificado"
             echo "- Estrutura e DEX validados"
           } > dist/release-notes.md
