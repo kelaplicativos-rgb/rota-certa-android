@@ -28,7 +28,8 @@ fun verifyTripConfirmationChecklist8(
     listOf(
         "trip_confirmation_action_checklist_8",
         "trip_confirmation_copy_complete_checklist_8",
-        "collectVisibleTextForAction()",
+        "manual_trip_tree_read_checklist_8",
+        "collectTripConfirmationVisibleTextChecklist8()",
         "TripConfirmationFormatter.extractAndFormat",
         "ocrService.extractText",
         "ClipData.newPlainText(\"Confirmação da viagem\"",
@@ -46,6 +47,9 @@ fun verifyTripConfirmationChecklist8(
     }
     if ("startActivity(" in helperRegion || "sendEmail" in helperRegion || "sendMessage" in helperRegion) {
         throw GradleException("A confirmação deve apenas copiar; envio automático não é permitido.")
+    }
+    if ("collectVisibleTextForAction()" in helperRegion) {
+        throw GradleException("A confirmação voltou a depender da portaria dos aplicativos de corrida.")
     }
 
     val scanStart = service.indexOf("private fun startContinuousScan()")
