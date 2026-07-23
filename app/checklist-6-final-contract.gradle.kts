@@ -28,6 +28,23 @@ fun verifyChecklist6FinalContract(
     if ("requestAutomaticRideCapture129(\n                snapshotText" in service) {
         throw GradleException("Captura imediata voltou ao caminho crítico.")
     }
+
+    val captureStart = service.indexOf("private fun requestAutomaticRideCapture129(request:")
+    val screenshotStart = service.indexOf("private fun requestScreenshotAnalysis(", captureStart)
+    if (captureStart < 0 || screenshotStart < 0) throw GradleException("Captura final não localizada.")
+    val captureRegion = service.substring(captureStart, screenshotStart)
+    listOf(
+        "shouldScanPackage(packageName)",
+        "normalizePackageName(currentRootPackageName()) == packageName",
+        "universalRouteJob?.isActive == true",
+        "scope.launch(Dispatchers.IO)",
+    ).forEach { marker ->
+        if (marker !in captureRegion) throw GradleException("Portaria da captura final ausente: $marker")
+    }
+    if ("ocrService.extractText" in captureRegion) {
+        throw GradleException("Captura temporária voltou a executar OCR.")
+    }
+
     if ("@Composable\n@Composable\nprivate fun AutomaticRideCaptureGallery129" in main) {
         throw GradleException("Anotação Compose duplicada na galeria final.")
     }
