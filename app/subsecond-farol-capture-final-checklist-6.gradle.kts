@@ -51,9 +51,35 @@ fun insertCandidateFinalChecklist6(
     return source.substring(0, start) + region + source.substring(end)
 }
 
+fun verifySubsecondMarkersFinalChecklist6(service: String) {
+    listOf(
+        "subsecond_fields_final_checklist_6",
+        "automatic_capture_after_farol_final_checklist_6",
+        "candidate_without_template_final_checklist_6",
+        "candidate_without_match_final_checklist_6",
+        "subsecond_capture_helpers_final_checklist_6",
+        "low_priority_capture_final_checklist_6",
+        "trigger_default_dispatcher_final_checklist_6",
+        "matcher_default_dispatcher_final_checklist_6",
+        "overlay_before_storage_final_checklist_6",
+        "ocr_outside_critical_path_final_checklist_6",
+        "accessibility_won_skip_ocr_final_checklist_6",
+        "capture_cleanup_final_checklist_6",
+    ).forEach { marker ->
+        if (marker !in service) throw GradleException("Contrato final do checklist 6 ausente: $marker")
+    }
+    if ("requestAutomaticRideCapture129(\n                snapshotText" in service) {
+        throw GradleException("Captura imediata ainda está no caminho crítico.")
+    }
+}
+
 fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
     if (!serviceFile.exists()) throw GradleException("LiveRideAccessibilityService.kt ausente no checklist 6 final.")
     var service = serviceFile.readText()
+    if ("low_priority_capture_final_checklist_6" in service) {
+        verifySubsecondMarkersFinalChecklist6(service)
+        return
+    }
 
     if ("import kotlinx.coroutines.withContext" !in service) {
         val importAnchor = "import kotlinx.coroutines.launch\n"
@@ -61,19 +87,17 @@ fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
         service = service.replaceFirst(importAnchor, importAnchor + "import kotlinx.coroutines.withContext\n")
     }
 
-    if ("subsecond_fields_final_checklist_6" !in service) {
-        val anchor = "    private var lastAutomaticCaptureRequestedAt129: Long = 0L"
-        val anchorIndex = service.indexOf(anchor)
-        if (anchorIndex < 0) throw GradleException("Campos da captura 0.1.129 ausentes.")
-        val lineEnd = service.indexOf('\n', anchorIndex).let { if (it < 0) service.length else it + 1 }
-        val fields = """    private var deferredCandidateCaptureJobFinalChecklist6: Job? = null
+    val anchor = "    private var lastAutomaticCaptureRequestedAt129: Long = 0L"
+    val anchorIndex = service.indexOf(anchor)
+    if (anchorIndex < 0) throw GradleException("Campos da captura 0.1.129 ausentes.")
+    val lineEnd = service.indexOf('\n', anchorIndex).let { if (it < 0) service.length else it + 1 }
+    val fields = """    private var deferredCandidateCaptureJobFinalChecklist6: Job? = null
     private var deferredMatchedCaptureJobFinalChecklist6: Job? = null
     private var pendingMatchedCaptureFinalChecklist6: DeferredAutomaticRideCaptureChecklist6? = null
     private var lastCandidateCaptureSignatureFinalChecklist6: String? = null
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
 """
-        service = service.substring(0, lineEnd) + fields + service.substring(lineEnd)
-    }
+    service = service.substring(0, lineEnd) + fields + service.substring(lineEnd)
 
     val immediateCapture = """            requestAutomaticRideCapture129(
                 snapshotText = snapshotText,
@@ -122,7 +146,12 @@ fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
         deferredCandidateCaptureJobFinalChecklist6?.cancel()
         deferredCandidateCaptureJobFinalChecklist6 = scope.launch {
             delay(FarolCriticalPathPolicy.CANDIDATE_CAPTURE_DELAY_MILLIS)
-            if (request.screenHash != lastSnapshotHash || request.generation != universalScreenGeneration) return@launch
+            if (request.screenHash != lastSnapshotHash || request.generation != universalScreenGeneration) {
+                if (lastCandidateCaptureSignatureFinalChecklist6 == request.cardSignature) {
+                    lastCandidateCaptureSignatureFinalChecklist6 = null
+                }
+                return@launch
+            }
             requestAutomaticRideCapture129(request)
         }
     }
@@ -217,7 +246,6 @@ fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
 """
     service = replaceFunctionFinalChecklist6(service, oldCaptureSignature, captureReplacement)
 
-    // Processamento puro fora da thread principal da bolinha.
     val processStart = service.indexOf("    private suspend fun processRideText(")
     val processEnd = if (processStart >= 0) service.indexOf("    private fun resolveRidePackageForText(", processStart) else -1
     if (processStart < 0 || processEnd < 0) throw GradleException("processRideText ausente no checklist 6 final.")
@@ -248,7 +276,6 @@ fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
     )
     service = service.substring(0, processStart) + processRegion + service.substring(processEnd)
 
-    // Pinta primeiro; grava histórico e libera captura depois.
     val applyStart = service.indexOf("    private suspend fun applyUniversalTwoAddressResult(")
     val applyEnd = if (applyStart >= 0) service.indexOf("    private fun isUniversalResultFresh(", applyStart) else -1
     if (applyStart < 0 || applyEnd < 0) throw GradleException("Aplicação do farol ausente no checklist 6 final.")
@@ -268,7 +295,6 @@ fun patchSubsecondFarolFinalChecklist6(serviceFile: java.io.File) {
     )
     service = service.substring(0, applyStart) + applyRegion + service.substring(applyEnd)
 
-    // OCR somente como fallback, nunca durante rota ou depois de resultado válido.
     service = service.replace(
         "delay(90L)",
         "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS) // ocr_delay_final_checklist_6",
@@ -296,7 +322,6 @@ ${indentation})) return@runCatching // accessibility_won_skip_ocr_final_checklis
     screenshotRegion = screenshotRegion.substring(0, bitmapLineStart) + skip + screenshotRegion.substring(bitmapLineStart)
     service = service.substring(0, screenshotStart) + screenshotRegion + service.substring(screenshotEnd)
 
-    // O fallback periódico nunca solicita ML Kit de forma imediata.
     val scanStart = service.indexOf("    private fun startContinuousScan() {")
     val scanEnd = if (scanStart >= 0) service.indexOf("    private fun startProximityAlertMonitor()", scanStart) else -1
     if (scanStart < 0 || scanEnd < 0) throw GradleException("Ciclo de segurança ausente.")
@@ -306,38 +331,17 @@ ${indentation})) return@runCatching // accessibility_won_skip_ocr_final_checklis
         .replace("requestScreenshotAnalysis()", "strictSelectedRootPackageChecklist1()?.let(::scheduleScreenshotFallback127)")
     service = service.substring(0, scanStart) + scanRegion + service.substring(scanEnd)
 
-    if ("capture_cleanup_final_checklist_6" !in service) {
-        val destroyStart = service.indexOf("    override fun onDestroy() {")
-        val destroyOpen = if (destroyStart >= 0) service.indexOf('{', destroyStart) else -1
-        if (destroyOpen < 0) throw GradleException("onDestroy ausente no checklist 6 final.")
-        val cleanup = """
+    val destroyStart = service.indexOf("    override fun onDestroy() {")
+    val destroyOpen = if (destroyStart >= 0) service.indexOf('{', destroyStart) else -1
+    if (destroyOpen < 0) throw GradleException("onDestroy ausente no checklist 6 final.")
+    val cleanup = """
         deferredCandidateCaptureJobFinalChecklist6?.cancel()
         deferredMatchedCaptureJobFinalChecklist6?.cancel()
         pendingMatchedCaptureFinalChecklist6 = null // capture_cleanup_final_checklist_6
 """
-        service = service.substring(0, destroyOpen + 1) + cleanup + service.substring(destroyOpen + 1)
-    }
+    service = service.substring(0, destroyOpen + 1) + cleanup + service.substring(destroyOpen + 1)
 
-    listOf(
-        "subsecond_fields_final_checklist_6",
-        "automatic_capture_after_farol_final_checklist_6",
-        "candidate_without_template_final_checklist_6",
-        "candidate_without_match_final_checklist_6",
-        "subsecond_capture_helpers_final_checklist_6",
-        "low_priority_capture_final_checklist_6",
-        "trigger_default_dispatcher_final_checklist_6",
-        "matcher_default_dispatcher_final_checklist_6",
-        "overlay_before_storage_final_checklist_6",
-        "ocr_outside_critical_path_final_checklist_6",
-        "accessibility_won_skip_ocr_final_checklist_6",
-        "capture_cleanup_final_checklist_6",
-    ).forEach { marker ->
-        if (marker !in service) throw GradleException("Contrato final do checklist 6 ausente: $marker")
-    }
-    if ("requestAutomaticRideCapture129(\n                snapshotText" in service) {
-        throw GradleException("Captura imediata ainda está no caminho crítico.")
-    }
-
+    verifySubsecondMarkersFinalChecklist6(service)
     serviceFile.writeText(service)
 }
 
