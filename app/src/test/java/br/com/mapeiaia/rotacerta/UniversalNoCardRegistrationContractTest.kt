@@ -28,9 +28,9 @@ class UniversalNoCardRegistrationContractTest {
         listOf(
             "manual_registered_card_gate_0_1_127",
             "templates = packageCardTemplates",
-            "reason=no_template",
-            "reason=no_match",
-            "manual.card.gate accepted=true",
+            "manual_card_required",
+            "manual_card_waiting",
+            "registeredCardGate.markSeen()",
         ).forEach { required ->
             assertTrue("Portaria de modelo cadastrado ausente: $required", required in processBlock)
         }
