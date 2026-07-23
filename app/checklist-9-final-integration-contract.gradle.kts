@@ -9,6 +9,7 @@ fun verifyFinalIntegrationChecklist9(
     repositoryFile: java.io.File,
     decisionFile: java.io.File,
     formatterFile: java.io.File,
+    workRegionEditorFile: java.io.File,
     diagnosticGateFile: java.io.File,
     quickReplyFillerFile: java.io.File,
     directionalEngineFile: java.io.File,
@@ -21,6 +22,7 @@ fun verifyFinalIntegrationChecklist9(
     val repository = repositoryFile.readText()
     val decision = decisionFile.readText()
     val formatter = formatterFile.readText()
+    val workRegionEditor = workRegionEditorFile.readText()
     val diagnosticGate = diagnosticGateFile.readText()
     val quickReplyFiller = quickReplyFillerFile.readText()
     val directionalEngine = directionalEngineFile.readText()
@@ -29,7 +31,6 @@ fun verifyFinalIntegrationChecklist9(
         "home_target_pre_resolved_checklist_9",
         "home_target_editor_final_checklist_9",
         "WorkRegionPinsCard(",
-        "KeyboardActions(onDone = { addAddress() })",
         "general_controls_final_checklist_7",
         "popup_scale_ui_final_checklist_7",
         "Gerar e compartilhar relatorio",
@@ -38,6 +39,14 @@ fun verifyFinalIntegrationChecklist9(
     }
     if ("onSave = { saveQuickSettings(quickSettings) }" in main) {
         throw GradleException("Casa voltou a ser salva sem coordenada pré-validada.")
+    }
+    listOf(
+        "KeyboardActions(onDone = { addAddress() })",
+        "WorkRegionTargetPolicy.setEnabled",
+        "WorkRegionTargetPolicy.remove",
+        "Adicionar alfinete",
+    ).forEach { marker ->
+        if (marker !in workRegionEditor) throw GradleException("Editor dos alfinetes incompleto: $marker")
     }
 
     listOf(
@@ -176,6 +185,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
             repositoryFile = java.io.File(root, "Repositories.kt"),
             decisionFile = java.io.File(root, "DecisionEngine.kt"),
             formatterFile = java.io.File(root, "TripConfirmationFormatter.kt"),
+            workRegionEditorFile = java.io.File(root, "WorkRegionPinsCard.kt"),
             diagnosticGateFile = java.io.File(root, "DiagnosticRuntimeGate.kt"),
             quickReplyFillerFile = java.io.File(root, "QuickReplyAccessibilityFiller.kt"),
             directionalEngineFile = java.io.File(root, "DirectionalProximityAlertEngine.kt"),
