@@ -6,8 +6,9 @@ VERSION_FILE = ROOT / "version.properties"
 MATCHER_FILE = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt"
 
 matcher = MATCHER_FILE.read_text()
-marker = "markerless_opened_indrive_route_block_0_1_128"
-if marker not in matcher:
+matcher_changed = False
+route_marker = "markerless_opened_indrive_route_block_0_1_128"
+if route_marker not in matcher:
     function_start = matcher.find("    private fun isRouteCardCrop(")
     if function_start < 0:
         raise SystemExit("Funcao isRouteCardCrop nao encontrada")
@@ -29,6 +30,38 @@ if marker not in matcher:
         raise SystemExit("Inicio interno de isRouteCardCrop nao encontrado")
     block = block.replace(anchor, replacement, 1)
     matcher = matcher[:function_start] + block + matcher[function_end:]
+    matcher_changed = True
+
+contract_marker = "markerless_opened_indrive_contract_0_1_128"
+if contract_marker not in matcher:
+    function_start = matcher.find("    private fun deterministicFeaturesFor(")
+    if function_start < 0:
+        raise SystemExit("Funcao deterministicFeaturesFor nao encontrada")
+    function_end = matcher.find("\n    private fun ", function_start + 10)
+    if function_end < 0:
+        function_end = len(matcher)
+    block = matcher[function_start:function_end]
+    anchor = '''        if (hasRouteBlock) features += "card.crop.route_block"
+        return features
+'''
+    replacement = '''        val hasOpenedMarkerlessInDriveContract =
+            "pedido de viagem" in normalized &&
+                "pedidos de viagem" !in normalized &&
+                addressCount >= 2 &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized)
+        if (hasOpenedMarkerlessInDriveContract) {
+            features += "card.contract.indrive_opened_single" // markerless_opened_indrive_contract_0_1_128
+        }
+        if (hasRouteBlock) features += "card.crop.route_block"
+        return features
+'''
+    if anchor not in block:
+        raise SystemExit("Retorno de deterministicFeaturesFor nao encontrado")
+    block = block.replace(anchor, replacement, 1)
+    matcher = matcher[:function_start] + block + matcher[function_end:]
+    matcher_changed = True
+
+if matcher_changed:
     MATCHER_FILE.write_text(matcher)
 
 VERSION_FILE.write_text("VERSION_CODE=4067\nVERSION_NAME=0.1.128\n")
