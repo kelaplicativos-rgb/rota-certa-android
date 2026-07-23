@@ -1,7 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 
@@ -40,19 +40,19 @@ class ProximityAlertEngineTest {
     }
 
     @Test
-    fun logsImportedRadarSpeechFailureWithoutConsumingCounter() {
+    fun speechFailureDoesNotProduceContinuousProductionLog() {
         val speech = FakeProximitySpeech(importedResult = false)
         val engine = ProximityAlertEngine(speech) { 100_000L }
         val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
 
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) {}
 
-        val dump = DiagnosticLogStore.dump()
-        assertTrue(dump.contains("imported_radar.speak.failed id=radar-1 counter_not_consumed=true"))
+        assertEquals(1, speech.importedCalls)
+        assertFalse(DiagnosticLogStore.dump().isNotBlank())
     }
 
     @Test
-    fun exportsGlobalLogInsideImportedRadarDiagnosticReason() {
+    fun diagnosticReasonStaysFocusedWithoutGlobalProductionLog() {
         val speech = FakeProximitySpeech()
         val engine = ProximityAlertEngine(speech) { 100_000L }
         val radar = importedRadar("radar-1", Coordinate(0.0, 0.0005))
@@ -61,9 +61,9 @@ class ProximityAlertEngineTest {
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0), settings()) { diagnostic = it }
 
         val reason = requireNotNull(diagnostic).reason
-        assertTrue(reason.contains("Radar importado falado"))
-        assertTrue(reason.contains("--- LOG GLOBAL ---"))
-        assertTrue(reason.contains("imported_radar.speak.success id=radar-1 spoken=1"))
+        assertEquals(true, reason.contains("Radar importado falado"))
+        assertFalse(reason.contains("--- LOG GLOBAL ---"))
+        assertFalse(DiagnosticLogStore.dump().isNotBlank())
     }
 
     @Test
@@ -143,7 +143,7 @@ class ProximityAlertEngineTest {
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, 0.0015), settings()) {}
 
         assertEquals(0, speech.importedCalls)
-        assertTrue(DiagnosticLogStore.dump().contains("direction_match=false"))
+        assertFalse(DiagnosticLogStore.dump().isNotBlank())
     }
 
     @Test
@@ -168,7 +168,7 @@ class ProximityAlertEngineTest {
         engine.check(emptyList(), listOf(radar), Coordinate(0.0, -0.0015), settings()) {}
 
         assertEquals(1, speech.importedCalls)
-        assertTrue(DiagnosticLogStore.dump().contains("approaching=false"))
+        assertFalse(DiagnosticLogStore.dump().isNotBlank())
     }
 
     @Test
@@ -181,7 +181,7 @@ class ProximityAlertEngineTest {
         engine.check(listOf(alert), emptyList(), Coordinate(0.0, 0.0), settings()) {}
 
         assertEquals(0, speech.proximityCalls)
-        assertTrue(DiagnosticLogStore.dump().contains("initial_inside_waiting_exit"))
+        assertFalse(DiagnosticLogStore.dump().isNotBlank())
     }
 
     @Test
