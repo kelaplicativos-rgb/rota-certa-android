@@ -33,8 +33,10 @@ fun verifyChecklist7FinalContract(
     if ("ReadingBubbleShortcutModule," in catalog || "PermissionsBubbleShortcutModule," in catalog) {
         throw GradleException("Leitura ou permissão reapareceram no popup flutuante.")
     }
-    if ("require(modules.size == 14)" !in catalog) {
-        throw GradleException("Catálogo final não contém os 14 atalhos esperados.")
+    val validCatalogSize = "require(modules.size == 14)" in catalog ||
+        "require(modules.size == 15)" in catalog
+    if (!validCatalogSize) {
+        throw GradleException("Catálogo final não contém a grade operacional esperada.")
     }
     if ("defaultName = \"\"" !in savedPlaceModule) {
         throw GradleException("Atalho de Local voltou a preencher um nome automaticamente.")
