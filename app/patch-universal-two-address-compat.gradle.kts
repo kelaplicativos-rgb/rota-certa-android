@@ -101,6 +101,7 @@ apply(from = "version-0.1.127.gradle.kts")
 
 // Devem permanecer como os ultimos aplicadores: nenhuma versao ou
 // compatibilidade posterior pode reabrir leitura, OCR, screenshot ou rota fora
-// da selecao manual.
+// da selecao manual. Respostas rapidas entram depois e nao alteram essa portaria.
 apply(from = "strict-selected-app-read-checklist-1.gradle.kts")
 apply(from = "strict-selected-app-callback-final-checklist-1.gradle.kts")
+apply(from = "quick-replies-bubble-checklist-3.gradle.kts")
