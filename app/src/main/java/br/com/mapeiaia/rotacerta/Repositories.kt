@@ -16,6 +16,7 @@ import kotlinx.serialization.json.Json
 
 private val Context.dataStore by preferencesDataStore(name = "rota_certa")
 private const val MAX_IMPORTED_RADARS = 50000
+private const val MAX_WORK_REGION_PINS = 30
 
 class SettingsRepository(private val context: Context) {
     private val homeAddress = stringPreferencesKey("home_address")
@@ -27,6 +28,7 @@ class SettingsRepository(private val context: Context) {
     private val googleMapsApiKey = stringPreferencesKey("google_maps_api_key")
     private val homeCoordinate = stringPreferencesKey("home_coordinate")
     private val alternativeCoordinate = stringPreferencesKey("alternative_coordinate")
+    private val workRegionPinsKey = stringPreferencesKey("work_region_pins")
     private val bubbleOpacity = doublePreferencesKey("bubble_opacity")
     private val bubbleDarkMode = booleanPreferencesKey("bubble_dark_mode")
     private val restrictToSelectedRideApps = booleanPreferencesKey("restrict_to_selected_ride_apps")
@@ -65,6 +67,7 @@ class SettingsRepository(private val context: Context) {
                 ?: BuildConfig.GOOGLE_MAPS_API_KEY,
             homeCoordinate = decodeCoordinate(prefs[homeCoordinate]),
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
+            workRegionPins = decodeWorkRegionPins(prefs[workRegionPinsKey]),
             bubbleOpacity = prefs[bubbleOpacity] ?: 1.0,
             bubbleDarkMode = prefs[bubbleDarkMode] ?: false,
             restrictToSelectedRideApps = prefs[restrictToSelectedRideApps] ?: true,
@@ -135,6 +138,7 @@ class SettingsRepository(private val context: Context) {
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
             prefs[avoidedKeywords] = settings.avoidedKeywords
+            prefs[workRegionPinsKey] = json.encodeToString(settings.workRegionPins.take(MAX_WORK_REGION_PINS))
             prefs[bubbleOpacity] = settings.bubbleOpacity.coerceIn(0.25, 1.0)
             prefs[bubbleDarkMode] = settings.bubbleDarkMode
             prefs[restrictToSelectedRideApps] = settings.restrictToSelectedRideApps
@@ -296,4 +300,9 @@ class SettingsRepository(private val context: Context) {
 
     private fun decodeCoordinate(value: String?): Coordinate? =
         runCatching { json.decodeFromString<Coordinate>(value.orEmpty()) }.getOrNull()
+
+    private fun decodeWorkRegionPins(value: String?): List<WorkRegionPin> =
+        runCatching { json.decodeFromString<List<WorkRegionPin>>(value.orEmpty()) }
+            .getOrDefault(emptyList())
+            .take(MAX_WORK_REGION_PINS)
 }
