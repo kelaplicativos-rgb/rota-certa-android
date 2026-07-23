@@ -29,18 +29,16 @@ class FinalIntegrationChecklist9Test {
         val service = source("LiveRideAccessibilityService.kt")
 
         assertTrue("Casa precisa ser validada ao salvar", "home_target_pre_resolved_checklist_9" in main)
-        assertTrue("Casa precisa guardar coordenada", "homeCoordinate = coordinate" in main)
+        assertTrue("Casa precisa usar o resolvedor antes do farol", "workRegionAddressResolverChecklist9.resolve" in main)
+        assertTrue("Casa precisa salvar pelo callback validado", "onSave = ::saveHomeAddressValidatedChecklist9" in main)
         assertTrue("Enter precisa salvar a Casa", "keyboardActions = KeyboardActions(" in main)
-        assertFalse(
-            "Casa não pode continuar sendo salva sem validação",
-            "onSave = { saveQuickSettings(quickSettings) }" in main,
-        )
 
         val routeStart = service.indexOf("private suspend fun analyzeUniversalTwoAddress(")
         val routeEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", routeStart)
         assertTrue("bloco final da rota precisa existir", routeStart >= 0 && routeEnd > routeStart)
         val route = service.substring(routeStart, routeEnd)
         assertEquals(1, Regex("drivingDistancesFromAddressKm\\(").findAll(route).count())
+        assertTrue("Casa e alfinetes precisam usar o motor final", "decideWorkRegion(" in route)
         assertFalse("não pode haver rota sequencial por alvo", "routeDistanceKm(" in route)
     }
 
