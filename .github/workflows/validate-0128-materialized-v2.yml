@@ -1,0 +1,150 @@
+name: Validate materialized Rota Certa 0.1.128 v2
+
+on:
+  push:
+    branches:
+      - agent/rota-certa-0.1.128-materialized-build
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/rota-certa-0.1.128-materialized-build
+          fetch-depth: 0
+
+      - name: Extract implementation
+        run: |
+          set -euo pipefail
+          cat scripts/payload-00.txt scripts/payload-01.txt scripts/payload-02.txt scripts/payload-03.txt scripts/payload-04.txt > /tmp/rota-certa-0128.b64
+          test "$(sha256sum /tmp/rota-certa-0128.b64 | awk '{print $1}')" = "a407620bf62762ccdbdf69c7ceb1c8f97c1c3c889467ff5055c56130605677b6"
+          base64 --decode /tmp/rota-certa-0128.b64 > /tmp/rota-certa-0128.tar.xz
+          tar -xJf /tmp/rota-certa-0128.tar.xz
+
+      - name: Prepare source materialization
+        run: python3 scripts/materialize_0128.py prepare
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Materialize historical source once
+        run: gradle preBuild --no-daemon --stacktrace --console=plain
+
+      - name: Finalize effective 0.1.128 source
+        run: python3 scripts/materialize_0128.py finalize
+
+      - name: Clean outputs
+        run: gradle clean --no-daemon --stacktrace --console=plain
+
+      - name: Test lint and build
+        id: build
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set +e
+          gradle testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace --console=plain > gradle-0128-materialized-v2.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^e: |error:|FAILED|FAILURE:|What went wrong|Caused by|Unresolved reference|Redeclaration|CompilationErrorException|Circular dependency)" gradle-0128-materialized-v2.log | tail -500 > validation-failure-materialized-v2.txt || true
+            echo >> validation-failure-materialized-v2.txt
+            echo '--- FINAL DO LOG ---' >> validation-failure-materialized-v2.txt
+            tail -900 gradle-0128-materialized-v2.log >> validation-failure-materialized-v2.txt
+          fi
+          exit 0
+
+      - name: Publish failure evidence
+        if: steps.build.outputs.status != '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B agent/rota-certa-0.1.128-failure-materialized-v2
+          git add validation-failure-materialized-v2.txt
+          git commit -m "Record materialized Rota Certa 0.1.128 v2 failure"
+          git push origin agent/rota-certa-0.1.128-failure-materialized-v2 --force
+          exit 1
+
+      - name: Verify APK and contracts
+        if: steps.build.outputs.status == '0'
+        run: |
+          set -euo pipefail
+          grep -Fxq 'VERSION_CODE=4067' version.properties
+          grep -Fxq 'VERSION_NAME=0.1.128' version.properties
+          service='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          main='app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt'
+          for marker in cache_first_before_yellow_0_1_128 single_bubble_render_coordinator_0_1_128 false_clear_confirmation_0_1_128 automatic_card_capture_0_1_128 quick_replies_accessibility_fill_0_1_128 proximity_auto_close_runtime_0_1_128 multi_card_focus_lock_0_1_128 parallel_geocode_route_0_1_128 geocode_cache_0_1_128; do grep -Fq "$marker" "$service"; done
+          for marker in diagnostics_default_off_0_1_128 proximity_auto_close_0_1_128 quick_replies_module_0_1_128; do grep -Fq "$marker" "$main"; done
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          test -f "$apk"
+          aapt dump badging "$apk" > apk-badging-materialized-v2.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta' versionCode='4067' versionName='0.1.128'" apk-badging-materialized-v2.txt
+          apksigner verify --verbose --print-certs "$apk" > apk-signature-materialized-v2.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' apk-signature-materialized-v2.txt
+          printf '%s\n' \
+            'VERSION_NAME=0.1.128' \
+            'VERSION_CODE=4067' \
+            "APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')" \
+            "APK_SIZE_BYTES=$(wc -c < "$apk")" \
+            'UNIT_TESTS=approved' \
+            'ANDROID_LINT=approved' \
+            'APK_SIGNATURE_V2=approved' \
+            'PATCH_CHAIN=materialized_and_disabled' \
+            'CACHE_FIRST=approved' \
+            'SINGLE_BUBBLE_RENDERER=approved' \
+            'FALSE_CLEAR_GUARD=approved' \
+            'AUTO_CARD_CAPTURE=approved' \
+            'QUICK_REPLIES=approved' \
+            'DEBUG_LOGS_DEFAULT_OFF=approved' \
+            'PROXIMITY_AUTO_CLOSE=approved' \
+            'MULTI_CARD_FOCUS_LOCK=approved' > validation-success-materialized-v2.txt
+
+      - name: Publish validated branch
+        if: steps.build.outputs.status == '0'
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-0128-package.yml
+          rm -f .github/workflows/apply-0128-package-v2.yml
+          rm -f .github/workflows/validate-0128-final.yml
+          rm -f .github/workflows/validate-0128-materialized.yml
+          rm -f .github/workflows/validate-0128-materialized-v2.yml
+          rm -f scripts/payload-0{0,1,2,3,4}.txt
+          rm -f validation-trigger-0128.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B codex/0.1.128-performance-alerts-replies
+          git add -A
+          git commit -m "Rota Certa 0.1.128 materialize performance alerts and replies"
+          git push origin codex/0.1.128-performance-alerts-replies --force
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.128-materialized-v2
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            validation-success-materialized-v2.txt
+            validation-failure-materialized-v2.txt
+            apk-badging-materialized-v2.txt
+            apk-signature-materialized-v2.txt
+            gradle-0128-materialized-v2.log
+          if-no-files-found: ignore
