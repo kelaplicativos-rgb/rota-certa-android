@@ -3,6 +3,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_FILE = ROOT / "app/build.gradle.kts"
 VERSION_FILE = ROOT / "version.properties"
+MATCHER_FILE = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt"
+
+matcher = MATCHER_FILE.read_text()
+marker = "markerless_opened_indrive_route_block_0_1_128"
+if marker not in matcher:
+    anchor = '''        if (ownAppMarkers.any { marker -> marker in normalized }) return false
+'''
+    replacement = '''        if (ownAppMarkers.any { marker -> marker in normalized }) return false
+        val hasOpenedMarkerlessInDriveCard =
+            "pedido de viagem" in normalized &&
+                "pedidos de viagem" !in normalized &&
+                addressCount >= 2 &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized)
+        if (hasOpenedMarkerlessInDriveCard) return true // markerless_opened_indrive_route_block_0_1_128
+'''
+    if anchor not in matcher:
+        raise SystemExit("Inicio de isRouteCardCrop nao encontrado")
+    MATCHER_FILE.write_text(matcher.replace(anchor, replacement, 1))
 
 VERSION_FILE.write_text("VERSION_CODE=4067\nVERSION_NAME=0.1.128\n")
 
