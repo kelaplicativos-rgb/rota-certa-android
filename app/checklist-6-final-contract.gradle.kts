@@ -3,10 +3,12 @@ fun verifyChecklist6FinalContract(
     serviceFile: java.io.File,
     mainFile: java.io.File,
     mapsFile: java.io.File,
+    captureStoreFile: java.io.File,
 ) {
     val service = serviceFile.readText()
     val main = mainFile.readText()
     val maps = mapsFile.readText()
+    val captureStore = captureStoreFile.readText()
 
     listOf(
         "automatic_capture_after_farol_final_checklist_6",
@@ -73,6 +75,9 @@ fun verifyChecklist6FinalContract(
     ).forEach { marker ->
         if (marker !in maps) throw GradleException("Rede final perdeu o contrato 6: $marker")
     }
+    if ("capture_tmp_write_safety_checklist_6" !in captureStore) {
+        throw GradleException("Armazenamento final perdeu a proteção do JPEG temporário.")
+    }
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach {
@@ -81,6 +86,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
             serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
             mainFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").asFile,
             mapsFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt").asFile,
+            captureStoreFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/AutomaticRideCaptureStore.kt").asFile,
         )
     }
 }
