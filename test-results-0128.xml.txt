@@ -1,0 +1,816 @@
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.01">
+  <properties/>
+  <testcase name="changedPackageIsReplacedAndClearsPreviousDecision" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.002"/>
+  <testcase name="changedTextChangesSignatureAndClearsPreviousDecision" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.001"/>
+  <testcase name="clearWithCurrentCardExitsAndClearsPreviousDecision" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.0"/>
+  <testcase name="firstObservationEntersAndClearsPreviousDecision" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.001"/>
+  <testcase name="sameObservationDoesNotClearPreviousDecision" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.001"/>
+  <testcase name="clearWithoutCurrentCardDoesNothing" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.0"/>
+  <testcase name="stableSignatureIgnoresTransientOcrTextChanges" classname="br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycleTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalPoiDestinationRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalPoiDestinationRegressionTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.007">
+  <properties/>
+  <testcase name="establishmentWithStreetInsideParenthesesBecomesSecondDestination" classname="br.com.mapeiaia.rotacerta.UniversalPoiDestinationRegressionTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" tests="28" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.016">
+  <properties/>
+  <testcase name="rideAndImageViewerPackagesRemainReadable" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="emptyAccessibilityFromExternalAppStillReachesSourceGate" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="realMainActivityWindowEventIsRecognized" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.004"/>
+  <testcase name="duplicateHistoryIsBlockedInsideWindow" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="emptyReadCannotCancelFreshRouteInFlight" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="overlayEventIsNotMistakenForMainActivity" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="emptyAccessibilityFromOwnOverlayIsIgnored" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="passivePackagesDoNotStartLiveScanning" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="ocrFallbackRequiresTwoEmptyFramesBeforeClear" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.001"/>
+  <testcase name="addressListWithoutRideOfferEvidenceIsRejected" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.003"/>
+  <testcase name="activeFrameCancelsPendingEmptyConfirmation" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="windowRoundTripInvalidatesOcrRequest" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.001"/>
+  <testcase name="knownRideAppKeepsFastFallbackWithPartialOcr" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="protectionEndsAfterRouteOrGraceWindow" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="accessibilityKeepsPriorityOverCompetingOcr" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="malformedStreetIsRejectedEvenWithRideMetrics" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="ocrIsPausedWhileAccessibilityOwnsActiveCard" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="emptyOcrDoesNotClearValidAccessibilityCard" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="ordinaryProductPhotoWithAddressesNeverBecomesRideCard" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="passiveObservedWindowBlocksOcrEvenWhenResolvedRootStillShowsRideApp" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.003"/>
+  <testcase name="real99ScreenshotInImageViewerHasStrongRideEvidence" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="sameWindowAndScreenGenerationKeepsOcrFresh" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="accessibilityOverlayRootKeepsRideAppAsEffectiveWindow" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="nonEmptyAccessibilityIsNeverHiddenByOverlayPolicy" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="realMainActivityOwnsForegroundAndAllowsImmediateClear" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.001"/>
+  <testcase name="foreignEventCannotCancelFreshRouteInFlight" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="activeOcrUsesSlowerWatchdogWithoutDelayingFirstRead" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <testcase name="ocrOwnedCardThrottlesOnlyRedundantAccessibilityPolling" classname="br.com.mapeiaia.rotacerta.UniversalRuntimeGuardsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.GiguReferencePipelineRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.GiguReferencePipelineRegressionTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.017">
+  <properties/>
+  <testcase name="noisyMarkerlessInDriveReadReachesRegisteredCardCore" classname="br.com.mapeiaia.rotacerta.core.GiguReferencePipelineRegressionTest" time="0.017"/>
+  <testcase name="sanitizedFormattingProducesStableHash" classname="br.com.mapeiaia.rotacerta.core.GiguReferencePipelineRegressionTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.01">
+  <properties/>
+  <testcase name="matchesSameAppCroppedRouteCardWithDifferentAddresses" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.002"/>
+  <testcase name="doesNotMatchNavigationMapWithoutRidePackageAndCropTemplate" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.001"/>
+  <testcase name="acceptsMarkedAddressCropWithoutTimeOrKm" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.001"/>
+  <testcase name="doesNotMatchDifferentRideAppPackage" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.001"/>
+  <testcase name="savedTemplateDoesNotContainAdaptiveFeatures" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.0"/>
+  <testcase name="doesNotMatchNinetyNineCardByWeakStructuralFeaturesOnly" classname="br.com.mapeiaia.rotacerta.RideCardTemplateMatcherTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.031">
+  <properties/>
+  <testcase name="anyScreenModificationInvalidatesPreviousHashEvenWithSameAddresses" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.005"/>
+  <testcase name="numberedPickupAndUnnumberedDestinationActivateNormally" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.002"/>
+  <testcase name="twoStreetsWithoutNumbersActivateAndUseLastStreetAsDestination" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.002"/>
+  <testcase name="losingHouseNumberDoesNotInvalidateRecognizedStreet" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.002"/>
+  <testcase name="pricePhoneTimeDistanceAndRatingNeverBecomeAdditionalAddresses" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.001"/>
+  <testcase name="inDriveStyleCardAcceptsDestinationWithoutHouseNumber" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.003"/>
+  <testcase name="noNumberMarkersAreAcceptedAsStreetAddresses" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.001"/>
+  <testcase name="galleryOcrWrappedHouseNumbersActivateAndUseLastAddress" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.004"/>
+  <testcase name="unnumberedLastAddressIsNotDiscarded" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.003"/>
+  <testcase name="twoNumberedStreetsStillActivateAndUseLastAddressAsDestination" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.001"/>
+  <testcase name="oneStreetWithoutNumberStaysInactive" classname="br.com.mapeiaia.rotacerta.UniversalAddressTriggerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.004">
+  <properties/>
+  <testcase name="missingRouteDoesNotShowNumber" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.001"/>
+  <testcase name="waitingNeverShowsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.0"/>
+  <testcase name="badRideShowsFormattedDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.0"/>
+  <testcase name="hiddenNeverShowsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.0"/>
+  <testcase name="goodRideShowsFormattedDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.0"/>
+  <testcase name="negativeDistanceDoesNotShowNumber" classname="br.com.mapeiaia.rotacerta.core.CoreBubblePresenterTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.003">
+  <properties/>
+  <testcase name="samePackageHashAndSignatureIsFresh" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.002"/>
+  <testcase name="changedVisibleCardSignatureIsStale" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.0"/>
+  <testcase name="nullTransactionIsAlwaysStale" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.0"/>
+  <testcase name="changedSnapshotHashIsStale" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.001"/>
+  <testcase name="missingCurrentHashDoesNotRejectOtherwiseFreshTransaction" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.0"/>
+  <testcase name="blankCurrentSignatureDoesNotRejectOtherwiseFreshTransaction" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.0"/>
+  <testcase name="changedPackageIsStale" classname="br.com.mapeiaia.rotacerta.core.CoreFreshnessGuardTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.011">
+  <properties/>
+  <testcase name="callerCannotExtendFreshnessToSeveralSeconds" classname="br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest" time="0.006"/>
+  <testcase name="clearAlwaysInvalidatesFreshness" classname="br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest" time="0.0"/>
+  <testcase name="naturalFreshnessWindowStillWorks" classname="br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest" time="0.002"/>
+  <testcase name="resetsAfterOneFastScanCycleWhenDecisionColorIsVisible" classname="br.com.mapeiaia.rotacerta.RegisteredCardDecisionGateTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.MapaRadarImportParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.052">
+  <properties/>
+  <testcase name="keepsLegacyNumericSixColumnFormat" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.035"/>
+  <testcase name="decodesWindows1252TxtAndRemovesDuplicates" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.012"/>
+  <testcase name="respectsLatitudeLongitudeHeader" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.003"/>
+  <testcase name="importsThreeColumnMapaRadarFileUsedInRealDevice" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.001"/>
+  <testcase name="ignoresInvalidRowsWithoutLosingValidRows" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.0"/>
+  <testcase name="acceptsSemicolonAndDecimalCommaTxt" classname="br.com.mapeiaia.rotacerta.MapaRadarImportParserTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.007">
+  <properties/>
+  <testcase name="ignoresUberIdleHomeScreen" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.001"/>
+  <testcase name="ignoresNinetyNineSettingsMenu" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.001"/>
+  <testcase name="ignoresAndroidSystemShadeMixedWithUberMapNoise" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.0"/>
+  <testcase name="acceptsRideTextEvenWhenImageViewerToolbarIsVisible" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.002"/>
+  <testcase name="ignoresGpsNavigationScreenWithoutRideOffer" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.0"/>
+  <testcase name="ignoresFilesByGoogleViewerWhenNoRideTextIsVisible" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.001"/>
+  <testcase name="ignoresRotaCertaDiagnosticCopiedIntoAnotherApp" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.0"/>
+  <testcase name="acceptsInDriverTextWithoutParenthesizedRouteSteps" classname="br.com.mapeiaia.rotacerta.RideScreenTextClassifierTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.02">
+  <properties/>
+  <testcase name="workSummaryFiltersDayAndAccumulatesRouteDistance" classname="br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest" time="0.01"/>
+  <testcase name="importedRadarSignalFiresOnceAndRearmsAfterExit" classname="br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest" time="0.004"/>
+  <testcase name="longGpsGapDoesNotCreateFalseStraightLine" classname="br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest" time="0.0"/>
+  <testcase name="indrivePickupStartingWithPassagemActivatesTwoAddressTrigger" classname="br.com.mapeiaia.rotacerta.RotaCerta121RegressionTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.034">
+  <properties/>
+  <testcase name="changingRadiusCreatesDifferentOperationalCacheKey" classname="br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest" time="0.002"/>
+  <testcase name="exactRouteSurvivesCacheRecreation" classname="br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest" time="0.024"/>
+  <testcase name="expiredRouteIsNotRestored" classname="br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest" time="0.007"/>
+  <testcase name="malformedPayloadIsIgnoredWithoutCrashing" classname="br.com.mapeiaia.rotacerta.LiveRideRouteCachePersistenceTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.002">
+  <properties/>
+  <testcase name="ownAppAndDisabledServiceAreNeverScanned" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.0"/>
+  <testcase name="passiveAndSystemPackagesRemainBlockedInUniversalMode" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.001"/>
+  <testcase name="restrictedModeBlocksUnknownApps" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.0"/>
+  <testcase name="unrestrictedModeAllowsChatAndGalleryAppsForRegisteredCardSearch" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.0"/>
+  <testcase name="unrestrictedModeAllowsUnknownAppsThroughUniversalModule" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.0"/>
+  <testcase name="selectedRideAppRemainsAllowedInRestrictedMode" classname="br.com.mapeiaia.rotacerta.core.CorePackageMonitorTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalScreenAddressParserReportRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserReportRegressionTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.007">
+  <properties/>
+  <testcase name="lastNumberedAddressOnFlattenedScreenRemainsTheDestination" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserReportRegressionTest" time="0.002"/>
+  <testcase name="multipleCardsOnOneAccessibilityLineDoNotMergeAddresses" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserReportRegressionTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleDragPolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleDragPolicyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.004">
+  <properties/>
+  <testcase name="coordinatesStayInsideVisibleScreen" classname="br.com.mapeiaia.rotacerta.BubbleDragPolicyTest" time="0.001"/>
+  <testcase name="analysisResumeDelayRemainsBelowOneFramePair" classname="br.com.mapeiaia.rotacerta.BubbleDragPolicyTest" time="0.0"/>
+  <testcase name="firstMeaningfulMovementStartsDragWithoutTimeDelay" classname="br.com.mapeiaia.rotacerta.BubbleDragPolicyTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.006">
+  <properties/>
+  <testcase name="freshRouteResultBelongsToCurrentVisibleAddress" classname="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" time="0.001"/>
+  <testcase name="oldRouteResultIsNotFresh" classname="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" time="0.001"/>
+  <testcase name="routeResultFromAnotherVisibleAddressIsNotFresh" classname="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" time="0.001"/>
+  <testcase name="blankVisibleSignatureDoesNotRejectFreshRoute" classname="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" time="0.0"/>
+  <testcase name="transientPackageChangeDoesNotDiscardUniversalRoute" classname="br.com.mapeiaia.rotacerta.core.CoreRouteEngineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InDriveSanitizerRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InDriveSanitizerRegressionTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.022">
+  <properties/>
+  <testcase name="ignoresPassengerCountsAndParsesFirstInDriveListOffer" classname="br.com.mapeiaia.rotacerta.InDriveSanitizerRegressionTest" time="0.002"/>
+  <testcase name="acceptsInDriveOfferWithPlaceDestination" classname="br.com.mapeiaia.rotacerta.InDriveSanitizerRegressionTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.SavedPlacesSearchContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.SavedPlacesSearchContractTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.007">
+  <properties/>
+  <testcase name="duplicateComposeAnnotationsAreRemoved" classname="br.com.mapeiaia.rotacerta.SavedPlacesSearchContractTest" time="0.004"/>
+  <testcase name="locatedItemKeepsNavigationEditingAndDeletion" classname="br.com.mapeiaia.rotacerta.SavedPlacesSearchContractTest" time="0.001"/>
+  <testcase name="savedPlacesCanBeFoundByNameOrAddress" classname="br.com.mapeiaia.rotacerta.SavedPlacesSearchContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CurrentFarolRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CurrentFarolRegressionTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.008">
+  <properties/>
+  <testcase name="registeredInDriveCardWorksWhenLiveReadMissesFragileMapMarkers" classname="br.com.mapeiaia.rotacerta.core.CurrentFarolRegressionTest" time="0.002"/>
+  <testcase name="accessibilityAndOcrCopiesOfSameCardDoNotBecomeRideFeed" classname="br.com.mapeiaia.rotacerta.core.CurrentFarolRegressionTest" time="0.0"/>
+  <testcase name="realFeedWithDifferentOffersStillStaysBlocked" classname="br.com.mapeiaia.rotacerta.core.CurrentFarolRegressionTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.021">
+  <properties/>
+  <testcase name="prepareUsesCurrentFallbackWhenStoredSourcesAreEmpty" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.014"/>
+  <testcase name="stableHashNormalizesDirtyTextBeforeHashing" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.001"/>
+  <testcase name="prepareEmptyCurrentCallbackReturnsEmptyEvenWhenOldBuffersContainCard" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.0"/>
+  <testcase name="mergeRemainsAvailableForExplicitNonLiveUse" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.001"/>
+  <testcase name="prepareUsesOnlyCurrentCallbackAndNeverMergesPreviousCardBuffers" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.0"/>
+  <testcase name="preparePopupCandidateUsesOnlyCurrentText" classname="br.com.mapeiaia.rotacerta.core.CoreScreenReadEngineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.121">
+  <properties/>
+  <testcase name="sanitizesSourceAndMessageForSingleLineDump" classname="br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest" time="0.019"/>
+  <testcase name="keepsOnlyMostRecentEvents" classname="br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest" time="0.095"/>
+  <testcase name="limitsDumpToRequestedNumberOfEvents" classname="br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RidePassengerUnicodeRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RidePassengerUnicodeRegressionTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.012">
+  <properties/>
+  <testcase name="decomposedAccentFromRealInDriveAccessibilityCardIsAccepted" classname="br.com.mapeiaia.rotacerta.RidePassengerUnicodeRegressionTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.013">
+  <properties/>
+  <testcase name="requiresBothParsedEndpointsToContainHouseNumber" classname="br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest" time="0.006"/>
+  <testcase name="acceptsLetterAndBlockHouseNumberFormats" classname="br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest" time="0.002"/>
+  <testcase name="usesParsedDestinationInsteadOfLastAddressFromAnotherOffer" classname="br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest" time="0.005"/>
+  <testcase name="rejectsSnEvenWhenBothLinesLookLikeStreets" classname="br.com.mapeiaia.rotacerta.RegisteredCardAddressGateTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.PrimaryVisibleCardGeneratedContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.PrimaryVisibleCardGeneratedContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.001">
+  <properties/>
+  <testcase name="selectorRunsBeforeAddressTriggerAndPassengerGate" classname="br.com.mapeiaia.rotacerta.PrimaryVisibleCardGeneratedContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.Universal99CardAddressParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.Universal99CardAddressParserTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.011">
+  <properties/>
+  <testcase name="genericCondominiumUiTextWithoutNameOrLocalityIsRejected" classname="br.com.mapeiaia.rotacerta.Universal99CardAddressParserTest" time="0.0"/>
+  <testcase name="premiumCardJoinsBothWrappedAddresses" classname="br.com.mapeiaia.rotacerta.Universal99CardAddressParserTest" time="0.005"/>
+  <testcase name="essentialCardJoinsWrappedAvenueAndAcceptsNamedCondominiumDestination" classname="br.com.mapeiaia.rotacerta.Universal99CardAddressParserTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.028">
+  <properties/>
+  <testcase name="appOrScreenTypeDoesNotMatterWhenStreetIsRecognizable" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.004"/>
+  <testcase name="inDriveDestinationWithoutNumberIsPreservedWithWrappedLocality" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.001"/>
+  <testcase name="priceDistancePhoneTimeAndButtonsDoNotBecomeAdditionalAddresses" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.001"/>
+  <testcase name="realInDrivePickupSplitAfterAvenidaIsRecomposed" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.003"/>
+  <testcase name="isolatedStreetWordWithoutContinuationDoesNotBecomeAddress" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.0"/>
+  <testcase name="realAddressStillWinsAfterNoisyLines" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.0"/>
+  <testcase name="oneStreetWithoutNumberIsDetectedButDoesNotCreatePickup" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.002"/>
+  <testcase name="alwaysUsesLastRecognizedAddressWithOrWithoutNumber" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.001"/>
+  <testcase name="datesFilesAndAndroidUiNeverBecomeAddresses" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.001"/>
+  <testcase name="acceptedHouseNumberFormatsRemainValidNumberedAddresses" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.003"/>
+  <testcase name="numberOnAnotherLineIsNotMistakenForASeparateAddress" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.0"/>
+  <testcase name="streetsWithoutNumberAndNoNumberMarkersAreRecognized" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.003"/>
+  <testcase name="wrappedNeighborhoodAfterDanglingSaoIsJoined" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.002"/>
+  <testcase name="ownSettingsAndSavedGpsLabelsNeverBecomeAddresses" classname="br.com.mapeiaia.rotacerta.UniversalScreenAddressParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.PrimaryVisibleRideCardSelectorTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.PrimaryVisibleRideCardSelectorTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.055">
+  <properties/>
+  <testcase name="selectsFirstCompleteVisibleOfferWithoutMixingPassengersOrAddresses" classname="br.com.mapeiaia.rotacerta.PrimaryVisibleRideCardSelectorTest" time="0.043"/>
+  <testcase name="singleCardLayoutIsPreserved" classname="br.com.mapeiaia.rotacerta.PrimaryVisibleRideCardSelectorTest" time="0.008"/>
+  <testcase name="notificationHeaderIsNeverClassifiedAsPassenger" classname="br.com.mapeiaia.rotacerta.PrimaryVisibleRideCardSelectorTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RegisteredRidePackagePolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RegisteredRidePackagePolicyTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.003">
+  <properties/>
+  <testcase name="startsWithoutPredefinedRidePackages" classname="br.com.mapeiaia.rotacerta.RegisteredRidePackagePolicyTest" time="0.0"/>
+  <testcase name="packagesComeOnlyFromRegisteredCardTemplates" classname="br.com.mapeiaia.rotacerta.RegisteredRidePackagePolicyTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreLiveAnalysisPipelineTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreLiveAnalysisPipelineTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.004">
+  <properties/>
+  <testcase name="acceptedCardCanContinueFromItsOwnSnapshotTransaction" classname="br.com.mapeiaia.rotacerta.core.CoreLiveAnalysisPipelineTest" time="0.002"/>
+  <testcase name="interleavedSnapshotsKeepIndependentTransactions" classname="br.com.mapeiaia.rotacerta.core.CoreLiveAnalysisPipelineTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ProfessionalBubbleHome118ContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ProfessionalBubbleHome118ContractTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.007">
+  <properties/>
+  <testcase name="operationalControlsUseSeparatedPopupCatalog" classname="br.com.mapeiaia.rotacerta.ProfessionalBubbleHome118ContractTest" time="0.001"/>
+  <testcase name="diagnosticRemainsDirectWithoutReportsBubble" classname="br.com.mapeiaia.rotacerta.ProfessionalBubbleHome118ContractTest" time="0.005"/>
+  <testcase name="modulesRemainStrictlySeparatedInsideTheApp" classname="br.com.mapeiaia.rotacerta.ProfessionalBubbleHome118ContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.NinetyNineOcrNoiseRegressionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.NinetyNineOcrNoiseRegressionTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.008">
+  <properties/>
+  <testcase name="acceptsNinetyNineCardWithOcrZeroFareAndConnectNoise" classname="br.com.mapeiaia.rotacerta.NinetyNineOcrNoiseRegressionTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.009">
+  <properties/>
+  <testcase name="repeatedSameStateIsNotChanged" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.001"/>
+  <testcase name="missingRegisteredCardReasonForcesWaitingAndClearsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.003"/>
+  <testcase name="badRideKeepsDistanceWhenReasonIsValid" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.0"/>
+  <testcase name="initialStateIsHiddenWithoutDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.002"/>
+  <testcase name="waitingAndHiddenAlwaysClearDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.001"/>
+  <testcase name="individualRegisteredCardOnlyReasonForcesWaitingAndClearsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.0"/>
+  <testcase name="registerModelReasonForcesWaitingAndClearsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.001"/>
+  <testcase name="unconfirmedScreenReasonForcesWaitingAndClearsDistance" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.0"/>
+  <testcase name="goodRideKeepsDistanceWhenReasonIsValid" classname="br.com.mapeiaia.rotacerta.core.CoreBubbleStateControllerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.006">
+  <properties/>
+  <testcase name="extractsNumberWithBrazilCountryCode" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.003"/>
+  <testcase name="extractsBrazilianLandline" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.002"/>
+  <testcase name="extractsFormattedMobileNumber" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.0"/>
+  <testcase name="prefersWhatsAppLabeledNumber" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.001"/>
+  <testcase name="rejectsInvalidAreaCodeAndRepeatedPlaceholder" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.0"/>
+  <testcase name="rejectsCpfAndUnrelatedNumbers" classname="br.com.mapeiaia.rotacerta.ScreenPhoneLinkTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.UniversalNoCardRegistrationContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.UniversalNoCardRegistrationContractTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.008">
+  <properties/>
+  <testcase name="twoNumberedAddressesStillUseTheLastAndOneStaysInactive" classname="br.com.mapeiaia.rotacerta.UniversalNoCardRegistrationContractTest" time="0.004"/>
+  <testcase name="cardRegistrationExistsButRemainsOptionalForRuntime" classname="br.com.mapeiaia.rotacerta.UniversalNoCardRegistrationContractTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.LiveFailureTraceStoreTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.LiveFailureTraceStoreTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.118">
+  <properties/>
+  <testcase name="repeatedIdenticalTraceIsCollapsed" classname="br.com.mapeiaia.rotacerta.LiveFailureTraceStoreTest" time="0.081"/>
+  <testcase name="reportExplainsWhenParserFoundOnlyOneAddress" classname="br.com.mapeiaia.rotacerta.LiveFailureTraceStoreTest" time="0.01"/>
+  <testcase name="reportKeepsWholeRideAttemptAfterWindowIsCleared" classname="br.com.mapeiaia.rotacerta.LiveFailureTraceStoreTest" time="0.024"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.035">
+  <properties/>
+  <testcase name="catalogContainsFifteenIndependentModulesInDisplayOrder" classname="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" time="0.028"/>
+  <testcase name="directActionsRemainAvailableWithoutOpeningHomeMenu" classname="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" time="0.0"/>
+  <testcase name="routeAndDestinationDoNotOpenTheSameModule" classname="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" time="0.0"/>
+  <testcase name="alertsPlacesRadarsAndCardsUseIndependentDestinations" classname="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" time="0.0"/>
+  <testcase name="navigationModulesDeclareTheirDestinationGroups" classname="br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.031">
+  <properties/>
+  <testcase name="explicitStateOrCepIsNotDuplicatedWithRegionCity" classname="br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest" time="0.022"/>
+  <testcase name="addressWithoutCityDoesNotInventSaoPaulo" classname="br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest" time="0.0"/>
+  <testcase name="detectedCityIsUsedBeforeNationalFallback" classname="br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest" time="0.006"/>
+  <testcase name="appSettingsStartWithManualAppsAndOptionalCards" classname="br.com.mapeiaia.rotacerta.GoogleMapsGeocodingScopeTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InAppBubbleImmediateStateContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InAppBubbleImmediateStateContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.028">
+  <properties/>
+  <testcase name="popupNavigationUsesIndependentModulesAndStartsInPermissions" classname="br.com.mapeiaia.rotacerta.InAppBubbleImmediateStateContractTest" time="0.028"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RideTextParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RideTextParserTest" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.027">
+  <properties/>
+  <testcase name="parsesNinetyNineCardWhenOcrDropsPickupDistanceNumber" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.002"/>
+  <testcase name="joinsWrappedMapPointAddressFromOcr" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.003"/>
+  <testcase name="returnsInsufficientDataWhenDestinationIsMissing" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="parsesBasicRidePrintText" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.002"/>
+  <testcase name="parsesSeparatedMapPointMarkersFromOcr" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.002"/>
+  <testcase name="infersUberTemplatePackageFromSyntheticText" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="parsesInDriveSingleOfferWithMapMarkersAndFareActions" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.001"/>
+  <testcase name="parsesInDriveStackedAddressesFromLiveDiagnostic" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.001"/>
+  <testcase name="joinsWrappedDestinationNeighborhoodFromOcr" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.003"/>
+  <testcase name="parsesOnlyFirstCompleteRideWhenOfferListHasManyAddresses" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="ignoresAvoidedKeywordOutsideFinalDestination" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="recommendsRideWhenGoogleMapsRouteDistanceIsInsideHomeRadius" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="returnsInsufficientDataWhenGoogleMapsRouteIsMissing" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="parsesInDriveDiagnosticWhenMapLabelsAppearBeforeOfferAddresses" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.004"/>
+  <testcase name="rejectsRideWhenGoogleMapsRouteDistanceIsOutsideHomeRadius" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="infersInDriveTemplatePackageFromSyntheticText" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="parsesUberCardWithAbbreviatedRuaAsOneRide" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="returnsInsufficientDataWhenGoogleMapsKeyIsMissing" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="infersNinetyNineTemplatePackageFromSyntheticText" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.0"/>
+  <testcase name="createsTemplateFromSyntheticTextWithoutPublishingRealPrintData" classname="br.com.mapeiaia.rotacerta.RideTextParserTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RideOfferDetectorTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RideOfferDetectorTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.002">
+  <properties/>
+  <testcase name="acceptsCleanRegisteredRideOfferTextShape" classname="br.com.mapeiaia.rotacerta.RideOfferDetectorTest" time="0.001"/>
+  <testcase name="rejectsRideCardMixedWithAndroidPermissionScreen" classname="br.com.mapeiaia.rotacerta.RideOfferDetectorTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGateTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGateTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.004">
+  <properties/>
+  <testcase name="windowBoundaryAlwaysPassesImmediately" classname="br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGateTest" time="0.001"/>
+  <testcase name="firstMonitoredEventIsImmediateAndBurstIsGrouped" classname="br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGateTest" time="0.002"/>
+  <testcase name="passiveScreenStillFlowsToImmediateCleanup" classname="br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGateTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ProximityAlertAutoClose128Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ProximityAlertAutoClose128Test" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.044">
+  <properties/>
+  <testcase name="popup atualiza distancia e fecha depois de passar" classname="br.com.mapeiaia.rotacerta.ProximityAlertAutoClose128Test" time="0.044"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.179">
+  <properties/>
+  <testcase name="calculatesRevenueExpensesProfitAndProfitPerKm" classname="br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest" time="0.109"/>
+  <testcase name="extractsPassengersFromCopiedText" classname="br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest" time="0.036"/>
+  <testcase name="buildsWhatsAppUrlWithNormalizedPhoneAndEncodedMessage" classname="br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest" time="0.026"/>
+  <testcase name="normalizesBrazilianPhoneNumbers" classname="br.com.mapeiaia.rotacerta.BlaBlaCarCollectorParserTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.079">
+  <properties/>
+  <testcase name="joinsAddressWhenNumberStartsTheNextOcrLine" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.02"/>
+  <testcase name="flexibleContractAcceptsCardWhenOcrMissesTitleButKeepsRouteAndAction" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.018"/>
+  <testcase name="pluralRideFeedRemainsBlocked" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.006"/>
+  <testcase name="oneLearnedInDriveTemplateRecognizesDynamicCardVariants" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.008"/>
+  <testcase name="acceptsPlaceNameAsFinalDestinationAndStopsBeforePayment" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.001"/>
+  <testcase name="offlineStatusDoesNotTurnOpenedCardIntoRideListing" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.008"/>
+  <testcase name="joinsDestinationStreetNameSplitAfterConnector" classname="br.com.mapeiaia.rotacerta.InDriveCardFamilyRecognitionTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ProximityAlertEngineTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.083">
+  <properties/>
+  <testcase name="resetsImportedRadarCounterAfterLeavingAlertZone" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.032"/>
+  <testcase name="singleDirectionImportedRadarSpeaksWhenTravelBearingMatches" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.001"/>
+  <testcase name="importedRadarDoesNotRetrySpeechWhileDistanceIsIncreasing" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.005"/>
+  <testcase name="doesNotRepeatImportedRadarDuringSameApproachAfterRepeatGap" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.006"/>
+  <testcase name="doesNotConsumeImportedRadarCounterWhenSpeechFails" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.006"/>
+  <testcase name="logsImportedRadarSpeechFailureWithoutConsumingCounter" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.0"/>
+  <testcase name="savedPlaceAlertSpeaksAfterLeavingAndReEnteringZone" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.004"/>
+  <testcase name="singleDirectionImportedRadarIgnoresOppositeTravelBearing" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.001"/>
+  <testcase name="savedPlaceAlertDoesNotSpeakWhenFirstSeenAlreadyInsideZone" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.005"/>
+  <testcase name="savedPlaceAlertCanRepeatDuringSameApproach" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.003"/>
+  <testcase name="doubleDirectionImportedRadarAcceptsInverseTravelBearing" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.001"/>
+  <testcase name="exportsGlobalLogInsideImportedRadarDiagnosticReason" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.0"/>
+  <testcase name="importedRadarSpeaksAgainAfterLeavingAndApproachingAgain" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.009"/>
+  <testcase name="speaksOnlyNearestImportedRadarInsideRadius" classname="br.com.mapeiaia.rotacerta.ProximityAlertEngineTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ExactRadiusLowerBoundPolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ExactRadiusLowerBoundPolicyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.016">
+  <properties/>
+  <testcase name="oneTargetInsidePreventsPrematureRed" classname="br.com.mapeiaia.rotacerta.ExactRadiusLowerBoundPolicyTest" time="0.011"/>
+  <testcase name="destinationBeyondEveryConfiguredRadiusIsDefinitelyOutside" classname="br.com.mapeiaia.rotacerta.ExactRadiusLowerBoundPolicyTest" time="0.002"/>
+  <testcase name="missingDestinationOrConfiguredTargetCannotProveOutside" classname="br.com.mapeiaia.rotacerta.ExactRadiusLowerBoundPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.237">
+  <properties/>
+  <testcase name="monitoredPackageKeepsFastResponseButCoalescesDuplicates" classname="br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test" time="0.013"/>
+  <testcase name="radarIndexReturnsOnlyNearbyCellsFromLargeDatabase" classname="br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test" time="0.222"/>
+  <testcase name="discoveryEventsAreThrottledInsteadOfFloodingTheService" classname="br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test" time="0.001"/>
+  <testcase name="discoveredCandidateTemporarilyEntersFastPath" classname="br.com.mapeiaia.rotacerta.PerformanceFloodGate122Test" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.QuickBubbleToggleReducerTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.QuickBubbleToggleReducerTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.008">
+  <properties/>
+  <testcase name="everyFunctionalBubbleTogglesOnAndOff" classname="br.com.mapeiaia.rotacerta.QuickBubbleToggleReducerTest" time="0.005"/>
+  <testcase name="homeAndAlternativeCanBeControlledSeparately" classname="br.com.mapeiaia.rotacerta.QuickBubbleToggleReducerTest" time="0.0"/>
+  <testcase name="liveReadingIsIndependentFromMainSwitch" classname="br.com.mapeiaia.rotacerta.QuickBubbleToggleReducerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.MainBubbleTapMenuContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.MainBubbleTapMenuContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.015">
+  <properties/>
+  <testcase name="compiledSourceOpensFifteenIndependentAnchoredResourceModules" classname="br.com.mapeiaia.rotacerta.MainBubbleTapMenuContractTest" time="0.015"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RealFarolEndToEndSimulationTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RealFarolEndToEndSimulationTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.098">
+  <properties/>
+  <testcase name="passiveSystemEventsCannotKillTheInDriveWindowBeforeDecision" classname="br.com.mapeiaia.rotacerta.RealFarolEndToEndSimulationTest" time="0.005"/>
+  <testcase name="pluralRideListStillCannotReleaseFarol" classname="br.com.mapeiaia.rotacerta.RealFarolEndToEndSimulationTest" time="0.002"/>
+  <testcase name="exactRealCardsReachGreenOrRedAndAlwaysShowDestinationDistance" classname="br.com.mapeiaia.rotacerta.RealFarolEndToEndSimulationTest" time="0.09"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InDriveMarkerlessLiveCardTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InDriveMarkerlessLiveCardTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.068">
+  <properties/>
+  <testcase name="realOpenedCardWorksWhenABAndMapBadgesAreGraphicsOnly" classname="br.com.mapeiaia.rotacerta.InDriveMarkerlessLiveCardTest" time="0.06"/>
+  <testcase name="pluralFeedWithoutTextualMarkersRemainsBlocked" classname="br.com.mapeiaia.rotacerta.InDriveMarkerlessLiveCardTest" time="0.008"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.CardRuntimeStability128Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.CardRuntimeStability128Test" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.077">
+  <properties/>
+  <testcase name="foco preserva primeiro card durante reordenacao transitoria" classname="br.com.mapeiaia.rotacerta.CardRuntimeStability128Test" time="0.076"/>
+  <testcase name="saida precisa de duas ausencias confirmadas" classname="br.com.mapeiaia.rotacerta.CardRuntimeStability128Test" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleInstantDragContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleInstantDragContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.04">
+  <properties/>
+  <testcase name="dragOwnsMainThreadAndPausesAnalysisDuringGesture" classname="br.com.mapeiaia.rotacerta.BubbleInstantDragContractTest" time="0.04"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.GenericLastDestinationParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.GenericLastDestinationParserTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.017">
+  <properties/>
+  <testcase name="usesLastAddressAsDestinationForUnknownRegionalAppText" classname="br.com.mapeiaia.rotacerta.GenericLastDestinationParserTest" time="0.014"/>
+  <testcase name="oneAddressUnknownTextIsAlsoPointB" classname="br.com.mapeiaia.rotacerta.GenericLastDestinationParserTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreRideTextSanitizerTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreRideTextSanitizerTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.001">
+  <properties/>
+  <testcase name="inDriveRemovesRatingAndPerKmNoiseButKeepsRouteAndAction" classname="br.com.mapeiaia.rotacerta.core.CoreRideTextSanitizerTest" time="0.001"/>
+  <testcase name="duplicateLinesWithFormattingDifferencesCollapseToOne" classname="br.com.mapeiaia.rotacerta.core.CoreRideTextSanitizerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.SubsecondExactRedGeneratedContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.SubsecondExactRedGeneratedContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.002">
+  <properties/>
+  <testcase name="definitelyOutsideDestinationTurnsRedThenContinuesExactRouteForKm" classname="br.com.mapeiaia.rotacerta.SubsecondExactRedGeneratedContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleCardPresenceDetectorTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleCardPresenceDetectorTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.095">
+  <properties/>
+  <testcase name="sameRegisteredCardRequiresSamePackageHashAndTemplate" classname="br.com.mapeiaia.rotacerta.BubbleCardPresenceDetectorTest" time="0.095"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleShortcutPositionPolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleShortcutPositionPolicyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.008">
+  <properties/>
+  <testcase name="placesMenuToLeftNearRightEdge" classname="br.com.mapeiaia.rotacerta.BubbleShortcutPositionPolicyTest" time="0.001"/>
+  <testcase name="placesMenuToRightWhenThereIsSpace" classname="br.com.mapeiaia.rotacerta.BubbleShortcutPositionPolicyTest" time="0.001"/>
+  <testcase name="narrowScreenUsesVerticalPositionWithoutOverlap" classname="br.com.mapeiaia.rotacerta.BubbleShortcutPositionPolicyTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.ProximityAlertPopup117Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.ProximityAlertPopup117Test" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.014">
+  <properties/>
+  <testcase name="savedLocalNeverSpeaksOrShowsProximityPopup" classname="br.com.mapeiaia.rotacerta.ProximityAlertPopup117Test" time="0.006"/>
+  <testcase name="popupAppearsOncePerApproachAndRearmsAfterExit" classname="br.com.mapeiaia.rotacerta.ProximityAlertPopup117Test" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.BubbleStateMachineTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.BubbleStateMachineTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.002">
+  <properties/>
+  <testcase name="appliesDecisionOnlyForActiveTokenSamePackageAndSameSnapshot" classname="br.com.mapeiaia.rotacerta.BubbleStateMachineTest" time="0.001"/>
+  <testcase name="clearingDecisionMovesBackToWaitingForRegisteredCard" classname="br.com.mapeiaia.rotacerta.BubbleStateMachineTest" time="0.0"/>
+  <testcase name="rejectsDecisionWhenScreenChangedDuringAnalysis" classname="br.com.mapeiaia.rotacerta.BubbleStateMachineTest" time="0.0"/>
+  <testcase name="rejectsDecisionWhenPackageChangedDuringAnalysis" classname="br.com.mapeiaia.rotacerta.BubbleStateMachineTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InAppBubbleHomeContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InAppBubbleHomeContractTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:36" hostname="runnervm3jd5f" time="0.042">
+  <properties/>
+  <testcase name="bubbleCenterUsesLogicalGroupsAndImmediateActions" classname="br.com.mapeiaia.rotacerta.InAppBubbleHomeContractTest" time="0.042"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.InstantFarolDecision124Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.028">
+  <properties/>
+  <testcase name="anySelectedApplicationUsesSameImmediateClearContract" classname="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" time="0.005"/>
+  <testcase name="routeUsesSettingsAlreadyLoadedInMemory" classname="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" time="0.003"/>
+  <testcase name="yellowWaitingStateRemainsAvailable" classname="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" time="0.0"/>
+  <testcase name="emptyAccessibilityReadsCannotKeepThePreviousDecision" classname="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" time="0.015"/>
+  <testcase name="bubbleIsPaintedBeforeHistoryPersistence" classname="br.com.mapeiaia.rotacerta.InstantFarolDecision124Test" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.009">
+  <properties/>
+  <testcase name="requestListWithSeveralPassengersIsRejected" classname="br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest" time="0.001"/>
+  <testcase name="fullPassengerNameIsAccepted" classname="br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest" time="0.003"/>
+  <testcase name="realSingleNameCardIsAccepted" classname="br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest" time="0.001"/>
+  <testcase name="addressAndUiLabelsAreNotPassengerNames" classname="br.com.mapeiaia.rotacerta.RidePassengerIdentityPolicyTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.NoPreRegisteredGates126ContractTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.NoPreRegisteredGates126ContractTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.018">
+  <properties/>
+  <testcase name="installationStartsEmptyAndReadsOnlyChosenApps" classname="br.com.mapeiaia.rotacerta.NoPreRegisteredGates126ContractTest" time="0.001"/>
+  <testcase name="routeFallbackRemainsFastAndExactRouteContinues" classname="br.com.mapeiaia.rotacerta.NoPreRegisteredGates126ContractTest" time="0.001"/>
+  <testcase name="cardModelsAreVisibleAndOptional" classname="br.com.mapeiaia.rotacerta.NoPreRegisteredGates126ContractTest" time="0.01"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.009">
+  <properties/>
+  <testcase name="uberAcceptsIndividualCardWithKnownSignal" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.001"/>
+  <testcase name="inDriveRejectsWithoutRouteBlock" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.001"/>
+  <testcase name="inDriveAcceptsOnlyOpenedIndividualCardWithStrongSignals" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.0"/>
+  <testcase name="inDriveRejectsFeedEvenWithMoneyAndAcceptButtons" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.004"/>
+  <testcase name="universalAcceptsOnlyWhenRouteFeatureExists" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.001"/>
+  <testcase name="registrySelectsSpecificContractsByPackage" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.0"/>
+  <testcase name="ninetyNineAcceptsIndividualCardWithKnownSignal" classname="br.com.mapeiaia.rotacerta.core.CoreRideCardContractsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.001">
+  <properties/>
+  <testcase name="leavingCardInvalidatesActiveAndCompletedIdentity" classname="br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest" time="0.001"/>
+  <testcase name="sameCardOcrVariationDoesNotRestartActiveRoute" classname="br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest" time="0.0"/>
+  <testcase name="completedDecisionIsReusedForSameVisibleCard" classname="br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest" time="0.0"/>
+  <testcase name="differentCardStillStartsAndSupersedesPreviousRoute" classname="br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:37" hostname="runnervm3jd5f" time="0.014">
+  <properties/>
+  <testcase name="blocksDecisionAndDistanceWhenDestinationIsMissing" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.01"/>
+  <testcase name="blocksGreenWhenResultReasonSaysCardIsNotRegistered" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.001"/>
+  <testcase name="blocksRedWhenResultReasonAsksToRegisterModel" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.0"/>
+  <testcase name="allowsRedOnlyWhenAllPrerequisitesAreMet" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.0"/>
+  <testcase name="allowsGreenOnlyWhenAllPrerequisitesAreMet" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.0"/>
+  <testcase name="blocksDecisionAndDistanceWhenPackageIsNotMonitored" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.0"/>
+  <testcase name="blocksDecisionAndDistanceWhenRegisteredCardIsMissing" classname="br.com.mapeiaia.rotacerta.LiveRideBubbleDecisionPolicyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.005">
+  <properties/>
+  <testcase name="incompleteOcrCannotClearValidAccessibilityDecision" classname="br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest" time="0.005"/>
+  <testcase name="activeSourceClearsImmediatelyWhenItsCardLosesNumber" classname="br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest" time="0.0"/>
+  <testcase name="resetAllowsNewWindowToChooseAnotherSource" classname="br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest" time="0.0"/>
+  <testcase name="ocrCanOwnCardWhenAccessibilityNeverFindsValidCard" classname="br.com.mapeiaia.rotacerta.StableLiveReadSourceGateTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.core.BubbleRenderCoordinator128Test.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.core.BubbleRenderCoordinator128Test" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.003">
+  <properties/>
+  <testcase name="evento systemui nao apaga decisao recente" classname="br.com.mapeiaia.rotacerta.core.BubbleRenderCoordinator128Test" time="0.001"/>
+  <testcase name="comando de geracao antiga e descartado" classname="br.com.mapeiaia.rotacerta.core.BubbleRenderCoordinator128Test" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
+app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.RideAppSpecificParserTest.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-07-23T11:34:38" hostname="runnervm3jd5f" time="0.027">
+  <properties/>
+  <testcase name="parsesNinetyNineDiagnosticCardWithPromoBlockAndZeroBalance" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.007"/>
+  <testcase name="parsesFirstInDriveOfferWhenFeedContainsSeveralOrders" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.002"/>
+  <testcase name="parsesInDriveOrderCardUsingPackageAndIgnoresFareActions" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.002"/>
+  <testcase name="parsesNinetyNineTemplateLikeCardUsingPackage" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.0"/>
+  <testcase name="parsesInDriveDiagnosticWithLooseAddressesBeforeMapOcr" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.005"/>
+  <testcase name="parsesUberCardUsingPackage" classname="br.com.mapeiaia.rotacerta.RideAppSpecificParserTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
