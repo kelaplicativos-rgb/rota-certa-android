@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation with observable tolerant regex generator repair.
+Trigger Rota Certa 0.1.128 validation after directly fixing Kotlin raw regex generation.
