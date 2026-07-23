@@ -78,7 +78,7 @@ def patch_ride_text_parser() -> None:
     new = '''        val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
         val previousEndsWithConnector = listOf(" de", " da", " do", " das", " dos").any { previousNormalized.endsWith(it) }
-        val startsWithBareHouseNumber = Regex("^\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?(?:\\s|,|\\()", RegexOption.IGNORE_CASE)
+        val startsWithBareHouseNumber = Regex("""^\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?(?:\\s|,|\\()""", RegexOption.IGNORE_CASE)
             .containsMatchIn(value)
 
         if (looksLikeAddress(value) && !previousEndsWithStreetType && !previousEndsWithConnector && !startsWithBareHouseNumber) return false
@@ -121,7 +121,7 @@ def patch_universal_parser() -> None:
 '''
     new = '''        val wrappedStreetNumberContinuation = !isCompleteNumberedAddress(previous) &&
             (explicitHouseNumberRegex.containsMatchIn(value) ||
-                Regex("^\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?(?:\\s|,|\\()", RegexOption.IGNORE_CASE).containsMatchIn(value)) &&
+                Regex("""^\\d{1,6}(?:[-/][\\p{L}\\d]+|[\\p{L}])?(?:\\s|,|\\()""", RegexOption.IGNORE_CASE).containsMatchIn(value)) &&
             (value.contains('(') || stateRegex.containsMatchIn(value) ||
                 cepRegex.containsMatchIn(value) ||
                 namedPlaceLocalityRegex.containsMatchIn(value))
