@@ -2,8 +2,8 @@ package br.com.mapeiaia.rotacerta
 
 /** Regras puras para manter OCR, histórico e captura fora do caminho crítico. */
 object FarolCriticalPathPolicy {
-    const val TARGET_RESULT_MILLIS = 900L
-    const val OCR_FALLBACK_DELAY_MILLIS = 85L
+    const val TARGET_RESULT_MILLIS = 850L
+    const val OCR_FALLBACK_DELAY_MILLIS = 40L
     const val MATCHED_CAPTURE_DELAY_MILLIS = 450L
     const val CANDIDATE_CAPTURE_DELAY_MILLIS = 700L
     const val CAPTURE_BUSY_RETRY_MILLIS = 60L
