@@ -8,7 +8,7 @@ import org.junit.Test
 
 class BubbleShortcutModulesTest {
     @Test
-    fun catalogContainsFifteenIndependentModulesInDisplayOrder() {
+    fun catalogContainsFourteenIndependentModulesInDisplayOrder() {
         BubbleShortcutCatalog.requireValid()
 
         assertEquals(
@@ -19,20 +19,21 @@ class BubbleShortcutModulesTest {
                 "saved_places",
                 "radars",
                 "appearance",
-                "permissions",
                 "backup",
                 "whatsapp",
                 "collector",
                 "clear_clipboard",
                 "diagnostic",
+                "quick_replies",
                 "stop_app",
                 "cards",
-                "reading",
             ),
             BubbleShortcutCatalog.modules.map { it.spec.id },
         )
-        assertEquals(15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
-        assertEquals(15, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
+        assertEquals(14, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals(14, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "permissions" })
+        assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reading" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reports" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "alert" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "saved_place" })
@@ -74,13 +75,13 @@ class BubbleShortcutModulesTest {
     }
 
     @Test
-    fun directActionsRemainAvailableWithoutOpeningHomeMenu() {
-        assertEquals(BubbleShortcutAction.ToggleReading, ReadingBubbleShortcutModule.spec.action)
+    fun directActionsRemainAvailableWithoutDuplicatingGeneralControls() {
         assertEquals(BubbleShortcutAction.OpenScreenWhatsApp, WhatsAppBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.OpenCollector, CollectorBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.ClearClipboard, ClearClipboardBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.ExportDiagnostic, DiagnosticBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.StopApplication, StopBubbleShortcutModule.spec.action)
+        assertEquals(BubbleShortcutAction.OpenQuickReplies, QuickRepliesBubbleShortcutModule.spec.action)
         assertNull(WhatsAppBubbleShortcutModule.spec.targetGroup)
         assertNull(StopBubbleShortcutModule.spec.targetGroup)
     }
@@ -94,7 +95,6 @@ class BubbleShortcutModulesTest {
             SavedPlacesManagementBubbleShortcutModule.spec,
             RadarsManagementBubbleShortcutModule.spec,
             AppearanceBubbleShortcutModule.spec,
-            PermissionsBubbleShortcutModule.spec,
             BackupBubbleShortcutModule.spec,
             CardsManagementBubbleShortcutModule.spec,
         ).forEach { spec ->
