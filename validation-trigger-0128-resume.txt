@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation after markerless inDrive card recognition fix.
+Trigger Rota Certa 0.1.128 validation after scoping markerless inDrive recognition to isRouteCardCrop.
