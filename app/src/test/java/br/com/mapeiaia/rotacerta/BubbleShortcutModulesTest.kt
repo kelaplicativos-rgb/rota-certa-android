@@ -8,7 +8,7 @@ import org.junit.Test
 
 class BubbleShortcutModulesTest {
     @Test
-    fun catalogContainsFourteenIndependentModulesInDisplayOrder() {
+    fun catalogContainsFifteenIndependentModulesInDisplayOrder() {
         BubbleShortcutCatalog.requireValid()
 
         assertEquals(
@@ -21,6 +21,7 @@ class BubbleShortcutModulesTest {
                 "appearance",
                 "backup",
                 "whatsapp",
+                "copy_trip_confirmation",
                 "collector",
                 "clear_clipboard",
                 "diagnostic",
@@ -30,8 +31,8 @@ class BubbleShortcutModulesTest {
             ),
             BubbleShortcutCatalog.modules.map { it.spec.id },
         )
-        assertEquals(14, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
-        assertEquals(14, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
+        assertEquals(15, BubbleShortcutCatalog.modules.map { it::class }.distinct().size)
+        assertEquals(15, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "permissions" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reading" })
         assertFalse(BubbleShortcutCatalog.modules.any { it.spec.id == "reports" })
@@ -77,12 +78,14 @@ class BubbleShortcutModulesTest {
     @Test
     fun directActionsRemainAvailableWithoutDuplicatingGeneralControls() {
         assertEquals(BubbleShortcutAction.OpenScreenWhatsApp, WhatsAppBubbleShortcutModule.spec.action)
+        assertEquals(BubbleShortcutAction.CopyTripConfirmation, TripConfirmationBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.OpenCollector, CollectorBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.ClearClipboard, ClearClipboardBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.ExportDiagnostic, DiagnosticBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.StopApplication, StopBubbleShortcutModule.spec.action)
         assertEquals(BubbleShortcutAction.OpenQuickReplies, QuickRepliesBubbleShortcutModule.spec.action)
         assertNull(WhatsAppBubbleShortcutModule.spec.targetGroup)
+        assertNull(TripConfirmationBubbleShortcutModule.spec.targetGroup)
         assertNull(StopBubbleShortcutModule.spec.targetGroup)
     }
 
