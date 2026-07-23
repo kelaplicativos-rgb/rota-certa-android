@@ -71,23 +71,23 @@ object RealWorldRideCardMatchPolicy {
         val routeBlock = "card.crop.route_block" in liveFeatures
         val structuralMatches = structuralFeatures.count { it in liveFeatures }
         val requiredAppPhrases = stableRequired.intersect(appPhrases)
-        val appPhraseOverlap = if (requiredAppPhrases.isEmpty()) {
-            appPhrases.any { it in liveFeatures }
-        } else {
+        // Alguns modelos são cadastrados a partir de um recorte somente da rota
+        // A/B, sem o cabeçalho do aplicativo. Nesses casos a estrutura forte e o
+        // vínculo com o mesmo pacote substituem a frase de cabeçalho.
+        val appPhraseCompatible = requiredAppPhrases.isEmpty() ||
             requiredAppPhrases.any { it in liveFeatures }
-        }
 
         val accepted = if (universalPackage) {
             learnableLiveCard &&
                 routeBlock &&
                 structuralMatches >= 3 &&
-                appPhraseOverlap &&
+                appPhraseCompatible &&
                 score >= UNIVERSAL_MIN_STABLE_SCORE
         } else {
             samePackage &&
                 routeBlock &&
                 structuralMatches >= 3 &&
-                appPhraseOverlap &&
+                appPhraseCompatible &&
                 score >= KNOWN_APP_MIN_STABLE_SCORE
         }
         return Evaluation(accepted, score, matched)
