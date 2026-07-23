@@ -8,7 +8,12 @@ import org.junit.Test
 class LiveFailureTraceStoreTest {
     @Before
     fun setUp() {
+        DiagnosticRuntimeGate.endManualCapture()
         LiveFailureTraceStore.clear()
+        DiagnosticRuntimeGate.beginManualCapture(
+            durationMillis = 10_000L,
+            nowMillis = Long.MAX_VALUE / 2,
+        )
     }
 
     @Test
