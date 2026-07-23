@@ -79,8 +79,37 @@ jobs:
               package = 'package br.com.mapeiaia.rotacerta\n'
               block = ''.join(f'// {marker}\n' for marker in missing)
               text = text.replace(package, package + block, 1)
-
           path.write_text(text)
+
+          no_pre = Path('app/universal-no-pre-registered-gates-0.1.126.gradle.kts')
+          no_pre_text = no_pre.read_text()
+          no_pre_guard = 'manual_selected_apps_gate_0_1_127 supersedes universal_no_pre_registered_0_1_126'
+          if no_pre_guard not in no_pre_text:
+              anchor = '    var service = serviceFile.readText()\n    val dollar = "$"\n'
+              replacement = (
+                  anchor
+                  + '    if ("manual_selected_apps_gate_0_1_127" in service) {\n'
+                  + f'        return // {no_pre_guard}\n'
+                  + '    }\n'
+              )
+              if anchor not in no_pre_text:
+                  raise SystemExit('Entrada do patch 0.1.126 nao encontrada')
+              no_pre.write_text(no_pre_text.replace(anchor, replacement, 1))
+
+          manual_exact = Path('app/manual-apps-cards-exact-route-0.1.127.gradle.kts')
+          manual_text = manual_exact.read_text()
+          manual_guard = 'performance_core_0_1_128 supersedes manual_exact_rewrite_0_1_127'
+          if manual_guard not in manual_text:
+              anchor = '    var service = serviceFile.readText()\n    val dollar = "$"\n'
+              replacement = (
+                  anchor
+                  + '    if ("multi_card_focus_lock_0_1_128" in service && "cache_first_before_yellow_0_1_128" in service) {\n'
+                  + f'        return // {manual_guard}\n'
+                  + '    }\n'
+              )
+              if anchor not in manual_text:
+                  raise SystemExit('Entrada do finalizador 0.1.127 nao encontrada')
+              manual_exact.write_text(manual_text.replace(anchor, replacement, 1))
           PY
 
       - uses: actions/setup-java@v4
