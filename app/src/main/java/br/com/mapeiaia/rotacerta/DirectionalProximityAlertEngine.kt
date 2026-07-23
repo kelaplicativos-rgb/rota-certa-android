@@ -36,6 +36,16 @@ class DirectionalProximityAlertEngine(
             return
         }
 
+        val thresholds = buildList {
+            proximityAlerts.forEach { alert ->
+                add((alert.alertDistanceMeters ?: settings.proximityAlertDistanceMeters).coerceIn(200, 1000))
+            }
+            if (radars.isNotEmpty()) add(settings.proximityAlertDistanceMeters.coerceIn(200, 1000))
+        }
+        val fixUsableForAnyTarget = thresholds.any { threshold ->
+            DirectionalAlertPolicy.isFixUsable(fix, threshold, now)
+        }
+
         var passedVisual: DirectionalAlertVisual? = null
         val candidates = mutableListOf<Candidate>()
 
@@ -65,7 +75,7 @@ class DirectionalProximityAlertEngine(
         val selected = candidates.minByOrNull { it.distanceMeters }
         if (selected == null) {
             val visual = lastVisual
-            if (visual != null && now - lastVisualAtMillis <= VISUAL_GPS_GRACE_MILLIS) {
+            if (!fixUsableForAnyTarget && visual != null && now - lastVisualAtMillis <= VISUAL_GPS_GRACE_MILLIS) {
                 onVisual(
                     visual.copy(
                         status = "Confirmando GPS e direção",
@@ -205,6 +215,7 @@ class DirectionalProximityAlertEngine(
             runtime.resetAfterExit(distance)
             return null
         }
+        if (runtime.passed) return null
         if (!DirectionalAlertPolicy.isFixUsable(fix, threshold, now)) {
             runtime.observe(distance, fix.accuracyMeters)
             return null
