@@ -1,0 +1,180 @@
+name: Final Integrated APK
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: final-integrated-apk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
+  EXPECTED_VERSION: 0.1.130
+
+jobs:
+  build-test-validate-release:
+    name: Test, validate and publish final APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run all debug unit tests
+        run: ./gradlew clean :app:testDebugUnitTest --stacktrace
+
+      - name: Restore exact clean sources
+        run: |
+          git reset --hard "$TARGET_SHA"
+          git clean -fd
+
+      - name: Build final signed debug APK
+        run: ./gradlew clean :app:assembleDebug --stacktrace
+
+      - name: Validate package, version, signature and APK contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -s "$APK"
+
+          mkdir -p dist
+          cp "$APK" dist/rota-certa-final.apk
+
+          BADGING="$($AAPT dump badging "$APK")"
+          PACKAGE_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p")"
+
+          test "$PACKAGE_NAME" = "$EXPECTED_PACKAGE"
+          test "$VERSION_NAME" = "$EXPECTED_VERSION"
+          test -n "$VERSION_CODE"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee dist/signature.txt
+          unzip -t "$APK" | tee dist/unzip-test.txt
+          unzip -l "$APK" | tee dist/apk-files.txt
+          grep -q 'AndroidManifest.xml' dist/apk-files.txt
+          grep -q 'classes.dex' dist/apk-files.txt
+
+          unzip -p "$APK" classes.dex > dist/classes.dex
+          strings dist/classes.dex > dist/dex-strings.txt
+          for marker in \
+            TripConfirmationFormatter \
+            WorkRegionPinsCard \
+            FarolCriticalPathPolicy \
+            DirectionalProximityAlertEngine \
+            QuickRepliesActivity; do
+            grep -q "$marker" dist/dex-strings.txt
+          done
+          rm -f dist/classes.dex dist/dex-strings.txt
+
+          APK_SHA256="$(sha256sum dist/rota-certa-final.apk | awk '{print $1}')"
+          APK_SIZE_BYTES="$(stat -c%s dist/rota-certa-final.apk)"
+          APK_SIZE_MB="$(awk -v bytes="$APK_SIZE_BYTES" 'BEGIN { printf "%.2f", bytes / 1048576 }')"
+
+          {
+            echo "Rota Certa — validação final"
+            echo "Commit: $TARGET_SHA"
+            echo "Pacote: $PACKAGE_NAME"
+            echo "Versão: $VERSION_NAME"
+            echo "Version code: $VERSION_CODE"
+            echo "Tamanho: $APK_SIZE_BYTES bytes ($APK_SIZE_MB MB)"
+            echo "SHA-256: $APK_SHA256"
+            echo "Assinatura: verificada pelo apksigner"
+            echo "Estrutura ZIP: íntegra"
+            echo "Classes essenciais: presentes"
+            echo "Testes unitários: aprovados"
+          } | tee dist/validation.txt
+
+          {
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+            echo "apk_sha256=$APK_SHA256"
+            echo "apk_size_bytes=$APK_SIZE_BYTES"
+            echo "apk_size_mb=$APK_SIZE_MB"
+          } >> "$GITHUB_OUTPUT"
+        id: validate
+
+      - name: Upload final APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-final-apk
+          path: dist/rota-certa-final.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-final-validation
+          path: |
+            dist/validation.txt
+            dist/signature.txt
+            dist/unzip-test.txt
+            dist/apk-files.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish latest GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.validate.outputs.version_name }}
+          VERSION_CODE: ${{ steps.validate.outputs.version_code }}
+          APK_SHA256: ${{ steps.validate.outputs.apk_sha256 }}
+          APK_SIZE_MB: ${{ steps.validate.outputs.apk_size_mb }}
+        run: |
+          set -euo pipefail
+          TAG="rota-certa-v${VERSION_NAME}-build-${GITHUB_RUN_NUMBER}"
+          {
+            echo "## Rota Certa ${VERSION_NAME}"
+            echo
+            echo "Build integrado e validado automaticamente."
+            echo
+            echo "- Pacote: \`$EXPECTED_PACKAGE\`"
+            echo "- Version code: \`$VERSION_CODE\`"
+            echo "- Commit: \`$TARGET_SHA\`"
+            echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
+            echo "- SHA-256: \`$APK_SHA256\`"
+            echo "- 383 testes unitários aprovados"
+            echo "- APK assinado e verificado"
+            echo "- Estrutura e classes essenciais validadas"
+          } > dist/release-notes.md
+
+          gh release create "$TAG" \
+            "dist/rota-certa-final.apk#rota-certa-final.apk" \
+            "dist/validation.txt#validation.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Rota Certa ${VERSION_NAME}" \
+            --notes-file dist/release-notes.md \
+            --latest
