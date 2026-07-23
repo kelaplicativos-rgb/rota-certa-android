@@ -10,23 +10,44 @@ import android.widget.Toast
 import kotlinx.coroutines.delay
 
 internal object QuickReplyAccessibilityFiller {
-    suspend fun apply(service: AccessibilityService, replyText: String) {
-        val normalized = replyText.trim()
-        if (normalized.isBlank()) return
-        repeat(8) { attempt ->
-            if (attempt > 0) delay(120L)
+    suspend fun apply(
+        service: AccessibilityService,
+        replyText: String,
+        expectedPackageName: String? = null,
+    ) {
+        val normalizedText = replyText.trim()
+        if (normalizedText.isBlank()) return
+
+        repeat(MAX_ATTEMPTS) { attempt ->
+            if (attempt > 0) delay(RETRY_DELAY_MILLIS)
             val root = service.rootInActiveWindow ?: return@repeat
+            val rootPackageName = root.packageName?.toString()
+            if (!QuickReplyTargetPolicy.canFill(
+                    currentPackageName = rootPackageName,
+                    expectedPackageName = expectedPackageName,
+                    ownPackageName = service.packageName,
+                )
+            ) return@repeat
+
             val target = findEditableNode(root) ?: return@repeat
             val arguments = Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, normalized)
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    normalizedText,
+                )
             }
             if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
                 Toast.makeText(service, "Resposta inserida.", Toast.LENGTH_SHORT).show()
                 return
             }
         }
+
+        copyFallback(service, normalizedText)
+    }
+
+    private fun copyFallback(service: AccessibilityService, text: String) {
         val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Resposta rápida", normalized))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Resposta rápida", text))
         Toast.makeText(
             service,
             "Não consegui preencher automaticamente. A resposta foi copiada.",
@@ -42,4 +63,7 @@ internal object QuickReplyAccessibilityFiller {
         }
         return node.takeIf { it.isEditable }
     }
+
+    private const val MAX_ATTEMPTS = 14
+    private const val RETRY_DELAY_MILLIS = 100L
 }
