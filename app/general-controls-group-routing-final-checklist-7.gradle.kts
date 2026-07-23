@@ -67,3 +67,5 @@ tasks.matching { it.name == "preBuild" }.configureEach {
         )
     }
 }
+
+apply(from = "checklist-7-final-contract.gradle.kts")
