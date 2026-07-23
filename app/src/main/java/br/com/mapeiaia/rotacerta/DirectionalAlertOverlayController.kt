@@ -8,7 +8,6 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -39,6 +38,7 @@ class DirectionalAlertOverlayController(
     ) {
         cancelPendingClose()
         ensureView()
+        if (container == null) return
         activeTargetId = visual.targetId
 
         titleView?.text = when (visual.kind) {
@@ -101,32 +101,32 @@ class DirectionalAlertOverlayController(
                 setStroke(dp(3), Color.rgb(255, 193, 7))
             }
         }
-        titleView = TextView(context).apply {
+        val newTitle = TextView(context).apply {
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             maxLines = 2
         }.also(root::addView)
-        distanceView = TextView(context).apply {
+        val newDistance = TextView(context).apply {
             textSize = 34f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, 0)
         }.also(root::addView)
-        statusView = TextView(context).apply {
+        val newStatus = TextView(context).apply {
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(2))
         }.also(root::addView)
-        detailsView = TextView(context).apply {
+        val newDetails = TextView(context).apply {
             textSize = 12f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
         }.also(root::addView)
-        actionsView = LinearLayout(context).apply {
+        val newActions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, 0)
@@ -144,6 +144,11 @@ class DirectionalAlertOverlayController(
         }
         if (runCatching { windowManager.addView(root, params) }.isSuccess) {
             container = root
+            titleView = newTitle
+            distanceView = newDistance
+            statusView = newStatus
+            detailsView = newDetails
+            actionsView = newActions
         }
     }
 
@@ -157,16 +162,16 @@ class DirectionalAlertOverlayController(
             hide()
             actions.onDismiss()
         })
-        if (visual.kind == DirectionalAlertKind.SavedPlace && visual.savedPlaceId != null) {
-            if (actions.onEdit != null) {
-                row.addView(actionButton("Editar") { actions.onEdit.invoke(visual.savedPlaceId) })
-            }
-            if (actions.onDelete != null) {
-                row.addView(actionButton("Excluir") {
-                    hide()
-                    actions.onDelete.invoke(visual.savedPlaceId)
-                })
-            }
+        val savedPlaceId = visual.savedPlaceId
+        if (visual.kind != DirectionalAlertKind.SavedPlace || savedPlaceId == null) return
+        actions.onEdit?.let { edit ->
+            row.addView(actionButton("Editar") { edit(savedPlaceId) })
+        }
+        actions.onDelete?.let { delete ->
+            row.addView(actionButton("Excluir") {
+                hide()
+                delete(savedPlaceId)
+            })
         }
     }
 
