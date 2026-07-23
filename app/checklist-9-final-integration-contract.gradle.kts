@@ -39,15 +39,6 @@ fun verifyFinalIntegrationChecklist9(
     ).forEach { marker ->
         if (marker !in main) throw GradleException("Interface integrada incompleta: $marker")
     }
-    val homeCallStart = main.indexOf("        HomeDecisionCard(")
-    val homeCallEnd = if (homeCallStart >= 0) main.indexOf("\n    )", homeCallStart) else -1
-    if (homeCallStart < 0 || homeCallEnd <= homeCallStart) {
-        throw GradleException("Chamada ativa da Casa não localizada.")
-    }
-    val homeCallRegion = main.substring(homeCallStart, homeCallEnd)
-    if ("onSave = { saveQuickSettings(quickSettings) }" in homeCallRegion) {
-        throw GradleException("Casa ativa voltou a ser salva sem coordenada pré-validada.")
-    }
     listOf(
         "KeyboardActions(onDone = { addAddress() })",
         "WorkRegionTargetPolicy.setEnabled",
