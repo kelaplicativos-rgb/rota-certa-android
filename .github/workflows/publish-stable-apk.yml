@@ -91,9 +91,10 @@ jobs:
       - name: Materialize historical source once
         run: gradle preBuild --no-daemon --stacktrace --console=plain
 
-      - name: Finalize effective source and clean build script
+      - name: Finalize effective source, apply fixes and clean build script
         run: |
           python3 scripts/materialize_0128.py finalize
+          python3 scripts/apply_0128_behavior_fixes.py
           python3 scripts/materialize_build_gradle_0128.py
 
       - name: Clean outputs
