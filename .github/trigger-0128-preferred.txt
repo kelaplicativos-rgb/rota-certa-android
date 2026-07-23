@@ -1,1 +1,1 @@
-Trigger detailed Rota Certa 0.1.128 test evidence.
+Trigger Rota Certa 0.1.128 parser alert and diagnostic fixes.
