@@ -1,1 +1,1 @@
-Trigger Rota Certa 0.1.128 validation after restoring the clean Gradle materializer.
+Trigger Rota Certa 0.1.128 validation after markerless inDrive card recognition fix.
