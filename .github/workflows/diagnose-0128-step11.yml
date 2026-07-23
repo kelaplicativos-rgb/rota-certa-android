@@ -1,0 +1,106 @@
+name: Diagnose Rota Certa 0.1.128 finalization
+
+on:
+  push:
+    branches:
+      - codex/pr5-stable-bubble-combined
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/rota-certa-0.1.128-materialized-build
+          fetch-depth: 0
+
+      - name: Extract implementation
+        run: |
+          set -euo pipefail
+          cat scripts/payload-00.txt scripts/payload-01.txt scripts/payload-02.txt scripts/payload-03.txt scripts/payload-04.txt > /tmp/rota-certa-0128.b64
+          test "$(sha256sum /tmp/rota-certa-0128.b64 | awk '{print $1}')" = "a407620bf62762ccdbdf69c7ceb1c8f97c1c3c889467ff5055c56130605677b6"
+          base64 --decode /tmp/rota-certa-0128.b64 > /tmp/rota-certa-0128.tar.xz
+          tar -xJf /tmp/rota-certa-0128.tar.xz
+
+      - name: Resolve finalizer
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          script = Path('scripts/materialize_0128.py')
+          text = script.read_text()
+          needle = 'PATCH_FINALIZER = APP / "patch-pr5-finalizer.gradle.kts"'
+          replacement = '''FINALIZER_STATE = ROOT / ".materializer-finalizer-path"
+
+          def resolve_patch_finalizer() -> Path:
+              if FINALIZER_STATE.exists():
+                  stored = Path(FINALIZER_STATE.read_text().strip())
+                  if stored.exists():
+                      return stored
+              candidates = []
+              for path in APP.rglob("*.gradle.kts"):
+                  content = path.read_text(errors="ignore")
+                  if (("// Ultima porta da cadeia de geracao." in content and "finalizeRotaCerta0128EffectiveSource" in content) or
+                      ('apply(from = "version-0.1.127.gradle.kts")' in content and 'apply(from = "manual-models-optional-finalizer-0.1.127.gradle.kts")' in content)):
+                      candidates.append(path)
+              unique = list(dict.fromkeys(candidates))
+              if len(unique) != 1:
+                  raise SystemExit(f"Finalizador ambiguo ou ausente: {unique}")
+              FINALIZER_STATE.write_text(str(unique[0]))
+              return unique[0]
+
+          PATCH_FINALIZER = resolve_patch_finalizer()'''
+          if needle not in text:
+              raise SystemExit('Declaracao fixa nao encontrada')
+          script.write_text(text.replace(needle, replacement, 1))
+          PY
+          python3 scripts/materialize_0128.py prepare
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Materialize historical source
+        run: gradle preBuild --no-daemon --console=plain > step10-prebuild.log 2>&1
+
+      - name: Diagnose three finalization commands
+        id: diagnose
+        run: |
+          set +e
+          python3 scripts/materialize_0128.py finalize > step11a-finalize.log 2>&1
+          a=$?
+          python3 scripts/apply_0128_behavior_fixes.py > step11b-behavior.log 2>&1
+          b=$?
+          python3 scripts/materialize_build_gradle_0128.py > step11c-build-gradle.log 2>&1
+          c=$?
+          printf 'FINALIZE_STATUS=%s\nBEHAVIOR_STATUS=%s\nBUILD_GRADLE_STATUS=%s\n' "$a" "$b" "$c" > step11-status.txt
+          cat step11-status.txt
+          echo '--- FINALIZE ---'; cat step11a-finalize.log
+          echo '--- BEHAVIOR ---'; cat step11b-behavior.log
+          echo '--- BUILD GRADLE ---'; cat step11c-build-gradle.log
+          exit 0
+
+      - name: Publish evidence
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B agent/rota-certa-0.1.128-step11-evidence
+          git add -f step10-prebuild.log step11-status.txt step11a-finalize.log step11b-behavior.log step11c-build-gradle.log
+          git commit -m "Record Rota Certa 0.1.128 finalization diagnostics"
+          git push origin agent/rota-certa-0.1.128-step11-evidence --force
