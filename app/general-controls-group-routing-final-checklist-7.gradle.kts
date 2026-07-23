@@ -47,8 +47,11 @@ fun patchGeneralControlGroupRoutingChecklist7(file: java.io.File) {
     }
 
     val routedStart = main.indexOf("legacy_access_groups_to_general_checklist_7")
-    val alertsAfter = main.indexOf("BUBBLE_GROUP_ALERTS ->", routedStart)
-    val routedRegion = main.substring(routedStart.coerceAtLeast(0), alertsAfter.coerceAtLeast(routedStart))
+    val alertsAfter = if (routedStart >= 0) main.indexOf("BUBBLE_GROUP_ALERTS ->", routedStart) else -1
+    if (routedStart < 0 || alertsAfter <= routedStart) {
+        throw GradleException("Não foi possível delimitar o grupo geral final.")
+    }
+    val routedRegion = main.substring(routedStart, alertsAfter)
     if ("LiveReadingCard(" in routedRegion) {
         throw GradleException("Grupo geral ainda usa cartão antigo de leitura.")
     }
