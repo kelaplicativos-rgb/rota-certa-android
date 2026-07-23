@@ -71,6 +71,8 @@ jobs:
               'instant_farol_cached_settings_0_1_124',
               'persistent_route_cache_save_0_1_124',
               'global_overlay_idle_allowed_0_1_124',
+              'primary_visible_card_scope_0_1_125',
+              'stable_card_signature_route_0_1_127',
           ]
           missing = [marker for marker in compatibility_markers if marker not in text]
           if missing:
