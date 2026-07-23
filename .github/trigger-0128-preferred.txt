@@ -1,1 +1,1 @@
-Trigger recognized Rota Certa 0.1.128 candidate workflow.
+Trigger Rota Certa 0.1.128 candidate through PR synchronize.
