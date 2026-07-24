@@ -21,10 +21,11 @@ class FarolCriticalPathChecklist6Test {
     }
 
     @Test
-    fun `alvo visual permanece abaixo de um segundo`() {
+    fun `alvo visual permanece em oitocentos e cinquenta milissegundos`() {
         assertTrue(FarolCriticalPathPolicy.TARGET_RESULT_MILLIS < 1_000L)
-        assertTrue(FarolCriticalPathPolicy.elapsedWithinTarget(1_000L, 1_900L))
-        assertFalse(FarolCriticalPathPolicy.elapsedWithinTarget(1_000L, 1_901L))
+        assertTrue(FarolCriticalPathPolicy.elapsedWithinTarget(1_000L, 1_850L))
+        assertFalse(FarolCriticalPathPolicy.elapsedWithinTarget(1_000L, 1_851L))
+        assertTrue(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS <= 40L)
     }
 
     private fun canCapture(route: Boolean, screenshot: Boolean, automatic: Boolean): Boolean =
