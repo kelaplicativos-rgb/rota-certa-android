@@ -18,7 +18,7 @@ class InstantFarolDecision124Test {
         val end = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", start)
         val region = service.substring(start, end)
 
-        assertTrue("Snapshot de configuracoes em memoria ausente", "instant_farol_cached_settings_0_1_124" in region)
+        assertTrue("Snapshot de configuracoes em memoria ausente", "val settingsChecklist13 = currentSettings" in region)
         assertFalse("A rota nao pode aguardar DataStore", "repository.settings.first()" in region)
     }
 
@@ -28,56 +28,51 @@ class InstantFarolDecision124Test {
         val start = service.indexOf("private suspend fun applyUniversalTwoAddressResult(")
         val end = service.indexOf("private fun isUniversalResultFresh(", start)
         val region = service.substring(start, end)
-        val paint = region.indexOf("showOverlay(color, distanceKm)")
+        val paint = region.indexOf("showOverlay(colorChecklist13, distanceChecklist13)")
         val history = region.indexOf("repository.addAnalysis(result)")
 
-        assertTrue("Marcador de pintura imediata ausente", "instant_farol_paint_before_history_0_1_124" in region)
+        assertTrue("Marcador de medição final ausente", "measured_end_to_end_farol_checklist_13" in region)
         assertTrue("A bolinha precisa ser pintada antes do historico", paint >= 0 && history > paint)
-        assertTrue("Historico precisa ser persistido sem bloquear a cor", "scope.launch" in region)
+        assertTrue("Historico precisa ser persistido sem bloquear a cor", "scope.launch(Dispatchers.IO)" in region)
     }
 
     @Test
-    fun anySelectedApplicationUsesSameImmediateClearContract() {
+    fun anySavedApplicationUsesTheSameImmediateClearContract() {
         val service = serviceSource()
         val start = service.indexOf("private suspend fun processRideText(")
         val end = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", start)
         val region = service.substring(start, end)
 
-        assertTrue("Card precisa exigir passageiro unico", "global_single_passenger_gate_0_1_124" in region)
-        assertTrue("Card precisa exigir passageiro e enderecos", "global_passenger_and_addresses_card_0_1_124" in region)
-        assertTrue("Leitura incompleta precisa limpar imediatamente", "global_inactive_clear_now_0_1_124" in region)
-        assertTrue("Qualquer mudanca da tela precisa invalidar o resultado", "global_full_screen_hash_0_1_124" in region)
+        assertTrue("Aplicativo salvo precisa ser validado", "SelectedRideAppStore.read(applicationContext)" in region)
+        assertTrue("Dois enderecos precisam ser o unico gatilho", "SimpleSavedAppFarolPolicy.evaluate" in region)
+        assertTrue("Leitura incompleta precisa limpar imediatamente", "simple_two_address_clear_checklist_13" in region)
+        assertTrue("Novo endereço precisa invalidar resultado anterior", "Novo endereco detectado; resultado anterior removido imediatamente." in region)
         assertFalse("Contrato nao pode citar pacote especifico", "sinet.startup.indriver" in region)
-        assertFalse(
-            "Contrato nao pode executar tolerancia de leitura vazia",
-            "UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in region,
-        )
-        assertFalse(
-            "Contrato nao pode executar guard que conserva a cor anterior",
-            "if (shouldScanCurrentWindow() && hasActiveRegisteredDecision())" in service,
-        )
+        assertFalse("Passageiro não pode voltar ao caminho crítico", "RidePassengerIdentityPolicy" in region)
+        assertFalse("Modelo visual não pode voltar ao caminho crítico", "RideCardTemplateMatcher.match" in region)
     }
 
     @Test
     fun emptyAccessibilityReadsCannotKeepThePreviousDecision() {
         val service = serviceSource()
+        val eventStart = service.indexOf("override fun onAccessibilityEvent(")
+        val eventEnd = service.indexOf("override fun onInterrupt()", eventStart)
+        val eventRegion = service.substring(eventStart, eventEnd)
 
-        assertTrue("Limpeza imediata global precisa existir", "global_inactive_clear_now_0_1_124" in service)
-        assertTrue("Reset para cinza nao pode ser bloqueado", "global_idle_never_guarded_0_1_124" in service)
-        assertTrue("Overlay cinza precisa ser permitido", "global_overlay_idle_allowed_0_1_124" in service)
-        assertFalse("Bloco executavel nao pode ignorar leitura vazia", "if (ignoreTransientOverlayEmpty)" in service)
-        assertFalse(
-            "Rota em andamento nao pode proteger leitura vazia",
-            "UniversalFastReadPolicy.shouldIgnoreTransientInactiveRead(" in service.substring(
-                service.indexOf("private suspend fun processRideText("),
-                service.indexOf("private suspend fun analyzeUniversalTwoAddress("),
-            ),
-        )
+        assertTrue("Mudança real da tela precisa limpar imediatamente", "immediate_screen_change_clear_checklist_13" in eventRegion)
+        assertTrue("Texto vazio precisa remover resultado", "Tela alterada sem dois enderecos visiveis; resultado removido imediatamente." in eventRegion)
+        assertFalse("Rota em andamento não pode preservar leitura vazia", "shouldIgnoreTransientInactiveRead" in eventRegion)
     }
 
     @Test
-    fun yellowWaitingStateRemainsAvailable() {
+    fun yellowWaitingStateRemainsAvailableOnlyWhileCalculating() {
         val service = serviceSource()
-        assertTrue("Amarelo precisa continuar indicando analise", "showOverlay(RadarColor.Default, distanceKm = null)" in service)
+        val start = service.indexOf("private suspend fun processRideText(")
+        val end = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", start)
+        val region = service.substring(start, end)
+
+        assertTrue("Amarelo precisa continuar indicando rota nova", "Dois enderecos identificados; calculando o ultimo destino." in region)
+        assertTrue("Amarelo precisa ser pintado somente após falha do cache", "showOverlay(RadarColor.Default, distanceKm = null)" in region)
+        assertTrue("Cache exato precisa vir antes do amarelo", region.indexOf("exact_cache_before_yellow_checklist_13") < region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)"))
     }
 }
