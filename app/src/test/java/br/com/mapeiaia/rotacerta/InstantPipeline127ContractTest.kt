@@ -21,17 +21,11 @@ class InstantPipeline127ContractTest {
         val eventEnd = service.indexOf("override fun onInterrupt()", eventStart)
         val eventRegion = service.substring(eventStart, eventEnd)
 
-        assertTrue("Leitura de acessibilidade precisa continuar imediata", "scheduleVisibleTextAnalysis(delayMs = 0L" in eventRegion)
+        assertTrue("Leitura de acessibilidade precisa processar imediatamente", "CoroutineStart.UNDISPATCHED" in eventRegion)
         assertTrue("OCR deve ser apenas fallback", "scheduleScreenshotFallback127(resolvedPackage)" in eventRegion)
-        assertFalse(
-            "Evento nao deve iniciar OCR simultaneamente com a arvore de acessibilidade",
-            "requestScreenshotAnalysis(allowPopupCandidate = true)" in eventRegion,
-        )
-        assertTrue(
-            "Fallback precisa usar o orçamento subsegundo centralizado",
-            "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS)" in service,
-        )
-        assertTrue("Leitura aceita deve cancelar OCR pendente", "accessibility_confirmed_cancel_ocr_0_1_127" in service)
+        assertFalse("Evento nao deve solicitar screenshot diretamente", "requestScreenshotAnalysis(allowPopupCandidate = true)" in eventRegion)
+        assertTrue("Fallback precisa usar o orçamento centralizado", "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS)" in service)
+        assertTrue("Leitura aceita deve cancelar OCR pendente", "screenshotFallbackJob127?.cancel()" in eventRegion)
     }
 
     @Test
@@ -41,10 +35,10 @@ class InstantPipeline127ContractTest {
         val analysisEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", analysisStart)
         val analysisRegion = service.substring(analysisStart, analysisEnd)
 
-        assertTrue("Casa e alfinetes precisam compartilhar a mesma matriz", "multi_address_route_matrix_final_checklist_7" in analysisRegion)
-        assertTrue("A origem precisa ser o destino captado", "originAddress = fields.destination.orEmpty()" in analysisRegion)
-        assertTrue("Alvos previamente resolvidos precisam alimentar a matriz", "resolvedPins.mapNotNull(WorkRegionPin::coordinate)" in analysisRegion)
-        assertTrue("Decisão final precisa considerar Casa e alfinetes", "decisionEngine.decideWorkRegion(" in analysisRegion)
+        assertTrue("Casa e alfinetes precisam compartilhar a mesma matriz", "single_exact_route_matrix_checklist_13" in analysisRegion)
+        assertTrue("A origem precisa ser o último endereço captado", "originAddress = fields.destination.orEmpty()" in analysisRegion)
+        assertTrue("Alvos previamente resolvidos precisam alimentar a matriz", "targetsChecklist13.destinations" in analysisRegion)
+        assertTrue("Decisão final precisa considerar Casa e alfinetes", "decideFastWorkRegionChecklist13(" in analysisRegion)
         assertEquals(1, Regex("drivingDistancesFromAddressKm\\(").findAll(analysisRegion).count())
         assertFalse("Chamadas sequenciais por alvo não podem voltar", "routeDistanceKm(" in analysisRegion)
         assertFalse("Linha reta nao pode liberar verde", "fastInsideResult" in analysisRegion)
