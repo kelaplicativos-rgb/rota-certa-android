@@ -13,7 +13,7 @@ class NoPreRegisteredGates126ContractTest {
         ?: error("$path nao encontrado")
 
     @Test
-    fun noAppIsPreselectedAndOnlyManualPackagesCanBeRead() {
+    fun noAppIsPreselectedAndOnlySavedPackagesCanBeRead() {
         val service = source("LiveRideAccessibilityService.kt")
         val scanStart = service.indexOf("private fun shouldScanPackage(")
         val scanEnd = service.indexOf("private fun selectedRidePackages", scanStart)
@@ -29,33 +29,32 @@ class NoPreRegisteredGates126ContractTest {
     }
 
     @Test
-    fun registeredModelFromTheSamePackageIsRequiredBeforeRouteOrColor() {
+    fun savedPackageAndTwoAddressesAreRequiredButVisualModelIsNot() {
         val service = source("LiveRideAccessibilityService.kt")
         val processStart = service.indexOf("private suspend fun processRideText(")
-        val processEnd = service.indexOf("private fun resolveRidePackageForText(", processStart)
+        val processEnd = service.indexOf("//    private fun resolveRidePackageForText(", processStart)
         assertTrue(processStart >= 0 && processEnd > processStart)
         val process = service.substring(processStart, processEnd)
 
-        assertTrue("A configuracao precisa exigir card cadastrado", "requireRegisteredRideCard = true" in service)
-        assertTrue("O match precisa usar apenas modelos do pacote selecionado", "templates = packageCardTemplates" in process)
-        assertTrue("Sem modelo a rota deve ser bloqueada", "manual_card_required" in process)
-        assertTrue("Sem correspondencia a rota deve ser bloqueada", "manual_card_waiting" in process)
-        assertTrue("A rota so continua depois do match", "manual_registered_card_gate_0_1_127" in process)
-        assertTrue("Resultado antigo deve depender do modelo ainda ativo", "manual_registered_card_freshness_0_1_127" in service)
+        assertFalse("Configuracao não pode exigir modelo", "requireRegisteredRideCard = true" in service)
+        assertTrue("Pacote salvo precisa ser validado", "SelectedRideAppStore.read(applicationContext)" in process)
+        assertTrue("Dois endereços precisam ser avaliados", "SimpleSavedAppFarolPolicy.evaluate" in process)
+        assertTrue("O último endereço precisa alimentar o destino", "destination = evaluationChecklist13.destination" in process)
+        assertFalse("Modelo visual não pode bloquear rota", "RideCardTemplateMatcher.match" in process)
+        assertFalse("Passageiro não pode bloquear rota", "RidePassengerIdentityPolicy" in process)
+        assertFalse("Portaria manual antiga não pode voltar", "manual_registered_card_gate_0_1_127" in process)
     }
 
     @Test
-    fun interfaceStartsEmptyAndExplainsBothManualSteps() {
+    fun interfaceStartsEmptyAndExplainsSavedAppsAndOptionalModels() {
         val main = source("MainActivity.kt")
 
         assertTrue("Seletor manual de apps precisa estar visivel", "Buscar aplicativos instalados" in main)
         assertTrue("Tela deve explicar que nenhum app nasce marcado", "Nenhum aplicativo vem marcado" in main)
-        assertTrue("Cadastro de cards precisa estar visivel", "Anexar modelos de cards (prints)" in main)
+        assertTrue("Cadastro de cards precisa continuar visivel", "Anexar modelos de cards (prints)" in main)
         assertTrue("Tela deve explicar que nenhum modelo nasce cadastrado", "Nenhum modelo nasce cadastrado" in main)
-        assertTrue("Tela deve declarar modelos obrigatorios", "Modelos de cards obrigatorios" in main)
-        assertTrue("Relatorio deve declarar ausencia de pre-cadastros", "Aplicativos pre-cadastrados: nenhum" in main)
-        assertTrue("Relatorio deve listar a selecao manual", "Selecao manual de apps obrigatoria: true" in main)
-        assertTrue("Relatorio deve declarar card obrigatorio", "Modelos de cards obrigatorios: true" in main)
+        assertTrue("Tela deve declarar modelo opcional", "Modelos de cards (apoio opcional)" in main)
+        assertFalse("Tela não pode declarar modelo obrigatório", "Modelos de cards obrigatorios" in main)
         assertFalse("Chaves fixas de 99, Uber e inDrive nao devem voltar", "SettingsSwitchRow(\"99 Motorista\"" in main)
     }
 
