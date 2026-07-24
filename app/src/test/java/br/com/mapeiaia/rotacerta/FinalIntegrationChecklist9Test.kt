@@ -38,7 +38,8 @@ class FinalIntegrationChecklist9Test {
         assertTrue("bloco final da rota precisa existir", routeStart >= 0 && routeEnd > routeStart)
         val route = service.substring(routeStart, routeEnd)
         assertEquals(1, Regex("drivingDistancesFromAddressKm\\(").findAll(route).count())
-        assertTrue("Casa e alfinetes precisam usar o motor final", "decideWorkRegion(" in route)
+        assertTrue("Casa e alfinetes precisam usar uma única matriz", "single_exact_route_matrix_checklist_13" in route)
+        assertTrue("motor final precisa receber as distâncias da matriz", "decideFastWorkRegionChecklist13(" in route)
         assertFalse("não pode haver rota sequencial por alvo", "routeDistanceKm(" in route)
     }
 
