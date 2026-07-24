@@ -71,14 +71,16 @@ class RouteCacheSafety127Test {
         ).firstOrNull(File::exists)?.readText()
             ?: error("LiveRideAccessibilityService.kt nao encontrado")
 
-        val cardChangedStart = service.indexOf("val cardChanged = universalActiveAddressSignature != cardDecisionSignature")
-        val cardChangedEnd = service.indexOf("} else {", cardChangedStart)
-        val region = service.substring(cardChangedStart, cardChangedEnd)
-        val cacheCheck = region.indexOf("instant_cache_before_yellow_0_1_127")
+        val processStart = service.indexOf("private suspend fun processRideText(")
+        val processEnd = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", processStart)
+        val region = service.substring(processStart, processEnd)
+        val cacheCheck = region.indexOf("cachedDrivingDistancesFromAddressKm(")
+        val cacheApply = region.indexOf("exact_cache_before_yellow_checklist_13")
         val yellowPaint = region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)")
 
-        assertTrue("Cache exato precisa ser consultado no novo card", cacheCheck >= 0)
-        assertTrue("Cache deve retornar antes da pintura amarela", cacheCheck < yellowPaint)
+        assertTrue("Cache exato precisa ser consultado no novo destino", cacheCheck >= 0)
+        assertTrue("Aplicacao do cache precisa existir", cacheApply > cacheCheck)
+        assertTrue("Cache deve retornar antes da pintura amarela", cacheApply < yellowPaint)
         assertTrue("Aplicacao do cache precisa usar a validacao normal", "applyUniversalTwoAddressResult(" in region)
     }
 }
