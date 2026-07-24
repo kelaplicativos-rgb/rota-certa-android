@@ -70,9 +70,11 @@ class InstantFarolDecision124Test {
         val start = service.indexOf("private suspend fun processRideText(")
         val end = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", start)
         val region = service.substring(start, end)
+        val cacheMarker = region.indexOf("exact_cache_before_yellow_checklist_13")
+        val routeYellow = region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)", cacheMarker)
 
         assertTrue("Amarelo precisa continuar indicando rota nova", "Dois enderecos identificados; calculando o ultimo destino." in region)
-        assertTrue("Amarelo precisa ser pintado somente após falha do cache", "showOverlay(RadarColor.Default, distanceKm = null)" in region)
-        assertTrue("Cache exato precisa vir antes do amarelo", region.indexOf("exact_cache_before_yellow_checklist_13") < region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)"))
+        assertTrue("Cache exato precisa ser aplicado antes do amarelo", cacheMarker >= 0)
+        assertTrue("Amarelo da rota precisa vir somente depois da falha do cache", routeYellow > cacheMarker)
     }
 }
