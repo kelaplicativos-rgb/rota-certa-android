@@ -34,22 +34,29 @@ object SimpleSavedAppFarolPolicy {
             normalizedPackage in normalizedSaved &&
             trigger.addresses.size >= UniversalAddressTrigger.MINIMUM_VISIBLE_ADDRESSES &&
             !trigger.destination.isNullOrBlank()
+        val addressSignature = if (active) {
+            normalizedPackage + "|" + trigger.addressSignature
+        } else {
+            ""
+        }
         return Evaluation(
             packageName = normalizedPackage,
             addresses = trigger.addresses,
             pickup = trigger.pickup,
             destination = trigger.destination,
-            addressSignature = if (active) {
-                normalizedPackage + "|" + trigger.addressSignature
+            addressSignature = addressSignature,
+            // Preço, cronômetro, nome, mapa e outras informações variáveis não
+            // podem transformar o mesmo destino em uma tela nova e fazer piscar.
+            screenHash = if (active) {
+                FarolDisplayStabilityPolicy.stableScreenHash(normalizedPackage, addressSignature)
             } else {
-                ""
+                trigger.screenHash
             },
-            screenHash = trigger.screenHash,
             active = active,
         )
     }
 
-    /** Hash barato para invalidar verde/vermelho antes de OCR, rota ou histórico. */
+    /** Mantido para compatibilidade; não deve mais decidir limpeza pelo texto completo. */
     fun screenFingerprint(
         packageName: String?,
         text: String,
