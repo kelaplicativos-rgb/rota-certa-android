@@ -115,7 +115,7 @@ class UniversalManualPackageNoFlicker15Test {
             id = "t1",
             name = "Modelo",
             packageName = packageName,
-            requiredFeatures = emptySet(),
+            requiredFeatures = emptyList(),
             sampleHash = 1,
         )
         val capture = AutomaticRideCapture(
