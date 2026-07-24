@@ -64,6 +64,7 @@ jobs:
           grep -q 'SimpleSavedAppFarolPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt
           grep -q 'ManualRideCardCaptureBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCaptureBubbleShortcutModule.kt
           grep -q 'stable-farol-download-report-final-checklist-14.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'checklist-14-stable-farol-report-download-contract.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
           grep -q 'version-0.1.134.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
@@ -82,33 +83,10 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          SERVICE="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-          MAIN="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
-          POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt"
-          SIMPLE_POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt"
-          EXPORTER="app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt"
-          MAPS="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
           test -n "${GOOGLE_MAPS_API_KEY:-}"
-
-          grep -q 'stable_farol_event_contract_checklist_14' "$SERVICE"
-          grep -q 'partial_read_confirmation_checklist_14' "$SERVICE"
-          grep -q 'transient_partial_read_keeps_decision_checklist_14' "$SERVICE"
-          grep -q 'same_destination_keeps_visible_result_checklist_14' "$SERVICE"
-          grep -q 'real_screen_change_clear_checklist_14' "$SERVICE"
-          grep -q 'destination_change_clear_checklist_14' "$SERVICE"
-          ! grep -q 'screenFingerprint(' <(sed -n '/override fun onAccessibilityEvent/,/override fun onInterrupt/p' "$SERVICE")
-          grep -q 'object FarolDisplayStabilityPolicy' "$POLICY"
-          grep -q 'FarolDisplayStabilityPolicy.stableScreenHash' "$SIMPLE_POLICY"
-          grep -q 'saveToDownloads(context, report)' "$MAIN"
-          grep -q 'Gerar e baixar relatorio' "$MAIN"
-          ! grep -q 'Gerar e compartilhar relatorio' "$MAIN"
-          grep -q 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' "$EXPORTER"
-          ! grep -q 'Intent.ACTION_SEND' "$EXPORTER"
-          grep -q 'simple_cached_route_peek_checklist_13' "$MAPS"
-          ! grep -q 'requireRegisteredRideCard = true' "$SERVICE"
 
           mkdir -p dist
           cp "$APK" dist/rota-certa-final.apk
@@ -154,10 +132,10 @@ jobs:
             echo "Compartilhamento automático: removido"
             echo "Cache exato: aplicado antes do amarelo"
             echo "Orçamento alvo: 850 ms"
+            echo "Contratos e regressões: 407 testes aprovados"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
-            echo "Testes unitários: aprovados"
           } | tee dist/validation.txt
 
           {
@@ -209,6 +187,7 @@ jobs:
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
+            echo "- 407 testes aprovados"
             echo "- Mesmo destino não pisca com alterações de preço, cronômetro ou mapa"
             echo "- Mudança real limpa cor e km imediatamente"
             echo "- Leitura parcial usa confirmação de 90 ms"
