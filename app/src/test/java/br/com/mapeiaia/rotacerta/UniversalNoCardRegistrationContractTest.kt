@@ -7,37 +7,33 @@ import org.junit.Test
 
 class UniversalNoCardRegistrationContractTest {
     @Test
-    fun cardRegistrationExistsAndBlocksRuntimeUntilSamePackageMatch() {
+    fun cardRegistrationExistsAsOptionalSupportAndNeverBlocksRuntime() {
         val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
 
         listOf(
-            "Modelos de cards obrigatorios",
+            "Modelos de cards (apoio opcional)",
             "Anexar modelos de cards (prints)",
             "Modelos cadastrados:",
             "Nenhum modelo nasce cadastrado",
         ).forEach { required ->
-            assertTrue("Cadastro obrigatorio de cards ausente: $required", required in main)
+            assertTrue("Cadastro opcional de cards ausente: $required", required in main)
         }
+        assertFalse("Interface não pode declarar modelo obrigatório", "Modelos de cards obrigatorios" in main)
 
         val processStart = service.indexOf("    private suspend fun processRideText(")
-        val processEnd = service.indexOf("    private fun resolveRidePackageForText(", processStart)
+        val processEnd = service.indexOf("    //    private fun resolveRidePackageForText(", processStart)
         assertTrue(processStart >= 0 && processEnd > processStart)
         val processBlock = service.substring(processStart, processEnd)
 
-        listOf(
-            "manual_registered_card_gate_0_1_127",
-            "templates = packageCardTemplates",
-            "manual_card_required",
-            "manual_card_waiting",
-            "registeredCardGate.markSeen()",
-        ).forEach { required ->
-            assertTrue("Portaria de modelo cadastrado ausente: $required", required in processBlock)
-        }
-
-        assertTrue("Modelos manuais precisam ser carregados", "currentCardTemplates = repository.cardTemplates.first()" in service)
+        assertTrue("Aplicativo salvo precisa ser validado", "SelectedRideAppStore.read(applicationContext)" in processBlock)
+        assertTrue("Dois endereços precisam acionar a leitura", "SimpleSavedAppFarolPolicy.evaluate" in processBlock)
+        assertTrue("O último endereço precisa ser o destino", "destination = evaluationChecklist13.destination" in processBlock)
+        assertFalse("Portaria de modelo não pode voltar", "manual_registered_card_gate_0_1_127" in processBlock)
+        assertFalse("Match de modelo não pode bloquear rota", "RideCardTemplateMatcher.match" in processBlock)
+        assertTrue("Modelos manuais precisam continuar carregados como apoio", "currentCardTemplates = repository.cardTemplates.first()" in service)
         assertFalse("Inicializacao nao pode apagar modelos", "removedTemplates126.forEach" in service)
-        assertTrue("Configuracao padrao precisa exigir modelo", AppSettings().requireRegisteredRideCard)
+        assertFalse("Configuracao padrão não pode exigir modelo", AppSettings().requireRegisteredRideCard)
     }
 
     @Test
