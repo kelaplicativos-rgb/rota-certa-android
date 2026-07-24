@@ -54,15 +54,17 @@ fun verifySimpleFarolChecklist13(root: java.io.File) {
         throw GradleException("Modelo visual voltou a bloquear resultado fresco.")
     }
 
-    listOf(
-        "simple_cached_route_peek_checklist_13",
-        "fast_network_connect_budget_checklist_13",
-        "fast_network_read_budget_checklist_13",
-    ).forEach { marker ->
-        if (marker !in maps) throw GradleException("Google Maps rápido incompleto: $marker")
+    if ("simple_cached_route_peek_checklist_13" !in maps) {
+        throw GradleException("Consulta síncrona do cache exato ausente.")
     }
-    if ("const val CONNECT_TIMEOUT_MS = 1_200" in maps || "const val READ_TIMEOUT_MS = 2_600" in maps) {
-        throw GradleException("Orçamento antigo de até 3,8 segundos voltou.")
+    val connectBudget = Regex("const val CONNECT_TIMEOUT_MS = ([0-9_]+)")
+        .find(maps)?.groupValues?.get(1)?.replace("_", "")?.toIntOrNull()
+        ?: throw GradleException("Timeout de conexão não localizado.")
+    val readBudget = Regex("const val READ_TIMEOUT_MS = ([0-9_]+)")
+        .find(maps)?.groupValues?.get(1)?.replace("_", "")?.toIntOrNull()
+        ?: throw GradleException("Timeout de leitura não localizado.")
+    if (connectBudget > 450 || readBudget > 900) {
+        throw GradleException("Orçamento de rede excede 450/900 ms: $connectBudget/$readBudget.")
     }
 
     if ("simple_saved_app_default_checklist_13" !in models || "requireRegisteredRideCard: Boolean = true" in models) {
