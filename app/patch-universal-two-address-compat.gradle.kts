@@ -1,10 +1,11 @@
 // Compatibilidade final do leitor universal:
 // - nenhum aplicativo nasce selecionado;
 // - a captura manual ensina e salva o pacote do aplicativo;
+// - qualquer pacote salvo manualmente pode usar o mesmo gatilho universal;
 // - aplicativo salvo + dois enderecos inicia a rota;
 // - o ultimo endereco reconhecido e sempre o destino;
 // - modelo visual, passageiro, preco e contrato de card nao bloqueiam o farol;
-// - mudanca real de tela limpa imediatamente; leitura parcial da mesma janela nao faz piscar.
+// - mesmo destino nao redesenha nem apaga a bolinha por mapa, rolagem ou leitura parcial.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
 apply(from = "in-app-bubble-immediate-state.gradle.kts")
@@ -136,3 +137,6 @@ apply(from = "version-0.1.133.gradle.kts")
 apply(from = "stable-farol-download-report-final-checklist-14.gradle.kts")
 apply(from = "checklist-14-stable-farol-report-download-contract.gradle.kts")
 apply(from = "version-0.1.134.gradle.kts")
+apply(from = "universal-manual-package-no-flicker-final-checklist-15.gradle.kts")
+apply(from = "checklist-15-universal-manual-package-final-contract.gradle.kts")
+apply(from = "version-0.1.135.gradle.kts")
