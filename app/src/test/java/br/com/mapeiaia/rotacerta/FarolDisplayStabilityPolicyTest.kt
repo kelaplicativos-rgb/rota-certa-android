@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FarolDisplayStabilityPolicyTest {
@@ -21,7 +22,7 @@ class FarolDisplayStabilityPolicyTest {
         assertEquals(first.addressSignature, second.addressSignature)
         assertEquals(first.screenHash, second.screenHash)
         assertEquals(
-            FarolDisplayStabilityPolicy.Action.ProcessCurrent,
+            FarolDisplayStabilityPolicy.Action.KeepCurrent,
             FarolDisplayStabilityPolicy.decide(
                 previousPackageName = "com.app99.driver",
                 previousWindowId = 7,
@@ -36,7 +37,7 @@ class FarolDisplayStabilityPolicyTest {
     }
 
     @Test
-    fun partialReadFromSameWindowConfirmsAbsenceInsteadOfBlinking() {
+    fun partialReadFromSamePackageConfirmsAbsenceInsteadOfBlinking() {
         assertEquals(
             FarolDisplayStabilityPolicy.Action.ConfirmAbsence,
             FarolDisplayStabilityPolicy.decide(
@@ -44,12 +45,13 @@ class FarolDisplayStabilityPolicyTest {
                 previousWindowId = 3,
                 activeAddressSignature = "sinet.startup.indriver|a|b",
                 currentPackageName = "sinet.startup.indriver",
-                currentWindowId = 3,
+                currentWindowId = 9,
                 currentAddressSignature = null,
                 hasTwoAddresses = false,
-                eventType = AccessibilityEventFloodGate.TYPE_WINDOW_CONTENT_CHANGED,
+                eventType = AccessibilityEventFloodGate.TYPE_WINDOWS_CHANGED,
             ),
         )
+        assertTrue(FarolDisplayStabilityPolicy.PARTIAL_ABSENCE_CONFIRM_MILLIS >= 400L)
     }
 
     @Test
@@ -70,9 +72,9 @@ class FarolDisplayStabilityPolicyTest {
     }
 
     @Test
-    fun packageWindowOrScrollChangesClearImmediately() {
+    fun windowAndScrollChangesDoNotClearTheSameDestination() {
         assertEquals(
-            FarolDisplayStabilityPolicy.Action.ClearImmediately,
+            FarolDisplayStabilityPolicy.Action.ConfirmAbsence,
             FarolDisplayStabilityPolicy.decide(
                 previousPackageName = "com.app99.driver",
                 previousWindowId = 7,
@@ -85,16 +87,33 @@ class FarolDisplayStabilityPolicyTest {
             ),
         )
         assertEquals(
-            FarolDisplayStabilityPolicy.Action.ClearImmediately,
+            FarolDisplayStabilityPolicy.Action.KeepCurrent,
             FarolDisplayStabilityPolicy.decide(
                 previousPackageName = "com.app99.driver",
                 previousWindowId = 7,
                 activeAddressSignature = "signature",
                 currentPackageName = "com.app99.driver",
-                currentWindowId = 7,
+                currentWindowId = 8,
+                currentAddressSignature = "signature",
+                hasTwoAddresses = true,
+                eventType = AccessibilityEventFloodGate.TYPE_VIEW_SCROLLED,
+            ),
+        )
+    }
+
+    @Test
+    fun packageChangeStillClearsImmediately() {
+        assertEquals(
+            FarolDisplayStabilityPolicy.Action.ClearImmediately,
+            FarolDisplayStabilityPolicy.decide(
+                previousPackageName = "com.app99.driver",
+                previousWindowId = 7,
+                activeAddressSignature = "signature",
+                currentPackageName = "com.outro.app",
+                currentWindowId = 8,
                 currentAddressSignature = null,
                 hasTwoAddresses = false,
-                eventType = AccessibilityEventFloodGate.TYPE_VIEW_SCROLLED,
+                eventType = AccessibilityEventFloodGate.TYPE_WINDOW_STATE_CHANGED,
             ),
         )
     }
