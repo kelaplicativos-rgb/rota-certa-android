@@ -16,7 +16,7 @@ concurrency:
 env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
-  EXPECTED_VERSION: 0.1.133
+  EXPECTED_VERSION: 0.1.134
   GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
 jobs:
@@ -56,14 +56,15 @@ jobs:
           grep -q 'WorkRegionPinsCard' app/src/main/java/br/com/mapeiaia/rotacerta/WorkRegionPinsCard.kt
           grep -q 'TARGET_RESULT_MILLIS = 850L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'OCR_FALLBACK_DELAY_MILLIS = 40L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
-          grep -q 'DirectionalProximityAlertEngine' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
-          grep -q 'QuickRepliesActivity' app/src/main/java/br/com/mapeiaia/rotacerta/QuickRepliesActivity.kt
+          grep -q 'FarolDisplayStabilityPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt
+          grep -q 'PARTIAL_ABSENCE_CONFIRM_MILLIS = 90L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt
+          grep -q 'saveToDownloads' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
+          grep -q 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
           grep -q 'GoogleMapsApiKeyPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsApiKeyPolicy.kt
           grep -q 'SimpleSavedAppFarolPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt
-          grep -q 'ManualRideCardCapturePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCapturePolicy.kt
           grep -q 'ManualRideCardCaptureBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCaptureBubbleShortcutModule.kt
-          grep -q 'simple-saved-app-fast-farol-final-checklist-13.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
-          grep -q 'version-0.1.133.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'stable-farol-download-report-final-checklist-14.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'version-0.1.134.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
@@ -82,23 +83,30 @@ jobs:
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           SERVICE="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-          POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt"
+          MAIN="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
+          POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt"
+          SIMPLE_POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt"
+          EXPORTER="app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt"
           MAPS="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
-          # O assemble materializa novamente os fontes finais. Validar esses marcadores
-          # é mais confiável do que procurar frases humanas no formato binário DEX.
-          grep -q 'simple_saved_app_event_contract_checklist_13' "$SERVICE"
-          grep -q 'immediate_screen_change_clear_checklist_13' "$SERVICE"
-          grep -q 'simple_two_address_clear_checklist_13' "$SERVICE"
-          grep -q 'exact_cache_before_yellow_checklist_13' "$SERVICE"
-          grep -q 'single_exact_route_matrix_checklist_13' "$SERVICE"
-          grep -q 'measured_end_to_end_farol_checklist_13' "$SERVICE"
-          grep -q 'visual_model_optional_checklist_13' "$SERVICE"
-          grep -q 'object SimpleSavedAppFarolPolicy' "$POLICY"
+          grep -q 'stable_farol_event_contract_checklist_14' "$SERVICE"
+          grep -q 'partial_read_confirmation_checklist_14' "$SERVICE"
+          grep -q 'transient_partial_read_keeps_decision_checklist_14' "$SERVICE"
+          grep -q 'same_destination_keeps_visible_result_checklist_14' "$SERVICE"
+          grep -q 'real_screen_change_clear_checklist_14' "$SERVICE"
+          grep -q 'destination_change_clear_checklist_14' "$SERVICE"
+          ! grep -q 'screenFingerprint(' <(sed -n '/override fun onAccessibilityEvent/,/override fun onInterrupt/p' "$SERVICE")
+          grep -q 'object FarolDisplayStabilityPolicy' "$POLICY"
+          grep -q 'FarolDisplayStabilityPolicy.stableScreenHash' "$SIMPLE_POLICY"
+          grep -q 'saveToDownloads(context, report)' "$MAIN"
+          grep -q 'Gerar e baixar relatorio' "$MAIN"
+          ! grep -q 'Gerar e compartilhar relatorio' "$MAIN"
+          grep -q 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' "$EXPORTER"
+          ! grep -q 'Intent.ACTION_SEND' "$EXPORTER"
           grep -q 'simple_cached_route_peek_checklist_13' "$MAPS"
           ! grep -q 'requireRegisteredRideCard = true' "$SERVICE"
 
@@ -138,16 +146,18 @@ jobs:
             echo "Tamanho: $APK_SIZE_BYTES bytes ($APK_SIZE_MB MB)"
             echo "SHA-256: $APK_SHA256"
             echo "Google Maps API: incluída no BuildConfig"
-            echo "Contrato do farol: aplicativo salvo + dois endereços; último endereço é o destino"
-            echo "Modelo visual/passageiro/preço: fora do caminho crítico"
-            echo "Mudança de tela: limpeza imediata de cor e km"
+            echo "Farol: mesmo destino permanece estável durante alterações de preço, cronômetro e mapa"
+            echo "Mudança real: pacote, janela, rolagem ou destino limpam cor e km imediatamente"
+            echo "Leitura parcial: confirmada por 90 ms antes de apagar para impedir pisca-pisca"
+            echo "Hash da decisão: baseado no pacote e nos endereços, não no texto variável"
+            echo "Relatório técnico: salvo diretamente em Downloads/Rota Certa"
+            echo "Compartilhamento automático: removido"
             echo "Cache exato: aplicado antes do amarelo"
             echo "Orçamento alvo: 850 ms"
-            echo "Fontes materializados: marcadores finais verificados após assemble"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
-            echo "Testes unitários: 402 aprovados"
+            echo "Testes unitários: aprovados"
           } | tee dist/validation.txt
 
           {
@@ -192,18 +202,17 @@ jobs:
           {
             echo "## Rota Certa ${VERSION_NAME}"
             echo
-            echo "Farol simplificado após a validação real do usuário."
+            echo "Correção final de estabilidade visual e download do relatório."
             echo
             echo "- Pacote: \`$EXPECTED_PACKAGE\`"
             echo "- Version code: \`$VERSION_CODE\`"
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
-            echo "- Aplicativo capturado é salvo automaticamente"
-            echo "- Dois endereços iniciam a rota e o último é o destino"
-            echo "- Modelo, passageiro e preço não bloqueiam a decisão"
-            echo "- Mudança de tela limpa cor e km imediatamente"
-            echo "- Cache exato é aplicado antes do amarelo"
+            echo "- Mesmo destino não pisca com alterações de preço, cronômetro ou mapa"
+            echo "- Mudança real limpa cor e km imediatamente"
+            echo "- Leitura parcial usa confirmação de 90 ms"
+            echo "- Relatório é salvo diretamente em Downloads/Rota Certa"
             echo "- Chave Google Maps API incluída no build"
             echo "- APK assinado, testado e verificado"
           } > dist/release-notes.md
