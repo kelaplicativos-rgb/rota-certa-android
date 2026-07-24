@@ -14,27 +14,26 @@ class SelectedAppWaitingYellow127Test {
         ?: error("LiveRideAccessibilityService.kt nao encontrado")
 
     @Test
-    fun selectedAppWithoutValidCardClearsDirectlyToYellowWithoutGrayFrame() {
+    fun savedAppWithoutTwoAddressesClearsDirectlyToYellowWithoutGrayFrame() {
         val service = serviceSource()
         val processStart = service.indexOf("private suspend fun processRideText(")
         val processEnd = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", processStart)
         val processRegion = service.substring(processStart, processEnd)
-        val inactiveStart = processRegion.indexOf("if (!activeTrigger)")
-        val inactiveEnd = processRegion.indexOf("universalLastActiveReadAtMillis", inactiveStart)
+        val inactiveStart = processRegion.indexOf("if (!evaluationChecklist13.active)")
+        val inactiveEnd = processRegion.indexOf("if (source == TextSource.Accessibility)", inactiveStart)
         val inactiveRegion = processRegion.substring(inactiveStart, inactiveEnd)
 
-        assertTrue("Aplicativo selecionado precisa definir a cor de espera", "val keepWaitingYellow127 = shouldScanCurrentWindow()" in inactiveRegion)
-        assertTrue("Limpeza deve receber o alvo amarelo", "keepWaitingYellow = keepWaitingYellow127" in inactiveRegion)
-        assertTrue("Contrato final precisa estar marcado", "atomic_selected_app_clear_color_0_1_127" in inactiveRegion)
+        assertTrue("Tela sem dois endereços precisa limpar imediatamente", "simple_two_address_clear_checklist_13" in inactiveRegion)
+        assertTrue("Limpeza deve manter o estado amarelo de espera", "keepWaitingYellow = true" in inactiveRegion)
         assertFalse("Fluxo nao pode pintar cinza antes do amarelo", "showOverlay(RadarColor.Idle" in inactiveRegion)
-        assertFalse("Fluxo nao pode fazer uma segunda pintura amarela", "showOverlay(RadarColor.Default" in inactiveRegion)
+        assertFalse("Fluxo não pode fazer pintura manual duplicada", "showOverlay(RadarColor.Default" in inactiveRegion)
     }
 
     @Test
     fun hardClearPaintsOnlyTheResolvedTargetColorAndKeepsYellowIdempotent() {
         val service = serviceSource()
         val clearStart = service.indexOf("private fun hardClearUniversalTwoAddress(")
-        val clearEnd = service.indexOf("private fun universalResolvedForegroundPackage(", clearStart)
+        val clearEnd = service.indexOf("private fun shouldProtectLockedPopupSession128(", clearStart)
         val clearRegion = service.substring(clearStart, clearEnd)
 
         assertTrue("Limpeza precisa aceitar alvo de espera", "keepWaitingYellow: Boolean = false" in clearRegion)
