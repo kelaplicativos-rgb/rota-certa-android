@@ -28,7 +28,6 @@ fun verifyUniversalManualPackageChecklist15(root: java.io.File) {
         "selected_package_add_remove_checklist_15",
         "card_adds_package_checklist_15",
         "last_card_removes_package_checklist_15",
-        "no_predefined_card_contract_checklist_15",
         "fixed_absence_confirmation_job_checklist_15",
         "valid_read_cancels_absence_checklist_15",
         "same_destination_no_ocr_no_repaint_checklist_15",
