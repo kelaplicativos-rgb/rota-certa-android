@@ -16,7 +16,7 @@ concurrency:
 env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
-  EXPECTED_VERSION: 0.1.134
+  EXPECTED_VERSION: 0.1.135
   GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
 jobs:
@@ -52,20 +52,17 @@ jobs:
       - name: Verify integrated source contracts
         run: |
           set -euo pipefail
-          grep -q 'TripConfirmationFormatter' app/src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationFormatter.kt
-          grep -q 'WorkRegionPinsCard' app/src/main/java/br/com/mapeiaia/rotacerta/WorkRegionPinsCard.kt
           grep -q 'TARGET_RESULT_MILLIS = 850L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'OCR_FALLBACK_DELAY_MILLIS = 40L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'FarolDisplayStabilityPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt
-          grep -q 'PARTIAL_ABSENCE_CONFIRM_MILLIS = 90L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt
+          grep -q 'CardPackageLifecyclePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/CardPackageLifecyclePolicy.kt
+          grep -q 'StrictSelectedAppReadPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/StrictSelectedAppReadPolicy.kt
+          grep -q 'UniversalScreenAddressParser' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
           grep -q 'saveToDownloads' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
           grep -q 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
-          grep -q 'GoogleMapsApiKeyPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsApiKeyPolicy.kt
-          grep -q 'SimpleSavedAppFarolPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt
-          grep -q 'ManualRideCardCaptureBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/ManualRideCardCaptureBubbleShortcutModule.kt
-          grep -q 'stable-farol-download-report-final-checklist-14.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
-          grep -q 'checklist-14-stable-farol-report-download-contract.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
-          grep -q 'version-0.1.134.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'universal-manual-package-no-flicker-final-checklist-15.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'checklist-15-universal-manual-package-final-contract.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'version-0.1.135.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
@@ -83,10 +80,27 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          SERVICE="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          STRICT="app/src/main/java/br/com/mapeiaia/rotacerta/StrictSelectedAppReadPolicy.kt"
+          STABILITY="app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt"
+          PARSER="app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt"
+          REPOSITORY="app/src/main/java/br/com/mapeiaia/rotacerta/SettingsRepository.kt"
+          MAIN="app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
           test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+          grep -q 'manual_package_overrides_legacy_classification_checklist_15' "$STRICT"
+          grep -q 'destination_only_stability_checklist_15' "$STABILITY"
+          grep -q 'PARTIAL_ABSENCE_CONFIRM_MILLIS = 500L' "$STABILITY"
+          grep -q 'no_via_app_false_address_checklist_15' "$PARSER"
+          grep -q 'overlay_idempotent_same_value_checklist_15' "$SERVICE"
+          grep -q 'valid_read_cancels_absence_checklist_15' "$SERVICE"
+          grep -q 'same_destination_no_ocr_no_repaint_checklist_15' "$SERVICE"
+          grep -q 'last_card_removes_package_checklist_15' "$REPOSITORY"
+          grep -q 'delete_capture_prunes_package_checklist_15' "$MAIN"
+          ! grep -q 'requireRegisteredRideCard = true' "$SERVICE"
 
           mkdir -p dist
           cp "$APK" dist/rota-certa-final.apk
@@ -124,15 +138,16 @@ jobs:
             echo "Tamanho: $APK_SIZE_BYTES bytes ($APK_SIZE_MB MB)"
             echo "SHA-256: $APK_SHA256"
             echo "Google Maps API: incluída no BuildConfig"
-            echo "Farol: mesmo destino permanece estável durante alterações de preço, cronômetro e mapa"
-            echo "Mudança real: pacote, janela, rolagem ou destino limpam cor e km imediatamente"
-            echo "Leitura parcial: confirmada por 90 ms antes de apagar para impedir pisca-pisca"
-            echo "Hash da decisão: baseado no pacote e nos endereços, não no texto variável"
-            echo "Relatório técnico: salvo diretamente em Downloads/Rota Certa"
-            echo "Compartilhamento automático: removido"
-            echo "Cache exato: aplicado antes do amarelo"
-            echo "Orçamento alvo: 850 ms"
-            echo "Contratos e regressões: 407 testes aprovados"
+            echo "Pacotes: qualquer pacote capturado manualmente usa o gatilho universal"
+            echo "Aplicativos predefinidos: nenhum"
+            echo "Gatilho: dois ou mais endereços; o último é o destino"
+            echo "Falso destino Via app: bloqueado"
+            echo "Mesmo destino: sem OCR, sem limpeza e sem nova renderização"
+            echo "Ausência parcial: confirmação fixa de 500 ms"
+            echo "Mudança real de pacote ou destino: invalidação imediata"
+            echo "Cards/Aplicativos: último card removido também remove o pacote"
+            echo "Relatório técnico: salvo em Downloads/Rota Certa"
+            echo "Testes unitários: aprovados"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
@@ -180,19 +195,19 @@ jobs:
           {
             echo "## Rota Certa ${VERSION_NAME}"
             echo
-            echo "Correção final de estabilidade visual e download do relatório."
+            echo "Pacote manual universal e correção definitiva da repintura da bolinha."
             echo
             echo "- Pacote: \`$EXPECTED_PACKAGE\`"
             echo "- Version code: \`$VERSION_CODE\`"
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
-            echo "- 407 testes aprovados"
-            echo "- Mesmo destino não pisca com alterações de preço, cronômetro ou mapa"
-            echo "- Mudança real limpa cor e km imediatamente"
-            echo "- Leitura parcial usa confirmação de 90 ms"
-            echo "- Relatório é salvo diretamente em Downloads/Rota Certa"
-            echo "- Chave Google Maps API incluída no build"
+            echo "- Qualquer pacote capturado manualmente pode ser lido"
+            echo "- Nenhum aplicativo nasce predefinido"
+            echo "- Dois endereços acionam o farol e o último é o destino"
+            echo "- Mesmo destino não apaga, não executa OCR e não redesenha"
+            echo "- Via app não é mais aceito como endereço"
+            echo "- Excluir o último card também remove o pacote de Aplicativos"
             echo "- APK assinado, testado e verificado"
           } > dist/release-notes.md
 
