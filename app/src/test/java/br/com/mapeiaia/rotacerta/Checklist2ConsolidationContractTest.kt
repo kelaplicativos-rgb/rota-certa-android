@@ -13,7 +13,7 @@ class Checklist2ConsolidationContractTest {
         assertFalse(settings.monitor99)
         assertFalse(settings.monitorUber)
         assertFalse(settings.monitorInDrive)
-        assertTrue(settings.requireRegisteredRideCard)
+        assertFalse(settings.requireRegisteredRideCard)
         assertFalse(settings.diagnosticsEnabled)
         assertTrue(settings.multiCardFocusLockEnabled)
         assertTrue(settings.proximityPopupAutoCloseEnabled)
