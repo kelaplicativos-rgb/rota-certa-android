@@ -18,10 +18,50 @@ fun restoreResourceShortcutClickAfterChecklist15(file: java.io.File) {
     file.writeText(text)
 }
 
+fun removeSecondGeneratedFunction134(source: String, signature: String): String {
+    val first = source.indexOf(signature)
+    if (first < 0) return source
+    val second = source.indexOf(signature, first + signature.length)
+    if (second < 0) return source
+    val open = source.indexOf('{', second)
+    if (open < 0) return source
+    var depth = 0
+    var index = open
+    while (index < source.length) {
+        when (source[index]) {
+            '{' -> depth += 1
+            '}' -> {
+                depth -= 1
+                if (depth == 0) {
+                    var end = index + 1
+                    while (end < source.length && source[end] == '\n') end += 1
+                    return source.removeRange(second, end)
+                }
+            }
+        }
+        index += 1
+    }
+    return source
+}
+
+fun deduplicateGeneratedPackageLifecycle134(packageDir: java.io.File) {
+    val repositoryFile = packageDir.listFiles()
+        ?.firstOrNull { it.isFile && it.extension == "kt" && "class SettingsRepository" in runCatching { it.readText() }.getOrDefault("") }
+        ?: return
+    var text = repositoryFile.readText()
+    text = removeSecondGeneratedFunction134(
+        text,
+        "    suspend fun pruneSelectedPackageIfNoCards(packageName: String)",
+    )
+    repositoryFile.writeText(text)
+}
+
 tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
     doFirst {
+        val packageDir = layout.projectDirectory.dir("src/main/java/br/com/mapeiaia/rotacerta").asFile
         restoreResourceShortcutClickAfterChecklist15(
-            layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").asFile,
+            java.io.File(packageDir, "LiveRideAccessibilityService.kt"),
         )
+        deduplicateGeneratedPackageLifecycle134(packageDir)
     }
 }
