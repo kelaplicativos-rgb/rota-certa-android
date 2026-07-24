@@ -82,16 +82,19 @@ class FastRouteScreenOff128Test {
     }
 
     @Test
-    fun generatedServiceProtectsLockedPopupAndUsesSingleAddressMatrix() {
+    fun generatedServiceUsesOneExactAddressMatrixAndPersistentCache() {
         val service = sourceFile("LiveRideAccessibilityService.kt").readText()
         val maps = sourceFile("GoogleMapsService.kt").readText()
+        val routeStart = service.indexOf("private suspend fun analyzeUniversalTwoAddress(")
+        val routeEnd = service.indexOf("private suspend fun applyUniversalTwoAddressResult(", routeStart)
+        val route = service.substring(routeStart, routeEnd)
 
-        assertTrue("systemui nao pode apagar rota em andamento", "blocked_systemui_preserves_card_0_1_128" in service)
-        assertTrue("leitura vazia da tela bloqueada deve ser ignorada", "transient_empty_locked_popup_ignored_0_1_128" in service)
-        assertTrue("resultado deve continuar valido no popup bloqueado", "locked_popup_result_freshness_0_1_128" in service)
-        assertTrue("Casa e Alfinete devem compartilhar uma chamada", "direct_address_route_matrix_runtime_0_1_128" in service)
+        assertTrue("mudança de tela precisa limpar imediatamente", "immediate_screen_change_clear_checklist_13" in service)
+        assertTrue("Casa e alfinetes devem compartilhar uma chamada", "single_exact_route_matrix_checklist_13" in route)
+        assertEquals(1, Regex("drivingDistancesFromAddressKm\\(").findAll(route).count())
         assertTrue("Routes API deve receber endereco diretamente", "direct_address_route_matrix_0_1_128" in maps)
         assertTrue("cache de rota deve sobreviver ao processo", "PERSISTENT_ADDRESS_ROUTE_PREFIX" in maps)
+        assertTrue("cache exato precisa ser consultável antes da rede", "simple_cached_route_peek_checklist_13" in maps)
         assertTrue("primeiro caminho nao deve repetir timeout longo", "const val ROUTE_REQUEST_ATTEMPTS = 1" in maps)
     }
 }
