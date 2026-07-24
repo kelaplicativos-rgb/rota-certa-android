@@ -43,28 +43,21 @@ class AutomaticRideCapture129Test {
     }
 
     @Test
-    fun generatedServiceDefersMatchedCaptureUntilAfterFarolAndNeverBlocksRoute() {
+    fun generatedServiceKeepsCaptureAndOcrOutsideTheSimplifiedFarolPath() {
         val service = sourceFile("LiveRideAccessibilityService.kt").readText()
-        val manualGate = service.indexOf("manual_registered_card_gate_0_1_127")
-        val deferred = service.indexOf("automatic_capture_after_farol_final_checklist_6")
-        val routeLaunch = service.indexOf("universalRouteJob = scope.launch", deferred)
-        val applyResult = service.indexOf("private suspend fun applyUniversalTwoAddressResult")
-        val overlay = service.indexOf("overlay_before_storage_final_checklist_6", applyResult)
-        val releaseCapture = service.indexOf("releaseMatchedCaptureFinalChecklist6", overlay)
+        val processStart = service.indexOf("private suspend fun processRideText(")
+        val processEnd = service.indexOf("//    private fun resolveRidePackageForText(", processStart)
+        val process = service.substring(processStart, processEnd)
         val helperStart = service.indexOf("private fun requestAutomaticRideCapture129(")
         val helperEnd = service.indexOf("private fun requestScreenshotAnalysis(", helperStart)
         val helper = service.substring(helperStart, helperEnd)
 
-        assertTrue("portaria manual deve vir antes de memorizar a captura", manualGate >= 0 && deferred > manualGate)
-        assertTrue("rota deve iniciar sem aguardar screenshot", routeLaunch > deferred)
-        assertTrue("captura deve ser liberada somente depois do overlay", overlay > applyResult && releaseCapture > overlay)
+        assertTrue("rota simples precisa existir", "simple_saved_app_process_checklist_13" in process)
+        assertTrue("rota precisa ser iniciada sem screenshot", "universalRouteJob = scope.launch" in process)
+        assertFalse("captura automática não pode entrar no caminho crítico", "requestAutomaticRideCapture129(" in process)
         assertTrue("captura precisa recusar rota ativa", "universalRouteJob?.isActive == true" in helper)
         assertTrue("gravação precisa ocorrer em IO", "scope.launch(Dispatchers.IO)" in helper)
         assertFalse("captura automática não deve executar OCR", "ocrService.extractText" in helper)
-        assertFalse(
-            "assinatura antiga não pode continuar no caminho crítico",
-            "requestAutomaticRideCapture129(\n                snapshotText" in service,
-        )
     }
 
     @Test
