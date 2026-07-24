@@ -35,3 +35,5 @@ tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.c
         )
     }
 }
+
+apply(from = "simple-farol-report-compile-repair-checklist-13.gradle.kts")
