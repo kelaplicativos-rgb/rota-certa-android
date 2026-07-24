@@ -36,8 +36,8 @@ tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.c
     }
 }
 
-// A ordem é intencional: em doFirst o gerador executa primeiro e o reparo
-// sintático é aplicado logo depois, imediatamente antes do compilador.
+// A ordem é intencional: os patches abaixo rodam após a materialização final.
+apply(from = "simple-farol-disable-legacy-model-flag-checklist-13.gradle.kts")
 apply(from = "simple-farol-ui-copy-checklist-13.gradle.kts")
 apply(from = "simple-farol-report-final-syntax-checklist-13.gradle.kts")
 apply(from = "simple-farol-report-compile-repair-checklist-13.gradle.kts")
