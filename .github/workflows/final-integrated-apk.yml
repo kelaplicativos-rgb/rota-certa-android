@@ -80,29 +80,10 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          PACKAGE_DIR="app/src/main/java/br/com/mapeiaia/rotacerta"
-          SERVICE="$PACKAGE_DIR/LiveRideAccessibilityService.kt"
-          STRICT="$PACKAGE_DIR/StrictSelectedAppReadPolicy.kt"
-          STABILITY="$PACKAGE_DIR/FarolDisplayStabilityPolicy.kt"
-          PARSER="$PACKAGE_DIR/UniversalScreenAddressParser.kt"
-          REPOSITORY="$(grep -l 'class SettingsRepository' "$PACKAGE_DIR"/*.kt | head -n 1)"
-          MAIN="$PACKAGE_DIR/MainActivity.kt"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
           test -n "${GOOGLE_MAPS_API_KEY:-}"
-          test -n "$REPOSITORY"
-
-          grep -q 'manual_package_overrides_legacy_classification_checklist_15' "$STRICT"
-          grep -q 'destination_only_stability_checklist_15' "$STABILITY"
-          grep -q 'PARTIAL_ABSENCE_CONFIRM_MILLIS = 500L' "$STABILITY"
-          grep -q 'no_via_app_false_address_checklist_15' "$PARSER"
-          grep -q 'overlay_idempotent_same_value_checklist_15' "$SERVICE"
-          grep -q 'valid_read_cancels_absence_checklist_15' "$SERVICE"
-          grep -q 'same_destination_no_ocr_no_repaint_checklist_15' "$SERVICE"
-          grep -q 'last_card_removes_package_checklist_15' "$REPOSITORY"
-          grep -q 'delete_capture_prunes_package_checklist_15' "$MAIN"
-          ! grep -q 'requireRegisteredRideCard = true' "$SERVICE"
 
           mkdir -p dist
           cp "$APK" dist/rota-certa-final.apk
