@@ -4,7 +4,7 @@
 // - aplicativo salvo + dois enderecos inicia a rota;
 // - o ultimo endereco reconhecido e sempre o destino;
 // - modelo visual, passageiro, preco e contrato de card nao bloqueiam o farol;
-// - qualquer mudanca real de tela limpa cor e km imediatamente.
+// - mudanca real de tela limpa imediatamente; leitura parcial da mesma janela nao faz piscar.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
 apply(from = "in-app-bubble-immediate-state.gradle.kts")
@@ -97,7 +97,7 @@ apply(from = "version-0.1.126.gradle.kts")
 apply(from = "version-0.1.127.gradle.kts")
 
 // Aplicadores finais. Nenhum patch posterior pode reabrir leitura pesada,
-// diagnóstico contínuo ou modelo visual no caminho de decisão.
+// diagnóstico contínuo, modelo visual ou limpeza por texto variável.
 apply(from = "strict-selected-app-read-checklist-1.gradle.kts")
 apply(from = "strict-selected-app-callback-final-checklist-1.gradle.kts")
 apply(from = "quick-replies-bubble-checklist-3.gradle.kts")
@@ -133,3 +133,6 @@ apply(from = "simple-saved-app-fast-farol-final-checklist-13.gradle.kts")
 apply(from = "legacy-drag-marker-compat-checklist-13.gradle.kts")
 apply(from = "checklist-13-simple-farol-final-contract.gradle.kts")
 apply(from = "version-0.1.133.gradle.kts")
+apply(from = "stable-farol-download-report-final-checklist-14.gradle.kts")
+apply(from = "checklist-14-stable-farol-report-download-contract.gradle.kts")
+apply(from = "version-0.1.134.gradle.kts")
