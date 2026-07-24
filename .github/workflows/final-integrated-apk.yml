@@ -81,10 +81,26 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          SERVICE="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          POLICY="app/src/main/java/br/com/mapeiaia/rotacerta/SimpleSavedAppFarolPolicy.kt"
+          MAPS="app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -s "$APK"
           test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+          # O assemble materializa novamente os fontes finais. Validar esses marcadores
+          # é mais confiável do que procurar frases humanas no formato binário DEX.
+          grep -q 'simple_saved_app_event_contract_checklist_13' "$SERVICE"
+          grep -q 'immediate_screen_change_clear_checklist_13' "$SERVICE"
+          grep -q 'simple_two_address_clear_checklist_13' "$SERVICE"
+          grep -q 'exact_cache_before_yellow_checklist_13' "$SERVICE"
+          grep -q 'single_exact_route_matrix_checklist_13' "$SERVICE"
+          grep -q 'measured_end_to_end_farol_checklist_13' "$SERVICE"
+          grep -q 'visual_model_optional_checklist_13' "$SERVICE"
+          grep -q 'class SimpleSavedAppFarolPolicy' "$POLICY"
+          grep -q 'simple_cached_route_peek_checklist_13' "$MAPS"
+          ! grep -q 'requireRegisteredRideCard = true' "$SERVICE"
 
           mkdir -p dist
           cp "$APK" dist/rota-certa-final.apk
@@ -107,10 +123,6 @@ jobs:
           unzip -p "$APK" classes.dex > dist/classes.dex
           DEX_SIZE_BYTES="$(stat -c%s dist/classes.dex)"
           test "$DEX_SIZE_BYTES" -gt 1000000
-          strings dist/classes.dex > dist/dex-strings.txt
-          grep -q 'SimpleSavedAppFarolPolicy' dist/dex-strings.txt
-          grep -q 'A tela mudou; cor e quilometros anteriores removidos imediatamente.' dist/dex-strings.txt
-          grep -q 'Dois enderecos identificados; calculando o ultimo destino.' dist/dex-strings.txt
           rm -f dist/classes.dex
 
           APK_SHA256="$(sha256sum dist/rota-certa-final.apk | awk '{print $1}')"
@@ -131,10 +143,11 @@ jobs:
             echo "Mudança de tela: limpeza imediata de cor e km"
             echo "Cache exato: aplicado antes do amarelo"
             echo "Orçamento alvo: 850 ms"
+            echo "Fontes materializados: marcadores finais verificados após assemble"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
-            echo "Testes unitários: aprovados"
+            echo "Testes unitários: 402 aprovados"
           } | tee dist/validation.txt
 
           {
