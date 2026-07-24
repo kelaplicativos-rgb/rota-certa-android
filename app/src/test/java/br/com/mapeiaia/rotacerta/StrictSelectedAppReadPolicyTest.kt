@@ -22,6 +22,20 @@ class StrictSelectedAppReadPolicyTest {
     }
 
     @Test
+    fun `allows a generic manually selected package even when legacy classification rejects it`() {
+        assertTrue(
+            StrictSelectedAppReadPolicy.canRead(
+                packageName = "com.google.android.apps.nbu.files",
+                ownPackageName = "br.com.mapeiaia.rotacerta",
+                appEnabled = true,
+                liveReadingEnabled = true,
+                selectedPackages = selected + "com.google.android.apps.nbu.files",
+                packageAllowedByPlatformPolicy = false,
+            ),
+        )
+    }
+
+    @Test
     fun `blocks an unselected package`() {
         assertFalse(
             StrictSelectedAppReadPolicy.canRead(
@@ -69,20 +83,6 @@ class StrictSelectedAppReadPolicyTest {
                 liveReadingEnabled = false,
                 selectedPackages = selected,
                 packageAllowedByPlatformPolicy = true,
-            ),
-        )
-    }
-
-    @Test
-    fun `blocks packages rejected by the platform policy`() {
-        assertFalse(
-            StrictSelectedAppReadPolicy.canRead(
-                packageName = "com.app99.driver",
-                ownPackageName = "br.com.mapeiaia.rotacerta",
-                appEnabled = true,
-                liveReadingEnabled = true,
-                selectedPackages = selected,
-                packageAllowedByPlatformPolicy = false,
             ),
         )
     }
