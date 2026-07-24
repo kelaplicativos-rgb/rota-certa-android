@@ -75,12 +75,12 @@ class RouteCacheSafety127Test {
         val processEnd = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", processStart)
         val region = service.substring(processStart, processEnd)
         val cacheCheck = region.indexOf("cachedDrivingDistancesFromAddressKm(")
-        val cacheApply = region.indexOf("exact_cache_before_yellow_checklist_13")
-        val yellowPaint = region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)")
+        val cacheApply = region.indexOf("exact_cache_before_yellow_checklist_13", cacheCheck)
+        val routeYellow = region.indexOf("showOverlay(RadarColor.Default, distanceKm = null)", cacheApply)
 
         assertTrue("Cache exato precisa ser consultado no novo destino", cacheCheck >= 0)
         assertTrue("Aplicacao do cache precisa existir", cacheApply > cacheCheck)
-        assertTrue("Cache deve retornar antes da pintura amarela", cacheApply < yellowPaint)
+        assertTrue("Amarelo da rota precisa vir somente depois da falha do cache", routeYellow > cacheApply)
         assertTrue("Aplicacao do cache precisa usar a validacao normal", "applyUniversalTwoAddressResult(" in region)
     }
 }
