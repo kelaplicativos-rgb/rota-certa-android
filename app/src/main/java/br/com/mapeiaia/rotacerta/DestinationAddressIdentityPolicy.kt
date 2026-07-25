@@ -13,6 +13,10 @@ import java.util.Locale
 object DestinationAddressIdentityPolicy {
     private val leadingWrapper = Regex("^[\\s\\p{Ps}\\p{Pi}\\\"'“”‘’<>|•·:;,\\-–—]+")
     private val trailingWrapper = Regex("[\\s\\p{Pe}\\p{Pf}\\\"'“”‘’<>|•·:;,\\-–—]+$")
+    private val wrappedStreetStart = Regex(
+        "^[\\s\\p{Ps}\\p{Pi}\\\"'“”‘’<>|•·:;,\\-–—]+(?=(?:r\\.|av\\.|rua|avenida|alameda|travessa|estrada|rodovia|praca|praça|largo|via|viela|beco|marginal|servidao|servidão)(?:\\b|(?=\\s)))",
+        RegexOption.IGNORE_CASE,
+    )
     private val markerPrefix = Regex(
         "^(?:[ab]|origem|partida|embarque|destino(?:\\s+final)?|chegada|desembarque)\\s*[:\\-–—]?\\s+",
         RegexOption.IGNORE_CASE,
@@ -50,9 +54,10 @@ object DestinationAddressIdentityPolicy {
     )
 
     /**
-     * Limpeza usada durante a montagem de linhas quebradas. Remove apenas o
-     * invólucro inicial e preserva vírgula/hífen finais, pois eles indicam que a
-     * próxima linha ainda pertence ao mesmo endereço.
+     * Limpeza usada durante a montagem de linhas quebradas. Remove um invólucro
+     * inicial somente quando ele antecede diretamente um logradouro. Assim,
+     * "(Avenida Lucas Nogueira" é corrigido, mas "(Cidade Líder)" continua
+     * disponível como complemento da linha anterior.
      */
     fun cleanParserSegment(value: String): String {
         var cleaned = value
@@ -61,12 +66,13 @@ object DestinationAddressIdentityPolicy {
             .replace(Regex("\\s+"), " ")
             .trim()
         cleaned = cleaned.replace(markerPrefix, "").trim()
-        cleaned = cleaned.replace(leadingWrapper, "")
+        cleaned = cleaned.replace(wrappedStreetStart, "")
         return cleaned.replace(Regex("\\s+"), " ").trim()
     }
 
     /** Limpeza final para geocodificação, cache, relatório e identidade. */
     fun cleanDisplayAddress(value: String): String = cleanParserSegment(value)
+        .replace(leadingWrapper, "")
         .replace(trailingWrapper, "")
         .replace(Regex("\\s+"), " ")
         .trim()
