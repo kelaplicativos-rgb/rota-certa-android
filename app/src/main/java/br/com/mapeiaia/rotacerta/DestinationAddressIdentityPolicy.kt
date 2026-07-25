@@ -49,7 +49,12 @@ object DestinationAddressIdentityPolicy {
         val explicitNumber: String?,
     )
 
-    fun cleanDisplayAddress(value: String): String {
+    /**
+     * Limpeza usada durante a montagem de linhas quebradas. Remove apenas o
+     * invólucro inicial e preserva vírgula/hífen finais, pois eles indicam que a
+     * próxima linha ainda pertence ao mesmo endereço.
+     */
+    fun cleanParserSegment(value: String): String {
         var cleaned = value
             .replace('\u00A0', ' ')
             .replace('\u202F', ' ')
@@ -57,9 +62,14 @@ object DestinationAddressIdentityPolicy {
             .trim()
         cleaned = cleaned.replace(markerPrefix, "").trim()
         cleaned = cleaned.replace(leadingWrapper, "")
-        cleaned = cleaned.replace(trailingWrapper, "")
         return cleaned.replace(Regex("\\s+"), " ").trim()
     }
+
+    /** Limpeza final para geocodificação, cache, relatório e identidade. */
+    fun cleanDisplayAddress(value: String): String = cleanParserSegment(value)
+        .replace(trailingWrapper, "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
     fun signature(packageName: String?, destination: String?): String {
         val normalizedPackage = packageName?.trim()?.lowercase(Locale.ROOT).orEmpty()
