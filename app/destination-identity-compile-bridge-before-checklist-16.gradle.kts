@@ -27,24 +27,16 @@ fun patchDestinationIdentityBridge16(packageDir: java.io.File) {
     val simpleFile = java.io.File(packageDir, "SimpleSavedAppFarolPolicy.kt")
     val stabilityFile = java.io.File(packageDir, "FarolDisplayStabilityPolicy.kt")
 
-    parserFile.writeText(
-        replaceFunctionBridge16(
-            parserFile.readText(),
-            "    private fun cleanAddressSegment(",
-            """    private fun cleanAddressSegment(value: String): String {
-        val withoutMarker = DestinationAddressIdentityPolicy.cleanParserSegment(value.replace(markerPrefix, ""))
-        val starts = listOfNotNull(
-            streetStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
-            localityStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
-            poiStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
+    var parser = parserFile.readText()
+    if ("clean_unmatched_address_wrappers_checklist_16" !in parser) {
+        val anchor = "        val withoutMarker = value.replace(markerPrefix, \"\").trim()"
+        if (anchor !in parser) throw GradleException("Ponto de limpeza inicial do endereco ausente na ponte 16.")
+        parser = parser.replaceFirst(
+            anchor,
+            "        val withoutMarker = DestinationAddressIdentityPolicy.cleanParserSegment(value.replace(markerPrefix, \"\")) // clean_unmatched_address_wrappers_checklist_16",
         )
-        val start = starts.minOrNull()
-        val extracted = if (start != null) withoutMarker.substring(start) else withoutMarker
-        return DestinationAddressIdentityPolicy.cleanParserSegment(extracted)
-    } // clean_unmatched_address_wrappers_checklist_16
-""",
-        ),
-    )
+    }
+    parserFile.writeText(parser)
 
     simpleFile.writeText(
         replaceFunctionBridge16(
