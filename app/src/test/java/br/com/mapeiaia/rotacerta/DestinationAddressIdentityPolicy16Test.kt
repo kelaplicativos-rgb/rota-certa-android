@@ -7,10 +7,18 @@ import org.junit.Test
 
 class DestinationAddressIdentityPolicy16Test {
     @Test
-    fun removesUnmatchedWrappersFromDestination() {
+    fun removesUnmatchedWrappersFromDestinationButPreservesLocalityContinuation() {
         assertEquals(
             "Avenida Lucas Nogueira",
             DestinationAddressIdentityPolicy.cleanDisplayAddress(" ((Avenida Lucas Nogueira, "),
+        )
+        assertEquals(
+            "Avenida Lucas Nogueira",
+            DestinationAddressIdentityPolicy.cleanParserSegment("(Avenida Lucas Nogueira"),
+        )
+        assertEquals(
+            "(Cidade Lider)",
+            DestinationAddressIdentityPolicy.cleanParserSegment("(Cidade Lider)"),
         )
     }
 
