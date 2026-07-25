@@ -5,7 +5,8 @@
 // - aplicativo salvo + dois enderecos inicia a rota;
 // - o ultimo endereco reconhecido e sempre o destino;
 // - modelo visual, passageiro, preco e contrato de card nao bloqueiam o farol;
-// - mesmo destino nao redesenha nem apaga a bolinha por mapa, rolagem ou leitura parcial.
+// - mesmo destino nao redesenha nem apaga a bolinha por mapa, rolagem ou leitura parcial;
+// - formas parciais e completas do mesmo destino compartilham a mesma decisao.
 apply(from = "patch-universal-two-address-idempotence.gradle.kts")
 apply(from = "universal-overlay-runtime-metadata.gradle.kts")
 apply(from = "in-app-bubble-immediate-state.gradle.kts")
@@ -137,6 +138,10 @@ apply(from = "version-0.1.133.gradle.kts")
 apply(from = "stable-farol-download-report-final-checklist-14.gradle.kts")
 apply(from = "checklist-14-stable-farol-report-download-contract.gradle.kts")
 apply(from = "version-0.1.134.gradle.kts")
+apply(from = "destination-identity-compile-bridge-before-checklist-16.gradle.kts")
 apply(from = "universal-manual-package-no-flicker-final-checklist-15.gradle.kts")
 apply(from = "checklist-15-universal-manual-package-final-contract.gradle.kts")
 apply(from = "version-0.1.135.gradle.kts")
+apply(from = "destination-identity-no-flicker-final-checklist-16.gradle.kts")
+apply(from = "checklist-16-destination-identity-final-contract.gradle.kts")
+apply(from = "version-0.1.136.gradle.kts")
