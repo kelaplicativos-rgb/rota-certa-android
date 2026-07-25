@@ -14,6 +14,8 @@ object RideOfferDetector {
         val normalized = text.lowercase(Locale.ROOT)
         val hasDestinationAddressSignal = listOf(
             "rua", "r.", "avenida", "av.", "travessa", "bairro", "jardim", "cidade", "parque", "tatuape", "tatuapé",
+            "sao paulo", "são paulo", "district", "state of", "restaurante", "lanchonete", "mercado", "shopping",
+            "hospital", "comercial", "consultoria", "condominio", "condomínio",
         ).any { destination.contains(it) } || Regex("""\b\d{1,5}\b""").containsMatchIn(destination)
         val hasRideCardSignal = listOf(
             "pedido de viagem", "pedidos de viagem", "aceitar", "aceitar por", "selecionar", "negocia",
