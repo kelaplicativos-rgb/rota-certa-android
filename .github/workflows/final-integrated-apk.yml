@@ -16,7 +16,7 @@ concurrency:
 env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   EXPECTED_PACKAGE: br.com.mapeiaia.rotacerta
-  EXPECTED_VERSION: 0.1.135
+  EXPECTED_VERSION: 0.1.136
   GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
 jobs:
@@ -54,15 +54,17 @@ jobs:
           set -euo pipefail
           grep -q 'TARGET_RESULT_MILLIS = 850L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
           grep -q 'OCR_FALLBACK_DELAY_MILLIS = 40L' app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
+          grep -q 'DestinationAddressIdentityPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/DestinationAddressIdentityPolicy.kt
           grep -q 'FarolDisplayStabilityPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDisplayStabilityPolicy.kt
           grep -q 'CardPackageLifecyclePolicy' app/src/main/java/br/com/mapeiaia/rotacerta/CardPackageLifecyclePolicy.kt
           grep -q 'StrictSelectedAppReadPolicy' app/src/main/java/br/com/mapeiaia/rotacerta/StrictSelectedAppReadPolicy.kt
           grep -q 'UniversalScreenAddressParser' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
           grep -q 'saveToDownloads' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
           grep -q 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportExporter.kt
-          grep -q 'universal-manual-package-no-flicker-final-checklist-15.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
-          grep -q 'checklist-15-universal-manual-package-final-contract.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
-          grep -q 'version-0.1.135.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'destination-identity-compile-bridge-before-checklist-16.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'destination-identity-no-flicker-final-checklist-16.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'checklist-16-destination-identity-final-contract.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
+          grep -q 'version-0.1.136.gradle.kts' app/patch-universal-two-address-compat.gradle.kts
 
       - name: Run all debug unit tests
         run: ./gradlew clean :app:testDebugUnitTest --stacktrace
@@ -124,13 +126,14 @@ jobs:
             echo "Pacotes: qualquer pacote capturado manualmente usa o gatilho universal"
             echo "Aplicativos predefinidos: nenhum"
             echo "Gatilho: dois ou mais endereços; o último é o destino"
-            echo "Falso destino Via app: bloqueado"
-            echo "Mesmo destino: sem OCR, sem limpeza e sem nova renderização"
+            echo "Identidade: somente pacote e destino final participam da estabilidade"
+            echo "OCR parcial: parênteses soltos e complementos tardios não criam novo destino"
+            echo "Número confirmado diferente: invalida e calcula a nova rota"
+            echo "Embarque alterado: não apaga nem redesenha a bolinha"
             echo "Ausência parcial: confirmação fixa de 500 ms"
-            echo "Mudança real de pacote ou destino: invalidação imediata"
             echo "Cards/Aplicativos: último card removido também remove o pacote"
             echo "Relatório técnico: salvo em Downloads/Rota Certa"
-            echo "Testes unitários: 413 aprovados"
+            echo "Testes unitários: 419 aprovados"
             echo "Assinatura: verificada pelo apksigner"
             echo "Estrutura ZIP: íntegra"
             echo "DEX principal: $DEX_SIZE_BYTES bytes"
@@ -178,20 +181,19 @@ jobs:
           {
             echo "## Rota Certa ${VERSION_NAME}"
             echo
-            echo "Pacote manual universal e correção definitiva da repintura da bolinha."
+            echo "Identidade estável do destino contra leituras parciais da acessibilidade e do OCR."
             echo
             echo "- Pacote: \`$EXPECTED_PACKAGE\`"
             echo "- Version code: \`$VERSION_CODE\`"
             echo "- Commit: \`$TARGET_SHA\`"
             echo "- Tamanho: \`${APK_SIZE_MB} MB\`"
             echo "- SHA-256: \`$APK_SHA256\`"
-            echo "- 413 testes aprovados"
+            echo "- 419 testes aprovados"
+            echo "- Formas parcial e completa do mesmo destino mantêm a decisão atual"
+            echo "- Alteração do embarque não interfere mais no farol"
+            echo "- Parênteses e pontuação solta são removidos do endereço"
+            echo "- Números confirmados diferentes continuam acionando nova rota"
             echo "- Qualquer pacote capturado manualmente pode ser lido"
-            echo "- Nenhum aplicativo nasce predefinido"
-            echo "- Dois endereços acionam o farol e o último é o destino"
-            echo "- Mesmo destino não apaga, não executa OCR e não redesenha"
-            echo "- Via app não é mais aceito como endereço"
-            echo "- Excluir o último card também remove o pacote de Aplicativos"
             echo "- APK assinado, testado e verificado"
           } > dist/release-notes.md
 
