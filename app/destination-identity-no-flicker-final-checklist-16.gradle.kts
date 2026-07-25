@@ -29,9 +29,8 @@ fun locateClassChecklist16(packageDir: java.io.File, preferredName: String, mark
 }
 
 fun patchAddressParserChecklist16(file: java.io.File) {
-    var text = file.readText()
-    text = replaceFunctionChecklist16(
-        text,
+    val text = replaceFunctionChecklist16(
+        file.readText(),
         "    private fun cleanAddressSegment(",
         """    private fun cleanAddressSegment(value: String): String {
         val withoutMarker = DestinationAddressIdentityPolicy.cleanDisplayAddress(value.replace(markerPrefix, ""))
@@ -46,18 +45,6 @@ fun patchAddressParserChecklist16(file: java.io.File) {
     } // clean_unmatched_address_wrappers_checklist_16
 """,
     )
-    if ("joined_destination_cleanup_checklist_16" !in text) {
-        val oldJoined = """                val joined = parts.joinToString(" ")
-                    .replace(Regex("\\s+"), " ")
-                    .trim(' ', ',', '-', '–', '—')
-"""
-        val newJoined = """                val joined = DestinationAddressIdentityPolicy.cleanDisplayAddress(
-                    parts.joinToString(" "),
-                ) // joined_destination_cleanup_checklist_16
-"""
-        if (oldJoined !in text) throw GradleException("Montagem do endereco ausente no checklist 16.")
-        text = text.replaceFirst(oldJoined, newJoined)
-    }
     file.writeText(text)
 }
 
