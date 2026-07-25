@@ -27,11 +27,11 @@ fun patchDestinationIdentityBridge16(packageDir: java.io.File) {
     val simpleFile = java.io.File(packageDir, "SimpleSavedAppFarolPolicy.kt")
     val stabilityFile = java.io.File(packageDir, "FarolDisplayStabilityPolicy.kt")
 
-    var parser = parserFile.readText()
-    parser = replaceFunctionBridge16(
-        parser,
-        "    private fun cleanAddressSegment(",
-        """    private fun cleanAddressSegment(value: String): String {
+    parserFile.writeText(
+        replaceFunctionBridge16(
+            parserFile.readText(),
+            "    private fun cleanAddressSegment(",
+            """    private fun cleanAddressSegment(value: String): String {
         val withoutMarker = DestinationAddressIdentityPolicy.cleanDisplayAddress(value.replace(markerPrefix, ""))
         val starts = listOfNotNull(
             streetStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
@@ -43,20 +43,8 @@ fun patchDestinationIdentityBridge16(packageDir: java.io.File) {
         return DestinationAddressIdentityPolicy.cleanDisplayAddress(extracted)
     } // clean_unmatched_address_wrappers_checklist_16
 """,
+        ),
     )
-    if ("joined_destination_cleanup_checklist_16" !in parser) {
-        parser = parser.replaceFirst(
-            """                val joined = parts.joinToString(" ")
-                    .replace(Regex("\\s+"), " ")
-                    .trim(' ', ',', '-', '–', '—')
-""",
-            """                val joined = DestinationAddressIdentityPolicy.cleanDisplayAddress(
-                    parts.joinToString(" "),
-                ) // joined_destination_cleanup_checklist_16
-""",
-        )
-    }
-    parserFile.writeText(parser)
 
     simpleFile.writeText(
         replaceFunctionBridge16(
