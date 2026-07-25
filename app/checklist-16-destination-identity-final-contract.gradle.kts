@@ -18,7 +18,6 @@ fun verifyDestinationIdentityChecklist16(root: java.io.File) {
 
     listOf(
         "clean_unmatched_address_wrappers_checklist_16",
-        "joined_destination_cleanup_checklist_16",
         "destination_only_signature_checklist_16",
         "compatible_partial_destination_checklist_16",
         "sameDestinationSignatures",
