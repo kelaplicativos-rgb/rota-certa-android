@@ -29,22 +29,15 @@ fun locateClassChecklist16(packageDir: java.io.File, preferredName: String, mark
 }
 
 fun patchAddressParserChecklist16(file: java.io.File) {
-    val text = replaceFunctionChecklist16(
-        file.readText(),
-        "    private fun cleanAddressSegment(",
-        """    private fun cleanAddressSegment(value: String): String {
-        val withoutMarker = DestinationAddressIdentityPolicy.cleanParserSegment(value.replace(markerPrefix, ""))
-        val starts = listOfNotNull(
-            streetStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
-            localityStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
-            poiStartRegex.find(withoutMarker)?.groups?.get(1)?.range?.first,
+    var text = file.readText()
+    if ("clean_unmatched_address_wrappers_checklist_16" !in text) {
+        val anchor = "        val withoutMarker = value.replace(markerPrefix, \"\").trim()"
+        if (anchor !in text) throw GradleException("Ponto de limpeza inicial do endereco ausente no checklist 16.")
+        text = text.replaceFirst(
+            anchor,
+            "        val withoutMarker = DestinationAddressIdentityPolicy.cleanParserSegment(value.replace(markerPrefix, \"\")) // clean_unmatched_address_wrappers_checklist_16",
         )
-        val start = starts.minOrNull()
-        val extracted = if (start != null) withoutMarker.substring(start) else withoutMarker
-        return DestinationAddressIdentityPolicy.cleanParserSegment(extracted)
-    } // clean_unmatched_address_wrappers_checklist_16
-""",
-    )
+    }
     file.writeText(text)
 }
 
