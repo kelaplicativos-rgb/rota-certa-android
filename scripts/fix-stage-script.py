@@ -72,7 +72,7 @@ def _apply_final_lint_fixes_stage5() -> None:
         rf"(?m)^(?P<indent>[ \\t]*)lastVisibleCardSignature = null // {marker}$"
     )
     live_text, moved_comments = pattern.subn(
-        rf"\g<indent>// {marker}\n\g<indent>lastVisibleCardSignature = null",
+        rf"\g<indent>// {marker}\n\g<indent>lastVisibleCardSignature = null;",
         live_text,
     )
     if moved_comments < 3:
