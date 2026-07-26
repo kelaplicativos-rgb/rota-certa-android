@@ -46,11 +46,14 @@ jobs:
 
       - name: Configure Git
         run: |
+          mkdir -p ci-logs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Materialize current generated sources once
-        run: gradle :app:preBuild --no-daemon --stacktrace --console=plain
+        run: |
+          set -o pipefail
+          gradle :app:preBuild --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/materialize-prebuild.log
 
       - name: Restore staged implementation script
         run: |
@@ -61,27 +64,32 @@ jobs:
 
       - name: Stage 1 - materialize stable source
         run: |
-          python3 scripts/apply_staged_manual_contract.py stage1
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          set -o pipefail
+          python3 scripts/apply_staged_manual_contract.py stage1 2>&1 | tee ci-logs/stage1-transform.log
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage1-tests.log
 
       - name: Stage 2 - manual packages and no model gate
         run: |
-          python3 scripts/apply_staged_manual_contract.py stage2
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          set -o pipefail
+          python3 scripts/apply_staged_manual_contract.py stage2 2>&1 | tee ci-logs/stage2-transform.log
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage2-tests.log
 
       - name: Stage 3 - real expanders for alerts and places
         run: |
-          python3 scripts/apply_staged_manual_contract.py stage3
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          set -o pipefail
+          python3 scripts/apply_staged_manual_contract.py stage3 2>&1 | tee ci-logs/stage3-transform.log
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage3-tests.log
 
       - name: Stage 4 - bubble gestures and confirmations
         run: |
-          python3 scripts/apply_staged_manual_contract.py stage4
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          set -o pipefail
+          python3 scripts/apply_staged_manual_contract.py stage4 2>&1 | tee ci-logs/stage4-transform.log
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage4-tests.log
 
       - name: Stage 5 - remove source mutators
         run: |
-          python3 scripts/apply_staged_manual_contract.py stage5 verify
+          set -o pipefail
+          python3 scripts/apply_staged_manual_contract.py stage5 verify 2>&1 | tee ci-logs/stage5-transform-verify.log
           test -z "$(grep -R 'apply(from' -n app/build.gradle.kts || true)"
           test -z "$(find app -maxdepth 1 -name '*.gradle.kts' ! -name 'build.gradle.kts' -print -quit)"
 
@@ -89,23 +97,25 @@ jobs:
         run: |
           set -euo pipefail
           before="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/final-tests-first.log
           middle="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain
+          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/final-tests-second.log
           after="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           test "$before" = "$middle"
           test "$middle" = "$after"
 
       - name: Run Android Lint
-        run: gradle lintDebug --no-daemon --stacktrace --console=plain
+        run: |
+          set -o pipefail
+          gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/lint.log
 
       - name: Build APK twice and verify unchanged source tree
         run: |
           set -euo pipefail
-          gradle assembleDebug --no-daemon --stacktrace --console=plain
+          gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/assemble-first.log
           source_hash_1="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           cp app/build/outputs/apk/debug/app-debug.apk first.apk
-          gradle assembleDebug --no-daemon --stacktrace --console=plain
+          gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/assemble-second.log
           source_hash_2="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           test "$source_hash_1" = "$source_hash_2"
           cp app/build/outputs/apk/debug/app-debug.apk rota-certa-0.1.137.apk
@@ -151,6 +161,8 @@ jobs:
         with:
           name: staged-manual-read-failure
           path: |
+            ci-logs
             app/build/reports/tests/testDebugUnitTest
             app/build/reports/lint-results-debug.html
-          if-no-files-found: ignore
+            app/build/test-results/testDebugUnitTest
+          if-no-files-found: warn
