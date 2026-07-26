@@ -5,12 +5,15 @@ on:
   push:
     branches:
       - codex/exhaustive-source-audit-20260726
+  pull_request:
+    branches:
+      - codex/rota-certa-checklist-complete
 
 permissions:
   contents: read
 
 concurrency:
-  group: exhaustive-source-audit-${{ github.ref }}
+  group: exhaustive-source-audit-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
