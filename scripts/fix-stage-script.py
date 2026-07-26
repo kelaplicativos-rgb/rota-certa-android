@@ -35,5 +35,61 @@ for old, new, label in replacements:
         raise SystemExit(f"Alvo ausente no gerador: {label}")
     text = text.replace(old, new, 1)
 
+lint_fix_injection = r'''
+# Correções finais executadas imediatamente antes da Etapa 5, para que façam
+# parte do mesmo commit que estabiliza as fontes e remove os mutadores Gradle.
+def _apply_final_lint_fixes_stage5() -> None:
+    import re as _lint_re
+    from pathlib import Path as _LintPath
+
+    work_service = _LintPath("app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt")
+    work_text = work_service.read_text(encoding="utf-8")
+    permission_anchor = "    private fun startTracking() {"
+    permission_replacement = (
+        '    @android.annotation.SuppressLint("MissingPermission")\n'
+        "    private fun startTracking() {"
+    )
+    if permission_replacement not in work_text:
+        if permission_anchor not in work_text:
+            raise SystemExit("Não encontrei startTracking para corrigir o Lint de localização.")
+        work_text = work_text.replace(permission_anchor, permission_replacement, 1)
+    work_service.write_text(work_text, encoding="utf-8")
+
+    live_service = _LintPath("app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
+    live_text = live_service.read_text(encoding="utf-8")
+    screenshot_anchor = "    private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {"
+    screenshot_replacement = (
+        "    @androidx.annotation.RequiresApi(30)\n"
+        "    private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {"
+    )
+    if screenshot_replacement not in live_text:
+        if screenshot_anchor not in live_text:
+            raise SystemExit("Não encontrei toSoftwareBitmap para declarar a API do screenshot.")
+        live_text = live_text.replace(screenshot_anchor, screenshot_replacement, 1)
+
+    marker = "bubble_render_stability_clear_signature_0_1_81"
+    pattern = _lint_re.compile(
+        rf"(?m)^(?P<indent>[ \\t]*)lastVisibleCardSignature = null // {marker}$"
+    )
+    live_text, moved_comments = pattern.subn(
+        rf"\g<indent>// {marker}\n\g<indent>lastVisibleCardSignature = null",
+        live_text,
+    )
+    if moved_comments < 3:
+        raise SystemExit(
+            f"Esperava corrigir ao menos 3 comentários de estabilidade; corrigi {moved_comments}."
+        )
+    live_service.write_text(live_text, encoding="utf-8")
+
+if "stage5" in __import__("sys").argv:
+    _apply_final_lint_fixes_stage5()
+
+'''
+
+main_marker = 'if __name__ == "__main__":\n'
+if main_marker not in text:
+    raise SystemExit("Entrada principal do gerador não encontrada para inserir correções finais.")
+text = text.replace(main_marker, lint_fix_injection + main_marker, 1)
+
 p.write_text(text, encoding="utf-8")
 Path(__file__).unlink()
