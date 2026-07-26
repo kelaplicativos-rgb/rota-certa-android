@@ -18,12 +18,13 @@ concurrency:
 
 env:
   GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+  AUDIT_DIR: ${{ runner.temp }}/rota-certa-exhaustive-audit
 
 jobs:
   audit:
     name: Audit every tracked file and materialized source
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 60
 
     steps:
       - name: Checkout exact audit head
@@ -53,29 +54,29 @@ jobs:
       - name: Record immutable audit target
         run: |
           set -euo pipefail
-          mkdir -p audit/meta audit/logs audit/diffs
-          git rev-parse HEAD | tee audit/meta/audited-commit.txt
-          git rev-parse --abbrev-ref HEAD | tee audit/meta/audited-branch.txt
-          git status --short | tee audit/meta/status-at-start.txt
-          git ls-files | sort > audit/meta/tracked-files.txt
-          git ls-files -z | xargs -0 -r sha256sum > audit/meta/tracked-sha256-at-start.txt
+          mkdir -p "$AUDIT_DIR/meta" "$AUDIT_DIR/logs" "$AUDIT_DIR/diffs" "$AUDIT_DIR/evidence"
+          git rev-parse HEAD | tee "$AUDIT_DIR/meta/audited-commit.txt"
+          git rev-parse --abbrev-ref HEAD | tee "$AUDIT_DIR/meta/audited-branch.txt"
+          git status --short | tee "$AUDIT_DIR/meta/status-at-start.txt"
+          git ls-files | sort > "$AUDIT_DIR/meta/tracked-files.txt"
+          git ls-files -z | xargs -0 -r sha256sum > "$AUDIT_DIR/meta/tracked-sha256-at-start.txt"
 
       - name: Audit repository before Gradle mutation
         run: |
           set -euo pipefail
           python3 scripts/exhaustive_source_audit.py \
             --phase before-gradle \
-            --output audit/before
-          gzip -9 audit/before/full-text-index.txt
-          gzip -9 audit/before/source-catalog.md
+            --output "$AUDIT_DIR/before"
+          gzip -9 "$AUDIT_DIR/before/full-text-index.txt"
+          gzip -9 "$AUDIT_DIR/before/source-catalog.md"
 
       - name: Materialize preBuild patches
         continue-on-error: true
         run: |
           set +e
-          gradle :app:preBuild --no-daemon --stacktrace --console=plain > audit/logs/prebuild.log 2>&1
+          gradle :app:preBuild --no-daemon --stacktrace --console=plain > "$AUDIT_DIR/logs/prebuild.log" 2>&1
           status=$?
-          echo "$status" > audit/meta/prebuild-exit-code.txt
+          echo "$status" > "$AUDIT_DIR/meta/prebuild-exit-code.txt"
           exit "$status"
 
       - name: Audit repository after preBuild
@@ -85,82 +86,124 @@ jobs:
           python3 scripts/exhaustive_source_audit.py \
             --phase after-prebuild \
             --include-untracked \
-            --compare-inventory audit/before/inventory.json \
-            --output audit/after-prebuild
-          gzip -9 audit/after-prebuild/full-text-index.txt
-          gzip -9 audit/after-prebuild/source-catalog.md
-          git status --short > audit/diffs/status-after-prebuild.txt
-          git diff --stat > audit/diffs/diff-after-prebuild.stat.txt
-          git diff --numstat > audit/diffs/diff-after-prebuild.numstat.tsv
-          git diff --binary > audit/diffs/diff-after-prebuild.patch
-          git ls-files --others --exclude-standard | sort > audit/diffs/untracked-after-prebuild.txt
+            --compare-inventory "$AUDIT_DIR/before/inventory.json" \
+            --output "$AUDIT_DIR/after-prebuild"
+          gzip -9 "$AUDIT_DIR/after-prebuild/full-text-index.txt"
+          gzip -9 "$AUDIT_DIR/after-prebuild/source-catalog.md"
+          git status --short > "$AUDIT_DIR/diffs/status-after-prebuild.txt"
+          git diff --stat > "$AUDIT_DIR/diffs/diff-after-prebuild.stat.txt"
+          git diff --numstat > "$AUDIT_DIR/diffs/diff-after-prebuild.numstat.tsv"
+          git diff --binary > "$AUDIT_DIR/diffs/diff-after-prebuild.patch"
+          git ls-files --others --exclude-standard | sort > "$AUDIT_DIR/diffs/untracked-after-prebuild.txt"
 
-      - name: Run unit tests
+      - name: Reset to clean source for unit tests
+        if: always()
+        run: |
+          set -euo pipefail
+          head_sha="$(cat "$AUDIT_DIR/meta/audited-commit.txt")"
+          git reset --hard "$head_sha"
+          git clean -fd app/src runtimefixture/src
+          rm -rf app/build runtimefixture/build build
+
+      - name: Run unit tests from a clean source tree
         continue-on-error: true
         run: |
           set +e
-          gradle :app:testDebugUnitTest --no-daemon --stacktrace --console=plain > audit/logs/unit-tests.log 2>&1
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace --console=plain > "$AUDIT_DIR/logs/unit-tests.log" 2>&1
           status=$?
-          echo "$status" > audit/meta/unit-tests-exit-code.txt
+          echo "$status" > "$AUDIT_DIR/meta/unit-tests-exit-code.txt"
+          mkdir -p "$AUDIT_DIR/evidence/unit-tests"
+          cp -R app/build/test-results "$AUDIT_DIR/evidence/unit-tests/" 2>/dev/null || true
+          cp -R app/build/reports/tests "$AUDIT_DIR/evidence/unit-tests/" 2>/dev/null || true
           exit "$status"
 
-      - name: Run Android Lint
+      - name: Reset to clean source for Android Lint
+        if: always()
+        run: |
+          set -euo pipefail
+          head_sha="$(cat "$AUDIT_DIR/meta/audited-commit.txt")"
+          git reset --hard "$head_sha"
+          git clean -fd app/src runtimefixture/src
+          rm -rf app/build runtimefixture/build build
+
+      - name: Run Android Lint from a clean source tree
         continue-on-error: true
         run: |
           set +e
-          gradle :app:lintDebug --no-daemon --stacktrace --console=plain > audit/logs/lint.log 2>&1
+          gradle :app:lintDebug --no-daemon --stacktrace --console=plain > "$AUDIT_DIR/logs/lint.log" 2>&1
           status=$?
-          echo "$status" > audit/meta/lint-exit-code.txt
+          echo "$status" > "$AUDIT_DIR/meta/lint-exit-code.txt"
+          mkdir -p "$AUDIT_DIR/evidence/lint"
+          cp -R app/build/reports/lint-results-debug.html "$AUDIT_DIR/evidence/lint/" 2>/dev/null || true
+          cp app/build/outputs/lint-results-debug.* "$AUDIT_DIR/evidence/lint/" 2>/dev/null || true
           exit "$status"
 
-      - name: Assemble debug APK
+      - name: Reset to clean source for APK build
+        if: always()
+        run: |
+          set -euo pipefail
+          head_sha="$(cat "$AUDIT_DIR/meta/audited-commit.txt")"
+          git reset --hard "$head_sha"
+          git clean -fd app/src runtimefixture/src
+          rm -rf app/build runtimefixture/build build
+
+      - name: Assemble debug APK from a clean source tree
         continue-on-error: true
         run: |
           set +e
-          gradle :app:assembleDebug --no-daemon --stacktrace --console=plain > audit/logs/assemble.log 2>&1
+          gradle :app:assembleDebug --no-daemon --stacktrace --console=plain > "$AUDIT_DIR/logs/assemble.log" 2>&1
           status=$?
-          echo "$status" > audit/meta/assemble-exit-code.txt
+          echo "$status" > "$AUDIT_DIR/meta/assemble-exit-code.txt"
           exit "$status"
 
-      - name: Audit final source tree actually used by compilation
+      - name: Audit final source tree actually used by APK compilation
         if: always()
         run: |
           set -euo pipefail
           python3 scripts/exhaustive_source_audit.py \
             --phase after-build \
             --include-untracked \
-            --compare-inventory audit/before/inventory.json \
-            --output audit/after-build
-          gzip -9 audit/after-build/full-text-index.txt
-          gzip -9 audit/after-build/source-catalog.md
-          git status --short > audit/diffs/status-after-build.txt
-          git diff --stat > audit/diffs/diff-after-build.stat.txt
-          git diff --numstat > audit/diffs/diff-after-build.numstat.tsv
-          git diff --binary > audit/diffs/diff-after-build.patch
-          git ls-files --others --exclude-standard | sort > audit/diffs/untracked-after-build.txt
+            --compare-inventory "$AUDIT_DIR/before/inventory.json" \
+            --output "$AUDIT_DIR/after-build"
+          gzip -9 "$AUDIT_DIR/after-build/full-text-index.txt"
+          gzip -9 "$AUDIT_DIR/after-build/source-catalog.md"
+          git status --short > "$AUDIT_DIR/diffs/status-after-build.txt"
+          git diff --stat > "$AUDIT_DIR/diffs/diff-after-build.stat.txt"
+          git diff --numstat > "$AUDIT_DIR/diffs/diff-after-build.numstat.tsv"
+          git diff --binary > "$AUDIT_DIR/diffs/diff-after-build.patch"
+          git ls-files --others --exclude-standard | sort > "$AUDIT_DIR/diffs/untracked-after-build.txt"
 
       - name: Collect test, Lint and APK evidence
         if: always()
         run: |
           set -euo pipefail
-          mkdir -p audit/evidence
-          find app/build/test-results -type f -maxdepth 5 -print 2>/dev/null | sort > audit/evidence/test-result-files.txt || true
-          find app/build/reports -type f -maxdepth 6 -print 2>/dev/null | sort > audit/evidence/report-files.txt || true
-          find app/build/outputs -type f -maxdepth 8 -print 2>/dev/null | sort > audit/evidence/output-files.txt || true
-          cp -R app/build/test-results audit/evidence/ 2>/dev/null || true
-          cp -R app/build/reports audit/evidence/ 2>/dev/null || true
-          cp -R app/build/outputs/lint-results-debug.* audit/evidence/ 2>/dev/null || true
+          find app/build/test-results -type f -maxdepth 5 -print 2>/dev/null | sort > "$AUDIT_DIR/evidence/test-result-files.txt" || true
+          find app/build/reports -type f -maxdepth 6 -print 2>/dev/null | sort > "$AUDIT_DIR/evidence/report-files.txt" || true
+          find app/build/outputs -type f -maxdepth 8 -print 2>/dev/null | sort > "$AUDIT_DIR/evidence/output-files.txt" || true
+          cp -R app/build/test-results "$AUDIT_DIR/evidence/" 2>/dev/null || true
+          cp -R app/build/reports "$AUDIT_DIR/evidence/" 2>/dev/null || true
+          cp app/build/outputs/lint-results-debug.* "$AUDIT_DIR/evidence/" 2>/dev/null || true
           apk='app/build/outputs/apk/debug/app-debug.apk'
           if [ -f "$apk" ]; then
-            sha256sum "$apk" > audit/evidence/apk-sha256.txt
-            wc -c "$apk" > audit/evidence/apk-size.txt
-            unzip -l "$apk" > audit/evidence/apk-files.txt
-            unzip -t "$apk" > audit/evidence/apk-integrity.txt
+            sha256sum "$apk" > "$AUDIT_DIR/evidence/apk-sha256.txt"
+            wc -c "$apk" > "$AUDIT_DIR/evidence/apk-size.txt"
+            unzip -l "$apk" > "$AUDIT_DIR/evidence/apk-files.txt"
+            unzip -t "$apk" > "$AUDIT_DIR/evidence/apk-integrity.txt"
             build_tools="${ANDROID_HOME}/build-tools/35.0.0"
-            "$build_tools/aapt" dump badging "$apk" > audit/evidence/apk-badging.txt
-            "$build_tools/apksigner" verify --verbose --print-certs "$apk" > audit/evidence/apk-signature.txt
-            cp "$apk" audit/evidence/rota-certa-audited-debug.apk
+            "$build_tools/aapt" dump badging "$apk" > "$AUDIT_DIR/evidence/apk-badging.txt"
+            "$build_tools/apksigner" verify --verbose --print-certs "$apk" > "$AUDIT_DIR/evidence/apk-signature.txt"
+            cp "$apk" "$AUDIT_DIR/evidence/rota-certa-audited-debug.apk"
           fi
+
+      - name: Prove Gradle patch non-idempotence separately
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          gradle :app:preBuild --no-daemon --stacktrace --console=plain > "$AUDIT_DIR/logs/second-prebuild-without-reset.log" 2>&1
+          status=$?
+          echo "$status" > "$AUDIT_DIR/meta/second-prebuild-without-reset-exit-code.txt"
+          exit 0
 
       - name: Generate consolidated executive report
         if: always()
@@ -168,9 +211,10 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
-          root = Path('audit')
+          root = Path(os.environ['AUDIT_DIR'])
           before = json.loads((root/'before/summary.json').read_text())
           pre = json.loads((root/'after-prebuild/summary.json').read_text())
           final = json.loads((root/'after-build/summary.json').read_text())
@@ -187,24 +231,25 @@ jobs:
               f"- Text/binary files: **{before['text_files']} / {before['binary_files']}**",
               f"- Static findings before Gradle: **{before['findings']}**",
               f"- Gradle mutation scripts detected: **{before['gradle_mutation_scripts']}**",
-              '', '## Materialization', '',
-              f"- Files after preBuild: **{pre['files']}**",
-              f"- Files after complete build: **{final['files']}**",
+              '', '## Build and materialization', '',
+              f"- Source files after preBuild: **{pre['files']}**",
+              f"- Source files after APK build: **{final['files']}**",
               f"- preBuild exit code: `{status('prebuild')}`",
-              f"- Unit tests exit code: `{status('unit-tests')}`",
-              f"- Lint exit code: `{status('lint')}`",
-              f"- Assemble exit code: `{status('assemble')}`",
+              f"- Unit tests from clean tree: `{status('unit-tests')}`",
+              f"- Lint from clean tree: `{status('lint')}`",
+              f"- Assemble from clean tree: `{status('assemble')}`",
+              f"- Second preBuild without reset: `{status('second-prebuild-without-reset')}`",
               '', '## Deliverables', '',
               '- `before/`: every tracked file inventoried before Gradle.',
-              '- `after-prebuild/`: every tracked/untracked file inventoried after patch materialization.',
-              '- `after-build/`: final source tree after tests, Lint and APK compilation.',
+              '- `after-prebuild/`: every source file inventoried after patch materialization.',
+              '- `after-build/`: final source tree used by APK compilation.',
               '- `full-text-index.txt.gz`: every non-sensitive text file with every line numbered.',
               '- `inventory.tsv/json`: path, bytes, lines, hashes, delimiters and formatting metadata.',
               '- `source-catalog.md.gz`: file-by-file declarations and findings.',
               '- `findings.tsv/json`: line-numbered static findings.',
               '- `gradle-patch-map.tsv`: scripts that write/replace/apply source code.',
               '- `diffs/`: exact source changes caused by Gradle.',
-              '- `logs/`: complete Gradle logs.',
+              '- `logs/`: complete Gradle logs, including the second-run idempotence proof.',
               '- `evidence/`: test, Lint, APK content, integrity and signature evidence.',
               '',
               'Sensitive credential-like files are inventoried by path, size and SHA-256, but their raw content is omitted from the line-numbered index.',
@@ -217,6 +262,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-exhaustive-source-audit
-          path: audit/
+          path: ${{ runner.temp }}/rota-certa-exhaustive-audit/
           if-no-files-found: error
           retention-days: 30
