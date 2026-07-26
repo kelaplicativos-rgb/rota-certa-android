@@ -60,6 +60,7 @@ jobs:
           cat scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1 \
             | base64 --decode | gzip --decompress > scripts/apply_staged_manual_contract.py
           chmod +x scripts/apply_staged_manual_contract.py
+          python3 scripts/fix-stage-script.py
           rm scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1
 
       - name: Stage 1 - materialize stable source
