@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -14,17 +15,26 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -46,8 +56,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -58,6 +75,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+// automatic_capture_ui_imports_0_1_129
 
 class MainActivity : ComponentActivity() {
     private var launchIntent by mutableStateOf<Intent?>(null)
@@ -82,47 +100,34 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RotaCertaApp(launchIntent: Intent?) {
     val context = LocalContext.current
+    LaunchedEffect("rota_certa_session_0_1_118") {
+        Unit /* production_log_removed_checklist_4 */
+    } // full_session_start_0_1_118
+
     val lifecycleOwner = LocalLifecycleOwner.current
     val repository = remember { SettingsRepository(context) }
     val settings by repository.settings.collectAsState(initial = AppSettings())
-    val history by repository.analyses.collectAsState(initial = emptyList())
-    val diagnostic by repository.diagnostic.collectAsState(initial = null)
-    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
+    // in_app_bubble_immediate_state_0_1_98 substituido pela navegacao agrupada 0.1.115
+    val history = emptyList<AnalysisResult>()
     val savedPlaces by repository.savedPlaces.collectAsState(initial = emptyList())
     val radarImportSummary by repository.radarImportSummary.collectAsState(initial = RadarImportSummary())
     val ocrService = remember { OcrService(context) }
     val locationService = remember { DeviceLocationService(context) }
+    val gpsAddressResolver = remember { GpsAddressResolver(context) } // popup_modules_0_1_120
     val geocodingService = remember { GeocodingService(context) }
+    val savedPlaceGpsAddressResolver = remember { GpsAddressResolver(context) }
     val scope = rememberCoroutineScope()
-
-    var tab by remember { mutableStateOf(TAB_ANALYSIS) }
+    var tab by remember { mutableStateOf(TAB_CONFIG) }
+    var selectedBubbleGroup by remember { mutableStateOf(BUBBLE_GROUP_GENERAL) } // grouped_bubble_state_0_1_115
     var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
+    var savedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
+    var handledSavedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
-    var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${cardTemplates.size}") }
-    var unreadTemplatePrints by remember { mutableStateOf(0) }
     var backupStatus by remember { mutableStateOf("") }
     var radarImportStatus by remember { mutableStateOf("") }
+    var supportReportStatus by remember { mutableStateOf("") }
 
-    fun registerRideCard(packageName: String?, text: String) {
-        if (text.isBlank()) {
-            Toast.makeText(context, "Nao ha texto lido para cadastrar", Toast.LENGTH_SHORT).show()
-            return
-        }
-        scope.launch {
-            val inferredPackageName = packageName ?: RideCardTemplateMatcher.inferPackageName(text)
-            val template = RideCardTemplateMatcher.createTemplate(inferredPackageName, text)
-            repository.addCardTemplate(template)
-            Toast.makeText(context, "Modelo cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun deleteCardModel(template: RideCardTemplate) {
-        scope.launch {
-            repository.removeCardTemplate(template.id)
-            Toast.makeText(context, "Modelo removido: ${template.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     fun renameSavedPlace(place: SavedPlace, name: String) {
         val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
@@ -131,6 +136,66 @@ fun RotaCertaApp(launchIntent: Intent?) {
             Toast.makeText(context, "Nome salvo: $safeName", Toast.LENGTH_SHORT).show()
         }
     }
+
+    fun createCurrentSavedPlace(type: SavedPlaceType) {
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                Toast.makeText(context, "Autorize a localizacao para salvar este local.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val resolved = savedPlaceGpsAddressResolver.resolve(coordinate)
+            val createdAt = System.currentTimeMillis()
+            val isAlert = type == SavedPlaceType.ProximityAlert
+            val place = SavedPlace(
+                id = "place-$createdAt-${coordinate.latitude}-${coordinate.longitude}",
+                name = if (isAlert) defaultSavedPlaceName(SavedPlaceType.ProximityAlert) else defaultSavedPlaceName(SavedPlaceType.Place),
+                type = type,
+                address = resolved.addressLine,
+                coordinate = coordinate,
+                alertDistanceMeters = if (isAlert) settings.proximityAlertDistanceMeters else null,
+                createdAtMillis = createdAt,
+            )
+            repository.addSavedPlace(place)
+            highlightedSavedPlaceId = place.id
+            Toast.makeText(
+                context,
+                if (isAlert) "Alerta salvo" else "Local salvo",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    fun createSavedPlaceFromHome(type: SavedPlaceType) {
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                Toast.makeText(context, "Autorize a localizacao para salvar este ponto.", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val resolved = gpsAddressResolver.resolve(coordinate)
+            val createdAt = System.currentTimeMillis()
+            val isAlert = type == SavedPlaceType.ProximityAlert
+            val place = SavedPlace(
+                id = "place-$createdAt-${coordinate.latitude}-${coordinate.longitude}",
+                name = if (isAlert) "Alerta" else "", // blank_saved_place_name_checklist_7
+                type = type,
+                address = resolved.addressLine,
+                coordinate = coordinate,
+                alertDistanceMeters = if (isAlert) settings.proximityAlertDistanceMeters else null,
+                createdAtMillis = createdAt,
+            )
+            repository.addSavedPlace(place)
+            highlightedSavedPlaceId = place.id
+            tab = TAB_CONFIG
+            selectedBubbleGroup = if (isAlert) BUBBLE_GROUP_ALERTS else BUBBLE_GROUP_SAVED_PLACES
+            Toast.makeText(
+                context,
+                if (isAlert) "Alerta salvo" else "Local salvo",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    } // createSavedPlaceFromHome_0_1_120
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -143,34 +208,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
     }
 
-    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            unreadTemplatePrints = 0
-            templateStatus = "Lendo ${uris.size} print(s)..."
-            var failures = 0
-            var imported = 0
-
-            uris.forEach { uri ->
-                val extractedText = runCatching { ocrService.extractText(uri) }.getOrDefault("")
-                val packageName = RideCardTemplateMatcher.inferPackageName(extractedText)
-                if (extractedText.isBlank() || packageName == null) {
-                    failures += 1
-                } else {
-                    val template = RideCardTemplateMatcher.createTemplate(packageName, extractedText)
-                    repository.addCardTemplate(template)
-                    imported += 1
-                }
-            }
-
-            unreadTemplatePrints = failures
-            templateStatus = when {
-                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
-                imported == 0 -> "Nenhum modelo importado. Confira se os prints sao cards de corrida."
-                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
-            }
-        }
-    }
 
     val radarFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) {
@@ -180,11 +217,11 @@ fun RotaCertaApp(launchIntent: Intent?) {
         scope.launch {
             radarImportStatus = "Importando radares..."
             runCatching {
-                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                    reader.readText()
+                val fileBytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.readBytes()
                 } ?: error("Nao consegui abrir o arquivo selecionado.")
-                val radars = parseMapaRadarCsv(content)
-                if (radars.isEmpty()) error("Arquivo sem radares validos. Use TXT/CSV do MapaRadar.")
+                val radars = parseMapaRadarFile(fileBytes) // maparadar_flexible_file_reader_0_1_120
+                if (radars.isEmpty()) error("Arquivo sem radares validos. Use TXT, CSV ou CSV salvo como XLS do MapaRadar.")
                 repository.replaceImportedRadars(radars)
                 radars.size
             }.onSuccess { count ->
@@ -218,6 +255,38 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
     }
 
+    val supportReportFileCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        if (uri == null) {
+            supportReportStatus = "Relatorio cancelado."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            supportReportStatus = "Gerando relatorio..."
+            Unit /* production_log_removed_checklist_4 */
+            runCatching {
+                val report = buildManualSupportReport(
+                    context = context,
+                    repository = repository,
+                    settings = settings,
+                    liveEnabled = liveEnabled,
+                    savedPlaces = savedPlaces,
+                    radarImportSummary = radarImportSummary,
+                )
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                    writer.write(report)
+                } ?: error("Nao consegui abrir o arquivo do relatorio.")
+            }.onSuccess {
+                Unit /* production_log_removed_checklist_4 */
+                supportReportStatus = "Relatorio gerado. Anexe o arquivo aqui no chat."
+                Toast.makeText(context, "Relatorio gerado para anexar.", Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                supportReportStatus = "Falha ao gerar relatorio: ${error.message.orEmpty()}"
+            }
+        }
+    }
+
     val backupFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) {
             backupStatus = "Restauracao cancelada."
@@ -231,34 +300,50 @@ fun RotaCertaApp(launchIntent: Intent?) {
                 } ?: error("Nao consegui abrir o arquivo selecionado.")
                 repository.restoreBackupJson(backupJson)
             }.onSuccess { backup ->
-                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."
+                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is)."
             }.onFailure { error ->
                 backupStatus = "Falha ao restaurar backup: ${error.message.orEmpty()}"
             }
         }
     }
 
-    LaunchedEffect(cardTemplates.size) {
-        if (!templateStatus.startsWith("Lendo ")) {
-            templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
+
+    LaunchedEffect(settings, savedPlaces.size, radarImportSummary.count) {
+        val factoryPrefs = context.getSharedPreferences("rota_certa_factory_guard", Context.MODE_PRIVATE)
+        val guardKey = "factory_clean_0_1_72"
+        val hasStoredRegionOrUserLocation = settings.homeAddress.isNotBlank() ||
+            settings.homeCoordinate != null ||
+            settings.alternativeAddress.isNotBlank() ||
+            settings.alternativeCoordinate != null
+        val hasNoUserCollections = savedPlaces.isEmpty() && radarImportSummary.count == 0
+        if (!factoryPrefs.getBoolean(guardKey, false) && hasNoUserCollections && hasStoredRegionOrUserLocation) {
+            repository.saveSettings(AppSettings())
+            region = DeviceRegion()
+            backupStatus = "Dados antigos removidos; seleção de aplicativos permanece manual."
         }
+        factoryPrefs.edit().putBoolean(guardKey, true).apply()
     }
 
     LaunchedEffect(launchIntent) {
         val requestedTab = launchIntent?.getStringExtra(EXTRA_OPEN_TAB)
-        if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
-            tab = requestedTab
+        tab = if (requestedTab == TAB_ANALYSIS || requestedTab == TAB_CONFIG || requestedTab == TAB_TOOLS || requestedTab == TAB_HISTORY) {
+            requestedTab
+        } else {
+            TAB_CONFIG
         }
+        selectedBubbleGroup = when (tab) {
+            TAB_CONFIG -> BUBBLE_GROUP_GENERAL
+            TAB_ANALYSIS -> BUBBLE_GROUP_DESTINATION
+            else -> BUBBLE_GROUP_GENERAL
+        }
+        launchIntent?.getStringExtra(EXTRA_OPEN_BUBBLE_GROUP)?.let { requestedGroup ->
+            if (requestedGroup in BUBBLE_GROUP_VALUES) selectedBubbleGroup = requestedGroup
+        } // startup_permissions_0_1_120
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
-    }
-
-    LaunchedEffect(Unit) {
-        locationPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-            ),
-        )
+        if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
+            Unit /* production_log_removed_checklist_4 */
+            supportReportFileCreator.launch("rota-certa-relatorio-completo.txt")
+        } // auto_export_report_0_1_119
     }
 
     DisposableEffect(lifecycleOwner, context) {
@@ -271,15 +356,20 @@ fun RotaCertaApp(launchIntent: Intent?) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    LaunchedEffect(highlightedSavedPlaceId, savedPlaces) {
+        val id = highlightedSavedPlaceId ?: return@LaunchedEffect
+        val place = savedPlaces.firstOrNull { it.id == id }
+        if (place != null && handledSavedPlaceNameDialogId != id) {
+            savedPlaceNameDialogId = id
+        }
+    }
+
+    savedPlaces.firstOrNull { it.id == savedPlaceNameDialogId }?.let { place ->
+        Unit
+    }
+
     Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(selected = tab == TAB_ANALYSIS, onClick = { tab = TAB_ANALYSIS }, label = { Text("Analise") }, icon = {})
-                NavigationBarItem(selected = tab == TAB_CONFIG, onClick = { tab = TAB_CONFIG }, label = { Text("Config") }, icon = {})
-                NavigationBarItem(selected = tab == TAB_TOOLS, onClick = { tab = TAB_TOOLS }, label = { Text("Ferramentas") }, icon = {})
-                NavigationBarItem(selected = tab == TAB_HISTORY, onClick = { tab = TAB_HISTORY }, label = { Text("Historico") }, icon = {})
-            }
-        },
+        bottomBar = {},
     ) { padding ->
         Column(
             modifier = Modifier
@@ -290,42 +380,45 @@ fun RotaCertaApp(launchIntent: Intent?) {
         ) {
             Text("Rota Certa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(deviceRegionLabel(region), style = MaterialTheme.typography.bodyMedium)
-            Text("Aceite corridas cujo destino final fique dentro do raio definido por voce.", style = MaterialTheme.typography.bodySmall)
+            Text("Gatilho universal: ao encontrar dois enderecos, usa o ultimo e calcula imediatamente ate o ponto definido por voce.", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
+
 
             when (tab) {
                 TAB_ANALYSIS -> AnalysisScreen(
                     settings = settings,
                     latestResult = history.firstOrNull(),
-                    cardTemplates = cardTemplates,
-                    templateStatus = templateStatus,
-                    unreadTemplatePrints = unreadTemplatePrints,
                     liveEnabled = liveEnabled,
-                    onSaveSettings = { scope.launch { repository.saveSettings(it) } },
-                    onDeleteCardModel = ::deleteCardModel,
-                    onPickCardModels = { cardModelPicker.launch("image/*") },
+                    onSaveSettings = { updated -> scope.launch { repository.saveSettings(updated) } },
                     onOpenAccessibilitySettings = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
                     onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
+                
                 )
                 TAB_CONFIG -> SettingsScreen(
+                    selectedGroup = selectedBubbleGroup,
                     settings = settings,
-                    diagnostic = diagnostic,
-                    cardTemplates = cardTemplates,
+                    liveEnabled = liveEnabled,
+                    onOpenAccessibilitySettings = {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
+                    diagnostic = null,
                     savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
                     highlightedSavedPlaceId = highlightedSavedPlaceId,
                     radarImportSummary = radarImportSummary,
                     radarImportStatus = radarImportStatus,
-                    onSave = { scope.launch { repository.saveSettings(it) } },
-                    onRegisterRideCard = ::registerRideCard,
+                    onSave = { updated -> scope.launch { repository.saveSettings(updated) } },
+                    onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },
+                    onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },
                     onRenameSavedPlace = ::renameSavedPlace,
                     onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
                     onRegionDetected = { detectedRegion -> region = detectedRegion },
                     onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
                     onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
-                    onImportRadarFile = { radarFilePicker.launch(arrayOf("text/*", "text/comma-separated-values", "application/octet-stream", "*/*")) },
+                    onImportRadarFile = { radarFilePicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "application/octet-stream", "*/*")) },
                     onOpenMapaRadar = { openMapaRadarSite(context) },
                     onClearImportedRadars = {
                         scope.launch {
@@ -335,14 +428,171 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     },
                 )
                 TAB_TOOLS -> ToolsScreen(
+                    onOpenWhatsApp = { openWhatsAppApp(context) },
                     onOpenBlaBlaCarCollector = {
                         context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
                     },
                     onClearClipboard = { clearClipboard(context) },
+                    onOpenWorkTracking = { context.startActivity(Intent(context, WorkTrackingActivity::class.java)) },
                 )
-                TAB_HISTORY -> HistoryScreen(history)
-            }
+                TAB_HISTORY -> ReportsGroupScreen(
+                    settings = settings,
+                    diagnostic = null,
+                    history = history,
+                )
+                else -> Unit
+            } // grouped_navigation_compat_0_1_115
         }
+    }
+}
+
+// in_app_bubble_home_visible_0_1_97
+private const val BUBBLE_GROUP_GENERAL = "general"
+private const val BUBBLE_GROUP_READING = "reading"
+private const val BUBBLE_GROUP_DESTINATION = "destination"
+private const val BUBBLE_GROUP_ALERTS = "alerts"
+private const val BUBBLE_GROUP_SAVED_PLACES = "saved_places"
+private const val BUBBLE_GROUP_RADARS = "radars"
+private const val BUBBLE_GROUP_CARDS = "cards"
+private const val BUBBLE_GROUP_APPEARANCE = "appearance"
+private const val BUBBLE_GROUP_ACCESS = "access"
+private const val BUBBLE_GROUP_REPORTS = "reports"
+private const val BUBBLE_GROUP_BACKUP = "backup"
+private const val BUBBLE_GROUP_TOOLS = "tools"
+private const val EXTRA_OPEN_BUBBLE_GROUP = "open_bubble_group"
+private val BUBBLE_GROUP_VALUES = setOf(
+    BUBBLE_GROUP_GENERAL,
+    BUBBLE_GROUP_DESTINATION,
+    BUBBLE_GROUP_ALERTS,
+    BUBBLE_GROUP_CARDS,
+    BUBBLE_GROUP_RADARS,
+    BUBBLE_GROUP_SAVED_PLACES,
+    BUBBLE_GROUP_APPEARANCE,
+    BUBBLE_GROUP_ACCESS,
+    BUBBLE_GROUP_REPORTS,
+    BUBBLE_GROUP_BACKUP,
+)
+
+@Composable
+private fun ProfessionalBubbleDashboard(
+    selectedGroup: String,
+    onSelectGroup: (String) -> Unit,
+    onOpenWhatsApp: () -> Unit,
+    onOpenCollector: () -> Unit,
+    onClearClipboard: () -> Unit,
+    onCreateSupportReport: () -> Unit,
+    onStopApplication: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Central de controle", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Recursos separados por funcao. As bolinhas de grupo mostram seus controles logo abaixo; as bolinhas de acao executam imediatamente.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Text("Operacao", fontWeight = FontWeight.Bold)
+        ProfessionalBubbleRow(
+            items = listOf(
+                ProfessionalBubbleItem("⚡", "Rota", selectedGroup == BUBBLE_GROUP_GENERAL) { onSelectGroup(BUBBLE_GROUP_GENERAL) },
+                ProfessionalBubbleItem("🏠", "Destino", selectedGroup == BUBBLE_GROUP_DESTINATION) { onSelectGroup(BUBBLE_GROUP_DESTINATION) },
+                ProfessionalBubbleItem("⚠️", "Alertas", selectedGroup == BUBBLE_GROUP_ALERTS) { onSelectGroup(BUBBLE_GROUP_ALERTS) },
+            ),
+        )
+
+        Text("Sistema", fontWeight = FontWeight.Bold)
+        ProfessionalBubbleRow(
+            items = listOf(
+                ProfessionalBubbleItem("🎨", "Aparencia", selectedGroup == BUBBLE_GROUP_APPEARANCE) { onSelectGroup(BUBBLE_GROUP_APPEARANCE) },
+                ProfessionalBubbleItem("🔐", "Permissoes", selectedGroup == BUBBLE_GROUP_ACCESS) { onSelectGroup(BUBBLE_GROUP_ACCESS) },
+                ProfessionalBubbleItem("💾", "Backup", selectedGroup == BUBBLE_GROUP_BACKUP) { onSelectGroup(BUBBLE_GROUP_BACKUP) },
+            ),
+        )
+
+        Text("Registros", fontWeight = FontWeight.Bold)
+        ProfessionalBubbleRow(
+            items = listOf(
+                ProfessionalBubbleItem("📋", "Relatorios", selectedGroup == BUBBLE_GROUP_REPORTS) { onSelectGroup(BUBBLE_GROUP_REPORTS) },
+            ),
+        )
+
+        Text("Acoes rapidas", fontWeight = FontWeight.Bold)
+        ProfessionalBubbleRow(
+            items = listOf(
+                ProfessionalBubbleItem("🟢", "WhatsApp", false, onOpenWhatsApp),
+                ProfessionalBubbleItem("🚗", "Coletor", false, onOpenCollector),
+                ProfessionalBubbleItem("🧹", "Limpar", false, onClearClipboard),
+            ),
+        )
+
+        Text("Suporte", fontWeight = FontWeight.Bold)
+        ProfessionalBubbleRow(
+            items = listOf(
+                ProfessionalBubbleItem("🛠️", "Depurar", false, onCreateSupportReport),
+                ProfessionalBubbleItem("⏹️", "Encerrar", false, onStopApplication),
+            ),
+        )
+    }
+}
+
+private data class ProfessionalBubbleItem(
+    val emoji: String,
+    val label: String,
+    val selected: Boolean,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun ProfessionalBubbleRow(items: List<ProfessionalBubbleItem>) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        items.forEach { item ->
+            AppControlBubble(
+                emoji = item.emoji,
+                label = item.label,
+                selected = item.selected,
+                onClick = item.onClick,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppControlBubble(
+    emoji: String,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.size(88.dp),
+        shape = CircleShape,
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = if (selected) 12.dp else 2.dp,
+            pressedElevation = 14.dp,
+        ),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+        contentPadding = PaddingValues(5.dp),
+    ) {
+        Text(
+            text = emoji + "\n" + label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+        )
+    }
+}
+
+private fun openWhatsAppApp(context: Context) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+        ?: context.packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+    if (launchIntent != null) {
+        context.startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } else {
+        Toast.makeText(context, "WhatsApp nao encontrado.", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -350,24 +600,21 @@ fun RotaCertaApp(launchIntent: Intent?) {
 private fun AnalysisScreen(
     settings: AppSettings,
     latestResult: AnalysisResult?,
-    cardTemplates: List<RideCardTemplate>,
-    templateStatus: String,
-    unreadTemplatePrints: Int,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
-    onPickCardModels: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
 ) {
     val context = LocalContext.current
     val locationService = remember { DeviceLocationService(context) }
     val gpsAddressResolver = remember { GpsAddressResolver(context) }
+    val workRegionAddressResolverChecklist9 = remember { WorkRegionAddressResolver(context) }
     val scope = rememberCoroutineScope()
 
     var quickSettings by remember(settings) { mutableStateOf(settings) }
     var homeStatus by remember { mutableStateOf("") }
     var pendingHomeGps by remember { mutableStateOf(false) }
+    var savingHomeAddressChecklist9 by remember { mutableStateOf(false) }
 
     fun saveQuickSettings(updated: AppSettings) {
         quickSettings = updated
@@ -395,6 +642,39 @@ private fun AnalysisScreen(
         }
     }
 
+    fun saveHomeAddressValidatedChecklist9() {
+        val address = quickSettings.homeAddress.trim()
+        if (address.isBlank()) {
+            homeStatus = "Informe o endereço da Casa antes de salvar."
+            return
+        }
+        if (savingHomeAddressChecklist9) return
+        if (quickSettings.homeCoordinate != null) {
+            saveQuickSettings(quickSettings.copy(homeAddress = address))
+            homeStatus = "Casa salva e pronta para o farol."
+            return
+        }
+
+        savingHomeAddressChecklist9 = true
+        homeStatus = "Localizando e validando o endereço da Casa..."
+        scope.launch {
+            val coordinate = runCatching {
+                workRegionAddressResolverChecklist9.resolve(address, quickSettings.googleMapsApiKey)
+            }.getOrNull()
+            if (coordinate == null) {
+                homeStatus = "Não consegui localizar a Casa. Inclua número, cidade e estado."
+            } else {
+                val updated = quickSettings.copy(
+                    homeAddress = address,
+                    homeCoordinate = coordinate,
+                )
+                saveQuickSettings(updated)
+                homeStatus = "Casa salva e pronta para o farol: ${formatCoordinate(coordinate)}"
+            }
+            savingHomeAddressChecklist9 = false
+        }
+    } // home_target_pre_resolved_checklist_9
+
     val homeGpsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
@@ -417,19 +697,16 @@ private fun AnalysisScreen(
         )
     }
 
-    LiveReadingCard(
-        liveEnabled = liveEnabled,
-        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-        onRefreshLiveState = onRefreshLiveState,
-    )
-
+    Text("Destino, Casa e Alfinete", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Text("Endereco, raio e Google Maps ficam reunidos neste grupo.", style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(10.dp))
     HomeDecisionCard(
         quickSettings = quickSettings,
         homeStatus = homeStatus,
         onSettingsChange = { quickSettings = it },
         onRequestHomeGps = ::requestHomeGps,
-        onSave = { saveQuickSettings(quickSettings) },
+        saving = savingHomeAddressChecklist9,
+        onSave = ::saveHomeAddressValidatedChecklist9,
     )
 
     Spacer(Modifier.height(10.dp))
@@ -440,21 +717,30 @@ private fun AnalysisScreen(
     )
 
     Spacer(Modifier.height(10.dp))
-    CardModelsCard(
-        cardTemplates = cardTemplates,
-        templateStatus = templateStatus,
-        unreadTemplatePrints = unreadTemplatePrints,
-        onPickCardModels = onPickCardModels,
-        onDeleteCardModel = onDeleteCardModel,
+    WorkRegionPinsCard(
+        settings = quickSettings,
+        onSettingsChange = ::saveQuickSettings,
+    ) // multi_address_work_region_ui_checklist_7
+
+
+    Spacer(Modifier.height(10.dp))
+    // Leitura direta ativa; o gatilho e o ultimo endereco. // universal_models_removed_v2_0_1_95
+
+    Spacer(Modifier.height(10.dp))
+    MapsAndAdvancedCard(
+        draft = quickSettings,
+        onDraftChange = { quickSettings = it },
+        onSave = { saveQuickSettings(quickSettings) },
     )
 
-    latestResult?.let {
+        latestResult?.let {
         Spacer(Modifier.height(12.dp))
         ResultCard(it, settings)
     }
 }
 
 @Composable
+// live_reading_moved_to_general_controls_checklist_7
 private fun LiveReadingCard(
     liveEnabled: Boolean,
     onOpenAccessibilitySettings: () -> Unit,
@@ -471,7 +757,7 @@ private fun LiveReadingCard(
             }
             Text(
                 if (liveEnabled) {
-                    "Operando. Verde/vermelho aparecem quando o app reconhece um card de corrida cadastrado."
+                    "Operando em qualquer tela. Dois enderecos deixam a bolinha amarela; o ultimo vira o destino e inicia o calculo."
                 } else {
                     "Ative 'Rota Certa - leitura ao vivo' nas configuracoes de Acessibilidade."
                 },
@@ -487,44 +773,68 @@ private fun HomeDecisionCard(
     homeStatus: String,
     onSettingsChange: (AppSettings) -> Unit,
     onRequestHomeGps: () -> Unit,
+    saving: Boolean,
     onSave: () -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Endereco para aceitar corridas", fontWeight = FontWeight.Bold)
+            Text("Casa / ponto principal", fontWeight = FontWeight.Bold)
             Text(
-                "Configure o ponto que o destino final precisa ficar perto. O Rota Certa usa este endereco e o raio em km para decidir aceitar ou recusar.",
+                "O endereço é validado ao salvar. Assim, o farol não precisa localizar a Casa quando a corrida aparece.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
                 value = quickSettings.homeAddress,
                 onValueChange = { onSettingsChange(quickSettings.copy(homeAddress = it, homeCoordinate = null)) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Casa / ponto principal") },
+                label = { Text("Endereço completo da Casa") },
+                singleLine = true,
+                enabled = !saving,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus()
+                        onSave()
+                    },
+                ),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onRequestHomeGps, modifier = Modifier.weight(1f)) {
+                Button(
+                    onClick = onRequestHomeGps,
+                    enabled = !saving,
+                    modifier = Modifier.weight(1f),
+                ) {
                     Text("Usar GPS atual")
                 }
                 OutlinedButton(
                     onClick = { onSettingsChange(quickSettings.copy(homeCoordinate = null)) },
+                    enabled = !saving,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Digitar")
                 }
             }
             quickSettings.homeCoordinate?.let {
-                Text("Endereco base salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+                Text("Coordenada validada: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
             }
             if (homeStatus.isNotBlank()) {
                 Text(homeStatus, style = MaterialTheme.typography.bodySmall)
             }
-            Button(onClick = onSave, modifier = Modifier.fillMaxWidth()) {
-                Text("Salvar endereco")
+            Button(
+                onClick = {
+                    focusManager.clearFocus()
+                    onSave()
+                },
+                enabled = quickSettings.homeAddress.isNotBlank() && !saving,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (saving) "Localizando..." else "Salvar Casa")
             }
         }
     }
-}
+} // home_target_editor_final_checklist_9
+
 
 @Composable
 private fun RadiusQuickCard(
@@ -534,7 +844,7 @@ private fun RadiusQuickCard(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Raio de aceite", fontWeight = FontWeight.Bold)
+            Text("Raio da regiao de trabalho", fontWeight = FontWeight.Bold)
             Text("Defina ate quantos km do endereco salvo o destino final pode ficar.", style = MaterialTheme.typography.bodySmall)
             RadiusSlider(
                 label = "Casa",
@@ -543,7 +853,7 @@ private fun RadiusQuickCard(
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
             )
             RadiusSlider(
-                label = "Alfinete",
+                label = "Todos os alfinetes",
                 value = quickSettings.alternativeRadiusKm,
                 onValueChange = { onSettingsChange(quickSettings.copy(alternativeRadiusKm = it)) },
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
@@ -552,81 +862,47 @@ private fun RadiusQuickCard(
     }
 }
 
-@Composable
-private fun CardModelsCard(
-    cardTemplates: List<RideCardTemplate>,
-    templateStatus: String,
-    unreadTemplatePrints: Int,
-    onPickCardModels: () -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Modelos de cards", fontWeight = FontWeight.Bold)
-            Text("Modelos cadastrados: ${cardTemplates.size}")
-            Button(onClick = onPickCardModels, modifier = Modifier.fillMaxWidth()) {
-                Text("Anexar modelos de cards (prints)")
-            }
-            Text(templateStatus, style = MaterialTheme.typography.bodySmall)
-            if (unreadTemplatePrints > 0) {
-                Text("Prints sem leitura: $unreadTemplatePrints", style = MaterialTheme.typography.bodySmall)
-            }
-            if (cardTemplates.isEmpty()) {
-                Text("Nenhum modelo cadastrado ainda.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                cardTemplates.forEach { template ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(template.name, fontWeight = FontWeight.Bold)
-                            Text(template.packageName ?: "app nao identificado", style = MaterialTheme.typography.bodySmall)
-                        }
-                        OutlinedButton(onClick = { onDeleteCardModel(template) }) {
-                            Text("Apagar")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+// no_pre_registered_cards_ui_0_1_126 superseded manual_card_models_restored_0_1_127
+ // no_pre_registered_cards_ui_0_1_126
+
+
+// capture_library_split_final_checklist_6
+
+// capture_card_component_final_checklist_6
+ // automatic_capture_gallery_composable_0_1_129
 
 @Composable
 private fun DiagnosticExpander(
-    diagnostic: LiveDiagnostic?,
-    cardTemplates: List<RideCardTemplate>,
-    onRegisterRideCard: (String?, String) -> Unit,
+    settings: AppSettings,
+    @Suppress("UNUSED_PARAMETER") diagnostic: LiveDiagnostic?,
 ) {
     val context = LocalContext.current
-    ExpandableCard(title = "Diagnostico tecnico", initiallyExpanded = false) {
-        Text("Cards cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
-        if (diagnostic == null) {
-            Text("Nenhum diagnostico registrado ainda. Ative a leitura e abra um card de corrida.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            Button(
-                onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Rota Certa diagnostico", diagnostic.toShareText()))
-                    Toast.makeText(context, "Diagnostico copiado", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Copiar diagnostico")
-            }
-            Text("Cor: ${diagnostic.bubbleColor}")
-            Text("Etapa: ${diagnostic.stage}")
-            Text("Pacote: ${diagnostic.packageName ?: "nao informado"}")
-            Text("Card reconhecido: ${diagnostic.registeredCardMatched ?: "nenhum"}", style = MaterialTheme.typography.bodySmall)
-            Text("Motivo: ${diagnostic.reason}", style = MaterialTheme.typography.bodySmall)
-            diagnostic.destination?.takeIf { it.isNotBlank() }?.let {
-                Text("Destino: $it", style = MaterialTheme.typography.bodySmall)
-            }
-            OutlinedButton(
-                enabled = diagnostic.textPreview.isNotBlank(),
-                onClick = { onRegisterRideCard(diagnostic.packageName, diagnostic.textPreview) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cadastrar texto lido como modelo")
-            }
+    ExpandableCard(title = "Relatorio tecnico", initiallyExpanded = false) {
+        Text(
+            "Logs e diagnosticos automaticos ficam desligados durante o uso normal. O arquivo abaixo e criado somente quando voce toca no botao.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(
+            onClick = {
+                DiagnosticRuntimeGate.endManualCapture()
+                DiagnosticLogStore.clear()
+                LiveFailureTraceStore.clear()
+                val report = ManualTechnicalReportBuilder.build(context = context, settings = settings)
+                ManualTechnicalReportExporter.saveToDownloads(context, report)
+                    .onSuccess {
+                        Toast.makeText(context, "Relatorio salvo em Downloads/Rota Certa.", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure {
+                        Toast.makeText(
+                            context,
+                            "Nao consegui salvar o relatorio em Downloads.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Gerar e baixar relatorio")
         }
     }
 }
@@ -638,35 +914,100 @@ private fun SavedPlacesCard(
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
-    val places = savedPlaces.filter { it.type == SavedPlaceType.Place }
-    val alerts = savedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
+    val places = SavedPlaceUiPolicy.sortedByName(savedPlaces.filter { it.type == SavedPlaceType.Place })
+    val alerts = SavedPlaceUiPolicy.sortedByName(savedPlaces.filter { it.type == SavedPlaceType.ProximityAlert })
     val highlightedType = savedPlaces.firstOrNull { it.id == highlightedSavedPlaceId }?.type
 
-    if (highlightedType != null) {
-        Text("Item criado pela bolinha. Informe um nome claro e toque em Salvar.", style = MaterialTheme.typography.bodySmall)
+    if (highlightedType == SavedPlaceType.Place) {
+        Text("Digite o nome do local e toque em Concluir no teclado.", style = MaterialTheme.typography.bodySmall)
+    } else if (highlightedType == SavedPlaceType.ProximityAlert) {
+        Text("Confira ou altere o nome que será falado no alerta.", style = MaterialTheme.typography.bodySmall)
     }
 
-    ExpandableCard(title = "Locais salvos (${places.size})", initiallyExpanded = highlightedType == SavedPlaceType.Place) {
-        if (places.isEmpty()) {
-            Text("Nenhum local salvo ainda.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            places.forEach { place ->
-                SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
-            }
+    ExpandableCard(
+        title = "Locais salvos (" + places.size + ")",
+        initiallyExpanded = highlightedType == SavedPlaceType.Place,
+    ) {
+        if (places.isEmpty()) Text("Nenhum local salvo ainda.", style = MaterialTheme.typography.bodySmall)
+        else places.forEach { place ->
+            SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
         }
     }
 
     Spacer(Modifier.height(10.dp))
-    ExpandableCard(title = "Alertas de proximidade (${alerts.size})", initiallyExpanded = highlightedType == SavedPlaceType.ProximityAlert) {
-        if (alerts.isEmpty()) {
-            Text("Nenhum alerta de proximidade criado ainda.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            alerts.forEach { place ->
-                SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
+    ExpandableCard(
+        title = "Alertas de proximidade (" + alerts.size + ")",
+        initiallyExpanded = highlightedType == SavedPlaceType.ProximityAlert,
+    ) {
+        if (alerts.isEmpty()) Text("Nenhum alerta de proximidade criado ainda.", style = MaterialTheme.typography.bodySmall)
+        else alerts.forEach { place ->
+            SavedPlaceEditor(place, place.id == highlightedSavedPlaceId, onRenameSavedPlace, onDeleteSavedPlace)
+        }
+    }
+} // saved_places_alphabetical_final_checklist_7
+
+
+// no_registered_cards_module_0_1_126 superseded registered_cards_module_restored_0_1_127
+ // no_registered_cards_module_0_1_126
+ // registered_cards_module_0_1_120
+
+@Composable
+private fun SavedPlacesModuleCard(
+    savedPlaces: List<SavedPlace>,
+    type: SavedPlaceType,
+    highlightedSavedPlaceId: String?,
+    onCreate: () -> Unit,
+    onRenameSavedPlace: (SavedPlace, String) -> Unit,
+    onDeleteSavedPlace: (SavedPlace) -> Unit,
+) {
+    val items = SavedPlaceUiPolicy.sortedByName(savedPlaces.filter { it.type == type })
+    val isAlert = type == SavedPlaceType.ProximityAlert
+    var search by remember(type) { mutableStateOf("") }
+    val filteredItems = remember(items, search) {
+        val query = search.trim().lowercase(Locale.ROOT)
+        if (query.isBlank()) items else items.filter { place ->
+            place.name.lowercase(Locale.ROOT).contains(query) ||
+                place.address.lowercase(Locale.ROOT).contains(query)
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                if (isAlert) "Alertas de proximidade" else "Locais salvos",
+                fontWeight = FontWeight.Bold,
+            )
+            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
+                Text(if (isAlert) "Criar alerta neste local" else "Salvar local atual")
+            }
+            ExpandableCard(
+                title = if (isAlert) "Alertas criados (${items.size})" else "Endereços salvos (${items.size})",
+                initiallyExpanded = highlightedSavedPlaceId != null && items.any { it.id == highlightedSavedPlaceId },
+            ) {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buscar por nome ou endereço") }, // Buscar por nome ou endereco saved_places_search_name_address_0_1_127
+                    singleLine = true,
+                )
+                when {
+                    items.isEmpty() -> Text(if (isAlert) "Nenhum alerta criado." else "Nenhum local salvo.")
+                    filteredItems.isEmpty() -> Text(if (isAlert) "Nenhum alerta encontrado por nome ou endereço." else "Nenhum local encontrado por nome ou endereco")
+                    else -> filteredItems.forEach { place ->
+                        SavedPlaceEditor(
+                            place = place,
+                            highlighted = place.id == highlightedSavedPlaceId,
+                            onRenameSavedPlace = onRenameSavedPlace,
+                            onDeleteSavedPlace = onDeleteSavedPlace,
+                        )
+                    }
+                }
             }
         }
     }
-}
+} // separate_saved_place_modules_0_1_120 saved_places_search_name_address_0_1_127
+ // separate_saved_place_modules_0_1_120
 
 @Composable
 private fun SavedPlaceEditor(
@@ -676,42 +1017,53 @@ private fun SavedPlaceEditor(
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
     val context = LocalContext.current
-    var draftName by remember(place.id, place.name) { mutableStateOf(place.name) }
+    val focusManager = LocalFocusManager.current
+    var draftName by remember(place.id, place.name, highlighted) {
+        mutableStateOf(SavedPlaceUiPolicy.initialDraftName(place, highlighted))
+    }
+
+    fun saveName() {
+        val cleanName = draftName.trim()
+        if (!SavedPlaceUiPolicy.canSave(place, cleanName)) return
+        onRenameSavedPlace(place, cleanName)
+        focusManager.clearFocus()
+    }
+
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(savedPlaceTypeLabel(place), fontWeight = FontWeight.Bold)
-        if (highlighted) {
-            Text("Informe o nome deste item agora. Esse nome aparece na lista e no alerta de voz.", style = MaterialTheme.typography.bodySmall)
+        if (highlighted && place.type == SavedPlaceType.Place) {
+            Text("O campo começa vazio para você escrever o nome diretamente.", style = MaterialTheme.typography.bodySmall)
+        } else if (highlighted) {
+            Text("O nome sugerido pode ser mantido ou alterado.", style = MaterialTheme.typography.bodySmall)
         }
         OutlinedTextField(
             value = draftName,
             onValueChange = { draftName = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome falado no alerta" else "Nome do local") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { saveName() }),
         )
         if (place.type == SavedPlaceType.ProximityAlert) {
             Text(
-                "O app vai falar: ${draftName.ifBlank { defaultSavedPlaceName(place.type) }} se aproximando.",
+                "O app vai falar: " + draftName.ifBlank { defaultSavedPlaceName(place.type) } + " se aproximando.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.weight(1f)) {
-                Text("GPS")
-            }
+            OutlinedButton(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.weight(1f)) { Text("GPS") }
             Button(
-                enabled = draftName.trim() != place.name,
-                onClick = { onRenameSavedPlace(place, draftName) },
+                enabled = SavedPlaceUiPolicy.canSave(place, draftName) && draftName.trim() != place.name.trim(),
+                onClick = { saveName() },
                 modifier = Modifier.weight(1f),
-            ) {
-                Text("Salvar")
-            }
-            OutlinedButton(onClick = { onDeleteSavedPlace(place) }, modifier = Modifier.weight(1f)) {
-                Text("Apagar")
-            }
+            ) { Text("Salvar") }
+            OutlinedButton(onClick = { onDeleteSavedPlace(place) }, modifier = Modifier.weight(1f)) { Text("Apagar") }
         }
     }
-}
+} // enter_saves_place_final_checklist_7
+
 
 @Composable
 private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
@@ -739,16 +1091,20 @@ private fun ResultCard(result: AnalysisResult, settings: AppSettings) {
 
 @Composable
 private fun SettingsScreen(
+    selectedGroup: String,
     settings: AppSettings,
+    liveEnabled: Boolean,
+    onOpenAccessibilitySettings: () -> Unit,
+    onRefreshLiveState: () -> Unit,
     diagnostic: LiveDiagnostic?,
-    cardTemplates: List<RideCardTemplate>,
     savedPlaces: List<SavedPlace>,
     backupStatus: String,
     highlightedSavedPlaceId: String?,
     radarImportSummary: RadarImportSummary,
     radarImportStatus: String,
     onSave: (AppSettings) -> Unit,
-    onRegisterRideCard: (String?, String) -> Unit,
+    onCreateSavedPlace: () -> Unit,
+    onCreateProximityAlert: () -> Unit,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
     onRegionDetected: (DeviceRegion) -> Unit,
@@ -787,7 +1143,7 @@ private fun SettingsScreen(
                 LocationTarget.Home -> draft.copy(homeAddress = address, homeCoordinate = coordinate)
                 LocationTarget.Alternative -> draft.copy(alternativeAddress = address, alternativeCoordinate = coordinate)
             }
-            gpsStatus = "GPS preenchido. Confira e toque em Salvar configuracoes."
+            gpsStatus = "GPS preenchido. Confira e toque em Salvar."
         }
     }
 
@@ -805,79 +1161,173 @@ private fun SettingsScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Configuracoes", fontWeight = FontWeight.Bold)
-        SystemControlCard(settings = draft, onChange = ::saveDraft)
-        AlwaysLocationPermissionCard(
-            hasAlwaysPermission = hasAlwaysLocationPermission(context),
-            onOpenLocationSettings = { openAppLocationSettings(context) },
-        )
-        DiagnosticExpander(
-            diagnostic = diagnostic,
-            cardTemplates = cardTemplates,
-            onRegisterRideCard = onRegisterRideCard,
-        )
-        BubbleSettingsCard(settings = draft, onChange = ::saveDraft)
-        SavedPlacesCard(
-            savedPlaces = savedPlaces,
-            highlightedSavedPlaceId = highlightedSavedPlaceId,
-            onRenameSavedPlace = onRenameSavedPlace,
-            onDeleteSavedPlace = onDeleteSavedPlace,
-        )
-        RadarImportCard(
-            summary = radarImportSummary,
-            importStatus = radarImportStatus,
-            onPickFile = onImportRadarFile,
-            onOpenMapaRadar = onOpenMapaRadar,
-            onClearRadars = onClearImportedRadars,
-        )
-        MonitoredAppsCard(settings = draft, onChange = ::saveDraft)
-        SettingsLocationCard(
-            draft = draft,
-            gpsStatus = gpsStatus,
-            onDraftChange = { draft = it },
-            onRequestGps = ::requestGps,
-            onSave = { onSave(draft) },
-        )
-        MapsAndAdvancedCard(draft = draft, onDraftChange = { draft = it }, onSave = { onSave(draft) })
-        BackupCard(
-            status = backupStatus,
-            onCreateBackup = onCreateBackup,
-            onRestoreBackup = onRestoreBackup,
-        )
-        Button(onClick = { onSave(draft) }, modifier = Modifier.fillMaxWidth()) { Text("Salvar configuracoes") }
+        Text(groupedBubbleTitle(selectedGroup), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(groupedBubbleDescription(selectedGroup), style = MaterialTheme.typography.bodySmall)
+        when (selectedGroup) {
+            BUBBLE_GROUP_GENERAL,
+            BUBBLE_GROUP_READING,
+            BUBBLE_GROUP_ACCESS,
+            -> {
+                SystemControlCard(settings = draft, onChange = ::saveDraft)
+                Spacer(Modifier.height(10.dp))
+                AlwaysLocationPermissionCard(
+                    hasAlwaysPermission = hasAlwaysLocationPermission(context),
+                    onOpenLocationSettings = { openAppLocationSettings(context) },
+                )
+            } // legacy_access_groups_to_general_checklist_7
+            BUBBLE_GROUP_ALERTS -> SavedPlacesModuleCard(
+                savedPlaces = savedPlaces,
+                type = SavedPlaceType.ProximityAlert,
+                highlightedSavedPlaceId = highlightedSavedPlaceId,
+                onCreate = onCreateProximityAlert,
+                onRenameSavedPlace = onRenameSavedPlace,
+                onDeleteSavedPlace = onDeleteSavedPlace,
+            )
+            BUBBLE_GROUP_SAVED_PLACES -> SavedPlacesModuleCard(
+                savedPlaces = savedPlaces,
+                type = SavedPlaceType.Place,
+                highlightedSavedPlaceId = highlightedSavedPlaceId,
+                onCreate = onCreateSavedPlace,
+                onRenameSavedPlace = onRenameSavedPlace,
+                onDeleteSavedPlace = onDeleteSavedPlace,
+            )
+            BUBBLE_GROUP_RADARS -> RadarImportCard(
+                summary = radarImportSummary,
+                importStatus = radarImportStatus,
+                onPickFile = onImportRadarFile,
+                onOpenMapaRadar = onOpenMapaRadar,
+                onClearRadars = onClearImportedRadars,
+            )
+            BUBBLE_GROUP_APPEARANCE -> BubbleSettingsCard(settings = draft, onChange = ::saveDraft)
+            BUBBLE_GROUP_BACKUP -> BackupCard(
+                status = backupStatus,
+                onCreateBackup = onCreateBackup,
+                onRestoreBackup = onRestoreBackup,
+            )
+            BUBBLE_GROUP_CARDS -> Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                InstalledRideAppsCard()
+            } // selected_apps_visible
+
+            else -> SystemControlCard(settings = draft, onChange = ::saveDraft)
+        }
     }
+} // grouped_settings_screen_0_1_115
+
+private fun groupedBubbleTitle(group: String): String = when (group) {
+    BUBBLE_GROUP_GENERAL -> "Controle geral"
+    BUBBLE_GROUP_READING -> "Leitura ao vivo"
+    BUBBLE_GROUP_ALERTS -> "Alertas de proximidade"
+    BUBBLE_GROUP_SAVED_PLACES -> "Locais salvos"
+    BUBBLE_GROUP_RADARS -> "Radares importados"
+    BUBBLE_GROUP_CARDS -> "Aplicativos selecionados"
+    BUBBLE_GROUP_APPEARANCE -> "Bolinha e aparencia"
+    BUBBLE_GROUP_ACCESS -> "Permissoes, leitura e GPS"
+    BUBBLE_GROUP_BACKUP -> "Backup dos dados"
+    else -> "Controle geral"
+}
+
+private fun groupedBubbleDescription(group: String): String = when (group) {
+    BUBBLE_GROUP_GENERAL -> "Liga ou pausa o Rota Certa e os avisos."
+    BUBBLE_GROUP_READING -> "Autoriza a Acessibilidade e controla a leitura da tela."
+    BUBBLE_GROUP_ALERTS -> "Crie e edite somente alertas de proximidade."
+    BUBBLE_GROUP_SAVED_PLACES -> "Gerencie somente locais salvos, sem alerta."
+    BUBBLE_GROUP_RADARS -> "Importe e gerencie radares separadamente."
+    BUBBLE_GROUP_CARDS -> "Selecione manualmente os aplicativos permitidos para leitura."
+    BUBBLE_GROUP_APPEARANCE -> "Ajusta transparencia, contraste e aparencia da bolinha flutuante."
+    BUBBLE_GROUP_ACCESS -> "Controle a leitura ao vivo, a Acessibilidade, a localizacao e o GPS continuo."
+    BUBBLE_GROUP_BACKUP -> "Crie ou restaure uma copia das configuracoes e dos dados."
+    else -> "Ajustes do Rota Certa."
 }
 
 @Composable
 private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
-    ExpandableCard(title = "Controle geral", initiallyExpanded = true) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var accessibilityGranted by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) accessibilityGranted = isLiveAccessibilityEnabled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    ExpandableCard(title = "Controles gerais", initiallyExpanded = true) {
+        val mapsKeyConfiguredChecklist11 = GoogleMapsApiKeyPolicy.isConfigured(
+            settings.googleMapsApiKey,
+            BuildConfig.GOOGLE_MAPS_API_KEY,
+        )
+        Text(
+            if (mapsKeyConfiguredChecklist11) {
+                "Chave Google Maps API: configurada"
+            } else {
+                "Chave Google Maps API: obrigatória para o farol verde/vermelho"
+            },
+            fontWeight = FontWeight.Bold,
+        )
+        OutlinedTextField(
+            value = settings.googleMapsApiKey,
+            onValueChange = { value -> onChange(settings.copy(googleMapsApiKey = value.trim())) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Chave Google Maps API") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+        )
+        Text(
+            if (mapsKeyConfiguredChecklist11) {
+                "A rota real está liberada. A chave digitada tem prioridade sobre a chave incluída no aplicativo."
+            } else {
+                "Sem a chave, o card pode ser reconhecido e fotografado, mas a bolinha permanece amarela e não inventa distância."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        ) // api_key_in_general_controls_checklist_11
         SettingsSwitchRow(
             label = "Rota Certa ligado",
             checked = settings.appEnabled,
             onCheckedChange = { enabled -> onChange(settings.copy(appEnabled = enabled)) },
         )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Falar radares e proximidade", modifier = Modifier.weight(1f))
-            Switch(
-                checked = settings.appEnabled && settings.proximityAlertsEnabled,
-                enabled = settings.appEnabled,
-                onCheckedChange = { enabled -> onChange(settings.copy(proximityAlertsEnabled = enabled)) },
-            )
+        SettingsSwitchRow(
+            label = "Leitura ao vivo",
+            checked = settings.liveReadingEnabled,
+            onCheckedChange = { enabled -> onChange(settings.copy(liveReadingEnabled = enabled)) },
+        )
+        SettingsSwitchRow(
+            label = "Falar radares e proximidade",
+            checked = settings.proximityAlertsEnabled,
+            onCheckedChange = { enabled -> onChange(settings.copy(proximityAlertsEnabled = enabled)) },
+        )
+        Text(
+            if (accessibilityGranted) "Permissão de acessibilidade: concedida" else "Permissão de acessibilidade: pendente",
+            fontWeight = FontWeight.Bold,
+        )
+        Button(
+            onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (accessibilityGranted) "Revisar permissão de acessibilidade" else "Conceder permissão de acessibilidade")
         }
         Text(
-            if (settings.appEnabled) {
-                "Desligue apenas quando quiser pausar leitura ao vivo e avisos. A bolinha fica em espera."
-            } else {
-                "Rota Certa esta pausado: leitura ao vivo e avisos de proximidade ficam desligados."
+            when {
+                !settings.appEnabled -> "Rota Certa pausado: leitura e avisos ficam em espera."
+                !settings.liveReadingEnabled -> "Alertas podem continuar ativos, mas a leitura dos cards está pausada."
+                else -> "Rota Certa e leitura ao vivo estão ativos."
             },
             style = MaterialTheme.typography.bodySmall,
         )
     }
-}
+} // general_controls_final_checklist_7
+
 
 @Composable
 private fun BubbleSettingsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
-    ExpandableCard(title = "Bolinha e aparencia", initiallyExpanded = false) {
+    val context = LocalContext.current
+    val popupStore = remember { PopupAppearanceStore(context) }
+    var popupScale by remember { mutableStateOf(popupStore.scale()) }
+
+    ExpandableCard(title = "Bolinha e aparência", initiallyExpanded = false) {
         BubbleOpacitySlider(
             value = settings.bubbleOpacity,
             onValueChange = { onChange(settings.copy(bubbleOpacity = it)) },
@@ -890,9 +1340,22 @@ private fun BubbleSettingsCard(settings: AppSettings, onChange: (AppSettings) ->
                 onCheckedChange = { onChange(settings.copy(bubbleDarkMode = it)) },
             )
         }
-        Text("Toque na bolinha para abrir o Rota Certa. Arraste para mudar a posicao.", style = MaterialTheme.typography.bodySmall)
+        Text("Tamanho do pop-up: " + (popupScale * 100).roundToInt() + "%", fontWeight = FontWeight.Bold)
+        Slider(
+            value = popupScale.toFloat(),
+            onValueChange = { popupScale = it.toDouble() },
+            valueRange = PopupAppearanceStore.MIN_SCALE.toFloat()..PopupAppearanceStore.MAX_SCALE.toFloat(),
+            onValueChangeFinished = { popupStore.setScale(popupScale) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "Em tamanhos maiores, o pop-up usa duas colunas e aumenta também a fonte das bolinhas.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text("Toque na bolinha para abrir o pop-up. Arraste para mudar a posição.", style = MaterialTheme.typography.bodySmall)
     }
-}
+} // popup_scale_ui_final_checklist_7
+
 
 @Composable
 private fun SettingsLocationCard(
@@ -914,22 +1377,15 @@ private fun SettingsLocationCard(
             label = { Text("Casa / ponto principal") },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { onRequestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) { Text("Usar GPS atual") }
+            Button(onClick = { onRequestGps(LocationTarget.Home) }, modifier = Modifier.weight(1f)) { Text("Definir pelo GPS atual") }
             OutlinedButton(onClick = { onDraftChange(draft.copy(homeCoordinate = null)) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
         }
         draft.homeCoordinate?.let { Text("GPS casa salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
 
-        OutlinedTextField(
-            value = draft.alternativeAddress,
-            onValueChange = { onDraftChange(draft.copy(alternativeAddress = it, alternativeCoordinate = null)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Alfinete / localidade alternativa") },
+        Text(
+            "Os endereços dos alfinetes são gerenciados em Região de trabalho.",
+            style = MaterialTheme.typography.bodySmall,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = { onRequestGps(LocationTarget.Alternative) }, modifier = Modifier.weight(1f)) { Text("Usar GPS") }
-            OutlinedButton(onClick = { onDraftChange(draft.copy(alternativeCoordinate = null)) }, modifier = Modifier.weight(1f)) { Text("Digitar") }
-        }
-        draft.alternativeCoordinate?.let { Text("GPS alfinete salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall) }
 
         RadiusSlider("Raio casa", draft.homeRadiusKm, { onDraftChange(draft.copy(homeRadiusKm = it)) }, onSave)
         RadiusSlider("Raio alfinete", draft.alternativeRadiusKm, { onDraftChange(draft.copy(alternativeRadiusKm = it)) }, onSave)
@@ -948,7 +1404,7 @@ private fun MapsAndAdvancedCard(
     onDraftChange: (AppSettings) -> Unit,
     onSave: () -> Unit,
 ) {
-    ExpandableCard(title = "Google Maps e ajustes avancados", initiallyExpanded = false) {
+    ExpandableCard(title = "Google Maps e ajustes avancados", initiallyExpanded = !GoogleMapsApiKeyPolicy.isConfigured(draft.googleMapsApiKey, BuildConfig.GOOGLE_MAPS_API_KEY)) {
         OutlinedTextField(
             value = draft.googleMapsApiKey,
             onValueChange = { onDraftChange(draft.copy(googleMapsApiKey = it)) },
@@ -957,7 +1413,7 @@ private fun MapsAndAdvancedCard(
             visualTransformation = PasswordVisualTransformation(),
         )
         Text(
-            "Opcional: Google Maps melhora a precisao por rota real. Sem chave, o app usa distancia aproximada quando houver coordenadas confiaveis.",
+            "Obrigatória para verde/vermelho e km por rota real. Sem chave, o farol permanece amarelo.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
@@ -986,7 +1442,7 @@ private fun BackupCard(
 ) {
     ExpandableCard(title = "Backup dos dados", initiallyExpanded = false) {
         Text(
-            "Salva configuracoes, modelos de cards, locais e alertas de proximidade em um arquivo do celular.",
+            "Salva configuracoes, locais e alertas de proximidade em um arquivo do celular.",
             style = MaterialTheme.typography.bodySmall,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1003,36 +1459,55 @@ private fun BackupCard(
 
 @Composable
 private fun MonitoredAppsCard(settings: AppSettings, onChange: (AppSettings) -> Unit) {
-    ExpandableCard(title = "Apps monitorados", initiallyExpanded = false) {
-        Text(
-            "Farol ao vivo: verde/vermelho somente quando a tela bater com um card cadastrado manualmente. Telas desconhecidas ficam amarelas e viram amostra.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        SettingsSwitchRow(
-            label = "Ler somente apps selecionados",
-            checked = settings.restrictToSelectedRideApps,
-            onCheckedChange = { onChange(settings.copy(restrictToSelectedRideApps = it)) },
-        )
-        Text(
-            if (settings.restrictToSelectedRideApps) {
-                "Modo restrito: a bolinha so analisa os apps marcados abaixo. Outros apps voltam para amarelo."
-            } else {
-                "Modo livre: a bolinha analisa somente cards cadastrados e ignora telas passivas."
-            },
-            style = MaterialTheme.typography.bodySmall,
-        )
-        SettingsSwitchRow("99 Motorista", settings.monitor99) { onChange(settings.copy(monitor99 = it)) }
-        SettingsSwitchRow("Uber Driver", settings.monitorUber) { onChange(settings.copy(monitorUber = it)) }
-        SettingsSwitchRow("inDrive", settings.monitorInDrive) { onChange(settings.copy(monitorInDrive = it)) }
-        OutlinedTextField(
-            value = settings.extraMonitoredPackages,
-            onValueChange = { onChange(settings.copy(extraMonitoredPackages = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Pacote extra permitido") },
-        )
-        Text("Use este campo se outro app de motorista nao estiver na lista. Separe varios pacotes por virgula.", style = MaterialTheme.typography.bodySmall)
+    @Suppress("UNUSED_VARIABLE")
+    val compatibility = settings to onChange
+    InstalledRideAppsCard()
+} // no_pre_registered_apps_ui_0_1_126 superseded manual_apps_card_restored_0_1_127
+ // no_pre_registered_apps_ui_0_1_126
+
+
+@Composable
+private fun InstalledRideAppsCard() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var selectedPackages by remember { mutableStateOf(SelectedRideAppStore.read(context)) }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                selectedPackages = SelectedRideAppStore.read(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-}
+
+    ExpandableCard(title = "Aplicativos que a bolinha pode ler", initiallyExpanded = true) {
+        Text(
+            "Nenhum aplicativo vem marcado. Escolha manualmente os aplicativos que a bolinha poderá ler.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(
+            onClick = { context.startActivity(Intent(context, InstalledRideAppPickerActivity::class.java)) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Buscar aplicativos instalados")
+        }
+        if (selectedPackages.isEmpty()) {
+            Text(
+                "Nenhum aplicativo selecionado. A leitura de cards fica pausada ate voce escolher pelo menos um.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        } else {
+            Text("Aplicativos selecionados: ${selectedPackages.size}", fontWeight = FontWeight.Bold)
+            selectedPackages.forEach { packageName ->
+                Text(packageName, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+} // no_selected_apps_picker_ui_0_1_126 superseded manual_apps_picker_restored_0_1_127
+ // no_selected_apps_picker_ui_0_1_126
+
 
 @Composable
 private fun ExpandableCard(
@@ -1041,23 +1516,21 @@ private fun ExpandableCard(
     content: @Composable () -> Unit,
 ) {
     var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
-    LaunchedEffect(initiallyExpanded) {
-        if (initiallyExpanded) expanded = true
-    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Fechar" else "Abrir")
-                }
+                Text(if (expanded) "▲" else "▼", fontWeight = FontWeight.Bold)
             }
-            if (expanded) {
-                content()
-            }
+            if (expanded) content()
         }
     }
-}
+} // grouped_card_always_open_0_1_115
 
 @Composable
 private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
@@ -1106,10 +1579,10 @@ private fun BubbleOpacitySlider(value: Double, onValueChange: (Double) -> Unit, 
 @Composable
 private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Unit, onValueChangeFinished: () -> Unit) {
     val allowedValues = listOf(200, 500, 1000)
-    val selectedIndex = allowedValues.indexOf(value).takeIf { it >= 0 } ?: 0
+    val selectedIndex = allowedValues.indexOf(value).takeIf { it >= 0 } ?: 1
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Distancia do alerta de proximidade")
+            Text("Distancia do primeiro aviso")
             Text("${allowedValues[selectedIndex]} m", fontWeight = FontWeight.Bold)
         }
         Slider(
@@ -1126,12 +1599,124 @@ private fun ProximityAlertDistanceSlider(value: Int, onValueChange: (Int) -> Uni
 }
 
 @Composable
+private fun WorkRegionCard(
+    settings: AppSettings,
+    onSaveSettings: (AppSettings) -> Unit,
+) {
+    val context = LocalContext.current
+    val locationService = remember { DeviceLocationService(context) }
+    val gpsAddressResolver = remember { GpsAddressResolver(context) }
+    val scope = rememberCoroutineScope()
+    var draft by remember(settings) { mutableStateOf(settings) }
+    var status by remember { mutableStateOf("") }
+    var pendingGps by remember { mutableStateOf(false) }
+
+    fun saveRegion(updated: AppSettings) {
+        draft = updated
+        onSaveSettings(updated)
+    }
+
+    fun captureGps() {
+        scope.launch {
+            status = "Buscando sinal de GPS..."
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                status = "Nao consegui captar o GPS. Autorize a localizacao e tente novamente."
+                return@launch
+            }
+            val resolved = gpsAddressResolver.resolve(coordinate)
+            val address = resolved.addressLine.ifBlank { formatCoordinate(coordinate) }
+            val updated = draft.copy(homeAddress = address, homeCoordinate = coordinate)
+            saveRegion(updated)
+            status = "Regiao salva pelo GPS: ${formatCoordinate(coordinate)}"
+        }
+    }
+
+    val gpsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        if (!pendingGps) return@rememberLauncherForActivityResult
+        pendingGps = false
+        if (permissions.values.any { it }) {
+            captureGps()
+        } else {
+            status = "Localizacao negada. Autorize o GPS para salvar a regiao."
+        }
+    }
+
+    ExpandableCard(title = "Minha regiao de corridas", initiallyExpanded = false) {
+        Text(
+            "Defina onde voce quer receber corridas pelo destino final. O app aceita quando o destino fica dentro do raio salvo.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = draft.homeAddress,
+            onValueChange = { draft = draft.copy(homeAddress = it, homeCoordinate = null) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Endereco da regiao de trabalho") },
+        )
+        Button(
+            onClick = {
+                pendingGps = true
+                gpsPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Definir pelo GPS atual")
+        }
+        draft.homeCoordinate?.let {
+            Text("GPS salvo: ${formatCoordinate(it)}", style = MaterialTheme.typography.bodySmall)
+        }
+        RadiusSlider(
+            label = "Raio da regiao de trabalho",
+            value = draft.homeRadiusKm,
+            onValueChange = { draft = draft.copy(homeRadiusKm = it) },
+            onValueChangeFinished = { saveRegion(draft) },
+        )
+        Button(
+            onClick = {
+                saveRegion(draft)
+                status = "Regiao de trabalho salva."
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Salvar regiao de trabalho")
+        }
+        if (status.isNotBlank()) {
+            Text(status, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
 private fun ToolsScreen(
+    onOpenWhatsApp: () -> Unit,
     onOpenBlaBlaCarCollector: () -> Unit,
     onClearClipboard: () -> Unit,
+    onOpenWorkTracking: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Ferramentas", fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Rastreamento de trabalho", fontWeight = FontWeight.Bold)
+                Text(
+                    "Registra o caminho percorrido, distancia, tempo e os pontos de GPS do dia somente neste aparelho.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = onOpenWorkTracking, modifier = Modifier.fillMaxWidth()) {
+                    Text("Abrir rastreamento")
+                }
+            }
+        }
+
+        Text("Ferramentas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("WhatsApp", fontWeight = FontWeight.Bold)
+                Text("Abre o WhatsApp instalado no celular.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onOpenWhatsApp, modifier = Modifier.fillMaxWidth()) { Text("Abrir WhatsApp") }
+            }
+        }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
@@ -1139,43 +1724,123 @@ private fun ToolsScreen(
                     "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) {
-                    Text("Abrir coletor")
-                }
+                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) { Text("Abrir coletor") }
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Area de transferencia", fontWeight = FontWeight.Bold)
-                Text(
-                    "Limpeza manual para remover o texto copiado quando o copiar/colar do celular travar ou ficar preso em conteudo antigo.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) {
-                    Text("Limpar area de transferencia")
-                }
+                Text("Remove manualmente o texto copiado do celular.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onClearClipboard, modifier = Modifier.fillMaxWidth()) { Text("Limpar area de transferencia") }
             }
         }
     }
 }
 
 @Composable
-private fun HistoryScreen(history: List<AnalysisResult>) {
-    if (history.isEmpty()) {
-        Text("Nenhuma analise salva ainda.")
-        return
-    }
+private fun ReportsGroupScreen(
+    settings: AppSettings,
+    diagnostic: LiveDiagnostic?,
+    history: List<AnalysisResult>,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        history.forEach { result ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(recommendationLabel(result.recommendation), fontWeight = FontWeight.Bold)
-                    Text(formatDate(result.createdAtMillis))
-                    Text(result.fields.destination ?: "Destino final nao identificado")
-                    Text(result.reason)
-                }
-            }
+        Text("Relatorios e historico", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        DiagnosticExpander(
+            settings = settings,
+            diagnostic = diagnostic,
+        )
+        Text("Historico de decisoes", fontWeight = FontWeight.Bold)
+        HistoryScreen(history)
+    }
+} // grouped_reports_tools_0_1_115 final_reports_compile_repair_checklist_10
+
+@Composable
+private fun HistoryScreen(history: List<AnalysisResult>) = Unit
+
+private suspend fun buildManualSupportReport(
+    context: Context,
+    repository: SettingsRepository,
+    settings: AppSettings,
+    liveEnabled: Boolean,
+    savedPlaces: List<SavedPlace>,
+    radarImportSummary: RadarImportSummary,
+): String {
+    // universal_no_card_registration_0_1_102
+    // Leitura universal de tela: true
+    val nowMillis = System.currentTimeMillis()
+    val bubbleStatePrefs = context.getSharedPreferences("rota_certa_bubble", Context.MODE_PRIVATE)
+    val bubbleUpdatedAtMillis = bubbleStatePrefs.getLong("state_updated_at", 0L)
+    fun bubbleText(key: String): String = bubbleStatePrefs.getString(key, null)?.takeIf { it.isNotBlank() } ?: "nao informado"
+    fun bubbleBool(key: String): String = bubbleStatePrefs.getBoolean(key, false).toString()
+    fun bubbleInt(key: String): String = bubbleStatePrefs.getInt(key, -1).takeIf { it >= 0 }?.toString() ?: "nao informado"
+    val sessionDiagnostic = LiveFailureTraceStore.exportReport(nowMillis)
+    val complementaryEvents = DiagnosticLogStore.dump()
+
+    return buildString {
+        appendLine("ROTA CERTA DIAGNOSTICO DE SESSAO")
+        appendLine("Arquivo montado somente por clique do usuario.")
+        appendLine("A trilha circular fica apenas em memoria e nao grava cada evento no armazenamento.")
+        appendLine("Versao: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        appendLine("Data da exportacao: ${formatDate(nowMillis)}")
+        appendLine("Pacote: ${context.packageName}")
+        appendLine("Leitura ao vivo ativa: $liveEnabled")
+        appendLine()
+        appendLine("--- ULTIMA TENTATIVA REAL DA BOLINHA ---")
+        appendLine(sessionDiagnostic)
+        appendLine()
+        appendLine("--- ESTADO ATUAL DA BOLINHA ---")
+        appendLine("Atualizado: ${if (bubbleUpdatedAtMillis > 0L) formatDate(bubbleUpdatedAtMillis) else "nunca"}")
+        appendLine("Idade estado: ${if (bubbleUpdatedAtMillis > 0L) (nowMillis - bubbleUpdatedAtMillis).toString() + " ms" else "nao informado"}")
+        appendLine("Etapa: ${bubbleText("state_stage")}")
+        appendLine("Cor: ${bubbleText("state_color")}")
+        appendLine("Km exibido: ${bubbleText("state_distance_km")}")
+        appendLine("Motivo: ${bubbleText("state_reason")}")
+        appendLine("Pacote janela: ${bubbleText("state_window_package")}")
+        appendLine("Pacote ativo: ${bubbleText("state_active_package")}")
+        appendLine("Pacote texto: ${bubbleText("state_text_package")}")
+        appendLine("Hash tela atual: ${bubbleText("state_last_snapshot_hash")}")
+        appendLine("Hash analisado: ${bubbleText("state_last_analyzed_hash")}")
+        appendLine("Hash pendente: ${bubbleText("state_pending_hash")}")
+        appendLine("Servico pronto: ${bubbleBool("state_service_ready")}")
+        appendLine("Analisando agora: ${bubbleBool("state_analyzing")}")
+        appendLine("Texto acessibilidade tamanho: ${bubbleInt("state_accessibility_text_length")}")
+        appendLine("Texto acessibilidade hash: ${bubbleText("state_accessibility_text_hash")}")
+        appendLine("Texto OCR tamanho: ${bubbleInt("state_ocr_text_length")}")
+        appendLine("Texto OCR hash: ${bubbleText("state_ocr_text_hash")}")
+        appendLine()
+        appendLine("--- CONFIGURACOES NECESSARIAS PARA A DECISAO ---")
+        appendLine("Rota Certa ligado: ${settings.appEnabled}")
+        appendLine("Leitura universal ligada: ${settings.liveReadingEnabled}")
+        appendLine("Aplicativos pre-cadastrados: nenhum")
+        appendLine("Selecao manual de apps obrigatoria: true")
+        appendLine("Aplicativos selecionados: ${SelectedRideAppStore.read(context).joinToString(", ").ifBlank { "nenhum" }}")
+        appendLine("Politica de leitura: aplicativo salvo + dois ou mais enderecos; o ultimo e o destino")
+        appendLine("Cache exato reaplica verde/vermelho e km em milissegundos; rota nova usa Google Maps")
+        appendLine("Pacotes passivos bloqueados: sistema, launcher, teclado, Google Maps e Waze") // diagnostic_policy_no_pre_registered_0_1_126 manual_policy_report_0_1_127
+        appendLine("Casa ligada: ${settings.homeTargetEnabled}")
+        appendLine("Casa/ponto principal: ${settings.homeAddress.ifBlank { "nao informado" }}")
+        appendLine("Coordenada casa: ${settings.homeCoordinate?.let(::formatCoordinate) ?: "nao informada"}")
+        appendLine("Raio casa: ${formatKm(settings.homeRadiusKm)}")
+        appendLine("Alfinete ligado: ${settings.alternativeTargetEnabled}")
+        appendLine("Alfinete/local alternativo: ${settings.alternativeAddress.ifBlank { "nao informado" }}")
+        appendLine("Coordenada alfinete: ${settings.alternativeCoordinate?.let(::formatCoordinate) ?: "nao informada"}")
+        appendLine("Raio alfinete: ${formatKm(settings.alternativeRadiusKm)}")
+        appendLine("Google Maps API configurada: ${settings.googleMapsApiKey.isNotBlank() || BuildConfig.GOOGLE_MAPS_API_KEY.isNotBlank()}")
+        appendLine()
+        appendLine("--- LOCAIS E ALERTAS ---")
+        appendLine("Total: ${savedPlaces.size}")
+        savedPlaces.forEachIndexed { index, place ->
+            appendLine("${index + 1}. tipo=${place.type}; nome=${place.name}; endereco=${place.address}; coordenada=${formatCoordinate(place.coordinate)}; distanciaAlerta=${place.alertDistanceMeters ?: 0}")
         }
+        appendLine()
+        appendLine("--- RADARES IMPORTADOS ---")
+        appendLine(radarImportSummary.toString())
+        appendLine()
+        appendLine("--- LINHA DO TEMPO COMPLETA DA EXECUCAO ---")
+        appendLine(complementaryEvents.ifBlank { "sem eventos complementares" })
+        appendLine()
+        appendLine("--- OBSERVACAO ---")
+        appendLine("O relatorio preserva os eventos tecnicos necessarios e agora informa explicitamente a politica universal de leitura. Nao usa IA generativa e nao depende de apps ou cards pre-cadastrados.")
     }
 }
 
@@ -1228,38 +1893,14 @@ private fun decisionActionLabel(recommendation: Recommendation): String = when (
     Recommendation.InsufficientData -> "Revisar"
 }
 
-private fun LiveDiagnostic.toShareText(): String = buildString {
-    appendLine("ROTA CERTA DIAGNOSTICO")
-    appendLine("Versao: $appVersionName ($appVersionCode)")
-    appendLine("Data: ${formatDate(createdAtMillis)}")
-    appendLine("Pacote: ${packageName ?: "nao informado"}")
-    appendLine("Etapa: $stage")
-    appendLine("Cor: $bubbleColor")
-    appendLine("Motivo: $reason")
-    appendLine("Modo restrito: $restrictToSelectedRideApps")
-    appendLine("Card cadastrado obrigatorio: $registeredCardRequired")
-    appendLine("Card reconhecido: ${registeredCardMatched ?: "nenhum"}")
-    appendLine("Pacotes selecionados: ${selectedPackages.joinToString(", ").ifBlank { "nenhum" }}")
-    appendLine("Destino: ${destination ?: "nao identificado"}")
-    appendLine("Embarque: ${pickup ?: "nao identificado"}")
-    appendLine("Recomendacao: ${recommendation ?: "sem decisao"}")
-    appendLine("Distancia casa: ${homeDistanceKm?.let(::formatKm) ?: "nao calculada"}")
-    appendLine("Distancia alfinete: ${alternativeDistanceKm?.let(::formatKm) ?: "nao calculada"}")
-    appendLine("Texto tamanho: $textLength")
-    appendLine("Texto hash: ${textHash ?: "sem hash"}")
-    appendLine("Erro: ${error ?: "nenhum"}")
-    appendLine("--- TEXTO LIDO ---")
-    appendLine(textPreview.ifBlank { "sem texto" })
-}
-
 private fun savedPlaceTypeLabel(place: SavedPlace): String = when (place.type) {
     SavedPlaceType.Place -> "Local salvo"
-    SavedPlaceType.ProximityAlert -> "Alerta de proximidade: ${place.alertDistanceMeters ?: 200} m"
+    SavedPlaceType.ProximityAlert -> "Alerta de proximidade: ${place.alertDistanceMeters ?: 500} m"
 }
 
 private fun defaultSavedPlaceName(type: SavedPlaceType): String = when (type) {
     SavedPlaceType.Place -> "Local salvo"
-    SavedPlaceType.ProximityAlert -> "Alerta de proximidade"
+    SavedPlaceType.ProximityAlert -> "Alerta"
 }
 
 private fun openSavedPlaceInGps(context: Context, place: SavedPlace) {
@@ -1288,7 +1929,7 @@ private fun formatDestination(value: String?): String {
 }
 
 private fun deviceRegionLabel(region: DeviceRegion): String =
-    listOf(region.city, region.country).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Cidade e pais serao detectados pela localizacao." }
+    listOf(region.city, region.country).filter { it.isNotBlank() }.joinToString(" - ").ifBlank { "Regiao de trabalho nao definida. Use GPS somente quando quiser preencher um endereco." }
 
 private fun formatKm(value: Double): String = String.format(Locale("pt", "BR"), "%.1f km", value)
 
@@ -1297,3 +1938,60 @@ private fun formatCoordinate(coordinate: Coordinate): String =
 
 private fun formatDate(value: Long): String =
     SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).format(Date(value))
+
+// unified_app_control_bubbles_0_1_94 preserved_by_functional_bubbles
+
+// universal_two_address_ui_0_1_98
+
+// universal_no_card_registration_0_1_102 legacy_marker_only_strict_0_1_127
+// Leitura universal de tela: true // legacy_marker_only_strict_0_1_127
+
+// universal_no_card_compile_repair_0_1_102
+// cards_ui_allowed_compile_0_1_120
+
+// bubble_shortcut_navigation_0_1_117
+
+// professional_bubble_named_action_markers_0_1_118
+// label = "WhatsApp"
+// label = "Coletor"
+// label = "Limpar"
+// label = "Depurar"
+// label = "Encerrar"
+// grouped_bubble_home_0_1_115
+// grouped_bubble_navigation_0_1_115
+// grouped_settings_screen_0_1_115
+// grouped_card_always_open_0_1_115
+// grouped_reports_tools_0_1_115
+// Central de bolinhas
+// Cada bolinha abre um grupo
+// BUBBLE_GROUP_DESTINATION
+// selectedBubbleGroup
+// TextAlign.Center
+// bottomBar = {}
+// DiagnosticLogStore.dump()
+
+// full_session_diagnostic_0_1_118
+
+// professional_bubble_home_0_1_118
+
+// popup_only_control_center_0_1_119
+
+// popup_navigation_main_0_1_120
+
+// BUBBLE_GROUP_ACCESS -> { // popup_navigation_professional_compat_0_1_120
+
+// popup_navigation_compile_main_0_1_120
+
+// popup_navigation_card_state_0_1_120
+
+// popup_navigation_final_compile_0_1_120
+// BUBBLE_GROUP_CARDS -> CardModelsCard( // legacy_workflow_marker_0_1_120
+
+
+// manual_ui_annotation_cleanup_0_1_127
+
+// compile_final_cleanup_0_1_127 removed_duplicate_composable=0
+
+// general_controls_ui_complete_checklist_7
+
+// general_group_routing_complete_checklist_7

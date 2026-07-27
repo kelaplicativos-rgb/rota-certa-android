@@ -99,6 +99,59 @@ class BubbleShortcutOverlayController(
         }
     }
 
+    fun showImportedRadarAlert(
+        radar: ImportedRadar,
+        distanceMeters: Double,
+        onDismiss: () -> Unit = {},
+    ) {
+        hideShortcuts()
+        hideProximityAlert()
+        val scale = appearanceStore.scale()
+
+        val container = alertContainer(scale)
+        container.addView(TextView(context).apply {
+            text = "⚠️  ${importedRadarTypeLabel(radar.type)}"
+            textSize = 19f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            contentDescription = importedRadarTypeLabel(radar.type)
+        })
+        radar.speedKmh?.let { speed ->
+            container.addView(TextView(context).apply {
+                text = "Limite $speed km/h"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+        container.addView(TextView(context).apply {
+            text = "A aproximadamente ${distanceMeters.roundToInt()} m"
+            textSize = 14f
+            setTextColor(Color.LTGRAY)
+            setPadding(0, dp(4), 0, dp(8))
+        })
+        container.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(popupButton("Fechar", scale) { hideProximityAlert(); onDismiss() })
+        })
+
+        val params = WindowManager.LayoutParams(
+            dp(310).coerceAtMost(context.resources.displayMetrics.widthPixels - dp(24)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dp(72)
+        }
+        if (runCatching { windowManager.addView(container, params) }.isSuccess) {
+            alertPopupView = container
+            trace("imported_radar.popup.shown id=${radar.id} distance=${distanceMeters.roundToInt()}")
+        }
+    }
+
     fun hideProximityAlert() {
         val view = alertPopupView ?: return
         runCatching { windowManager.removeView(view) }
@@ -186,12 +239,20 @@ class BubbleShortcutOverlayController(
             menuWidth,
             if (needsVerticalScroll) visibleMenuHeight else WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = position.x
             y = position.y
+        }
+        menu.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
+                hideShortcuts()
+                true
+            } else {
+                false
+            }
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
@@ -308,3 +369,7 @@ data class ProximityAlertPopupActions(
     val onDelete: (SavedPlace) -> Unit,
     val onDismiss: () -> Unit = {},
 )
+
+// popup_only_shortcut_grid_0_1_119
+
+// popup_close_after_tap_0_1_120

@@ -2,14 +2,25 @@ package br.com.mapeiaia.rotacerta
 
 enum class BubbleShortcutAction {
     CopyTripConfirmation,
+    OpenQuickReplies,
+    OpenRoute,
+    OpenDestination,
+    OpenAlerts,
+    OpenSavedPlaces,
+    OpenRadars,
+    OpenAppearance,
+    OpenPermissions,
+    OpenBackup,
+    OpenReports,
+    OpenScreenWhatsApp,
+    OpenCollector,
+    ClearClipboard,
+    ExportDiagnostic,
+    StopApplication,
     CreateAlert,
     CreateSavedPlace,
-    SaveRideCard,
-    OpenDestination,
     ToggleReading,
-    OpenScreenWhatsApp,
     OpenSettings,
-    StopApplication,
 }
 
 data class BubbleShortcutSpec(
@@ -30,21 +41,144 @@ interface BubbleShortcutModule {
     val spec: BubbleShortcutSpec
 }
 
+object RouteBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "route",
+        emoji = "⚡",
+        label = "Rota",
+        action = BubbleShortcutAction.OpenRoute,
+        targetGroup = "general",
+        targetTab = "config",
+    )
+}
+
+object AlertsManagementBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "alerts",
+        emoji = "⚠️",
+        label = "Alertas",
+        action = BubbleShortcutAction.OpenAlerts,
+        targetGroup = "alerts",
+        targetTab = "config",
+    )
+}
+
+object SavedPlacesManagementBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "saved_places",
+        emoji = "📍",
+        label = "Locais",
+        action = BubbleShortcutAction.OpenSavedPlaces,
+        targetGroup = "saved_places",
+        targetTab = "config",
+    )
+}
+
+object RadarsManagementBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "radars",
+        emoji = "📡",
+        label = "Radares",
+        action = BubbleShortcutAction.OpenRadars,
+        targetGroup = "radars",
+        targetTab = "config",
+    )
+}
+
+object AppearanceBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "appearance",
+        emoji = "🎨",
+        label = "Aparencia",
+        action = BubbleShortcutAction.OpenAppearance,
+        displayLabel = "Aparência",
+        targetGroup = "appearance",
+        targetTab = "config",
+    )
+}
+
+object PermissionsBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "permissions",
+        emoji = "🔐",
+        label = "Permissoes",
+        action = BubbleShortcutAction.OpenPermissions,
+        displayLabel = "Permissão",
+        targetGroup = "access",
+        targetTab = "config",
+    )
+}
+
+object BackupBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "backup",
+        emoji = "💾",
+        label = "Backup",
+        action = BubbleShortcutAction.OpenBackup,
+        targetGroup = "backup",
+        targetTab = "config",
+    )
+}
+
+object CollectorBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "collector",
+        emoji = "🚗",
+        label = "Coletor",
+        action = BubbleShortcutAction.OpenCollector,
+    )
+}
+
+object ClearClipboardBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "clear_clipboard",
+        emoji = "🧹",
+        label = "Limpar area de transferencia",
+        action = BubbleShortcutAction.ClearClipboard,
+        displayLabel = "Limpar",
+    )
+}
+
+object DiagnosticBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "diagnostic",
+        emoji = "🛠️",
+        label = "Depurar",
+        action = BubbleShortcutAction.ExportDiagnostic,
+    )
+}
+
+
+object QuickRepliesBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "quick_replies",
+        emoji = "💬",
+        label = "Respostas rápidas",
+        action = BubbleShortcutAction.OpenQuickReplies,
+        displayLabel = "Respostas",
+    )
+}
+
 object BubbleShortcutCatalog {
     val modules: List<BubbleShortcutModule> = listOf(
-        AlertBubbleShortcutModule,
-        SavedPlaceBubbleShortcutModule,
-        RideCardBubbleShortcutModule,
+        RouteBubbleShortcutModule,
         DestinationBubbleShortcutModule,
-        ReadingBubbleShortcutModule,
+        AlertsManagementBubbleShortcutModule,
+        SavedPlacesManagementBubbleShortcutModule,
+        RadarsManagementBubbleShortcutModule,
+        AppearanceBubbleShortcutModule,
+        BackupBubbleShortcutModule,
         WhatsAppBubbleShortcutModule,
         TripConfirmationBubbleShortcutModule,
-        SettingsBubbleShortcutModule,
+        CollectorBubbleShortcutModule,
+        ClearClipboardBubbleShortcutModule,
+        DiagnosticBubbleShortcutModule,
+        QuickRepliesBubbleShortcutModule,
         StopBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 9) { "A grade-base deve conter nove modulos." }
+        require(modules.size == 14) { "O popup deve conter 14 módulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }
@@ -53,3 +187,7 @@ object BubbleShortcutCatalog {
         }
     }
 }
+
+// popup_navigation_catalog_0_1_120
+
+// reading_permission_moved_out_of_popup_checklist_7

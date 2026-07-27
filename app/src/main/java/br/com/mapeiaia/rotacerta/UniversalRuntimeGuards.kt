@@ -159,9 +159,174 @@ object UniversalFastReadPolicy {
     fun minimumOcrIntervalMillis(hasActiveAddressSignature: Boolean): Long =
         if (hasActiveAddressSignature) 650L else 300L
 
+    fun minimumAccessibilityScanIntervalMillis(
+        accessibilityOwnsCard: Boolean,
+        hasActiveAddressSignature: Boolean,
+    ): Long = if (hasActiveAddressSignature && !accessibilityOwnsCard) {
+        650L // universal_accessibility_scan_watchdog_0_1_110
+    } else {
+        120L
+    }
+
+    data class OcrRequestToken(
+        val observedPackageName: String,
+        val screenGeneration: Long,
+        val windowGeneration: Long,
+    )
+
+    fun createOcrRequestToken(
+        observedPackageName: String?,
+        resolvedPackageName: String?,
+        ownPackageName: String,
+        screenGeneration: Long,
+        windowGeneration: Long,
+    ): OcrRequestToken? {
+        val observed = normalize(observedPackageName) ?: return null
+        val resolved = normalize(resolvedPackageName) ?: return null
+        if (!shouldScanLivePackage(observed, ownPackageName)) return null
+        if (observed != resolved) return null
+        return OcrRequestToken(
+            observedPackageName = observed,
+            screenGeneration = screenGeneration,
+            windowGeneration = windowGeneration,
+        ) // universal_ocr_freshness_policy_0_1_120
+    }
+
+    fun isOcrRequestFresh(
+        token: OcrRequestToken,
+        observedPackageName: String?,
+        resolvedPackageName: String?,
+        ownPackageName: String,
+        screenGeneration: Long,
+        windowGeneration: Long,
+    ): Boolean {
+        val observed = normalize(observedPackageName) ?: return false
+        val resolved = normalize(resolvedPackageName) ?: return false
+        return shouldScanLivePackage(observed, ownPackageName) &&
+            token.observedPackageName == observed &&
+            token.observedPackageName == resolved &&
+            token.screenGeneration == screenGeneration &&
+            token.windowGeneration == windowGeneration
+    }
+
+    const val ROUTE_INFLIGHT_GRACE_MILLIS = 2_500L
+
+    fun shouldProtectRouteFromForeignEvent(
+        hasActiveAddressSignature: Boolean,
+        routeInFlight: Boolean,
+        lastActiveReadAtMillis: Long,
+        nowMillis: Long,
+        activeRidePackageName: String?,
+        incomingPackageName: String?,
+    ): Boolean {
+        if (!hasActiveAddressSignature || !routeInFlight) return false
+        val active = normalize(activeRidePackageName) ?: return false
+        val incoming = normalize(incomingPackageName) ?: return false
+        if (active == incoming) return false
+        return isInsideInflightGrace(lastActiveReadAtMillis, nowMillis)
+    } // universal_route_inflight_policy_0_1_120
+
+    fun shouldIgnoreTransientInactiveRead(
+        hasActiveAddressSignature: Boolean,
+        routeInFlight: Boolean,
+        lastActiveReadAtMillis: Long,
+        nowMillis: Long,
+    ): Boolean = hasActiveAddressSignature &&
+        routeInFlight &&
+        isInsideInflightGrace(lastActiveReadAtMillis, nowMillis)
+
+    private fun isInsideInflightGrace(lastActiveReadAtMillis: Long, nowMillis: Long): Boolean =
+        lastActiveReadAtMillis > 0L &&
+            nowMillis >= lastActiveReadAtMillis &&
+            nowMillis - lastActiveReadAtMillis <= ROUTE_INFLIGHT_GRACE_MILLIS
+
     private fun normalize(value: String?): String? =
         value?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
 }
+
+data class UniversalRideCardEvidenceDecision(
+    val accepted: Boolean,
+    val score: Int,
+    val reason: String,
+)
+
+/**
+ * Impede que listas de enderecos, mapas, documentos e fotos de produtos sejam
+ * tratadas como ofertas de corrida. A verificacao acontece antes de qualquer
+ * geocodificacao ou chamada de rota.
+ */
+object UniversalRideCardEvidencePolicy {
+    private val timeTokenRegex = Regex(
+        "\\b\\d{1,3}\\s*(?:min|minutos?)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val tripDistanceRegex = Regex(
+        "\\b\\d+(?:[,.]\\d+)?\\s*(?:km|m)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val moneyRegex = Regex(
+        "R\\$\\s*\\d+(?:[,.]\\d{1,2})?",
+        RegexOption.IGNORE_CASE,
+    )
+    private val perKmRegex = Regex(
+        "R\\$\\s*\\d+(?:[,.]\\d{1,2})?\\s*/\\s*km",
+        RegexOption.IGNORE_CASE,
+    )
+    private val rideMarkerRegex = Regex(
+        "\\b(?:corridas?|perfil\\s+(?:essencial|premium)|[aá]rea\\s+de\\s+risco|tarifa(?:\\s+base)?|aceitar|ofere[cç]a|pedido\\s+de\\s+viagem|corrida|comfort|corrida|din[aâ]mic[ao])\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val malformedStreetRegex = Regex(
+        "\\b(?:rua|avenida)[.:;,]+\\s*\\p{L}",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun evaluate(
+        text: String,
+        addresses: List<String>,
+        destination: String?,
+        packageName: String?,
+    ): UniversalRideCardEvidenceDecision {
+        val normalizedAddresses = addresses
+            .map { address -> address.trim() }
+            .filter { address -> address.isNotBlank() }
+        if (normalizedAddresses.size < 2 || destination.isNullOrBlank()) {
+            return UniversalRideCardEvidenceDecision(false, 0, "menos_de_dois_enderecos")
+        }
+        if (normalizedAddresses.any(malformedStreetRegex::containsMatchIn) ||
+            malformedStreetRegex.containsMatchIn(destination)
+        ) {
+            return UniversalRideCardEvidenceDecision(false, 0, "logradouro_deformado")
+        }
+
+        val hasTime = timeTokenRegex.containsMatchIn(text)
+        val hasTripDistance = tripDistanceRegex.containsMatchIn(text)
+        val hasMoney = moneyRegex.containsMatchIn(text)
+        val hasPerKm = perKmRegex.containsMatchIn(text)
+        val markerCount = rideMarkerRegex.findAll(text).map { it.value.lowercase() }.distinct().count()
+        val hasTripMetrics = hasTime && hasTripDistance
+        val normalizedPackage = packageName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        val selectedApp = normalizedPackage != null
+
+        val score = (if (hasTripMetrics) 2 else 0) +
+            (if (hasMoney) 1 else 0) +
+            (if (hasPerKm) 1 else 0) +
+            (if (markerCount > 0) 1 else 0)
+
+        val acceptedInRideApp = selectedApp &&
+            (hasTripMetrics || hasMoney || hasPerKm || markerCount > 0)
+        val acceptedInExternalViewer =
+            (hasTripMetrics && (hasMoney || markerCount > 0)) ||
+                (hasPerKm && (hasTime || markerCount > 0)) ||
+                (hasMoney && markerCount >= 2)
+        val accepted = acceptedInRideApp || acceptedInExternalViewer
+        return UniversalRideCardEvidenceDecision(
+            accepted = accepted,
+            score = score,
+            reason = if (accepted) "card_de_corrida_confirmado" else "sem_evidencia_de_corrida",
+        )
+    }
+} // universal_ride_card_evidence_0_1_112
 
 /** Mantem o historico com uma entrada util por decisao, sem dezenas de copias. */
 class UniversalAnalysisDeduper(

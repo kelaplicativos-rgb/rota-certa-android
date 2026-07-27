@@ -8,6 +8,7 @@ class ProximityAlertEngine(
 ) {
     private val runtimeById = mutableMapOf<String, ProximityAlertRuntime>()
     private var lastCoordinate: Coordinate? = null
+    private val recentCoordinates = ArrayDeque<Coordinate>()
 
     fun check(
         alerts: List<SavedPlace>,
@@ -15,13 +16,19 @@ class ProximityAlertEngine(
         coordinate: Coordinate,
         settings: AppSettings,
         onSavedPlacePopup: (SavedPlace, Double) -> Unit = { _, _ -> },
+        onImportedRadarDetected: (ImportedRadar, Double) -> Unit = { _, _ -> },
         onDiagnostic: (ProximityAlertDiagnostic) -> Unit,
     ) {
         val now = nowProvider()
         val previousCoordinate = lastCoordinate
+        recentCoordinates.addLast(coordinate)
+        while (recentCoordinates.size > RECENT_COORDINATE_LIMIT) recentCoordinates.removeFirst()
         val movementMeters = previousCoordinate?.let { GeoDistance.meters(it, coordinate) }
-        val movementBearing = previousCoordinate
-            ?.takeIf { movementMeters != null && movementMeters >= MIN_MOVEMENT_FOR_BEARING_METERS }
+        val bearingOrigin = recentCoordinates.firstOrNull { origin ->
+            GeoDistance.meters(origin, coordinate) >= MIN_MOVEMENT_FOR_BEARING_METERS
+        } ?: previousCoordinate
+        val movementBearing = bearingOrigin
+            ?.takeIf { GeoDistance.meters(it, coordinate) >= MIN_MOVEMENT_FOR_BEARING_METERS }
             ?.let { GeoDistance.bearingDegrees(it, coordinate) }
         val proximityAlerts = alerts.filter { it.type == SavedPlaceType.ProximityAlert }
         val activeIds = proximityAlerts.map { it.id }.toSet() + radars.map { importedRadarKey(it) }.toSet()
@@ -32,9 +39,15 @@ class ProximityAlertEngine(
             now = now,
             message = "check.start alerts=${proximityAlerts.size} ignored_places=${alerts.size - proximityAlerts.size} radars=${radars.size} removed_runtime=$removedRuntimeCount alerts_enabled=${settings.proximityAlertsEnabled} movement=${movementMeters?.roundToInt() ?: "unknown"}m bearing=${movementBearing?.roundToInt() ?: "unknown"}",
         )
-        checkImportedRadars(radars, coordinate, settings, now, movementBearing, onDiagnostic)
+        checkImportedRadars(radars, coordinate, settings, now, movementBearing, onImportedRadarDetected, onDiagnostic)
         checkSavedPlaceAlerts(proximityAlerts, coordinate, settings, now, onSavedPlacePopup, onDiagnostic)
         lastCoordinate = coordinate
+    }
+
+    fun dismissSavedPlaceUntilExit(alertId: String) {
+        val runtime = runtimeById.getOrPut(alertId) { ProximityAlertRuntime() }
+        runtime.savedPlaceMutedUntilExit = true
+        runtime.popupShownThisApproach = true
     }
 
     private fun checkSavedPlaceAlerts(
@@ -117,6 +130,7 @@ class ProximityAlertEngine(
         settings: AppSettings,
         now: Long,
         movementBearing: Double?,
+        onImportedRadarDetected: (ImportedRadar, Double) -> Unit,
         onDiagnostic: (ProximityAlertDiagnostic) -> Unit,
     ) {
         if (radars.isEmpty()) {
@@ -132,7 +146,7 @@ class ProximityAlertEngine(
             val key = importedRadarKey(radar)
             val runtime = runtimeById.getOrPut(key) { ProximityAlertRuntime() }
             if (distanceMeters > threshold + RESET_BUFFER_METERS) {
-                if (runtime.spokenCount > 0 || runtime.lastSpokenAtMillis > 0L) {
+                if (runtime.spokenCount > 0 || runtime.lastSpokenAtMillis > 0L || runtime.popupShownThisApproach) {
                     trace(now = now, message = "imported_radar.reset id=${radar.id} distance=${distanceMeters.roundToInt()}m")
                     runtime.reset()
                 }
@@ -162,6 +176,11 @@ class ProximityAlertEngine(
             now = now,
             message = "imported_radar.nearest id=${radar.id} distance=${distanceMeters.roundToInt()}m spoken=${runtime.spokenCount}/$MAX_IMPORTED_RADAR_SPEECH_COUNT",
         )
+        if (!runtime.popupShownThisApproach) {
+            runtime.popupShownThisApproach = true
+            onImportedRadarDetected(radar, distanceMeters)
+            trace(now = now, message = "imported_radar.signal.shown id=${radar.id}")
+        }
         if (runtime.canSpeak(now, MAX_IMPORTED_RADAR_SPEECH_COUNT)) {
             trace(now = now, message = "imported_radar.speak.attempt id=${radar.id}")
             if (speechEngine.speakImportedRadar(radar, distanceMeters)) {
@@ -193,7 +212,7 @@ class ProximityAlertEngine(
     }
 
     private fun trace(now: Long, message: String) {
-        DiagnosticLogStore.record(source = "proximity", message = message, nowMillis = now)
+        Unit /* production_log_removed_checklist_4 */
     }
 
     private fun diagnosticReason(reason: String): String {
@@ -256,6 +275,7 @@ class ProximityAlertEngine(
         const val MAX_IMPORTED_RADAR_SPEECH_COUNT = 1
         const val DIAGNOSTIC_EXPORT_EVENT_LIMIT = 80
         const val MIN_MOVEMENT_FOR_BEARING_METERS = 8.0
+        const val RECENT_COORDINATE_LIMIT = 6
         const val GPS_DISTANCE_JITTER_METERS = 8.0
         const val RADAR_DIRECTION_TOLERANCE_DEGREES = 65.0
         const val DOUBLE_DIRECTION_TYPE = 2

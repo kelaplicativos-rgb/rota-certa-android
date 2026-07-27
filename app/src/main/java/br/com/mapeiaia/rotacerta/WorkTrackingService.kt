@@ -45,6 +45,7 @@ class WorkTrackingService : Service() {
         super.onDestroy()
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
     private fun startTracking() {
         if (!hasLocationPermission()) {
             repository.markTrackingStopped()

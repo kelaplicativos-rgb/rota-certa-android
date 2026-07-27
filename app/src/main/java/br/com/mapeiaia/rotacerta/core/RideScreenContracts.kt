@@ -35,5 +35,5 @@ data class RideScreenClassification(
     val reason: String,
     val confidence: Double = 0.0,
 ) {
-    val canAnalyzeRoute: Boolean get() = kind == RideScreenKind.OpenRideCard
+    val canAnalyzeRoute: Boolean get() = true // open_all_screen_classifications_0_1_94
 }

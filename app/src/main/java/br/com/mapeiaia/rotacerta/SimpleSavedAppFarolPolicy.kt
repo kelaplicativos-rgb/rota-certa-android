@@ -4,12 +4,12 @@ import java.util.Locale
 
 /**
  * Contrato final e mínimo do farol:
- * 1. o aplicativo foi ensinado/salvo pelo usuário;
+ * 1. o aplicativo foi selecionado manualmente pelo usuário;
  * 2. a tela contém pelo menos dois endereços reconhecidos;
  * 3. o último endereço é o destino final.
  *
  * Nenhum passageiro, preço, frase, modelo visual ou contrato de card participa
- * do caminho crítico. Modelos continuam apenas como apoio para a galeria.
+ * do caminho crítico. Nenhum modelo visual participa da leitura ou da decisão.
  */
 object SimpleSavedAppFarolPolicy {
     data class Evaluation(
@@ -30,23 +30,26 @@ object SimpleSavedAppFarolPolicy {
         val normalizedPackage = normalize(packageName)
         val normalizedSaved = savedPackages.mapNotNull(::normalize).toSet()
         val trigger = UniversalAddressTrigger.evaluate(text)
+        val cleanedAddresses = trigger.addresses
+            .map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .filter(String::isNotBlank)
+            .distinctBy { value -> value.lowercase(Locale.ROOT) }
+        val destination = cleanedAddresses.lastOrNull()
         val active = normalizedPackage != null &&
             normalizedPackage in normalizedSaved &&
-            trigger.addresses.size >= UniversalAddressTrigger.MINIMUM_VISIBLE_ADDRESSES &&
-            !trigger.destination.isNullOrBlank()
+            cleanedAddresses.size >= UniversalAddressTrigger.MINIMUM_VISIBLE_ADDRESSES &&
+            !destination.isNullOrBlank()
         val addressSignature = if (active) {
-            normalizedPackage + "|" + trigger.addressSignature
+            DestinationAddressIdentityPolicy.signature(normalizedPackage, destination)
         } else {
             ""
         }
         return Evaluation(
             packageName = normalizedPackage,
-            addresses = trigger.addresses,
-            pickup = trigger.pickup,
-            destination = trigger.destination,
+            addresses = cleanedAddresses,
+            pickup = cleanedAddresses.firstOrNull()?.takeIf { active },
+            destination = destination?.takeIf { active },
             addressSignature = addressSignature,
-            // Preço, cronômetro, nome, mapa e outras informações variáveis não
-            // podem transformar o mesmo destino em uma tela nova e fazer piscar.
             screenHash = if (active) {
                 FarolDisplayStabilityPolicy.stableScreenHash(normalizedPackage, addressSignature)
             } else {
@@ -54,7 +57,9 @@ object SimpleSavedAppFarolPolicy {
             },
             active = active,
         )
-    }
+    } // destination_only_signature_checklist_16
+ // destination_only_signature_checklist_16
+
 
     /** Mantido para compatibilidade; não deve mais decidir limpeza pelo texto completo. */
     fun screenFingerprint(

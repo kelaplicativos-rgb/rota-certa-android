@@ -19,10 +19,10 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: System.getenv("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }
     ?: ""
 
-val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 101
+val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 2_000 + it }
+val appVersionCode = ciVersionCode ?: 2_001
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
-val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
+val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
     stableDebugKeystoreFile.parentFile.mkdirs()
     stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))
@@ -37,7 +37,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
-        versionName = "0.1.100"
+        versionName = "0.1.137"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -110,155 +110,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-val patchLiveRideAccessibilityService by tasks.registering {
-    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
-    inputs.file(serviceFile)
-    outputs.upToDateWhen { false }
-
-    doLast {
-        val file = serviceFile.asFile
-        var text = file.readText()
-        val original = text
-
-        if ("private fun hasActiveRegisteredDecision()" !in text) {
-            text = text.replace(
-"""    private fun resetToDefault(
-""",
-"""    private fun hasActiveRegisteredDecision(): Boolean =
-        (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
-            registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)
-
-    private fun resetToDefault(
-""",
-            )
-        }
-
-        text = text.replace(
-            "else -> distanceKm.roundToInt().coerceAtMost(99).toString()",
-            "else -> String.format(Locale(\"pt\", \"BR\"), \"%.1f\", distanceKm).removeSuffix(\",0\")",
-        )
-
-        if (text != original) {
-            file.writeText(text)
-        }
-    }
-}
-
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(patchLiveRideAccessibilityService)
-}
-
 fun String.escapeForBuildConfig(): String =
     replace("\\", "\\\\").replace("\"", "\\\"")
-
-apply(from = "patch-live-ride-stability.gradle.kts")
-apply(from = "patch-live-ride-bubble-actions.gradle.kts")
-apply(from = "patch-resource-groups-compile-fix.gradle.kts")
-apply(from = "patch-bubble-shortcut-clipboard.gradle.kts")
-apply(from = "patch-ux-places-alerts-radars.gradle.kts")
-apply(from = "patch-live-reading-card-restore.gradle.kts")
-apply(from = "patch-bubble-card-parity.gradle.kts")
-apply(from = "patch-hide-insufficient-result-card.gradle.kts")
-apply(from = "patch-fast-popup-analysis.gradle.kts")
-apply(from = "patch-remove-live-diagnostics.gradle.kts")
-apply(from = "patch-manual-support-report.gradle.kts")
-apply(from = "patch-final-diagnostic-cleanup.gradle.kts")
-apply(from = "patch-video-bubble-hardening.gradle.kts")
-apply(from = "patch-bubble-state-report.gradle.kts")
-apply(from = "patch-card-crop-guidance.gradle.kts")
-apply(from = "patch-bubble-state-report-compile-fix.gradle.kts")
-apply(from = "patch-factory-clean-no-flicker.gradle.kts")
-apply(from = "patch-global-light-diagnostics.gradle.kts")
-apply(from = "patch-persist-live-event-trace.gradle.kts")
-apply(from = "patch-persistent-bubble-state-trace.gradle.kts")
-apply(from = "patch-live-ride-window-event-guard.gradle.kts")
-apply(from = "patch-keep-decision-during-transient-text.gradle.kts")
-apply(from = "patch-hard-clear-unregistered-card-decision.gradle.kts")
-apply(from = "patch-modular-live-bubble-core.gradle.kts")
-apply(from = "patch-rota-certa-core-stable.gradle.kts")
-apply(from = "patch-live-result-freshness-guard.gradle.kts")
-apply(from = "patch-indrive-card-contract-match.gradle.kts")
-apply(from = "patch-indrive-address-wrap.gradle.kts")
-apply(from = "patch-rota-certa-core-gate.gradle.kts")
-apply(from = "patch-core-bubble-decision.gradle.kts")
-apply(from = "patch-core-bubble-presenter.gradle.kts")
-apply(from = "patch-core-bubble-state.gradle.kts")
-apply(from = "patch-core-package-monitor.gradle.kts")
-apply(from = "patch-core-card-match-engine.gradle.kts")
-apply(from = "patch-core-visible-card-lifecycle.gradle.kts")
-apply(from = "patch-core-live-analysis-pipeline.gradle.kts")
-apply(from = "patch-passive-event-compile-fix.gradle.kts")
-
-val coreScreenReadEngineInlinePatch by tasks.registering {
-    val serviceFile = layout.projectDirectory.file("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")
-    inputs.file(serviceFile)
-    outputs.upToDateWhen { false }
-
-    doLast {
-        val file = serviceFile.asFile
-        if (!file.exists()) return@doLast
-        var text = file.readText()
-        val original = text
-        val dollar = "$"
-
-        if ("core_screen_read_engine_0_1_92" !in text) {
-            val startToken = "        val snapshotText ="
-            val endToken = "        RideScreenTextClassifier.ignoreReason(snapshotText)?.let { reason ->\n"
-            val start = text.indexOf(startToken)
-            val end = if (start >= 0) text.indexOf(endToken, start) else -1
-            if (start < 0 || end < 0) {
-                throw org.gradle.api.GradleException("Nao encontrei a regiao de snapshot/merge de leitura para ligar CoreScreenReadEngine.")
-            }
-            val readBlock = """        val coreReadSnapshot = br.com.mapeiaia.rotacerta.core.CoreScreenReadEngine.prepare(
-            accessibilityText = lastAccessibilityText,
-            ocrText = lastOcrText,
-            fallbackText = text,
-            allowPopupCandidate = allowPopupCandidate,
-        )
-        val snapshotText = coreReadSnapshot.text
-        if (coreReadSnapshot.kind == br.com.mapeiaia.rotacerta.core.CoreScreenReadKind.Empty) {
-            traceEvent("core.read.empty source=${dollar}source summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
-            if (allowPopupCandidate) return
-            registeredCardGate.clear()
-            resetToDefault(reason = "Texto visivel vazio; nenhum card lido neste momento.", record = true)
-            return
-        }
-
-        val snapshotHash = coreReadSnapshot.hash
-        traceEvent("core.read.snapshot length=${dollar}{snapshotText.length} hash=${dollar}snapshotHash summary=${dollar}{coreReadSnapshot.sourceSummary}") // core_screen_read_engine_0_1_92
-
-"""
-            text = text.substring(0, start) + readBlock + text.substring(end)
-        }
-
-        if ("core_screen_read_engine_0_1_92" !in text) {
-            throw org.gradle.api.GradleException("CoreScreenReadEngine nao foi conectado ao servico.")
-        }
-
-        if (text != original) file.writeText(text)
-    }
-}
-
-tasks.named("coreVisibleCardLifecyclePatch").configure {
-    dependsOn(coreScreenReadEngineInlinePatch)
-}
-
-tasks.named("coreLiveAnalysisPipelinePatch").configure {
-    dependsOn(coreScreenReadEngineInlinePatch)
-}
-
-tasks.matching { it.name == "preBuild" || it.name.startsWith("compile") }.configureEach {
-    dependsOn(coreScreenReadEngineInlinePatch)
-}
-
-apply(from = "patch-screen-phone-whatsapp.gradle.kts")
-apply(from = "patch-gigu-inspired-live-reader.gradle.kts")
-apply(from = "patch-gigu-core-classification.gradle.kts")
-apply(from = "patch-unified-bubble-control-center.gradle.kts")
-apply(from = "patch-unified-bubble-control-center-compile-final.gradle.kts")
-apply(from = "functional-bubble-toggles-final.gradle.kts")
-apply(from = "functional-bubble-idempotence-final.gradle.kts")
-apply(from = "patch-main-bubble-tap-menu-contract.gradle.kts")
-apply(from = "patch-in-app-bubble-home-final.gradle.kts")
-apply(from = "patch-universal-two-address-runtime-final.gradle.kts")
-apply(from = "patch-universal-two-address-compat.gradle.kts")
