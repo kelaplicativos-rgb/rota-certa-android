@@ -168,6 +168,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalLastTriggerTraceAtMillis: Long = 0L // universal_runtime_stability_fields_0_1_101
     private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate(duplicateWindowMs = 180L)
     private var lastVisibleCardSignature: String? = null
+    private val STABLE_DECISION_ABSENCE_GRACE_MILLIS_141 = 3_000L
     private val coreBubblePresenter = br.com.mapeiaia.rotacerta.core.CoreBubblePresenter
 
     override fun onCreate() {
@@ -352,10 +353,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 SimpleSavedAppFarolPolicy.changed(lastImmediateScreenFingerprintChecklist13, fingerprintChecklist13))
         if (screenChangedChecklist13) {
             UnifiedDebugEventStore.record("BUBBLE_SCREEN_CHANGED", resolvedPackage, "fingerprintAnterior=$lastImmediateScreenFingerprintChecklist13; fingerprintAtual=$fingerprintChecklist13; window=${event.windowId}")
-            hardClearUniversalTwoAddress(
-                reason = "A tela mudou; cor e quilometros anteriores removidos imediatamente.",
-                keepWaitingYellow = true,
-            ) // immediate_screen_change_clear_checklist_13
+            val preserveStableDecision141 =
+                universalActiveRidePackageName == resolvedPackage &&
+                    universalActiveAddressSignature != null &&
+                    (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red)
+            if (preserveStableDecision141) {
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_SCREEN_CHANGE_DEFERRED",
+                    resolvedPackage,
+                    "decisao valida preservada; OCR confirmara mudanca real do destino",
+                )
+                scheduleScreenshotFallback127(resolvedPackage)
+            } else {
+                hardClearUniversalTwoAddress(
+                    reason = "A tela mudou; cor e quilometros anteriores removidos imediatamente.",
+                    keepWaitingYellow = true,
+                )
+            } // stable_decision_survives_visual_noise_0_1_141
             universalForegroundPackageName = resolvedPackage
             activePackageName = resolvedPackage
             lastExternalWindowPackageName = resolvedPackage
@@ -365,10 +379,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         if (immediateTextChecklist13.isBlank()) {
             UnifiedDebugEventStore.record("BUBBLE_TEXT_EMPTY", resolvedPackage, "coleta imediata vazia; OCR fallback agendado")
-            hardClearUniversalTwoAddress(
-                reason = "Tela alterada sem dois enderecos visiveis; resultado removido imediatamente.",
-                keepWaitingYellow = true,
-            )
+            val decisionAge141 = System.currentTimeMillis() - universalLastActiveReadAtMillis
+            val preserveStableDecision141 =
+                universalActiveRidePackageName == resolvedPackage &&
+                    universalActiveAddressSignature != null &&
+                    (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+                    decisionAge141 in 0L..STABLE_DECISION_ABSENCE_GRACE_MILLIS_141
+            if (preserveStableDecision141) {
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_EMPTY_READ_DEFERRED",
+                    resolvedPackage,
+                    "decisao valida preservada; idade=${decisionAge141}ms",
+                )
+            } else {
+                hardClearUniversalTwoAddress(
+                    reason = "Tela alterada sem dois enderecos visiveis; resultado removido apos confirmacao.",
+                    keepWaitingYellow = true,
+                )
+            }
             scheduleScreenshotFallback127(resolvedPackage)
             return
         }
@@ -900,10 +928,25 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "ativo=${evaluationChecklist13.active}; pickup=${evaluationChecklist13.pickup.orEmpty()}; destination=${evaluationChecklist13.destination.orEmpty()}; assinatura=${evaluationChecklist13.addressSignature}; screenHash=${evaluationChecklist13.screenHash}",
         )
         if (!evaluationChecklist13.active) {
+            val decisionAge141 = System.currentTimeMillis() - universalLastActiveReadAtMillis
+            val preserveStableDecision141 =
+                universalActiveRidePackageName == selectedPackageChecklist13 &&
+                    universalActiveAddressSignature != null &&
+                    (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+                    decisionAge141 in 0L..STABLE_DECISION_ABSENCE_GRACE_MILLIS_141
+            if (preserveStableDecision141) {
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_INVALID_READ_DEFERRED",
+                    selectedPackageChecklist13,
+                    "fonte=${source.name}; decisao valida preservada; idade=${decisionAge141}ms",
+                )
+                if (source == TextSource.Accessibility) scheduleScreenshotFallback127(selectedPackageChecklist13)
+                return
+            }
             hardClearUniversalTwoAddress(
-                reason = "Tela sem dois enderecos validos; cor e quilometros removidos imediatamente.",
+                reason = "Tela sem dois enderecos validos por tempo suficiente; cor e quilometros removidos.",
                 keepWaitingYellow = true,
-            ) // simple_two_address_clear_checklist_13
+            ) // confirmed_absence_clear_0_1_141
             return
         }
 
