@@ -1,0 +1,51 @@
+name: Apply OCR authority 0.1.144
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+    paths:
+      - scripts/apply_ocr_authority_0144.py
+      - .github/workflows/apply-ocr-authority-0144.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message || '', '[applied-0.1.144]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Apply OCR authority correction
+        run: python scripts/apply_ocr_authority_0144.py
+      - name: Verify correction contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.144"' app/build.gradle.kts
+          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'OCR/card validado preservado' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ./gradlew testDebugUnitTest lintDebug assembleDebug --no-daemon
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_ocr_authority_0144.py
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'Preserva OCR válido contra eventos parciais [applied-0.1.144]'
+          git push origin HEAD:codex/unified-debug-log-0.1.139
