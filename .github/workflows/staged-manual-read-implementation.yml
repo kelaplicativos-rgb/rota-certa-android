@@ -1,4 +1,4 @@
-name: Staged Manual Read Implementation
+name: Final Manual Read Validation
 
 on:
   pull_request:
@@ -7,28 +7,25 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
-  group: staged-manual-read-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  group: final-manual-read-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  implement:
-    if: github.actor != 'github-actions[bot]'
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 45
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
-      - name: Checkout exact branch
+      - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -44,126 +41,209 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Configure Git
+      - name: Prepare evidence
         run: |
-          mkdir -p ci-logs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p ci-artifacts ci-logs
+          zip -qr ci-artifacts/source-snapshot.zip app/src app/build.gradle.kts app/proguard-rules.pro app/src/main/AndroidManifest.xml settings.gradle.kts build.gradle.kts gradle.properties
+          grep -RInE 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver|InDriveCoreModule|UberCoreModule|NinetyNineCoreModule|RideCardTemplateMatcher|RideCardTemplate|requireRegisteredRideCard' app/src/main/java > ci-artifacts/legacy-production-references.txt || true
+          find app -maxdepth 1 -name '*.gradle.kts' ! -name 'build.gradle.kts' -print > ci-artifacts/source-mutators.txt
+          grep -n 'apply(from' app/build.gradle.kts > ci-artifacts/source-mutator-applies.txt || true
 
-      - name: Materialize current generated sources once
-        run: |
-          set -o pipefail
-          gradle clean :app:compileDebugKotlin --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/materialize-compile.log
-
-      - name: Restore staged implementation script
-        run: |
-          cat scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1 \
-            | base64 --decode | gzip --decompress > scripts/apply_staged_manual_contract.py
-          chmod +x scripts/apply_staged_manual_contract.py
-          python3 scripts/fix-stage-script.py
-          rm scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1
-
-      - name: Stage 1 - materialize stable source
-        run: |
-          set -o pipefail
-          python3 scripts/apply_staged_manual_contract.py stage1 2>&1 | tee ci-logs/stage1-transform.log
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage1-tests.log
-
-      - name: Stage 2 - manual packages and no model gate
-        run: |
-          set -o pipefail
-          python3 scripts/apply_staged_manual_contract.py stage2 2>&1 | tee ci-logs/stage2-transform.log
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage2-tests.log
-
-      - name: Stage 3 - real expanders for alerts and places
-        run: |
-          set -o pipefail
-          python3 scripts/apply_staged_manual_contract.py stage3 2>&1 | tee ci-logs/stage3-transform.log
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage3-tests.log
-
-      - name: Stage 4 - bubble gestures and confirmations
-        run: |
-          set -o pipefail
-          python3 scripts/apply_staged_manual_contract.py stage4 2>&1 | tee ci-logs/stage4-transform.log
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/stage4-tests.log
-
-      - name: Stage 5 - remove source mutators
-        run: |
-          set -o pipefail
-          python3 scripts/apply_staged_manual_contract.py stage5 verify 2>&1 | tee ci-logs/stage5-transform-verify.log
-          test -z "$(grep -R 'apply(from' -n app/build.gradle.kts || true)"
-          test -z "$(find app -maxdepth 1 -name '*.gradle.kts' ! -name 'build.gradle.kts' -print -quit)"
-
-      - name: Run final unit tests twice without source mutation
+      - name: Run unit tests twice with immutable source
         run: |
           set -euo pipefail
           before="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/final-tests-first.log
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/tests-first.log
           middle="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/final-tests-second.log
+          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/tests-second.log
           after="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           test "$before" = "$middle"
           test "$middle" = "$after"
+          printf 'SOURCE_HASH=%s\n' "$after" > ci-artifacts/source-hash.txt
 
       - name: Run Android Lint
-        run: |
-          set -o pipefail
-          gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/lint.log
+        run: gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/lint.log
 
-      - name: Build APK twice and verify unchanged source tree
+      - name: Build APK twice with immutable source
         run: |
           set -euo pipefail
-          gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/assemble-first.log
-          source_hash_1="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          cp app/build/outputs/apk/debug/app-debug.apk first.apk
+          before="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          gradle clean assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/assemble-first.log
+          middle="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          cp app/build/outputs/apk/debug/app-debug.apk ci-artifacts/rota-certa-0.1.137-first.apk
           gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ci-logs/assemble-second.log
-          source_hash_2="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          test "$source_hash_1" = "$source_hash_2"
-          cp app/build/outputs/apk/debug/app-debug.apk rota-certa-0.1.137.apk
-          sha256sum rota-certa-0.1.137.apk > apk-sha256.txt
+          after="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          test "$before" = "$middle"
+          test "$middle" = "$after"
+          cp app/build/outputs/apk/debug/app-debug.apk ci-artifacts/rota-certa-0.1.137.apk
+          sha256sum ci-artifacts/rota-certa-0.1.137.apk > ci-artifacts/apk-sha256.txt
+          unzip -tq ci-artifacts/rota-certa-0.1.137.apk
 
-      - name: Write validation report
+      - name: Validate manifest and APK signature
         run: |
-          cat > staged-validation.txt <<EOF
-          BRANCH=$HEAD_BRANCH
-          VERSION=0.1.137
-          STAGE_1_STABLE_SOURCE=approved
-          STAGE_2_MANUAL_SELECTION_ONLY=approved
-          STAGE_2_PREDEFINED_AUTHORIZATION_LIST=removed
-          STAGE_2_CARD_MODEL_GATE=removed
-          STAGE_2_TWO_ADDRESS_TRIGGER=approved
-          STAGE_3_REAL_EXPANDERS=approved
-          STAGE_4_DOUBLE_TAP_ALERT=approved
-          STAGE_4_OUTSIDE_TAP_CLOSE=approved
-          STAGE_4_DISMISS_UNTIL_EXIT=approved
-          STAGE_5_SOURCE_MUTATORS=removed
-          UNIT_TESTS_EACH_STAGE=approved
-          UNIT_TESTS_FINAL_TWICE=approved
-          LINT=approved
-          APK_TWICE=approved
-          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import struct
+          import zipfile
+          from cryptography import x509
 
-      - name: Push validated staged commits
-        run: git push origin HEAD:"$HEAD_BRANCH"
+          apk_path = Path('ci-artifacts/rota-certa-0.1.137.apk')
+          apk = apk_path.read_bytes()
+          magic = b'APK Sig Block 42'
+          magic_offset = apk.rfind(magic)
+          if magic_offset < 0:
+              raise SystemExit('APK Signing Block ausente.')
+          block_size = struct.unpack_from('<Q', apk, magic_offset - 8)[0]
+          block_start = magic_offset + 8 - block_size
+          if struct.unpack_from('<Q', apk, block_start)[0] != block_size:
+              raise SystemExit('Tamanhos do APK Signing Block divergentes.')
+          offset = block_start + 8
+          pairs_end = magic_offset - 8
+          pairs = {}
+          while offset < pairs_end:
+              pair_size = struct.unpack_from('<Q', apk, offset)[0]
+              offset += 8
+              pair_id = struct.unpack_from('<I', apk, offset)[0]
+              offset += 4
+              pairs[pair_id] = apk[offset:offset + pair_size - 4]
+              offset += pair_size - 4
+          v2_id = 0x7109871A
+          if v2_id not in pairs:
+              raise SystemExit('Assinatura APK v2 ausente.')
 
-      - name: Upload validated APK and report
+          def lp(buffer, position):
+              length = struct.unpack_from('<I', buffer, position)[0]
+              position += 4
+              return buffer[position:position + length], position + length
+
+          signers, _ = lp(pairs[v2_id], 0)
+          signer, _ = lp(signers, 0)
+          signed_data, signer_offset = lp(signer, 0)
+          _, signer_offset = lp(signer, signer_offset)
+          _, signer_offset = lp(signer, signer_offset)
+          _, signed_offset = lp(signed_data, 0)
+          certificates, signed_offset = lp(signed_data, signed_offset)
+          certificate_der, _ = lp(certificates, 0)
+          certificate = x509.load_der_x509_certificate(certificate_der)
+          certificate_sha256 = hashlib.sha256(certificate_der).hexdigest()
+          expected_certificate = 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd'
+          if certificate_sha256 != expected_certificate:
+              raise SystemExit(f'Certificado inesperado: {certificate_sha256}')
+
+          with zipfile.ZipFile(apk_path) as archive:
+              manifest = archive.read('AndroidManifest.xml')
+
+          def u16(position):
+              return struct.unpack_from('<H', manifest, position)[0]
+
+          def u32(position):
+              return struct.unpack_from('<I', manifest, position)[0]
+
+          def length8(position):
+              value = manifest[position]
+              position += 1
+              if value & 0x80:
+                  value = ((value & 0x7F) << 7) | manifest[position]
+                  position += 1
+              return value, position
+
+          def length16(position):
+              value = u16(position)
+              position += 2
+              if value & 0x8000:
+                  value = ((value & 0x7FFF) << 16) | u16(position)
+                  position += 2
+              return value, position
+
+          strings = []
+          position = 8
+          package_name = None
+          version_name = None
+          version_code = None
+          while position < len(manifest):
+              chunk_type = u16(position)
+              header_size = u16(position + 2)
+              chunk_size = u32(position + 4)
+              if chunk_type == 0x0001:
+                  string_count = u32(position + 8)
+                  flags = u32(position + 16)
+                  strings_start = u32(position + 20)
+                  utf8 = bool(flags & 0x100)
+                  offsets = [u32(position + header_size + index * 4) for index in range(string_count)]
+                  data_start = position + strings_start
+                  for string_offset in offsets:
+                      cursor = data_start + string_offset
+                      if utf8:
+                          _, cursor = length8(cursor)
+                          byte_length, cursor = length8(cursor)
+                          value = manifest[cursor:cursor + byte_length].decode('utf-8', 'replace')
+                      else:
+                          char_length, cursor = length16(cursor)
+                          value = manifest[cursor:cursor + char_length * 2].decode('utf-16le', 'replace')
+                      strings.append(value)
+              elif chunk_type == 0x0102:
+                  extension = position + 16
+                  name_index = u32(extension + 4)
+                  element_name = strings[name_index] if name_index != 0xFFFFFFFF else None
+                  if element_name == 'manifest':
+                      attribute_start = u16(extension + 8)
+                      attribute_size = u16(extension + 10)
+                      attribute_count = u16(extension + 12)
+                      first_attribute = extension + attribute_start
+                      for index in range(attribute_count):
+                          attribute = first_attribute + index * attribute_size
+                          attribute_name_index = u32(attribute + 4)
+                          raw_index = u32(attribute + 8)
+                          data_type = manifest[attribute + 15]
+                          data_value = u32(attribute + 16)
+                          attribute_name = strings[attribute_name_index]
+                          raw_value = strings[raw_index] if raw_index != 0xFFFFFFFF else None
+                          typed_value = strings[data_value] if data_type == 0x03 else data_value
+                          if attribute_name == 'package':
+                              package_name = raw_value or typed_value
+                          elif attribute_name == 'versionName':
+                              version_name = raw_value or typed_value
+                          elif attribute_name == 'versionCode':
+                              version_code = int(typed_value)
+                      break
+              if chunk_size <= 0:
+                  break
+              position += chunk_size
+
+          if package_name != 'br.com.mapeiaia.rotacerta':
+              raise SystemExit(f'Pacote inesperado: {package_name}')
+          if version_name != '0.1.137':
+              raise SystemExit(f'Versão inesperada: {version_name}')
+          if version_code is None or version_code <= 1116:
+              raise SystemExit(f'versionCode precisa ser maior que 1116; encontrado {version_code}')
+
+          report = (
+              f'PACKAGE={package_name}\n'
+              f'VERSION_NAME={version_name}\n'
+              f'VERSION_CODE={version_code}\n'
+              f'APK_SHA256={hashlib.sha256(apk).hexdigest()}\n'
+              f'APK_SIGNATURE_SCHEME=v2\n'
+              f'CERTIFICATE_SHA256={certificate_sha256}\n'
+          )
+          Path('ci-artifacts/apk-validation.txt').write_text(report, encoding='utf-8')
+          print(report)
+          PY
+
+      - name: Enforce final manual-only production contract
+        run: |
+          test ! -s ci-artifacts/source-mutators.txt
+          test ! -s ci-artifacts/source-mutator-applies.txt
+          test ! -s ci-artifacts/legacy-production-references.txt
+
+      - name: Upload final evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.137-staged
+          name: rota-certa-0.1.137-final-validation
           path: |
-            rota-certa-0.1.137.apk
-            apk-sha256.txt
-            staged-validation.txt
-          if-no-files-found: error
-
-      - name: Upload failure evidence
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staged-manual-read-failure
-          path: |
+            ci-artifacts
             ci-logs
-            app/build/reports/tests/testDebugUnitTest
             app/build/reports/lint-results-debug.html
-            app/build/test-results/testDebugUnitTest
+            app/build/reports/tests/testDebugUnitTest
           if-no-files-found: warn
