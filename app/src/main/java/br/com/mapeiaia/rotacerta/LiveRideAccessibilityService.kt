@@ -74,6 +74,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // quick_reply_receiver_checklist_3
     private val screenshotInProgress = AtomicBoolean(false)
     private val tripConfirmationCopyInProgressChecklist8 = AtomicBoolean(false)
+    private val fullScreenCopyInProgress138 = AtomicBoolean(false)
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
     private val phoneCaptureInProgress118 = AtomicBoolean(false)
     private var analyzeJob: Job? = null
@@ -1665,8 +1666,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
         when (spec.doubleTapAction) {
-            BubbleShortcutQuickAction.CopyAllVisibleText -> toast("Preparando cópia completa da tela.")
-            BubbleShortcutQuickAction.CreateQuickReply -> toast("Preparando nova resposta.")
+            BubbleShortcutQuickAction.CopyAllVisibleText -> copyAllVisibleTextFromBubble138()
+            BubbleShortcutQuickAction.CreateQuickReply -> openQuickRepliesFromBubble(createNew = true)
             BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> toast("Preparando radar neste local.")
             BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> toast("Preparando novo alerta.")
             BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> toast("Preparando novo local.")
@@ -1680,7 +1681,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Unit /* diagnostics_off_checklist_4 */
         when (spec.action) {
             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8
-            BubbleShortcutAction.OpenQuickReplies -> openQuickRepliesFromBubble() // quick_reply_action_checklist_3
+            BubbleShortcutAction.OpenQuickReplies -> openQuickRepliesFromBubble(createNew = false) // quick_reply_action_checklist_3
             BubbleShortcutAction.OpenRoute,
             BubbleShortcutAction.OpenDestination,
             BubbleShortcutAction.OpenAlerts,
@@ -1710,6 +1711,95 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
 
     // manual_card_capture_complete_checklist_12
+
+    private fun copyAllVisibleTextFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        if (!fullScreenCopyInProgress138.compareAndSet(false, true)) {
+            toast("A cópia completa da tela já está em andamento.")
+            return
+        }
+        val accessibilityText = collectAllVisibleTextForCopy138()
+        if (accessibilityText.isNotBlank()) {
+            copyAllVisibleTextToClipboard138(accessibilityText)
+            fullScreenCopyInProgress138.set(false)
+            return
+        }
+        requestFullScreenCopyOcr138()
+    }
+
+    private fun collectAllVisibleTextForCopy138(): String {
+        val root = rootInActiveWindow ?: return ""
+        val lines = mutableListOf<String>()
+        collectNodeText(root, lines)
+        return lines
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n")
+    }
+
+    private fun requestFullScreenCopyOcr138() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            fullScreenCopyInProgress138.set(false)
+            toast("Esta tela não disponibilizou texto para copiar.")
+            return
+        }
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            fullScreenCopyInProgress138.set(false)
+            toast("A leitura da tela está ocupada. Tente novamente.")
+            return
+        }
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap: Bitmap? = null
+                            try {
+                                bitmap = screenshot.toSoftwareBitmap()
+                                val text = bitmap?.let { ocrService.extractText(it) }.orEmpty()
+                                    .lines()
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                    .joinToString("\n")
+                                if (text.isBlank()) {
+                                    toast("Nenhum texto foi encontrado nesta tela.")
+                                } else {
+                                    copyAllVisibleTextToClipboard138(text)
+                                }
+                            } finally {
+                                bitmap?.recycle()
+                                screenshotInProgress.set(false)
+                                fullScreenCopyInProgress138.set(false)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        screenshotInProgress.set(false)
+                        fullScreenCopyInProgress138.set(false)
+                        toast("O Android não permitiu ler esta tela.")
+                    }
+                },
+            )
+        }.onFailure {
+            screenshotInProgress.set(false)
+            fullScreenCopyInProgress138.set(false)
+            toast("Não consegui solicitar a leitura desta tela.")
+        }
+    }
+
+    private fun copyAllVisibleTextToClipboard138(text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Texto completo da tela", text))
+        toast("Texto completo copiado")
+        overlayView?.announceForAccessibility("Texto completo da tela copiado")
+    }
 
     private fun copyTripConfirmationFromBubbleChecklist8() {
         shortcutOverlayController.hideAll()
@@ -1820,7 +1910,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     // trip_confirmation_copy_complete_checklist_8
 
-    private fun openQuickRepliesFromBubble() {
+    private fun openQuickRepliesFromBubble(createNew: Boolean = false) {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
         val targetPackage = listOf(currentRootPackageName(), currentWindowPackageName())
@@ -1841,7 +1931,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             Intent.FLAG_ACTIVITY_CLEAR_TOP or
                             Intent.FLAG_ACTIVITY_SINGLE_TOP,
                     )
-                    .putExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE, targetPackage),
+                    .putExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE, targetPackage)
+                    .putExtra(EXTRA_QUICK_REPLY_CREATE, createNew),
             )
         }.onFailure {
             toast("Não foi possível abrir as respostas rápidas.")
