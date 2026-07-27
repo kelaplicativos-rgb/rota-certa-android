@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 SERVICE = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
 GRADLE = Path('app/build.gradle.kts')
@@ -122,16 +121,22 @@ marker = '    private var lastVisibleCardSignature: String? = null\n'
 if marker not in source:
     raise SystemExit('field marker not found')
 source = source.replace(marker, marker + '    private val STABLE_DECISION_ABSENCE_GRACE_MILLIS_141 = 3_000L\n', 1)
-
 SERVICE.write_text(source, encoding='utf-8')
 
 gradle = GRADLE.read_text(encoding='utf-8')
 if 'versionName = "0.1.140"' not in gradle:
     raise SystemExit('expected 0.1.140 version not found')
 gradle = gradle.replace('versionName = "0.1.140"', 'versionName = "0.1.141"', 1)
-gradle, code_replacements = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 5020', gradle, count=1)
-if code_replacements != 1:
-    raise SystemExit('versionCode not found')
+old_version_logic = '''val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 5_000 + it }
+val appVersionCode = ciVersionCode ?: 5_001
+'''
+new_version_logic = '''val minimumVersionCode = 5_020
+val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
+val appVersionCode = ciVersionCode ?: minimumVersionCode
+'''
+if old_version_logic not in gradle:
+    raise SystemExit('versionCode calculation block not found')
+gradle = gradle.replace(old_version_logic, new_version_logic, 1)
 GRADLE.write_text(gradle, encoding='utf-8')
 
-print('Applied bubble stability fix 0.1.141 with versionCode 5020')
+print('Applied bubble stability fix 0.1.141 with minimum versionCode 5020')
