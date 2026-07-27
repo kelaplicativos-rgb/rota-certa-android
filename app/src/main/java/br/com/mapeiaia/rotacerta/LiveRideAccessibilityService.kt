@@ -182,6 +182,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             quickReplyReceiverRegisteredChecklist3 = true
         } // quick_reply_receiver_registration_checklist_3
         repository = SettingsRepository(applicationContext)
+        DiagnosticRuntimeGate.setEnabled(DebugLogPreferenceStore.isEnabled(applicationContext))
+        UnifiedDebugEventStore.record("SERVICE_CREATE", packageName, "serviço de acessibilidade criado")
         geocodingService = GeocodingService(applicationContext)
         gpsAddressResolver = GpsAddressResolver(applicationContext)
         locationService = DeviceLocationService(applicationContext)
@@ -223,6 +225,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         serviceReady = true
+        UnifiedDebugEventStore.record("SERVICE_CONNECTED", packageName, "serviço pronto=true")
         Unit
         scope.launch { repository.settings.collect { currentSettings = it } }
         scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
@@ -261,7 +264,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!serviceReady || event == null) return
+        if (event == null) return
+        UnifiedDebugEventStore.record(
+            stage = "ACCESSIBILITY_EVENT",
+            packageName = event.packageName?.toString(),
+            details = "type=${event.eventType}; class=${event.className}; window=${event.windowId}; serviceReady=$serviceReady",
+        )
+        if (!serviceReady) return
         if (!currentSettings.appEnabled || !currentSettings.liveReadingEnabled) {
             hardClearUniversalTwoAddress("Leitura universal desligada.")
             return
@@ -364,9 +373,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
  // simple_saved_app_event_contract_checklist_13
  // universal_overlay_event_guard_0_1_106
 
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() {
+        UnifiedDebugEventStore.record("SERVICE_INTERRUPT", packageName, "Android interrompeu o serviço")
+    }
 
     override fun onDestroy() {
+        UnifiedDebugEventStore.record("SERVICE_DESTROY", packageName, "serviço destruído")
 
         if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
         if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()

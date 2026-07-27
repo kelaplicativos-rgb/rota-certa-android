@@ -12,10 +12,16 @@ object DiagnosticRuntimeGate {
     @Volatile
     private var manualCaptureUntilMillis: Long = 0L
 
-    /** Compatibilidade: false encerra a coleta; true nao ativa diagnostico continuo. */
+    @Volatile
+    private var continuousEnabled: Boolean = false
+
+    /** Liga ou desliga a coleta circular contínua solicitada pelo usuário. */
     fun setEnabled(value: Boolean) {
+        continuousEnabled = value
         if (!value) manualCaptureUntilMillis = 0L
     }
+
+    fun isContinuousEnabled(): Boolean = continuousEnabled
 
     fun beginManualCapture(
         durationMillis: Long = DEFAULT_MANUAL_CAPTURE_MILLIS,
@@ -29,6 +35,7 @@ object DiagnosticRuntimeGate {
     }
 
     fun isEnabled(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (continuousEnabled) return true
         val deadline = manualCaptureUntilMillis
         if (deadline <= 0L) return false
         if (nowMillis > deadline) {
