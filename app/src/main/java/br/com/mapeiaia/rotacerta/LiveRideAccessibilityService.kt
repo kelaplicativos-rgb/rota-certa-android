@@ -275,11 +275,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
             hardClearUniversalTwoAddress("Leitura universal desligada.")
             return
         }
-        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) return
+        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) {
+            UnifiedDebugEventStore.record("BUBBLE_EVENT_IGNORED", event.packageName?.toString(), "motivo=tipo_irrelevante; type=${event.eventType}; window=${event.windowId}")
+            return
+        }
 
         val eventPackage = normalizePackageName(event.packageName?.toString())
         val rootPackage = currentRootPackageName()
         val candidatePackage = eventPackage ?: rootPackage
+        UnifiedDebugEventStore.record(
+            "BUBBLE_EVENT_RESOLVED",
+            candidatePackage,
+            "eventPackage=${eventPackage ?: "nao informado"}; rootPackage=${rootPackage ?: "nao informado"}; window=${event.windowId}",
+        )
         val ownMainActivityEvent = UniversalWindowPackageResolver.isOwnMainActivityEvent(
             eventPackageName = candidatePackage,
             eventClassName = event.className?.toString(),
@@ -308,6 +316,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )?.let { resolvedPackage = it }
 
         if (resolvedPackage !in savedPackages || !shouldScanPackage(resolvedPackage)) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_PACKAGE_BLOCKED",
+                resolvedPackage,
+                "selecionado=${resolvedPackage in savedPackages}; shouldScan=${shouldScanPackage(resolvedPackage)}; motivo=${scanBlockReason(resolvedPackage)}",
+            )
             universalForegroundPackageName = resolvedPackage
             activePackageName = resolvedPackage
             lastExternalWindowPackageName = resolvedPackage
@@ -329,10 +342,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             text = immediateTextChecklist13,
             windowId = event.windowId,
         )
+        UnifiedDebugEventStore.record(
+            "BUBBLE_TEXT_COLLECTED",
+            resolvedPackage,
+            "fonte=acessibilidade_imediata; tamanho=${immediateTextChecklist13.length}; hash=${immediateTextChecklist13.hashCode()}; window=${event.windowId}; fingerprint=$fingerprintChecklist13",
+        )
         val screenChangedChecklist13 = lastImmediateScreenPackageChecklist13 != null &&
             (lastImmediateScreenPackageChecklist13 != resolvedPackage ||
                 SimpleSavedAppFarolPolicy.changed(lastImmediateScreenFingerprintChecklist13, fingerprintChecklist13))
         if (screenChangedChecklist13) {
+            UnifiedDebugEventStore.record("BUBBLE_SCREEN_CHANGED", resolvedPackage, "fingerprintAnterior=$lastImmediateScreenFingerprintChecklist13; fingerprintAtual=$fingerprintChecklist13; window=${event.windowId}")
             hardClearUniversalTwoAddress(
                 reason = "A tela mudou; cor e quilometros anteriores removidos imediatamente.",
                 keepWaitingYellow = true,
@@ -345,6 +364,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastImmediateScreenFingerprintChecklist13 = fingerprintChecklist13
 
         if (immediateTextChecklist13.isBlank()) {
+            UnifiedDebugEventStore.record("BUBBLE_TEXT_EMPTY", resolvedPackage, "coleta imediata vazia; OCR fallback agendado")
             hardClearUniversalTwoAddress(
                 reason = "Tela alterada sem dois enderecos visiveis; resultado removido imediatamente.",
                 keepWaitingYellow = true,
@@ -358,7 +378,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             savedPackages = savedPackages,
             text = immediateTextChecklist13,
         )
+        if (analyzeJob?.isActive == true) {
+            UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_CANCELLED", resolvedPackage, "análise anterior cancelada por evento mais recente")
+        }
         analyzeJob?.cancel()
+        UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_STARTED", resolvedPackage, "fonte=Accessibility; tamanho=${immediateTextChecklist13.length}; hash=${immediateTextChecklist13.hashCode()}")
         analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             processRideText(immediateTextChecklist13, TextSource.Accessibility, allowPopupCandidate = true)
         } // immediate_accessibility_process_checklist_13
@@ -847,6 +871,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         allowPopupCandidate: Boolean = false,
     ) {
         @Suppress("UNUSED_VARIABLE") val ignoredPopupCandidateChecklist13 = allowPopupCandidate
+        UnifiedDebugEventStore.record(
+            "BUBBLE_PROCESS_ENTER",
+            universalResolvedForegroundPackage(),
+            "fonte=${source.name}; tamanho=${text.length}; hash=${text.hashCode()}; gesture=$bubbleGestureActive; ready=$serviceReady; appEnabled=${currentSettings.appEnabled}; live=${currentSettings.liveReadingEnabled}",
+        )
         if (bubbleGestureActive || !serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return // bubble_drag_process_pause_0_1_116
         val savedPackagesChecklist13 = SelectedRideAppStore.read(applicationContext)
         val selectedPackageChecklist13 = strictSelectedRootPackageChecklist1()
@@ -865,6 +894,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 text = snapshotTextChecklist13,
             )
         }
+        UnifiedDebugEventStore.record(
+            "BUBBLE_ADDRESS_EVALUATION",
+            selectedPackageChecklist13,
+            "ativo=${evaluationChecklist13.active}; pickup=${evaluationChecklist13.pickup.orEmpty()}; destination=${evaluationChecklist13.destination.orEmpty()}; assinatura=${evaluationChecklist13.addressSignature}; screenHash=${evaluationChecklist13.screenHash}",
+        )
         if (!evaluationChecklist13.active) {
             hardClearUniversalTwoAddress(
                 reason = "Tela sem dois enderecos validos; cor e quilometros removidos imediatamente.",
@@ -885,6 +919,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         val cardChangedChecklist13 = universalActiveAddressSignature != evaluationChecklist13.addressSignature ||
             lastSnapshotHash != evaluationChecklist13.screenHash
+        UnifiedDebugEventStore.record(
+            "BUBBLE_CARD_STATE",
+            selectedPackageChecklist13,
+            "mudou=$cardChangedChecklist13; assinaturaAnterior=${universalActiveAddressSignature ?: "nenhuma"}; assinaturaAtual=${evaluationChecklist13.addressSignature}; hashAnterior=${lastSnapshotHash ?: 0}; hashAtual=${evaluationChecklist13.screenHash}",
+        )
         if (cardChangedChecklist13 && (
                 universalActiveAddressSignature != null ||
                     currentDistanceKm != null ||
@@ -914,6 +953,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 .putString("fast_farol_last_destination", fieldsChecklist13.destination.orEmpty())
                 .apply()
         } else if (lastAnalyzedHash == evaluationChecklist13.screenHash || universalRouteJob?.isActive == true) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_DUPLICATE_SKIPPED",
+                selectedPackageChecklist13,
+                "lastAnalyzedHash=$lastAnalyzedHash; screenHash=${evaluationChecklist13.screenHash}; routeActive=${universalRouteJob?.isActive == true}",
+            )
             return
         }
 
@@ -931,6 +975,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         val generationChecklist13 = universalScreenGeneration
         if (cachedDistancesChecklist13 != null) {
+            UnifiedDebugEventStore.record("BUBBLE_CACHE_HIT", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; distancias=$cachedDistancesChecklist13")
             val cachedResultChecklist13 = decideFastWorkRegionChecklist13(
                 snapshotText = snapshotTextChecklist13,
                 fields = fieldsChecklist13,
@@ -948,6 +993,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
+        UnifiedDebugEventStore.record("BUBBLE_ROUTE_REQUESTED", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=$generationChecklist13")
         rememberBubbleReason("universal_waiting", "Dois enderecos identificados; calculando o ultimo destino.")
         showOverlay(RadarColor.Default, distanceKm = null)
         bubblePrefs.edit().putString("fast_farol_last_path", "rota_google").apply()
@@ -991,12 +1037,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             showOverlay(RadarColor.Default, distanceKm = null)
             return
         }
+        UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_START", universalActiveRidePackageName, "destino=${fields.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=$generation")
         val routeDistancesChecklist13 = googleMapsService.drivingDistancesFromAddressKm(
             originAddress = fields.destination.orEmpty(),
             destinations = targetsChecklist13.destinations,
             apiKey = apiKeyChecklist13,
         ) // single_exact_route_matrix_checklist_13
         if (!isUniversalResultFresh(generation, screenHash, addressSignature)) return
+        UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_END", universalActiveRidePackageName, "distancias=$routeDistancesChecklist13; fresh=${isUniversalResultFresh(generation, screenHash, addressSignature)}")
         val resultChecklist13 = decideFastWorkRegionChecklist13(
             snapshotText = snapshotText,
             fields = fields,
@@ -1023,8 +1071,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         val distanceChecklist13 = result.nearestConfiguredDistanceKm()
         lastAnalyzedHash = screenHash
+        UnifiedDebugEventStore.record(
+            "BUBBLE_DECISION_READY",
+            universalActiveRidePackageName,
+            "recomendacao=${result.recommendation}; cor=$colorChecklist13; distancia=$distanceChecklist13; destino=${result.fields.destination.orEmpty()}; generation=$generation; screenHash=$screenHash",
+        )
         rememberBubbleReason("universal_result", result.reason)
         showOverlay(colorChecklist13, distanceChecklist13)
+        UnifiedDebugEventStore.record("BUBBLE_DECISION_PAINTED", universalActiveRidePackageName, "cor=$colorChecklist13; distancia=$distanceChecklist13; stage=$lastBubbleStateStage; motivo=$lastBubbleStateReason")
         val finishedAtChecklist13 = System.currentTimeMillis()
         val elapsedChecklist13 = if (fastFarolStartedAtChecklist13 > 0L) {
             (finishedAtChecklist13 - fastFarolStartedAtChecklist13).coerceAtLeast(0L)
@@ -1072,6 +1126,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         reason: String,
         keepWaitingYellow: Boolean = false,
     ) {
+        UnifiedDebugEventStore.record(
+            "BUBBLE_CLEAR_REQUEST",
+            universalResolvedForegroundPackage(),
+            "reason=$reason; keepWaitingYellow=$keepWaitingYellow; corAtual=$currentRadarColor; distanciaAtual=$currentDistanceKm; assinatura=${universalActiveAddressSignature ?: "nenhuma"}; hash=${lastSnapshotHash ?: 0}",
+        )
         partialReadConfirmationJobChecklist14?.cancel()
         partialReadConfirmationJobChecklist14 = null
         val targetColor127 = if (keepWaitingYellow) RadarColor.Default else RadarColor.Idle
@@ -1119,6 +1178,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             clearRuntimeValidationTrigger()
             rememberBubbleReason(targetStage127, targetReason127)
             showOverlay(targetColor127, distanceKm = null) // atomic_hard_clear_single_paint_0_1_127
+            UnifiedDebugEventStore.record("BUBBLE_CLEAR_PAINTED", universalResolvedForegroundPackage(), "cor=$targetColor127; stage=$targetStage127; motivo=$targetReason127")
             currentRadarColor = targetColor127
             currentDistanceKm = null
             if (BuildConfig.DEBUG) {
