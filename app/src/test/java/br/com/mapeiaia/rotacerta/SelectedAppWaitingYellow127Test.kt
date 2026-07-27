@@ -20,7 +20,7 @@ class SelectedAppWaitingYellow127Test {
         val processEnd = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", processStart)
         val processRegion = service.substring(processStart, processEnd)
         val inactiveStart = processRegion.indexOf("if (!evaluationChecklist13.active)")
-        val inactiveEnd = processRegion.indexOf("if (source == TextSource.Accessibility)", inactiveStart)
+        val inactiveEnd = processRegion.indexOf("universalLastActiveReadAtMillis =", inactiveStart)
         val inactiveRegion = processRegion.substring(inactiveStart, inactiveEnd)
 
         assertTrue("Decisão válida recente deve ser preservada", "preserveStableDecision141" in inactiveRegion)
