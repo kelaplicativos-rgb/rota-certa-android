@@ -14,7 +14,7 @@ class SelectedAppWaitingYellow127Test {
         ?: error("LiveRideAccessibilityService.kt nao encontrado")
 
     @Test
-    fun savedAppWithoutTwoAddressesClearsDirectlyToYellowWithoutGrayFrame() {
+    fun savedAppWithoutTwoAddressesPreservesRecentValidDecisionBeforeYellow() {
         val service = serviceSource()
         val processStart = service.indexOf("private suspend fun processRideText(")
         val processEnd = service.indexOf("private suspend fun analyzeUniversalTwoAddress(", processStart)
@@ -23,8 +23,11 @@ class SelectedAppWaitingYellow127Test {
         val inactiveEnd = processRegion.indexOf("if (source == TextSource.Accessibility)", inactiveStart)
         val inactiveRegion = processRegion.substring(inactiveStart, inactiveEnd)
 
-        assertTrue("Tela sem dois endereços precisa limpar imediatamente", "simple_two_address_clear_checklist_13" in inactiveRegion)
-        assertTrue("Limpeza deve manter o estado amarelo de espera", "keepWaitingYellow = true" in inactiveRegion)
+        assertTrue("Decisão válida recente deve ser preservada", "preserveStableDecision141" in inactiveRegion)
+        assertTrue("Ausência precisa respeitar a janela de confirmação", "STABLE_DECISION_ABSENCE_GRACE_MILLIS_141" in inactiveRegion)
+        assertTrue("Leitura inválida preservada deve ser diagnosticada", "BUBBLE_INVALID_READ_DEFERRED" in inactiveRegion)
+        assertTrue("Após confirmação, limpeza deve manter o estado amarelo", "keepWaitingYellow = true" in inactiveRegion)
+        assertTrue("Contrato deve marcar ausência confirmada", "confirmed_absence_clear_0_1_141" in inactiveRegion)
         assertFalse("Fluxo nao pode pintar cinza antes do amarelo", "showOverlay(RadarColor.Idle" in inactiveRegion)
         assertFalse("Fluxo não pode fazer pintura manual duplicada", "showOverlay(RadarColor.Default" in inactiveRegion)
     }
