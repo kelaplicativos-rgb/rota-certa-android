@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 SERVICE = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
 GRADLE = Path('app/build.gradle.kts')
@@ -128,6 +129,9 @@ gradle = GRADLE.read_text(encoding='utf-8')
 if 'versionName = "0.1.140"' not in gradle:
     raise SystemExit('expected 0.1.140 version not found')
 gradle = gradle.replace('versionName = "0.1.140"', 'versionName = "0.1.141"', 1)
+gradle, code_replacements = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 5020', gradle, count=1)
+if code_replacements != 1:
+    raise SystemExit('versionCode not found')
 GRADLE.write_text(gradle, encoding='utf-8')
 
-print('Applied bubble stability fix 0.1.141')
+print('Applied bubble stability fix 0.1.141 with versionCode 5020')
