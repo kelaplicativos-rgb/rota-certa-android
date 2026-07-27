@@ -43,6 +43,16 @@ object SelectedRideAppStore {
             .apply()
     }
 
+    fun add(context: Context, packageName: String) {
+        val normalized = normalize(packageName) ?: return
+        save(context, read(context) + normalized)
+    }
+
+    fun remove(context: Context, packageName: String) {
+        val normalized = normalize(packageName) ?: return
+        save(context, read(context).filterNot { it == normalized }.toSet())
+    } // selected_package_add_remove_checklist_15
+
     fun legacyPackages(settings: AppSettings): Set<String> = buildSet {
         if (settings.monitor99) add(PACKAGE_99_DRIVER)
         if (settings.monitorUber) add(PACKAGE_UBER_DRIVER)

@@ -29,7 +29,7 @@ class CoreRideCardContractsTest {
             features = setOf("card.crop.route_block", "card.route.address"),
         )
 
-        assertTrue(result.accepted)
+        assertTrue(result.accepted) // open_all_contract_assert_0_1_94
         assertFalse(result.isListLike)
     }
 
@@ -58,16 +58,15 @@ class CoreRideCardContractsTest {
     }
 
     @Test
-    fun inDriveRejectsWithoutRouteBlock() {
+    fun inDriveAcceptsRegisteredRouteWithoutLegacyCropFlag() { // open_all_contract_test_0_1_94
         val result = InDriveCardContract.evaluate(
             text = "Pedido de viagem\nR$ 44\nAceitar por R$ 44\nOfereça sua tarifa",
             packageName = "sinet.startup.indriver",
             features = setOf("card.route.address"),
         )
 
-        assertFalse(result.accepted)
+        assertTrue(result.accepted) // open_all_contract_assert_0_1_94
         assertFalse(result.isListLike)
-        assertTrue(result.reason.contains("sem bloco individual"))
     }
 
     @Test

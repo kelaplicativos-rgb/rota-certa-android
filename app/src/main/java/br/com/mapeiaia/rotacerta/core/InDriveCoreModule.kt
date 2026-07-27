@@ -32,7 +32,7 @@ object InDriveCoreModule : RideAppCoreModule {
             )
         }
 
-        val hasSingularRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
+        val hasRideTitle = "pedido de viagem" in normalized || "pedidos de viagem" in normalized // open_all_indrive_titles_0_1_94
         val hasAccept = acceptButtonRegex.containsMatchIn(snapshot.text) || "aceitar por" in normalized
         val hasOffer = offerButtonRegex.containsMatchIn(snapshot.text) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
         val hasPrimaryAction = hasAccept || hasOffer
@@ -42,12 +42,10 @@ object InDriveCoreModule : RideAppCoreModule {
         val hasTwoMarkers = markerCount >= 2 || (!snapshot.fields.pickup.isNullOrBlank() && !snapshot.fields.destination.isNullOrBlank())
         val hasDestination = !snapshot.fields.destination.isNullOrBlank()
 
-        val openSignals = listOf(hasSingularRideTitle, hasAccept, hasOffer, hasMoney, hasRouteKm, hasTwoMarkers, hasDestination)
+        val openSignals = listOf(hasRideTitle, hasAccept, hasOffer, hasMoney, hasRouteKm, hasTwoMarkers, hasDestination)
         val score = openSignals.count { it } / openSignals.size.toDouble()
         val hasIndividualCardContract = hasDestination &&
-            hasPrimaryAction &&
-            hasMoney &&
-            (hasRouteKm || hasTwoMarkers) // indrive_card_family_0_1_85
+            (hasPrimaryAction || hasMoney || hasRouteKm || hasTwoMarkers) // indrive_card_family_0_1_85 open_all_indrive_contract_0_1_94
 
         return if (hasIndividualCardContract) {
             RideScreenClassification(
@@ -66,22 +64,8 @@ object InDriveCoreModule : RideAppCoreModule {
         }
     }
 
-    private fun isListing(normalized: String, rawText: String): Boolean {
-        val titleCount = Regex("pedido[s]?\\s+de\\s+viagem", RegexOption.IGNORE_CASE).findAll(rawText).count()
-        val acceptCount = acceptButtonRegex.findAll(rawText).count()
-        val offerCount = offerButtonRegex.findAll(rawText).count()
-        val listWords = listOf(
-            "pedidos de viagem",
-            "filtrar",
-            "ordenar",
-            "novos pedidos",
-            "mais pedidos",
-            "solicitacoes",
-            "solicitações",
-        )
-        // Online/offline e apenas o estado do motorista e aparece tanto na lista quanto no card aberto.
-        return listWords.any { it in normalized } || titleCount > 1 || acceptCount > 1 || offerCount > 1
-    }
+    private fun isListing(normalized: String, rawText: String): Boolean =
+        CoreCardMatchEngine.isListLikeRideFeed(rawText, normalized) // open_all_indrive_listing_0_1_94
 }
 
 internal fun String.normalizedCoreText(): String =

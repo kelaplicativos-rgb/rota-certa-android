@@ -67,9 +67,12 @@ class RideTextParser {
         }
 
         val addresses = findAddressCandidates(lines)
-        val pickup = findAddressAfterMarker(lines, pickupMarkers) ?: addresses.firstOrNull()
-        val destination = findAddressAfterMarker(lines, destinationMarkers) ?: addresses.asReversed().firstOrNull {
-            !it.equals(pickup, ignoreCase = true)
+        val markerPickup = findAddressAfterMarker(lines, pickupMarkers)
+        val markerDestination = findAddressAfterMarker(lines, destinationMarkers)
+        val pickup = markerPickup ?: addresses.takeIf { it.size > 1 }?.firstOrNull()
+        val destination = markerDestination ?: when {
+            addresses.size == 1 -> addresses.first()
+            else -> addresses.asReversed().firstOrNull { !it.equals(pickup, ignoreCase = true) }
         }
 
         return RideParseResult(
@@ -447,6 +450,11 @@ class RideTextParser {
         if (startIndex !in lines.indices) return null
 
         val firstLine = cleanAddressLine(rawFirstLine)
+        val hasOwnMapMarker = mapPointRegex.find(rawFirstLine) != null
+        if (!hasOwnMapMarker && startIndex > 0) {
+            val previousAddressLine = cleanAddressLine(lines[startIndex - 1])
+            if (isAddressContinuation(firstLine, previousAddressLine)) return null // indrive_skip_consumed_wrap_0_1_85
+        }
         if (!looksLikeAddress(firstLine)) return null
 
         val parts = mutableListOf(firstLine)
@@ -486,7 +494,16 @@ class RideTextParser {
         val previousNormalized = previous.lowercase()
         val previousHasOpenParenthesis = previous.count { it == '(' } > previous.count { it == ')' }
         val previousEndsWithStreetType = streetTypeSuffixes.any { previousNormalized.endsWith(it) }
+        val previousEndsWithConnector = Regex("\\b(?:da|de|do|das|dos|e)\\s*\\z", RegexOption.IGNORE_CASE)
+            .containsMatchIn(previous)
+        val previousStartsAsAddress = looksLikeAddress(previous)
+        val previousHasStreetNumber = Regex("\\b\\d{1,6}\\b").containsMatchIn(previous)
+        val valueStartsWithStreetNumber = Regex("^\\d{1,6}\\b").containsMatchIn(value)
+        val joinsSplitStreetName = previousStartsAsAddress &&
+            !previousHasStreetNumber &&
+            (previousEndsWithConnector || valueStartsWithStreetNumber) // indrive_address_wrap_0_1_85
 
+        if (joinsSplitStreetName) return true
         if (looksLikeAddress(value) && !previousEndsWithStreetType) return false
 
         return previous.endsWith(",") ||

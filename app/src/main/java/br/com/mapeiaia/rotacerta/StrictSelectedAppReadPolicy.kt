@@ -18,15 +18,17 @@ object StrictSelectedAppReadPolicy {
         selectedPackages: Set<String>,
         packageAllowedByPlatformPolicy: Boolean,
     ): Boolean {
-        if (!appEnabled || !liveReadingEnabled || !packageAllowedByPlatformPolicy) return false
-
+        if (!appEnabled || !liveReadingEnabled) return false
         val normalizedPackage = normalize(packageName) ?: return false
         val normalizedOwnPackage = normalize(ownPackageName)
         if (normalizedPackage == normalizedOwnPackage) return false
-
+        @Suppress("UNUSED_VARIABLE")
+        val ignoredLegacyPlatformClassification = packageAllowedByPlatformPolicy
         val normalizedSelection = selectedPackages.mapNotNull(::normalize).toSet()
         return normalizedPackage in normalizedSelection
-    }
+    } // manual_package_overrides_legacy_classification_checklist_15
+ // manual_package_overrides_legacy_classification_checklist_15
+
 
     private fun normalize(packageName: String?): String? = packageName
         ?.trim()

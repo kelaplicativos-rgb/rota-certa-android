@@ -119,6 +119,24 @@ class GoogleMapsService(context: Context? = null) {
         result
     } // direct_address_route_matrix_0_1_128
 
+    fun cachedDrivingDistancesFromAddressKm(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val result = MutableList<Double?>(destinations.size) { null }
+        destinations.forEachIndexed { index, destination ->
+            val cacheKey = addressRouteKey(normalizedOrigin, destination)
+            val cached = addressRouteCache[cacheKey]
+                ?: readPersistentDistance(PERSISTENT_ADDRESS_ROUTE_PREFIX, cacheKey, ROUTE_CACHE_TTL_MS)
+                ?: return null
+            addressRouteCache[cacheKey] = cached
+            result[index] = cached
+        }
+        return result
+    } // simple_cached_route_peek_checklist_13
+
     private fun requestDrivingDistance(body: String, apiKey: String): Double? {
         val connection = (URL(ROUTES_COMPUTE_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -411,9 +429,9 @@ class GoogleMapsService(context: Context? = null) {
     private companion object {
         const val ROUTES_COMPUTE_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
         const val ROUTE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
-        const val CONNECT_TIMEOUT_MS = 1_200
-        const val READ_TIMEOUT_MS = 2_600
-        const val ROUTE_REQUEST_ATTEMPTS = 1
+        const val CONNECT_TIMEOUT_MS = 350 // subsecond_connect_budget_checklist_6
+        const val READ_TIMEOUT_MS = 600 // subsecond_read_budget_checklist_6
+        const val ROUTE_REQUEST_ATTEMPTS = 1 // single_route_attempt_checklist_6
         const val GEOCODE_REQUEST_ATTEMPTS = 1
         const val RETRY_DELAY_MS = 80L
 

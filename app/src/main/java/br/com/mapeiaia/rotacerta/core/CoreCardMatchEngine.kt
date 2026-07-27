@@ -51,25 +51,24 @@ object CoreCardMatchEngine {
         templates: List<RideCardTemplate>,
     ): CoreCardMatchResult {
         val normalizedPackage = CorePackageMonitor.normalize(packageName)
-        if (normalizedPackage.isNullOrBlank()) {
-            return CoreCardMatchResult.rejected("Pacote do card nao identificado pelo Core.")
-        }
+            ?: RideCardTemplateMatcher.UNIVERSAL_LEARNED_PACKAGE
         if (templates.isEmpty()) {
             return CoreCardMatchResult.rejected("Nenhum card cadastrado para comparar com a tela atual.")
         }
 
         val preparedText = CoreRideTextSanitizer.sanitize(text, normalizedPackage)
         val normalizedText = preparedText.normalizedCoreText()
-        if (isListLikeRideFeed(preparedText, normalizedText)) {
+        if (isListLikeRideFeed(text, text.normalizedCoreText()) || isListLikeRideFeed(preparedText, normalizedText)) { // open_all_raw_feed_guard_0_1_94
             return CoreCardMatchResult.rejected(
-                reason = "Tela parece lista/feed de corridas; somente card individual cadastrado libera o farol.",
+                reason = "Foram detectadas varias ofertas ao mesmo tempo; aguardando um card individual visivel.",
                 isListLike = true,
                 contractName = CoreRideCardContractRegistry.contractFor(normalizedPackage).name,
             )
         }
 
         val detectedFeatures = RideCardTemplateMatcher.featuresFor(preparedText)
-        val features = if ("card.crop.route_block" in detectedFeatures || !hasStrongOpenedCardEvidence(preparedText, normalizedText)) {
+        val routeEvidence = routeSignals.intersect(detectedFeatures)
+        val features = if ("card.crop.route_block" in detectedFeatures || routeEvidence.size < 2) {
             detectedFeatures
         } else {
             detectedFeatures + "card.crop.route_block"
@@ -83,43 +82,29 @@ object CoreCardMatchEngine {
                 contractName = contractResult.contractName,
             )
         }
-        if ("card.crop.route_block" !in features) {
-            return CoreCardMatchResult.rejected(
-                reason = "Leitura ainda nao contem bloco individual de rota do card cadastrado.",
-                contractName = contract.name,
-            )
-        }
 
-        val strictMatch = RideCardTemplateMatcher.match(preparedText, normalizedPackage, templates)
-        val match = strictMatch
+        val match = RideCardTemplateMatcher.match(preparedText, normalizedPackage, templates)
             ?: FastRideCardMatcher.match(preparedText, normalizedPackage, templates)
             ?: registeredFamilyFallback(normalizedPackage, templates, features)
-        if (match == null) {
-            return CoreCardMatchResult.rejected(
-                reason = "Tela parece card de corrida, mas ainda nao bate com nenhum card cadastrado.",
+            ?: return CoreCardMatchResult.rejected(
+                reason = "A tela foi lida sem trava, mas ainda nao possui semelhanca suficiente com um modelo cadastrado.",
                 contractName = contract.name,
             )
-        }
-        if (!belongsToPackage(match.template, normalizedPackage)) {
-            return CoreCardMatchResult.rejected(
-                reason = "Card encontrado pertence a outro pacote; leitura bloqueada pelo Core.",
-                contractName = contract.name,
-            )
-        }
+
         return CoreCardMatchResult.accepted(
             match = match,
-            reason = "Card individual cadastrado confirmado pelo contrato ${contract.name}.",
+            reason = "Modelo cadastrado confirmado sem trava de pacote ou tela.",
             contractName = contract.name,
         )
-    }
+    } // open_all_core_match_0_1_94
 
     fun isListLikeRideFeed(text: String, normalizedText: String = text.normalizedCoreText()): Boolean {
         val normalizedLines = text.lines()
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .map { it.normalizedCoreText() }
-
-        val titleCount = normalizedLines.filter { titleRegex.containsMatchIn(it) }.distinct().size
+        val singularTitleCount = normalizedLines.count { it == "pedido de viagem" }
+        val hasPluralHeader = normalizedLines.any { it == "pedidos de viagem" }
         val acceptButtonCount = acceptButtonRegex.findAll(text)
             .map { it.value.normalizedCoreText().replace(" ", "") }
             .distinct()
@@ -134,20 +119,12 @@ object CoreCardMatchEngine {
             .distinct()
             .count()
 
-        if (titleCount >= 2) return true
         if (acceptButtonCount >= 2) return true
+        if (singularTitleCount >= 2 && endpointCount >= 4) return true
         if (endpointCount >= 4 && moneyCount >= 2 && distanceCount >= 2) return true
-        val listMarkers = listOf(
-            "corridas disponiveis",
-            "viagens disponiveis",
-            "ofertas disponiveis",
-            "lista de corridas",
-            "pedidos proximos",
-            "novos pedidos",
-            "pedidos de viagem",
-        )
-        return listMarkers.any { it in normalizedText }
-    }
+        if (hasPluralHeader && moneyCount >= 3 && distanceCount >= 2) return true
+        return false
+    } // open_all_list_detection_0_1_94
 
     private fun hasStrongOpenedCardEvidence(text: String, normalizedText: String): Boolean {
         val hasPrimaryAction = acceptButtonRegex.containsMatchIn(text) ||
@@ -165,13 +142,11 @@ object CoreCardMatchEngine {
         templates: List<RideCardTemplate>,
         liveFeatures: Set<String>,
     ): RideCardTemplateMatch? {
-        val hasLiveRideSignal = rideSignals.any { it in liveFeatures }
         val liveRouteSignals = routeSignals.intersect(liveFeatures)
-        if (!hasLiveRideSignal || liveRouteSignals.size < 3) return null
+        if (liveRouteSignals.size < 2) return null
 
         return templates
             .asSequence()
-            .filter { belongsToPackage(it, packageName) }
             .mapNotNull { template ->
                 val required = template.requiredFeatures
                     .filterNot { it.startsWith("adaptive.") }
@@ -179,19 +154,18 @@ object CoreCardMatchEngine {
                 if (required.isEmpty()) return@mapNotNull null
                 val matched = required.intersect(liveFeatures)
                 val matchedRouteSignals = routeSignals.intersect(matched)
-                val matchedRideSignals = rideSignals.intersect(matched)
                 val score = matched.size.toDouble() / required.size.coerceAtLeast(1)
-                if (matched.size < 5 || matchedRouteSignals.size < 3 || matchedRideSignals.isEmpty() || score < 0.35) {
-                    return@mapNotNull null
-                }
+                if (matched.size < 3 || matchedRouteSignals.size < 2 || score < 0.25) return@mapNotNull null
                 RideCardTemplateMatch(
                     template = template,
                     score = score,
                     matchedFeatures = matched.toList().sorted(),
                 )
             }
-            .maxByOrNull { it.score }
-    }
+            .maxByOrNull { match ->
+                match.score + if (match.template.packageName?.equals(packageName, ignoreCase = true) == true) 0.08 else 0.0
+            }
+    } // open_all_family_fallback_0_1_94
 
     private fun routeEndpointSignatures(text: String): Set<String> {
         val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }

@@ -12,6 +12,11 @@ object RideCardTemplateMatcher {
     private val moneyRegex = Regex("""R\$\s*\d""", RegexOption.IGNORE_CASE)
     private val distanceRegex = Regex("""\b\d+(?:[,.]\d+)?\s*km\b""", RegexOption.IGNORE_CASE)
     private val timeRegex = Regex("""\b\d{1,3}\s*(?:seg|min|minuto|minutos)\b""", RegexOption.IGNORE_CASE)
+    private val acceptButtonRegex = Regex("aceitar\\s+por\\s+r\\$\\s*\\d+", RegexOption.IGNORE_CASE)
+    private val farePerKmRegex = Regex("r\\$\\s*\\d+(?:[,.]\\d+)?\\s*/\\s*km", RegexOption.IGNORE_CASE)
+    private val inDriveOfferButtonRegex = Regex("ofere[cç]a\\s+sua\\s+tarifa", RegexOption.IGNORE_CASE)
+    private val routeMarkerInlineRegex = Regex("(?m)^\\s*[ab]\\s+.{5,}", RegexOption.IGNORE_CASE)
+
     private val timeDistanceLineRegex = Regex(
         """\b\d{1,3}\s*(?:seg|min|minuto|minutos)\s*\(\s*\d+(?:[,.]\d+)?\s*km\s*\)""",
         RegexOption.IGNORE_CASE,
@@ -145,52 +150,31 @@ object RideCardTemplateMatcher {
         val normalizedPackage = packageName?.lowercase(Locale.ROOT)
         val liveFeatures = deterministicFeaturesFor(text)
         if ("card.crop.route_block" !in liveFeatures) return null
-        val candidates = templates
-            .asSequence()
+
+        return templates.asSequence()
             .filter { template ->
                 template.packageName.isNullOrBlank() ||
                     isUniversalLearnedPackage(template.packageName) ||
                     template.packageName.equals(normalizedPackage, ignoreCase = true)
             }
             .mapNotNull { template ->
-                val required = template.requiredFeatures
-                    .filterNot { it.startsWith("adaptive.") }
-                    .toSet()
-                if (required.isEmpty()) return@mapNotNull null
-                val matched = required.intersect(liveFeatures)
-                val score = matched.size.toDouble() / required.size.coerceAtLeast(1)
-                RideCardTemplateMatch(template = template, score = score, matchedFeatures = matched.toList().sorted())
+                val universalPackage = isUniversalLearnedPackage(template.packageName)
+                val evaluation = RealWorldRideCardMatchPolicy.evaluate(
+                    requiredFeatures = template.requiredFeatures.toSet(),
+                    liveFeatures = liveFeatures,
+                    samePackage = template.packageName?.equals(normalizedPackage, ignoreCase = true) == true,
+                    universalPackage = universalPackage,
+                    learnableLiveCard = looksLikeLearnableRideCard(text),
+                )
+                if (!evaluation.accepted) return@mapNotNull null
+                RideCardTemplateMatch(
+                    template = template,
+                    score = evaluation.score,
+                    matchedFeatures = evaluation.matchedFeatures.toList().sorted(),
+                )
             }
-            .toList()
-
-        return candidates
-            .asSequence()
-            .filter { match ->
-                val samePackage = match.template.packageName?.equals(normalizedPackage, ignoreCase = true) == true
-                val universalPackage = isUniversalLearnedPackage(match.template.packageName)
-                val required = match.template.requiredFeatures
-                    .filterNot { it.startsWith("adaptive.") }
-                    .toSet()
-                val requiredCardFeatures = required.filter { it.startsWith("card.") }.toSet()
-                val requiredStructuralFeatures = structuralFeatures.intersect(required)
-                val structuralOk = requiredStructuralFeatures.all { it in match.matchedFeatures }
-                val cropOk = "card.crop.route_block" in match.matchedFeatures &&
-                    requiredCardFeatures.filter { it in strictCardFeatures }.all { it in match.matchedFeatures }
-                if (universalPackage) {
-                    looksLikeLearnableRideCard(text) &&
-                        cropOk &&
-                        match.score >= UNIVERSAL_MIN_SCORE &&
-                        match.matchedFeatures.size >= required.size.coerceAtMost(UNIVERSAL_MIN_FEATURES).coerceAtLeast(MIN_FEATURES)
-                } else {
-                    samePackage &&
-                        cropOk &&
-                        (structuralOk || "card.route.marked_stops" in match.matchedFeatures) &&
-                        match.score >= MIN_SCORE &&
-                        match.matchedFeatures.size >= MIN_FEATURES
-                }
-            }
-            .maxByOrNull { it.score }
-    }
+            .maxByOrNull(RideCardTemplateMatch::score)
+    } // real_world_match_policy_checklist_11
 
     fun featuresFor(text: String): Set<String> = deterministicFeaturesFor(text)
 
@@ -239,7 +223,72 @@ object RideCardTemplateMatcher {
             endpointTextLines = endpointTextLines,
         )
         if (hasRouteBlock) features += "card.crop.route_block"
+        if (isInDriveIndividualContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_individual"
+        }
+        if (isInDriveOpenedCardContract(normalized, text, moneyCount, distanceCount, addressCount, markerCount, endpointTextLines)) {
+            features += "card.contract.indrive_opened_single"
+        }
         return features
+    }
+
+    private fun isInDriveListingScreen(normalized: String, rawText: String): Boolean {
+        val rideTitleCount = Regex("pedido[s]?\\s+de\\s+viagem", RegexOption.IGNORE_CASE).findAll(rawText).count()
+        val acceptCount = acceptButtonRegex.findAll(rawText).count()
+        val offerCount = inDriveOfferButtonRegex.findAll(rawText).count()
+        val hasPluralHeader = "pedidos de viagem" in normalized
+        val hasListWords = listOf("filtrar", "ordenar", "mais pedidos", "novos pedidos", "solicitacoes", "solicitações").any { it in normalized }
+        return hasPluralHeader || hasListWords || rideTitleCount > 1 || acceptCount > 1 || offerCount > 1
+    }
+
+    private fun isInDriveOpenedCardContract(
+        normalized: String,
+        rawText: String,
+        moneyCount: Int,
+        distanceCount: Int,
+        addressCount: Int,
+        markerCount: Int,
+        endpointTextLines: Int,
+    ): Boolean {
+        if (isInDriveListingScreen(normalized, rawText)) return false
+        val hasSingularRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
+        val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
+        val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
+        val hasFarePerKm = farePerKmRegex.containsMatchIn(rawText)
+        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2 || addressCount >= 2 // indrive_markerless_endpoints_0_1_87
+        val hasEnoughAddress = addressCount >= 1 || endpointTextLines >= 2
+        val hasRouteStructure = hasTwoEndpoints && hasEnoughAddress
+        return hasRouteStructure &&
+            hasPrimaryAction &&
+            moneyCount >= 1 &&
+            (distanceCount >= 1 || hasFarePerKm || hasSingularRideTitle) // indrive_card_family_contract_0_1_85
+    }
+
+    private fun isInDriveIndividualContract(
+        normalized: String,
+        rawText: String,
+        moneyCount: Int,
+        distanceCount: Int,
+        addressCount: Int,
+        markerCount: Int,
+        endpointTextLines: Int,
+    ): Boolean {
+        if (ownAppMarkers.any { marker -> marker in normalized }) return false
+        if (isInDriveListingScreen(normalized, rawText)) return false
+        val hasRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
+        val hasAccept = acceptButtonRegex.containsMatchIn(rawText) || "aceitar por" in normalized
+        val hasOffer = inDriveOfferButtonRegex.containsMatchIn(rawText) || "ofereca sua tarifa" in normalized || "ofereça sua tarifa" in normalized
+        val hasPrimaryAction = hasAccept || hasOffer
+        val hasMoney = moneyCount >= 1
+        val hasRouteKm = distanceCount >= 1 || farePerKmRegex.containsMatchIn(rawText)
+        val hasTwoEndpoints = endpointTextLines >= 2 || markerCount >= 2 || routeMarkerInlineRegex.findAll(rawText).count() >= 2 || addressCount >= 2 // indrive_markerless_endpoints_0_1_87
+        val hasAddress = addressCount >= 1 || endpointTextLines >= 2
+        val hasRouteStructure = hasTwoEndpoints && hasAddress
+        return hasRouteStructure &&
+            hasPrimaryAction &&
+            hasMoney &&
+            (hasRouteKm || hasRideTitle) // indrive_card_family_contract_0_1_85
     }
 
     private fun isRouteCardCrop(
@@ -252,12 +301,24 @@ object RideCardTemplateMatcher {
         hasTwoMarkers: Boolean,
         endpointTextLines: Int,
     ): Boolean {
+        val markerlessInDriveIndividual =
+            "pedido de viagem" in normalized &&
+                "pedidos de viagem" !in normalized &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized) &&
+                addressCount >= 2 &&
+                distanceCount >= 1
+        if (markerlessInDriveIndividual) return true // indrive_markerless_route_block_0_1_87
         if (ownAppMarkers.any { marker -> marker in normalized }) return false
         if (timeDistanceCount >= 2 && addressCount >= 1) return true
         if (timeDistanceCount >= 1 && addressCount >= 2) return true
         if (hasMarkers && distanceCount >= 1 && addressCount >= 2) return true
         if (hasTwoMarkers && endpointTextLines >= 2) return true
         if (timeCount >= 2 && distanceCount >= 2 && addressCount >= 1) return true
+        val inDriveMarkerlessOffer128 =
+            ("pedido de viagem" in normalized || "pedidos de viagem" in normalized) &&
+                ("aceitar por" in normalized || "ofereca sua tarifa" in normalized || "preco justo" in normalized) &&
+                (addressCount >= 2 || endpointTextLines >= 2)
+        if (inDriveMarkerlessOffer128) return true // indrive_markerless_offer_crop_0_1_128
         return false
     }
 

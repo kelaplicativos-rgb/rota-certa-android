@@ -11,6 +11,7 @@ val inDriveMarkerlessLiveCardFix by tasks.registering {
     outputs.upToDateWhen { false }
 
     doLast {
+        if (coreMatcherFile.asFile.readText().contains("open_all_core_match_0_1_94")) return@doLast // open_all_legacy_markerless_idempotence_0_1_94
         matcherFile.asFile.takeIf { it.exists() }?.let { file ->
             var text = file.readText()
             val original = text

@@ -38,6 +38,7 @@ class LiveRideRouteCache(
     fun put(key: Key?, route: CachedRoute) {
         key ?: return
         if (route.destinationCoordinate == null) return
+        if (route.homeDistanceKm == null && route.alternativeDistanceKm == null) return // route_cache_requires_exact_distance_0_1_127
         entries[key] = Entry(
             destinationCoordinate = route.destinationCoordinate,
             homeCoordinate = route.homeCoordinate,
@@ -122,9 +123,13 @@ class LiveRideRouteCache(
             }.getOrNull() ?: return@forEach
 
             val age = now - entry.createdAtMillis
-            if (entry.destinationCoordinate != null && age in 0L..ttlMillis) {
+            if (
+                entry.destinationCoordinate != null &&
+                (entry.homeDistanceKm != null || entry.alternativeDistanceKm != null) &&
+                age in 0L..ttlMillis
+            ) {
                 entries[key] = entry
-            }
+            } // route_cache_import_requires_exact_distance_0_1_127
         }
         return entries.size
     }

@@ -163,9 +163,18 @@ class AutomaticRideCaptureStore(context: Context) {
         matchedTemplateId: String? = null,
         matchedTemplateName: String? = null,
         nowMillis: Long = System.currentTimeMillis(),
+        allowIncompleteManual: Boolean = false,
     ): AutomaticRideCapture? = withContext(Dispatchers.IO) {
         if (!isEnabled() || bitmap.isRecycled || text.isBlank() || packageName.isBlank()) return@withContext null
-        if (!AutomaticRideCapturePolicy.isUseful(fields, bitmap.width, bitmap.height)) return@withContext null
+        val regularUsefulChecklist12 = AutomaticRideCapturePolicy.isUseful(fields, bitmap.width, bitmap.height)
+        val manualUsefulChecklist12 = allowIncompleteManual && ManualRideCardCapturePolicy.evaluate(
+            packageSelected = true,
+            text = text,
+            bitmapWidth = bitmap.width,
+            bitmapHeight = bitmap.height,
+            looksLikeRideCard = RideCardTemplateMatcher.looksLikeLearnableRideCard(text),
+        ).canStoreImage
+        if (!regularUsefulChecklist12 && !manualUsefulChecklist12) return@withContext null // manual_incomplete_capture_store_checklist_12
 
         val normalizedPackage = packageName.trim().lowercase(Locale.ROOT)
         val semanticHash = AutomaticRideCapturePolicy.semanticHash(normalizedPackage, text, fields)
@@ -322,7 +331,7 @@ class AutomaticRideCaptureStore(context: Context) {
     private fun removeUnreferencedImagesLocked(captures: List<AutomaticRideCapture>) {
         val referenced = captures.mapTo(hashSetOf()) { it.imageFileName }
         directory.listFiles()?.forEach { file ->
-            if (file.name !in referenced) file.delete()
+            if (!file.name.endsWith(".tmp") && file.name !in referenced) file.delete() // capture_tmp_write_safety_checklist_6
         }
     }
 

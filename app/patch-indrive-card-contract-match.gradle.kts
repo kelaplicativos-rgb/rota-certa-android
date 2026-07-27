@@ -15,6 +15,8 @@ val inDriveCardContractMatch by tasks.registering {
         var text = file.readText()
         val original = text
 
+        if ("open_all_template_matcher_0_1_94" in text) return@doLast // open_all_legacy_indrive_idempotence_0_1_94
+
         if ("private val acceptButtonRegex" !in text) {
             text = text.replace(
                 """    private val timeDistanceLineRegex = Regex(

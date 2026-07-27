@@ -87,7 +87,7 @@ class RideCardTemplateMatcherTest {
     }
 
     @Test
-    fun doesNotMatchDifferentRideAppPackage() {
+    fun doesNotMatchDifferentRideAppPackage() { // strict_same_package_open_all_test_guard_0_1_128
         val sample = """
             7 min (2.0 km)
             Rua A, 10

@@ -35,15 +35,13 @@ object InDriveCardContract : CoreRideCardContract {
         if (CoreCardMatchEngine.isListLikeRideFeed(text, normalized)) {
             return CoreRideCardContractResult.rejected(name, "inDrive em lista/feed; bloquear rota e farol.", isListLike = true)
         }
-        if ("card.crop.route_block" !in features) {
-            return CoreRideCardContractResult.rejected(name, "inDrive sem bloco individual de rota.")
-        }
-        val hasRideTitle = "pedido de viagem" in normalized && "pedidos de viagem" !in normalized
+        val hasRideTitle = "pedido de viagem" in normalized || "pedidos de viagem" in normalized // open_all_contract_titles_0_1_94
         val hasAccept = acceptButtonRegex.containsMatchIn(text) || "aceitar por" in normalized
         val hasOffer = offerButtonRegex.containsMatchIn(text) || "ofereca sua tarifa" in normalized
         val hasPrimaryAction = hasAccept || hasOffer
         val hasMoney = moneyRegex.containsMatchIn(text)
         val hasRoute = "card.route.address" in features ||
+            "card.route.two_addresses" in features || // indrive_markerless_core_route_0_1_87
             "card.route.ab_markers" in features ||
             "card.route.marked_stops" in features ||
             routeMarkerRegex.findAll(text).count() >= 2
@@ -67,9 +65,6 @@ object UberCardContract : CoreRideCardContract {
         if (CoreCardMatchEngine.isListLikeRideFeed(text, normalized)) {
             return CoreRideCardContractResult.rejected(name, "Uber em lista/feed; bloquear rota e farol.", isListLike = true)
         }
-        if ("card.crop.route_block" !in features) {
-            return CoreRideCardContractResult.rejected(name, "Uber sem bloco individual de rota.")
-        }
         val hasUberSignal = listOf("uberx", "exclusivo", "viagem longa", "radar de viagens", "pop expresso").any { it in normalized }
         val hasRoute = "card.route.address" in features || "card.route.marked_stops" in features || "card.route.ab_markers" in features
         return if (hasUberSignal || hasRoute) {
@@ -88,9 +83,6 @@ object NinetyNineCardContract : CoreRideCardContract {
         if (CoreCardMatchEngine.isListLikeRideFeed(text, normalized)) {
             return CoreRideCardContractResult.rejected(name, "99 em lista/feed; bloquear rota e farol.", isListLike = true)
         }
-        if ("card.crop.route_block" !in features) {
-            return CoreRideCardContractResult.rejected(name, "99 sem bloco individual de rota.")
-        }
         val has99Signal = listOf("negocia", "perfil premium", "perfil essencial", "pop expresso").any { it in normalized }
         val hasRoute = "card.route.address" in features || "card.route.marked_stops" in features || "card.route.ab_markers" in features
         return if (has99Signal || hasRoute) {
@@ -108,9 +100,6 @@ object UniversalCardContract : CoreRideCardContract {
         val normalized = text.toContractText()
         if (CoreCardMatchEngine.isListLikeRideFeed(text, normalized)) {
             return CoreRideCardContractResult.rejected(name, "Tela universal em lista/feed; bloquear rota e farol.", isListLike = true)
-        }
-        if ("card.crop.route_block" !in features) {
-            return CoreRideCardContractResult.rejected(name, "Universal sem bloco individual de rota.")
         }
         val hasRoute = "card.route.address" in features || "card.route.marked_stops" in features || "card.route.ab_markers" in features
         return if (hasRoute) {

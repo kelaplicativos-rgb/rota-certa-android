@@ -44,7 +44,7 @@ private object GenericCoreClassifier {
                 confidence = 0.1,
             )
         }
-        if (listingWords.any { it in normalized } && moneyRegex.findAll(snapshot.text).count() > 1) {
+        if (CoreCardMatchEngine.isListLikeRideFeed(snapshot.text, normalized)) { // open_all_generic_listing_0_1_94
             return RideScreenClassification(
                 kind = RideScreenKind.RideListing,
                 packageName = snapshot.packageName,
@@ -58,7 +58,7 @@ private object GenericCoreClassifier {
         val hasMarkers = markerLineRegex.findAll(snapshot.text).count() >= 2 ||
             (!snapshot.fields.pickup.isNullOrBlank() && !snapshot.fields.destination.isNullOrBlank())
         val score = listOf(hasDestination, hasMoney, hasDistance, hasMarkers).count { it } / 4.0
-        return if (score >= 0.75) {
+        return if (hasDestination && score >= 0.25) { // open_all_generic_classifier_0_1_94
             RideScreenClassification(
                 kind = RideScreenKind.OpenRideCard,
                 packageName = snapshot.packageName,

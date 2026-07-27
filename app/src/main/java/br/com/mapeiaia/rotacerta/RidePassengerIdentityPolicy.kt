@@ -49,7 +49,7 @@ object RidePassengerIdentityPolicy {
             .replace('\u00A0', ' ')
             .replace('\u202F', ' ')
             .lines()
-            .map(String::trim)
+            .map { line -> Normalizer.normalize(line, Normalizer.Form.NFC).trim() }
             .filter(String::isNotBlank)
 
         val candidates = buildList {
@@ -82,7 +82,7 @@ object RidePassengerIdentityPolicy {
     }
 
     private fun looksLikeHumanName(value: String): Boolean {
-        val normalized = value.trim().replace(Regex("\\s+"), " ")
+        val normalized = Normalizer.normalize(value, Normalizer.Form.NFC).trim().replace(Regex("\\s+"), " ")
         val canonical = canonical(normalized)
         if (canonical in uiOnlyLines.map(::canonical)) return false
         if (normalized.length !in MIN_NAME_LENGTH..MAX_NAME_LENGTH) return false

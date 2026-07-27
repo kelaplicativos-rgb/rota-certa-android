@@ -15,7 +15,7 @@ data class AppSettings(
     val alternativeCoordinate: Coordinate? = null,
     val bubbleOpacity: Double = 1.0,
     val bubbleDarkMode: Boolean = false,
-    val restrictToSelectedRideApps: Boolean = true,
+    val restrictToSelectedRideApps: Boolean = true, // strict_model_manual_apps_default_0_1_127
     val monitor99: Boolean = false,
     val monitorUber: Boolean = false,
     val monitorInDrive: Boolean = false,
@@ -25,9 +25,9 @@ data class AppSettings(
     val homeTargetEnabled: Boolean = true,
     val alternativeTargetEnabled: Boolean = true,
     val workRegionPins: List<WorkRegionPin> = emptyList(),
-    val requireRegisteredRideCard: Boolean = true,
+    val requireRegisteredRideCard: Boolean = false, // simple_saved_app_default_checklist_13 // strict_model_card_required_default_0_1_127
     val proximityAlertsEnabled: Boolean = true,
-    val proximityAlertDistanceMeters: Int = 200,
+    val proximityAlertDistanceMeters: Int = 500,
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
@@ -180,7 +180,7 @@ data class LiveDiagnostic(
     val stage: String = "",
     val bubbleColor: String = "amarelo",
     val reason: String = "",
-    val restrictToSelectedRideApps: Boolean = true,
+    val restrictToSelectedRideApps: Boolean = true, // strict_model_manual_apps_default_0_1_127
     val selectedPackages: List<String> = emptyList(),
     val registeredCardRequired: Boolean = true,
     val registeredCardMatched: String? = null,
@@ -195,3 +195,5 @@ data class LiveDiagnostic(
     val error: String? = null,
     val diagnosticLog: String = "",
 )
+
+// universal_defaults_v2_0_1_95
