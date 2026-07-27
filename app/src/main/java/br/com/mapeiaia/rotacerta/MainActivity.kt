@@ -45,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -122,6 +123,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
     var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
     var savedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
     var handledSavedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
+    var confirmDestinationGps138 by remember { mutableStateOf(false) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
     var backupStatus by remember { mutableStateOf("") }
@@ -166,7 +168,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
     }
 
-    fun createSavedPlaceFromHome(type: SavedPlaceType) {
+    fun createSavedPlaceFromHome(type: SavedPlaceType, requestNameDialog: Boolean = false) {
         scope.launch {
             val coordinate = locationService.currentCoordinate()
             if (coordinate == null) {
@@ -187,6 +189,10 @@ fun RotaCertaApp(launchIntent: Intent?) {
             )
             repository.addSavedPlace(place)
             highlightedSavedPlaceId = place.id
+            if (requestNameDialog) {
+                handledSavedPlaceNameDialogId = null
+                savedPlaceNameDialogId = place.id
+            }
             tab = TAB_CONFIG
             selectedBubbleGroup = if (isAlert) BUBBLE_GROUP_ALERTS else BUBBLE_GROUP_SAVED_PLACES
             Toast.makeText(
@@ -340,6 +346,15 @@ fun RotaCertaApp(launchIntent: Intent?) {
             if (requestedGroup in BUBBLE_GROUP_VALUES) selectedBubbleGroup = requestedGroup
         } // startup_permissions_0_1_120
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+        launchIntent?.getStringExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138)?.let { rawType ->
+            val requestedType = runCatching { SavedPlaceType.valueOf(rawType) }.getOrNull()
+            if (requestedType != null) createSavedPlaceFromHome(requestedType, requestNameDialog = true)
+            launchIntent?.removeExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138)
+        }
+        if (launchIntent?.getBooleanExtra(EXTRA_CONFIRM_DESTINATION_GPS_138, false) == true) {
+            confirmDestinationGps138 = true
+            launchIntent?.removeExtra(EXTRA_CONFIRM_DESTINATION_GPS_138)
+        }
         if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
             Unit /* production_log_removed_checklist_4 */
             supportReportFileCreator.launch("rota-certa-relatorio-completo.txt")
@@ -365,7 +380,76 @@ fun RotaCertaApp(launchIntent: Intent?) {
     }
 
     savedPlaces.firstOrNull { it.id == savedPlaceNameDialogId }?.let { place ->
-        Unit
+        var requestedName by remember(place.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = {
+                handledSavedPlaceNameDialogId = place.id
+                savedPlaceNameDialogId = null
+            },
+            title = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome do alerta" else "Nome do local") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (place.type == SavedPlaceType.ProximityAlert) {
+                            "Digite um nome ou salve vazio para usar Alerta."
+                        } else {
+                            "Digite um nome ou salve vazio para usar Local salvo."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = requestedName,
+                        onValueChange = { requestedName = it },
+                        label = { Text("Nome") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    renameSavedPlace(place, requestedName)
+                    handledSavedPlaceNameDialogId = place.id
+                    savedPlaceNameDialogId = null
+                }) { Text("Salvar") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    handledSavedPlaceNameDialogId = place.id
+                    savedPlaceNameDialogId = null
+                }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    if (confirmDestinationGps138) {
+        AlertDialog(
+            onDismissRequest = { confirmDestinationGps138 = false },
+            title = { Text("Definir este local como destino?") },
+            text = { Text("O GPS atual substituirá o destino principal usado pelo farol.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDestinationGps138 = false
+                    scope.launch {
+                        val coordinate = locationService.currentCoordinate()
+                        if (coordinate == null) {
+                            Toast.makeText(context, "Não foi possível obter a localização", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                        val resolved = gpsAddressResolver.resolve(coordinate)
+                        repository.saveSettings(
+                            settings.copy(
+                                homeAddress = resolved.addressLine.ifBlank { formatCoordinate(coordinate) },
+                                homeCoordinate = coordinate,
+                                homeTargetEnabled = true,
+                            ),
+                        )
+                        Toast.makeText(context, "Destino definido", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Definir") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDestinationGps138 = false }) { Text("Cancelar") } },
+        )
     }
 
     Scaffold(
@@ -447,6 +531,9 @@ fun RotaCertaApp(launchIntent: Intent?) {
 }
 
 // in_app_bubble_home_visible_0_1_97
+const val EXTRA_CREATE_SAVED_PLACE_TYPE_138 = "create_saved_place_type_138"
+const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+
 private const val BUBBLE_GROUP_GENERAL = "general"
 private const val BUBBLE_GROUP_READING = "reading"
 private const val BUBBLE_GROUP_DESTINATION = "destination"

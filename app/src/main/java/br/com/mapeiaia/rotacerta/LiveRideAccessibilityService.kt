@@ -1668,10 +1668,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         when (spec.doubleTapAction) {
             BubbleShortcutQuickAction.CopyAllVisibleText -> copyAllVisibleTextFromBubble138()
             BubbleShortcutQuickAction.CreateQuickReply -> openQuickRepliesFromBubble(createNew = true)
-            BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> toast("Preparando radar neste local.")
-            BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> toast("Preparando novo alerta.")
-            BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> toast("Preparando novo local.")
-            BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> toast("Preparando destino atual.")
+            BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> createManualRadarFromBubble138()
+            BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.ProximityAlert)
+            BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.Place)
+            BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> openDestinationConfirmationFromBubble138()
             null -> executeShortcutModule(spec)
         }
     }
@@ -1711,6 +1711,66 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
 
     // manual_card_capture_complete_checklist_12
+
+    private fun createManualRadarFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                toast("Não foi possível obter a localização")
+                return@launch
+            }
+            val duplicate = currentImportedRadars.any { radar ->
+                radar.source.equals("Manual", ignoreCase = true) &&
+                    GeoDistance.meters(radar.coordinate, coordinate) < 8.0
+            }
+            if (duplicate) {
+                toast("Já existe um radar manual neste local")
+                return@launch
+            }
+            val now = System.currentTimeMillis()
+            val radar = ImportedRadar(
+                id = "manual-radar-$now-${coordinate.latitude}-${coordinate.longitude}",
+                coordinate = coordinate,
+                type = 0,
+                source = "Manual",
+                createdAtMillis = now,
+            )
+            repository.replaceImportedRadars(listOf(radar) + currentImportedRadars)
+            toast("Radar salvo")
+            showSaveConfirmationNotification("Radar salvo", "Radar manual criado no local atual")
+        }
+    }
+
+    private fun openNamedPlaceShortcut138(type: SavedPlaceType) {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        val group = if (type == SavedPlaceType.ProximityAlert) "alerts" else "saved_places"
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, group)
+                    .putExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138, type.name),
+            )
+        }.onFailure { toast("Não consegui abrir o cadastro agora.") }
+    }
+
+    private fun openDestinationConfirmationFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_OPEN_TAB, TAB_ANALYSIS)
+                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, "destination")
+                    .putExtra(EXTRA_CONFIRM_DESTINATION_GPS_138, true),
+            )
+        }.onFailure { toast("Não consegui abrir a confirmação do destino.") }
+    }
 
     private fun copyAllVisibleTextFromBubble138() {
         shortcutOverlayController.hideAll()
