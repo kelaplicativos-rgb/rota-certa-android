@@ -1,0 +1,222 @@
+diff -ruN app-src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt /tmp/rota138work/app-src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt	2026-07-27 15:58:48.000000000 +0000
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt	2026-07-27 16:06:20.176065654 +0000
+@@ -23,6 +23,15 @@
+     OpenSettings,
+ }
+ 
++enum class BubbleShortcutQuickAction {
++    CopyAllVisibleText,
++    CreateQuickReply,
++    CreateRadarAtCurrentLocation,
++    CreateNamedAlertAtCurrentLocation,
++    CreateNamedSavedPlaceAtCurrentLocation,
++    DefineDestinationAtCurrentLocation,
++}
++
+ data class BubbleShortcutSpec(
+     val id: String,
+     val emoji: String,
+@@ -32,6 +41,7 @@
+     val defaultName: String? = null,
+     val targetGroup: String? = null,
+     val targetTab: String? = null,
++    val doubleTapAction: BubbleShortcutQuickAction? = null,
+ ) {
+     val displayText: String
+         get() = "$emoji\n$displayLabel"
+@@ -60,6 +70,7 @@
+         action = BubbleShortcutAction.OpenAlerts,
+         targetGroup = "alerts",
+         targetTab = "config",
++        doubleTapAction = BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation,
+     )
+ }
+ 
+@@ -71,6 +82,7 @@
+         action = BubbleShortcutAction.OpenSavedPlaces,
+         targetGroup = "saved_places",
+         targetTab = "config",
++        doubleTapAction = BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation,
+     )
+ }
+ 
+@@ -82,6 +94,7 @@
+         action = BubbleShortcutAction.OpenRadars,
+         targetGroup = "radars",
+         targetTab = "config",
++        doubleTapAction = BubbleShortcutQuickAction.CreateRadarAtCurrentLocation,
+     )
+ }
+ 
+@@ -156,6 +169,7 @@
+         label = "Respostas rápidas",
+         action = BubbleShortcutAction.OpenQuickReplies,
+         displayLabel = "Respostas",
++        doubleTapAction = BubbleShortcutQuickAction.CreateQuickReply,
+     )
+ }
+ 
+diff -ruN app-src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt /tmp/rota138work/app-src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt	2026-07-27 15:58:48.000000000 +0000
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt	2026-07-27 16:06:20.180065654 +0000
+@@ -5,7 +5,9 @@
+ import android.graphics.PixelFormat
+ import android.graphics.Typeface
+ import android.graphics.drawable.GradientDrawable
++import android.view.GestureDetector
+ import android.view.Gravity
++import android.view.MotionEvent
+ import android.view.View
+ import android.view.ViewGroup
+ import android.view.WindowManager
+@@ -36,8 +38,9 @@
+     fun toggleShortcuts(
+         anchor: WindowManager.LayoutParams,
+         onShortcut: (BubbleShortcutSpec) -> Unit,
++        onShortcutDoubleTap: (BubbleShortcutSpec) -> Unit,
+     ) {
+-        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut)
++        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut, onShortcutDoubleTap)
+     }
+@@ -169,6 +172,7 @@
+         anchor: WindowManager.LayoutParams,
+         onShortcut: (BubbleShortcutSpec) -> Unit,
++        onShortcutDoubleTap: (BubbleShortcutSpec) -> Unit,
+     ) {
+@@ -197,11 +201,25 @@
+             }
+             setPadding(panelPadding, panelPadding, panelPadding, panelPadding)
+             BubbleShortcutCatalog.modules.forEach { module ->
+-                addView(shortcutBubble(module.spec, bubbleSize, itemMargin, scale) {
+-                    hideShortcuts()
+-                    trace("bubble.shortcut.clicked id=${module.spec.id}")
+-                    onShortcut(module.spec)
+-                })
++                addView(
++                    shortcutBubble(
++                        spec = module.spec,
++                        bubbleSize = bubbleSize,
++                        itemMargin = itemMargin,
++                        scale = scale,
++                        singleAction = {
++                            hideShortcuts()
++                            trace("bubble.shortcut.clicked id=${module.spec.id}")
++                            onShortcut(module.spec)
++                        },
++                        doubleAction = module.spec.doubleTapAction?.let {
++                            {
++                                hideShortcuts()
++                                trace("bubble.shortcut.double_tap id=${module.spec.id} action=$it")
++                                onShortcutDoubleTap(module.spec)
++                            }
++                        },
++                    ),
++                )
+             }
+         }
+@@ -272,7 +290,8 @@
+         bubbleSize: Int,
+         itemMargin: Int,
+         scale: Double,
+-        action: () -> Unit,
++        singleAction: () -> Unit,
++        doubleAction: (() -> Unit)?,
+     ): TextView = TextView(context).apply {
+@@ -291,7 +310,24 @@
+             height = bubbleSize
+             setMargins(itemMargin, itemMargin, itemMargin, itemMargin)
+         }
+-        setOnClickListener { action() }
++        val gestureDetector = GestureDetector(
++            context,
++            object : GestureDetector.SimpleOnGestureListener() {
++                override fun onDown(event: MotionEvent): Boolean = true
++
++                override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
++                    singleAction()
++                    return true
++                }
++
++                override fun onDoubleTap(event: MotionEvent): Boolean {
++                    val action = doubleAction ?: return false
++                    action()
++                    return true
++                }
++            },
++        )
++        setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+     }
+ 
+diff -ruN app-src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt /tmp/rota138work/app-src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt	2026-07-27 15:58:48.000000000 +0000
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/DestinationBubbleShortcutModule.kt	2026-07-27 16:06:20.176065654 +0000
+@@ -8,5 +8,6 @@
+         action = BubbleShortcutAction.OpenDestination,
+         targetGroup = "destination",
+         targetTab = "analysis",
++        doubleTapAction = BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation,
+     )
+ }
+diff -ruN app-src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt /tmp/rota138work/app-src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt	2026-07-27 15:58:48.000000000 +0000
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt	2026-07-27 16:06:20.184065654 +0000
+@@ -1653,7 +1653,11 @@
+     private fun toggleResourceShortcuts() {
+         val params = overlayParams ?: return
+-        shortcutOverlayController.toggleShortcuts(anchor = params, onShortcut = ::executeShortcutModule)
++        shortcutOverlayController.toggleShortcuts(
++            anchor = params,
++            onShortcut = ::executeShortcutModule,
++            onShortcutDoubleTap = ::executeShortcutDoubleTap,
++        )
+         persistResourceShortcutState()
+@@ -1660,6 +1664,19 @@
+     }
+ 
++    private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
++        when (spec.doubleTapAction) {
++            BubbleShortcutQuickAction.CopyAllVisibleText -> toast("Preparando cópia completa da tela.")
++            BubbleShortcutQuickAction.CreateQuickReply -> toast("Preparando nova resposta.")
++            BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> toast("Preparando radar neste local.")
++            BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> toast("Preparando novo alerta.")
++            BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> toast("Preparando novo local.")
++            BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> toast("Preparando destino atual.")
++            null -> executeShortcutModule(spec)
++        }
++    }
++
+     private fun executeShortcutModule(spec: BubbleShortcutSpec) {
+ 
+diff -ruN app-src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationBubbleShortcutModule.kt /tmp/rota138work/app-src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationBubbleShortcutModule.kt
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationBubbleShortcutModule.kt	2026-07-27 15:58:48.000000000 +0000
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/TripConfirmationBubbleShortcutModule.kt	2026-07-27 16:06:20.184065654 +0000
+@@ -7,5 +7,6 @@
+         label = "Copiar confirmação da viagem",
+         displayLabel = "Copiar viagem",
+         action = BubbleShortcutAction.CopyTripConfirmation,
++        doubleTapAction = BubbleShortcutQuickAction.CopyAllVisibleText,
+     )
+ }
+diff -ruN app-src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutDoubleTapContract138Test.kt /tmp/rota138work/app-src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutDoubleTapContract138Test.kt
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutDoubleTapContract138Test.kt	1970-01-01 00:00:00.000000000 +0000
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutDoubleTapContract138Test.kt	2026-07-27 16:06:20.188065654 +0000
+@@ -0,0 +1,20 @@
++package br.com.mapeiaia.rotacerta
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class BubbleShortcutDoubleTapContract138Test {
++    @Test fun `atalhos principais possuem acao dupla distinta`() {
++        val byId = BubbleShortcutCatalog.modules.associateBy { it.spec.id }
++        assertEquals(BubbleShortcutQuickAction.CopyAllVisibleText, byId.getValue("copy_trip_confirmation").spec.doubleTapAction)
++        assertEquals(BubbleShortcutQuickAction.CreateQuickReply, byId.getValue("quick_replies").spec.doubleTapAction)
++        assertEquals(BubbleShortcutQuickAction.CreateRadarAtCurrentLocation, byId.getValue("radars").spec.doubleTapAction)
++        assertEquals(BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation, byId.getValue("alerts").spec.doubleTapAction)
++        assertEquals(BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation, byId.getValue("saved_places").spec.doubleTapAction)
++        assertEquals(BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation, byId.getValue("destination").spec.doubleTapAction)
++        assertNull(byId.getValue("appearance").spec.doubleTapAction)
++    }
++}
