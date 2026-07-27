@@ -1,0 +1,33 @@
+name: Rota 0.1.138 Source Snapshot
+
+on:
+  pull_request:
+    branches:
+      - codex/manual-selection-no-models-ui-staged
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Package current Android source
+        run: |
+          mkdir -p snapshot
+          cp -a app/src snapshot/app-src
+          cp app/build.gradle.kts snapshot/app-build.gradle.kts
+          cp build.gradle.kts snapshot/root-build.gradle.kts
+          cp settings.gradle.kts snapshot/settings.gradle.kts
+          cp gradle.properties snapshot/gradle.properties
+          find .github/workflows -maxdepth 1 -type f -print0 | xargs -0 -I{} cp {} snapshot/
+          tar -czf rota-138-source-snapshot.tar.gz snapshot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-138-source-snapshot
+          path: rota-138-source-snapshot.tar.gz
+          if-no-files-found: error
