@@ -51,13 +51,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp scripts/final_manual_contract_cleanup.py /tmp/final_manual_contract_cleanup.py
           cp scripts/final_cleanup_compile_fixes.py /tmp/final_cleanup_compile_fixes.py
+          cp scripts/final_cleanup_test_fixes.py /tmp/final_cleanup_test_fixes.py
 
       - name: Apply final manual-only contract
         run: |
           set -o pipefail
           python3 /tmp/final_manual_contract_cleanup.py 2>&1 | tee ci-cleanup/logs/transform.log
           python3 /tmp/final_cleanup_compile_fixes.py 2>&1 | tee ci-cleanup/logs/compile-fixes.log
-          rm -f scripts/final_manual_contract_cleanup.py scripts/final_cleanup_compile_fixes.py scripts/fix-stage-script.py scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1
+          python3 /tmp/final_cleanup_test_fixes.py 2>&1 | tee ci-cleanup/logs/test-fixes.log
+          rm -f scripts/final_manual_contract_cleanup.py scripts/final_cleanup_compile_fixes.py scripts/final_cleanup_test_fixes.py scripts/fix-stage-script.py scripts/.stage-script.gz.b64.part0 scripts/.stage-script.gz.b64.part1
           find app/src/main/java -type f -name '*.kt' -print0 | sort -z | xargs -0 sha256sum > ci-cleanup/evidence/source-files.sha256
           grep -RInE 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver|InDriveCoreModule|UberCoreModule|NinetyNineCoreModule|RideCardTemplate|FastRideCardMatcher|AutomaticRideCapture|requireRegisteredRideCard|monitor99|monitorUber|monitorInDrive|RealWorldRideCardMatchPolicy|FullScreenRideCapturePolicy|ManualRideCardCapturePolicy|LiveRideBubbleDecisionPolicy|BubbleCardSessionStore|BubbleStateMachine|StableLiveReadSourceGate|PrimaryVisibleRideCardSelector|RidePassengerIdentityPolicy|RegisteredCardAddressGate|RegisteredCardDecisionGate|RideScreenTextClassifier|RideOfferDetector|CardRuntimeStability|uberx|99pop' app/src/main/java > ci-cleanup/evidence/forbidden-source.txt || true
           test ! -s ci-cleanup/evidence/forbidden-source.txt
