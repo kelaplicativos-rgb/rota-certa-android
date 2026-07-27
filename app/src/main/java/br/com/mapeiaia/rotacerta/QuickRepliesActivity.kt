@@ -46,6 +46,7 @@ class QuickRepliesActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 QuickRepliesScreen(
                     repository = remember { SettingsRepository(applicationContext) },
+                    startCreating = intent?.getBooleanExtra(EXTRA_QUICK_REPLY_CREATE, false) == true,
                     onApply = ::applyReply,
                     onClose = ::closeAndRevealPreviousApp,
                 )
@@ -74,6 +75,7 @@ class QuickRepliesActivity : ComponentActivity() {
 @Composable
 private fun QuickRepliesScreen(
     repository: SettingsRepository,
+    startCreating: Boolean,
     onApply: (String) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -81,7 +83,7 @@ private fun QuickRepliesScreen(
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<QuickReply?>(null) }
-    var creating by remember { mutableStateOf(false) }
+    var creating by remember(startCreating) { mutableStateOf(startCreating) }
     val query = search.trim().lowercase(Locale.ROOT)
     val filtered = remember(replies, query) {
         if (query.isBlank()) replies else replies.filter {
@@ -202,3 +204,4 @@ private fun QuickReplyEditorDialog(
 const val ACTION_APPLY_QUICK_REPLY = "br.com.mapeiaia.rotacerta.APPLY_QUICK_REPLY"
 const val EXTRA_QUICK_REPLY_TEXT = "quick_reply_text"
 const val EXTRA_QUICK_REPLY_TARGET_PACKAGE = "quick_reply_target_package"
+const val EXTRA_QUICK_REPLY_CREATE = "quick_reply_create"

@@ -57,8 +57,8 @@ class SettingsRepository(private val context: Context) {
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
             avoidedKeywords = prefs[avoidedKeywords].orEmpty(),
-            googleMapsApiKey = prefs[googleMapsApiKey]?.takeIf { it.isNotBlank() }
-                ?: BuildConfig.GOOGLE_MAPS_API_KEY,
+            googleMapsApiKey = BuildConfig.GOOGLE_MAPS_API_KEY.takeIf { it.isNotBlank() }
+                ?: prefs[googleMapsApiKey].orEmpty(),
             homeCoordinate = decodeCoordinate(prefs[homeCoordinate]),
             alternativeCoordinate = decodeCoordinate(prefs[alternativeCoordinate]),
             workRegionPins = decodeWorkRegionPins(prefs[workRegionPinsKey]),

@@ -45,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -122,6 +123,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
     var highlightedSavedPlaceId by remember { mutableStateOf<String?>(null) }
     var savedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
     var handledSavedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
+    var confirmDestinationGps138 by remember { mutableStateOf(false) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
     var backupStatus by remember { mutableStateOf("") }
@@ -166,7 +168,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
     }
 
-    fun createSavedPlaceFromHome(type: SavedPlaceType) {
+    fun createSavedPlaceFromHome(type: SavedPlaceType, requestNameDialog: Boolean = false) {
         scope.launch {
             val coordinate = locationService.currentCoordinate()
             if (coordinate == null) {
@@ -187,6 +189,10 @@ fun RotaCertaApp(launchIntent: Intent?) {
             )
             repository.addSavedPlace(place)
             highlightedSavedPlaceId = place.id
+            if (requestNameDialog) {
+                handledSavedPlaceNameDialogId = null
+                savedPlaceNameDialogId = place.id
+            }
             tab = TAB_CONFIG
             selectedBubbleGroup = if (isAlert) BUBBLE_GROUP_ALERTS else BUBBLE_GROUP_SAVED_PLACES
             Toast.makeText(
@@ -340,6 +346,15 @@ fun RotaCertaApp(launchIntent: Intent?) {
             if (requestedGroup in BUBBLE_GROUP_VALUES) selectedBubbleGroup = requestedGroup
         } // startup_permissions_0_1_120
         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+        launchIntent?.getStringExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138)?.let { rawType ->
+            val requestedType = runCatching { SavedPlaceType.valueOf(rawType) }.getOrNull()
+            if (requestedType != null) createSavedPlaceFromHome(requestedType, requestNameDialog = true)
+            launchIntent?.removeExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138)
+        }
+        if (launchIntent?.getBooleanExtra(EXTRA_CONFIRM_DESTINATION_GPS_138, false) == true) {
+            confirmDestinationGps138 = true
+            launchIntent?.removeExtra(EXTRA_CONFIRM_DESTINATION_GPS_138)
+        }
         if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
             Unit /* production_log_removed_checklist_4 */
             supportReportFileCreator.launch("rota-certa-relatorio-completo.txt")
@@ -365,7 +380,76 @@ fun RotaCertaApp(launchIntent: Intent?) {
     }
 
     savedPlaces.firstOrNull { it.id == savedPlaceNameDialogId }?.let { place ->
-        Unit
+        var requestedName by remember(place.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = {
+                handledSavedPlaceNameDialogId = place.id
+                savedPlaceNameDialogId = null
+            },
+            title = { Text(if (place.type == SavedPlaceType.ProximityAlert) "Nome do alerta" else "Nome do local") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (place.type == SavedPlaceType.ProximityAlert) {
+                            "Digite um nome ou salve vazio para usar Alerta."
+                        } else {
+                            "Digite um nome ou salve vazio para usar Local salvo."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = requestedName,
+                        onValueChange = { requestedName = it },
+                        label = { Text("Nome") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    renameSavedPlace(place, requestedName)
+                    handledSavedPlaceNameDialogId = place.id
+                    savedPlaceNameDialogId = null
+                }) { Text("Salvar") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    handledSavedPlaceNameDialogId = place.id
+                    savedPlaceNameDialogId = null
+                }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    if (confirmDestinationGps138) {
+        AlertDialog(
+            onDismissRequest = { confirmDestinationGps138 = false },
+            title = { Text("Definir este local como destino?") },
+            text = { Text("O GPS atual substituirá o destino principal usado pelo farol.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDestinationGps138 = false
+                    scope.launch {
+                        val coordinate = locationService.currentCoordinate()
+                        if (coordinate == null) {
+                            Toast.makeText(context, "Não foi possível obter a localização", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                        val resolved = gpsAddressResolver.resolve(coordinate)
+                        repository.saveSettings(
+                            settings.copy(
+                                homeAddress = resolved.addressLine.ifBlank { formatCoordinate(coordinate) },
+                                homeCoordinate = coordinate,
+                                homeTargetEnabled = true,
+                            ),
+                        )
+                        Toast.makeText(context, "Destino definido", Toast.LENGTH_SHORT).show()
+                    }
+                }) { Text("Definir") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDestinationGps138 = false }) { Text("Cancelar") } },
+        )
     }
 
     Scaffold(
@@ -447,6 +531,9 @@ fun RotaCertaApp(launchIntent: Intent?) {
 }
 
 // in_app_bubble_home_visible_0_1_97
+const val EXTRA_CREATE_SAVED_PLACE_TYPE_138 = "create_saved_place_type_138"
+const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+
 private const val BUBBLE_GROUP_GENERAL = "general"
 private const val BUBBLE_GROUP_READING = "reading"
 private const val BUBBLE_GROUP_DESTINATION = "destination"
@@ -956,6 +1043,9 @@ private fun SavedPlacesModuleCard(
     savedPlaces: List<SavedPlace>,
     type: SavedPlaceType,
     highlightedSavedPlaceId: String?,
+    alertDistanceMeters: Int? = null,
+    alertsEnabled: Boolean = true,
+    onAlertDistanceChange: (Int) -> Unit = {},
     onCreate: () -> Unit,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
@@ -977,24 +1067,49 @@ private fun SavedPlacesModuleCard(
                 if (isAlert) "Alertas de proximidade" else "Locais salvos",
                 fontWeight = FontWeight.Bold,
             )
+            if (isAlert) {
+                AlertDistanceSelector138(
+                    selectedMeters = alertDistanceMeters ?: 500,
+                    alertsEnabled = alertsEnabled,
+                    onSelect = onAlertDistanceChange,
+                )
+            }
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
                 Text(if (isAlert) "Criar alerta neste local" else "Salvar local atual")
+            }
+            if (!isAlert) {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buscar por nome ou endereço") },
+                    singleLine = true,
+                )
+                if (search.isNotBlank()) {
+                    when {
+                        filteredItems.isEmpty() -> Text("Nenhum local encontrado por nome ou endereço.")
+                        else -> filteredItems.forEach { place -> SavedPlaceSearchResult138(place) }
+                    }
+                }
             }
             ExpandableCard(
                 title = if (isAlert) "Alertas criados (${items.size})" else "Endereços salvos (${items.size})",
                 initiallyExpanded = highlightedSavedPlaceId != null && items.any { it.id == highlightedSavedPlaceId },
             ) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Buscar por nome ou endereço") }, // Buscar por nome ou endereco saved_places_search_name_address_0_1_127
-                    singleLine = true,
-                )
+                if (isAlert) {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Buscar por nome ou endereço") },
+                        singleLine = true,
+                    )
+                }
+                val listInsideExpander = if (isAlert) filteredItems else items
                 when {
                     items.isEmpty() -> Text(if (isAlert) "Nenhum alerta criado." else "Nenhum local salvo.")
-                    filteredItems.isEmpty() -> Text(if (isAlert) "Nenhum alerta encontrado por nome ou endereço." else "Nenhum local encontrado por nome ou endereco")
-                    else -> filteredItems.forEach { place ->
+                    listInsideExpander.isEmpty() -> Text("Nenhum alerta encontrado por nome ou endereço.")
+                    else -> listInsideExpander.forEach { place ->
                         SavedPlaceEditor(
                             place = place,
                             highlighted = place.id == highlightedSavedPlaceId,
@@ -1008,6 +1123,41 @@ private fun SavedPlacesModuleCard(
     }
 } // separate_saved_place_modules_0_1_120 saved_places_search_name_address_0_1_127
  // separate_saved_place_modules_0_1_120
+
+@Composable
+private fun AlertDistanceSelector138(
+    selectedMeters: Int,
+    alertsEnabled: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    val values = listOf(200, 500, 1000)
+    Text("Distância do aviso", fontWeight = FontWeight.Bold)
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        values.forEach { meters ->
+            if (selectedMeters == meters && alertsEnabled) {
+                Button(onClick = { onSelect(meters) }, modifier = Modifier.weight(1f)) { Text("$meters m") }
+            } else {
+                OutlinedButton(onClick = { onSelect(meters) }, modifier = Modifier.weight(1f)) { Text("$meters m") }
+            }
+        }
+    }
+    Text(
+        if (alertsEnabled) "Alertas ativos a partir da distância selecionada." else "Selecione uma distância para ativar os alertas.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+@Composable
+private fun SavedPlaceSearchResult138(place: SavedPlace) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(place.name.ifBlank { "Local salvo" }, fontWeight = FontWeight.Bold)
+            Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.fillMaxWidth()) { Text("GPS") }
+        }
+    }
+}
 
 @Composable
 private fun SavedPlaceEditor(
@@ -1179,6 +1329,16 @@ private fun SettingsScreen(
                 savedPlaces = savedPlaces,
                 type = SavedPlaceType.ProximityAlert,
                 highlightedSavedPlaceId = highlightedSavedPlaceId,
+                alertDistanceMeters = draft.proximityAlertDistanceMeters,
+                alertsEnabled = draft.proximityAlertsEnabled,
+                onAlertDistanceChange = { distance ->
+                    saveDraft(
+                        draft.copy(
+                            proximityAlertDistanceMeters = distance,
+                            proximityAlertsEnabled = true,
+                        ),
+                    )
+                },
                 onCreate = onCreateProximityAlert,
                 onRenameSavedPlace = onRenameSavedPlace,
                 onDeleteSavedPlace = onDeleteSavedPlace,
@@ -1268,22 +1428,14 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             },
             fontWeight = FontWeight.Bold,
         )
-        OutlinedTextField(
-            value = settings.googleMapsApiKey,
-            onValueChange = { value -> onChange(settings.copy(googleMapsApiKey = value.trim())) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Chave Google Maps API") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-        )
         Text(
             if (mapsKeyConfiguredChecklist11) {
-                "A rota real está liberada. A chave digitada tem prioridade sobre a chave incluída no aplicativo."
+                "A chave é fornecida com segurança pelo build do aplicativo."
             } else {
-                "Sem a chave, o card pode ser reconhecido e fotografado, mas a bolinha permanece amarela e não inventa distância."
+                "Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions."
             },
             style = MaterialTheme.typography.bodySmall,
-        ) // api_key_in_general_controls_checklist_11
+        ) // maps_key_single_build_source_0_1_138
         SettingsSwitchRow(
             label = "Rota Certa ligado",
             checked = settings.appEnabled,
@@ -1405,15 +1557,12 @@ private fun MapsAndAdvancedCard(
     onSave: () -> Unit,
 ) {
     ExpandableCard(title = "Google Maps e ajustes avancados", initiallyExpanded = !GoogleMapsApiKeyPolicy.isConfigured(draft.googleMapsApiKey, BuildConfig.GOOGLE_MAPS_API_KEY)) {
-        OutlinedTextField(
-            value = draft.googleMapsApiKey,
-            onValueChange = { onDraftChange(draft.copy(googleMapsApiKey = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Chave Google Maps API") },
-            visualTransformation = PasswordVisualTransformation(),
-        )
         Text(
-            "Obrigatória para verde/vermelho e km por rota real. Sem chave, o farol permanece amarelo.",
+            if (GoogleMapsApiKeyPolicy.isConfigured(draft.googleMapsApiKey, BuildConfig.GOOGLE_MAPS_API_KEY)) {
+                "Google Maps configurado pelo build."
+            } else {
+                "Google Maps ainda não configurado no build."
+            },
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
@@ -1471,11 +1620,13 @@ private fun InstalledRideAppsCard() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var selectedPackages by remember { mutableStateOf(SelectedRideAppStore.read(context)) }
+    var lastManualCapture by remember { mutableStateOf(ManualAppScreenCaptureStore.read(context)) }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 selectedPackages = SelectedRideAppStore.read(context)
+                lastManualCapture = ManualAppScreenCaptureStore.read(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1492,6 +1643,28 @@ private fun InstalledRideAppsCard() {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Buscar aplicativos instalados")
+        }
+        Text(
+            "Para capturar pacote, texto e imagem: abra o aplicativo desejado, toque na bolinha e escolha Capturar. A captura é opcional e não interfere no farol.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        lastManualCapture?.let { capture ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Última captura manual", fontWeight = FontWeight.Bold)
+                    Text(capture.packageName, style = MaterialTheme.typography.bodySmall)
+                    if (capture.textPreview.isNotBlank()) {
+                        Text(capture.textPreview.take(220), style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            ManualAppScreenCaptureStore.clear(context)
+                            lastManualCapture = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Apagar captura") }
+                }
+            }
         }
         if (selectedPackages.isEmpty()) {
             Text(

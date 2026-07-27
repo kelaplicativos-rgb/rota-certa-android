@@ -8,5 +8,6 @@ object DestinationBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenDestination,
         targetGroup = "destination",
         targetTab = "analysis",
+        doubleTapAction = BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation,
     )
 }

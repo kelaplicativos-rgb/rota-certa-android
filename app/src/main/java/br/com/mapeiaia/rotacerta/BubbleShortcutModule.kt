@@ -21,6 +21,16 @@ enum class BubbleShortcutAction {
     CreateSavedPlace,
     ToggleReading,
     OpenSettings,
+    CaptureCurrentAppAndScreen,
+}
+
+enum class BubbleShortcutQuickAction {
+    CopyAllVisibleText,
+    CreateQuickReply,
+    CreateRadarAtCurrentLocation,
+    CreateNamedAlertAtCurrentLocation,
+    CreateNamedSavedPlaceAtCurrentLocation,
+    DefineDestinationAtCurrentLocation,
 }
 
 data class BubbleShortcutSpec(
@@ -32,6 +42,7 @@ data class BubbleShortcutSpec(
     val defaultName: String? = null,
     val targetGroup: String? = null,
     val targetTab: String? = null,
+    val doubleTapAction: BubbleShortcutQuickAction? = null,
 ) {
     val displayText: String
         get() = "$emoji\n$displayLabel"
@@ -60,6 +71,7 @@ object AlertsManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenAlerts,
         targetGroup = "alerts",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation,
     )
 }
 
@@ -71,6 +83,7 @@ object SavedPlacesManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenSavedPlaces,
         targetGroup = "saved_places",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation,
     )
 }
 
@@ -82,6 +95,7 @@ object RadarsManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenRadars,
         targetGroup = "radars",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateRadarAtCurrentLocation,
     )
 }
 
@@ -156,6 +170,17 @@ object QuickRepliesBubbleShortcutModule : BubbleShortcutModule {
         label = "Respostas rápidas",
         action = BubbleShortcutAction.OpenQuickReplies,
         displayLabel = "Respostas",
+        doubleTapAction = BubbleShortcutQuickAction.CreateQuickReply,
+    )
+}
+
+object CaptureCurrentAppScreenBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "manual_capture",
+        emoji = "📸",
+        label = "Capturar aplicativo e tela",
+        displayLabel = "Capturar",
+        action = BubbleShortcutAction.CaptureCurrentAppAndScreen,
     )
 }
 
@@ -174,11 +199,12 @@ object BubbleShortcutCatalog {
         ClearClipboardBubbleShortcutModule,
         DiagnosticBubbleShortcutModule,
         QuickRepliesBubbleShortcutModule,
+        CaptureCurrentAppScreenBubbleShortcutModule,
         StopBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 14) { "O popup deve conter 14 módulos." }
+        require(modules.size == 15) { "O popup deve conter 15 módulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }

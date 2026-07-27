@@ -74,6 +74,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // quick_reply_receiver_checklist_3
     private val screenshotInProgress = AtomicBoolean(false)
     private val tripConfirmationCopyInProgressChecklist8 = AtomicBoolean(false)
+    private val fullScreenCopyInProgress138 = AtomicBoolean(false)
+    private val manualCaptureInProgress138 = AtomicBoolean(false)
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
     private val phoneCaptureInProgress118 = AtomicBoolean(false)
     private var analyzeJob: Job? = null
@@ -1653,10 +1655,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun toggleResourceShortcuts() {
         val params = overlayParams ?: return
-        shortcutOverlayController.toggleShortcuts(anchor = params, onShortcut = ::executeShortcutModule)
+        shortcutOverlayController.toggleShortcuts(
+            anchor = params,
+            onShortcut = ::executeShortcutModule,
+            onShortcutDoubleTap = ::executeShortcutDoubleTap,
+        )
         persistResourceShortcutState()
         Unit /* diagnostics_off_checklist_4 */
         Unit /* diagnostics_off_checklist_4 */
+    }
+
+    private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
+        when (spec.doubleTapAction) {
+            BubbleShortcutQuickAction.CopyAllVisibleText -> copyAllVisibleTextFromBubble138()
+            BubbleShortcutQuickAction.CreateQuickReply -> openQuickRepliesFromBubble(createNew = true)
+            BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> createManualRadarFromBubble138()
+            BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.ProximityAlert)
+            BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.Place)
+            BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> openDestinationConfirmationFromBubble138()
+            null -> executeShortcutModule(spec)
+        }
     }
 
     private fun executeShortcutModule(spec: BubbleShortcutSpec) {
@@ -1664,7 +1682,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Unit /* diagnostics_off_checklist_4 */
         when (spec.action) {
             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8
-            BubbleShortcutAction.OpenQuickReplies -> openQuickRepliesFromBubble() // quick_reply_action_checklist_3
+            BubbleShortcutAction.OpenQuickReplies -> openQuickRepliesFromBubble(createNew = false) // quick_reply_action_checklist_3
             BubbleShortcutAction.OpenRoute,
             BubbleShortcutAction.OpenDestination,
             BubbleShortcutAction.OpenAlerts,
@@ -1682,6 +1700,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()
             BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
+            BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
@@ -1694,6 +1713,229 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
 
     // manual_card_capture_complete_checklist_12
+
+    private fun captureCurrentAppAndScreen138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        if (!manualCaptureInProgress138.compareAndSet(false, true)) {
+            toast("A captura manual já está em andamento.")
+            return
+        }
+        val externalPackage = listOf(
+            currentRootPackageName(),
+            currentWindowPackageName(),
+            recentSelectedRidePackageChecklist11,
+            lastExternalWindowPackageName,
+        ).firstNotNullOfOrNull { candidate ->
+            normalizePackageName(candidate)?.takeUnless { it == packageName }
+        }
+        if (externalPackage == null) {
+            manualCaptureInProgress138.set(false)
+            toast("Abra o aplicativo que deseja capturar e tente novamente.")
+            return
+        }
+        val visibleText = collectAllVisibleTextForCopy138()
+        SelectedRideAppStore.save(
+            applicationContext,
+            SelectedRideAppStore.read(applicationContext) + externalPackage,
+        )
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !screenshotInProgress.compareAndSet(false, true)) {
+            ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+            manualCaptureInProgress138.set(false)
+            toast("Aplicativo e texto capturados")
+            showSaveConfirmationNotification("Captura salva", externalPackage)
+            return
+        }
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap: Bitmap? = null
+                            try {
+                                bitmap = screenshot.toSoftwareBitmap()
+                                ManualAppScreenCaptureStore.save(
+                                    applicationContext,
+                                    externalPackage,
+                                    visibleText,
+                                    bitmap,
+                                )
+                                toast("Aplicativo e tela capturados")
+                                showSaveConfirmationNotification("Captura salva", externalPackage)
+                            } finally {
+                                bitmap?.recycle()
+                                screenshotInProgress.set(false)
+                                manualCaptureInProgress138.set(false)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+                        screenshotInProgress.set(false)
+                        manualCaptureInProgress138.set(false)
+                        toast("Aplicativo e texto capturados")
+                    }
+                },
+            )
+        }.onFailure {
+            ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+            screenshotInProgress.set(false)
+            manualCaptureInProgress138.set(false)
+            toast("Aplicativo e texto capturados")
+        }
+    }
+
+    private fun createManualRadarFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        scope.launch {
+            val coordinate = locationService.currentCoordinate()
+            if (coordinate == null) {
+                toast("Não foi possível obter a localização")
+                return@launch
+            }
+            val duplicate = currentImportedRadars.any { radar ->
+                radar.source.equals("Manual", ignoreCase = true) &&
+                    GeoDistance.meters(radar.coordinate, coordinate) < 8.0
+            }
+            if (duplicate) {
+                toast("Já existe um radar manual neste local")
+                return@launch
+            }
+            val now = System.currentTimeMillis()
+            val radar = ImportedRadar(
+                id = "manual-radar-$now-${coordinate.latitude}-${coordinate.longitude}",
+                coordinate = coordinate,
+                type = 0,
+                source = "Manual",
+                createdAtMillis = now,
+            )
+            repository.replaceImportedRadars(listOf(radar) + currentImportedRadars)
+            toast("Radar salvo")
+            showSaveConfirmationNotification("Radar salvo", "Radar manual criado no local atual")
+        }
+    }
+
+    private fun openNamedPlaceShortcut138(type: SavedPlaceType) {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        val group = if (type == SavedPlaceType.ProximityAlert) "alerts" else "saved_places"
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, group)
+                    .putExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138, type.name),
+            )
+        }.onFailure { toast("Não consegui abrir o cadastro agora.") }
+    }
+
+    private fun openDestinationConfirmationFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_OPEN_TAB, TAB_ANALYSIS)
+                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, "destination")
+                    .putExtra(EXTRA_CONFIRM_DESTINATION_GPS_138, true),
+            )
+        }.onFailure { toast("Não consegui abrir a confirmação do destino.") }
+    }
+
+    private fun copyAllVisibleTextFromBubble138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        if (!fullScreenCopyInProgress138.compareAndSet(false, true)) {
+            toast("A cópia completa da tela já está em andamento.")
+            return
+        }
+        val accessibilityText = collectAllVisibleTextForCopy138()
+        if (accessibilityText.isNotBlank()) {
+            copyAllVisibleTextToClipboard138(accessibilityText)
+            fullScreenCopyInProgress138.set(false)
+            return
+        }
+        requestFullScreenCopyOcr138()
+    }
+
+    private fun collectAllVisibleTextForCopy138(): String {
+        val root = rootInActiveWindow ?: return ""
+        val lines = mutableListOf<String>()
+        collectNodeText(root, lines)
+        return lines
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n")
+    }
+
+    private fun requestFullScreenCopyOcr138() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            fullScreenCopyInProgress138.set(false)
+            toast("Esta tela não disponibilizou texto para copiar.")
+            return
+        }
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            fullScreenCopyInProgress138.set(false)
+            toast("A leitura da tela está ocupada. Tente novamente.")
+            return
+        }
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap: Bitmap? = null
+                            try {
+                                bitmap = screenshot.toSoftwareBitmap()
+                                val text = bitmap?.let { ocrService.extractText(it) }.orEmpty()
+                                    .lines()
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                    .joinToString("\n")
+                                if (text.isBlank()) {
+                                    toast("Nenhum texto foi encontrado nesta tela.")
+                                } else {
+                                    copyAllVisibleTextToClipboard138(text)
+                                }
+                            } finally {
+                                bitmap?.recycle()
+                                screenshotInProgress.set(false)
+                                fullScreenCopyInProgress138.set(false)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        screenshotInProgress.set(false)
+                        fullScreenCopyInProgress138.set(false)
+                        toast("O Android não permitiu ler esta tela.")
+                    }
+                },
+            )
+        }.onFailure {
+            screenshotInProgress.set(false)
+            fullScreenCopyInProgress138.set(false)
+            toast("Não consegui solicitar a leitura desta tela.")
+        }
+    }
+
+    private fun copyAllVisibleTextToClipboard138(text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Texto completo da tela", text))
+        toast("Texto completo copiado")
+        overlayView?.announceForAccessibility("Texto completo da tela copiado")
+    }
 
     private fun copyTripConfirmationFromBubbleChecklist8() {
         shortcutOverlayController.hideAll()
@@ -1804,7 +2046,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     // trip_confirmation_copy_complete_checklist_8
 
-    private fun openQuickRepliesFromBubble() {
+    private fun openQuickRepliesFromBubble(createNew: Boolean = false) {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
         val targetPackage = listOf(currentRootPackageName(), currentWindowPackageName())
@@ -1825,7 +2067,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             Intent.FLAG_ACTIVITY_CLEAR_TOP or
                             Intent.FLAG_ACTIVITY_SINGLE_TOP,
                     )
-                    .putExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE, targetPackage),
+                    .putExtra(EXTRA_QUICK_REPLY_TARGET_PACKAGE, targetPackage)
+                    .putExtra(EXTRA_QUICK_REPLY_CREATE, createNew),
             )
         }.onFailure {
             toast("Não foi possível abrir as respostas rápidas.")

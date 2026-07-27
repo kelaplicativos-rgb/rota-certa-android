@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import java.text.Normalizer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,15 +13,20 @@ class SavedPlacesSearchContractTest {
     ).firstOrNull(File::exists)?.readText()
         ?: error("MainActivity.kt nao encontrado")
 
+    private fun withoutAccents(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace(Regex("""\p{Mn}+"""), "")
+
     @Test
     fun savedPlacesCanBeFoundByNameOrAddress() {
         val main = mainSource()
+        val normalizedMain = withoutAccents(main)
 
-        assertTrue("Campo de busca precisa existir", "Buscar por nome ou endereco" in main)
+        assertTrue("Campo de busca precisa existir", "Buscar por nome ou endereco" in normalizedMain)
         assertTrue("Busca precisa filtrar pelo nome", "place.name.lowercase(Locale.ROOT).contains(query)" in main)
         assertTrue("Busca precisa filtrar pelo endereco", "place.address.lowercase(Locale.ROOT).contains(query)" in main)
         assertTrue("Busca precisa funcionar dentro do modulo de locais", "saved_places_search_name_address_0_1_127" in main)
-        assertTrue("Estado vazio de busca precisa ser explicado", "Nenhum local encontrado por nome ou endereco" in main)
+        assertTrue("Estado vazio de busca precisa ser explicado", "Nenhum local encontrado por nome ou endereco" in normalizedMain)
     }
 
     @Test
