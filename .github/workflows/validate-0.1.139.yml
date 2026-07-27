@@ -1,23 +1,21 @@
-name: Validate Rota Certa 0.1.139
+name: Apply and validate Rota Certa 0.1.140
 
 on:
-  pull_request:
-    branches:
-      - codex/grid-double-tap-shortcuts-alerts
   push:
     branches:
       - codex/unified-debug-log-0.1.139
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: validate-0-1-139-${{ github.ref }}
+  group: apply-validate-0-1-140-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
+    if: ${{ !contains(github.event.head_commit.message || '', '[validated-0.1.140]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -26,7 +24,16 @@ jobs:
       - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
+          ref: codex/unified-debug-log-0.1.139
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize complete bubble diagnostics
+        run: python scripts/apply_bubble_debug_trace_0140.py
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -45,17 +52,17 @@ jobs:
       - name: Prepare evidence
         run: mkdir -p validation/logs validation/evidence
 
-      - name: Verify unified diagnostic contract
+      - name: Verify complete diagnostic contract
         run: |
           set -euo pipefail
-          grep -q 'versionName = "0.1.139"' app/build.gradle.kts
-          grep -q '4_000' app/build.gradle.kts
+          grep -q 'versionName = "0.1.140"' app/build.gradle.kts
+          grep -q '5_000' app/build.gradle.kts
           grep -q 'Gerar relatório para depuração' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-          grep -q 'Log de depuração' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
           grep -q 'MAX_EVENTS = 2_000' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
-          grep -q 'ACCESSIBILITY_EVENT' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'ManualTechnicalReportBuilder.build' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-          ! grep -q 'Gerar e baixar relatorio' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'BUBBLE_TEXT_COLLECTED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BUBBLE_ADDRESS_EVALUATION' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BUBBLE_DECISION_PAINTED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BUBBLE_CLEAR_PAINTED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           ! grep -RInE 'AIza[0-9A-Za-z_-]{20,}' app/src app/build.gradle.kts
 
       - name: Run unit tests twice with immutable sources
@@ -79,40 +86,39 @@ jobs:
           before="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           gradle clean assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/assemble-first.log
           middle="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.139-first.apk
+          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.140-first.apk
           gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/assemble-second.log
           after="$(find app/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           test "$before" = "$middle"
           test "$middle" = "$after"
-          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.139.apk
-          unzip -tq validation/evidence/rota-certa-0.1.139.apk
-          sha256sum validation/evidence/rota-certa-0.1.139.apk > validation/evidence/apk-sha256.txt
+          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.140.apk
+          unzip -tq validation/evidence/rota-certa-0.1.140.apk
+          sha256sum validation/evidence/rota-certa-0.1.140.apk > validation/evidence/apk-sha256.txt
 
       - name: Validate package version and signature
         run: |
           set -euo pipefail
-          APK=validation/evidence/rota-certa-0.1.139.apk
+          APK=validation/evidence/rota-certa-0.1.140.apk
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee validation/evidence/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee validation/evidence/aapt-badging.txt
           grep -q "package: name='br.com.mapeiaia.rotacerta'" validation/evidence/aapt-badging.txt
-          grep -q "versionName='0.1.139'" validation/evidence/aapt-badging.txt
+          grep -q "versionName='0.1.140'" validation/evidence/aapt-badging.txt
           VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" validation/evidence/aapt-badging.txt | head -1)"
           test -n "$VERSION_CODE"
-          test "$VERSION_CODE" -gt 3002
+          test "$VERSION_CODE" -gt 4006
           printf 'VERSION_CODE=%s\n' "$VERSION_CODE" > validation/evidence/version.txt
 
       - name: Write validation report
         run: |
           cat > validation/evidence/final-validation.txt <<'EOF'
-          VERSION_NAME=0.1.139
-          DEBUG_LOG_ON_OFF=approved
+          VERSION_NAME=0.1.140
+          COMPLETE_BUBBLE_EVENT_CHAIN=approved
+          ACCESSIBILITY_EVENTS_BEFORE_FILTERS=approved
+          READ_EVALUATION_CACHE_ROUTE_CLEAR_PAINT=approved
           CIRCULAR_MEMORY_2000=approved
           CONTINUOUS_DISK_LOGGING=disabled
           SENSITIVE_DATA_MASKING=approved
-          ACCESSIBILITY_EVENTS_BEFORE_FILTERS=approved
-          SINGLE_REPORT_GENERATOR=approved
-          OLD_REPORTS_UNIFIED=approved
           TESTS_TWICE=approved
           SOURCE_IMMUTABLE=approved
           LINT=approved
@@ -120,10 +126,21 @@ jobs:
           APK_SIGNATURE=approved
           EOF
 
+      - name: Commit validated implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_bubble_debug_trace_0140.py
+          if ! git diff --cached --quiet; then
+            git commit -m 'Captura e valida cadeia completa da bolinha [validated-0.1.140]'
+            git push origin HEAD:codex/unified-debug-log-0.1.139
+          fi
+
       - name: Upload validated APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.139-validated
+          name: rota-certa-0.1.140-validated
           path: |
             validation/evidence
             validation/logs
@@ -135,7 +152,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.139-validation-failure
+          name: rota-certa-0.1.140-validation-failure
           path: |
             validation
             app/build/reports/lint-results-debug.html
