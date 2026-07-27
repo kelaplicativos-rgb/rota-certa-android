@@ -23,6 +23,15 @@ enum class BubbleShortcutAction {
     OpenSettings,
 }
 
+enum class BubbleShortcutQuickAction {
+    CopyAllVisibleText,
+    CreateQuickReply,
+    CreateRadarAtCurrentLocation,
+    CreateNamedAlertAtCurrentLocation,
+    CreateNamedSavedPlaceAtCurrentLocation,
+    DefineDestinationAtCurrentLocation,
+}
+
 data class BubbleShortcutSpec(
     val id: String,
     val emoji: String,
@@ -32,6 +41,7 @@ data class BubbleShortcutSpec(
     val defaultName: String? = null,
     val targetGroup: String? = null,
     val targetTab: String? = null,
+    val doubleTapAction: BubbleShortcutQuickAction? = null,
 ) {
     val displayText: String
         get() = "$emoji\n$displayLabel"
@@ -60,6 +70,7 @@ object AlertsManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenAlerts,
         targetGroup = "alerts",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation,
     )
 }
 
@@ -71,6 +82,7 @@ object SavedPlacesManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenSavedPlaces,
         targetGroup = "saved_places",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation,
     )
 }
 
@@ -82,6 +94,7 @@ object RadarsManagementBubbleShortcutModule : BubbleShortcutModule {
         action = BubbleShortcutAction.OpenRadars,
         targetGroup = "radars",
         targetTab = "config",
+        doubleTapAction = BubbleShortcutQuickAction.CreateRadarAtCurrentLocation,
     )
 }
 
@@ -156,6 +169,7 @@ object QuickRepliesBubbleShortcutModule : BubbleShortcutModule {
         label = "Respostas rápidas",
         action = BubbleShortcutAction.OpenQuickReplies,
         displayLabel = "Respostas",
+        doubleTapAction = BubbleShortcutQuickAction.CreateQuickReply,
     )
 }
 

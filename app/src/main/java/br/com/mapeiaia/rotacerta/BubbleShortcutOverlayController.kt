@@ -5,7 +5,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -36,8 +38,9 @@ class BubbleShortcutOverlayController(
     fun toggleShortcuts(
         anchor: WindowManager.LayoutParams,
         onShortcut: (BubbleShortcutSpec) -> Unit,
+        onShortcutDoubleTap: (BubbleShortcutSpec) -> Unit,
     ) {
-        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut)
+        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut, onShortcutDoubleTap)
     }
 
     fun hideShortcuts() {
@@ -167,6 +170,7 @@ class BubbleShortcutOverlayController(
     private fun showShortcuts(
         anchor: WindowManager.LayoutParams,
         onShortcut: (BubbleShortcutSpec) -> Unit,
+        onShortcutDoubleTap: (BubbleShortcutSpec) -> Unit,
     ) {
         hideProximityAlert()
         BubbleShortcutCatalog.requireValid()
@@ -195,11 +199,26 @@ class BubbleShortcutOverlayController(
             }
             setPadding(panelPadding, panelPadding, panelPadding, panelPadding)
             BubbleShortcutCatalog.modules.forEach { module ->
-                addView(shortcutBubble(module.spec, bubbleSize, itemMargin, scale) {
-                    hideShortcuts()
-                    trace("bubble.shortcut.clicked id=${module.spec.id}")
-                    onShortcut(module.spec)
-                })
+                addView(
+                    shortcutBubble(
+                        spec = module.spec,
+                        bubbleSize = bubbleSize,
+                        itemMargin = itemMargin,
+                        scale = scale,
+                        singleAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.clicked id=${module.spec.id}")
+                            onShortcut(module.spec)
+                        },
+                        doubleAction = module.spec.doubleTapAction?.let {
+                            {
+                                hideShortcuts()
+                                trace("bubble.shortcut.double_tap id=${module.spec.id} action=$it")
+                                onShortcutDoubleTap(module.spec)
+                            }
+                        },
+                    ),
+                )
             }
         }
 
@@ -270,7 +289,8 @@ class BubbleShortcutOverlayController(
         bubbleSize: Int,
         itemMargin: Int,
         scale: Double,
-        action: () -> Unit,
+        singleAction: () -> Unit,
+        doubleAction: (() -> Unit)?,
     ): TextView = TextView(context).apply {
         text = spec.displayText
         textSize = scaledSp(10f, scale).coerceIn(9f, 17f)
@@ -290,7 +310,24 @@ class BubbleShortcutOverlayController(
             height = bubbleSize
             setMargins(itemMargin, itemMargin, itemMargin, itemMargin)
         }
-        setOnClickListener { action() }
+        val gestureDetector = GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(event: MotionEvent): Boolean = true
+
+                override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
+                    singleAction()
+                    return true
+                }
+
+                override fun onDoubleTap(event: MotionEvent): Boolean {
+                    val action = doubleAction ?: return false
+                    action()
+                    return true
+                }
+            },
+        )
+        setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
     }
 
     private fun showDeleteConfirmation(

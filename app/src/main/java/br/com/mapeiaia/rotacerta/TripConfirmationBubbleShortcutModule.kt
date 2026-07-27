@@ -7,5 +7,6 @@ object TripConfirmationBubbleShortcutModule : BubbleShortcutModule {
         label = "Copiar confirmação da viagem",
         displayLabel = "Copiar viagem",
         action = BubbleShortcutAction.CopyTripConfirmation,
+        doubleTapAction = BubbleShortcutQuickAction.CopyAllVisibleText,
     )
 }

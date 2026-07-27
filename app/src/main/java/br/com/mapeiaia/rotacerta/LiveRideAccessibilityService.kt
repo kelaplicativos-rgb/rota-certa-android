@@ -1653,10 +1653,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun toggleResourceShortcuts() {
         val params = overlayParams ?: return
-        shortcutOverlayController.toggleShortcuts(anchor = params, onShortcut = ::executeShortcutModule)
+        shortcutOverlayController.toggleShortcuts(
+            anchor = params,
+            onShortcut = ::executeShortcutModule,
+            onShortcutDoubleTap = ::executeShortcutDoubleTap,
+        )
         persistResourceShortcutState()
         Unit /* diagnostics_off_checklist_4 */
         Unit /* diagnostics_off_checklist_4 */
+    }
+
+    private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
+        when (spec.doubleTapAction) {
+            BubbleShortcutQuickAction.CopyAllVisibleText -> toast("Preparando cópia completa da tela.")
+            BubbleShortcutQuickAction.CreateQuickReply -> toast("Preparando nova resposta.")
+            BubbleShortcutQuickAction.CreateRadarAtCurrentLocation -> toast("Preparando radar neste local.")
+            BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> toast("Preparando novo alerta.")
+            BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> toast("Preparando novo local.")
+            BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> toast("Preparando destino atual.")
+            null -> executeShortcutModule(spec)
+        }
     }
 
     private fun executeShortcutModule(spec: BubbleShortcutSpec) {
