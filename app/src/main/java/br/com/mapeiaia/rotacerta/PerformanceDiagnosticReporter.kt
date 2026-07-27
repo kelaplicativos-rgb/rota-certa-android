@@ -4,9 +4,9 @@ import java.util.Locale
 
 object PerformanceDiagnosticReporter {
     private val ridePackages = setOf(
-        "sinet.startup.indriver",
-        "com.ubercab.driver",
-        "com.app99.driver",
+        "",
+        "",
+        "",
     )
 
     fun build(eventsText: String): String {
@@ -27,8 +27,7 @@ object PerformanceDiagnosticReporter {
             it.message.contains("screenshot.ocr success") || Regex("ocrLen=[1-9]").containsMatchIn(it.raw)
         }
         val firstProcess = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("process.start") }
-        val firstModelMatch = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("card_model.match") }
-        val firstAnalysis = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("analysis.start") }
+                val firstAnalysis = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("analysis.start") }
         val firstRoute = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("route.distance") }
         val firstDecision = events.firstOrNullAfter(firstRideVisible.timeMillis) { it.message.contains("decision.result") }
         val firstOverlay = events.firstOrNullAfter(firstRideVisible.timeMillis) {
@@ -67,7 +66,6 @@ object PerformanceDiagnosticReporter {
             appendLine("primeira leitura acessibilidade: ${formatDelta(firstAccessibility, firstRideVisible)}")
             appendLine("primeiro OCR com texto: ${formatDelta(firstOcr, firstRideVisible)}")
             appendLine("primeiro processamento: ${formatDelta(firstProcess, firstRideVisible)}")
-            appendLine("primeiro modelo de card confirmado: ${formatDelta(firstModelMatch, firstRideVisible)}")
             appendLine("primeira analise de rota: ${formatDelta(firstAnalysis, firstRideVisible)}")
             appendLine("primeira rota/distancia calculada: ${formatDelta(firstRoute, firstRideVisible)}")
             appendLine("primeira decisao: ${formatDelta(firstDecision, firstRideVisible)}")
@@ -91,14 +89,14 @@ object PerformanceDiagnosticReporter {
         redCount: Int,
         yellowWithoutKmCount: Int,
     ): String {
-        if (firstGreenOrRed == null) return "nao chegou a aplicar verde/vermelho na janela real do app de corrida; investigar OCR, modelo do card e geocodificacao"
+        if (firstGreenOrRed == null) return "nao chegou a aplicar verde/vermelho na janela real do app de corrida; investigar OCR, extração de endereços e geocodificação"
         if (yellowWithoutKmCount > greenCount + redCount && firstYellowAfterDecision != null) {
             return "decisao boa ainda esta sendo perdida por texto/hash transitorio; preservar verde/vermelho ate confirmar novo card real"
         }
         if (totalToFirstColor != null && totalToFirstColor > 2_000L) {
             return when {
                 firstOcr == null -> "OCR/texto nao apareceu no relatorio antes da decisao; medir screenshot/OCR imediatamente"
-                firstAnalysis == null -> "OCR apareceu, mas analise nao ficou registrada; medir parser/modelo do card"
+                firstAnalysis == null -> "OCR apareceu, mas analise nao ficou registrada; medir parser de endereços"
                 firstDecision == null -> "analise iniciou, mas decisao nao ficou registrada; medir geocode/rota/Google Maps"
                 firstOverlay == null -> "decisao ocorreu, mas overlay nao registrou aplicacao; medir showOverlay/bolinha"
                 else -> "tempo ate primeira cor foi ${formatDuration(totalToFirstColor)}; comparar deltas acima para localizar etapa lenta"

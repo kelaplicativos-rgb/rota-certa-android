@@ -256,11 +256,6 @@ data class UniversalRideCardEvidenceDecision(
  * geocodificacao ou chamada de rota.
  */
 object UniversalRideCardEvidencePolicy {
-    private val knownRidePackages = setOf(
-        "com.app99.driver",
-        "com.ubercab.driver",
-        "sinet.startup.indriver",
-    )
     private val timeTokenRegex = Regex(
         "\\b\\d{1,3}\\s*(?:min|minutos?)\\b",
         RegexOption.IGNORE_CASE,
@@ -278,7 +273,7 @@ object UniversalRideCardEvidencePolicy {
         RegexOption.IGNORE_CASE,
     )
     private val rideMarkerRegex = Regex(
-        "\\b(?:corridas?|perfil\\s+(?:essencial|premium)|[aá]rea\\s+de\\s+risco|tarifa(?:\\s+base)?|aceitar|ofere[cç]a|pedido\\s+de\\s+viagem|uberx|comfort|99pop|din[aâ]mic[ao])\\b",
+        "\\b(?:corridas?|perfil\\s+(?:essencial|premium)|[aá]rea\\s+de\\s+risco|tarifa(?:\\s+base)?|aceitar|ofere[cç]a|pedido\\s+de\\s+viagem|corrida|comfort|corrida|din[aâ]mic[ao])\\b",
         RegexOption.IGNORE_CASE,
     )
     private val malformedStreetRegex = Regex(
@@ -311,14 +306,14 @@ object UniversalRideCardEvidencePolicy {
         val markerCount = rideMarkerRegex.findAll(text).map { it.value.lowercase() }.distinct().count()
         val hasTripMetrics = hasTime && hasTripDistance
         val normalizedPackage = packageName?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-        val knownRideApp = normalizedPackage != null && normalizedPackage in knownRidePackages
+        val selectedApp = normalizedPackage != null
 
         val score = (if (hasTripMetrics) 2 else 0) +
             (if (hasMoney) 1 else 0) +
             (if (hasPerKm) 1 else 0) +
             (if (markerCount > 0) 1 else 0)
 
-        val acceptedInRideApp = knownRideApp &&
+        val acceptedInRideApp = selectedApp &&
             (hasTripMetrics || hasMoney || hasPerKm || markerCount > 0)
         val acceptedInExternalViewer =
             (hasTripMetrics && (hasMoney || markerCount > 0)) ||

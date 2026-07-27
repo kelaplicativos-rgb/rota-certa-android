@@ -73,15 +73,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     } // quick_reply_receiver_checklist_3
     private val screenshotInProgress = AtomicBoolean(false)
-    private val manualCardCaptureInProgressChecklist12 = AtomicBoolean(false)
     private val tripConfirmationCopyInProgressChecklist8 = AtomicBoolean(false)
-    private val automaticCaptureInProgress129 = AtomicBoolean(false)
-    private var lastAutomaticCaptureSignature129: String? = null
-    private var lastAutomaticCaptureRequestedAt129: Long = 0L // automatic_capture_fields_0_1_129
-    private var deferredCandidateCaptureJobFinalChecklist6: Job? = null
-    private var deferredMatchedCaptureJobFinalChecklist6: Job? = null
-    private var pendingMatchedCaptureFinalChecklist6: DeferredAutomaticRideCaptureChecklist6? = null
-    private var lastCandidateCaptureSignatureFinalChecklist6: String? = null
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
     private val phoneCaptureInProgress118 = AtomicBoolean(false)
     private var analyzeJob: Job? = null
@@ -100,7 +92,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastSnapshotHash: Int? = null
     private var lastAnalyzedHash: Int? = null
     private var lastSavedReadHash: Int? = null
-    private var pendingAnalysis: PendingLiveAnalysis? = null
     private var lastScreenshotMillis: Long = 0L
     private var continuousScanStarted = false
     private var proximityAlertMonitorStarted = false
@@ -108,7 +99,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var analyzing = false
     private var analysisSerial: Long = 0L
     private var liveAnalysisJob: Job? = null
-    private val coreCardAnalysisCoalescer = br.com.mapeiaia.rotacerta.core.CoreCardAnalysisCoalescer()
     private var activePackageName: String? = null
     private var recentSelectedRidePackageChecklist11: String? = null
     private var recentSelectedRidePackageAtMillisChecklist11: Long = 0L
@@ -121,7 +111,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastUniversalAddressSeenAtMillis: Long = 0L
     private var lastUniversalAddressSignature: String? = null // universal_source_freshness_fields_0_1_94
     private var currentSettings = AppSettings()
-    private var currentCardTemplates = emptyList<RideCardTemplate>()
     private var currentSavedPlaces = emptyList<SavedPlace>()
     private var currentImportedRadars = emptyList<ImportedRadar>()
     private var currentRadarColor = RadarColor.Idle
@@ -135,7 +124,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var textToSpeechReady = false
 
     private lateinit var repository: SettingsRepository
-    private lateinit var automaticRideCaptureStore129: AutomaticRideCaptureStore // automatic_capture_store_field_0_1_129
     private lateinit var geocodingService: GeocodingService
     private lateinit var gpsAddressResolver: GpsAddressResolver
     private lateinit var locationService: DeviceLocationService
@@ -143,7 +131,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var ocrService: OcrService
     private lateinit var parser: RideTextParser
     private lateinit var decisionEngine: DecisionEngine
-    private val bubbleDecisionPolicy = LiveRideBubbleDecisionPolicy()
     private lateinit var bubblePrefs: SharedPreferences
     private lateinit var speechEngine: LiveSpeechEngine
     private lateinit var proximityAlertEngine: ProximityAlertEngine
@@ -155,7 +142,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     // directional_alert_fields_checklist_5
     private lateinit var shortcutOverlayController: BubbleShortcutOverlayController
     private lateinit var radarDetectionCue: RadarDetectionCue
-    private val registeredCardGate = RegisteredCardDecisionGate()
     private val universalRouteCache = LiveRideRouteCache()
     private var universalRouteJob: Job? = null
     private var universalScreenGeneration: Long = 0L
@@ -169,7 +155,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastStableFarolPackageChecklist14: String? = null
     private var lastStableFarolWindowIdChecklist14: Int? = null
     private var partialReadConfirmationJobChecklist14: Job? = null
-    private var manualActiveCardTemplateId127: String? = null // manual_active_card_template_id_0_1_127
     private val accessibilityEventFloodGate = AccessibilityEventFloodGate()
     private val importedRadarSpatialIndex = ImportedRadarSpatialIndex()
     private var lastExternalWindowPackageName: String? = null
@@ -180,10 +165,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var universalLastTriggerTraceSignature: String? = null
     private var universalLastTriggerTraceAtMillis: Long = 0L // universal_runtime_stability_fields_0_1_101
     private val coreLiveReadTriggerGate = br.com.mapeiaia.rotacerta.core.CoreLiveReadTriggerGate(duplicateWindowMs = 180L)
-    private val coreVisibleCardLifecycle = br.com.mapeiaia.rotacerta.core.CoreVisibleCardLifecycle()
     private var lastVisibleCardSignature: String? = null
-    private val coreLivePipeline = br.com.mapeiaia.rotacerta.core.CoreLiveAnalysisPipeline()
-    private val coreBubbleState = br.com.mapeiaia.rotacerta.core.CoreBubbleStateController()
     private val coreBubblePresenter = br.com.mapeiaia.rotacerta.core.CoreBubblePresenter
 
     override fun onCreate() {
@@ -198,11 +180,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             quickReplyReceiverRegisteredChecklist3 = true
         } // quick_reply_receiver_registration_checklist_3
         repository = SettingsRepository(applicationContext)
-        automaticRideCaptureStore129 = AutomaticRideCaptureStore(applicationContext) // automatic_capture_store_init_0_1_129
-        scope.launch(Dispatchers.IO) {
-            val removed129 = automaticRideCaptureStore129.cleanupExpired()
-            if (removed129 > 0) Unit /* diagnostics_off_checklist_4 */
-        }
         geocodingService = GeocodingService(applicationContext)
         gpsAddressResolver = GpsAddressResolver(applicationContext)
         locationService = DeviceLocationService(applicationContext)
@@ -246,7 +223,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         serviceReady = true
         Unit
         scope.launch { repository.settings.collect { currentSettings = it } }
-        scope.launch { repository.cardTemplates.collect { currentCardTemplates = it } }
         scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
         scope.launch { repository.importedRadars.collect { currentImportedRadars = it } }
         scope.launch {
@@ -257,11 +233,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     SelectedRideAppStore.save(applicationContext, emptySet())
                 }
                 currentSettings = currentSettings.copy(
-                    requireRegisteredRideCard = false, // visual_model_optional_checklist_13
                     restrictToSelectedRideApps = true,
-                    monitor99 = false,
-                    monitorUber = false,
-                    monitorInDrive = false,
                     extraMonitoredPackages = "",
                 )
                 repository.saveSettings(currentSettings)
@@ -270,14 +242,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     .apply()
                 Unit /* diagnostics_off_checklist_4 */
             }
-            currentCardTemplates = repository.cardTemplates.first() // manual_cards_preserved_0_1_127
-            if (currentSettings.requireRegisteredRideCard || !currentSettings.restrictToSelectedRideApps) {
+            if (!currentSettings.restrictToSelectedRideApps) {
                 currentSettings = currentSettings.copy(
-                    requireRegisteredRideCard = false,
                     restrictToSelectedRideApps = true,
-                    monitor99 = false,
-                    monitorUber = false,
-                    monitorInDrive = false,
                     extraMonitoredPackages = "",
                 )
                 repository.saveSettings(currentSettings)
@@ -398,9 +365,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        deferredCandidateCaptureJobFinalChecklist6?.cancel()
-        deferredMatchedCaptureJobFinalChecklist6?.cancel()
-        pendingMatchedCaptureFinalChecklist6 = null // capture_cleanup_final_checklist_6
 
         if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
         if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
@@ -607,106 +571,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     } // deferred_ocr_fallback_90ms_0_1_127
 
-    private fun scheduleCandidateCaptureFinalChecklist6(request: DeferredAutomaticRideCaptureChecklist6) {
-        if (request.cardSignature == lastCandidateCaptureSignatureFinalChecklist6) return
-        lastCandidateCaptureSignatureFinalChecklist6 = request.cardSignature
-        deferredCandidateCaptureJobFinalChecklist6?.cancel()
-        deferredCandidateCaptureJobFinalChecklist6 = scope.launch {
-            delay(FarolCriticalPathPolicy.CANDIDATE_CAPTURE_DELAY_MILLIS)
-            if (request.screenHash != lastSnapshotHash || request.generation != universalScreenGeneration) {
-                if (lastCandidateCaptureSignatureFinalChecklist6 == request.cardSignature) {
-                    lastCandidateCaptureSignatureFinalChecklist6 = null
-                }
-                return@launch
-            }
-            requestAutomaticRideCapture129(request)
-        }
-    }
-
-    private fun releaseMatchedCaptureFinalChecklist6(
-        screenHash: Int,
-        addressSignature: String,
-        generation: Long,
-    ) {
-        val request = pendingMatchedCaptureFinalChecklist6 ?: return
-        if (request.screenHash != screenHash || request.generation != generation || request.cardSignature != addressSignature) return
-        pendingMatchedCaptureFinalChecklist6 = null
-        deferredMatchedCaptureJobFinalChecklist6?.cancel()
-        deferredMatchedCaptureJobFinalChecklist6 = scope.launch {
-            delay(FarolCriticalPathPolicy.MATCHED_CAPTURE_DELAY_MILLIS)
-            if (screenHash != lastSnapshotHash || generation != universalScreenGeneration) return@launch
-            requestAutomaticRideCapture129(request)
-        }
-    }
 
     // subsecond_capture_helpers_final_checklist_6
 
-    private fun requestAutomaticRideCapture129(request: DeferredAutomaticRideCaptureChecklist6) {
-        val packageName = normalizePackageName(request.packageName) ?: return
-        if (!shouldScanPackage(packageName) || normalizePackageName(currentRootPackageName()) != packageName) return
-        if (!automaticRideCaptureStore129.isEnabled() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        if (request.screenHash != lastSnapshotHash || request.generation != universalScreenGeneration) return
-
-        scope.launch {
-            var attemptsFinalChecklist6 = 0
-            while (
-                (screenshotInProgress.get() || universalRouteJob?.isActive == true || analyzing) &&
-                attemptsFinalChecklist6 < FarolCriticalPathPolicy.CAPTURE_BUSY_RETRIES
-            ) {
-                delay(FarolCriticalPathPolicy.CAPTURE_BUSY_RETRY_MILLIS)
-                attemptsFinalChecklist6 += 1
-            }
-            val readyFinalChecklist6 = FarolCriticalPathPolicy.canStartDeferredCapture(
-                serviceReady = serviceReady,
-                packageStillSelected = shouldScanPackage(packageName),
-                sameRootPackage = normalizePackageName(currentRootPackageName()) == packageName,
-                routeRunning = universalRouteJob?.isActive == true || analyzing,
-                normalScreenshotRunning = screenshotInProgress.get(),
-                automaticCaptureRunning = automaticCaptureInProgress129.get(),
-            )
-            if (!readyFinalChecklist6 || !automaticCaptureInProgress129.compareAndSet(false, true)) return@launch
-
-            runCatching {
-                takeScreenshot(
-                    Display.DEFAULT_DISPLAY,
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            if (!shouldScanPackage(packageName) || normalizePackageName(currentRootPackageName()) != packageName) {
-                                automaticCaptureInProgress129.set(false)
-                                return
-                            }
-                            val bitmapFinalChecklist6 = screenshot.toSoftwareBitmap()
-                            if (bitmapFinalChecklist6 == null) {
-                                automaticCaptureInProgress129.set(false)
-                                return
-                            }
-                            scope.launch(Dispatchers.IO) {
-                                runCatching {
-                                    automaticRideCaptureStore129.saveCard(
-                                        bitmap = bitmapFinalChecklist6,
-                                        packageName = packageName,
-                                        text = request.snapshotText,
-                                        fields = request.fields,
-                                        kind = request.kind,
-                                        matchedTemplateId = request.matchedTemplateId,
-                                        matchedTemplateName = request.matchedTemplateName,
-                                    )
-                                }
-                                bitmapFinalChecklist6.recycle()
-                                automaticCaptureInProgress129.set(false)
-                            }
-                        }
-
-                        override fun onFailure(errorCode: Int) {
-                            @Suppress("UNUSED_VARIABLE") val ignoredFinalChecklist6 = errorCode
-                            automaticCaptureInProgress129.set(false)
-                        }
-                    },
-                )
-            }.onFailure { automaticCaptureInProgress129.set(false) }
-        }
-    } // low_priority_capture_final_checklist_6
+// low_priority_capture_final_checklist_6
  // automatic_capture_nonblocking_0_1_129
 
     private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
@@ -801,22 +669,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     destination = fullScreenTriggerChecklist11.destination,
                                 )
                                 processRideText(ocrText, TextSource.Ocr, allowPopupCandidate = true)
-                                if (FullScreenRideCapturePolicy.shouldSaveCandidate(
-                                        packageSelected = shouldScanPackage(requestedPackage),
-                                        automaticCaptureEnabled = automaticRideCaptureStore129.isEnabled(),
-                                        text = ocrText,
-                                        fields = fullScreenFieldsChecklist11,
-                                    )
-                                ) {
-                                    automaticRideCaptureStore129.saveCard(
-                                        bitmap = bitmap,
-                                        packageName = requestedPackage,
-                                        text = ocrText,
-                                        fields = fullScreenFieldsChecklist11,
-                                        kind = AutomaticRideCaptureKind.Candidate,
-                                    )
-                                }
-                                bitmap.recycle() // full_screen_ocr_capture_checklist_11
+                                bitmap.recycle()
                             }.onFailure { error ->
                                 recordDiagnostic(
                                     stage = "screenshot_ocr_error",
@@ -863,8 +716,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun forceClearUniversalResult(reason: String) {
         invalidateLiveAnalysis("universal_clear:" + reason)
-        registeredCardGate.clear()
-        coreCardAnalysisCoalescer.invalidate()
         lastUniversalAddressSignature = null
         lastVisibleCardSignature = null
         lastSnapshotHash = null
@@ -982,13 +833,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         allowPopupCandidate: Boolean = false,
     ) {
         @Suppress("UNUSED_VARIABLE") val ignoredPopupCandidateChecklist13 = allowPopupCandidate
-        if (bubbleGestureActive || !serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return
+        if (bubbleGestureActive || !serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return // bubble_drag_process_pause_0_1_116
         val savedPackagesChecklist13 = SelectedRideAppStore.read(applicationContext)
         val selectedPackageChecklist13 = strictSelectedRootPackageChecklist1()
             ?: normalizePackageName(universalResolvedForegroundPackage())
                 ?.takeIf { it in savedPackagesChecklist13 }
             ?: run {
-                hardClearUniversalTwoAddress("Aplicativo nao ensinado; leitura e rota bloqueadas.")
+                hardClearUniversalTwoAddress("Aplicativo não selecionado; leitura e rota bloqueadas.")
                 return
             }
 
@@ -1036,8 +887,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveRidePackageName = selectedPackageChecklist13
         universalActiveAddressSignature = evaluationChecklist13.addressSignature
         lastSnapshotHash = evaluationChecklist13.screenHash
-        manualActiveCardTemplateId127 = null
-        registeredCardGate.markSeen()
 
         if (cardChangedChecklist13) {
             universalScreenGeneration += 1L
@@ -1146,8 +995,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
  // simple_saved_app_route_checklist_13
 
 
-
-
     private suspend fun applyUniversalTwoAddressResult(
         result: AnalysisResult,
         screenHash: Int,
@@ -1244,10 +1091,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         screenshotFallbackJob127?.cancel()
         screenshotFallbackJob127 = null
         universalActiveAddressSignature = null
-        manualActiveCardTemplateId127 = null // manual_active_card_clear_0_1_127
         lastSnapshotHash = null
         lastAnalyzedHash = null
-        pendingAnalysis = null
         analyzing = false
         currentDistanceKm = null
         lastAccessibilityText = ""
@@ -1256,7 +1101,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalLastActiveReadAtMillis = 0L
         universalActiveRidePackageName = null
         universalLiveReadGate.reset()
-        registeredCardGate.clear()
         if (stateChanged) {
             clearRuntimeValidationTrigger()
             rememberBubbleReason(targetStage127, targetReason127)
@@ -1328,7 +1172,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Unit /* diagnostics_off_checklist_4 */
     } // universal_runtime_stability_guard_0_1_101
 
-    private fun looksLikeRegisteredPopupCandidate(text: String): Boolean =
+    private fun looksLikeTwoAddressCandidate(text: String): Boolean =
         UniversalAddressTrigger.evaluate(text).active // universal_two_address_candidate_0_1_98
 
     private fun rememberSourceText(packageName: String?, source: TextSource, text: String) {
@@ -1374,256 +1218,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         return lines.joinToString("\n")
     }
 
-    private suspend fun saveCapturedReadToHistory(
-        text: String,
-        fields: RideFields,
-        snapshotHash: Int,
-        reason: String,
-    ) = Unit
-
-    private suspend fun saveCapturedCardScreen(
-        text: String,
-        fields: RideFields,
-        snapshotHash: Int,
-        parserName: String,
-        packageName: String?,
-    ) = Unit
-
-    private fun invalidateLiveAnalysis(reason: String) {
-        val previousJob = liveAnalysisJob
-        if (previousJob?.isActive == true) {
-            Unit /* diagnostics_off_checklist_4 */ // latest_card_wins_invalidate_0_1_91
-        }
-        analysisSerial += 1L
-        previousJob?.cancel()
-        liveAnalysisJob = null
-        pendingAnalysis = null
-        coreCardAnalysisCoalescer.invalidate() // same_card_coalesce_invalidate_0_1_93
-        analyzing = false
-    }
-
-    private suspend fun analyzeLiveText(
-        text: String,
-        fields: RideFields,
-        snapshotHash: Int,
-        cardMatch: RideCardTemplateMatch?,
-        allowPopupCandidate: Boolean = false,
-        analysisToken: Long = analysisSerial,
-        analysisCardSignature: String? = lastVisibleCardSignature,
-    ) {
-        if (!hasStrictSelectedRootChecklist1()) return // strict_route_gate_checklist_1
-
-        if (!serviceReady || (!allowPopupCandidate && !shouldScanCurrentWindow())) return
-        analyzing = true
-        Unit /* diagnostics_off_checklist_4 */ // latest_card_wins_analysis_start_0_1_91
-        Unit
-        currentSettings = repository.settings.first()
-        try {
-            val settings = currentSettings
-            val region = DeviceRegion(country = "Brasil")
-            val destinationCoordinate = fields.destination?.let { geocodeBest(it, region, settings) }
-            Unit
-            val homeCoordinate = if (settings.homeTargetEnabled) settings.homeCoordinate ?: geocodeBest(settings.homeAddress, region, settings) else null // functional_bubble_target_gate_0_1_95
-            val alternativeCoordinate = if (settings.alternativeTargetEnabled) settings.alternativeCoordinate ?: geocodeBest(settings.alternativeAddress, region, settings) else null
-            Unit
-            val quickResult = decisionEngine.decide(
-                fields = fields,
-                settings = settings,
-                destinationCoordinate = destinationCoordinate,
-                homeCoordinate = homeCoordinate,
-                alternativeCoordinate = alternativeCoordinate,
-                fullText = text,
-            )
-            if (quickResult.recommendation != Recommendation.InsufficientData) {
-                val quickColor = when (quickResult.recommendation) {
-                    Recommendation.GoodRide -> RadarColor.Green
-                    Recommendation.OutsideRadius -> RadarColor.Red
-                    Recommendation.InsufficientData -> RadarColor.Default
-                }
-                Unit
-                showOverlay(color = quickColor, distanceKm = quickResult.nearestConfiguredDistanceKm())
-                Unit
-            }
-            val homeDistanceKm = routeDistanceKm(destinationCoordinate, homeCoordinate, settings)
-            val alternativeDistanceKm = routeDistanceKm(destinationCoordinate, alternativeCoordinate, settings)
-            Unit
-
-            val result = decisionEngine.decide(
-                fields = fields,
-                settings = settings,
-                destinationCoordinate = destinationCoordinate,
-                homeCoordinate = homeCoordinate,
-                alternativeCoordinate = alternativeCoordinate,
-                fullText = text,
-                homeDistanceKm = homeDistanceKm,
-                alternativeDistanceKm = alternativeDistanceKm,
-            )
-            Unit
-            val analyzedCardSignature = cardMatch?.let { match ->
-                buildVisibleCardSignature(lastTextPackageName ?: currentWindowPackageName(), fields, match)
-            }
-            if (analyzedCardSignature != null &&
-                lastVisibleCardSignature != null &&
-                analyzedCardSignature != lastVisibleCardSignature
-            ) {
-                lastAnalyzedHash = snapshotHash
-                Unit /* diagnostics_off_checklist_4 */ // stale_result_guard_0_1_83
-                return
-            }
-            lastSavedReadHash = snapshotHash
-            if (!allowPopupCandidate && !shouldScanCurrentWindow()) {
-                registeredCardGate.clear()
-                // bubble_render_stability_clear_signature_0_1_81
-                lastVisibleCardSignature = null
-                resetToDefaultForNonRideScreen(
-                    reason = "A tela saiu do card/app monitorado antes de aplicar a decisao.",
-                    record = false,
-                )
-                Unit
-                return
-            }
-            if (allowPopupCandidate && !looksLikeRegisteredPopupCandidate(collectVisibleText(allowPopupCandidate = true))) {
-                registeredCardGate.clear()
-                // bubble_render_stability_clear_signature_0_1_81
-                lastVisibleCardSignature = null
-                resetToDefaultForNonRideScreen(
-                    reason = "O pop-up de corrida nao esta mais visivel; bolinha voltou para cinza.",
-                    record = false,
-                )
-                return
-            }
-
-            if (!allowPopupCandidate && snapshotHash != lastSnapshotHash) {
-                registeredCardGate.clear()
-                // bubble_render_stability_clear_signature_0_1_81
-                lastVisibleCardSignature = null
-                if (shouldScanCurrentWindow()) {
-                    resetToDefault("Analise antiga ignorada porque a tela mudou antes do resultado.", record = false)
-                } else {
-                    resetToIdle("Analise antiga ignorada porque o card/app saiu da tela.", record = false)
-                }
-                return
-            }
-            lastAnalyzedHash = snapshotHash // analysis_hash_bound_to_transaction_0_1_83
-            val coreClassificationForBubble = br.com.mapeiaia.rotacerta.core.RotaCertaCore.classifyScreen(
-                packageName = currentWindowPackageName(),
-                text = text,
-                fields = fields,
-            )
-            val coreBubbleDecision = br.com.mapeiaia.rotacerta.core.CoreBubbleDecisionEngine.fromAnalysis(
-                classification = coreClassificationForBubble,
-                result = result,
-                distanceKm = result.nearestConfiguredDistanceKm(),
-            )
-            val computedRadarColor = when (coreBubbleDecision.mode) {
-                br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Good -> RadarColor.Green
-                br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Bad -> RadarColor.Red
-                br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Waiting -> RadarColor.Default
-                br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Hidden -> RadarColor.Idle
-            }
-            val keepActiveDecisionForTransientInsufficient = false // global_no_transient_decision_keep_0_1_124
-            if (keepActiveDecisionForTransientInsufficient) {
-                Unit /* diagnostics_off_checklist_4 */ // core_bubble_decision_0_1_88
-                recordDiagnostic(
-                    stage = "analysis_result",
-                    reason = "Core classificou leitura transitoria/insuficiente dentro do app monitorado; mantive a decisao verde/vermelha anterior ate confirmar novo card real.",
-                    text = text,
-                    fields = fields,
-                    result = result,
-                    cardTemplateMatch = cardMatch,
-                )
-            } else {
-                val radarColor = computedRadarColor
-                val corePipelineDecision = coreLivePipeline.decisionReady(
-                transaction = coreLivePipeline.transactionFor(snapshotHash) ?: coreLivePipeline.readReady(coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate), snapshotHash, text.length),
-                recommendation = result.recommendation,
-                distanceKm = coreBubbleDecision.distanceKm,
-            )
-            Unit /* diagnostics_off_checklist_4 */ // core_live_pipeline_decision_0_1_96
-            Unit /* diagnostics_off_checklist_4 */ // core_bubble_decision_0_1_88
-                val coreFreshnessDecision = br.com.mapeiaia.rotacerta.core.CoreFreshnessGuard.evaluate(
-                transaction = coreLivePipeline.transactionFor(snapshotHash),
-                currentPackageName = packageName,
-                currentSnapshotHash = snapshotHash,
-                currentVisibleCardSignature = lastVisibleCardSignature,
-            )
-            if (!coreFreshnessDecision.fresh) {
-                Unit /* diagnostics_off_checklist_4 */ // core_freshness_guard_0_1_97
-                recordDiagnostic(
-                    stage = "stale_result",
-                    reason = coreFreshnessDecision.reason,
-                    text = text,
-                    fields = fields,
-                    result = result,
-                    cardTemplateMatch = cardMatch,
-                )
-                return
-            }
-            Unit /* diagnostics_off_checklist_4 */ // core_freshness_guard_0_1_97
-            val corePipelineVisual = coreLivePipeline.visualApplied(
-                transaction = coreLivePipeline.transactionFor(snapshotHash) ?: coreLivePipeline.readReady(coreLivePipeline.begin(packageName, "analysis", text.length, allowPopupCandidate), snapshotHash, text.length),
-                mode = when (radarColor) {
-                    RadarColor.Green -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Good
-                    RadarColor.Red -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Bad
-                    RadarColor.Default -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Waiting
-                    RadarColor.Idle -> br.com.mapeiaia.rotacerta.core.CoreBubbleMode.Hidden
-                },
-            )
-            Unit /* diagnostics_off_checklist_4 */ // core_live_pipeline_visual_0_1_96
-            if (analysisToken != analysisSerial || !coreCardAnalysisCoalescer.isCurrent(analysisCardSignature)) { // same_card_coalesce_current_guard_0_1_93
-                Unit /* diagnostics_off_checklist_4 */ // latest_card_wins_drop_before_visual_0_1_91
-                return
-            }
-            showOverlay(color = radarColor, distanceKm = coreBubbleDecision.distanceKm)
-            if (radarColor == RadarColor.Green || radarColor == RadarColor.Red) {
-                coreCardAnalysisCoalescer.complete(analysisCardSignature)
-            } else {
-                coreCardAnalysisCoalescer.finish(analysisCardSignature)
-            } // same_card_coalesce_visual_complete_0_1_93
-                recordDiagnostic(
-                    stage = "analysis_result",
-                    color = radarColor,
-                    reason = coreBubbleDecision.reason,
-                    text = text,
-                    fields = fields,
-                    result = result,
-                    cardTemplateMatch = cardMatch,
-                )
-            }
-
-        } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error // latest_card_wins_cancel_rethrow_0_1_91
-            if (analysisToken != analysisSerial || !coreCardAnalysisCoalescer.isCurrent(analysisCardSignature)) { // same_card_coalesce_current_guard_0_1_93
-                Unit /* diagnostics_off_checklist_4 */
-                return
-            }
-            Unit
-            showOverlay(RadarColor.Default)
-            Unit
-        } finally {
-            if (analysisToken == analysisSerial) {
-                analyzing = false
-                liveAnalysisJob = null
-                coreCardAnalysisCoalescer.finish(analysisCardSignature)
-            } // latest_card_wins_finish_0_1_91 same_card_coalesce_finish_0_1_93
-            Unit
-            val pending = pendingAnalysis
-            pendingAnalysis = null
-            if (pending != null && pending.snapshotHash != lastAnalyzedHash && (pending.allowPopupCandidate || shouldScanCurrentWindow())) {
-                Unit
-                scope.launch {
-                    analyzeLiveText(
-                        text = pending.text,
-                        fields = pending.fields,
-                        snapshotHash = pending.snapshotHash,
-                        cardMatch = pending.cardMatch,
-                        allowPopupCandidate = pending.allowPopupCandidate,
-                    )
-                }
-            }
-        }
-    }
-
     private suspend fun geocodeBest(query: String, region: DeviceRegion, settings: AppSettings): Coordinate? {
         val apiKey = settings.googleMapsApiKey.ifBlank { BuildConfig.GOOGLE_MAPS_API_KEY }
         return googleMapsService.geocode(query, region, apiKey) ?: geocodingService.geocode(query, region)
@@ -1656,31 +1250,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
         listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
 
-    private fun buildVisibleCardSignature(
-        packageName: String?,
-        fields: RideFields,
-        cardMatch: RideCardTemplateMatch,
-    ): String = listOf(
-        normalizePackageName(packageName).orEmpty(),
-        cardMatch.template.id,
-        fields.destination.stableSignaturePart(),
-        fields.fare.stableSignaturePart(),
-    ).joinToString("|")
-
-    private fun String?.stableSignaturePart(): String =
-        this.orEmpty()
-            .replace(Regex("\\s+"), " ")
-            .trim()
-            .lowercase(Locale.ROOT)
-
-    private fun hasActiveRegisteredDecision(): Boolean =
-        (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
-            registeredCardGate.hasSeenRecently(DECISION_OVERLAY_STICKY_MS)
-
-    private fun rememberBubbleReason(stage: String, reason: String) {
-        lastBubbleStateStage = stage
-        lastBubbleStateReason = reason
-    }
 
     private fun persistBubbleState() {
         val now = System.currentTimeMillis()
@@ -1695,15 +1264,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .putString(KEY_STATE_TEXT_PACKAGE, lastTextPackageName.orEmpty())
             .putString(KEY_STATE_LAST_SNAPSHOT_HASH, lastSnapshotHash?.toString().orEmpty())
             .putString(KEY_STATE_LAST_ANALYZED_HASH, lastAnalyzedHash?.toString().orEmpty())
-            .putString(KEY_STATE_PENDING_HASH, pendingAnalysis?.snapshotHash?.toString().orEmpty())
             .putBoolean(KEY_STATE_SERVICE_READY, serviceReady)
             .putBoolean(KEY_STATE_ANALYZING, analyzing)
             .putInt(KEY_STATE_ACCESSIBILITY_TEXT_LENGTH, lastAccessibilityText.length)
             .putString(KEY_STATE_ACCESSIBILITY_TEXT_HASH, lastAccessibilityText.takeIf { it.isNotBlank() }?.snapshotHash()?.toString().orEmpty())
             .putInt(KEY_STATE_OCR_TEXT_LENGTH, lastOcrText.length)
             .putString(KEY_STATE_OCR_TEXT_HASH, lastOcrText.takeIf { it.isNotBlank() }?.snapshotHash()?.toString().orEmpty())
-            .putInt(KEY_STATE_TEMPLATE_COUNT, currentCardTemplates.size)
             .apply()
+    }
+
+    private fun invalidateLiveAnalysis(reason: String) {
+        @Suppress("UNUSED_VARIABLE") val ignoredReason = reason
+        analysisSerial += 1L
+        liveAnalysisJob?.cancel()
+        liveAnalysisJob = null
+        analyzeJob?.cancel()
+        analyzeJob = null
+        analyzing = false
+    }
+
+    private fun rememberBubbleReason(stage: String, reason: String) {
+        lastBubbleStateStage = stage
+        lastBubbleStateReason = reason
     }
 
     private fun resetToDefault(
@@ -1713,25 +1295,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         record: Boolean = true,
     ) {
         invalidateLiveAnalysis("reset_default:$reason") // latest_card_wins_reset_default_0_1_91
-        val visibleCardClearEvent = coreVisibleCardLifecycle.clear(reason)
         lastVisibleCardSignature = null
         Unit /* diagnostics_off_checklist_4 */ // core_visible_card_clear_0_1_95
         lastSnapshotHash = null
         lastAnalyzedHash = null
-        registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
+        lastVisibleCardSignature = null
         clearRememberedRideText()
-        val hardClearUnregisteredCardDefault = reason.contains("ainda nao bate com nenhum card cadastrado", ignoreCase = true) ||
-            reason.contains("cadastre o modelo para liberar o farol", ignoreCase = true)
-        if (hardClearUnregisteredCardDefault) {
-            lastDecisionOverlayAtMillis = 0L
-            registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
-        }
         rememberBubbleReason("default", reason)
-        val coreState = coreBubbleState.waiting(reason) // core_bubble_state_reset_default_0_1_91
         Unit /* diagnostics_off_checklist_4 */
-        showOverlay(RadarColor.Default, coreState.distanceKm)
+        showOverlay(RadarColor.Default, null)
         if (record) {
             Unit
         }
@@ -1741,77 +1313,29 @@ class LiveRideAccessibilityService : AccessibilityService() {
         resetToIdle(reason = reason, record = record)
     }
 
-    private fun resetStaleRegisteredCardDecision() {
-        val hasDecisionColor = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
-        if (registeredCardGate.shouldResetStale(hasDecisionColor)) {
-            registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
-            resetToDefault(
-                reason = "Card cadastrado nao esta mais visivel; bolinha voltou para amarelo.",
-                record = false,
-            )
-        }
-    }
 
     private fun resetToIdle(
         reason: String,
         record: Boolean = false,
     ) {
         invalidateLiveAnalysis("reset_idle:$reason") // latest_card_wins_reset_idle_0_1_91
-        val visibleCardClearEvent = coreVisibleCardLifecycle.clear(reason)
         lastVisibleCardSignature = null
         Unit /* diagnostics_off_checklist_4 */ // core_visible_card_clear_0_1_95
         Unit // global_idle_never_guarded_0_1_124
         lastSnapshotHash = null
         lastAnalyzedHash = null
-        registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
+        lastVisibleCardSignature = null
         clearRememberedRideText()
         rememberBubbleReason("idle", reason)
-        val coreState = coreBubbleState.hidden(reason) // core_bubble_state_reset_idle_0_1_91
         Unit /* diagnostics_off_checklist_4 */
-        showOverlay(RadarColor.Idle, coreState.distanceKm)
+        showOverlay(RadarColor.Idle, null)
         if (record) {
             Unit
         }
     }
 
-    private fun saveCurrentRideCardFromBubble() {
-        scope.launch {
-            val packageName = currentWindowPackageName() ?: activePackageName
-            val text = mergeRideTexts(lastAccessibilityText, lastOcrText).ifBlank {
-                collectVisibleTextForAction()
-            }
-            if (text.isBlank()) {
-                toast("Abra o card de corrida e tente salvar novamente.")
-                Unit
-                return@launch
-            }
-
-            val inferredPackage = packageName?.lowercase(Locale.ROOT)
-                ?: RideCardTemplateMatcher.inferPackageName(text)
-            val template = RideCardTemplateMatcher.createTemplate(inferredPackage, text)
-            repository.addCardTemplate(template)
-            val parseResult = parser.parseWithMetadata(text, inferredPackage)
-            repository.addCapturedScreen(
-                CapturedRideScreen(
-                    createdAtMillis = System.currentTimeMillis(),
-                    packageName = inferredPackage,
-                    textHash = text.snapshotHash(),
-                    textPreview = text.trim().take(CARD_TEXT_PREVIEW_LIMIT),
-                    parserName = parseResult.parserName,
-                    pickup = parseResult.fields.pickup,
-                    destination = parseResult.fields.destination,
-                    fare = parseResult.fields.fare,
-                ),
-            )
-            toast("Card de corrida salvo.")
-            Unit
-        }
-    }
 
     private fun clearRememberedRideText() {
-        pendingAnalysis = null
         lastTextPackageName = null
         lastAccessibilityText = ""
         lastOcrText = ""
@@ -1905,7 +1429,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "ferramentas",
             "configuracoes",
             "configurações",
-            "modelos de cards",
+            "configuração antiga",
             "assinaturas de cards",
             "casa/ponto principal",
             "alertas de proximidade",
@@ -1977,7 +1501,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         fields: RideFields? = null,
         result: AnalysisResult? = null,
         error: Throwable? = null,
-        cardTemplateMatch: RideCardTemplateMatch? = null,
     ) = Unit
 
     private fun traceEvent(message: String) {
@@ -1994,7 +1517,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun String.withDiagnosticEvents(): String = this
-
 
 
     private fun isPassiveDiagnosticPackage(packageName: String?): Boolean =
@@ -2166,156 +1688,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun captureAndRegisterRideCardManualChecklist12() {
-        shortcutOverlayController.hideAll()
-        persistResourceShortcutState()
-        if (!manualCardCaptureInProgressChecklist12.compareAndSet(false, true)) {
-            toast("A captura manual do card já está em andamento.")
-            return
-        }
-        scope.launch {
-            delay(220L)
-            requestManualRideCardScreenshotChecklist12(attempt = 0)
-        }
-    }
 
-    private fun requestManualRideCardScreenshotChecklist12(attempt: Int) {
-        val taughtPackageChecklist13 = SimpleSavedAppFarolPolicy.teachablePackage(
-            packageName = currentRootPackageName() ?: recentSelectedRidePackageChecklist11,
-            ownPackageName = this.packageName,
-        )
-        if (taughtPackageChecklist13 == null) {
-            manualCardCaptureInProgressChecklist12.set(false)
-            toast("Abra o aplicativo de corrida com o card na tela e tente novamente.")
-            return
-        }
-        val selectedPackagesChecklist12 = SelectedRideAppStore.read(applicationContext).toMutableSet()
-        if (selectedPackagesChecklist12.add(taughtPackageChecklist13)) {
-            SelectedRideAppStore.save(applicationContext, selectedPackagesChecklist12)
-        }
-        recentSelectedRidePackageChecklist11 = taughtPackageChecklist13
-        recentSelectedRidePackageAtMillisChecklist11 = System.currentTimeMillis()
-        universalForegroundPackageName = taughtPackageChecklist13
-        activePackageName = taughtPackageChecklist13
-        lastExternalWindowPackageName = taughtPackageChecklist13
-        val packageNameChecklist12 = taughtPackageChecklist13 // capture_teaches_package_checklist_13
-
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            manualCardCaptureInProgressChecklist12.set(false)
-            toast("A captura completa exige Android 11 ou superior.")
-            return
-        }
-        if (!screenshotInProgress.compareAndSet(false, true)) {
-            if (attempt < 5) {
-                scope.launch {
-                    delay(100L)
-                    requestManualRideCardScreenshotChecklist12(attempt + 1)
-                }
-            } else {
-                manualCardCaptureInProgressChecklist12.set(false)
-                toast("A tela está sendo lida. Tente novamente em um instante.")
-            }
-            return
-        }
-
-        toast("Aplicativo salvo. Capturando o card completo...")
-        runCatching {
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        scope.launch {
-                            var bitmapChecklist12: Bitmap? = null
-                            try {
-                                bitmapChecklist12 = screenshot.toSoftwareBitmap()
-                                val bitmap = bitmapChecklist12 ?: run {
-                                    toast("O Android não entregou a imagem da tela.")
-                                    return@launch
-                                }
-                                val textChecklist12 = ocrService.extractText(bitmap)
-                                val parsedChecklist12 = parser.parseWithMetadata(textChecklist12, packageNameChecklist12)
-                                val simpleEvaluationChecklist13 = withContext(Dispatchers.Default) {
-                                    SimpleSavedAppFarolPolicy.evaluate(
-                                        packageName = packageNameChecklist12,
-                                        savedPackages = selectedPackagesChecklist12,
-                                        text = textChecklist12,
-                                    )
-                                }
-                                val fieldsChecklist12 = RideFields(
-                                    pickup = simpleEvaluationChecklist13.pickup ?: parsedChecklist12.fields.pickup,
-                                    destination = simpleEvaluationChecklist13.destination ?: parsedChecklist12.fields.destination,
-                                    fare = parsedChecklist12.fields.fare,
-                                )
-                                val looksLikeCardChecklist12 = RideCardTemplateMatcher.looksLikeLearnableRideCard(textChecklist12)
-                                val evaluationChecklist12 = ManualRideCardCapturePolicy.evaluate(
-                                    packageSelected = true,
-                                    text = textChecklist12,
-                                    bitmapWidth = bitmap.width,
-                                    bitmapHeight = bitmap.height,
-                                    looksLikeRideCard = looksLikeCardChecklist12,
-                                )
-                                if (!evaluationChecklist12.canStoreImage) {
-                                    toast(evaluationChecklist12.reason)
-                                    return@launch
-                                }
-                                val optionalTemplateChecklist13 = if (evaluationChecklist12.canCreateTemplate) {
-                                    RideCardTemplateMatcher.createTemplate(packageNameChecklist12, textChecklist12)
-                                } else {
-                                    null
-                                }
-                                val captureChecklist12 = automaticRideCaptureStore129.saveCard(
-                                    bitmap = bitmap,
-                                    packageName = packageNameChecklist12,
-                                    text = textChecklist12,
-                                    fields = fieldsChecklist12,
-                                    kind = AutomaticRideCaptureKind.Candidate,
-                                    matchedTemplateId = optionalTemplateChecklist13?.id,
-                                    matchedTemplateName = optionalTemplateChecklist13?.name,
-                                    allowIncompleteManual = true,
-                                )
-                                if (captureChecklist12 == null) {
-                                    toast("Não consegui armazenar o print completo.")
-                                    return@launch
-                                }
-                                optionalTemplateChecklist13?.let { repository.addCardTemplate(it) }
-                                repository.addCapturedScreen(
-                                    CapturedRideScreen(
-                                        createdAtMillis = System.currentTimeMillis(),
-                                        packageName = packageNameChecklist12,
-                                        textHash = textChecklist12.hashCode(),
-                                        textPreview = textChecklist12.trim().take(500),
-                                        parserName = parsedChecklist12.parserName,
-                                        pickup = fieldsChecklist12.pickup,
-                                        destination = fieldsChecklist12.destination,
-                                        fare = fieldsChecklist12.fare,
-                                    ),
-                                )
-                                toast("Aplicativo e print salvos. O farol usará sempre o último de dois endereços.")
-                                processRideText(textChecklist12, TextSource.Ocr, allowPopupCandidate = true)
-                            } catch (_: Throwable) {
-                                toast("Não consegui concluir a captura manual do card.")
-                            } finally {
-                                bitmapChecklist12?.recycle()
-                                screenshotInProgress.set(false)
-                                manualCardCaptureInProgressChecklist12.set(false)
-                            }
-                        }
-                    }
-
-                    override fun onFailure(errorCode: Int) {
-                        screenshotInProgress.set(false)
-                        manualCardCaptureInProgressChecklist12.set(false)
-                        toast("O Android bloqueou o print desta tela. Mantenha o card aberto e tente novamente.")
-                    }
-                },
-            )
-        }.onFailure {
-            screenshotInProgress.set(false)
-            manualCardCaptureInProgressChecklist12.set(false)
-            toast("Não consegui solicitar o print completo da tela.")
-        }
-    } // capture_teaches_app_and_triggers_farol_checklist_13
+// capture_teaches_app_and_triggers_farol_checklist_13
  // capture_teaches_app_and_triggers_farol_checklist_13
 
 
@@ -2930,13 +2304,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private enum class TextSource { Accessibility, Ocr }
 
-    private data class PendingLiveAnalysis(
-        val text: String,
-        val fields: RideFields,
-        val snapshotHash: Int,
-        val cardMatch: RideCardTemplateMatch?,
-        val allowPopupCandidate: Boolean,
-    )
 
     private enum class RadarColor(
         private val normalArgb: Int,
@@ -2989,17 +2356,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val KEY_STATE_TEXT_PACKAGE = "state_text_package"
         const val KEY_STATE_LAST_SNAPSHOT_HASH = "state_last_snapshot_hash"
         const val KEY_STATE_LAST_ANALYZED_HASH = "state_last_analyzed_hash"
-        const val KEY_STATE_PENDING_HASH = "state_pending_hash"
         const val KEY_STATE_SERVICE_READY = "state_service_ready"
         const val KEY_STATE_ANALYZING = "state_analyzing"
         const val KEY_STATE_ACCESSIBILITY_TEXT_LENGTH = "state_accessibility_text_length"
         const val KEY_STATE_ACCESSIBILITY_TEXT_HASH = "state_accessibility_text_hash"
         const val KEY_STATE_OCR_TEXT_LENGTH = "state_ocr_text_length"
         const val KEY_STATE_OCR_TEXT_HASH = "state_ocr_text_hash"
-        const val KEY_STATE_TEMPLATE_COUNT = "state_template_count"
-        const val PACKAGE_99_DRIVER = "com.app99.driver"
-        const val PACKAGE_UBER_DRIVER = "com.ubercab.driver"
-        const val PACKAGE_INDRIVE_DRIVER = "sinet.startup.indriver"
         val IGNORED_PACKAGES = setOf(
             "android",
             "com.android.settings",
@@ -3030,82 +2392,3 @@ class LiveRideAccessibilityService : AccessibilityService() {
 }
 // unified_bubble_grid_0_1_94 preserved_by_functional_bubbles
 
-// registeredCardRequired = false (modelo opcional no runtime universal)
-
-// universal_two_address_process_0_1_98 compatibility_preserved_by_0_1_101
-
-// universal_no_card_runtime_0_1_102 legacy_marker_only_strict_0_1_127
-// currentCardTemplates = emptyList() // legacy_marker_only_strict_0_1_127
-// .putInt(KEY_STATE_TEMPLATE_COUNT, 0) // legacy_marker_only_strict_0_1_127
-// cards_repository_preserved_0_1_120 // legacy_marker_only_strict_0_1_127
-// universal_cards_optional_settings_0_1_120 disabled_by_strict_0_1_127
-// strict_no_card_task_compatibility_only_0_1_127
-
-// universal_overlay_self_window_fix_0_1_106
-
-// universal_fast_read_runtime_0_1_108
-
-// universal_fast_read_runtime_0_1_109
-
-// universal_fast_read_runtime_0_1_110
-
-// bubble_resource_shortcuts_runtime_0_1_117
-
-// popup_only_service_actions_0_1_119
-
-// popup_only_compile_cleanup_0_1_119
-
-// popup_navigation_service_0_1_120
-
-// popup_navigation_compile_service_0_1_120
-
-// BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp() // workflow_legacy_marker_0_1_118
-
-// popup_gesture_validator_compat_0_1_120
-
-// universal_ocr_freshness_runtime_0_1_120
-
-// universal_route_inflight_runtime_0_1_120
-
-// UniversalFastReadPolicy.shouldIgnoreTransientEmptyAccessibilityRead(
-// universal.accessibility transient_overlay_empty_ignored=true
-// universal_ride_evidence_gate_0_1_112
-// transient_empty_ignored_route_inflight=true
-// resetToIdle guarded active_ride_window
-// fast_read_legacy_marker_compat_0_1_124
-
-// pre_registered_gates.removed cards= // legacy_marker_only_strict_0_1_127
-
-// SelectedRideAppStore.save(applicationContext, emptySet()) // legacy_marker_only_strict_0_1_127
-
-// universal_package_content_gate_0_1_126 // legacy_marker_only_strict_0_1_127
-
-// classification.canScan // legacy_marker_only_strict_0_1_127
-
-// universal_package_block_reason_0_1_126 // legacy_marker_only_strict_0_1_127
-
-// universal_process_block_reason_0_1_126 // legacy_marker_only_strict_0_1_127
-
-// strict_legacy_126_preflight_ready_0_1_127
-
-// universal_optional_card_model_migration_0_1_101 // strict_0_1_127_legacy_marker_only
-
-// global_screen_change_clear_0_1_124 // strict_0_1_127_legacy_marker_only
-
-// strict_repeatable_build_markers_0_1_127
-
-// strict_legacy_126_preflight_finalized_0_1_127
-
-// saved_place_blank_name_checklist_7
-
-
-// Compatibilidade textual com validadores 0.1.117; nenhum evento é gravado.
-// bubble.reading.toggle
-// bubble.stop.requested
-// legacy_runtime_functional_markers_checklist_10
-
-// real_session_video_fixes_complete_checklist_11
-
-// bubble_drag_process_pause_0_1_116 — preservado por bubbleGestureActive no farol simples.
-
-// stable_farol_display_complete_checklist_14

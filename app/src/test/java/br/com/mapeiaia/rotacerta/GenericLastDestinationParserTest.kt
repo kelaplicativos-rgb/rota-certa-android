@@ -1,11 +1,12 @@
 package br.com.mapeiaia.rotacerta
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GenericLastDestinationParserTest {
     @Test
-    fun usesLastAddressAsDestinationForUnknownRegionalAppText() {
+    fun usesLastAddressAsDestinationForAnyManuallySelectedAppText() {
         val text = """
             Oferta de corrida
             R$ 21,90
@@ -23,7 +24,7 @@ class GenericLastDestinationParserTest {
     }
 
     @Test
-    fun oneAddressUnknownTextIsAlsoPointB() {
+    fun oneAddressDoesNotActivateDestinationTrigger() {
         val text = """
             Chamada disponível
             R$ 12,50
@@ -33,6 +34,7 @@ class GenericLastDestinationParserTest {
 
         val fields = RideTextParser().parse(text, packageName = "com.app.local")
 
-        assertEquals("Rua Única, 777 - Centro", fields.destination)
+        assertEquals("Rua Única, 777 - Centro", fields.pickup)
+        assertNull(fields.destination)
     }
 }

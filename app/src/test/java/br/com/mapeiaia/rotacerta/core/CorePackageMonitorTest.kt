@@ -19,9 +19,9 @@ class CorePackageMonitorTest {
         val selected = CorePackageMonitor.classify("com.exemplo.entregas", ownPackage, settings)
         val other = CorePackageMonitor.classify("com.exemplo.outro", ownPackage, settings)
         assertTrue(selected.canScan)
-        assertEquals(CorePackageKind.RideApp, selected.kind)
+        assertEquals(CorePackageKind.SelectedApp, selected.kind)
         assertFalse(other.canScan)
-        assertEquals(CorePackageKind.NotMonitored, other.kind)
+        assertEquals(CorePackageKind.NotSelected, other.kind)
     }
 
     @Test

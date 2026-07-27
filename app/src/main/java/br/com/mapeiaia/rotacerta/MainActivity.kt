@@ -109,7 +109,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
     val settings by repository.settings.collectAsState(initial = AppSettings())
     // in_app_bubble_immediate_state_0_1_98 substituido pela navegacao agrupada 0.1.115
     val history = emptyList<AnalysisResult>()
-    val cardTemplates by repository.cardTemplates.collectAsState(initial = emptyList())
     val savedPlaces by repository.savedPlaces.collectAsState(initial = emptyList())
     val radarImportSummary by repository.radarImportSummary.collectAsState(initial = RadarImportSummary())
     val ocrService = remember { OcrService(context) }
@@ -125,31 +124,10 @@ fun RotaCertaApp(launchIntent: Intent?) {
     var handledSavedPlaceNameDialogId by remember { mutableStateOf<String?>(null) }
     var region by remember { mutableStateOf(DeviceRegion()) }
     var liveEnabled by remember { mutableStateOf(isLiveAccessibilityEnabled(context)) }
-    var templateStatus by remember { mutableStateOf("Modelos cadastrados: ${cardTemplates.size}") }
-    var unreadTemplatePrints by remember { mutableStateOf(0) }
     var backupStatus by remember { mutableStateOf("") }
     var radarImportStatus by remember { mutableStateOf("") }
     var supportReportStatus by remember { mutableStateOf("") }
 
-    fun registerRideCard(packageName: String?, text: String) {
-        if (text.isBlank()) {
-            Toast.makeText(context, "Nao ha texto lido para cadastrar", Toast.LENGTH_SHORT).show()
-            return
-        }
-        scope.launch {
-            val inferredPackageName = packageName ?: RideCardTemplateMatcher.inferPackageName(text)
-            val template = RideCardTemplateMatcher.createTemplate(inferredPackageName, text)
-            repository.addCardTemplate(template)
-            Toast.makeText(context, "Modelo cadastrado: ${template.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun deleteCardModel(template: RideCardTemplate) {
-        scope.launch {
-            repository.removeCardTemplate(template.id)
-            Toast.makeText(context, "Modelo removido: ${template.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     fun renameSavedPlace(place: SavedPlace, name: String) {
         val safeName = name.trim().ifBlank { defaultSavedPlaceName(place.type) }
@@ -230,34 +208,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
     }
 
-    val cardModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        scope.launch {
-            unreadTemplatePrints = 0
-            templateStatus = "Lendo ${uris.size} print(s)..."
-            var failures = 0
-            var imported = 0
-
-            uris.forEach { uri ->
-                val extractedText = runCatching { ocrService.extractText(uri) }.getOrDefault("")
-                val packageName = RideCardTemplateMatcher.packageNameForLearning(null, extractedText)
-                if (extractedText.isBlank() || packageName == null) {
-                    failures += 1
-                } else {
-                    val template = RideCardTemplateMatcher.createTemplate(packageName, extractedText)
-                    repository.addCardTemplate(template)
-                    imported += 1
-                }
-            }
-
-            unreadTemplatePrints = failures
-            templateStatus = when {
-                failures == 0 -> "Leitura concluida: $imported modelo(s) importado(s)."
-                imported == 0 -> "Nenhum modelo importado. Use recorte do bloco da corrida com tempo, km e enderecos."
-                else -> "Leitura concluida: $imported modelo(s) importado(s), $failures print(s) sem leitura."
-            }
-        }
-    }
 
     val radarFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) {
@@ -321,11 +271,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     repository = repository,
                     settings = settings,
                     liveEnabled = liveEnabled,
-                    cardTemplates = cardTemplates,
-                    templateStatus = templateStatus,
-                    unreadTemplatePrints = unreadTemplatePrints,
-                    onPickCardModels = { cardModelPicker.launch("image/*") },
-                    onDeleteCardModel = ::deleteCardModel,
                     savedPlaces = savedPlaces,
                     radarImportSummary = radarImportSummary,
                 )
@@ -355,31 +300,26 @@ fun RotaCertaApp(launchIntent: Intent?) {
                 } ?: error("Nao consegui abrir o arquivo selecionado.")
                 repository.restoreBackupJson(backupJson)
             }.onSuccess { backup ->
-                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is), ${backup.cardTemplates.size} modelo(s)."
+                backupStatus = "Backup restaurado: ${backup.savedPlaces.size} local(is)."
             }.onFailure { error ->
                 backupStatus = "Falha ao restaurar backup: ${error.message.orEmpty()}"
             }
         }
     }
 
-    LaunchedEffect(cardTemplates.size) {
-        if (!templateStatus.startsWith("Lendo ")) {
-            templateStatus = "Modelos cadastrados: ${cardTemplates.size}"
-        }
-    }
 
-    LaunchedEffect(settings, cardTemplates.size, savedPlaces.size, radarImportSummary.count) {
+    LaunchedEffect(settings, savedPlaces.size, radarImportSummary.count) {
         val factoryPrefs = context.getSharedPreferences("rota_certa_factory_guard", Context.MODE_PRIVATE)
         val guardKey = "factory_clean_0_1_72"
         val hasStoredRegionOrUserLocation = settings.homeAddress.isNotBlank() ||
             settings.homeCoordinate != null ||
             settings.alternativeAddress.isNotBlank() ||
             settings.alternativeCoordinate != null
-        val hasNoUserCollections = cardTemplates.isEmpty() && savedPlaces.isEmpty() && radarImportSummary.count == 0
+        val hasNoUserCollections = savedPlaces.isEmpty() && radarImportSummary.count == 0
         if (!factoryPrefs.getBoolean(guardKey, false) && hasNoUserCollections && hasStoredRegionOrUserLocation) {
             repository.saveSettings(AppSettings())
             region = DeviceRegion()
-            templateStatus = "Dados antigos removidos. App zerado para cadastro correto dos cards."
+            backupStatus = "Dados antigos removidos; seleção de aplicativos permanece manual."
         }
         factoryPrefs.edit().putBoolean(guardKey, true).apply()
     }
@@ -455,11 +395,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     },
                     onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
                 
-                    cardTemplates = cardTemplates,
-                    templateStatus = templateStatus,
-                    unreadTemplatePrints = unreadTemplatePrints,
-                    onPickCardModels = { cardModelPicker.launch("image/*") },
-                    onDeleteCardModel = ::deleteCardModel,
                 )
                 TAB_CONFIG -> SettingsScreen(
                     selectedGroup = selectedBubbleGroup,
@@ -470,18 +405,12 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     },
                     onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
                     diagnostic = null,
-                    cardTemplates = cardTemplates,
-                    templateStatus = templateStatus,
-                    unreadTemplatePrints = unreadTemplatePrints,
-                    onPickCardModels = { cardModelPicker.launch("image/*") },
-                    onDeleteCardModel = ::deleteCardModel,
                     savedPlaces = savedPlaces,
                     backupStatus = backupStatus,
                     highlightedSavedPlaceId = highlightedSavedPlaceId,
                     radarImportSummary = radarImportSummary,
                     radarImportStatus = radarImportStatus,
                     onSave = { updated -> scope.launch { repository.saveSettings(updated) } },
-                    onRegisterRideCard = ::registerRideCard,
                     onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },
                     onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },
                     onRenameSavedPlace = ::renameSavedPlace,
@@ -508,7 +437,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
                 )
                 TAB_HISTORY -> ReportsGroupScreen(
                     settings = settings,
-                    cardTemplates = cardTemplates,
                     diagnostic = null,
                     history = history,
                 )
@@ -672,13 +600,8 @@ private fun openWhatsAppApp(context: Context) {
 private fun AnalysisScreen(
     settings: AppSettings,
     latestResult: AnalysisResult?,
-    cardTemplates: List<RideCardTemplate> = emptyList(),
-    templateStatus: String = "",
-    unreadTemplatePrints: Int = 0,
     liveEnabled: Boolean,
     onSaveSettings: (AppSettings) -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit = {},
-    onPickCardModels: () -> Unit = {},
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
 ) {
@@ -801,7 +724,7 @@ private fun AnalysisScreen(
 
 
     Spacer(Modifier.height(10.dp))
-    // Modelos removidos; o gatilho e o ultimo endereco. // universal_models_removed_v2_0_1_95
+    // Leitura direta ativa; o gatilho e o ultimo endereco. // universal_models_removed_v2_0_1_95
 
     Spacer(Modifier.height(10.dp))
     MapsAndAdvancedCard(
@@ -939,232 +862,19 @@ private fun RadiusQuickCard(
     }
 }
 
-@Composable
-private fun CardModelsCard(
-    cardTemplates: List<RideCardTemplate>,
-    templateStatus: String,
-    unreadTemplatePrints: Int,
-    onPickCardModels: () -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Modelos de cards (apoio opcional)", fontWeight = FontWeight.Bold)
-            Text(
-                "Nenhum modelo nasce cadastrado. Cadastre pelo menos um print do card de cada aplicativo selecionado; sem correspondencia a bolinha nao calcula rota nem libera verde/vermelho.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text("Modelos cadastrados: ${cardTemplates.size}")
-            Button(onClick = onPickCardModels, modifier = Modifier.fillMaxWidth()) {
-                Text("Anexar modelos de cards (prints)")
-            }
-            if (templateStatus.isNotBlank()) Text(templateStatus, style = MaterialTheme.typography.bodySmall)
-            if (unreadTemplatePrints > 0) {
-                Text("Prints sem leitura: $unreadTemplatePrints", style = MaterialTheme.typography.bodySmall)
-            }
-            AutomaticRideCaptureGallery129() // automatic_capture_gallery_inside_models_0_1_129
-            if (cardTemplates.isEmpty()) {
-                Text("Nenhum modelo cadastrado. A bolinha permanece amarela e nao calcula rota.", style = MaterialTheme.typography.bodySmall)
-            } else {
-                cardTemplates.forEach { template ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(template.name, fontWeight = FontWeight.Bold)
-                            Text(template.packageName ?: "app nao identificado", style = MaterialTheme.typography.bodySmall)
-                        }
-                        OutlinedButton(onClick = { onDeleteCardModel(template) }) { Text("Apagar") }
-                    }
-                }
-            }
-        }
-    }
-} // no_pre_registered_cards_ui_0_1_126 superseded manual_card_models_restored_0_1_127
+// no_pre_registered_cards_ui_0_1_126 superseded manual_card_models_restored_0_1_127
  // no_pre_registered_cards_ui_0_1_126
 
 
-@Composable
-private fun AutomaticRideCaptureGallery129() {
-    val context129 = LocalContext.current
-    val store129 = remember { AutomaticRideCaptureStore(context129) }
-    val captures129 by remember(store129) { store129.capturesFlow() }
-        .collectAsState(initial = store129.list())
-    val scope129 = rememberCoroutineScope()
-    var enabled129 by remember { mutableStateOf(store129.isEnabled()) }
-    val candidates129 = captures129.filter { it.kind == AutomaticRideCaptureKind.Candidate }
-    val matched129 = captures129.filter { it.kind == AutomaticRideCaptureKind.Matched }
+// capture_library_split_final_checklist_6
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Captura automática dos cards", fontWeight = FontWeight.Bold)
-        Text(
-            "A captura nunca concorre com a cor ou com o quilômetro. Candidatas são registradas somente depois que a tela permanece estável; cards reconhecidos são fotografados depois que o farol termina.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(if (enabled129) "Captura automática ativa" else "Captura automática pausada")
-            Switch(
-                checked = enabled129,
-                onCheckedChange = { checked129 ->
-                    enabled129 = checked129
-                    store129.setEnabled(checked129)
-                },
-            )
-        }
-
-        Text("Candidatas a modelo: ${candidates129.size}", fontWeight = FontWeight.Bold)
-        Text(
-            "São ofertas reconhecidas no aplicativo selecionado que ainda não correspondem a um modelo manual. Expiram em 7 dias.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (candidates129.isEmpty()) {
-            Text("Nenhuma candidata aguardando confirmação.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            candidates129.take(6).forEach { capture129 ->
-                AutomaticRideCaptureCardChecklist6(
-                    capture = capture129,
-                    store = store129,
-                    onPromote = {
-                        scope129.launch {
-                            val template129 = RideCardTemplateMatcher.createTemplate(
-                                capture129.packageName,
-                                capture129.textPreview,
-                                "Card confirmado ${capture129.packageName.substringAfterLast('.')}",
-                            )
-                            SettingsRepository(context129).addCardTemplate(template129)
-                            store129.consumePromotedCandidate(capture129.id)
-                            Toast.makeText(context129, "Modelo cadastrado e captura temporária removida.", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                )
-            }
-            if (candidates129.size > 6) {
-                Text("Mostrando as 6 candidatas mais recentes.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Text("Cards já reconhecidos: ${matched129.size}", fontWeight = FontWeight.Bold)
-        Text(
-            "Já possuem modelo correspondente. Servem apenas para conferência temporária e não criam modelos duplicados. Expiram em 14 dias.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (matched129.isEmpty()) {
-            Text("Nenhum card reconhecido capturado ainda.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            matched129.take(6).forEach { capture129 ->
-                AutomaticRideCaptureCardChecklist6(
-                    capture = capture129,
-                    store = store129,
-                    onPromote = null,
-                )
-            }
-            if (matched129.size > 6) {
-                Text("Mostrando os 6 reconhecidos mais recentes.", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        if (captures129.isNotEmpty()) {
-            OutlinedButton(
-                onClick = {
-                    val affectedPackagesChecklist15 = captures129.map { it.packageName }.toSet()
-                    store129.clearAll()
-                    scope129.launch {
-                        val repositoryChecklist15 = SettingsRepository(context129)
-                        affectedPackagesChecklist15.forEach { repositoryChecklist15.pruneSelectedPackageIfNoCards(it) }
-                    }
-                }, // clear_captures_prunes_packages_checklist_15
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Apagar todas as capturas temporárias") }
-        }
-    }
-} // capture_library_split_final_checklist_6
-
-@Composable
-private fun AutomaticRideCaptureCardChecklist6(
-    capture: AutomaticRideCapture,
-    store: AutomaticRideCaptureStore,
-    onPromote: (() -> Unit)?,
-) {
-    val context129 = LocalContext.current
-    val captureDeleteScopeChecklist15 = rememberCoroutineScope()
-    val preview129 = remember(capture.id, capture.imageFileName) {
-        BitmapFactory.decodeFile(store.imageFile(capture).absolutePath)?.asImageBitmap()
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            preview129?.let { image129 ->
-                Image(
-                    bitmap = image129,
-                    contentDescription = "Captura temporária de card",
-                    modifier = Modifier.fillMaxWidth().height(180.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            }
-            Text(capture.packageName, fontWeight = FontWeight.Bold)
-            if (capture.kind == AutomaticRideCaptureKind.Matched) {
-                Text(
-                    "Modelo reconhecido: ${capture.matchedTemplateName ?: capture.matchedTemplateId ?: "modelo manual"}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            capture.fare?.let { Text("Valor: $it", style = MaterialTheme.typography.bodySmall) }
-            capture.pickup?.let { Text("Embarque: $it", style = MaterialTheme.typography.bodySmall) }
-            capture.destination?.let { Text("Destino: $it", style = MaterialTheme.typography.bodySmall) }
-            val remainingDays129 = ((capture.expiresAtMillis - System.currentTimeMillis()) /
-                (24L * 60L * 60L * 1_000L)).coerceAtLeast(0L) + 1L
-            Text("Exclusão automática em até $remainingDays129 dia(s).", style = MaterialTheme.typography.bodySmall)
-
-            if (onPromote != null) {
-                Button(onClick = onPromote, modifier = Modifier.fillMaxWidth()) {
-                    Text("Confirmar e cadastrar como modelo")
-                }
-            }
-
-            capture.destination?.let { destination129 ->
-                OutlinedButton(
-                    onClick = {
-                        val uri129 = Uri.parse("geo:0,0?q=" + Uri.encode(destination129))
-                        val mapsIntent129 = Intent(Intent.ACTION_VIEW, uri129).setPackage("com.google.android.apps.maps")
-                        runCatching { context129.startActivity(mapsIntent129) }
-                            .recoverCatching { context129.startActivity(Intent(Intent.ACTION_VIEW, uri129)) }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Abrir destino no mapa") }
-            }
-
-            OutlinedButton(
-                onClick = {
-                    val details129 = buildString {
-                        capture.fare?.let { appendLine("Valor: $it") }
-                        capture.pickup?.let { appendLine("Embarque: $it") }
-                        capture.destination?.let { appendLine("Destino: $it") }
-                    }.trim()
-                    val clipboard129 = context129.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard129.setPrimaryClip(ClipData.newPlainText("Detalhes da corrida", details129))
-                    Toast.makeText(context129, "Detalhes copiados.", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Copiar detalhes") }
-
-            OutlinedButton(
-                onClick = {
-                    captureDeleteScopeChecklist15.launch {
-                        if (store.delete(capture.id)) {
-                            SettingsRepository(context129).pruneSelectedPackageIfNoCards(capture.packageName)
-                        }
-                    }
-                }, // delete_capture_prunes_package_checklist_15
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Apagar captura") }
-        }
-    }
-} // capture_card_component_final_checklist_6
+// capture_card_component_final_checklist_6
  // automatic_capture_gallery_composable_0_1_129
 
 @Composable
 private fun DiagnosticExpander(
     settings: AppSettings,
     @Suppress("UNUSED_PARAMETER") diagnostic: LiveDiagnostic?,
-    cardTemplates: List<RideCardTemplate>,
-    @Suppress("UNUSED_PARAMETER") onRegisterRideCard: (String?, String) -> Unit,
 ) {
     val context = LocalContext.current
     ExpandableCard(title = "Relatorio tecnico", initiallyExpanded = false) {
@@ -1177,11 +887,7 @@ private fun DiagnosticExpander(
                 DiagnosticRuntimeGate.endManualCapture()
                 DiagnosticLogStore.clear()
                 LiveFailureTraceStore.clear()
-                val report = ManualTechnicalReportBuilder.build(
-                    context = context,
-                    settings = settings,
-                    cardTemplates = cardTemplates,
-                )
+                val report = ManualTechnicalReportBuilder.build(context = context, settings = settings)
                 ManualTechnicalReportExporter.saveToDownloads(context, report)
                     .onSuccess {
                         Toast.makeText(context, "Relatorio salvo em Downloads/Rota Certa.", Toast.LENGTH_SHORT).show()
@@ -1198,7 +904,6 @@ private fun DiagnosticExpander(
         ) {
             Text("Gerar e baixar relatorio")
         }
-        Text("Modelos cadastrados: ${cardTemplates.size}", style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -1242,22 +947,7 @@ private fun SavedPlacesCard(
 } // saved_places_alphabetical_final_checklist_7
 
 
-@Composable
-private fun RegisteredCardsModuleCard(
-    cardTemplates: List<RideCardTemplate>,
-    templateStatus: String,
-    unreadTemplatePrints: Int,
-    onPickCardModels: () -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
-) {
-    CardModelsCard(
-        cardTemplates = cardTemplates,
-        templateStatus = templateStatus,
-        unreadTemplatePrints = unreadTemplatePrints,
-        onPickCardModels = onPickCardModels,
-        onDeleteCardModel = onDeleteCardModel,
-    )
-} // no_registered_cards_module_0_1_126 superseded registered_cards_module_restored_0_1_127
+// no_registered_cards_module_0_1_126 superseded registered_cards_module_restored_0_1_127
  // no_registered_cards_module_0_1_126
  // registered_cards_module_0_1_120
 
@@ -1407,18 +1097,12 @@ private fun SettingsScreen(
     onOpenAccessibilitySettings: () -> Unit,
     onRefreshLiveState: () -> Unit,
     diagnostic: LiveDiagnostic?,
-    cardTemplates: List<RideCardTemplate> = emptyList(),
-    templateStatus: String = "",
-    unreadTemplatePrints: Int = 0,
-    onPickCardModels: () -> Unit = {},
-    onDeleteCardModel: (RideCardTemplate) -> Unit = {},
     savedPlaces: List<SavedPlace>,
     backupStatus: String,
     highlightedSavedPlaceId: String?,
     radarImportSummary: RadarImportSummary,
     radarImportStatus: String,
     onSave: (AppSettings) -> Unit,
-    onRegisterRideCard: (String?, String) -> Unit,
     onCreateSavedPlace: () -> Unit,
     onCreateProximityAlert: () -> Unit,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
@@ -1524,14 +1208,7 @@ private fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 InstalledRideAppsCard()
-                RegisteredCardsModuleCard(
-                cardTemplates = cardTemplates,
-                templateStatus = templateStatus,
-                unreadTemplatePrints = unreadTemplatePrints,
-                onPickCardModels = onPickCardModels,
-                onDeleteCardModel = onDeleteCardModel,
-                )
-            } // cards_selected_apps_visible_0_1_123
+            } // selected_apps_visible
 
             else -> SystemControlCard(settings = draft, onChange = ::saveDraft)
         }
@@ -1544,7 +1221,7 @@ private fun groupedBubbleTitle(group: String): String = when (group) {
     BUBBLE_GROUP_ALERTS -> "Alertas de proximidade"
     BUBBLE_GROUP_SAVED_PLACES -> "Locais salvos"
     BUBBLE_GROUP_RADARS -> "Radares importados"
-    BUBBLE_GROUP_CARDS -> "Cards cadastrados"
+    BUBBLE_GROUP_CARDS -> "Aplicativos selecionados"
     BUBBLE_GROUP_APPEARANCE -> "Bolinha e aparencia"
     BUBBLE_GROUP_ACCESS -> "Permissoes, leitura e GPS"
     BUBBLE_GROUP_BACKUP -> "Backup dos dados"
@@ -1557,7 +1234,7 @@ private fun groupedBubbleDescription(group: String): String = when (group) {
     BUBBLE_GROUP_ALERTS -> "Crie e edite somente alertas de proximidade."
     BUBBLE_GROUP_SAVED_PLACES -> "Gerencie somente locais salvos, sem alerta."
     BUBBLE_GROUP_RADARS -> "Importe e gerencie radares separadamente."
-    BUBBLE_GROUP_CARDS -> "Selecione os aplicativos permitidos e gerencie os modelos de cards."
+    BUBBLE_GROUP_CARDS -> "Selecione manualmente os aplicativos permitidos para leitura."
     BUBBLE_GROUP_APPEARANCE -> "Ajusta transparencia, contraste e aparencia da bolinha flutuante."
     BUBBLE_GROUP_ACCESS -> "Controle a leitura ao vivo, a Acessibilidade, a localizacao e o GPS continuo."
     BUBBLE_GROUP_BACKUP -> "Crie ou restaure uma copia das configuracoes e dos dados."
@@ -2063,7 +1740,6 @@ private fun ToolsScreen(
 @Composable
 private fun ReportsGroupScreen(
     settings: AppSettings,
-    cardTemplates: List<RideCardTemplate>,
     diagnostic: LiveDiagnostic?,
     history: List<AnalysisResult>,
 ) {
@@ -2072,8 +1748,6 @@ private fun ReportsGroupScreen(
         DiagnosticExpander(
             settings = settings,
             diagnostic = diagnostic,
-            cardTemplates = cardTemplates,
-            onRegisterRideCard = { _, _ -> },
         )
         Text("Historico de decisoes", fontWeight = FontWeight.Bold)
         HistoryScreen(history)
@@ -2088,11 +1762,6 @@ private suspend fun buildManualSupportReport(
     repository: SettingsRepository,
     settings: AppSettings,
     liveEnabled: Boolean,
-    cardTemplates: List<RideCardTemplate>,
-    templateStatus: String,
-    unreadTemplatePrints: Int,
-    onPickCardModels: () -> Unit,
-    onDeleteCardModel: (RideCardTemplate) -> Unit,
     savedPlaces: List<SavedPlace>,
     radarImportSummary: RadarImportSummary,
 ): String {
@@ -2145,8 +1814,6 @@ private suspend fun buildManualSupportReport(
         appendLine("Aplicativos pre-cadastrados: nenhum")
         appendLine("Selecao manual de apps obrigatoria: true")
         appendLine("Aplicativos selecionados: ${SelectedRideAppStore.read(context).joinToString(", ").ifBlank { "nenhum" }}")
-        appendLine("Modelos de cards (apoio opcional): true; cadastrados somente pelo usuario")
-        appendLine("Modelos cadastrados agora: ${cardTemplates.size}")
         appendLine("Politica de leitura: aplicativo salvo + dois ou mais enderecos; o ultimo e o destino")
         appendLine("Cache exato reaplica verde/vermelho e km em milissegundos; rota nova usa Google Maps")
         appendLine("Pacotes passivos bloqueados: sistema, launcher, teclado, Google Maps e Waze") // diagnostic_policy_no_pre_registered_0_1_126 manual_policy_report_0_1_127
@@ -2320,8 +1987,6 @@ private fun formatDate(value: Long): String =
 // popup_navigation_final_compile_0_1_120
 // BUBBLE_GROUP_CARDS -> CardModelsCard( // legacy_workflow_marker_0_1_120
 
-
-// BUBBLE_GROUP_CARDS -> RegisteredCardsModuleCard( // cards_legacy_contract_0_1_123
 
 // manual_ui_annotation_cleanup_0_1_127
 

@@ -19,10 +19,10 @@ val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeI
     ?: System.getenv("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }
     ?: ""
 
-val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1_000 + it }
-val appVersionCode = ciVersionCode ?: 101
+val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 2_000 + it }
+val appVersionCode = ciVersionCode ?: 2_001
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
-val stableDebugKeystoreFile = layout.buildDirectory.file("generated/signing/rota-certa-debug.keystore").get().asFile
+val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
     stableDebugKeystoreFile.parentFile.mkdirs()
     stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))

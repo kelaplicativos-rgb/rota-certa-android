@@ -15,17 +15,13 @@ data class AppSettings(
     val alternativeCoordinate: Coordinate? = null,
     val bubbleOpacity: Double = 1.0,
     val bubbleDarkMode: Boolean = false,
-    val restrictToSelectedRideApps: Boolean = true, // strict_model_manual_apps_default_0_1_127
-    val monitor99: Boolean = false,
-    val monitorUber: Boolean = false,
-    val monitorInDrive: Boolean = false,
+    val restrictToSelectedRideApps: Boolean = true,
     val extraMonitoredPackages: String = "",
     val appEnabled: Boolean = true,
     val liveReadingEnabled: Boolean = true,
     val homeTargetEnabled: Boolean = true,
     val alternativeTargetEnabled: Boolean = true,
     val workRegionPins: List<WorkRegionPin> = emptyList(),
-    val requireRegisteredRideCard: Boolean = false, // simple_saved_app_default_checklist_13 // strict_model_card_required_default_0_1_127
     val proximityAlertsEnabled: Boolean = true,
     val proximityAlertDistanceMeters: Int = 500,
     val diagnosticsEnabled: Boolean = false,
@@ -41,18 +37,13 @@ data class RotaCertaBackup(
     val appVersionCode: Int = 0,
     val settings: AppSettings = AppSettings(),
     val analyses: List<AnalysisResult> = emptyList(),
-    val cardTemplates: List<RideCardTemplate> = emptyList(),
-    val capturedScreens: List<CapturedRideScreen> = emptyList(),
     val savedPlaces: List<SavedPlace> = emptyList(),
     val importedRadars: List<ImportedRadar> = emptyList(),
     val quickReplies: List<QuickReply> = emptyList(),
 )
 
 @Serializable
-data class Coordinate(
-    val latitude: Double,
-    val longitude: Double,
-)
+data class Coordinate(val latitude: Double, val longitude: Double)
 
 @Serializable
 data class WorkRegionPin(
@@ -64,10 +55,7 @@ data class WorkRegionPin(
 )
 
 @Serializable
-data class DeviceRegion(
-    val city: String = "",
-    val country: String = "",
-)
+data class DeviceRegion(val city: String = "", val country: String = "")
 
 @Serializable
 data class RideFields(
@@ -76,28 +64,6 @@ data class RideFields(
     val fare: String? = null,
     val distance: String? = null,
     val time: String? = null,
-)
-
-@Serializable
-data class RideCardTemplate(
-    val id: String,
-    val name: String,
-    val packageName: String? = null,
-    val requiredFeatures: List<String> = emptyList(),
-    val sampleHash: Int? = null,
-    val createdAtMillis: Long = 0L,
-)
-
-@Serializable
-data class CapturedRideScreen(
-    val createdAtMillis: Long = 0L,
-    val packageName: String? = null,
-    val textHash: Int? = null,
-    val textPreview: String = "",
-    val parserName: String = "",
-    val pickup: String? = null,
-    val destination: String? = null,
-    val fare: String? = null,
 )
 
 @Serializable
@@ -110,10 +76,7 @@ data class QuickReply(
 )
 
 @Serializable
-enum class SavedPlaceType {
-    Place,
-    ProximityAlert,
-}
+enum class SavedPlaceType { Place, ProximityAlert }
 
 @Serializable
 data class SavedPlace(
@@ -141,16 +104,9 @@ data class ImportedRadar(
 )
 
 @Serializable
-data class RadarImportSummary(
-    val count: Int = 0,
-    val lastImportedAtMillis: Long = 0L,
-)
+data class RadarImportSummary(val count: Int = 0, val lastImportedAtMillis: Long = 0L)
 
-enum class Recommendation {
-    GoodRide,
-    OutsideRadius,
-    InsufficientData,
-}
+enum class Recommendation { GoodRide, OutsideRadius, InsufficientData }
 
 @Serializable
 data class AnalysisResult(
@@ -159,16 +115,11 @@ data class AnalysisResult(
     val fields: RideFields,
     val recommendation: Recommendation,
     val reason: String,
-    // Nomes antigos mantidos no JSON para restaurar backups existentes.
-    // Semanticamente, estas distâncias partem do destino final da corrida.
     val pickupToHomeKm: Double? = null,
     val pickupToAlternativeKm: Double? = null,
 ) {
-    val destinationToHomeKm: Double?
-        get() = pickupToHomeKm
-
-    val destinationToAlternativeKm: Double?
-        get() = pickupToAlternativeKm
+    val destinationToHomeKm: Double? get() = pickupToHomeKm
+    val destinationToAlternativeKm: Double? get() = pickupToAlternativeKm
 }
 
 @Serializable
@@ -180,10 +131,8 @@ data class LiveDiagnostic(
     val stage: String = "",
     val bubbleColor: String = "amarelo",
     val reason: String = "",
-    val restrictToSelectedRideApps: Boolean = true, // strict_model_manual_apps_default_0_1_127
+    val restrictToSelectedRideApps: Boolean = true,
     val selectedPackages: List<String> = emptyList(),
-    val registeredCardRequired: Boolean = true,
-    val registeredCardMatched: String? = null,
     val textLength: Int = 0,
     val textHash: Int? = null,
     val textPreview: String = "",
@@ -195,5 +144,3 @@ data class LiveDiagnostic(
     val error: String? = null,
     val diagnosticLog: String = "",
 )
-
-// universal_defaults_v2_0_1_95

@@ -3,7 +3,7 @@ package br.com.mapeiaia.rotacerta
 import java.util.Locale
 
 /**
- * Alguns cards do inDrive aparecem em uma janela Android transitória. Durante
+ * Algumas telas selecionadas aparecem em uma janela Android transitória. Durante
  * poucos segundos, preservamos o último aplicativo escolhido pelo usuário para
  * que essa janela não faça a bolinha voltar para cinza antes do OCR.
  */
