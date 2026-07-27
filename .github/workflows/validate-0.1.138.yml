@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - codex/grid-double-tap-shortcuts-alerts
+  pull_request:
+    branches:
+      - codex/manual-selection-no-models-ui-staged
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: validate-0-1-138-${{ github.ref }}
+  group: validate-0-1-138-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
