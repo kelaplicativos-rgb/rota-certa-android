@@ -1,0 +1,85 @@
+name: Validate unified manual report 0.1.142
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+    paths:
+      - scripts/apply_unified_manual_report_0142.py
+      - .github/workflows/validate-unified-manual-report-0142.yml
+  pull_request:
+    branches:
+      - codex/grid-double-tap-shortcuts-alerts
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply unified report flow
+        run: python scripts/apply_unified_manual_report_0142.py
+
+      - name: Verify report contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.142"' app/build.gradle.kts
+          grep -q 'versionCode = 5030' app/build.gradle.kts
+          grep -q 'unified_manual_report_from_grid_0_1_142' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'automatic_report_disabled_unified_manual_export_0_1_142' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          ! grep -A20 'private fun exportDiagnosticFromBubble' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | grep -q 'auto_export_report'
+          grep -q 'BUBBLE_REPORT_SHORTCUT_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests and lint
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest lintDebug --no-daemon
+
+      - name: Build APK
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          ${ANDROID_HOME}/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          ${ANDROID_HOME}/build-tools/35.0.0/aapt dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" /tmp/badging.txt
+          grep -q "versionName='0.1.142'" /tmp/badging.txt
+          grep -q "versionCode='5030'" /tmp/badging.txt
+          mkdir -p validated
+          cp "$APK" validated/Rota-Certa-0.1.142-validado.apk
+          cp /tmp/badging.txt validated/
+          sha256sum "$APK" | tee validated/sha256.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.142-validated
+          path: validated/
+          retention-days: 90
