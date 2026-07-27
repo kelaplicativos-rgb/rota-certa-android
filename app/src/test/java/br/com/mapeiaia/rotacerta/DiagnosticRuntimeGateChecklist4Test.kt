@@ -8,14 +8,16 @@ import org.junit.Test
 class DiagnosticRuntimeGateChecklist4Test {
     @After
     fun cleanup() {
+        DiagnosticRuntimeGate.setEnabled(false)
         DiagnosticRuntimeGate.endManualCapture()
     }
 
     @Test
-    fun `configuracao antiga nao consegue ligar diagnostico continuo`() {
+    fun `usuario pode ligar diagnostico continuo explicitamente`() {
         DiagnosticRuntimeGate.setEnabled(true)
 
-        assertFalse(DiagnosticRuntimeGate.isEnabled(nowMillis = 1_000L))
+        assertTrue(DiagnosticRuntimeGate.isContinuousEnabled())
+        assertTrue(DiagnosticRuntimeGate.isEnabled(nowMillis = 1_000L))
     }
 
     @Test
@@ -27,10 +29,12 @@ class DiagnosticRuntimeGateChecklist4Test {
     }
 
     @Test
-    fun `desligar encerra imediatamente a captura manual`() {
+    fun `desligar encerra diagnostico continuo e captura manual`() {
+        DiagnosticRuntimeGate.setEnabled(true)
         DiagnosticRuntimeGate.beginManualCapture(durationMillis = 2_000L, nowMillis = 10_000L)
         DiagnosticRuntimeGate.setEnabled(false)
 
+        assertFalse(DiagnosticRuntimeGate.isContinuousEnabled())
         assertFalse(DiagnosticRuntimeGate.isEnabled(nowMillis = 10_001L))
     }
 }
