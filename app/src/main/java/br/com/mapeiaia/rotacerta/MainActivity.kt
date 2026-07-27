@@ -1428,22 +1428,14 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             },
             fontWeight = FontWeight.Bold,
         )
-        OutlinedTextField(
-            value = settings.googleMapsApiKey,
-            onValueChange = { value -> onChange(settings.copy(googleMapsApiKey = value.trim())) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Chave Google Maps API") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-        )
         Text(
             if (mapsKeyConfiguredChecklist11) {
-                "A rota real está liberada. A chave digitada tem prioridade sobre a chave incluída no aplicativo."
+                "A chave é fornecida com segurança pelo build do aplicativo."
             } else {
-                "Sem a chave, o card pode ser reconhecido e fotografado, mas a bolinha permanece amarela e não inventa distância."
+                "Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions."
             },
             style = MaterialTheme.typography.bodySmall,
-        ) // api_key_in_general_controls_checklist_11
+        ) // maps_key_single_build_source_0_1_138
         SettingsSwitchRow(
             label = "Rota Certa ligado",
             checked = settings.appEnabled,
@@ -1565,15 +1557,12 @@ private fun MapsAndAdvancedCard(
     onSave: () -> Unit,
 ) {
     ExpandableCard(title = "Google Maps e ajustes avancados", initiallyExpanded = !GoogleMapsApiKeyPolicy.isConfigured(draft.googleMapsApiKey, BuildConfig.GOOGLE_MAPS_API_KEY)) {
-        OutlinedTextField(
-            value = draft.googleMapsApiKey,
-            onValueChange = { onDraftChange(draft.copy(googleMapsApiKey = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Chave Google Maps API") },
-            visualTransformation = PasswordVisualTransformation(),
-        )
         Text(
-            "Obrigatória para verde/vermelho e km por rota real. Sem chave, o farol permanece amarelo.",
+            if (GoogleMapsApiKeyPolicy.isConfigured(draft.googleMapsApiKey, BuildConfig.GOOGLE_MAPS_API_KEY)) {
+                "Google Maps configurado pelo build."
+            } else {
+                "Google Maps ainda não configurado no build."
+            },
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(

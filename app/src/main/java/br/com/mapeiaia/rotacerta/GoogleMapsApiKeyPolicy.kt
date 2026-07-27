@@ -3,7 +3,7 @@ package br.com.mapeiaia.rotacerta
 /** Regras únicas para chave de rota: valor digitado vence; chave do build é fallback. */
 object GoogleMapsApiKeyPolicy {
     fun effective(userValue: String?, bundledValue: String?): String =
-        userValue.orEmpty().trim().ifBlank { bundledValue.orEmpty().trim() }
+        bundledValue.orEmpty().trim().ifBlank { userValue.orEmpty().trim() }
 
     fun isConfigured(userValue: String?, bundledValue: String?): Boolean =
         effective(userValue, bundledValue).isNotBlank()
