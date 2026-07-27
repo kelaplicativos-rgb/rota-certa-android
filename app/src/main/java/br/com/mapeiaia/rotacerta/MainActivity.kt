@@ -1043,6 +1043,9 @@ private fun SavedPlacesModuleCard(
     savedPlaces: List<SavedPlace>,
     type: SavedPlaceType,
     highlightedSavedPlaceId: String?,
+    alertDistanceMeters: Int? = null,
+    alertsEnabled: Boolean = true,
+    onAlertDistanceChange: (Int) -> Unit = {},
     onCreate: () -> Unit,
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
@@ -1064,24 +1067,49 @@ private fun SavedPlacesModuleCard(
                 if (isAlert) "Alertas de proximidade" else "Locais salvos",
                 fontWeight = FontWeight.Bold,
             )
+            if (isAlert) {
+                AlertDistanceSelector138(
+                    selectedMeters = alertDistanceMeters ?: 500,
+                    alertsEnabled = alertsEnabled,
+                    onSelect = onAlertDistanceChange,
+                )
+            }
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
                 Text(if (isAlert) "Criar alerta neste local" else "Salvar local atual")
+            }
+            if (!isAlert) {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buscar por nome ou endereço") },
+                    singleLine = true,
+                )
+                if (search.isNotBlank()) {
+                    when {
+                        filteredItems.isEmpty() -> Text("Nenhum local encontrado por nome ou endereço.")
+                        else -> filteredItems.forEach { place -> SavedPlaceSearchResult138(place) }
+                    }
+                }
             }
             ExpandableCard(
                 title = if (isAlert) "Alertas criados (${items.size})" else "Endereços salvos (${items.size})",
                 initiallyExpanded = highlightedSavedPlaceId != null && items.any { it.id == highlightedSavedPlaceId },
             ) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Buscar por nome ou endereço") }, // Buscar por nome ou endereco saved_places_search_name_address_0_1_127
-                    singleLine = true,
-                )
+                if (isAlert) {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Buscar por nome ou endereço") },
+                        singleLine = true,
+                    )
+                }
+                val listInsideExpander = if (isAlert) filteredItems else items
                 when {
                     items.isEmpty() -> Text(if (isAlert) "Nenhum alerta criado." else "Nenhum local salvo.")
-                    filteredItems.isEmpty() -> Text(if (isAlert) "Nenhum alerta encontrado por nome ou endereço." else "Nenhum local encontrado por nome ou endereco")
-                    else -> filteredItems.forEach { place ->
+                    listInsideExpander.isEmpty() -> Text("Nenhum alerta encontrado por nome ou endereço.")
+                    else -> listInsideExpander.forEach { place ->
                         SavedPlaceEditor(
                             place = place,
                             highlighted = place.id == highlightedSavedPlaceId,
@@ -1095,6 +1123,41 @@ private fun SavedPlacesModuleCard(
     }
 } // separate_saved_place_modules_0_1_120 saved_places_search_name_address_0_1_127
  // separate_saved_place_modules_0_1_120
+
+@Composable
+private fun AlertDistanceSelector138(
+    selectedMeters: Int,
+    alertsEnabled: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    val values = listOf(200, 500, 1000)
+    Text("Distância do aviso", fontWeight = FontWeight.Bold)
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        values.forEach { meters ->
+            if (selectedMeters == meters && alertsEnabled) {
+                Button(onClick = { onSelect(meters) }, modifier = Modifier.weight(1f)) { Text("$meters m") }
+            } else {
+                OutlinedButton(onClick = { onSelect(meters) }, modifier = Modifier.weight(1f)) { Text("$meters m") }
+            }
+        }
+    }
+    Text(
+        if (alertsEnabled) "Alertas ativos a partir da distância selecionada." else "Selecione uma distância para ativar os alertas.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+@Composable
+private fun SavedPlaceSearchResult138(place: SavedPlace) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(place.name.ifBlank { "Local salvo" }, fontWeight = FontWeight.Bold)
+            Text(place.address.ifBlank { formatCoordinate(place.coordinate) }, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = { openSavedPlaceInGps(context, place) }, modifier = Modifier.fillMaxWidth()) { Text("GPS") }
+        }
+    }
+}
 
 @Composable
 private fun SavedPlaceEditor(
@@ -1266,6 +1329,16 @@ private fun SettingsScreen(
                 savedPlaces = savedPlaces,
                 type = SavedPlaceType.ProximityAlert,
                 highlightedSavedPlaceId = highlightedSavedPlaceId,
+                alertDistanceMeters = draft.proximityAlertDistanceMeters,
+                alertsEnabled = draft.proximityAlertsEnabled,
+                onAlertDistanceChange = { distance ->
+                    saveDraft(
+                        draft.copy(
+                            proximityAlertDistanceMeters = distance,
+                            proximityAlertsEnabled = true,
+                        ),
+                    )
+                },
                 onCreate = onCreateProximityAlert,
                 onRenameSavedPlace = onRenameSavedPlace,
                 onDeleteSavedPlace = onDeleteSavedPlace,
