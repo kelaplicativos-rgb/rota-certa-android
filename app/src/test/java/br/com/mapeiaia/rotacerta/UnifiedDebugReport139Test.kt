@@ -11,7 +11,7 @@ class UnifiedDebugReport139Test {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
         assertContains(source, "Log de depuração")
         assertContains(source, "Gerar relatório para depuração")
-        assertContains(source, "Eventos unificados")
+        assertContains(source, "EVENTOS UNIFICADOS")
         assertFalse(source.contains("Gerar e baixar relatorio"))
     }
 
