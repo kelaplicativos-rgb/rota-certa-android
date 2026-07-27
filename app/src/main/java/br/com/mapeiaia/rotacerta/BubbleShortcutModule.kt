@@ -19,8 +19,6 @@ enum class BubbleShortcutAction {
     StopApplication,
     CreateAlert,
     CreateSavedPlace,
-    SaveRideCard,
-    OpenCards,
     ToggleReading,
     OpenSettings,
 }
@@ -150,17 +148,6 @@ object DiagnosticBubbleShortcutModule : BubbleShortcutModule {
     )
 }
 
-object CardsManagementBubbleShortcutModule : BubbleShortcutModule {
-    override val spec = BubbleShortcutSpec(
-        id = "cards",
-        emoji = "🪪",
-        label = "Cards cadastrados",
-        action = BubbleShortcutAction.OpenCards,
-        displayLabel = "Cards",
-        targetGroup = "cards",
-        targetTab = "config",
-    )
-}
 
 object QuickRepliesBubbleShortcutModule : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
@@ -188,12 +175,10 @@ object BubbleShortcutCatalog {
         DiagnosticBubbleShortcutModule,
         QuickRepliesBubbleShortcutModule,
         StopBubbleShortcutModule,
-        ManualRideCardCaptureBubbleShortcutModule,
-        CardsManagementBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 16) { "O popup deve conter 16 módulos." }
+        require(modules.size == 14) { "O popup deve conter 14 módulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }

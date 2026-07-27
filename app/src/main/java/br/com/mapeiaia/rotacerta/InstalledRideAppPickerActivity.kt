@@ -67,32 +67,17 @@ class InstalledRideAppPickerActivity : ComponentActivity() {
         lifecycleScope.launch {
             val normalized = packages.mapNotNull(SelectedRideAppStore::normalize).toSortedSet()
             SelectedRideAppStore.save(applicationContext, normalized)
-
             val current = settingsRepository.settings.first()
-            val knownPackages = setOf(
-                SelectedRideAppStore.PACKAGE_99_DRIVER,
-                SelectedRideAppStore.PACKAGE_UBER_DRIVER,
-                SelectedRideAppStore.PACKAGE_INDRIVE_DRIVER,
-            )
             settingsRepository.saveSettings(
                 current.copy(
                     restrictToSelectedRideApps = true,
-                    monitor99 = SelectedRideAppStore.PACKAGE_99_DRIVER in normalized,
-                    monitorUber = SelectedRideAppStore.PACKAGE_UBER_DRIVER in normalized,
-                    monitorInDrive = SelectedRideAppStore.PACKAGE_INDRIVE_DRIVER in normalized,
-                    extraMonitoredPackages = normalized
-                        .filterNot(knownPackages::contains)
-                        .joinToString(","),
+                    extraMonitoredPackages = normalized.joinToString(","),
                 ),
             )
-
             Toast.makeText(
                 applicationContext,
-                if (normalized.isEmpty()) {
-                    "Nenhum aplicativo selecionado. A leitura ao vivo ficou pausada."
-                } else {
-                    "${normalized.size} aplicativo(s) selecionado(s) para leitura."
-                },
+                if (normalized.isEmpty()) "Nenhum aplicativo selecionado. A leitura ao vivo ficou pausada."
+                else "${normalized.size} aplicativo(s) selecionado(s) para leitura.",
                 Toast.LENGTH_LONG,
             ).show()
             finish()
@@ -151,7 +136,7 @@ private fun InstalledRideAppPickerScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Selecionar aplicativos de corrida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Selecionar aplicativos para leitura", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("A bolinha lerá somente os aplicativos marcados.", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(onClick = onClose) { Text("Fechar") }

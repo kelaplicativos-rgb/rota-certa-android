@@ -4,12 +4,12 @@ import java.util.Locale
 
 /**
  * Contrato final e mínimo do farol:
- * 1. o aplicativo foi ensinado/salvo pelo usuário;
+ * 1. o aplicativo foi selecionado manualmente pelo usuário;
  * 2. a tela contém pelo menos dois endereços reconhecidos;
  * 3. o último endereço é o destino final.
  *
  * Nenhum passageiro, preço, frase, modelo visual ou contrato de card participa
- * do caminho crítico. Modelos continuam apenas como apoio para a galeria.
+ * do caminho crítico. Nenhum modelo visual participa da leitura ou da decisão.
  */
 object SimpleSavedAppFarolPolicy {
     data class Evaluation(

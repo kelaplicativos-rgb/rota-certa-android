@@ -8,46 +8,25 @@ import org.junit.Test
 
 class CorePackageMonitorTest {
     private val ownPackage = "br.com.mapeiaia.rotacerta"
-    private val enabled = AppSettings(appEnabled = true, restrictToSelectedRideApps = true)
 
     @Test
-    fun everyReportedPackageIsReleasedForUniversalReading() {
-        listOf(
-            ownPackage,
-            "com.google.android.apps.nbu.files",
-            "com.openai.chatgpt",
-            "com.google.android.apps.photos",
-            "com.whatsapp",
-            "com.android.systemui",
-            "com.sec.android.app.launcher",
-            "com.google.android.apps.maps",
-            "com.waze",
-            "br.com.tkx.taxi.drivermachine",
-        ).forEach { packageName ->
-            val classification = CorePackageMonitor.classify(packageName, ownPackage, enabled)
-            assertTrue("Pacote deveria estar liberado: " + packageName, classification.canScan)
-            assertEquals(CorePackageKind.RideApp, classification.kind)
-        }
+    fun onlyPackagePersistedByUserIsReleased() {
+        val settings = AppSettings(
+            appEnabled = true,
+            liveReadingEnabled = true,
+            extraMonitoredPackages = "com.exemplo.entregas",
+        )
+        val selected = CorePackageMonitor.classify("com.exemplo.entregas", ownPackage, settings)
+        val other = CorePackageMonitor.classify("com.exemplo.outro", ownPackage, settings)
+        assertTrue(selected.canScan)
+        assertEquals(CorePackageKind.RideApp, selected.kind)
+        assertFalse(other.canScan)
+        assertEquals(CorePackageKind.NotMonitored, other.kind)
     }
 
     @Test
-    fun knownRideAppsKeepTheirSpecializedModules() {
-        assertEquals(CoreRideAppModule.NinetyNine, CorePackageMonitor.classify("com.app99.driver", ownPackage, enabled).module)
-        assertEquals(CoreRideAppModule.Uber, CorePackageMonitor.classify("com.ubercab.driver", ownPackage, enabled).module)
-        assertEquals(CoreRideAppModule.InDrive, CorePackageMonitor.classify("sinet.startup.indriver", ownPackage, enabled).module)
-    }
-
-    @Test
-    fun unknownAppsUseUniversalModule() {
-        val classification = CorePackageMonitor.classify("com.example.anyscreen", ownPackage, enabled)
-        assertTrue(classification.canScan)
-        assertEquals(CoreRideAppModule.Universal, classification.module)
-    }
-
-    @Test
-    fun onlyTheMasterAppSwitchStopsReading() {
-        val disabled = AppSettings(appEnabled = false)
-        assertFalse(CorePackageMonitor.classify("com.google.android.apps.photos", ownPackage, disabled).canScan)
+    fun emptySelectionDoesNotReleaseAnyExternalPackage() {
+        val settings = AppSettings(appEnabled = true, liveReadingEnabled = true, extraMonitoredPackages = "")
+        assertFalse(CorePackageMonitor.classify("com.exemplo.qualquer", ownPackage, settings).canScan)
     }
 }
-// open_all_package_tests_0_1_94

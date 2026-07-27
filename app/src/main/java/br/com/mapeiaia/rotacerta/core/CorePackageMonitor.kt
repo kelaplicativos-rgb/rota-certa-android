@@ -1,95 +1,61 @@
 package br.com.mapeiaia.rotacerta.core
 
 import br.com.mapeiaia.rotacerta.AppSettings
-import br.com.mapeiaia.rotacerta.RideCardTemplateMatcher
 import java.util.Locale
 
 /**
- * Portaria universal do Rota Certa Core.
- * Nenhum pacote instalado e bloqueado antes da leitura. O pacote apenas seleciona
- * o modulo especializado quando conhecido; qualquer outro segue pelo Universal.
+ * Classificação genérica. Nenhum fabricante ou aplicativo é conhecido previamente.
+ * O pacote só é elegível quando aparece na seleção persistida pelo usuário.
  */
 object CorePackageMonitor {
-    private const val PACKAGE_99_DRIVER = RideCardTemplateMatcher.NINETY_NINE_PACKAGE
-    private const val PACKAGE_UBER_DRIVER = RideCardTemplateMatcher.UBER_PACKAGE
-    private const val PACKAGE_INDRIVE_DRIVER = RideCardTemplateMatcher.INDRIVE_PACKAGE
-
     fun classify(
         packageName: String?,
         ownPackageName: String,
         settings: AppSettings,
     ): CorePackageClassification {
-        if (!settings.appEnabled) {
+        if (!settings.appEnabled || !settings.liveReadingEnabled) {
             return CorePackageClassification(
                 packageName = normalize(packageName),
                 kind = CorePackageKind.Disabled,
-                module = CoreRideAppModule.Unknown,
+                module = CoreRideAppModule.Manual,
                 canScan = false,
-                reason = "Rota Certa desligado pelo usuario.",
+                reason = "Leitura ao vivo desligada pelo usuário.",
             )
         }
-
         val normalized = normalize(packageName)
-            ?: return CorePackageClassification(
-                packageName = null,
-                kind = CorePackageKind.Unknown,
-                module = CoreRideAppModule.Universal,
-                canScan = false,
-                reason = "Pacote ainda nao informado pelo Android; nova leitura sera tentada imediatamente.",
-            )
-
-        val module = moduleFor(normalized)
+            ?: return CorePackageClassification(null, CorePackageKind.Unknown, CoreRideAppModule.Manual, false, "Pacote não informado pelo Android.")
+        if (normalized == normalize(ownPackageName)) {
+            return CorePackageClassification(normalized, CorePackageKind.OwnApp, CoreRideAppModule.Manual, false, "Tela do próprio Rota Certa.")
+        }
+        val selected = selectedRidePackages(settings)
+        val allowed = normalized in selected
         return CorePackageClassification(
             packageName = normalized,
-            kind = CorePackageKind.RideApp,
-            module = module,
-            canScan = true,
-            reason = if (module == CoreRideAppModule.Universal) {
-                "Leitura universal liberada sem trava de aplicativo: " + normalized + "."
-            } else {
-                "Leitura liberada no modulo " + module.name + ": " + normalized + "."
-            },
+            kind = if (allowed) CorePackageKind.RideApp else CorePackageKind.NotMonitored,
+            module = CoreRideAppModule.Manual,
+            canScan = allowed,
+            reason = if (allowed) "Aplicativo selecionado manualmente: $normalized." else "Aplicativo não selecionado pelo usuário: $normalized.",
         )
     }
 
-    fun selectedRidePackages(settings: AppSettings): Set<String> {
-        val packages = mutableSetOf(PACKAGE_99_DRIVER, PACKAGE_UBER_DRIVER, PACKAGE_INDRIVE_DRIVER)
-        packages += settings.extraMonitoredPackages
+    /** Compatibilidade temporária: nunca acrescenta pacotes predefinidos. */
+    fun selectedRidePackages(settings: AppSettings): Set<String> =
+        settings.extraMonitoredPackages
             .split(Regex("[,;\\s]+"))
             .mapNotNull(::normalize)
-        return packages
-    }
+            .toSet()
 
-    fun isPassive(packageName: String?, ownPackageName: String): Boolean = false
+    fun isPassive(packageName: String?, ownPackageName: String): Boolean =
+        normalize(packageName) == normalize(ownPackageName)
 
-    fun normalize(packageName: String?): String? =
-        packageName?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
-
-    private fun moduleFor(packageName: String): CoreRideAppModule = when (packageName) {
-        PACKAGE_INDRIVE_DRIVER -> CoreRideAppModule.InDrive
-        PACKAGE_99_DRIVER -> CoreRideAppModule.NinetyNine
-        PACKAGE_UBER_DRIVER -> CoreRideAppModule.Uber
-        else -> CoreRideAppModule.Universal
-    }
+    fun normalize(packageName: String?): String? = packageName
+        ?.trim()
+        ?.lowercase(Locale.ROOT)
+        ?.takeIf(String::isNotBlank)
 }
 
-enum class CorePackageKind {
-    RideApp,
-    Passive,
-    OwnApp,
-    Ignored,
-    NotMonitored,
-    Disabled,
-    Unknown,
-}
-
-enum class CoreRideAppModule {
-    InDrive,
-    NinetyNine,
-    Uber,
-    Universal,
-    Unknown,
-}
+enum class CorePackageKind { RideApp, Passive, OwnApp, Ignored, NotMonitored, Disabled, Unknown }
+enum class CoreRideAppModule { Manual, Universal, Unknown, InDrive, NinetyNine, Uber }
 
 data class CorePackageClassification(
     val packageName: String?,
@@ -98,4 +64,3 @@ data class CorePackageClassification(
     val canScan: Boolean,
     val reason: String,
 )
-// open_all_apps_all_screens_0_1_94

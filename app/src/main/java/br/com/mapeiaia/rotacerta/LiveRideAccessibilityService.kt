@@ -1937,27 +1937,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         normalizePackageName(rootInActiveWindow?.packageName?.toString())
 
     private fun shouldScanPackage(packageName: String?): Boolean {
+        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return false
         val normalized = normalizePackageName(packageName) ?: return false
-        val passiveProbeSettings = currentSettings.copy(
-            restrictToSelectedRideApps = false,
-            monitor99 = false,
-            monitorUber = false,
-            monitorInDrive = false,
-            extraMonitoredPackages = "",
-        )
-        val platformClassification = br.com.mapeiaia.rotacerta.core.CorePackageMonitor.classify(
-            packageName = normalized,
-            ownPackageName = this.packageName,
-            settings = passiveProbeSettings,
-        )
-        return StrictSelectedAppReadPolicy.canRead(
-            packageName = normalized,
-            ownPackageName = this.packageName,
-            appEnabled = serviceReady && currentSettings.appEnabled,
-            liveReadingEnabled = currentSettings.liveReadingEnabled,
-            selectedPackages = SelectedRideAppStore.read(applicationContext),
-            packageAllowedByPlatformPolicy = platformClassification.canScan,
-        )
+        if (normalized == this.packageName) return false
+        return normalized in SelectedRideAppStore.read(applicationContext)
     } // strict_selected_app_policy_checklist_1
 
     private fun selectedRidePackages(settings: AppSettings): Set<String> {
@@ -1968,24 +1951,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun scanBlockReason(packageName: String?): String {
         val normalized = normalizePackageName(packageName)
-            ?: return "Pacote ativo nao informado pelo Android."
-        val passiveProbeSettings = currentSettings.copy(
-            restrictToSelectedRideApps = false,
-            monitor99 = false,
-            monitorUber = false,
-            monitorInDrive = false,
-            extraMonitoredPackages = "",
-        )
-        val classification = br.com.mapeiaia.rotacerta.core.CorePackageMonitor.classify(
-            packageName = normalized,
-            ownPackageName = this.packageName,
-            settings = passiveProbeSettings,
-        )
-        if (!classification.canScan) return classification.reason
-        return if (normalized !in SelectedRideAppStore.read(applicationContext)) {
-            "Aplicativo nao selecionado pelo usuario: $normalized."
+            ?: return "Pacote ativo não informado pelo Android."
+        if (!currentSettings.appEnabled) return "Rota Certa desligado pelo usuário."
+        if (!currentSettings.liveReadingEnabled) return "Leitura ao vivo desligada pelo usuário."
+        if (normalized == this.packageName) return "Tela do próprio Rota Certa."
+        return if (normalized in SelectedRideAppStore.read(applicationContext)) {
+            "Aplicativo selecionado manualmente: $normalized."
         } else {
-            classification.reason
+            "Aplicativo não selecionado pelo usuário: $normalized."
         }
     } // manual_selected_apps_reason_0_1_127
  // manual_scan_reason_anchor_0_1_127
@@ -2173,7 +2146,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.OpenPermissions,
             BubbleShortcutAction.OpenBackup,
             BubbleShortcutAction.OpenReports,
-            BubbleShortcutAction.OpenCards,
             BubbleShortcutAction.OpenSettings,
             -> openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))
 
@@ -2184,7 +2156,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
-            BubbleShortcutAction.SaveRideCard -> captureAndRegisterRideCardManualChecklist12()
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
         }
     }
