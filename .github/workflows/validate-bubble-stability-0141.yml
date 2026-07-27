@@ -34,6 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'versionName = "0.1.141"' app/build.gradle.kts
+          grep -q 'versionCode = 5020' app/build.gradle.kts
           grep -q 'BUBBLE_SCREEN_CHANGE_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'BUBBLE_EMPTY_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'BUBBLE_INVALID_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -78,6 +79,7 @@ jobs:
           ${ANDROID_HOME}/build-tools/35.0.0/aapt dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='br.com.mapeiaia.rotacerta'" /tmp/badging.txt
           grep -q "versionName='0.1.141'" /tmp/badging.txt
+          grep -q "versionCode='5020'" /tmp/badging.txt
           sha256sum "$APK" | tee /tmp/sha256.txt
           mkdir -p validated
           cp "$APK" validated/Rota-Certa-0.1.141-validado.apk
@@ -91,12 +93,12 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app scripts/apply_bubble_stability_0141.py
           if ! git diff --cached --quiet; then
-            git commit -m 'Estabiliza cor da bolinha no Files [applied-0.1.141]'
+            git commit -m 'Estabiliza cor da bolinha no Files e corrige versionCode [applied-0.1.141]'
             git push origin HEAD:codex/unified-debug-log-0.1.139
           fi
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.141-validated
+          name: rota-certa-0.1.141-installable
           path: validated/
           retention-days: 90
