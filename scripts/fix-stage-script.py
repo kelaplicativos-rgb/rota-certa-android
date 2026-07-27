@@ -69,8 +69,9 @@ def _apply_final_lint_fixes_stage5() -> None:
 
     marker = "bubble_render_stability_clear_signature_0_1_81"
     pattern = _lint_re.compile(
-        r"(?m)^[ \t]*// " + _lint_re.escape(marker) +
-        r"\n[ \t]*lastVisibleCardSignature = null;?\n" +
+        r"(?m)^[ \t]*(?:lastVisibleCardSignature = null // " + _lint_re.escape(marker) +
+        r"|// " + _lint_re.escape(marker) +
+        r"\n[ \t]*lastVisibleCardSignature = null;?)\n" +
         r"(?P<indent>[ \t]*)(?P<next>resetToDefaultForNonRideScreen\(|if \(shouldScanCurrentWindow\(\)\) \{)"
     )
 
