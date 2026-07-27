@@ -182,7 +182,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
             highlightedSavedPlaceId = place.id
             Toast.makeText(
                 context,
-                if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.",
+                if (isAlert) "Alerta salvo" else "Local salvo",
                 Toast.LENGTH_SHORT,
             ).show()
         }
@@ -213,7 +213,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
             selectedBubbleGroup = if (isAlert) BUBBLE_GROUP_ALERTS else BUBBLE_GROUP_SAVED_PLACES
             Toast.makeText(
                 context,
-                if (isAlert) "Alerta criado. Defina o nome e a distancia." else "Local salvo. Defina um nome.",
+                if (isAlert) "Alerta salvo" else "Local salvo",
                 Toast.LENGTH_LONG,
             ).show()
         }

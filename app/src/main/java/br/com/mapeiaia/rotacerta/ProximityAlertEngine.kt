@@ -44,6 +44,12 @@ class ProximityAlertEngine(
         lastCoordinate = coordinate
     }
 
+    fun dismissSavedPlaceUntilExit(alertId: String) {
+        val runtime = runtimeById.getOrPut(alertId) { ProximityAlertRuntime() }
+        runtime.savedPlaceMutedUntilExit = true
+        runtime.popupShownThisApproach = true
+    }
+
     private fun checkSavedPlaceAlerts(
         alerts: List<SavedPlace>,
         coordinate: Coordinate,

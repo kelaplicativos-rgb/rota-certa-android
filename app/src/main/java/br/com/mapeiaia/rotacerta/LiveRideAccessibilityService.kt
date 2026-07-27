@@ -1848,8 +1848,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 createdAtMillis = createdAt,
             )
             repository.addSavedPlace(place)
-            openSavedPlaceEditor(place)
-            toast(if (isAlert) "Alerta criado. Informe o nome." else "Local salvo. Informe o nome.")
+            toast(if (isAlert) "Alerta salvo" else "Local salvo")
+            showSaveConfirmationNotification(
+                title = if (isAlert) "Alerta salvo" else "Local salvo",
+                text = place.address,
+            )
             Unit
         }
     }
@@ -2562,6 +2565,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             distanceMeters,
             ProximityAlertPopupActions(
                 onEdit = ::openSavedPlaceEditor,
+                onDismiss = { proximityAlertEngine.dismissSavedPlaceUntilExit(alert.id) },
                 onDelete = { place ->
                     scope.launch {
                         repository.removeSavedPlace(place.id)
@@ -2788,6 +2792,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
             .apply()
     } // universal_runtime_probe_functions_0_1_98
 
+    private fun showSaveConfirmationNotification(title: String, text: String) {
+        val manager = getSystemService(android.app.NotificationManager::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    "rota_certa_saves",
+                    "Confirmações do Rota Certa",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT,
+                ),
+            )
+        }
+        val notification = androidx.core.app.NotificationCompat.Builder(this, "rota_certa_saves")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
+            .build()
+        runCatching { manager.notify((System.currentTimeMillis() and 0x7fffffff).toInt(), notification) }
+    }
+
     private fun toast(message: String) {
         Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
     }
@@ -2798,6 +2822,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         private var startX = 0
         private var startY = 0
         private var moved = false
+        private var lastTapUpMillis = 0L
+        private var pendingSingleTapJob: kotlinx.coroutines.Job? = null
         private val touchSlop: Int by lazy {
             android.view.ViewConfiguration.get(this@LiveRideAccessibilityService).scaledTouchSlop.coerceAtLeast(1)
         }
@@ -2846,8 +2872,26 @@ class LiveRideAccessibilityService : AccessibilityService() {
                             .apply()
                         Unit /* diagnostics_off_checklist_4 */
                     } else {
-                        Unit /* diagnostics_off_checklist_4 */
-                        view.performClick()
+                        val tapAt = event.eventTime
+                        val timeout = android.view.ViewConfiguration.getDoubleTapTimeout().toLong()
+                        if (lastTapUpMillis > 0L && tapAt - lastTapUpMillis <= timeout) {
+                            pendingSingleTapJob?.cancel()
+                            pendingSingleTapJob = null
+                            lastTapUpMillis = 0L
+                            shortcutOverlayController.hideShortcuts()
+                            persistResourceShortcutState()
+                            saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, "Alerta")
+                        } else {
+                            lastTapUpMillis = tapAt
+                            pendingSingleTapJob?.cancel()
+                            pendingSingleTapJob = scope.launch {
+                                delay(timeout)
+                                if (lastTapUpMillis == tapAt) {
+                                    lastTapUpMillis = 0L
+                                    view.performClick()
+                                }
+                            }
+                        }
                     }
                     scope.launch {
                         delay(BubbleDragPolicy.ANALYSIS_RESUME_DELAY_MS)

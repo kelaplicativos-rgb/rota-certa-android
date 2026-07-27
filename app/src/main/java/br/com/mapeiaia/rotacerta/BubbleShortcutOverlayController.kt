@@ -239,12 +239,20 @@ class BubbleShortcutOverlayController(
             menuWidth,
             if (needsVerticalScroll) visibleMenuHeight else WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = position.x
             y = position.y
+        }
+        menu.setOnTouchListener { _, event ->
+            if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
+                hideShortcuts()
+                true
+            } else {
+                false
+            }
         }
         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
             shortcutView = menu
