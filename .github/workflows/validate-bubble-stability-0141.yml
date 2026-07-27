@@ -58,7 +58,12 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug --no-daemon
+          if ! ./gradlew testDebugUnitTest lintDebug --no-daemon > /tmp/gradle-validation.log 2>&1; then
+            echo '===== ERRO GRADLE ====='
+            tail -n 220 /tmp/gradle-validation.log
+            exit 1
+          fi
+          tail -n 40 /tmp/gradle-validation.log
 
       - name: Build APK twice
         run: |
