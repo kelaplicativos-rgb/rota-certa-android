@@ -1631,11 +1631,13 @@ private fun InstalledRideAppsCard() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var selectedPackages by remember { mutableStateOf(SelectedRideAppStore.read(context)) }
+    var lastManualCapture by remember { mutableStateOf(ManualAppScreenCaptureStore.read(context)) }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 selectedPackages = SelectedRideAppStore.read(context)
+                lastManualCapture = ManualAppScreenCaptureStore.read(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1652,6 +1654,28 @@ private fun InstalledRideAppsCard() {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Buscar aplicativos instalados")
+        }
+        Text(
+            "Para capturar pacote, texto e imagem: abra o aplicativo desejado, toque na bolinha e escolha Capturar. A captura é opcional e não interfere no farol.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        lastManualCapture?.let { capture ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Última captura manual", fontWeight = FontWeight.Bold)
+                    Text(capture.packageName, style = MaterialTheme.typography.bodySmall)
+                    if (capture.textPreview.isNotBlank()) {
+                        Text(capture.textPreview.take(220), style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            ManualAppScreenCaptureStore.clear(context)
+                            lastManualCapture = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Apagar captura") }
+                }
+            }
         }
         if (selectedPackages.isEmpty()) {
             Text(

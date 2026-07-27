@@ -21,6 +21,7 @@ enum class BubbleShortcutAction {
     CreateSavedPlace,
     ToggleReading,
     OpenSettings,
+    CaptureCurrentAppAndScreen,
 }
 
 enum class BubbleShortcutQuickAction {
@@ -173,6 +174,16 @@ object QuickRepliesBubbleShortcutModule : BubbleShortcutModule {
     )
 }
 
+object CaptureCurrentAppScreenBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "manual_capture",
+        emoji = "📸",
+        label = "Capturar aplicativo e tela",
+        displayLabel = "Capturar",
+        action = BubbleShortcutAction.CaptureCurrentAppAndScreen,
+    )
+}
+
 object BubbleShortcutCatalog {
     val modules: List<BubbleShortcutModule> = listOf(
         RouteBubbleShortcutModule,
@@ -188,11 +199,12 @@ object BubbleShortcutCatalog {
         ClearClipboardBubbleShortcutModule,
         DiagnosticBubbleShortcutModule,
         QuickRepliesBubbleShortcutModule,
+        CaptureCurrentAppScreenBubbleShortcutModule,
         StopBubbleShortcutModule,
     )
 
     fun requireValid() {
-        require(modules.size == 14) { "O popup deve conter 14 módulos." }
+        require(modules.size == 15) { "O popup deve conter 15 módulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }

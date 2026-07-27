@@ -75,6 +75,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val screenshotInProgress = AtomicBoolean(false)
     private val tripConfirmationCopyInProgressChecklist8 = AtomicBoolean(false)
     private val fullScreenCopyInProgress138 = AtomicBoolean(false)
+    private val manualCaptureInProgress138 = AtomicBoolean(false)
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
     private val phoneCaptureInProgress118 = AtomicBoolean(false)
     private var analyzeJob: Job? = null
@@ -1699,6 +1700,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()
             BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
+            BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
@@ -1711,6 +1713,80 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
 
     // manual_card_capture_complete_checklist_12
+
+    private fun captureCurrentAppAndScreen138() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        if (!manualCaptureInProgress138.compareAndSet(false, true)) {
+            toast("A captura manual já está em andamento.")
+            return
+        }
+        val externalPackage = listOf(
+            currentRootPackageName(),
+            currentWindowPackageName(),
+            recentSelectedRidePackageChecklist11,
+            lastExternalWindowPackageName,
+        ).firstNotNullOfOrNull { candidate ->
+            normalizePackageName(candidate)?.takeUnless { it == packageName }
+        }
+        if (externalPackage == null) {
+            manualCaptureInProgress138.set(false)
+            toast("Abra o aplicativo que deseja capturar e tente novamente.")
+            return
+        }
+        val visibleText = collectAllVisibleTextForCopy138()
+        SelectedRideAppStore.save(
+            applicationContext,
+            SelectedRideAppStore.read(applicationContext) + externalPackage,
+        )
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !screenshotInProgress.compareAndSet(false, true)) {
+            ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+            manualCaptureInProgress138.set(false)
+            toast("Aplicativo e texto capturados")
+            showSaveConfirmationNotification("Captura salva", externalPackage)
+            return
+        }
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap: Bitmap? = null
+                            try {
+                                bitmap = screenshot.toSoftwareBitmap()
+                                ManualAppScreenCaptureStore.save(
+                                    applicationContext,
+                                    externalPackage,
+                                    visibleText,
+                                    bitmap,
+                                )
+                                toast("Aplicativo e tela capturados")
+                                showSaveConfirmationNotification("Captura salva", externalPackage)
+                            } finally {
+                                bitmap?.recycle()
+                                screenshotInProgress.set(false)
+                                manualCaptureInProgress138.set(false)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+                        screenshotInProgress.set(false)
+                        manualCaptureInProgress138.set(false)
+                        toast("Aplicativo e texto capturados")
+                    }
+                },
+            )
+        }.onFailure {
+            ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
+            screenshotInProgress.set(false)
+            manualCaptureInProgress138.set(false)
+            toast("Aplicativo e texto capturados")
+        }
+    }
 
     private fun createManualRadarFromBubble138() {
         shortcutOverlayController.hideAll()
