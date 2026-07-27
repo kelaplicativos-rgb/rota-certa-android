@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -1269,71 +1270,48 @@ private fun SavedPlacesModuleCard(
     onRenameSavedPlace: (SavedPlace, String) -> Unit,
     onDeleteSavedPlace: (SavedPlace) -> Unit,
 ) {
-    val items = SavedPlaceUiPolicy.sortedByName(savedPlaces.filter { it.type == type }) // alphabetical_module_checklist_7
+    val items = SavedPlaceUiPolicy.sortedByName(savedPlaces.filter { it.type == type })
     val isAlert = type == SavedPlaceType.ProximityAlert
     var search by remember(type) { mutableStateOf("") }
     val filteredItems = remember(items, search) {
         val query = search.trim().lowercase(Locale.ROOT)
-        if (query.isBlank()) {
-            items
-        } else {
-            items.filter { place ->
-                place.name.lowercase(Locale.ROOT).contains(query) ||
-                    place.address.lowercase(Locale.ROOT).contains(query)
-            }
+        if (query.isBlank()) items else items.filter { place ->
+            place.name.lowercase(Locale.ROOT).contains(query) ||
+                place.address.lowercase(Locale.ROOT).contains(query)
         }
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                if (isAlert) "Alertas de proximidade (${items.size})" else "Locais salvos (${items.size})",
+                if (isAlert) "Alertas de proximidade" else "Locais salvos",
                 fontWeight = FontWeight.Bold,
-            )
-            Text(
-                if (isAlert) {
-                    "Somente pontos que geram aviso de aproximacao."
-                } else {
-                    "Somente locais salvos para consultar ou voltar depois. Nao geram alerta."
-                },
-                style = MaterialTheme.typography.bodySmall,
             )
             Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
                 Text(if (isAlert) "Criar alerta neste local" else "Salvar local atual")
             }
-            OutlinedTextField(
-                value = search,
-                onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Buscar por nome ou endereco") },
-                singleLine = true,
-            )
-            if (search.isNotBlank()) {
-                Text(
-                    "Encontrados: ${filteredItems.size}",
-                    style = MaterialTheme.typography.bodySmall,
+            ExpandableCard(
+                title = if (isAlert) "Alertas criados (${items.size})" else "Endereços salvos (${items.size})",
+                initiallyExpanded = highlightedSavedPlaceId != null && items.any { it.id == highlightedSavedPlaceId },
+            ) {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buscar por nome ou endereço") }, // Buscar por nome ou endereco saved_places_search_name_address_0_1_127
+                    singleLine = true,
                 )
-            }
-            when {
-                items.isEmpty() -> Text(
-                    if (isAlert) "Nenhum alerta criado." else "Nenhum local salvo.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                filteredItems.isEmpty() -> Text(
-                    if (isAlert) {
-                        "Nenhum alerta encontrado por nome ou endereco."
-                    } else {
-                        "Nenhum local encontrado por nome ou endereco."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                else -> filteredItems.forEach { place ->
-                    SavedPlaceEditor(
-                        place = place,
-                        highlighted = place.id == highlightedSavedPlaceId,
-                        onRenameSavedPlace = onRenameSavedPlace,
-                        onDeleteSavedPlace = onDeleteSavedPlace,
-                    )
+                when {
+                    items.isEmpty() -> Text(if (isAlert) "Nenhum alerta criado." else "Nenhum local salvo.")
+                    filteredItems.isEmpty() -> Text(if (isAlert) "Nenhum alerta encontrado por nome ou endereço." else "Nenhum local encontrado por nome ou endereco")
+                    else -> filteredItems.forEach { place ->
+                        SavedPlaceEditor(
+                            place = place,
+                            highlighted = place.id == highlightedSavedPlaceId,
+                            onRenameSavedPlace = onRenameSavedPlace,
+                            onDeleteSavedPlace = onDeleteSavedPlace,
+                        )
+                    }
                 }
             }
         }
@@ -1829,7 +1807,7 @@ private fun InstalledRideAppsCard() {
 
     ExpandableCard(title = "Aplicativos que a bolinha pode ler", initiallyExpanded = true) {
         Text(
-            "Nenhum aplicativo vem marcado. Escolha manualmente somente os aplicativos de corrida que deseja monitorar.",
+            "Nenhum aplicativo vem marcado. Escolha manualmente os aplicativos que a bolinha poderá ler.",
             style = MaterialTheme.typography.bodySmall,
         )
         Button(
@@ -1860,10 +1838,19 @@ private fun ExpandableCard(
     initiallyExpanded: Boolean,
     content: @Composable () -> Unit,
 ) {
+    var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            content()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(if (expanded) "▲" else "▼", fontWeight = FontWeight.Bold)
+            }
+            if (expanded) content()
         }
     }
 } // grouped_card_always_open_0_1_115
