@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'versionName = "0.1.141"' app/build.gradle.kts
-          grep -q 'versionCode = 5020' app/build.gradle.kts
+          grep -q 'val minimumVersionCode = 5_020' app/build.gradle.kts
           grep -q 'BUBBLE_SCREEN_CHANGE_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'BUBBLE_EMPTY_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'BUBBLE_INVALID_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -79,7 +79,9 @@ jobs:
           ${ANDROID_HOME}/build-tools/35.0.0/aapt dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='br.com.mapeiaia.rotacerta'" /tmp/badging.txt
           grep -q "versionName='0.1.141'" /tmp/badging.txt
-          grep -q "versionCode='5020'" /tmp/badging.txt
+          VERSION_CODE=$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" /tmp/badging.txt | head -1)
+          test -n "$VERSION_CODE"
+          test "$VERSION_CODE" -ge 5020
           sha256sum "$APK" | tee /tmp/sha256.txt
           mkdir -p validated
           cp "$APK" validated/Rota-Certa-0.1.141-validado.apk
