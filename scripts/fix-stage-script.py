@@ -69,15 +69,23 @@ def _apply_final_lint_fixes_stage5() -> None:
 
     marker = "bubble_render_stability_clear_signature_0_1_81"
     pattern = _lint_re.compile(
-        rf"(?m)^(?P<indent>[ \\t]*)lastVisibleCardSignature = null // {marker}$"
+        r"(?m)^[ \t]*// " + _lint_re.escape(marker) +
+        r"\n[ \t]*lastVisibleCardSignature = null;?\n" +
+        r"(?P<indent>[ \t]*)(?P<next>resetToDefaultForNonRideScreen\(|if \(shouldScanCurrentWindow\(\)\) \{)"
     )
-    live_text, moved_comments = pattern.subn(
-        rf"\g<indent>// {marker}\n\g<indent>lastVisibleCardSignature = null;",
-        live_text,
-    )
-    if moved_comments < 3:
+
+    def align_assignment(match: _lint_re.Match[str]) -> str:
+        indent = match.group("indent")
+        return (
+            f"{indent}// {marker}\n"
+            f"{indent}lastVisibleCardSignature = null\n"
+            f"{indent}{match.group('next')}"
+        )
+
+    live_text, aligned_assignments = pattern.subn(align_assignment, live_text)
+    if aligned_assignments != 3:
         raise SystemExit(
-            f"Esperava corrigir ao menos 3 comentários de estabilidade; corrigi {moved_comments}."
+            f"Esperava alinhar 3 limpezas de assinatura; alinhei {aligned_assignments}."
         )
     live_service.write_text(live_text, encoding="utf-8")
 
