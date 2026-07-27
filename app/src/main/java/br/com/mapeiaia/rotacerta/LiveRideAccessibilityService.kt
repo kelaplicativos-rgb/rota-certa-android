@@ -1473,7 +1473,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             lastSavedReadHash = snapshotHash
             if (!allowPopupCandidate && !shouldScanCurrentWindow()) {
                 registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
+                // bubble_render_stability_clear_signature_0_1_81
+                lastVisibleCardSignature = null
                 resetToDefaultForNonRideScreen(
                     reason = "A tela saiu do card/app monitorado antes de aplicar a decisao.",
                     record = false,
@@ -1483,7 +1484,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
             if (allowPopupCandidate && !looksLikeRegisteredPopupCandidate(collectVisibleText(allowPopupCandidate = true))) {
                 registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
+                // bubble_render_stability_clear_signature_0_1_81
+                lastVisibleCardSignature = null
                 resetToDefaultForNonRideScreen(
                     reason = "O pop-up de corrida nao esta mais visivel; bolinha voltou para cinza.",
                     record = false,
@@ -1493,7 +1495,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
             if (!allowPopupCandidate && snapshotHash != lastSnapshotHash) {
                 registeredCardGate.clear()
-            lastVisibleCardSignature = null // bubble_render_stability_clear_signature_0_1_81
+                // bubble_render_stability_clear_signature_0_1_81
+                lastVisibleCardSignature = null
                 if (shouldScanCurrentWindow()) {
                     resetToDefault("Analise antiga ignorada porque a tela mudou antes do resultado.", record = false)
                 } else {
@@ -2911,6 +2914,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // bubble_instant_drag_0_1_116
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    @androidx.annotation.RequiresApi(30)
     private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {
         val buffer = hardwareBuffer
         return try {
