@@ -1,0 +1,103 @@
+name: Validate bubble stability 0.1.141
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+    paths:
+      - scripts/apply_bubble_stability_0141.py
+      - .github/workflows/validate-bubble-stability-0141.yml
+  pull_request:
+    branches:
+      - codex/grid-double-tap-shortcuts-alerts
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply stability fix
+        run: python scripts/apply_bubble_stability_0141.py
+
+      - name: Verify fix contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.141"' app/build.gradle.kts
+          grep -q 'BUBBLE_SCREEN_CHANGE_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BUBBLE_EMPTY_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BUBBLE_INVALID_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'STABLE_DECISION_ABSENCE_GRACE_MILLIS_141 = 3_000L' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests and lint
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest lintDebug --no-daemon
+
+      - name: Build APK twice
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/rota-certa-0.1.141-first.apk
+          ./gradlew assembleDebug --no-daemon
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -t app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Validate package version and signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          ${ANDROID_HOME}/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          ${ANDROID_HOME}/build-tools/35.0.0/aapt dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" /tmp/badging.txt
+          grep -q "versionName='0.1.141'" /tmp/badging.txt
+          sha256sum "$APK" | tee /tmp/sha256.txt
+          mkdir -p validated
+          cp "$APK" validated/Rota-Certa-0.1.141-validado.apk
+          cp /tmp/badging.txt validated/
+          cp /tmp/sha256.txt validated/
+
+      - name: Commit validated implementation
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_bubble_stability_0141.py
+          if ! git diff --cached --quiet; then
+            git commit -m 'Estabiliza cor da bolinha no Files [applied-0.1.141]'
+            git push origin HEAD:codex/unified-debug-log-0.1.139
+          fi
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.141-validated
+          path: validated/
+          retention-days: 90
