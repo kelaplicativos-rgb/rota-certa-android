@@ -10,11 +10,11 @@ class BubbleShortcutModulesTest {
     fun catalogProgressesFromFourteenToFifteenModulesWithoutCardModels() {
         BubbleShortcutCatalog.requireValid()
         val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
-        val hasManualCapture = "capture_app_screen" in ids
+        val hasManualCapture = "manual_capture" in ids
 
         assertEquals(if (hasManualCapture) 15 else 14, ids.size)
         if (hasManualCapture) {
-            assertTrue("A captura manual de aplicativo e tela precisa estar disponível", "capture_app_screen" in ids)
+            assertTrue("A captura manual de aplicativo e tela precisa estar disponível", "manual_capture" in ids)
         }
         assertFalse("A captura antiga de modelo não pode voltar", "manual_card_capture" in ids)
         assertFalse("A tela de modelos não pode voltar", "cards" in ids)
