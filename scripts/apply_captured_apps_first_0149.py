@@ -53,6 +53,30 @@ if old not in text:
 text = text.replace(old, new, 1)
 picker.write_text(text)
 
+# Atualiza o contrato anterior: a regra 0.1.149 substitui a prioridade somente por autorização.
+legacy_contract = ROOT / "app/src/test/java/br/com/mapeiaia/rotacerta/UserFixes148ContractTest.kt"
+legacy_contract.write_text('''package br.com.mapeiaia.rotacerta
+
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+class UserFixes148ContractTest {
+    @Test fun capturedOrAuthorizedAppsStayOnTopAndBubbleRerenders() {
+        val root = File("src/main/java/br/com/mapeiaia/rotacerta")
+        val picker = File(root, "InstalledRideAppPickerActivity.kt").readText()
+        assertTrue("captured_apps_first_0_1_149" in picker)
+        assertTrue("capturedPackages" in picker)
+        assertTrue("selectedPackages" in picker)
+        val service = File(root, "LiveRideAccessibilityService.kt").readText()
+        assertTrue("bubble_size_live_render_0_1_148" in service)
+        assertTrue("manager.updateViewLayout(view, params)" in service)
+        assertTrue("params.width = sizePx" in service)
+        assertTrue("params.height = sizePx" in service)
+    }
+}
+''')
+
 contract = ROOT / "app/src/test/java/br/com/mapeiaia/rotacerta/CapturedAppsFirst149ContractTest.kt"
 contract.write_text('''package br.com.mapeiaia.rotacerta
 
