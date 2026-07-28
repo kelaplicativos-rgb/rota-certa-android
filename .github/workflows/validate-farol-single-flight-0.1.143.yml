@@ -1,47 +1,49 @@
-name: Validate farol single-flight 0.1.143
+name: Validate Rota Certa 0.1.145
 
 on:
   push:
     branches:
       - codex/unified-debug-log-0.1.139
-  pull_request:
-    branches:
-      - codex/grid-double-tap-shortcuts-alerts
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: validate-farol-0143-${{ github.ref }}
+  group: validate-rota-certa-0145-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Apply farol single-flight correction
-        run: python scripts/apply_farol_single_flight_0143.py
+      - name: Apply complete correction
+        run: python scripts/apply_long_press_shortcuts_0145.py
 
       - name: Verify correction contract
         run: |
-          grep -q 'versionName = "0.1.143"' app/build.gradle.kts
-          grep -q 'versionCode = 5040' app/build.gradle.kts
-          grep -q 'BUBBLE_DUPLICATE_EVENT_IGNORED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'preserveRouteInFlight143' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'single_flight_accessibility_analysis_0_1_143' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          ! grep -q 'análise anterior cancelada por evento mais recente' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          set -euo pipefail
+          grep -q 'versionName = "0.1.145"' app/build.gradle.kts
+          grep -q 'versionCode = 5060' app/build.gradle.kts
+          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          grep -q 'bubble.shortcut.long_press' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -64,14 +66,15 @@ jobs:
       - name: Build APK first pass
         run: ./gradlew --no-daemon clean assembleDebug
 
-      - name: Save first APK hash
-        run: sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/first-apk.sha256
+      - name: Save first APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk /tmp/rota-certa-first.apk
 
       - name: Build APK second pass
         run: ./gradlew --no-daemon clean assembleDebug
 
       - name: Validate APK package version and signature
         run: |
+          set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
@@ -81,17 +84,17 @@ jobs:
           BADGING=$($AAPT dump badging "$APK" | head -1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
-          echo "$BADGING" | grep -q "versionCode='5040'"
-          echo "$BADGING" | grep -q "versionName='0.1.143'"
-          cp "$APK" rota-certa-0.1.143-validado.apk
-          sha256sum rota-certa-0.1.143-validado.apk | tee rota-certa-0.1.143-sha256.txt
+          echo "$BADGING" | grep -q "versionCode='5060'"
+          echo "$BADGING" | grep -q "versionName='0.1.145'"
+          cp "$APK" rota-certa-0.1.145-validado.apk
+          sha256sum rota-certa-0.1.145-validado.apk | tee rota-certa-0.1.145-sha256.txt
 
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.143-validated
+          name: rota-certa-0.1.145-validated
           path: |
-            rota-certa-0.1.143-validado.apk
-            rota-certa-0.1.143-sha256.txt
+            rota-certa-0.1.145-validado.apk
+            rota-certa-0.1.145-sha256.txt
           retention-days: 90
           if-no-files-found: error
