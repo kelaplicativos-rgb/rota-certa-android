@@ -44,7 +44,23 @@ jobs:
           grep -q 'params.width = sizePx' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'params.height = sizePx' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
       - name: Unit tests
-        run: gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+        id: tests
+        continue-on-error: true
+        run: |
+          mkdir -p validation
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain > validation/unit-tests.log 2>&1
+      - name: Upload unit test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.148-unit-test-log
+          path: validation/unit-tests.log
+          retention-days: 7
+      - name: Stop on test failure
+        if: steps.tests.outcome == 'failure'
+        run: |
+          tail -n 250 validation/unit-tests.log
+          exit 1
       - name: Android lint
         run: gradle lintDebug --no-daemon --stacktrace --console=plain
       - name: Build and validate APK
