@@ -1,0 +1,1 @@
+Dispara pipeline simplificado da versão 0.1.147 após correção do diagnóstico.
