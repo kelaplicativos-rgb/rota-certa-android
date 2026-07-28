@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/build-debug-apk.yml
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -19,10 +22,10 @@ jobs:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
     steps:
-      - name: Checkout correction branch
+      - name: Checkout exact pull request commit
         uses: actions/checkout@v4
         with:
-          ref: codex/unified-debug-log-0.1.139
+          ref: ${{ github.event.pull_request.head.sha || 'codex/unified-debug-log-0.1.139' }}
           fetch-depth: 0
 
       - name: Record exact source commit
