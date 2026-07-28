@@ -1,0 +1,88 @@
+name: Apply and Build Rota Certa 0.1.147
+
+on:
+  push:
+    branches: [codex/rota-certa-0.1.147-sugestoes]
+    paths:
+      - scripts/apply_user_suggestions_0147.py
+      - .github/workflows/apply-user-suggestions-0147.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-validate:
+    if: ${{ !contains(github.event.head_commit.message || '', '[applied-0.1.147]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/rota-certa-0.1.147-sugestoes
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Apply requested features
+        run: python scripts/apply_user_suggestions_0147.py
+      - name: Verify source contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.147"' app/build.gradle.kts
+          grep -q 'versionCode = 5080' app/build.gradle.kts
+          grep -q 'bubbleSizeDp: Int = 66' app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt
+          grep -q 'Tamanho da bolinha central' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'sortedByDescending { it.createdAtMillis }' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'delay(1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'passenger_fare_copy_0_1_147' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'Extrair viagem pelo link' app/src/main/java/br/com/mapeiaia/rotacerta/BlaBlaCarCollectorActivity.kt
+      - name: Run tests and lint
+        run: |
+          set -euo pipefail
+          gradle clean testDebugUnitTest lintDebug --no-daemon --stacktrace --console=plain
+      - name: Build and validate APK
+        run: |
+          set -euo pipefail
+          gradle clean assembleDebug --no-daemon --stacktrace --console=plain
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" badging.txt
+          grep -q "versionName='0.1.147'" badging.txt
+          grep -q "versionCode='5080'" badging.txt
+          mkdir -p validated
+          cp "$APK" validated/rota-certa-0.1.147-sugestoes-validado.apk
+          sha256sum validated/rota-certa-0.1.147-sugestoes-validado.apk | tee validated/sha256.txt
+          git rev-parse HEAD > validated/source-head-before-commit.txt
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_user_suggestions_0147.py
+          git commit -m 'Aplica aparência alertas coletor e valor 0.1.147 [applied-0.1.147]'
+          git push origin HEAD:codex/rota-certa-0.1.147-sugestoes
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.147-sugestoes-validado
+          path: validated/
+          retention-days: 90
+          if-no-files-found: error
