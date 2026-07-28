@@ -24,7 +24,24 @@ jobs:
           fetch-depth: 1
           show-progress: false
       - name: Apply requested features
-        run: python3 -u scripts/apply_user_suggestions_0147_v2.py
+        id: apply
+        continue-on-error: true
+        run: |
+          mkdir -p validation
+          python3 -u scripts/apply_user_suggestions_0147_v2.py > validation/apply-0.1.147.log 2>&1
+      - name: Upload apply diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.147-apply-diagnostic
+          path: validation/apply-0.1.147.log
+          retention-days: 7
+          if-no-files-found: error
+      - name: Stop after apply failure
+        if: steps.apply.outcome == 'failure'
+        run: |
+          cat validation/apply-0.1.147.log
+          exit 1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
