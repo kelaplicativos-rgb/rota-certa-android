@@ -6,9 +6,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/build-debug-apk.yml
-  pull_request:
+  pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
@@ -25,6 +25,7 @@ jobs:
       - name: Checkout exact pull request commit
         uses: actions/checkout@v4
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.sha || 'codex/unified-debug-log-0.1.139' }}
           fetch-depth: 0
 
