@@ -1,48 +1,28 @@
-name: Apply and Build Rota Certa 0.1.147
+name: Apply and Publish Rota Certa 0.1.147
 
 on:
   push:
     branches: [codex/rota-certa-0.1.147-final]
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, synchronize]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  apply-build-validate:
+  apply-build-publish:
+    if: ${{ !contains(github.event.head_commit.message || '', '[built-0.1.147]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TARGET_SHA }}
-          fetch-depth: 1
+          ref: codex/rota-certa-0.1.147-final
+          fetch-depth: 0
           show-progress: false
       - name: Apply requested features
-        id: apply
-        continue-on-error: true
-        run: |
-          mkdir -p validation
-          python3 -u scripts/apply_user_suggestions_0147_v2.py > validation/apply-0.1.147.log 2>&1
-      - name: Upload apply diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-0.1.147-apply-diagnostic
-          path: validation/apply-0.1.147.log
-          retention-days: 7
-          if-no-files-found: error
-      - name: Stop after apply failure
-        if: steps.apply.outcome == 'failure'
-        run: |
-          cat validation/apply-0.1.147.log
-          exit 1
+        run: python3 -u scripts/apply_user_suggestions_0147_v2.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -83,6 +63,26 @@ jobs:
           mkdir -p validated
           cp "$APK" validated/rota-certa-0.1.147-sugestoes-validado.apk
           sha256sum validated/rota-certa-0.1.147-sugestoes-validado.apk > validated/sha256.txt
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app
+          git commit -m 'Aplica aparência alertas coletor e valor 0.1.147 [built-0.1.147]'
+          git push origin HEAD:codex/rota-certa-0.1.147-final
+      - name: Publish stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=v0.1.147-sugestoes
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$TAG" validated/rota-certa-0.1.147-sugestoes-validado.apk validated/sha256.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target codex/rota-certa-0.1.147-final \
+            --title "Rota Certa 0.1.147" \
+            --notes "Versão 0.1.147 validada: tamanho ajustável da bolinha central, alertas recentes primeiro, pressão de 1,5 segundo para criar alerta, Coletor iniciado pelo link e bolinha Valor."
       - uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.147-sugestoes-validado
