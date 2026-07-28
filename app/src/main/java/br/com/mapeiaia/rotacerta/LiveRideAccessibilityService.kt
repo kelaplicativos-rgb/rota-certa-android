@@ -157,6 +157,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastStableFarolPackageChecklist14: String? = null
     private var lastStableFarolWindowIdChecklist14: Int? = null
     private var partialReadConfirmationJobChecklist14: Job? = null
+    private var activeAnalysisPackage143: String? = null
+    private var activeAnalysisHash143: Int? = null
+    private var activeAnalysisStartedAt143: Long = 0L
     private val accessibilityEventFloodGate = AccessibilityEventFloodGate()
     private val importedRadarSpatialIndex = ImportedRadarSpatialIndex()
     private var lastExternalWindowPackageName: String? = null
@@ -357,11 +360,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 universalActiveRidePackageName == resolvedPackage &&
                     universalActiveAddressSignature != null &&
                     (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red)
-            if (preserveStableDecision141) {
+            val preserveRouteInFlight143 =
+                universalActiveRidePackageName == resolvedPackage &&
+                    universalActiveAddressSignature != null &&
+                    universalRouteJob?.isActive == true
+            val recentValidatedCardAge144 = System.currentTimeMillis() - universalLastActiveReadAtMillis
+            val preserveRecentValidatedCard144 =
+                universalActiveRidePackageName == resolvedPackage &&
+                    universalActiveAddressSignature != null &&
+                    recentValidatedCardAge144 in 0L..8_000L
+            if (preserveStableDecision141 || preserveRouteInFlight143 || preserveRecentValidatedCard144) {
                 UnifiedDebugEventStore.record(
                     "BUBBLE_SCREEN_CHANGE_DEFERRED",
                     resolvedPackage,
-                    "decisao valida preservada; OCR confirmara mudanca real do destino",
+                    "OCR/card recente preservado; apenas novo destino confirmado pode substituir o estado",
                 )
                 scheduleScreenshotFallback127(resolvedPackage)
             } else {
@@ -406,14 +418,45 @@ class LiveRideAccessibilityService : AccessibilityService() {
             savedPackages = savedPackages,
             text = immediateTextChecklist13,
         )
-        if (analyzeJob?.isActive == true) {
-            UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_CANCELLED", resolvedPackage, "análise anterior cancelada por evento mais recente")
+        val analysisHash143 = immediateTextChecklist13.hashCode()
+        val sameAnalysisInFlight143 = analyzeJob?.isActive == true &&
+            activeAnalysisPackage143 == resolvedPackage &&
+            activeAnalysisHash143 == analysisHash143
+        if (sameAnalysisInFlight143) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_DUPLICATE_EVENT_IGNORED",
+                resolvedPackage,
+                "mesmo texto já está em análise; hash=$analysisHash143; idade=${System.currentTimeMillis() - activeAnalysisStartedAt143}ms",
+            )
+            if (quickEvaluationChecklist13.active) {
+                screenshotFallbackJob127?.cancel()
+                screenshotFallbackJob127 = null
+            }
+            return
         }
-        analyzeJob?.cancel()
-        UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_STARTED", resolvedPackage, "fonte=Accessibility; tamanho=${immediateTextChecklist13.length}; hash=${immediateTextChecklist13.hashCode()}")
+        if (analyzeJob?.isActive == true) {
+            UnifiedDebugEventStore.record(
+                "BUBBLE_ANALYSIS_REPLACED",
+                resolvedPackage,
+                "conteúdo realmente mudou; hashAnterior=${activeAnalysisHash143 ?: 0}; hashAtual=$analysisHash143",
+            )
+            analyzeJob?.cancel()
+        }
+        activeAnalysisPackage143 = resolvedPackage
+        activeAnalysisHash143 = analysisHash143
+        activeAnalysisStartedAt143 = System.currentTimeMillis()
+        UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_STARTED", resolvedPackage, "fonte=Accessibility; tamanho=${immediateTextChecklist13.length}; hash=$analysisHash143")
         analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            processRideText(immediateTextChecklist13, TextSource.Accessibility, allowPopupCandidate = true)
-        } // immediate_accessibility_process_checklist_13
+            try {
+                processRideText(immediateTextChecklist13, TextSource.Accessibility, allowPopupCandidate = true)
+            } finally {
+                if (activeAnalysisPackage143 == resolvedPackage && activeAnalysisHash143 == analysisHash143) {
+                    activeAnalysisPackage143 = null
+                    activeAnalysisHash143 = null
+                    activeAnalysisStartedAt143 = 0L
+                }
+            }
+        } // single_flight_accessibility_analysis_0_1_143
         if (quickEvaluationChecklist13.active) {
             screenshotFallbackJob127?.cancel()
             screenshotFallbackJob127 = null
@@ -934,11 +977,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
                     universalActiveAddressSignature != null &&
                     (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
                     decisionAge141 in 0L..STABLE_DECISION_ABSENCE_GRACE_MILLIS_141
-            if (preserveStableDecision141) {
+            val preserveRouteInFlight143 =
+                universalActiveRidePackageName == selectedPackageChecklist13 &&
+                    universalActiveAddressSignature != null &&
+                    universalRouteJob?.isActive == true &&
+                    decisionAge141 in 0L..8_000L
+            val preserveRecentValidatedCard144 =
+                universalActiveRidePackageName == selectedPackageChecklist13 &&
+                    universalActiveAddressSignature != null &&
+                    decisionAge141 in 0L..8_000L
+            if (preserveStableDecision141 || preserveRouteInFlight143 || preserveRecentValidatedCard144) {
                 UnifiedDebugEventStore.record(
                     "BUBBLE_INVALID_READ_DEFERRED",
                     selectedPackageChecklist13,
-                    "fonte=${source.name}; decisao valida preservada; idade=${decisionAge141}ms",
+                    "fonte=${source.name}; OCR/card validado preservado; idade=${decisionAge141}ms; rotaAtiva=${universalRouteJob?.isActive == true}",
                 )
                 if (source == TextSource.Accessibility) scheduleScreenshotFallback127(selectedPackageChecklist13)
                 return
@@ -2204,17 +2256,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun exportDiagnosticFromBubble() {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
-        Unit /* diagnostics_off_checklist_4 */
+        UnifiedDebugEventStore.record(
+            "BUBBLE_REPORT_SHORTCUT_OPENED",
+            universalResolvedForegroundPackage(),
+            "grade abriu a area de relatorios; exportacao automatica desativada",
+        )
         runCatching {
             startActivity(
                 Intent(this@LiveRideAccessibilityService, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     .putExtra(EXTRA_OPEN_TAB, TAB_HISTORY)
-                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, "reports")
-                    .putExtra("auto_export_report", true),
+                    .putExtra(EXTRA_OPEN_BUBBLE_GROUP, "reports"),
             )
-        }.onFailure { toast("Nao foi possivel abrir a exportacao do relatorio.") }
-    }
+        }.onFailure { toast("Nao foi possivel abrir a area de relatorios.") }
+    } // unified_manual_report_from_grid_0_1_142
 
     private fun toggleLiveReadingFromBubble() {
         shortcutOverlayController.hideShortcuts()

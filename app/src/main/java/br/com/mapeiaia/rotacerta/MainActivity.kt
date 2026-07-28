@@ -357,9 +357,13 @@ fun RotaCertaApp(launchIntent: Intent?) {
             launchIntent?.removeExtra(EXTRA_CONFIRM_DESTINATION_GPS_138)
         }
         if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
-            Unit /* production_log_removed_checklist_4 */
-            supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt")
-        } // auto_export_report_0_1_119
+            UnifiedDebugEventStore.record(
+                "LEGACY_AUTO_REPORT_IGNORED",
+                context.packageName,
+                "exportacao automatica antiga ignorada; use o botao Gerar relatorio para depuracao",
+            )
+            launchIntent.removeExtra("auto_export_report")
+        } // automatic_report_disabled_unified_manual_export_0_1_142
     }
 
     DisposableEffect(lifecycleOwner, context) {
