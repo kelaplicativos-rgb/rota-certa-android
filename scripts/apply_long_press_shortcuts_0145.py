@@ -6,7 +6,6 @@ OVERLAY = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOver
 MAIN = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt'
 GRADLE = ROOT / 'app/build.gradle.kts'
 
-# Materializa primeiro a proteção OCR 0.1.144.
 gradle_before = GRADLE.read_text(encoding='utf-8')
 if 'versionName = "0.1.143"' in gradle_before or 'versionName = "0.1.142"' in gradle_before or 'versionName = "0.1.141"' in gradle_before:
     subprocess.run(['python', str(ROOT / 'scripts/apply_ocr_authority_0144.py')], check=True)
@@ -69,8 +68,7 @@ new_gesture = '''        val handler = Handler(Looper.getMainLooper())
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val moved = kotlin.math.abs(event.x - downX) > touchSlop ||
-                        kotlin.math.abs(event.y - downY) > touchSlop
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
                     if (moved) {
                         handler.removeCallbacks(longPressAction)
                         view.isPressed = false
@@ -95,7 +93,6 @@ new_gesture = '''        val handler = Handler(Looper.getMainLooper())
 if old_gesture not in overlay:
     raise SystemExit('gesture detector block not found')
 overlay = overlay.replace(old_gesture, new_gesture, 1)
-
 overlay = overlay.replace('contentDescription = spec.label', 'contentDescription = "${spec.label}. Toque para abrir; mantenha pressionado por um segundo e meio para executar."', 1)
 OVERLAY.write_text(overlay, encoding='utf-8')
 
@@ -117,4 +114,4 @@ else:
 GRADLE.write_text(gradle, encoding='utf-8')
 
 print('Applied long-press shortcuts, OCR stability and UI correction 0.1.145')
-# retrigger validation 2026-07-27
+# final workflow trigger
