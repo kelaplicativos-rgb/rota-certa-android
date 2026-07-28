@@ -34,7 +34,18 @@ jobs:
           text = text.replace('    text = path.read_text()\n', '    print(f"APPLY {path}: {old[:90]!r}", flush=True)\n    text = path.read_text()\n', 1)
           p.write_text(text)
           PY
-          python -u scripts/apply_user_suggestions_0147.py
+          set +e
+          python -u scripts/apply_user_suggestions_0147.py > validation/apply-0.1.147.log 2>&1
+          status=$?
+          cat validation/apply-0.1.147.log
+          if [ "$status" -ne 0 ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add validation/apply-0.1.147.log
+            git commit -m 'Registra erro da transformação 0.1.147 [skip ci]' || true
+            git push origin HEAD:codex/rota-certa-0.1.147-clean
+            exit "$status"
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
