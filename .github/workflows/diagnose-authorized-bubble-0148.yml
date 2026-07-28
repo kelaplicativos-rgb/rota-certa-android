@@ -1,0 +1,27 @@
+name: Diagnose Authorized Apps and Bubble 0.1.148
+
+on:
+  pull_request:
+    branches: [codex/rota-certa-0.1.146-base]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Collect source context
+        run: |
+          mkdir -p diagnostic
+          grep -R -n -C 12 "Aplicativos e cards autorizados\|Autorizados:\|bubbleSizeDp\|updateViewLayout\|currentSettings =\|onChange(settings.copy" app/src/main/java > diagnostic/context.txt || true
+          find app/src/main/java -type f -name '*.kt' | sort > diagnostic/files.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.148-source-context
+          path: diagnostic/
+          retention-days: 7
