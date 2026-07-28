@@ -2,9 +2,7 @@ name: Apply and Build Rota Certa 0.1.147
 
 on:
   push:
-    branches: [codex/rota-certa-0.1.147-clean]
-  pull_request:
-    branches: [main]
+    branches: [codex/rota-certa-0.1.147-final]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +14,7 @@ jobs:
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TARGET_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +26,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p validation
-          python3 -u scripts/apply_user_suggestions_0147_v3.py > validation/apply-0.1.147.log 2>&1
+          python3 -u scripts/apply_user_suggestions_0147_v2.py > validation/apply-0.1.147.log 2>&1
       - name: Upload apply diagnostic
         if: always()
         uses: actions/upload-artifact@v4
