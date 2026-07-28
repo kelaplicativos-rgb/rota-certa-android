@@ -44,8 +44,28 @@ jobs:
           grep -q 'delay(1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'passenger_fare_copy_0_1_147' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'Extrair viagem pelo link' app/src/main/java/br/com/mapeiaia/rotacerta/BlaBlaCarCollectorActivity.kt
-      - name: Unit tests and lint
-        run: gradle clean testDebugUnitTest lintDebug --no-daemon --stacktrace --console=plain
+      - name: Unit tests
+        id: tests
+        continue-on-error: true
+        run: |
+          mkdir -p validation
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee validation/unit-tests.log
+      - name: Android lint
+        id: lint
+        continue-on-error: true
+        run: |
+          gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/lint.log
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.147-validation-logs
+          path: validation/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Stop on validation failure
+        if: steps.tests.outcome == 'failure' || steps.lint.outcome == 'failure'
+        run: exit 1
       - name: Build and validate APK
         run: |
           set -euo pipefail
