@@ -1,0 +1,3 @@
+Rota Certa 0.1.146
+Branch: codex/unified-debug-log-0.1.139
+Objetivo: executar testes, lint, build, assinatura, marcadores DEX, tamanho e SHA-256 do APK correspondente ao commit desta PR.
