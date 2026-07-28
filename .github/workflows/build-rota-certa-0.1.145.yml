@@ -1,4 +1,4 @@
-name: Build Rota Certa 0.1.145
+name: Build Rota Certa 0.1.146
 
 on:
   workflow_dispatch:
@@ -35,20 +35,25 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
-
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply complete correction
-        run: python scripts/apply_long_press_shortcuts_0145.py
+      - name: Apply complete 0.1.146 correction
+        run: |
+          python scripts/apply_authorized_apps_cards_0146.py
+          python scripts/finalize_authorized_apps_cards_0146.py
 
-      - name: Verify correction and Maps key
+      - name: Verify corrected source contract
         run: |
           set -euo pipefail
-          grep -q 'versionName = "0.1.145"' app/build.gradle.kts
-          grep -q 'versionCode = 5060' app/build.gradle.kts
-          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'versionName = "0.1.146"' app/build.gradle.kts
+          grep -q 'versionCode = 5070' app/build.gradle.kts
+          ! grep -q 'Text(if (saving) "Localizando..." else "Salvar Casa")' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'Text("Aplicativos e cards autorizados"' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Cards são apenas complementos para OCR e reconhecimento.' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Excluir somente este card' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Excluir aplicativo e cards' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'cards_supplemental_not_contract_0_1_146' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
-          grep -q 'bubble.shortcut.long_press' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
           ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
@@ -61,7 +66,7 @@ jobs:
       - name: Build APK
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Validate APK
+      - name: Validate APK version and signature
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
@@ -69,23 +74,22 @@ jobs:
           unzip -t "$APK" >/dev/null
           APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
           AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.146-assinatura.txt
           BADGING=$($AAPT dump badging "$APK" | head -1)
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
-          echo "$BADGING" | grep -q "versionCode='5060'"
-          echo "$BADGING" | grep -q "versionName='0.1.145'"
-          cp "$APK" rota-certa-0.1.145-validado.apk
-          sha256sum rota-certa-0.1.145-validado.apk | tee rota-certa-0.1.145-sha256.txt
+          echo "$BADGING" | grep -q "versionCode='5070'"
+          echo "$BADGING" | grep -q "versionName='0.1.146'"
+          cp "$APK" rota-certa-0.1.146-corrigido-validado.apk
+          sha256sum rota-certa-0.1.146-corrigido-validado.apk | tee rota-certa-0.1.146-sha256.txt
 
-      - name: Upload validated APK
+      - name: Upload corrected validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.145-validated
+          name: rota-certa-0.1.146-corrected-validated
           path: |
-            rota-certa-0.1.145-validado.apk
-            rota-certa-0.1.145-sha256.txt
+            rota-certa-0.1.146-corrigido-validado.apk
+            rota-certa-0.1.146-sha256.txt
+            rota-certa-0.1.146-assinatura.txt
           retention-days: 90
           if-no-files-found: error
-
-# trigger final build 2026-07-27-2
