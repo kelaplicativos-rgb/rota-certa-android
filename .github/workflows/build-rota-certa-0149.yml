@@ -1,0 +1,69 @@
+name: Build Rota Certa 0.1.149
+
+on:
+  pull_request:
+    branches: [codex/rota-certa-0.1.146-base]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Apply 0.1.149 fix
+        run: python3 -u scripts/apply_captured_apps_first_0149.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Verify source contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.149"' app/build.gradle.kts
+          grep -q 'versionCode = 5100' app/build.gradle.kts
+          grep -q 'captured_apps_first_0_1_149' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'it.packageName in capturedPackages' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'remember(applications, search, selectedPackages, captures)' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+      - name: Unit tests
+        run: gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+      - name: Android lint
+        run: gradle lintDebug --no-daemon --stacktrace --console=plain
+      - name: Build and validate APK
+        run: |
+          set -euo pipefail
+          gradle clean assembleDebug --no-daemon --stacktrace --console=plain
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" badging.txt
+          grep -q "versionName='0.1.149'" badging.txt
+          grep -q "versionCode='5100'" badging.txt
+          mkdir -p validated
+          cp "$APK" validated/rota-certa-0.1.149-estavel-validado.apk
+          sha256sum validated/rota-certa-0.1.149-estavel-validado.apk > validated/sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.149-estavel-validado
+          path: validated/
+          retention-days: 90
+          if-no-files-found: error
