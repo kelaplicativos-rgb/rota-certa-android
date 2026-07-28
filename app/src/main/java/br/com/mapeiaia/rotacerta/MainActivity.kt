@@ -1445,7 +1445,7 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             if (mapsKeyConfiguredChecklist11) {
                 "Chave Google Maps API: configurada"
             } else {
-                "Chave Google Maps API: obrigatória para o farol verde/vermelho"
+                "Google Maps: necessário para calcular verde/vermelho"
             },
             fontWeight = FontWeight.Bold,
         )
@@ -1453,7 +1453,7 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             if (mapsKeyConfiguredChecklist11) {
                 "A chave é fornecida com segurança pelo build do aplicativo."
             } else {
-                "Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions."
+                "Este APK foi gerado sem a chave do Google Maps. Gere novamente pelo GitHub Actions com o segredo GOOGLE_MAPS_API_KEY."
             },
             style = MaterialTheme.typography.bodySmall,
         ) // maps_key_single_build_source_0_1_138

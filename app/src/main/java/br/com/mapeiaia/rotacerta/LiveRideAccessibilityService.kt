@@ -1840,6 +1840,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutQuickAction.CreateNamedAlertAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.ProximityAlert)
             BubbleShortcutQuickAction.CreateNamedSavedPlaceAtCurrentLocation -> openNamedPlaceShortcut138(SavedPlaceType.Place)
             BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation -> openDestinationConfirmationFromBubble138()
+            BubbleShortcutQuickAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             null -> executeShortcutModule(spec)
         }
     }
@@ -1868,6 +1869,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
             BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
+            BubbleShortcutAction.OpenAuthorizedAppsAndCards -> openAuthorizedAppsAndCards146()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
             BubbleShortcutAction.ToggleReading -> toggleLiveReadingFromBubble()
@@ -1880,6 +1882,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
 
     // manual_card_capture_complete_checklist_12
+
+    private fun openAuthorizedAppsAndCards146() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        runCatching {
+            startActivity(
+                Intent(this, InstalledRideAppPickerActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            )
+        }.onFailure { toast("Não consegui abrir os aplicativos autorizados.") }
+    }
 
     private fun captureCurrentAppAndScreen138() {
         shortcutOverlayController.hideAll()
