@@ -11,7 +11,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,9 +20,11 @@ jobs:
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1.146-authorized-apps
 
     steps:
-      - name: Checkout exact pull request commit
+      - name: Checkout exact corrected source
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
@@ -95,7 +97,7 @@ jobs:
           stat -c '%s' rota-certa-0.1.146-autorizados-validado.apk | tee apk-size-bytes.txt
           sha256sum rota-certa-0.1.146-autorizados-validado.apk | tee apk-sha256.txt
 
-      - name: Upload validated APK
+      - name: Upload validated APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.146-authorized-apps-validated
@@ -113,6 +115,34 @@ jobs:
             app/build/reports/tests/testDebugUnitTest
           retention-days: 90
           if-no-files-found: error
+
+      - name: Publish stable GitHub Release
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(cat validated-commit.txt)"
+          cat > release-notes.md <<EOF
+          Rota Certa 0.1.146 — aplicativos e cards autorizados
+
+          Commit validado: ${SOURCE_SHA}
+          Package: br.com.mapeiaia.rotacerta
+          VersionName: 0.1.146
+          VersionCode: 5070
+
+          Testes unitários, Android Lint, build, integridade ZIP, assinatura, package/version e marcadores DEX aprovados pelo workflow.
+          EOF
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              rota-certa-0.1.146-autorizados-validado.apk \
+              apk-sha256.txt apk-size-bytes.txt aapt-badging.txt apksigner.txt validated-commit.txt \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --title "Rota Certa 0.1.146 validado" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" \
+              rota-certa-0.1.146-autorizados-validado.apk \
+              apk-sha256.txt apk-size-bytes.txt aapt-badging.txt apksigner.txt validated-commit.txt \
+              --target "$SOURCE_SHA" --title "Rota Certa 0.1.146 validado" --notes-file release-notes.md \
+              --repo "$GITHUB_REPOSITORY"
+          fi
 
       - name: Upload failure evidence
         if: failure()
