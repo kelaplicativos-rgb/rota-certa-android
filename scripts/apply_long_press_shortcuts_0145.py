@@ -96,27 +96,14 @@ if old_gesture not in overlay:
     raise SystemExit('gesture detector block not found')
 overlay = overlay.replace(old_gesture, new_gesture, 1)
 
-# Acessibilidade: explica o gesto e evita anunciar toque duplo.
 overlay = overlay.replace('contentDescription = spec.label', 'contentDescription = "${spec.label}. Toque para abrir; mantenha pressionado por um segundo e meio para executar."', 1)
 OVERLAY.write_text(overlay, encoding='utf-8')
 
 main = MAIN.read_text(encoding='utf-8')
-main = main.replace(
-    'Chave Google Maps API: obrigatória para o farol verde/vermelho',
-    'Google Maps: necessário para calcular verde/vermelho',
-)
-main = main.replace(
-    'Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions.',
-    'Este APK foi gerado sem a chave do Google Maps. Gere novamente pelo GitHub Actions com o segredo GOOGLE_MAPS_API_KEY.',
-)
-main = main.replace(
-    'Dois toques executam a ação rápida.',
-    'Mantenha pressionado por 1,5 segundo para executar a ação rápida.',
-)
-main = main.replace(
-    'dois toques',
-    'pressionar e segurar',
-)
+main = main.replace('Chave Google Maps API: obrigatória para o farol verde/vermelho', 'Google Maps: necessário para calcular verde/vermelho')
+main = main.replace('Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions.', 'Este APK foi gerado sem a chave do Google Maps. Gere novamente pelo GitHub Actions com o segredo GOOGLE_MAPS_API_KEY.')
+main = main.replace('Dois toques executam a ação rápida.', 'Mantenha pressionado por 1,5 segundo para executar a ação rápida.')
+main = main.replace('dois toques', 'pressionar e segurar')
 MAIN.write_text(main, encoding='utf-8')
 
 gradle = GRADLE.read_text(encoding='utf-8')
@@ -130,3 +117,4 @@ else:
 GRADLE.write_text(gradle, encoding='utf-8')
 
 print('Applied long-press shortcuts, OCR stability and UI correction 0.1.145')
+# retrigger validation 2026-07-27
