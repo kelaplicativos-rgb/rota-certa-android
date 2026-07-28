@@ -22,11 +22,9 @@ jobs:
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 1
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+          show-progress: false
       - name: Apply requested features
-        run: python -u scripts/apply_user_suggestions_0147_v2.py
+        run: python3 -u scripts/apply_user_suggestions_0147_v2.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
