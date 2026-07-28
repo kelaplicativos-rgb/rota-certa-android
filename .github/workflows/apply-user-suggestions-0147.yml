@@ -2,7 +2,7 @@ name: Apply and Build Rota Certa 0.1.147
 
 on:
   push:
-    branches: [codex/rota-certa-0.1.147-sugestoes]
+    branches: [codex/rota-certa-0.1.147-clean]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -12,15 +12,15 @@ permissions:
 
 jobs:
   apply-build-validate:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message || '', '[applied-0.1.147]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: codex/rota-certa-0.1.147-sugestoes
+          ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -67,15 +67,7 @@ jobs:
           mkdir -p validated
           cp "$APK" validated/rota-certa-0.1.147-sugestoes-validado.apk
           sha256sum validated/rota-certa-0.1.147-sugestoes-validado.apk > validated/sha256.txt
-      - name: Commit implementation
-        if: github.event_name != 'pull_request'
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app scripts/apply_user_suggestions_0147.py
-          git commit -m 'Aplica aparência alertas coletor e valor 0.1.147 [applied-0.1.147]'
-          git push origin HEAD:codex/rota-certa-0.1.147-sugestoes
+          git rev-parse HEAD > validated/commit.txt
       - uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.147-sugestoes-validado
