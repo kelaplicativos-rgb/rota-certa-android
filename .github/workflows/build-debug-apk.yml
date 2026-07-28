@@ -1,21 +1,34 @@
-name: Build Debug APK
+name: Build Corrected APK 0.1.145
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - .github/workflows/build-debug-apk.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    name: Build debug APK
-    runs-on: ubuntu-latest
+    name: Build corrected APK 0.1.145
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
 
     steps:
-      - name: Checkout
+      - name: Checkout correction branch
         uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -36,61 +49,56 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Check Google Maps secret
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: |
-          if [ -z "$GOOGLE_MAPS_API_KEY" ]; then
-            echo "GOOGLE_MAPS_API_KEY secret is empty. APK will still build; configure the key inside the app."
-          else
-            echo "GOOGLE_MAPS_API_KEY secret found."
-          fi
+      - name: Apply complete 0.1.145 correction
+        run: python scripts/apply_long_press_shortcuts_0145.py
 
-      - name: Record debug APK run start
+      - name: Verify corrected source contract
         run: |
           set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: pending"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record debug APK run start" || exit 0
-          git push
+          grep -q 'versionName = "0.1.145"' app/build.gradle.kts
+          grep -q 'versionCode = 5060' app/build.gradle.kts
+          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          grep -q 'bubble.shortcut.long_press' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
 
       - name: Run unit tests
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Build debug APK
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Run Android lint
+        run: gradle lintDebug --no-daemon --stacktrace
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      - name: Build corrected APK
+        run: gradle clean assembleDebug --no-daemon --stacktrace
 
-      - name: Record latest APK run link
+      - name: Validate package version signature and correction markers
         run: |
           set -euo pipefail
-          CURRENT_SHA="$(git rev-parse HEAD)"
-          mkdir -p .github
-          {
-            echo "Build Debug APK run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "Artifact: rota-certa-debug-apk"
-            echo "Commit: ${CURRENT_SHA}"
-          } > .github/latest-debug-apk-run.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/latest-debug-apk-run.txt
-          git commit -m "Record latest debug APK run" || exit 0
-          git push
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5060'" aapt-badging.txt
+          grep -q "versionName='0.1.145'" aapt-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > dex-strings.txt
+          grep -q 'bubble.shortcut.long_press' dex-strings.txt
+          grep -q 'OCR/card validado preservado' dex-strings.txt
+          ! grep -q 'bubble.shortcut.double_tap' dex-strings.txt
+          cp "$APK" rota-certa-0.1.145-corrigido-validado.apk
+          sha256sum rota-certa-0.1.145-corrigido-validado.apk | tee rota-certa-0.1.145-sha256.txt
+
+      - name: Upload corrected validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.145-corrected-validated
+          path: |
+            rota-certa-0.1.145-corrigido-validado.apk
+            rota-certa-0.1.145-sha256.txt
+            aapt-badging.txt
+            apksigner.txt
+          retention-days: 90
+          if-no-files-found: error
