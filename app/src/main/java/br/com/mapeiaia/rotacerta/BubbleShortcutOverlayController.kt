@@ -5,11 +5,14 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.view.GestureDetector
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.GridLayout
 import android.widget.LinearLayout
@@ -213,7 +216,7 @@ class BubbleShortcutOverlayController(
                         doubleAction = module.spec.doubleTapAction?.let {
                             {
                                 hideShortcuts()
-                                trace("bubble.shortcut.double_tap id=${module.spec.id} action=$it")
+                                trace("bubble.shortcut.long_press id=${module.spec.id} action=$it")
                                 onShortcutDoubleTap(module.spec)
                             }
                         },
@@ -299,7 +302,7 @@ class BubbleShortcutOverlayController(
         gravity = Gravity.CENTER
         includeFontPadding = false
         maxLines = 2
-        contentDescription = spec.label
+        contentDescription = "${spec.label}. Toque para abrir; mantenha pressionado por um segundo e meio para executar."
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.rgb(72, 64, 82))
@@ -310,24 +313,48 @@ class BubbleShortcutOverlayController(
             height = bubbleSize
             setMargins(itemMargin, itemMargin, itemMargin, itemMargin)
         }
-        val gestureDetector = GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(event: MotionEvent): Boolean = true
-
-                override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-                    singleAction()
-                    return true
+        val handler = Handler(Looper.getMainLooper())
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        var downX = 0f
+        var downY = 0f
+        var longPressTriggered = false
+        val longPressAction = Runnable {
+            longPressTriggered = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            (doubleAction ?: singleAction).invoke()
+        }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    longPressTriggered = false
+                    view.isPressed = true
+                    handler.postDelayed(longPressAction, 1_500L)
+                    true
                 }
-
-                override fun onDoubleTap(event: MotionEvent): Boolean {
-                    val action = doubleAction ?: return false
-                    action()
-                    return true
+                MotionEvent.ACTION_MOVE -> {
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        handler.removeCallbacks(longPressAction)
+                        view.isPressed = false
+                    }
+                    true
                 }
-            },
-        )
-        setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    if (!longPressTriggered) singleAction()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    true
+                }
+                else -> true
+            }
+        }
     }
 
     private fun showDeleteConfirmation(

@@ -129,6 +129,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
     var backupStatus by remember { mutableStateOf("") }
     var radarImportStatus by remember { mutableStateOf("") }
     var supportReportStatus by remember { mutableStateOf("") }
+    var debugLogEnabled by remember { mutableStateOf(DebugLogPreferenceStore.isEnabled(context)) }
 
 
     fun renameSavedPlace(place: SavedPlace, name: String) {
@@ -270,7 +271,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
         }
         scope.launch {
             supportReportStatus = "Gerando relatorio..."
-            Unit /* production_log_removed_checklist_4 */
+            UnifiedDebugEventStore.record("REPORT_EXPORT", context.packageName, "exportação manual solicitada")
             runCatching {
                 val report = buildManualSupportReport(
                     context = context,
@@ -356,9 +357,13 @@ fun RotaCertaApp(launchIntent: Intent?) {
             launchIntent?.removeExtra(EXTRA_CONFIRM_DESTINATION_GPS_138)
         }
         if (launchIntent?.getBooleanExtra("auto_export_report", false) == true) {
-            Unit /* production_log_removed_checklist_4 */
-            supportReportFileCreator.launch("rota-certa-relatorio-completo.txt")
-        } // auto_export_report_0_1_119
+            UnifiedDebugEventStore.record(
+                "LEGACY_AUTO_REPORT_IGNORED",
+                context.packageName,
+                "exportacao automatica antiga ignorada; use o botao Gerar relatorio para depuracao",
+            )
+            launchIntent.removeExtra("auto_export_report")
+        } // automatic_report_disabled_unified_manual_export_0_1_142
     }
 
     DisposableEffect(lifecycleOwner, context) {
@@ -523,6 +528,25 @@ fun RotaCertaApp(launchIntent: Intent?) {
                     settings = settings,
                     diagnostic = null,
                     history = history,
+                    debugLogEnabled = debugLogEnabled,
+                    onDebugLogChange = { enabled ->
+                        debugLogEnabled = enabled
+                        DebugLogPreferenceStore.setEnabled(context, enabled)
+                        if (enabled) {
+                            DiagnosticLogStore.clear()
+                            LiveFailureTraceStore.clear()
+                            UnifiedDebugEventStore.clear()
+                            UnifiedDebugEventStore.record("DEBUG_LOG_ON", context.packageName, "coleta circular ativada pelo usuário")
+                        }
+                    },
+                    onCreateReport = { supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt") },
+                    onClearReport = {
+                        DiagnosticLogStore.clear()
+                        LiveFailureTraceStore.clear()
+                        UnifiedDebugEventStore.clear()
+                        supportReportStatus = "Registros apagados."
+                    },
+                    reportStatus = supportReportStatus,
                 )
                 else -> Unit
             } // grouped_navigation_compat_0_1_115
@@ -960,37 +984,34 @@ private fun RadiusQuickCard(
 
 @Composable
 private fun DiagnosticExpander(
-    settings: AppSettings,
-    @Suppress("UNUSED_PARAMETER") diagnostic: LiveDiagnostic?,
+    debugLogEnabled: Boolean,
+    onDebugLogChange: (Boolean) -> Unit,
+    onCreateReport: () -> Unit,
+    onClearReport: () -> Unit,
+    reportStatus: String,
 ) {
-    val context = LocalContext.current
-    ExpandableCard(title = "Relatorio tecnico", initiallyExpanded = false) {
+    ExpandableCard(title = "Relatório para depuração", initiallyExpanded = true) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Log de depuração", fontWeight = FontWeight.Bold)
+                Text(
+                    if (debugLogEnabled) "ON — eventos relevantes ficam em memória circular até a exportação." else "OFF — nenhuma coleta detalhada contínua.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = debugLogEnabled, onCheckedChange = onDebugLogChange)
+        }
         Text(
-            "Logs e diagnosticos automaticos ficam desligados durante o uso normal. O arquivo abaixo e criado somente quando voce toca no botao.",
+            "A coleta não grava eventos continuamente no armazenamento. Telefones e e-mails são mascarados no arquivo.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Button(
-            onClick = {
-                DiagnosticRuntimeGate.endManualCapture()
-                DiagnosticLogStore.clear()
-                LiveFailureTraceStore.clear()
-                val report = ManualTechnicalReportBuilder.build(context = context, settings = settings)
-                ManualTechnicalReportExporter.saveToDownloads(context, report)
-                    .onSuccess {
-                        Toast.makeText(context, "Relatorio salvo em Downloads/Rota Certa.", Toast.LENGTH_SHORT).show()
-                    }
-                    .onFailure {
-                        Toast.makeText(
-                            context,
-                            "Nao consegui salvar o relatorio em Downloads.",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                    }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Gerar e baixar relatorio")
+        Button(onClick = onCreateReport, modifier = Modifier.fillMaxWidth()) {
+            Text("Gerar relatório para depuração")
         }
+        OutlinedButton(onClick = onClearReport, modifier = Modifier.fillMaxWidth()) {
+            Text("Apagar registros")
+        }
+        if (reportStatus.isNotBlank()) Text(reportStatus, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -1424,7 +1445,7 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             if (mapsKeyConfiguredChecklist11) {
                 "Chave Google Maps API: configurada"
             } else {
-                "Chave Google Maps API: obrigatória para o farol verde/vermelho"
+                "Google Maps: necessário para calcular verde/vermelho"
             },
             fontWeight = FontWeight.Bold,
         )
@@ -1432,7 +1453,7 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             if (mapsKeyConfiguredChecklist11) {
                 "A chave é fornecida com segurança pelo build do aplicativo."
             } else {
-                "Configure GOOGLE_MAPS_API_KEY no local.properties ou no segredo do GitHub Actions."
+                "Este APK foi gerado sem a chave do Google Maps. Gere novamente pelo GitHub Actions com o segredo GOOGLE_MAPS_API_KEY."
             },
             style = MaterialTheme.typography.bodySmall,
         ) // maps_key_single_build_source_0_1_138
@@ -1915,14 +1936,22 @@ private fun ReportsGroupScreen(
     settings: AppSettings,
     diagnostic: LiveDiagnostic?,
     history: List<AnalysisResult>,
+    debugLogEnabled: Boolean,
+    onDebugLogChange: (Boolean) -> Unit,
+    onCreateReport: () -> Unit,
+    onClearReport: () -> Unit,
+    reportStatus: String,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Relatorios e historico", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Relatórios e histórico", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         DiagnosticExpander(
-            settings = settings,
-            diagnostic = diagnostic,
+            debugLogEnabled = debugLogEnabled,
+            onDebugLogChange = onDebugLogChange,
+            onCreateReport = onCreateReport,
+            onClearReport = onClearReport,
+            reportStatus = reportStatus,
         )
-        Text("Historico de decisoes", fontWeight = FontWeight.Bold)
+        Text("Histórico de decisões", fontWeight = FontWeight.Bold)
         HistoryScreen(history)
     }
 } // grouped_reports_tools_0_1_115 final_reports_compile_repair_checklist_10
@@ -1957,6 +1986,11 @@ private suspend fun buildManualSupportReport(
         appendLine("Data da exportacao: ${formatDate(nowMillis)}")
         appendLine("Pacote: ${context.packageName}")
         appendLine("Leitura ao vivo ativa: $liveEnabled")
+        appendLine("Log de depuração: ${if (DebugLogPreferenceStore.isEnabled(context)) "ON" else "OFF"}")
+        appendLine("Eventos na trilha unificada: ${UnifiedDebugEventStore.size()}")
+        appendLine()
+        appendLine("--- RESUMO TÉCNICO UNIFICADO ---")
+        appendLine(ManualTechnicalReportBuilder.build(context = context, settings = settings))
         appendLine()
         appendLine("--- ULTIMA TENTATIVA REAL DA BOLINHA ---")
         appendLine(sessionDiagnostic)
@@ -2009,7 +2043,10 @@ private suspend fun buildManualSupportReport(
         appendLine("--- RADARES IMPORTADOS ---")
         appendLine(radarImportSummary.toString())
         appendLine()
-        appendLine("--- LINHA DO TEMPO COMPLETA DA EXECUCAO ---")
+        appendLine("--- EVENTOS UNIFICADOS DA EXECUÇÃO ---")
+        appendLine(UnifiedDebugEventStore.dump())
+        appendLine()
+        appendLine("--- EVENTOS TÉCNICOS COMPLEMENTARES ---")
         appendLine(complementaryEvents.ifBlank { "sem eventos complementares" })
         appendLine()
         appendLine("--- OBSERVACAO ---")

@@ -1,0 +1,48 @@
+name: Apply unified debug log 0.1.139
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+    paths:
+      - scripts/apply_unified_debug_log_0139.py
+      - .github/workflows/apply-unified-debug-log-0139.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message || '', '[applied-0.1.139]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply verified transformations
+        run: python scripts/apply_unified_debug_log_0139.py
+      - name: Verify expected contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.139"' app/build.gradle.kts
+          grep -q 'Gerar relatório para depuração' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'ACCESSIBILITY_EVENT' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'object UnifiedDebugEventStore' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
+          ! grep -q 'Gerar e baixar relatorio' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_unified_debug_log_0139.py
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'Unifica log e relatório de depuração [applied-0.1.139]'
+          git push origin HEAD:codex/unified-debug-log-0.1.139

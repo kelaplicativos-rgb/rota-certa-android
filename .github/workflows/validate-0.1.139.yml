@@ -1,0 +1,137 @@
+name: Build and validate Rota Certa 0.1.146
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: validate-0-1-146-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply persistent authorized apps and cards implementation
+        run: python scripts/apply_authorized_apps_cards_0146.py
+
+      - name: Commit materialized implementation before validation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_authorized_apps_cards_0146.py scripts/apply_long_press_shortcuts_0145.py
+          if ! git diff --cached --quiet; then
+            git commit -m 'Implementa aplicativos e cards autorizados 0.1.146 [skip ci]'
+            git push origin HEAD:codex/unified-debug-log-0.1.139
+          fi
+          git rev-parse HEAD | tee validated-commit.txt
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Verify source contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.146"' app/build.gradle.kts
+          grep -q 'versionCode = 5070' app/build.gradle.kts
+          grep -q 'Aplicativos e cards autorizados' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'removePackage' app/src/main/java/br/com/mapeiaia/rotacerta/ManualAppScreenCaptureStore.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'Text("Salvar Casa")' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          ! test -e app/src/main/java/br/com/mapeiaia/rotacerta/RegisteredCardDecisionGate.kt
+          ! test -e app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt
+
+      - name: Run unit tests
+        run: gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee unit-tests.log
+
+      - name: Run Android Lint
+        run: gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee lint.log
+
+      - name: Build APK
+        run: gradle clean assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee assemble.log
+
+      - name: Validate APK package version signature and markers
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5070'" aapt-badging.txt
+          grep -q "versionName='0.1.146'" aapt-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > dex-strings.txt
+          grep -q 'Aplicativos e cards autorizados' dex-strings.txt
+          grep -q 'Excluir somente este card' dex-strings.txt
+          grep -q 'bubble.shortcut.long_press' dex-strings.txt
+          ! grep -q 'bubble.shortcut.double_tap' dex-strings.txt
+          cp "$APK" rota-certa-0.1.146-autorizados-validado.apk
+          stat -c '%s' rota-certa-0.1.146-autorizados-validado.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.146-autorizados-validado.apk | tee apk-sha256.txt
+
+      - name: Upload validated APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.146-authorized-apps-validated
+          path: |
+            rota-certa-0.1.146-autorizados-validado.apk
+            apk-sha256.txt
+            apk-size-bytes.txt
+            aapt-badging.txt
+            apksigner.txt
+            validated-commit.txt
+            unit-tests.log
+            lint.log
+            assemble.log
+            app/build/reports/lint-results-debug.html
+            app/build/reports/tests/testDebugUnitTest
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.146-validation-failure
+          path: |
+            validated-commit.txt
+            unit-tests.log
+            lint.log
+            assemble.log
+            app/build/reports
+            app/build/test-results
+          if-no-files-found: warn

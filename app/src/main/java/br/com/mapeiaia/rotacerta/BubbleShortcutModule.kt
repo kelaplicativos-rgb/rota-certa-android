@@ -22,6 +22,7 @@ enum class BubbleShortcutAction {
     ToggleReading,
     OpenSettings,
     CaptureCurrentAppAndScreen,
+    OpenAuthorizedAppsAndCards,
 }
 
 enum class BubbleShortcutQuickAction {
@@ -31,6 +32,7 @@ enum class BubbleShortcutQuickAction {
     CreateNamedAlertAtCurrentLocation,
     CreateNamedSavedPlaceAtCurrentLocation,
     DefineDestinationAtCurrentLocation,
+    CaptureCurrentAppAndScreen,
 }
 
 data class BubbleShortcutSpec(
@@ -180,7 +182,8 @@ object CaptureCurrentAppScreenBubbleShortcutModule : BubbleShortcutModule {
         emoji = "📸",
         label = "Capturar aplicativo e tela",
         displayLabel = "Capturar",
-        action = BubbleShortcutAction.CaptureCurrentAppAndScreen,
+        action = BubbleShortcutAction.OpenAuthorizedAppsAndCards,
+        doubleTapAction = BubbleShortcutQuickAction.CaptureCurrentAppAndScreen,
     )
 }
 

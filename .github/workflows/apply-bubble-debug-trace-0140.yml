@@ -1,0 +1,101 @@
+name: Apply and validate Rota Certa 0.1.145
+
+on:
+  push:
+    branches:
+      - codex/unified-debug-log-0.1.139
+    paths:
+      - scripts/apply_long_press_shortcuts_0145.py
+      - scripts/apply_ocr_authority_0144.py
+      - .github/workflows/apply-bubble-debug-trace-0140.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-validate:
+    if: ${{ !contains(github.event.head_commit.message || '', '[applied-0.1.145]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply complete correction
+        run: python scripts/apply_long_press_shortcuts_0145.py
+
+      - name: Verify correction contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.145"' app/build.gradle.kts
+          grep -q 'versionCode = 5060' app/build.gradle.kts
+          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          grep -q 'bubble.shortcut.long_press' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Run tests and lint
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build and validate APK
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose "$APK"
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5060'"
+          echo "$BADGING" | grep -q "versionName='0.1.145'"
+          cp "$APK" rota-certa-0.1.145-validado.apk
+          sha256sum rota-certa-0.1.145-validado.apk | tee rota-certa-0.1.145-sha256.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.145-validated
+          path: |
+            rota-certa-0.1.145-validado.apk
+            rota-certa-0.1.145-sha256.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_long_press_shortcuts_0145.py scripts/apply_ocr_authority_0144.py
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'Corrige farol e atalhos por pressionamento longo 0.1.145 [applied-0.1.145]'
+          git push origin HEAD:codex/unified-debug-log-0.1.139

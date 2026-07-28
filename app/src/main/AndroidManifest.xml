@@ -32,7 +32,7 @@
         <activity
             android:name=".InstalledRideAppPickerActivity"
             android:exported="false"
-            android:label="Selecionar aplicativos de corrida" />
+            android:label="Aplicativos e cards autorizados" />
         <activity
             android:name=".QuickRepliesActivity"
             android:exported="false"
