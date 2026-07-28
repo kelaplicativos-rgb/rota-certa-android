@@ -1,106 +1,68 @@
-name: Validate bubble stability 0.1.141
+name: Validate Bubble Stability 0.1.146
 
 on:
-  push:
-    branches:
-      - codex/unified-debug-log-0.1.139
-    paths:
-      - scripts/apply_bubble_stability_0141.py
-      - .github/workflows/validate-bubble-stability-0141.yml
   pull_request:
-    branches:
-      - codex/grid-double-tap-shortcuts-alerts
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
-      - name: Checkout exact revision
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: codex/unified-debug-log-0.1.139
+          ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Apply stability fix
-        run: python scripts/apply_bubble_stability_0141.py
-      - name: Verify fix contract
-        run: |
-          set -euo pipefail
-          grep -q 'versionName = "0.1.141"' app/build.gradle.kts
-          grep -q 'val minimumVersionCode = 5_020' app/build.gradle.kts
-          grep -q 'BUBBLE_SCREEN_CHANGE_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'BUBBLE_EMPTY_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'BUBBLE_INVALID_READ_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Verify current stability contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.146"' app/build.gradle.kts
+          grep -q 'versionCode = 5070' app/build.gradle.kts
+          grep -q 'preserveRecentValidatedCard144' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
       - name: Run tests and lint
-        id: gradlecheck
-        continue-on-error: true
         run: |
-          chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug --no-daemon > gradle-validation.log 2>&1
-      - name: Upload Gradle validation log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-0.1.141-gradle-log
-          path: gradle-validation.log
-          retention-days: 7
-      - name: Stop on validation failure
-        if: steps.gradlecheck.outcome == 'failure'
-        run: exit 1
-      - name: Build APK twice
+          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+          gradle lintDebug --no-daemon --stacktrace --console=plain
+      - name: Build and validate APK
         run: |
           set -euo pipefail
-          ./gradlew clean assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/rota-certa-0.1.141-first.apk
-          ./gradlew assembleDebug --no-daemon
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          unzip -t app/build/outputs/apk/debug/app-debug.apk
-      - name: Validate package version and signature
-        run: |
-          set -euo pipefail
+          gradle clean assembleDebug --no-daemon --stacktrace --console=plain
           APK=app/build/outputs/apk/debug/app-debug.apk
-          ${ANDROID_HOME}/build-tools/35.0.0/apksigner verify --verbose "$APK"
-          ${ANDROID_HOME}/build-tools/35.0.0/aapt dump badging "$APK" | tee /tmp/badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta'" /tmp/badging.txt
-          grep -q "versionName='0.1.141'" /tmp/badging.txt
-          VERSION_CODE=$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" /tmp/badging.txt | head -1)
-          test -n "$VERSION_CODE"
-          test "$VERSION_CODE" -ge 5020
-          sha256sum "$APK" | tee /tmp/sha256.txt
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" badging.txt
+          grep -q "versionName='0.1.146'" badging.txt
+          grep -q "versionCode='5070'" badging.txt
           mkdir -p validated
-          cp "$APK" validated/Rota-Certa-0.1.141-validado.apk
-          cp /tmp/badging.txt validated/
-          cp /tmp/sha256.txt validated/
-      - name: Commit validated implementation
-        if: github.event_name != 'pull_request'
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app scripts/apply_bubble_stability_0141.py
-          if ! git diff --cached --quiet; then
-            git commit -m 'Estabiliza cor da bolinha no Files e corrige versionCode [applied-0.1.141]'
-            git push origin HEAD:codex/unified-debug-log-0.1.139
-          fi
-      - name: Upload validated APK
-        uses: actions/upload-artifact@v4
+          cp "$APK" validated/Rota-Certa-0.1.146-validado.apk
+          sha256sum "$APK" > validated/sha256.txt
+          git rev-parse HEAD > validated/commit.txt
+      - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.141-installable
+          name: rota-certa-0.1.146-installable
           path: validated/
           retention-days: 90
+          if-no-files-found: error
