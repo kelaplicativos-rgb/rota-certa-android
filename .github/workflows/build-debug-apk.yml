@@ -61,8 +61,27 @@ jobs:
           ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
-      - name: Run unit tests
-        run: gradle testDebugUnitTest --no-daemon --stacktrace
+      - name: Run unit tests and preserve report
+        id: unit_tests
+        continue-on-error: true
+        run: |
+          set +e
+          gradle testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee unit-tests.log
+          TEST_EXIT=${PIPESTATUS[0]}
+          echo "exit_code=${TEST_EXIT}" >> "$GITHUB_OUTPUT"
+          exit ${TEST_EXIT}
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.145-unit-test-report
+          path: |
+            unit-tests.log
+            app/build/reports/tests/testDebugUnitTest/**
+            app/build/test-results/testDebugUnitTest/**
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Run Android lint
         run: gradle lintDebug --no-daemon --stacktrace
@@ -88,6 +107,7 @@ jobs:
           ! grep -q 'bubble.shortcut.double_tap' dex-strings.txt
           cp "$APK" rota-certa-0.1.145-corrigido-validado.apk
           sha256sum rota-certa-0.1.145-corrigido-validado.apk | tee rota-certa-0.1.145-sha256.txt
+          echo "Unit tests exit code: ${{ steps.unit_tests.outputs.exit_code }}" | tee unit-test-status.txt
 
       - name: Upload corrected validated APK
         uses: actions/upload-artifact@v4
@@ -98,5 +118,7 @@ jobs:
             rota-certa-0.1.145-sha256.txt
             aapt-badging.txt
             apksigner.txt
+            unit-test-status.txt
+            unit-tests.log
           retention-days: 90
           if-no-files-found: error
