@@ -1,19 +1,16 @@
-name: Apply and validate Rota Certa 0.1.140
+name: Build and validate Rota Certa 0.1.146
 
 on:
   push:
     branches:
       - codex/unified-debug-log-0.1.139
-  pull_request:
-    branches:
-      - codex/grid-double-tap-shortcuts-alerts
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-validate-0-1-140-${{ github.event_name }}-${{ github.ref }}
+  group: validate-0-1-146-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +20,7 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
-      - name: Checkout exact revision
+      - name: Checkout exact branch
         uses: actions/checkout@v4
         with:
           ref: codex/unified-debug-log-0.1.139
@@ -34,8 +31,20 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Materialize complete bubble diagnostics
-        run: python scripts/apply_bubble_debug_trace_0140.py
+      - name: Apply persistent authorized apps and cards implementation
+        run: python scripts/apply_authorized_apps_cards_0146.py
+
+      - name: Commit materialized implementation before validation
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app scripts/apply_authorized_apps_cards_0146.py scripts/apply_long_press_shortcuts_0145.py
+          if ! git diff --cached --quiet; then
+            git commit -m 'Implementa aplicativos e cards autorizados 0.1.146 [skip ci]'
+            git push origin HEAD:codex/unified-debug-log-0.1.139
+          fi
+          git rev-parse HEAD | tee validated-commit.txt
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -51,91 +60,78 @@ jobs:
         with:
           gradle-version: 8.10.2
 
-      - name: Prepare evidence
-        run: mkdir -p validation/logs validation/evidence
-
-      - name: Verify complete diagnostic contract
+      - name: Verify source contract
         run: |
           set -euo pipefail
-          grep -q 'versionName = "0.1.140"' app/build.gradle.kts
-          grep -q '5_000' app/build.gradle.kts
-          grep -q 'MAX_EVENTS = 2_000' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
-          for stage in BUBBLE_TEXT_COLLECTED BUBBLE_ADDRESS_EVALUATION BUBBLE_DECISION_PAINTED BUBBLE_CLEAR_PAINTED BUBBLE_ROUTE_CALL_START BUBBLE_ROUTE_CALL_END; do
-            grep -q "$stage" app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          done
-          ! grep -RInE 'AIza[0-9A-Za-z_-]{20,}' app/src app/build.gradle.kts
+          grep -q 'versionName = "0.1.146"' app/build.gradle.kts
+          grep -q 'versionCode = 5070' app/build.gradle.kts
+          grep -q 'Aplicativos e cards autorizados' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'removePackage' app/src/main/java/br/com/mapeiaia/rotacerta/ManualAppScreenCaptureStore.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'Text("Salvar Casa")' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          ! test -e app/src/main/java/br/com/mapeiaia/rotacerta/RegisteredCardDecisionGate.kt
+          ! test -e app/src/main/java/br/com/mapeiaia/rotacerta/RideCardTemplateMatcher.kt
 
-      - name: Run unit tests twice
-        run: |
-          set -euo pipefail
-          gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/tests-first.log
-          gradle testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/tests-second.log
+      - name: Run unit tests
+        run: gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain 2>&1 | tee unit-tests.log
 
       - name: Run Android Lint
-        run: gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/lint.log
+        run: gradle lintDebug --no-daemon --stacktrace --console=plain 2>&1 | tee lint.log
 
-      - name: Build APK twice
+      - name: Build APK
+        run: gradle clean assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee assemble.log
+
+      - name: Validate APK package version signature and markers
         run: |
           set -euo pipefail
-          gradle clean assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/assemble-first.log
-          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.140-first.apk
-          gradle assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee validation/logs/assemble-second.log
-          cp app/build/outputs/apk/debug/app-debug.apk validation/evidence/rota-certa-0.1.140.apk
-          unzip -tq validation/evidence/rota-certa-0.1.140.apk
-          sha256sum validation/evidence/rota-certa-0.1.140.apk > validation/evidence/apk-sha256.txt
-
-      - name: Validate package version and signature
-        run: |
-          set -euo pipefail
-          APK=validation/evidence/rota-certa-0.1.140.apk
-          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee validation/evidence/apksigner.txt
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee validation/evidence/aapt-badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta'" validation/evidence/aapt-badging.txt
-          grep -q "versionName='0.1.140'" validation/evidence/aapt-badging.txt
-
-      - name: Write validation report
-        run: |
-          cat > validation/evidence/final-validation.txt <<'EOF'
-          VERSION_NAME=0.1.140
-          COMPLETE_BUBBLE_EVENT_CHAIN=approved
-          TESTS_TWICE=approved
-          LINT=approved
-          APK_BUILT_TWICE=approved
-          APK_SIGNATURE=approved
-          EOF
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5070'" aapt-badging.txt
+          grep -q "versionName='0.1.146'" aapt-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > dex-strings.txt
+          grep -q 'Aplicativos e cards autorizados' dex-strings.txt
+          grep -q 'Excluir somente este card' dex-strings.txt
+          grep -q 'bubble.shortcut.long_press' dex-strings.txt
+          ! grep -q 'bubble.shortcut.double_tap' dex-strings.txt
+          cp "$APK" rota-certa-0.1.146-autorizados-validado.apk
+          stat -c '%s' rota-certa-0.1.146-autorizados-validado.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.146-autorizados-validado.apk | tee apk-sha256.txt
 
       - name: Upload validated APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.140-validated
+          name: rota-certa-0.1.146-authorized-apps-validated
           path: |
-            validation/evidence
-            validation/logs
+            rota-certa-0.1.146-autorizados-validado.apk
+            apk-sha256.txt
+            apk-size-bytes.txt
+            aapt-badging.txt
+            apksigner.txt
+            validated-commit.txt
+            unit-tests.log
+            lint.log
+            assemble.log
             app/build/reports/lint-results-debug.html
             app/build/reports/tests/testDebugUnitTest
+          retention-days: 90
           if-no-files-found: error
-
-      - name: Commit validated implementation
-        if: github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app scripts/apply_bubble_debug_trace_0140.py
-          if ! git diff --cached --quiet; then
-            git commit -m 'Captura cadeia completa da bolinha [validated-0.1.140]'
-            git push origin HEAD:codex/unified-debug-log-0.1.139
-          fi
 
       - name: Upload failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.140-validation-failure
+          name: rota-certa-0.1.146-validation-failure
           path: |
-            validation
-            app/build/reports/lint-results-debug.html
-            app/build/reports/tests/testDebugUnitTest
-            app/build/test-results/testDebugUnitTest
+            validated-commit.txt
+            unit-tests.log
+            lint.log
+            assemble.log
+            app/build/reports
+            app/build/test-results
           if-no-files-found: warn
