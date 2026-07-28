@@ -23,7 +23,9 @@ jobs:
       - name: Apply 0.1.150 fix
         id: applyfix
         continue-on-error: true
-        run: python3 -u scripts/apply_user_fixes_0150.py > apply-0150.log 2>&1
+        run: |
+          python3 -u scripts/apply_user_fixes_0150.py > apply-0150.log 2>&1
+          python3 -u scripts/update_contracts_0150.py >> apply-0150.log 2>&1
       - name: Upload apply log
         if: always()
         uses: actions/upload-artifact@v4
