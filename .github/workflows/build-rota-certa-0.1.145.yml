@@ -87,3 +87,5 @@ jobs:
             rota-certa-0.1.145-sha256.txt
           retention-days: 90
           if-no-files-found: error
+
+# trigger final build
