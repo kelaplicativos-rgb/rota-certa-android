@@ -33,3 +33,13 @@ if old_currency not in source:
     raise SystemExit("0.1.159 currency formatter anchor not found")
 source = source.replace(old_currency, new_currency)
 exec(compile(source, str(wrapper_path), "exec"))
+
+root = wrapper_path.resolve().parents[1]
+for relative in (
+    "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt",
+    "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt",
+):
+    path = root / relative
+    print(f"===== BEGIN {relative} =====")
+    print(path.read_text(encoding="utf-8"))
+    print(f"===== END {relative} =====")
