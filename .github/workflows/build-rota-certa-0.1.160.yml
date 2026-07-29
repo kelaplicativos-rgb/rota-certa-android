@@ -54,7 +54,9 @@ jobs:
         run: python scripts/run_value_finance_0159.py
 
       - name: Apply repeated capture and Finance scrolling fix 0.1.160
-        run: python scripts/fix_value_finance_0160.py
+        run: |
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
 
       - name: Verify isolated 0.1.160 contracts
         run: |
@@ -66,7 +68,7 @@ jobs:
           grep -q 'finishPassengerValueCapture160' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'LazyColumn(' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
           grep -q 'Receitas pendentes' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
-          grep -q 'override fun onNewIntent' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
+          grep -q 'override fun onNewIntent(intent: Intent)' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
           grep -q 'PassengerValueBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'FinanceBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'android:name=".FinancialActivity"' app/src/main/AndroidManifest.xml
