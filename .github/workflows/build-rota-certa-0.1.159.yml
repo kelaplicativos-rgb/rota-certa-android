@@ -56,7 +56,7 @@ jobs:
         run: python scripts/remove_collector_completely_0158.py
 
       - name: Add silent Value and Finance modules
-        run: python scripts/fix_value_finance_0159.py
+        run: python scripts/run_value_finance_0159.py
 
       - name: Verify 0.1.159 contracts
         run: |
