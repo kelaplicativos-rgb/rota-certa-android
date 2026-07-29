@@ -5,6 +5,14 @@ text = activity.read_text(encoding='utf-8')
 needle = 'import androidx.compose.foundation.layout.Row\n'
 if 'import androidx.compose.foundation.layout.RowScope\n' not in text:
     text = text.replace(needle, needle + 'import androidx.compose.foundation.layout.RowScope\n')
+text = text.replace(
+    'json.decodeFromString(prefs.getString("trips", "[]") ?: "[]")',
+    'json.decodeFromString<List<CollectorTrip>>(prefs.getString("trips", "[]") ?: "[]")',
+)
+text = text.replace(
+    'Regex("(?i)([^\\n]{2,50})\\s+(?:→|para)\\s+([^\\n]{2,50})")',
+    'Regex("(?i)([^\\\\n]{2,50})\\\\s+(?:→|para)\\\\s+([^\\\\n]{2,50})")',
+)
 activity.write_text(text, encoding='utf-8')
 
 build = Path('app/build.gradle.kts')
