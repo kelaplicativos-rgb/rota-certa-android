@@ -1,0 +1,133 @@
+name: Build Rota Certa 0.1.160
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-rota-certa-0.1.160.yml
+      - .github/validation/rota-certa-0.1.160.txt
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply stable farol chain through 0.1.157
+        run: |
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+
+      - name: Keep Collector removed
+        run: python scripts/remove_collector_completely_0158.py
+
+      - name: Apply Value and Finance 0.1.159
+        run: python scripts/fix_value_finance_0159.py
+
+      - name: Apply repeated capture and Finance scrolling fix 0.1.160
+        run: python scripts/fix_value_finance_0160.py
+
+      - name: Verify isolated 0.1.160 contracts
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.160"' app/build.gradle.kts
+          grep -q 'versionCode = 5210' app/build.gradle.kts
+          grep -q 'passengerValueCaptureGeneration160' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'armPassengerValueWatchdog160' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'finishPassengerValueCapture160' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'LazyColumn(' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
+          grep -q 'Receitas pendentes' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
+          grep -q 'override fun onNewIntent' app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt
+          grep -q 'PassengerValueBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'FinanceBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'android:name=".FinancialActivity"' app/src/main/AndroidManifest.xml
+          test "$(grep -c '<service' app/src/main/AndroidManifest.xml)" -eq 2
+          test ! -e app/src/main/java/br/com/mapeiaia/rotacerta/BlaBlaCarCollectorActivity.kt
+          test ! -d app/src/main/java/br/com/mapeiaia/rotacerta/coletor
+          ! grep -R -n -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector|displayLabel = "Coletor"|label = "Coletor"' app/src/main app/src/test
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text()
+          start = source.index('private fun copyPassengerValue159')
+          end = source.index('private fun copyTripConfirmationFromBubbleChecklist8', start)
+          section = source[start:end]
+          assert 'speak(' not in section
+          assert 'announceForAccessibility' not in section
+          assert 'resetToIdle(' not in section
+          assert 'routeDistance' not in section
+          assert 'applyDecision' not in section
+          PY
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.160-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5210'"
+          echo "$BADGING" | grep -q "versionName='0.1.160'"
+          $AAPT dump xmltree "$APK" AndroidManifest.xml | grep -q 'FinancialActivity'
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'PassengerValueFormatter' dex-strings.txt
+          grep -q 'FinancialActivity' dex-strings.txt
+          grep -q 'Receitas pendentes' dex-strings.txt
+          grep -q 'Leitura liberada. Toque em Valor novamente.' dex-strings.txt
+          grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
+          cp "$APK" rota-certa-0.1.160-valor-financeiro-corrigido-validado.apk
+          sha256sum rota-certa-0.1.160-valor-financeiro-corrigido-validado.apk | tee rota-certa-0.1.160-sha256.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.160-value-finance-repeat-scroll-validated
+          path: |
+            rota-certa-0.1.160-valor-financeiro-corrigido-validado.apk
+            rota-certa-0.1.160-sha256.txt
+            rota-certa-0.1.160-assinatura.txt
+          retention-days: 90
+          if-no-files-found: error
