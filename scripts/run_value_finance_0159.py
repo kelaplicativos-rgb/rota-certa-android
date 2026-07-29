@@ -16,4 +16,20 @@ source = source.replace(
     '        assertFalse("Coletor não pode voltar", "BlaBlaCarCollector" in catalog || "OpenCollector" in catalog)\n',
     "",
 )
+source = source.replace("import java.text.NumberFormat\n", "")
+old_currency = r'''    fun formatCurrency(amountCents: Long): String = NumberFormat
+        .getCurrencyInstance(Locale("pt", "BR"))
+        .format(amountCents / 100.0)
+        .replace('\u00A0', ' ')'''
+new_currency = r'''    fun formatCurrency(amountCents: Long): String {
+        val absolute = kotlin.math.abs(amountCents)
+        val reais = absolute / 100L
+        val cents = (absolute % 100L).toString().padStart(2, '0')
+        val grouped = reais.toString().reversed().chunked(3).joinToString(".").reversed()
+        val sign = if (amountCents < 0L) "-" else ""
+        return "${sign}R$ $grouped,$cents"
+    }'''
+if old_currency not in source:
+    raise SystemExit("0.1.159 currency formatter anchor not found")
+source = source.replace(old_currency, new_currency)
 exec(compile(source, str(wrapper_path), "exec"))
