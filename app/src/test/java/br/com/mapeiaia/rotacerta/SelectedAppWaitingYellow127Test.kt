@@ -23,8 +23,11 @@ class SelectedAppWaitingYellow127Test {
         val inactiveEnd = processRegion.indexOf("universalLastActiveReadAtMillis =", inactiveStart)
         val inactiveRegion = processRegion.substring(inactiveStart, inactiveEnd)
 
-        assertTrue("Decisão válida recente deve ser preservada", "preserveStableDecision141" in inactiveRegion)
-        assertTrue("Ausência precisa respeitar a janela de confirmação", "STABLE_DECISION_ABSENCE_GRACE_MILLIS_141" in inactiveRegion)
+        assertTrue("Decisão válida deve ser preservada", "preserveStableDecision141" in inactiveRegion)
+        assertTrue(
+            "Ausência vazia deve preservar a decisão enquanto o mesmo pacote selecionado estiver em primeiro plano",
+            "universalForegroundPackageName == selectedPackageChecklist13" in inactiveRegion,
+        )
         assertTrue("Leitura inválida preservada deve ser diagnosticada", "BUBBLE_INVALID_READ_DEFERRED" in inactiveRegion)
         assertTrue("Após confirmação, limpeza deve manter o estado amarelo", "keepWaitingYellow = true" in inactiveRegion)
         assertTrue("Contrato deve marcar ausência confirmada", "confirmed_absence_clear_0_1_141" in inactiveRegion)
