@@ -23,6 +23,6 @@ main.write_text(main_text, encoding='utf-8')
 
 build = Path('app/build.gradle.kts')
 text = build.read_text(encoding='utf-8')
-text = text.replace('versionCode = 5070', 'versionCode = 5130')
-text = text.replace('versionName = "0.1.146"', 'versionName = "0.1.152"')
+text = text.replace('versionCode = 5070', 'versionCode = 7001')
+text = text.replace('versionName = "0.1.146"', 'versionName = "0.1.153"')
 build.write_text(text, encoding='utf-8')
