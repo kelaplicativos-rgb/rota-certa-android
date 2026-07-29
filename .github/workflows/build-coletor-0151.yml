@@ -1,0 +1,66 @@
+name: Build Coletor Rota Certa 0.1.151
+
+on:
+  pull_request:
+    branches: [codex/rota-certa-0.1.147-final]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-coletor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Materialize current stable source
+        run: |
+          set -euo pipefail
+          if [ -f scripts/apply_user_fixes_0150.py ]; then python3 -u scripts/apply_user_fixes_0150.py; fi
+          if [ -f scripts/update_contracts_0150.py ]; then python3 -u scripts/update_contracts_0150.py; fi
+          sed -i 's/versionName = "[^"]*"/versionName = "0.1.151"/' app/build.gradle.kts
+          sed -i 's/versionCode = [0-9_]*/versionCode = 5120/' app/build.gradle.kts
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+      - name: Unit tests
+        run: gradle clean testDebugUnitTest --no-daemon --stacktrace --console=plain
+      - name: Android lint
+        run: gradle lintDebug --no-daemon --stacktrace --console=plain
+      - name: Build and validate APK
+        run: |
+          set -euo pipefail
+          gradle clean assembleDebug --no-daemon --stacktrace --console=plain
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" badging.txt
+          grep -q "versionName='0.1.151'" badging.txt
+          grep -q "versionCode='5120'" badging.txt
+          mkdir -p validated
+          cp "$APK" validated/rota-certa-0.1.151-coletor.apk
+          sha256sum validated/rota-certa-0.1.151-coletor.apk > validated/sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.151-coletor
+          path: validated/
+          retention-days: 90
+          if-no-files-found: error
