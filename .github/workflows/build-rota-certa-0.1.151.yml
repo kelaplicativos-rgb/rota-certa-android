@@ -37,11 +37,8 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply complete correction chain
-        run: |
-          python scripts/apply_authorized_apps_cards_0146.py
-          python scripts/finalize_authorized_apps_cards_0146.py
-          python scripts/fix_99_overlay_state_0151.py
+      - name: Apply 0.1.151 99 stability correction
+        run: python scripts/fix_99_overlay_state_0151.py
 
       - name: Verify 99 overlay stability contract
         run: |
