@@ -51,7 +51,7 @@ jobs:
         run: python scripts/remove_collector_completely_0158.py
 
       - name: Apply Value and Finance 0.1.159
-        run: python scripts/fix_value_finance_0159.py
+        run: python scripts/run_value_finance_0159.py
 
       - name: Apply repeated capture and Finance scrolling fix 0.1.160
         run: python scripts/fix_value_finance_0160.py
