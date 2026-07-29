@@ -1,4 +1,4 @@
-name: Build Coletor Rota Certa 0.1.152
+name: Build Coletor Rota Certa 0.1.153
 
 on:
   pull_request:
@@ -44,17 +44,18 @@ jobs:
           test -s "$APK"
           unzip -t "$APK" >/dev/null
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee certs.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee badging.txt
           grep -q "package: name='br.com.mapeiaia.rotacerta'" badging.txt
-          grep -q "versionName='0.1.152'" badging.txt
-          grep -q "versionCode='5130'" badging.txt
+          grep -q "versionName='0.1.153'" badging.txt
+          grep -q "versionCode='7001'" badging.txt
           mkdir -p validated
-          cp "$APK" validated/rota-certa-0.1.152-coletor-completo.apk
-          sha256sum validated/rota-certa-0.1.152-coletor-completo.apk > validated/sha256.txt
+          cp "$APK" validated/rota-certa-0.1.153-coletor-atualizacao.apk
+          cp certs.txt validated/certificado.txt
+          sha256sum validated/rota-certa-0.1.153-coletor-atualizacao.apk > validated/sha256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.152-coletor-completo
+          name: rota-certa-0.1.153-coletor-atualizacao
           path: validated/
           retention-days: 90
           if-no-files-found: error
