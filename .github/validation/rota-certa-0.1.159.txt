@@ -1,0 +1,1 @@
+Validação isolada da versão 0.1.159: bolinha Valor silenciosa, receita pendente automática e controle financeiro local.
