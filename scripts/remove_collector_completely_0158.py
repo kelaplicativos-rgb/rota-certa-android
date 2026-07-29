@@ -64,8 +64,9 @@ if shortcut.exists():
 # 4) Remove Collector dispatch and launcher function from the accessibility service.
 service = MAIN / "LiveRideAccessibilityService.kt"
 text = service.read_text(encoding="utf-8")
+# Remove only the OpenCollector branch. Keep the following ClearClipboard branch intact.
 text = re.sub(
-    r'^\s*BubbleShortcutAction\.OpenCollector\s*->\s*openCollectorFromBubble\([^\n]*\)\s*.*\n',
+    r'^\s*BubbleShortcutAction\.OpenCollector\s*->\s*openCollectorFromBubble\(\)\s*\n',
     '',
     text,
     flags=re.M,
