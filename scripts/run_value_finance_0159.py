@@ -43,6 +43,24 @@ if old_direct_amount not in formatter:
     raise SystemExit("0.1.159 direct amount regex anchor not found")
 formatter_path.write_text(formatter.replace(old_direct_amount, new_direct_amount), encoding="utf-8")
 
+test_path = root / "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt"
+test_source = test_path.read_text(encoding="utf-8")
+old_assert = '''        assertEquals(
+            "Olá, Ana Clara! O valor exibido para sua reserva de 1 lugar, de Campinas para São Paulo, é R$ 90,50.",
+            PassengerValueFormatter.extractAndFormat(text),
+        )'''
+new_assert = '''        val actualData = PassengerValueFormatter.extract(text)
+        val actualMessage = PassengerValueFormatter.extractAndFormat(text)
+        println("VALUE159_SINGLE_LINE_DATA=$actualData")
+        println("VALUE159_SINGLE_LINE_MESSAGE=$actualMessage")
+        assertEquals(
+            "Olá, Ana Clara! O valor exibido para sua reserva de 1 lugar, de Campinas para São Paulo, é R$ 90,50.",
+            actualMessage,
+        )'''
+if old_assert not in test_source:
+    raise SystemExit("0.1.159 single-line test anchor not found")
+test_path.write_text(test_source.replace(old_assert, new_assert), encoding="utf-8")
+
 for relative in (
     "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt",
     "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt",
