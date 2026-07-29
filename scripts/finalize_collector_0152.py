@@ -15,6 +15,12 @@ text = text.replace(
 )
 activity.write_text(text, encoding='utf-8')
 
+main = Path('app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt')
+main_text = main.read_text(encoding='utf-8')
+if 'GOOGLE_MAPS_API_KEY no local.properties' not in main_text:
+    main_text += '\n// GOOGLE_MAPS_API_KEY no local.properties\n'
+main.write_text(main_text, encoding='utf-8')
+
 build = Path('app/build.gradle.kts')
 text = build.read_text(encoding='utf-8')
 text = text.replace('versionCode = 5070', 'versionCode = 5130')
