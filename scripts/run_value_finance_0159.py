@@ -35,6 +35,14 @@ source = source.replace(old_currency, new_currency)
 exec(compile(source, str(wrapper_path), "exec"))
 
 root = wrapper_path.resolve().parents[1]
+formatter_path = root / "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt"
+formatter = formatter_path.read_text(encoding="utf-8")
+old_direct_amount = r'''    private val DIRECT_AMOUNT_REGEX = Regex("(?i)R\\$\\s*(\\d{1,7}(?:\\.\\d{3})*)(?:\\s*,\\s*(\\d{2}))?")'''
+new_direct_amount = r'''    private val DIRECT_AMOUNT_REGEX = Regex("(?i)^R\\$\\s*(\\d{1,7}(?:\\.\\d{3})*)(?:\\s*,\\s*(\\d{2}))?\\s*$")'''
+if old_direct_amount not in formatter:
+    raise SystemExit("0.1.159 direct amount regex anchor not found")
+formatter_path.write_text(formatter.replace(old_direct_amount, new_direct_amount), encoding="utf-8")
+
 for relative in (
     "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt",
     "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt",
