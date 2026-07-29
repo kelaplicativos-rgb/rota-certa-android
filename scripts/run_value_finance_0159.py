@@ -37,35 +37,18 @@ exec(compile(source, str(wrapper_path), "exec"))
 root = wrapper_path.resolve().parents[1]
 formatter_path = root / "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt"
 formatter = formatter_path.read_text(encoding="utf-8")
+
 old_direct_amount = r'''    private val DIRECT_AMOUNT_REGEX = Regex("(?i)R\\$\\s*(\\d{1,7}(?:\\.\\d{3})*)(?:\\s*,\\s*(\\d{2}))?")'''
 new_direct_amount = r'''    private val DIRECT_AMOUNT_REGEX = Regex("(?i)^R\\$\\s*(\\d{1,7}(?:\\.\\d{3})*)(?:\\s*,\\s*(\\d{2}))?\\s*$")'''
 if old_direct_amount not in formatter:
     raise SystemExit("0.1.159 direct amount regex anchor not found")
-formatter_path.write_text(formatter.replace(old_direct_amount, new_direct_amount), encoding="utf-8")
+formatter = formatter.replace(old_direct_amount, new_direct_amount)
 
-test_path = root / "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt"
-test_source = test_path.read_text(encoding="utf-8")
-old_assert = '''        assertEquals(
-            "Olá, Ana Clara! O valor exibido para sua reserva de 1 lugar, de Campinas para São Paulo, é R$ 90,50.",
-            PassengerValueFormatter.extractAndFormat(text),
-        )'''
-new_assert = '''        val actualData = PassengerValueFormatter.extract(text)
-        val actualMessage = PassengerValueFormatter.extractAndFormat(text)
-        println("VALUE159_SINGLE_LINE_DATA=$actualData")
-        println("VALUE159_SINGLE_LINE_MESSAGE=$actualMessage")
-        assertEquals(
-            "Olá, Ana Clara! O valor exibido para sua reserva de 1 lugar, de Campinas para São Paulo, é R$ 90,50.",
-            actualMessage,
-        )'''
-if old_assert not in test_source:
-    raise SystemExit("0.1.159 single-line test anchor not found")
-test_path.write_text(test_source.replace(old_assert, new_assert), encoding="utf-8")
+old_seats = r'''    private val SEATS_REGEX = Regex("(?i)\\b(\\d{1,2})\\s+lugares?\\b")'''
+new_seats = r'''    private val SEATS_REGEX = Regex("(?i)\\b(\\d{1,2})\\s+lugar(?:es)?\\b")'''
+if old_seats not in formatter:
+    raise SystemExit("0.1.159 seats regex anchor not found")
+formatter = formatter.replace(old_seats, new_seats)
 
-for relative in (
-    "app/src/main/java/br/com/mapeiaia/rotacerta/PassengerValueFormatter.kt",
-    "app/src/test/java/br/com/mapeiaia/rotacerta/PassengerValueFormatterTest.kt",
-):
-    path = root / relative
-    print(f"===== BEGIN {relative} =====")
-    print(path.read_text(encoding="utf-8"))
-    print(f"===== END {relative} =====")
+formatter_path.write_text(formatter, encoding="utf-8")
+print("0.1.159: singular/plural seats and complete same-line amounts supported")
