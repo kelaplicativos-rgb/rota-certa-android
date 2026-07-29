@@ -18,8 +18,8 @@ service = (base / "LiveRideAccessibilityService.kt").read_text(encoding="utf-8")
 markers = (
     "copyPassengerValue159",
     "requestPassengerValueOcr159",
-    "showPassengerValue",
-    "lastPassengerValue",
+    "completePassengerValue159",
+    "passengerValueCaptureInProgress159",
     "CopyPassengerValue",
     "OpenFinance",
 )
@@ -33,3 +33,12 @@ for marker in markers:
         for index in range(start, end):
             print(f"{index + 1:05d}: {lines[index]}")
         print(f"===== END SERVICE SNIPPET {marker} =====")
+
+for path in sorted(base.rglob("*.kt")):
+    source = path.read_text(encoding="utf-8")
+    if "showSilentStatus159" not in source:
+        continue
+    relative = path.relative_to(root)
+    print(f"===== SILENT STATUS FILE {relative} =====")
+    print(source)
+    print(f"===== END SILENT STATUS FILE {relative} =====")
