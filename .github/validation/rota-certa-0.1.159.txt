@@ -1,1 +1,1 @@
-Validação isolada da versão 0.1.159: bolinha Valor silenciosa, receita pendente automática e controle financeiro local.
+Validação isolada da versão 0.1.159: diagnóstico do caso de 1 lugar e valor em linha única, sem alterar o farol estável.
