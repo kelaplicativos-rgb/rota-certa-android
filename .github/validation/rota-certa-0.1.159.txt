@@ -1,1 +1,1 @@
-Validação isolada da versão 0.1.159: diagnóstico do caso de 1 lugar e valor em linha única, sem alterar o farol estável.
+Validação isolada da versão 0.1.159: caso de 1 lugar e valor em uma única linha corrigido com correspondência monetária completa, sem tocar no farol.
