@@ -19,8 +19,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
-      - name: Finalize collector source
-        run: python3 scripts/finalize_collector_0152.py
+      - name: Materialize current stable source and collector
+        run: |
+          set -euo pipefail
+          if [ -f scripts/apply_user_fixes_0150.py ]; then python3 -u scripts/apply_user_fixes_0150.py; fi
+          if [ -f scripts/update_contracts_0150.py ]; then python3 -u scripts/update_contracts_0150.py; fi
+          python3 scripts/finalize_collector_0152.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
