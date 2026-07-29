@@ -58,6 +58,9 @@ jobs:
       - name: Add silent Value and Finance modules
         run: python scripts/fix_value_finance_0159.py
 
+      - name: Inspect Value and Finance implementation
+        run: python scripts/inspect_value_finance_0159.py
+
       - name: Verify 0.1.159 contracts
         run: |
           set -euo pipefail
