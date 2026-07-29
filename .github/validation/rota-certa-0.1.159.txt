@@ -1,1 +1,1 @@
-Validação isolada da versão 0.1.159: diagnóstico exato do resultado do parser monetário em linha única, sem alterar o núcleo estável.
+Validação isolada da versão 0.1.159: reconhecimento seguro de 1 lugar e vários lugares, valor em linha única ou fragmentado, sem alteração do farol.
