@@ -126,13 +126,27 @@ for path in list(MAIN.rglob("*.kt")) + list(TEST.rglob("*.kt")):
         content = re.sub(r'^.*(?:BlaBlaCarCollector|OpenCollector|CollectorBubbleShortcutModule).*$\n?', '', content, flags=re.M)
     path.write_text(content, encoding="utf-8")
 
-# 7) Version bump after the stable 0.1.157 chain.
+# 7) Update the shortcut-catalog count contract after removing one module.
+shortcut_test = TEST / "BubbleShortcutModulesTest.kt"
+if shortcut_test.exists():
+    test_text = shortcut_test.read_text(encoding="utf-8")
+    test_text = test_text.replace(
+        "fun catalogProgressesFromFourteenToFifteenModulesWithoutCardModels()",
+        "fun catalogProgressesFromThirteenToFourteenModulesWithoutCardModels()",
+    )
+    test_text = test_text.replace(
+        "assertEquals(if (hasManualCapture) 15 else 14, ids.size)",
+        "assertEquals(if (hasManualCapture) 14 else 13, ids.size)",
+    )
+    shortcut_test.write_text(test_text, encoding="utf-8")
+
+# 8) Version bump after the stable 0.1.157 chain.
 gradle = GRADLE.read_text(encoding="utf-8")
 gradle = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.1.158"', gradle, count=1)
 gradle = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 5190', gradle, count=1)
 GRADLE.write_text(gradle, encoding="utf-8")
 
-# 8) Hard fail if executable source or tests still contain Collector references.
+# 9) Hard fail if executable source or tests still contain Collector references.
 for root in (MAIN, TEST):
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix not in {".kt", ".xml"}:
