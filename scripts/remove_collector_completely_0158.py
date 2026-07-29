@@ -84,7 +84,34 @@ text = re.sub(
 )
 service.write_text(text, encoding="utf-8")
 
-# 5) Remove direct Collector references left in regular Kotlin/XML files.
+# 5) Remove every Collector entry from MainActivity without damaging Kotlin syntax.
+main_activity = MAIN / "MainActivity.kt"
+if main_activity.exists():
+    text = main_activity.read_text(encoding="utf-8")
+    # ToolsScreen invocation: remove the complete named callback block.
+    text = re.sub(
+        r'\n\s*onOpenBlaBlaCarCollector\s*=\s*\{\s*\n\s*context\.startActivity\(Intent\(context,\s*BlaBlaCarCollectorActivity::class\.java\)\)\s*\n\s*\},',
+        '',
+        text,
+        flags=re.S,
+    )
+    # Function parameters used only by the Collector UI.
+    text = re.sub(r'^\s*onOpenBlaBlaCarCollector:\s*\(\)\s*->\s*Unit,\s*\n', '', text, flags=re.M)
+    text = re.sub(r'^\s*onOpenCollector:\s*\(\)\s*->\s*Unit,\s*\n', '', text, flags=re.M)
+    # Collector action bubble inside the professional grid.
+    text = re.sub(r'^\s*ProfessionalBubbleItem\([^\n]*"Coletor"[^\n]*\),\s*\n', '', text, flags=re.M)
+    # Collector card inside ToolsScreen.
+    text = re.sub(
+        r'\n\s*Card\(modifier\s*=\s*Modifier\.fillMaxWidth\(\)\)\s*\{\s*\n\s*Column\(Modifier\.padding\(12\.dp\),\s*verticalArrangement\s*=\s*Arrangement\.spacedBy\(8\.dp\)\)\s*\{\s*\n\s*Text\("Coletor BlaBlaCar".*?\n\s*\}\s*\n\s*\}',
+        '',
+        text,
+        flags=re.S,
+    )
+    # Documentation-only marker from the old grid.
+    text = re.sub(r'^\s*//\s*label\s*=\s*"Coletor"\s*\n', '', text, flags=re.M)
+    main_activity.write_text(text, encoding="utf-8")
+
+# 6) Remove direct Collector references left in regular Kotlin/XML files.
 for path in list(MAIN.rglob("*.kt")) + list(TEST.rglob("*.kt")):
     if not path.exists():
         continue
@@ -98,13 +125,13 @@ for path in list(MAIN.rglob("*.kt")) + list(TEST.rglob("*.kt")):
     content = re.sub(r'^.*(?:BlaBlaCarCollector|OpenCollector|CollectorBubbleShortcutModule).*$\n?', '', content, flags=re.M)
     path.write_text(content, encoding="utf-8")
 
-# 6) Version bump after the stable 0.1.157 chain.
+# 7) Version bump after the stable 0.1.157 chain.
 gradle = GRADLE.read_text(encoding="utf-8")
 gradle = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.1.158"', gradle, count=1)
 gradle = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 5190', gradle, count=1)
 GRADLE.write_text(gradle, encoding="utf-8")
 
-# 7) Hard fail if executable source still contains Collector references.
+# 8) Hard fail if executable source still contains Collector references.
 for root in (MAIN, TEST):
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix not in {".kt", ".xml"}:
