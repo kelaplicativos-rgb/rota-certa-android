@@ -46,6 +46,7 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
             )
             """
             return text[:marker] + insertion + text[marker:]
+        return text
     if count == 0 and label == "OCR request evaluate":
         start = text.find("private fun requestScreenshotAnalysis")
         if start >= 0:
@@ -59,6 +60,7 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
         )
 """
             return text[:pos] + insertion + text[pos:]
+        return text
     raise SystemExit(f"{label}: esperado 1 trecho, encontrado {count}")
 '''
 if old not in source:
