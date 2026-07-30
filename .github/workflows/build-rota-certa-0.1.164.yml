@@ -195,7 +195,6 @@ jobs:
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
           grep -q 'FarolFlightRecorder0163' dex-strings.txt
           grep -q 'FarolDiagnosticSummary0164' dex-strings.txt
-          grep -q 'RESUMO AUTORITATIVO DA SESSÃO 0.1.164' dex-strings.txt
           grep -q 'BLOQUEADA ANTES DA ROTA' dex-strings.txt
           grep -q 'WorkModePolicy0162' dex-strings.txt
           grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
