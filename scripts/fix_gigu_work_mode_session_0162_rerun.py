@@ -7,13 +7,8 @@ service_path = main / "LiveRideAccessibilityService.kt"
 work_mode_path = main / "WorkModeSession0162.kt"
 
 service = service_path.read_text(encoding="utf-8")
-scan_anchor = """    private fun startContinuousScan() {
-        // event_driven_farol_0_1_162
-"""
-scan_replacement = """    private fun startContinuousScan() {
-        // event_driven_farol_0_1_162
-        // bubble_drag_scan_pause_0_1_116 — sem loop, portanto nenhum scan compete com o gesto.
-"""
+scan_anchor = "        // event_driven_farol_0_1_162: sem while, timer ou OCR continuo.\n"
+scan_replacement = scan_anchor + "        // bubble_drag_scan_pause_0_1_116 — sem loop, portanto nenhum scan compete com o gesto.\n"
 if service.count(scan_anchor) != 1:
     raise SystemExit(f"0.1.162 rerun scan anchor expected once, found {service.count(scan_anchor)}")
 service = service.replace(scan_anchor, scan_replacement, 1)
