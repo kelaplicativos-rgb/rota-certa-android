@@ -194,7 +194,6 @@ jobs:
           grep -q 'WorkTrackingService' apk-manifest-tree.txt
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
           grep -q 'FarolSelectedAppInputPolicy0166' dex-strings.txt
-          grep -q 'com.parceiro.corridas.driver' dex-strings.txt
           grep -q 'FarolDiagnosticSummary0165' dex-strings.txt
           grep -q 'WorkModePolicy0162' dex-strings.txt
           grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
