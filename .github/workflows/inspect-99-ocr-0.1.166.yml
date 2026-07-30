@@ -1,9 +1,9 @@
 name: Inspect 99 OCR 0.1.166
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-99-ocr-0.1.166
+      - main
     paths:
       - .github/workflows/inspect-99-ocr-0.1.166.yml
       - scripts/fix_99_ocr_capture_0166.py
