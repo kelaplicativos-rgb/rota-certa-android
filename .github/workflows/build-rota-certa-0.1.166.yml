@@ -1,0 +1,215 @@
+name: Build Rota Certa 0.1.166
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.166.yml
+      - .github/validation/rota-certa-0.1.166.txt
+      - scripts/fix_farol_selected_apps_0166.py
+      - scripts/fix_farol_selected_apps_0166_rerun.py
+      - docs/PROJECT_STATUS.md
+      - docs/DECISIONS.md
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected correction source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout isolated 0.1.166 patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-99-ocr-0.1.166
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize protected source through 0.1.165
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163_rerun.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164_rerun.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165_rerun.py .
+          grep -q 'versionName = "0.1.165"' app/build.gradle.kts
+          grep -q 'versionCode = 5260' app/build.gradle.kts
+
+      - name: Snapshot protected 0.1.165 tree
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          snapshot = {
+              p.as_posix(): sha256(p.read_bytes()).hexdigest()
+              for p in sorted(Path('app').rglob('*')) if p.is_file()
+          }
+          Path('/tmp/rota-certa-0165-source-snapshot.json').write_text(
+              json.dumps(snapshot, sort_keys=True, indent=2), encoding='utf-8'
+          )
+          PY
+          cp app/src/main/AndroidManifest.xml /tmp/AndroidManifest-0.1.165.xml
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolDiagnosticSummary0165.kt \
+            > /tmp/protected-0.1.165.sha256
+
+      - name: Apply universal selected-app farol input 0.1.166
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python ../patches/scripts/fix_farol_selected_apps_0166.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166_rerun.py .
+
+      - name: Verify isolated change boundary
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import json
+          before = json.loads(Path('/tmp/rota-certa-0165-source-snapshot.json').read_text(encoding='utf-8'))
+          after = {
+              p.as_posix(): sha256(p.read_bytes()).hexdigest()
+              for p in sorted(Path('app').rglob('*')) if p.is_file()
+          }
+          modified = sorted(path for path in before.keys() & after.keys() if before[path] != after[path])
+          added = sorted(after.keys() - before.keys())
+          deleted = sorted(before.keys() - after.keys())
+          expected_modified = sorted([
+              'app/build.gradle.kts',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt',
+          ])
+          expected_added = sorted([
+              'app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166Test.kt',
+          ])
+          assert modified == expected_modified, (modified, expected_modified)
+          assert added == expected_added, (added, expected_added)
+          assert deleted == [], deleted
+          print('Modified:', *modified, sep='\n- ')
+          print('Added:', *added, sep='\n- ')
+          PY
+          cmp -s /tmp/AndroidManifest-0.1.165.xml app/src/main/AndroidManifest.xml
+          sha256sum --check /tmp/protected-0.1.165.sha256
+
+      - name: Verify universal selected-app contracts
+        working-directory: source
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.166"' app/build.gradle.kts
+          grep -q 'versionCode = 5270' app/build.gradle.kts
+          grep -q 'object FarolSelectedAppInputPolicy0166' app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          grep -q 'packageName in selectedPackages' app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          grep -q 'strictRootPackageName == packageName' app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          grep -q 'rootPackageName == selectedPackageName && rootWindowId != null' app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          grep -q 'activeRootWindowId0166 = rootInActiveWindow?.windowId' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'probableCard = probableCardForCapture0166' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'com.parceiro.corridas.driver' app/src/test/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166Test.kt
+          ! grep -E 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver' app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          test "$(grep -c '<service' app/src/main/AndroidManifest.xml)" -eq 2
+          test ! -e app/src/main/java/br/com/mapeiaia/rotacerta/BlaBlaCarCollectorActivity.kt
+          test ! -d app/src/main/java/br/com/mapeiaia/rotacerta/coletor
+          ! grep -R -n -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector|displayLabel = "Coletor"|label = "Coletor"' app/src/main app/src/test
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit and contract tests
+        working-directory: source
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        working-directory: source
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        working-directory: source
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.166-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.166-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5270'"
+          echo "$BADGING" | grep -q "versionName='0.1.166'"
+          $AAPT dump xmltree "$APK" AndroidManifest.xml > apk-manifest-tree.txt
+          grep -q 'LiveRideAccessibilityService' apk-manifest-tree.txt
+          grep -q 'WorkTrackingService' apk-manifest-tree.txt
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'FarolSelectedAppInputPolicy0166' dex-strings.txt
+          grep -q 'com.parceiro.corridas.driver' dex-strings.txt
+          grep -q 'FarolDiagnosticSummary0165' dex-strings.txt
+          grep -q 'WorkModePolicy0162' dex-strings.txt
+          grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
+          cp "$APK" rota-certa-0.1.166-farol-universal-apps-selecionados-validado.apk
+          sha256sum rota-certa-0.1.166-farol-universal-apps-selecionados-validado.apk | tee rota-certa-0.1.166-sha256.txt
+          printf 'Base protegida: Rota Certa 0.1.165 (5260)\nNova versão: Rota Certa 0.1.166 (5270)\nEscopo: entrada universal do farol para qualquer pacote selecionado\nJanela: usa a raiz real do aplicativo selecionado, não a janela do overlay\nOCR: pontual, orientado a eventos e autorizado pela seleção do usuário\nDecisão, parser, Google Maps, Casa/Alfinetes e Manifest: preservados\nColetor: ausente\n' > rota-certa-0.1.166-comparacao.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.166-universal-selected-app-farol-validated
+          path: |
+            source/rota-certa-0.1.166-farol-universal-apps-selecionados-validado.apk
+            source/rota-certa-0.1.166-sha256.txt
+            source/rota-certa-0.1.166-assinatura.txt
+            source/rota-certa-0.1.166-comparacao.txt
+          retention-days: 90
+          if-no-files-found: error
