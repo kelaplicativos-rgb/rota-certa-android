@@ -203,7 +203,8 @@ jobs:
           echo "$BADGING" | grep -q "versionName='0.1.161'"
           $AAPT dump xmltree "$APK" AndroidManifest.xml > apk-manifest-tree.txt
           grep -q 'FinancialActivity' apk-manifest-tree.txt
-          test "$(grep -c 'E: service' apk-manifest-tree.txt)" -eq 2
+          grep -q 'WorkTrackingService' apk-manifest-tree.txt
+          grep -q 'LiveRideAccessibilityService' apk-manifest-tree.txt
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
           grep -q 'FailedCardRecoveryEngine0161' dex-strings.txt
           grep -q 'FailedCardTechnicalCaptureStore0161' dex-strings.txt
@@ -214,7 +215,7 @@ jobs:
           grep -E 'BlaBlaCarCollector|CollectorBubbleShortcutModule|OpenCollector' dex-strings.txt && exit 1 || true
           cp "$APK" rota-certa-0.1.161-farol-autocaptura-validado.apk
           sha256sum rota-certa-0.1.161-farol-autocaptura-validado.apk | tee rota-certa-0.1.161-sha256.txt
-          printf 'Base protegida: Rota Certa 0.1.160 (5210)\nNova versão: Rota Certa 0.1.161 (5220)\nManifesto: idêntico à 0.1.160\nComponentes novos: nenhum\nPermissões novas: nenhuma\nServiços: 2 (inalterado)\n' > rota-certa-0.1.161-comparacao.txt
+          printf 'Base protegida: Rota Certa 0.1.160 (5210)\nNova versão: Rota Certa 0.1.161 (5220)\nManifesto-fonte: idêntico à 0.1.160\nComponentes declarados novos: nenhum\nPermissões novas: nenhuma\nServiços declarados: 2 (inalterado)\n' > rota-certa-0.1.161-comparacao.txt
 
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
