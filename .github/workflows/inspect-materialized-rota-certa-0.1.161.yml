@@ -57,11 +57,10 @@ jobs:
           mkdir -p inspection/main inspection/test
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt inspection/main/
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt inspection/main/
-          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/SettingsRepository.kt inspection/main/
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt inspection/main/
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt inspection/main/
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt inspection/main/
-          grep -R -l 'object SelectedRideAppStore' source/app/src/main/java/br/com/mapeiaia/rotacerta | xargs -r -I{} cp {} inspection/main/
+          grep -R -l -E 'class SettingsRepository|object SelectedRideAppStore' source/app/src/main/java/br/com/mapeiaia/rotacerta | sort -u | xargs -r -I{} cp {} inspection/main/
           cp source/app/build.gradle.kts inspection/
           cp source/app/src/main/AndroidManifest.xml inspection/
           printf '0.1.161 materialized inspection\n' > inspection/VERSION.txt
