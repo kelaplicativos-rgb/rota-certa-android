@@ -9,8 +9,6 @@ on:
       - .github/validation/rota-certa-0.1.164.txt
       - scripts/fix_diagnostic_session_summary_0164.py
       - scripts/fix_diagnostic_session_summary_0164_rerun.py
-      - docs/PROJECT_STATUS.md
-      - docs/DECISIONS.md
 
 permissions:
   contents: read
