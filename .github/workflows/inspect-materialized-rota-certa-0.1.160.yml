@@ -1,0 +1,68 @@
+name: Inspect materialized Rota Certa 0.1.160
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-materialized-rota-certa-0.1.160.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout correction source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize stable source through 0.1.160
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+
+      - name: Collect relevant materialized source
+        run: |
+          set -euo pipefail
+          mkdir -p materialized/app-main materialized/app-test materialized/scripts
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt materialized/app-main/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt materialized/app-main/ || true
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/OcrService.kt materialized/app-main/ || true
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/SettingsRepository.kt materialized/app-main/ || true
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt materialized/app-main/ || true
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FinancialActivity.kt materialized/app-main/ || true
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt materialized/app-main/ || true
+          find app/src/main/java/br/com/mapeiaia/rotacerta -maxdepth 2 -type f \( -iname '*Universal*' -o -iname '*Parser*' -o -iname '*Gate*' -o -iname '*Capture*' \) -exec cp --parents {} materialized/app-main/ \;
+          find app/src/test -type f \( -iname '*Universal*' -o -iname '*Parser*' -o -iname '*Gate*' -o -iname '*Capture*' -o -iname '*Value*' -o -iname '*Finance*' \) -exec cp --parents {} materialized/app-test/ \;
+          cp scripts/fix_subsecond_farol_0157.py materialized/scripts/
+          cp scripts/fix_value_finance_0160.py materialized/scripts/
+          printf 'version source: ' > materialized/VERSION.txt
+          grep -E 'versionCode|versionName' app/build.gradle.kts >> materialized/VERSION.txt
+          find materialized -type f | sort
+
+      - name: Upload materialized source
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.160-materialized-source-inspection
+          path: materialized
+          retention-days: 7
+          if-no-files-found: error
