@@ -1,5 +1,31 @@
 # Rota Certa — Estado do projeto
 
+## 30/07/2026 — 0.1.166 (5270) — farol universal para todos os aplicativos selecionados
+
+- **Branch:** `agent/fix-99-ocr-0.1.166`
+- **Commit de código e workflow validado:** `1b8422f1387c358eab2996164c04cb59cf4f99d9`
+- **PR:** #34, rascunho e sem merge na `main`
+- **Pedido:** corrigir as falhas reais da 99 e do Uber usando uma tecnologia mais robusta, sem limitar o farol aos três aplicativos conhecidos; qualquer pacote selecionado pelo usuário deve usar o mesmo motor.
+- **Situação anterior:** 99 e Uber estavam selecionados, mas nenhuma tentativa chegou à rota. O inDrive havia conseguido decisões em sessão anterior, descartando Google Maps, Casa/Alfinetes e o motor de decisão como causa geral.
+- **Problema e causa — 99:** a acessibilidade entregava texto vazio ou incompleto e o fallback chegava a `OCR_REQUEST_EVALUATE`, porém o método exigia que o texto incompleto já parecesse um card antes de autorizar o screenshot. O OCR necessário para recuperar os endereços era bloqueado pela própria pré-condição.
+- **Problema e causa — Uber:** a captura OCR chegou a iniciar na janela real `1759`, mas um evento transitório com pacote nulo usou o `event.windowId` `1766`, abriu uma nova sessão e invalidou a captura antes do resultado.
+- **Correção aplicada:** nova política pura `FarolSelectedAppInputPolicy0166`. A autorização usa exclusivamente o conjunto persistido de pacotes escolhidos pelo usuário e a raiz estrita atual. A janela estável vem de `rootInActiveWindow.windowId` quando a raiz pertence ao pacote selecionado. OCR continua pontual, orientado a eventos, sem loop ou polling, e só entra quando o parser ainda não encontrou os dois endereços.
+- **Universalidade comprovada:** teste com pacote fictício `com.parceiro.corridas.driver` selecionado; nenhum nome de 99, Uber ou inDrive existe na nova política de produção. Pacote não selecionado permanece bloqueado.
+- **Arquivos principais alterados:**
+  - `scripts/fix_farol_selected_apps_0166.py`
+  - `scripts/fix_farol_selected_apps_0166_rerun.py`
+  - `.github/workflows/build-rota-certa-0.1.166.yml`
+  - `.github/validation/rota-certa-0.1.166.txt`
+  - código materializado: `LiveRideAccessibilityService.kt`, `FarolSelectedAppInputPolicy0166.kt` e `FarolSelectedAppInputPolicy0166Test.kt`
+- **Limite protegido:** `DecisionEngine`, `RideTextParser`, `GoogleMapsService`, `ManualTechnicalReportBuilder`, `FarolDiagnosticSummary0165`, Manifest, permissões, componentes, Casa/Alfinetes e Coletor permaneceram inalterados. O Coletor continua ausente.
+- **Testes executados:** scripts idempotentes; fronteira exata de arquivos; preservação da janela raiz diante de overlay; pacote arbitrário selecionado; bloqueio de pacote não selecionado; bloqueio de OCR quando o parser já está ativo; suíte unitária e de contrato; Android Lint; `clean assembleDebug`; inspeção de Manifest e DEX; pacote, versão, versionCode e assinatura APK v2.
+- **Workflow final:** `Build Rota Certa 0.1.166`, run `30586897527`, job `91020295162`, todos os passos concluídos com sucesso.
+- **Artifact final:** `rota-certa-0.1.166-universal-selected-app-farol-validated`, ID `8776986529`, retenção até 28/10/2026.
+- **SHA-256 do APK:** `b4dbe016dd27e2915e2f16335df6cd8da40828779cc201f6e238547d56a94635`.
+- **SHA-256 do ZIP do artifact:** `2d911fee20549cefd7073335aaebea9e64ae3df5afec75b79a8825337661851f`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendência prática:** instalar o APK e testar cards reais da 99, Uber e de ao menos outro aplicativo selecionado. O build comprova a regra universal e a integridade do APK, mas a confirmação visual de OCR e mudança verde/vermelho ainda depende do aparelho real.
+
 ## 30/07/2026 — 0.1.165 (5260) — linha do tempo autoritativa por tentativas
 
 - **Branch:** `codex/diagnostic-attempt-timeline-0.1.165`
