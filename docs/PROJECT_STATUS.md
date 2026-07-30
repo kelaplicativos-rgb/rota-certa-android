@@ -3,7 +3,8 @@
 ## 30/07/2026 — 0.1.165 (5260) — linha do tempo autoritativa por tentativas
 
 - **Branch:** `codex/diagnostic-attempt-timeline-0.1.165`
-- **Commit validado:** `0515c349f59bf8fc5c0f5d5bb76cf4f83d2106a4`
+- **Commit de código:** `0515c349f59bf8fc5c0f5d5bb76cf4f83d2106a4`
+- **Commit final validado pelo workflow:** `b4710587a1ecd704dd6092fb95ead3d88ac9f161`
 - **PR:** #33, rascunho e sem merge na `main`
 - **Pedido:** analisar o relatório real da versão 0.1.164 e corrigir somente o módulo que apresentou falha, sem alterar módulos definidos como OK.
 - **Situação anterior:** o resumo autoritativo dizia que havia endereços, mas nenhuma rota, embora a trilha completa registrasse uma decisão verde válida.
@@ -18,10 +19,10 @@
   - código materializado: `FarolDiagnosticSummary0165.kt`, teste e integração mínima no `ManualTechnicalReportBuilder.kt`
 - **Limite protegido:** hashes inalterados de `LiveRideAccessibilityService`, `DecisionEngine`, `RideTextParser`, `GoogleMapsService` e `FarolDiagnosticSummary0164`; Manifest e permissões inalterados; nenhum módulo funcional definido como OK foi alterado.
 - **Testes executados:** aplicação idempotente, limite exato de arquivos, casos de decisão válida seguida de ruído, leitura incompleta posterior, resposta após limpeza, região inativa, testes unitários e de contrato, Android Lint, `clean assembleDebug`, Manifest, DEX, pacote, versão e assinatura APK v2.
-- **Workflow:** `Build Rota Certa 0.1.165`, run `30578772786`, job `90993497058`, todos os passos concluídos com sucesso.
-- **Artifact:** `rota-certa-0.1.165-diagnostic-attempt-timeline-validated`, ID `8773898609`, retenção até 28/10/2026.
+- **Workflow final:** `Build Rota Certa 0.1.165`, run `30579419913`, job `90995655120`, todos os passos concluídos com sucesso.
+- **Artifact final:** `rota-certa-0.1.165-diagnostic-attempt-timeline-validated`, ID `8774158117`, retenção até 28/10/2026.
 - **SHA-256 do APK:** `ad762c731545b01b7f37d7f5b9eefe7042da820708befbaa3f4235fb904c9702`.
-- **SHA-256 do ZIP:** `17313059ef204a11b81af138dca5dd224bb8f39c639dc379c82d8dd840f74637`.
+- **SHA-256 do ZIP final:** `7010c8a742e844fb406bb4b5a02aeba1b8bdecf7a096106f226a454708cab39c`.
 - **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`.
 - **Pendência prática:** instalar o APK e exportar um novo relatório. O farol não foi alterado; se o card continuar visível quando `com.android.systemui` assumir a raiz, essa situação deverá ser confirmada em nova captura antes de qualquer mudança funcional.
 
