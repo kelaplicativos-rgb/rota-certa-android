@@ -17,6 +17,10 @@ old = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
 new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
     if new in text:
         return text
+    if label == "OCR fallback scheduled" and "OCR_FALLBACK_SCHEDULED" in text:
+        return text
+    if label == "OCR request evaluate" and "OCR_REQUEST_EVALUATE" in text:
+        return text
     count = text.count(old)
     if count >= 1:
         return text.replace(old, new, 1)
