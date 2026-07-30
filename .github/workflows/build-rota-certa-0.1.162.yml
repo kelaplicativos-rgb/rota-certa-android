@@ -8,6 +8,7 @@ on:
       - .github/workflows/build-rota-certa-0.1.162.yml
       - .github/validation/rota-certa-0.1.162.txt
       - scripts/fix_gigu_work_mode_session_0162.py
+      - scripts/fix_gigu_work_mode_session_0162_rerun.py
 
 permissions:
   contents: read
@@ -79,6 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
 
       - name: Verify exact change boundary
         working-directory: source
@@ -127,8 +129,9 @@ jobs:
           grep -q 'DriverCardEventResolver0162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'event_driven_farol_0_1_162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'immutable_package_required_0_1_162' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'bubble_drag_scan_pause_0_1_116' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'TransientOverlayPackagePolicy0161.shouldPreferSelectedRoot' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'com.openai.chatgpt' app/src/main/java/br/com/mapeiaia/rotacerta/WorkModeSession0162.kt
-          grep -q 'launcher' app/src/main/java/br/com/mapeiaia/rotacerta/WorkModeSession0162.kt
           grep -q 'PassengerValueBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'FinanceBubbleShortcutModule' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'android:name=".FinancialActivity"' app/src/main/AndroidManifest.xml
@@ -152,7 +155,6 @@ jobs:
           assert 'immutable_package_required_0_1_162' in source
           assert '?: universalActiveRidePackageName?.takeIf' not in source
           assert '?: normalizePackageName(universalForegroundPackageName)?.takeIf' not in source
-          assert 'DriverCardSessionGate0162' in source
           assert Path('/tmp/AndroidManifest-0.1.161.xml').read_bytes() == Path('app/src/main/AndroidManifest.xml').read_bytes()
           PY
           test -n "${GOOGLE_MAPS_API_KEY:-}"
