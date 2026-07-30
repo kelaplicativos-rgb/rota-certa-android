@@ -63,18 +63,14 @@ jobs:
           grep -q 'versionName = "0.1.166"' app/build.gradle.kts
           grep -q 'versionCode = 5270' app/build.gradle.kts
 
-      - name: Upload materialized source
+      - name: Upload complete materialized source
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.166-materialized-source
+          name: rota-certa-0.1.166-materialized-source-complete
           path: |
             source/app/build.gradle.kts
             source/app/src/main/AndroidManifest.xml
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolCriticalPathPolicy.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/UniversalFastReadPolicy.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+            source/app/src/main/java/br/com/mapeiaia/rotacerta
             source/app/src/test/java/br/com/mapeiaia/rotacerta
           retention-days: 3
           if-no-files-found: error
