@@ -159,7 +159,11 @@ jobs:
           section = source[start:end]
           assert 'while (' not in section, section
           assert 'event_driven_farol_0_1_162' in section
-          assert 'disableSelf()' not in source[source.index('private fun stopServiceFromBubble'):source.index('private fun', source.index('private fun stopServiceFromBubble') + 10)]
+          stop_start = source.index('private fun stopApplicationFromBubble')
+          stop_end = source.index('private fun', stop_start + len('private fun stopApplicationFromBubble'))
+          stop_section = source[stop_start:stop_end]
+          assert 'disableSelf()' not in stop_section
+          assert 'WorkModePolicy0162.setEnabled(currentSettings, false)' in stop_section
           assert 'packageHint152 ?: return' in source
           assert 'DriverCardSessionGate0162' in source
           manifest_before = Path('/tmp/AndroidManifest-0.1.161.xml').read_bytes()
