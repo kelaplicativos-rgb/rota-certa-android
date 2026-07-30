@@ -1,5 +1,25 @@
 # Rota Certa — Decisões técnicas
 
+## 30/07/2026 — Diagnóstico deve preservar decisões válidas anteriores
+
+**Decisão:** reconstruir o relatório por tentativas independentes, iniciadas somente quando existe avaliação ativa com embarque, destino e mudança real de assinatura. Uma leitura incompleta posterior não pode apagar uma decisão válida já pintada.
+
+**Motivo:** o relatório real da 0.1.164 continha uma decisão verde de 5,363 km, mas o resumo selecionou uma tentativa posterior incompleta e declarou que nenhuma rota havia sido executada.
+
+**Módulos afetados:** somente Diagnóstico manual (`FarolDiagnosticSummary0165` e integração no `ManualTechnicalReportBuilder`). Farol, parser, Google Maps, Casa/Alfinetes, overlay e módulos definidos como OK permanecem congelados.
+
+**Condição para revisão:** somente se o gravador passar a emitir um identificador transacional único que acompanhe nativamente cada tentativa do endereço até a pintura ou cancelamento.
+
+## 30/07/2026 — Resposta de rota após limpeza não deve ser aplicada automaticamente
+
+**Decisão:** não alterar a proteção funcional que impede um resultado atrasado de substituir uma tela mais nova ou um card que saiu. O diagnóstico deve informar claramente quando a resposta chegou após a limpeza.
+
+**Motivo:** na tentativa para Rua Peramirim, o Google Maps retornou 4,161 km, mas `com.android.systemui` provocou limpeza cerca de 31 ms antes. Aplicar essa resposta sem confirmar que o card ainda estava presente violaria o contrato contra resultados atrasados.
+
+**Módulos afetados:** nenhum módulo funcional alterado; somente apresentação diagnóstica.
+
+**Condição para revisão:** nova evidência de aparelho provando que o card permaneceu visível e que a mudança para System UI foi apenas uma sobreposição transitória indevidamente classificada.
+
 ## 30/07/2026 — Não calcular rota sem região ativa
 
 **Decisão:** manter a regra atual: o farol só consulta rota e decide verde/vermelho quando Casa ou ao menos um Alfinete estiver ativo com coordenada válida.
