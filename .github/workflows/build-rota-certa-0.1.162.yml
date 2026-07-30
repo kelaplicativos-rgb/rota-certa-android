@@ -3,8 +3,7 @@ name: Build Rota Certa 0.1.162
 on:
   workflow_dispatch:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .github/workflows/build-rota-certa-0.1.162.yml
       - .github/validation/rota-certa-0.1.162.txt
@@ -27,23 +26,19 @@ jobs:
           ref: codex/unified-debug-log-0.1.139
           fetch-depth: 0
           path: source
-
       - name: Checkout isolated patch branch
         uses: actions/checkout@v4
         with:
           ref: codex/rota-certa-0.1.159-validation
           fetch-depth: 0
           path: patches
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
@@ -72,13 +67,8 @@ jobs:
           from hashlib import sha256
           from pathlib import Path
           import json
-
-          snapshot = {}
-          for path in sorted(p for p in Path('app').rglob('*') if p.is_file()):
-              snapshot[path.as_posix()] = sha256(path.read_bytes()).hexdigest()
-          Path('/tmp/rota-certa-0161-source-snapshot.json').write_text(
-              json.dumps(snapshot, sort_keys=True, indent=2), encoding='utf-8'
-          )
+          snapshot = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
+          Path('/tmp/rota-certa-0161-source-snapshot.json').write_text(json.dumps(snapshot, sort_keys=True, indent=2), encoding='utf-8')
           PY
           cp app/src/main/AndroidManifest.xml /tmp/AndroidManifest-0.1.161.xml
           grep -q 'versionName = "0.1.161"' app/build.gradle.kts
@@ -98,16 +88,11 @@ jobs:
           from hashlib import sha256
           from pathlib import Path
           import json
-
           before = json.loads(Path('/tmp/rota-certa-0161-source-snapshot.json').read_text(encoding='utf-8'))
-          after = {}
-          for path in sorted(p for p in Path('app').rglob('*') if p.is_file()):
-              after[path.as_posix()] = sha256(path.read_bytes()).hexdigest()
-
+          after = {p.as_posix(): sha256(p.read_bytes()).hexdigest() for p in sorted(Path('app').rglob('*')) if p.is_file()}
           modified = sorted(path for path in before.keys() & after.keys() if before[path] != after[path])
           added = sorted(after.keys() - before.keys())
           deleted = sorted(before.keys() - after.keys())
-
           expected_modified = sorted([
               'app/build.gradle.kts',
               'app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt',
@@ -164,22 +149,20 @@ jobs:
           stop_section = source[stop_start:stop_end]
           assert 'disableSelf()' not in stop_section
           assert 'WorkModePolicy0162.setEnabled(currentSettings, false)' in stop_section
-          assert 'packageHint152 ?: return' in source
+          assert 'immutable_package_required_0_1_162' in source
+          assert '?: universalActiveRidePackageName?.takeIf' not in source
+          assert '?: normalizePackageName(universalForegroundPackageName)?.takeIf' not in source
           assert 'DriverCardSessionGate0162' in source
-          manifest_before = Path('/tmp/AndroidManifest-0.1.161.xml').read_bytes()
-          manifest_after = Path('app/src/main/AndroidManifest.xml').read_bytes()
-          assert manifest_before == manifest_after
+          assert Path('/tmp/AndroidManifest-0.1.161.xml').read_bytes() == Path('app/src/main/AndroidManifest.xml').read_bytes()
           PY
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
       - name: Unit and contract tests
         working-directory: source
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
-
       - name: Android lint
         working-directory: source
         run: ./gradlew lintDebug --no-daemon --stacktrace
-
       - name: Build APK
         working-directory: source
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
