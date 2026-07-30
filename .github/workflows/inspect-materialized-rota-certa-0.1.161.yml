@@ -1,9 +1,8 @@
-name: Inspect materialized Rota Certa 0.1.161
+name: Inspect materialized Rota Certa 0.1.162
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .github/workflows/inspect-materialized-rota-certa-0.1.161.yml
 
@@ -22,19 +21,16 @@ jobs:
           ref: codex/unified-debug-log-0.1.139
           fetch-depth: 0
           path: source
-
       - name: Checkout isolated patch branch
         uses: actions/checkout@v4
         with:
           ref: codex/rota-certa-0.1.159-validation
           fetch-depth: 0
           path: patches
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Materialize source through 0.1.161
+      - name: Materialize source through 0.1.162
         working-directory: source
         run: |
           set -euo pipefail
@@ -50,25 +46,23 @@ jobs:
           python scripts/fix_value_finance_0160_compile.py
           python ../patches/scripts/fix_failed_card_autocapture_0161.py .
           python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
-
-      - name: Collect integration sources
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+      - name: Collect exact sources
         run: |
           set -euo pipefail
           mkdir -p inspection/main inspection/test
-          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt inspection/main/
-          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt inspection/main/
-          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt inspection/main/
           cp source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt inspection/main/
-          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt inspection/main/
-          grep -R -l -E 'class SettingsRepository|object SelectedRideAppStore' source/app/src/main/java/br/com/mapeiaia/rotacerta | sort -u | xargs -r -I{} cp {} inspection/main/
-          cp source/app/build.gradle.kts inspection/
-          cp source/app/src/main/AndroidManifest.xml inspection/
-          printf '0.1.161 materialized inspection\n' > inspection/VERSION.txt
-
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/WorkModeSession0162.kt inspection/main/
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleInstantDragContractTest.kt inspection/test/
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/FailedCardAutoCaptureContract0161Test.kt inspection/test/
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/WorkModeSession0162Test.kt inspection/test/
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/WorkModeSessionContract0162Test.kt inspection/test/
+          printf '0.1.162 exact materialized inspection\n' > inspection/VERSION.txt
+          grep -n -E 'bubble_drag_screenshot_pause_0_1_116|bitmap0161|failedCardAutoCaptureGate0161.finish|screenshotInProgress.set\(false\)' inspection/main/LiveRideAccessibilityService.kt > inspection/expected-markers.txt || true
       - name: Upload inspection source
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.161-materialized-work-mode-inspection
+          name: rota-certa-0.1.162-exact-materialized-inspection
           path: inspection
           retention-days: 7
           if-no-files-found: error
