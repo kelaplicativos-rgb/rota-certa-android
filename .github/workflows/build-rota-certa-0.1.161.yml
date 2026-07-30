@@ -9,6 +9,7 @@ on:
       - .github/workflows/build-rota-certa-0.1.161.yml
       - .github/validation/rota-certa-0.1.161.txt
       - scripts/fix_failed_card_autocapture_0161.py
+      - scripts/fix_failed_card_autocapture_0161_rerun.py
 
 permissions:
   contents: read
@@ -89,6 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
 
       - name: Verify exact change boundary
         working-directory: source
