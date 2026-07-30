@@ -29,4 +29,16 @@ if service.count(resolver_anchor) != 1:
 service = service.replace(resolver_anchor, resolver_replacement, 1)
 service_path.write_text(service, encoding="utf-8")
 
-work_mode = work_mode_path.read_text(encoding="utf-8")n
+work_mode = work_mode_path.read_text(encoding="utf-8")
+remainder_anchor = """        val remainder = line.drop(markerIndex + match.first.length).trim().trimStart(':', '-', '–', '—')
+"""
+remainder_replacement = """        val remainder = line.drop(markerIndex + match.first.length)
+            .trim()
+            .trimStart(':', '-', '–', '—')
+            .trim()
+"""
+if work_mode.count(remainder_anchor) != 1:
+    raise SystemExit(f"0.1.162 rerun sanitizer anchor expected once, found {work_mode.count(remainder_anchor)}")
+work_mode_path.write_text(work_mode.replace(remainder_anchor, remainder_replacement, 1), encoding="utf-8")
+
+print("0.1.162 rerun: drag/overlay compatibility preserved and sanitizer spacing normalized")
