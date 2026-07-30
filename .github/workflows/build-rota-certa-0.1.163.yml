@@ -9,6 +9,7 @@ on:
       - .github/validation/rota-certa-0.1.163.txt
       - scripts/fix_farol_flight_recorder_0163.py
       - scripts/fix_farol_flight_recorder_0163_rerun.py
+      - scripts/farol_flight_recorder_0163.payload.*
 
 permissions:
   contents: read
@@ -143,8 +144,8 @@ jobs:
           grep -q 'recordTextSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/FarolFlightRecorder0163.kt
           grep -q 'FLIGHT_RECORDER_INITIALIZED' app/src/main/java/br/com/mapeiaia/rotacerta/FarolFlightRecorder0163.kt
           grep -q 'FarolFlightRecorder0163.initialize' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'OCR_EXTRACT_START' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'OCR_SCREENSHOT_FAILURE' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'OCR_FALLBACK_SCHEDULED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'OCR_REQUEST_EVALUATE' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'OVERLAY_RENDER_APPLIED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'MAPS_HTTP_RESPONSE' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -q 'MAPS_ROUTE_CACHE_EVALUATED' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
@@ -202,7 +203,8 @@ jobs:
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
           grep -q 'FarolFlightRecorder0163' dex-strings.txt
           grep -q 'GRAVADOR DE VOO DO FAROL 0.1.163' dex-strings.txt
-          grep -q 'OCR_EXTRACT_START' dex-strings.txt
+          grep -q 'OCR_REQUEST_EVALUATE' dex-strings.txt
+          grep -q 'OCR_FALLBACK_SCHEDULED' dex-strings.txt
           grep -q 'MAPS_HTTP_RESPONSE' dex-strings.txt
           grep -q 'OVERLAY_RENDER_APPLIED' dex-strings.txt
           grep -q 'WorkModePolicy0162' dex-strings.txt
