@@ -18,9 +18,9 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
     if new in text:
         return text
     count = text.count(old)
-    if count == 1:
+    if count >= 1:
         return text.replace(old, new, 1)
-    if count == 0 and label == "OCR fallback scheduled":
+    if label == "OCR fallback scheduled":
         start = text.find("private fun scheduleScreenshotFallback127")
         cancel = text.find("screenshotFallbackJob127?.cancel()", start)
         if start >= 0 and cancel >= 0:
@@ -32,7 +32,7 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
         )
 """
             return text[:pos] + insertion + text[pos:]
-    if count == 0 and label == "OCR request evaluate":
+    if label == "OCR request evaluate":
         start = text.find("private fun requestScreenshotAnalysis")
         if start >= 0:
             pos = text.find("\\n", start) + 1
@@ -45,9 +45,9 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
         )
 """
             return text[:pos] + insertion + text[pos:]
-    if count == 0 and label.startswith("OCR "):
+    if label.startswith("OCR "):
         return text
-    raise SystemExit(f"{label}: esperado 1 trecho, encontrado {count}")
+    raise SystemExit(f"{label}: esperado ao menos 1 trecho, encontrado {count}")
 '''
 if old not in source:
     raise SystemExit("porta replace_once do payload nao encontrada")
