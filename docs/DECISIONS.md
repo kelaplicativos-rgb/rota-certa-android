@@ -1,5 +1,25 @@
 # Rota Certa — Decisões técnicas
 
+## 30/07/2026 — Rajadas de acessibilidade devem ser confluídas antes da leitura da árvore
+
+**Decisão:** o farol usa `FarolRealtimeEventGate0167` para admitir imediatamente o primeiro evento útil de uma sessão e recusar rajadas equivalentes antes de percorrer `rootInActiveWindow`. Não usar debounce que atrase o primeiro evento. Quando existir mudança real de pacote, janela ou geração, o estado mais novo deve prevalecer.
+
+**Motivo:** o relatório real da 0.1.166 mostrou centenas de coletas repetidas do mesmo texto. A duplicação era reconhecida somente depois de uma travessia da árvore que consumia dezenas ou centenas de milissegundos na thread principal. Isso atrasava inclusive decisões já prontas entre aproximadamente 227 e 302 ms antes do início da pintura.
+
+**Módulos afetados:** `LiveRideAccessibilityService`, política pura `FarolRealtimeEventGate0167` e testes do caminho crítico. Parser, decisão, Google Maps, contrato das cores, Casa/Alfinetes e OCR pontual permanecem preservados.
+
+**Condição para revisão:** apenas se testes em aparelhos reais demonstrarem perda de uma mudança legítima de card. A revisão deve ajustar a identidade de pacote/janela/geração, nunca voltar a processar toda a tempestade nem inserir espera artificial antes do primeiro evento.
+
+## 30/07/2026 — Diagnóstico e atualização visual não podem bloquear decisão pronta
+
+**Decisão:** snapshots de checkpoint do gravador devem ser construídos integralmente em executor de IO de baixa prioridade. Uma atualização visual idêntica deve retornar antes de telemetria, criação de drawable ou outras alocações. A coleta de acessibilidade permanece limitada a 768 nós e 24.000 caracteres.
+
+**Motivo:** a aplicação efetiva do overlay levava poucos milissegundos, porém a thread principal ficava ocupada com eventos, coletas e instrumentação antes de iniciar a renderização. O diagnóstico é necessário, mas não pode competir com leitura, rota, decisão ou pintura.
+
+**Módulos afetados:** `FarolFlightRecorder0163` e caminho de coleta/renderização em `LiveRideAccessibilityService`.
+
+**Condição para revisão:** os limites podem ser reduzidos se aparelhos modestos ainda mostrarem pressão de CPU ou memória. Só devem ser ampliados mediante evidência de que cards válidos foram truncados e com teste de desempenho correspondente.
+
 ## 30/07/2026 — O farol deve ser universal para qualquer pacote selecionado
 
 **Decisão:** o nome do aplicativo não participa da autorização do caminho de leitura. Qualquer pacote persistido em `SelectedRideAppStore`, presente como raiz estrita da janela e com sessão atual válida recebe o mesmo parser e o mesmo fallback de OCR pontual.
