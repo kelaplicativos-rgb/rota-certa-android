@@ -1,5 +1,35 @@
 # Rota Certa — Decisões técnicas
 
+## 30/07/2026 — O farol deve ser universal para qualquer pacote selecionado
+
+**Decisão:** o nome do aplicativo não participa da autorização do caminho de leitura. Qualquer pacote persistido em `SelectedRideAppStore`, presente como raiz estrita da janela e com sessão atual válida recebe o mesmo parser e o mesmo fallback de OCR pontual.
+
+**Motivo:** o usuário pode selecionar aplicativos além de 99, Uber e inDrive. Uma lista fixa criaria novas falhas sempre que outro aplicativo fosse cadastrado. A seleção explícita do usuário é a autorização universal; verde/vermelho continuam dependendo das regras existentes de card confirmado, destino e rota.
+
+**Módulos afetados:** somente entrada do Farol em `LiveRideAccessibilityService` e a política pura `FarolSelectedAppInputPolicy0166`. Decisão, parser, Google Maps, Casa/Alfinetes, Manifest e permissões permanecem preservados.
+
+**Condição para revisão:** apenas se Android passar a oferecer uma API oficial e estável que identifique semanticamente cards de corrida sem acessibilidade ou screenshot.
+
+## 30/07/2026 — A janela da raiz selecionada prevalece sobre o windowId do evento
+
+**Decisão:** quando `rootInActiveWindow` pertence ao pacote selecionado, a identidade da sessão usa o `windowId` dessa raiz. O `event.windowId` não pode substituir a sessão quando vier de bolinha, overlay, System UI ou evento sem pacote.
+
+**Motivo:** no Uber, a captura começou na janela real `1759`, mas um evento transitório com pacote nulo carregou `windowId=1766`, abriu uma nova sessão e descartou o OCR. A raiz continuava pertencendo ao Uber; portanto o identificador do evento não representava o card.
+
+**Módulos afetados:** resolução da janela estável antes de `DriverCardSessionGate0162`.
+
+**Condição para revisão:** se testes em aparelho provarem que `rootInActiveWindow.windowId` não acompanha uma troca real de card/aplicativo em algum fabricante; nesse caso deve ser criado um segundo sinal de confirmação, nunca voltar a confiar isoladamente no evento.
+
+## 30/07/2026 — OCR pontual não deve exigir que o texto incompleto já pareça um card
+
+**Decisão:** quando o pacote está selecionado, é a raiz estrita atual, o parser ainda não encontrou dois endereços e não existe rota/decisão concorrente, o fallback pode reservar uma captura OCR limitada mesmo que `probableRideCard` seja falso.
+
+**Motivo:** na 99, os endereços que provariam a existência do card não eram expostos pela acessibilidade. Exigir esses sinais antes do screenshot criava um bloqueio circular: o OCR era necessário para obter a evidência, mas a evidência era exigida para permitir o OCR.
+
+**Módulos afetados:** admissão da captura automática limitada; os gates existentes de intervalo, assinatura, sessão atual, `screenshotInProgress` e cancelamento de resultado antigo permanecem ativos.
+
+**Condição para revisão:** se medições reais mostrarem consumo excessivo em algum aplicativo selecionado; a revisão deve melhorar a deduplicação por sessão/assinatura, não reintroduzir nomes fixos de aplicativos.
+
 ## 30/07/2026 — Diagnóstico deve preservar decisões válidas anteriores
 
 **Decisão:** reconstruir o relatório por tentativas independentes, iniciadas somente quando existe avaliação ativa com embarque, destino e mudança real de assinatura. Uma leitura incompleta posterior não pode apagar uma decisão válida já pintada.
