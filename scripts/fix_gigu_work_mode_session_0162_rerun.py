@@ -13,11 +13,11 @@ if service.count(scan_anchor) != 1:
     raise SystemExit(f"0.1.162 rerun scan anchor expected once, found {service.count(scan_anchor)}")
 service = service.replace(scan_anchor, scan_replacement, 1)
 
-resolver_anchor = """        val resolvedPackage0162 = DriverCardEventResolver0162.resolve(
+resolver_anchor = """        val candidatePackage = DriverCardEventResolver0162.resolve(
 """
 resolver_replacement = """        // Compatibilidade funcional: TransientOverlayPackagePolicy0161.shouldPreferSelectedRoot
         // agora é aplicada pelo resolvedor estrito da sessão imutável 0.1.162.
-        val resolvedPackage0162 = DriverCardEventResolver0162.resolve(
+        val candidatePackage = DriverCardEventResolver0162.resolve(
 """
 if service.count(resolver_anchor) != 1:
     raise SystemExit(f"0.1.162 rerun resolver anchor expected once, found {service.count(resolver_anchor)}")
