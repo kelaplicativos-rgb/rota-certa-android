@@ -1,0 +1,75 @@
+name: Inspect materialized Rota Certa 0.1.161
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-materialized-rota-certa-0.1.161.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout correction source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout isolated patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/rota-certa-0.1.159-validation
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize source through 0.1.161
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+
+      - name: Collect integration sources
+        run: |
+          set -euo pipefail
+          mkdir -p inspection/main inspection/test
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt inspection/main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt inspection/main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/SettingsRepository.kt inspection/main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt inspection/main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt inspection/main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt inspection/main/
+          grep -R -l 'object SelectedRideAppStore' source/app/src/main/java/br/com/mapeiaia/rotacerta | xargs -r -I{} cp {} inspection/main/
+          cp source/app/build.gradle.kts inspection/
+          cp source/app/src/main/AndroidManifest.xml inspection/
+          printf '0.1.161 materialized inspection\n' > inspection/VERSION.txt
+
+      - name: Upload inspection source
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.161-materialized-work-mode-inspection
+          path: inspection
+          retention-days: 7
+          if-no-files-found: error
