@@ -32,21 +32,6 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
         )
 """
             return text[:pos] + insertion + text[pos:]
-    if count == 0 and label == "OCR fallback wake":
-        start = text.find("private fun scheduleScreenshotFallback127")
-        end = text.find("private fun", start + len("private fun"))
-        if end < 0:
-            end = len(text)
-        marker = text.find("if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return@launch", start, end)
-        if marker >= 0:
-            insertion = """FarolFlightRecorder0163.record(
-                stage = \"OCR_FALLBACK_WAKE\",
-                packageName = expectedPackage,
-                details = \"ready=$serviceReady; appEnabled=${currentSettings.appEnabled}; live=${currentSettings.liveReadingEnabled}; resolved=${universalResolvedForegroundPackage()}; accessibilityWon=${lastAccessibilityAcceptedAtMillis127 >= scheduledAt127}\",
-            )
-            """
-            return text[:marker] + insertion + text[marker:]
-        return text
     if count == 0 and label == "OCR request evaluate":
         start = text.find("private fun requestScreenshotAnalysis")
         if start >= 0:
@@ -60,6 +45,7 @@ new = '''def replace_once(text: str, old: str, new: str, label: str) -> str:
         )
 """
             return text[:pos] + insertion + text[pos:]
+    if count == 0 and label.startswith("OCR "):
         return text
     raise SystemExit(f"{label}: esperado 1 trecho, encontrado {count}")
 '''
