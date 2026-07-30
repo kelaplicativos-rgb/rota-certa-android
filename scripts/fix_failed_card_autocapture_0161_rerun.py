@@ -56,6 +56,16 @@ if recovery.count(old_trim) != 1:
     raise SystemExit('0.1.161 rerun bounded gate anchor not found exactly once')
 recovery = recovery.replace(old_trim, new_trim, 1)
 
+old_ordered = '''        val ordered = linkedSetOf<String>()
+        accessibilityText.lineSequence().map(::clean).filter(String::isNotBlank).forEach(ordered::add)
+'''
+new_ordered = '''        val ordered = mutableListOf<String>()
+        accessibilityText.lineSequence().map(::clean).filter(String::isNotBlank).forEach(ordered::add)
+'''
+if recovery.count(old_ordered) != 1:
+    raise SystemExit('0.1.161 rerun ordered-line preservation anchor not found exactly once')
+recovery = recovery.replace(old_ordered, new_ordered, 1)
+
 old_merge = '''        val merged = merge(accessibilityText, ocrText, nodes)
         if (!probableRideCard(merged, packageName)) return null
 
@@ -114,4 +124,4 @@ if recovery.count(extract_anchor) != 1:
     raise SystemExit('0.1.161 rerun ambiguity helper anchor not found exactly once')
 recovery = recovery.replace(extract_anchor, ambiguity_helper + extract_anchor, 1)
 recovery_path.write_text(recovery, encoding='utf-8')
-print('0.1.161 rerun: drag contracts restored, bounded gate loop removed, ambiguity fails closed')
+print('0.1.161 rerun: drag contracts restored, duplicate labels preserved, ambiguity fails closed')
