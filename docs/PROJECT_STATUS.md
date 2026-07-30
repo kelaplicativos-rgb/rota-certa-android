@@ -1,5 +1,44 @@
 # Rota Certa — Estado do projeto
 
+## 30/07/2026 — 0.1.167 (5280) — núcleo determinístico do farol em tempo real
+
+- **Branch:** `agent/farol-realtime-0.1.167`
+- **Commit funcional validado:** `b95405970a7e629babebeb0218767e8362dfd3b9`
+- **PR:** #35, rascunho e sem merge na `main`
+- **Pedido:** fazer o farol decidir e pintar em frações de segundo, com máxima rapidez e estabilidade, sem restaurar polling, OCR contínuo ou processamento pesado.
+- **Situação anterior comprovada pelo aparelho:** a versão 0.1.166 conseguia calcular e pintar decisões, porém o relatório real registrou uma tempestade de eventos de acessibilidade. A mesma árvore era coletada repetidamente e só depois o conteúdo duplicado era descartado. O gravador exportou 2.500 eventos, descartou 810 pelo limite e os exemplos medidos apresentaram aproximadamente 227 a 302 ms entre `BUBBLE_DECISION_READY` e o início da renderização, embora a aplicação visual em si levasse poucos milissegundos.
+- **Causa:** a deduplicação ocorria tarde, depois da travessia da árvore de acessibilidade e de alocações na thread principal. Checkpoints do gravador e telemetria visual também podiam disputar a thread principal com uma decisão pronta. A consulta de rota não era a única causa: respostas HTTP reais ficaram aproximadamente entre 0,39 e 0,46 s, enquanto o aparelho adicionava centenas de milissegundos de trabalho local evitável.
+- **Correção aplicada:** núcleo `FarolRealtimeEventGate0167`, com admissão determinística e confluente. O primeiro evento útil é processado imediatamente, rajadas equivalentes são recusadas antes da coleta da árvore e o estado mais novo prevalece. Não foi introduzido atraso artificial de debounce.
+- **Caminho crítico otimizado:**
+  - deduplicação antes da travessia de `rootInActiveWindow`;
+  - árvore limitada a 768 nós e 24.000 caracteres, com coleta de baixa alocação;
+  - construção do snapshot de checkpoint totalmente em executor de IO de baixa prioridade;
+  - retorno imediato de atualização visual idêntica antes de telemetria e novas alocações;
+  - cancelamento e validade por geração continuam impedindo resultado atrasado de substituir card novo;
+  - OCR continua pontual e somente quando a acessibilidade não entrega os dois endereços.
+- **Arquivos principais materializados:**
+  - `LiveRideAccessibilityService.kt`;
+  - `FarolFlightRecorder0163.kt`;
+  - `FarolRealtimeEventGate0167.kt`;
+  - `FarolRealtimeEventGate0167Test.kt`;
+  - `FarolRealtimeCriticalPathContract0167Test.kt`;
+  - `app/build.gradle.kts`.
+- **Arquivos de entrega:**
+  - `scripts/fix_farol_realtime_0167.py`;
+  - `scripts/fix_farol_realtime_0167_rerun.py`;
+  - `scripts/farol_realtime_0167.payload`;
+  - `.github/workflows/build-rota-certa-0.1.167.yml`.
+- **Limite protegido:** `DecisionEngine`, `RideTextParser`, `GoogleMapsService`, `FarolSelectedAppInputPolicy0166`, `ManualTechnicalReportBuilder`, `FarolDiagnosticSummary0165`, Manifest, permissões, componentes, Casa/Alfinetes e Coletor permaneceram inalterados. O Coletor continua ausente.
+- **Testes executados:** aplicação idempotente; fronteira exata de arquivos; testes do gate para primeiro evento imediato, rajadas duplicadas, troca de janela/pacote e passagem do estado mais novo; contrato do caminho crítico; suíte unitária e de contrato; Android Lint; `clean assembleDebug`; inspeção de Manifest e DEX; pacote, versão, versionCode, assinatura e integridade ZIP.
+- **Workflow final do código:** `Build Rota Certa 0.1.167`, run `30589543081`, job `91028584795`, todos os passos concluídos com sucesso.
+- **Artifact final:** `rota-certa-0.1.167-farol-realtime-core-validated`, ID `8777937895`, retenção até 28/10/2026.
+- **SHA-256 do APK:** `a814ab44e94c8db6ce3a7822e7c76348a314d4a0dfa4b6514614b4a45ebce59b`.
+- **SHA-256 do ZIP do artifact:** `e408893bc39ec7edc71066d93e3eefe0c47754754abcee8ac26926c8caceb70e`.
+- **Tamanho do APK:** 55.894.891 bytes.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Resultado esperado:** eliminar o atraso local provocado pela tempestade de eventos e permitir que a pintura ocorra assim que a rota/decisão válida retornar. Rotas inéditas ainda dependem da rede e do Google Maps; cache exato pode responder de forma muito mais rápida.
+- **Pendência prática:** instalar a 0.1.167 e medir cards reais da 99, Uber, inDrive e ao menos outro aplicativo selecionado. Build e contratos comprovam a arquitetura e a integridade, mas nenhum software Android dependente de conteúdo de terceiros e rede pode ser honestamente declarado 100% perfeito sem validação real em diferentes aparelhos e condições.
+
 ## 30/07/2026 — 0.1.166 (5270) — farol universal para todos os aplicativos selecionados
 
 - **Branch:** `agent/fix-99-ocr-0.1.166`
