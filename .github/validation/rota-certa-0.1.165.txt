@@ -10,4 +10,5 @@ Correção isolada do módulo Diagnóstico sobre a versão validada 0.1.164:
 - Manifest e permissões permanecem inalterados;
 - Coletor permanece removido.
 
+Validação final inclui os registros atualizados em docs/PROJECT_STATUS.md e docs/DECISIONS.md.
 A main permanece intacta até a validação prática do APK.
