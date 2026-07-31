@@ -26,6 +26,11 @@ SEMANTIC_HASH_NEW = '''service, semantic_replacements = re.subn(
     service,
 )'''
 
+CARD_START_OLD = r"(?i)\\s+(Pedido de viagem|Nova solicitação|Nova solicitacao|Solicitação de viagem|Solicitacao de viagem|Corrida disponível|Corrida disponivel)\\s+"
+CARD_START_NEW = r"(?i)[ \\t]+(Pedido de viagem|Nova solicitação|Nova solicitacao|Solicitação de viagem|Solicitacao de viagem|Corrida disponível|Corrida disponivel)[ \\t]+"
+CARD_ACTION_OLD = r"(?i)\\s+(Aceitar por|Aceitar|Pular|Recusar|Ofereça sua tarifa|Ofereca sua tarifa)\\s+"
+CARD_ACTION_NEW = r"(?i)[ \\t]+(Aceitar por|Aceitar|Pular|Recusar|Ofereça sua tarifa|Ofereca sua tarifa)[ \\t]+"
+
 OCR_DELAY_OLD = '''post_at = ocr_body.find(".postDelayed(")
 if post_at < 0:
     fail("postDelayed do fallback OCR não encontrado")
@@ -124,6 +129,8 @@ def corrected_source() -> str:
     source = SCRIPT.read_text(encoding="utf-8")
     source = replace_required(source, TEXT_PARAM_OLD, TEXT_PARAM_NEW, "parâmetro textual")
     source = replace_required(source, SEMANTIC_HASH_OLD, SEMANTIC_HASH_NEW, "hash semântico da análise")
+    source = replace_required(source, CARD_START_OLD, CARD_START_NEW, "limite inicial de card")
+    source = replace_required(source, CARD_ACTION_OLD, CARD_ACTION_NEW, "limite de ação do card")
     source = replace_required(source, OCR_DELAY_OLD, OCR_DELAY_NEW, "fallback OCR por corrotina")
     return source
 
@@ -160,6 +167,11 @@ def validate_runtime_patch(source: str) -> None:
     if "snapshotTextChecklist13.hashCode()" not in stabilized:
         raise SystemExit("hash de recuperação foi alterado indevidamente")
 
+    if CARD_START_NEW not in source or CARD_ACTION_NEW not in source:
+        raise SystemExit("limites horizontais dos cards não foram estabilizados")
+    if CARD_START_OLD in source or CARD_ACTION_OLD in source:
+        raise SystemExit("limites antigos ainda podem consumir quebras entre cards")
+
     sample_ocr_body = '''
         screenshotFallbackJob127 = scope.launch {
             delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS) // ocr_delay_final_checklist_6
@@ -180,7 +192,7 @@ def validate_runtime_patch(source: str) -> None:
     if "requestScreenshotAnalysis(allowPopupCandidate = true)" not in without_delay:
         raise SystemExit("solicitação OCR foi removida indevidamente")
 
-    for expected in (TEXT_PARAM_NEW, SEMANTIC_HASH_NEW, OCR_DELAY_NEW):
+    for expected in (TEXT_PARAM_NEW, SEMANTIC_HASH_NEW, CARD_START_NEW, CARD_ACTION_NEW, OCR_DELAY_NEW):
         if expected not in source:
             raise SystemExit("correções esperadas não estão no script materializado em memória")
 
