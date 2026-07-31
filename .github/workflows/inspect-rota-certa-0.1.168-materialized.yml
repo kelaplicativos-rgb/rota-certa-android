@@ -1,0 +1,101 @@
+name: Inspect Rota Certa 0.1.168 Materialized
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/inspect-rota-certa-0.1.168-materialized.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-uber-overlay-event-gap-0.1.169
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize protected source through 0.1.168
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163_rerun.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164_rerun.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165_rerun.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166_rerun.py .
+          python ../patches/scripts/fix_farol_realtime_0167.py .
+          python ../patches/scripts/fix_farol_realtime_0167_rerun.py .
+          python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
+          grep -q 'versionName = "0.1.168"' app/build.gradle.kts
+          grep -q 'versionCode = 5290' app/build.gradle.kts
+
+      - name: Prepare inspection bundle
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p inspection/app/src/main/java/br/com/mapeiaia/rotacerta
+          mkdir -p inspection/app/src/main/res
+          cp app/build.gradle.kts inspection/app/
+          cp app/src/main/AndroidManifest.xml inspection/app/src/main/
+          for file in \
+            LiveRideAccessibilityService.kt \
+            AndroidServices.kt \
+            FarolRealtimeEventGate0167.kt \
+            FarolSelectedAppInputPolicy0166.kt \
+            FarolUnifiedVisual0168.kt \
+            RideTextParser.kt \
+            WorkModeSession0162.kt; do
+            cp "app/src/main/java/br/com/mapeiaia/rotacerta/$file" inspection/app/src/main/java/br/com/mapeiaia/rotacerta/
+          done
+          if [ -d app/src/main/res/xml ]; then
+            cp -R app/src/main/res/xml inspection/app/src/main/res/
+          fi
+          find app/src/main -maxdepth 5 -type f | sort > inspection/source-tree.txt
+          grep -RIn "accessibilityServiceInfo\|AccessibilityServiceInfo\|eventTypes\|packageNames\|TYPE_WINDOWS_CHANGED\|TYPE_WINDOW_STATE_CHANGED\|TYPE_NOTIFICATION_STATE_CHANGED\|requestScreenshot\|OCR_FALLBACK" app/src/main > inspection/accessibility-search.txt || true
+          sha256sum inspection/app/src/main/java/br/com/mapeiaia/rotacerta/*.kt > inspection/source-sha256.txt
+
+      - name: Upload materialized inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.168-materialized-inspection
+          path: source/inspection
+          retention-days: 7
+          if-no-files-found: error
