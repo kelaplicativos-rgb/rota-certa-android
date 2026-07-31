@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/build-rota-certa-0.1.168.yml
       - scripts/fix_farol_unified_visual_0168.py
+      - scripts/fix_farol_unified_visual_0168_compile.py
       - scripts/run_fix_farol_unified_visual_0168.py
       - docs/PROJECT_STATUS.md
       - docs/DECISIONS.md
@@ -108,7 +109,9 @@ jobs:
         run: |
           set -euo pipefail
           python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
           python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
 
       - name: Verify isolated change boundary
         working-directory: source
@@ -128,6 +131,7 @@ jobs:
           deleted = sorted(before.keys() - after.keys())
           expected_modified = sorted([
               'app/build.gradle.kts',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt',
               'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt',
               'app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt',
           ])
@@ -154,9 +158,13 @@ jobs:
           grep -q 'farol_unified_visual_0_1_168' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'FarolUnifiedVisual0168.normalizeForAnalysis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'FarolUnifiedVisual0168.semanticHash' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'farol_visual_blocks_integrated_0_1_168' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          test "$(grep -c 'FarolUnifiedVisual0168.fromVisionText(recognizer.process(image).await())' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt)" -eq 2
+          ! grep -q 'recognizer.process(image).await().text' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
           grep -q 'FarolUnifiedVisual0168.isClearlyTruncatedStreet' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
           grep -q 'FarolUnifiedVisual0168.isNamedPlaceWithLocation' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
           python -m py_compile ../patches/scripts/run_fix_farol_unified_visual_0168.py
+          python -m py_compile ../patches/scripts/fix_farol_unified_visual_0168_compile.py
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
       - name: Unit and contract tests
