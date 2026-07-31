@@ -8,6 +8,7 @@ on:
       - .github/workflows/build-rota-certa-0.1.168-final.yml
       - scripts/fix_farol_unified_visual_0168.py
       - scripts/fix_farol_unified_visual_0168_compile.py
+      - scripts/run_fix_farol_unified_visual_0168.py
       - docs/PROJECT_STATUS.md
       - docs/DECISIONS.md
 
@@ -107,9 +108,9 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
-          python ../patches/scripts/fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
           python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
-          python ../patches/scripts/fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
           python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
 
       - name: Verify isolated change boundary
@@ -160,6 +161,7 @@ jobs:
           grep -q 'FarolUnifiedVisual0168.fromVisionText' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'FarolUnifiedVisual0168.isClearlyTruncatedStreet' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
           grep -q 'FarolUnifiedVisual0168.isNamedPlaceWithLocation' app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          python -m py_compile ../patches/scripts/run_fix_farol_unified_visual_0168.py
           test -n "${GOOGLE_MAPS_API_KEY:-}"
 
       - name: Unit and contract tests
