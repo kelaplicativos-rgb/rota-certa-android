@@ -1,12 +1,29 @@
 # Rota Certa — Decisões técnicas
 
+## 31/07/2026 — acessibilidade falha fechada e ferramentas manuais não usam polling
+
+- **Fronteira do serviço:** `onAccessibilityEvent`, criação, conexão, interrupção e destruição do serviço são fronteiras fail-closed. Uma exceção inesperada deve ser contida, registrada de forma limitada e limpar somente o estado transitório; não pode escapar silenciosamente para o Android.
+- **Coroutines:** tarefas raiz do serviço usam supervisão e tratamento explícito. `CancellationException` continua representando cancelamento normal; outras falhas são contidas com estágio e tipo, sem texto pessoal e sem rajada de logs.
+- **Estado autoritativo:** `serviceReady=true`, cor, km e destino só podem sobreviver enquanto a sessão atual estiver realmente conectada. Interrupção, destruição ou falha crítica invalidam imediatamente sessão, geração, trabalhos antigos e estado visual persistido.
+- **Diagnóstico permanente:** registrar apenas eventos reais em buffers circulares limitados. Não adicionar varredura contínua, screenshot em ciclo, OCR recorrente ou gravação ilimitada.
+- **Investigação intensiva:** o pulso de um segundo é permitido somente quando iniciado manualmente, por tempo limitado e com desligamento automático. Ele registra saúde do processo e etapas, sem capturar a tela. Na abertura seguinte, consultar o histórico de encerramento fornecido pelo Android para diferenciar crash, ANR, pouca memória e encerramento pelo sistema.
+- **OCR de Copiar:** o toque longo captura somente o quadro atual e executa um OCR. Trabalho anterior é cancelado, a imagem temporária é liberada e telas protegidas não são contornadas. Vídeo deve ser lido pelo quadro visível, preferencialmente pausado; nunca analisar continuamente os quadros.
+- **Links rápidos:** armazenar somente nome, URL HTTP/HTTPS e indicação de link principal em armazenamento local pequeno. Abrir somente após toque do usuário, usando aplicativo compatível ou navegador; nenhum link é consultado em segundo plano.
+- **Limpeza:** o toque longo de Limpar remove somente caches recriáveis do próprio Rota Certa, com confirmação. Não apagar `SharedPreferences`, DataStore, bancos, modelos de card, Casa/Alfinetes, aplicativos selecionados, frases, links, histórico ou backups.
+- **Frases predefinidas:** Copiar e Valor compartilham um único editor e armazenamento para impedir listas divergentes. O editor pode visualizar, alterar e restaurar frases; a substituição de variáveis deve ser determinística e local.
+- **Navegação:** botão físico, gesto Voltar e seta superior seguem a mesma ordem: fechar diálogo interno, retornar do módulo para a Home preservando o estado necessário e, somente na Home, aplicar o comportamento normal da Activity.
+- **Respostas rápidas:** campos de texto usam cores semânticas do tema (`onSurface` e equivalentes) em vez de fixar preto ou branco. Fechar uma tela aberta pela Home retorna à Home; somente a abertura sobre outro aplicativo pode revelar a tela externa anterior.
+- **Catálogo:** a 0.1.172 possui 17 módulos na Home, incluindo Links rápidos. O editor de frases é compartilhado por Copiar e Valor e não cria uma segunda bolinha permanente.
+- **Fronteira protegida:** estas mudanças não autorizam verde/vermelho, não alteram parser, confirmação real do card, destino final, Google Maps, Casa/Alfinetes, decisão, formato de km ou proteção contra resultado antigo.
+- **Condição para revisão:** revisar se o Android mudar o ciclo do serviço de acessibilidade, se surgir evidência de falha ainda escapando das fronteiras, ou se o diagnóstico intensivo afetar bateria/memória. Qualquer evolução deve preservar limites rígidos, ação manual e ausência de polling visual.
+
 ## 31/07/2026 — módulos independem da sobreposição e toque longo é configurável por recurso
 
 - **Decisão de disponibilidade:** todo módulo registrado no catálogo da grade deve ter uma entrada direta na Home. A bolinha e sua sobreposição não podem ser a única forma de abrir diagnóstico, configurações ou recursos.
 - **Motivo:** quando o processo ou serviço de acessibilidade encerra, a bolinha pode desaparecer. O usuário ainda precisa abrir o aplicativo pelo ícone, gerar relatório e acessar todos os módulos para recuperar e diagnosticar o funcionamento.
 - **Papel da grade:** a grade flutuante permanece como painel de execução rápida; ela não substitui a navegação completa da Home.
 - **Toque simples:** continua determinístico e executa a ação principal já definida para o atalho.
-- **Toque longo:** cada módulo oferece configuração local entre manter comportamento atual, nenhuma ação, abrir o módulo, executar a ação principal e executar a ação secundária quando existir.
+- **Toque longo:** cada módulo oferece configuração local entre manter comportamento atual, nenhuma ação, abrir módulo, executar ação principal e executar ação secundária quando existir.
 - **Migração:** o valor padrão é `PreserveExisting`. Assim, atalhos com ação longa específica continuam executando-a; atalhos que antes repetiam a ação principal mantêm esse comportamento até escolha explícita do usuário.
 - **Segurança:** ações sensíveis escolhidas pelo usuário para toque longo exigem confirmação. O comportamento legado preservado não recebe uma confirmação nova, evitando alteração silenciosa dos gestos já decididos.
 - **Desempenho:** preferências são armazenadas em `SharedPreferences` e lidas somente na interação. Não adicionar polling, observador contínuo, serviço, OCR, captura ou trabalho em segundo plano.
