@@ -8,17 +8,20 @@ from pathlib import Path
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
 MAIN = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta"
 SERVICE = MAIN / "LiveRideAccessibilityService.kt"
+ANDROID_SERVICES = MAIN / "AndroidServices.kt"
 TEST = ROOT / "app/src/test/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisualCriticalPath0168Test.kt"
 MARKER = "farol_visual_blocks_integrated_0_1_168"
+FLAT_RESULT = "recognizer.process(image).await().text"
+SPATIAL_RESULT = "FarolUnifiedVisual0168.fromVisionText(recognizer.process(image).await())"
 
 
 def fail(message: str) -> None:
     raise SystemExit(message)
 
 
-def matching_brace(text: str, opening: int) -> int:
+def find_matching_brace(text: str, opening: int) -> int:
     depth = 0
-    quote = None
+    quote: str | None = None
     escaped = False
     for index in range(opening, len(text)):
         char = text[index]
@@ -38,35 +41,21 @@ def matching_brace(text: str, opening: int) -> int:
             depth -= 1
             if depth == 0:
                 return index
-    fail("lambda OCR sem fechamento")
+    fail("classe OcrService sem fechamento")
 
 
-def print_ocr_diagnostic() -> None:
-    print("--- OCR 0.1.167 MATERIALIZADO ---")
-    found = False
-    for path in sorted(MAIN.rglob("*.kt")):
-        text = path.read_text(encoding="utf-8")
-        positions = [
-            position
-            for token in ("class OcrService", "object OcrService", "fun extractText(", "suspend fun extractText(")
-            if (position := text.find(token)) >= 0
-        ]
-        if not positions:
-            continue
-        found = True
-        position = min(positions)
-        start = max(0, position - 1_500)
-        end = min(len(text), position + 8_000)
-        print(f"ARQUIVO={path.relative_to(ROOT)}")
-        print(text[start:end])
-        print("--- FIM DO TRECHO OCR ---")
-    if not found:
-        print("Nenhuma declaração OcrService/extractText encontrada nos arquivos Kotlin.")
+def ocr_service_range(source: str) -> tuple[int, int]:
+    declaration = re.search(r"\bclass\s+OcrService\b[^\{]*\{", source)
+    if declaration is None:
+        fail("classe OcrService não encontrada em AndroidServices.kt")
+    opening = source.find("{", declaration.start(), declaration.end())
+    return declaration.start(), find_matching_brace(source, opening) + 1
 
 
-if not SERVICE.exists() or not TEST.exists():
-    fail("a correção principal 0.1.168 precisa ser aplicada primeiro")
+if not SERVICE.exists() or not ANDROID_SERVICES.exists() or not TEST.exists():
+    fail("a correção principal 0.1.168 precisa ser aplicada antes da integração OCR")
 
+# O teste de contrato é executado a partir da raiz do repositório materializado.
 contract = TEST.read_text(encoding="utf-8")
 contract = contract.replace(
     'File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt")',
@@ -74,46 +63,40 @@ contract = contract.replace(
 )
 TEST.write_text(contract, encoding="utf-8")
 
-service = SERVICE.read_text(encoding="utf-8")
-if MARKER not in service:
-    integrated = False
-    pattern = re.compile(
-        r"\.process\s*\([^)]*\)\s*\.addOnSuccessListener\s*\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*->",
-        re.S,
-    )
-    for match in pattern.finditer(service):
-        result_name = match.group(1)
-        opening = service.find("{", match.start(), match.end())
-        if opening < 0:
-            continue
-        closing = matching_brace(service, opening)
-        body = service[opening : closing + 1]
-        target = f"{result_name}.text"
-        if target not in body:
-            continue
-        replacement = f"FarolUnifiedVisual0168.fromVisionText({result_name})"
-        body = body.replace(target, replacement, 1)
-        body = body[:-1] + f"\n            // {MARKER}\n" + body[-1]
-        service = service[:opening] + body + service[closing + 1 :]
-        integrated = True
-        break
-    if not integrated:
-        candidates = list(re.finditer(r"addOnSuccessListener\s*\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*->", service))
-        for match in candidates:
-            result_name = match.group(1)
-            opening = service.find("{", match.start(), match.end())
-            closing = matching_brace(service, opening)
-            body = service[opening : closing + 1]
-            target = f"{result_name}.text"
-            if target in body and "OCR" in service[max(0, match.start() - 5_000) : match.start()].upper():
-                body = body.replace(target, f"FarolUnifiedVisual0168.fromVisionText({result_name})", 1)
-                body = body[:-1] + f"\n            // {MARKER}\n" + body[-1]
-                service = service[:opening] + body + service[closing + 1 :]
-                integrated = True
-                break
-    if not integrated:
-        print_ocr_diagnostic()
-        fail("resultado textual do ML Kit OCR não localizado; diagnóstico acima")
-    SERVICE.write_text(service, encoding="utf-8")
+android_services = ANDROID_SERVICES.read_text(encoding="utf-8")
+start, end = ocr_service_range(android_services)
+ocr_service = android_services[start:end]
 
-print("Integração espacial e contrato 0.1.168 concluídos")
+if MARKER not in ocr_service:
+    flat_count = ocr_service.count(FLAT_RESULT)
+    if flat_count != 2:
+        fail(
+            "conversões OCR achatadas inesperadas em OcrService: "
+            f"esperadas=2 encontradas={flat_count}"
+        )
+    ocr_service = ocr_service.replace(FLAT_RESULT, SPATIAL_RESULT)
+    class_open = ocr_service.find("{")
+    ocr_service = (
+        ocr_service[: class_open + 1]
+        + f"\n    // {MARKER}: mesma leitura ML Kit, preservando ordem espacial dos blocos."
+        + ocr_service[class_open + 1 :]
+    )
+    android_services = android_services[:start] + ocr_service + android_services[end:]
+    ANDROID_SERVICES.write_text(android_services, encoding="utf-8")
+else:
+    if ocr_service.count(SPATIAL_RESULT) != 2:
+        fail("integração OCR 0.1.168 marcada, porém incompleta ou duplicada")
+
+# Falha fechada: nenhuma das duas entradas públicas do OCR pode voltar a achatar
+# o resultado antes de aplicar a ordenação espacial da visão unificada.
+updated = ANDROID_SERVICES.read_text(encoding="utf-8")
+start, end = ocr_service_range(updated)
+updated_ocr_service = updated[start:end]
+if updated_ocr_service.count(SPATIAL_RESULT) != 2:
+    fail("as duas entradas de OcrService não usam a visão espacial unificada")
+if FLAT_RESULT in updated_ocr_service:
+    fail("OcrService ainda contém conversão OCR achatada")
+if updated_ocr_service.count(MARKER) != 1:
+    fail("marcador da integração OCR deve existir exatamente uma vez")
+
+print("Integração espacial do OcrService e contrato 0.1.168 concluídos")
