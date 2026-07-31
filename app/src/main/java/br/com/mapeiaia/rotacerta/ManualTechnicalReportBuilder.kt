@@ -22,7 +22,8 @@ object ManualTechnicalReportBuilder {
             appendLine("Pacote: ${appContext.packageName}")
             appendLine("Android: ${android.os.Build.VERSION.RELEASE} / API ${android.os.Build.VERSION.SDK_INT}")
             appendLine("Aparelho: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
-            appendLine("Logs continuos: DESATIVADOS")
+            appendLine("Gravador de voo do farol: ATIVO (circular e de baixo impacto)")
+            appendLine("Logs legados continuos: ${if (DiagnosticRuntimeGate.isContinuousEnabled()) "ATIVOS" else "DESATIVADOS"}")
             appendLine()
             appendLine("--- CONTROLE ---")
             appendLine("Rota Certa ligado: ${settings.appEnabled}")
@@ -65,6 +66,8 @@ object ManualTechnicalReportBuilder {
                 val coordinate = pin.coordinate?.let { "${it.latitude},${it.longitude}" } ?: "nao validada"
                 appendLine("- ${if (pin.enabled) "ON" else "OFF"} | ${pin.address} | $coordinate")
             }
+            appendLine()
+            appendLine(FarolDiagnosticSummary0165.withSummary(settings, FarolFlightRecorder0163.exportReport()))
         }.trimEnd()
     }
 

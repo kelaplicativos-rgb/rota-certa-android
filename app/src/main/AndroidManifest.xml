@@ -43,10 +43,10 @@
             android:exported="false"
             android:label="Rastreamento de trabalho" />
         <activity
-            android:name=".BlaBlaCarCollectorActivity"
+            android:name=".FinancialActivity"
             android:exported="false"
-            android:label="Assistente de Viagens" />
-        <activity
+            android:label="Controle financeiro" />
+<activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

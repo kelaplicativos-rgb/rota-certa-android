@@ -65,7 +65,7 @@ class InstalledRideAppPickerActivity : ComponentActivity() {
     private fun saveSelectedApplications(packages: Set<String>) {
         lifecycleScope.launch {
             val previous = SelectedRideAppStore.read(applicationContext)
-            val normalized = packages.mapNotNull(SelectedRideAppStore::normalize).toSortedSet()
+            val normalized = DriverAppPackagePolicy0162.sanitize(packages, applicationContext.packageName).toSortedSet()
             val removed = previous - normalized
             removed.forEach { ManualAppScreenCaptureStore.removePackage(applicationContext, it) }
             SelectedRideAppStore.save(applicationContext, normalized)
@@ -126,7 +126,7 @@ private fun AuthorizedAppsAndCardsScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Aplicativos e cards autorizados", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Pacotes autorizam a leitura. Cards são apenas complementos para OCR e reconhecimento.", style = MaterialTheme.typography.bodySmall)
+                Text("Selecione somente aplicativos de corridas. Sistema, launcher, teclado, arquivos e ChatGPT são bloqueados automaticamente.", style = MaterialTheme.typography.bodySmall)
             }
             OutlinedButton(onClick = onClose) { Text("Fechar") }
         }
@@ -189,7 +189,7 @@ private fun loadLaunchableApplications(packageManager: PackageManager, ownPackag
     }
     return resolved.asSequence().mapNotNull { info ->
         val packageName = info.activityInfo?.packageName?.trim()?.lowercase(Locale.ROOT).orEmpty()
-        if (packageName.isBlank() || packageName == ownPackageName) return@mapNotNull null
+        if (!DriverAppPackagePolicy0162.isEligible(packageName, ownPackageName)) return@mapNotNull null
         InstalledRideAppInfo(runCatching { info.loadLabel(packageManager).toString() }.getOrDefault(packageName), packageName)
     }.distinctBy { it.packageName }.sortedBy { it.label.lowercase(Locale.ROOT) }.toList()
 }

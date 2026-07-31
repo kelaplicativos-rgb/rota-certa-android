@@ -2,6 +2,8 @@ package br.com.mapeiaia.rotacerta
 
 enum class BubbleShortcutAction {
     CopyTripConfirmation,
+    CopyPassengerValue,
+    OpenFinance,
     OpenQuickReplies,
     OpenRoute,
     OpenDestination,
@@ -13,7 +15,6 @@ enum class BubbleShortcutAction {
     OpenBackup,
     OpenReports,
     OpenScreenWhatsApp,
-    OpenCollector,
     ClearClipboard,
     ExportDiagnostic,
     StopApplication,
@@ -136,12 +137,22 @@ object BackupBubbleShortcutModule : BubbleShortcutModule {
     )
 }
 
-object CollectorBubbleShortcutModule : BubbleShortcutModule {
+
+object PassengerValueBubbleShortcutModule : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
-        id = "collector",
-        emoji = "🚗",
-        label = "Coletor",
-        action = BubbleShortcutAction.OpenCollector,
+        id = "passenger_value",
+        emoji = "💰",
+        label = "Valor",
+        action = BubbleShortcutAction.CopyPassengerValue,
+    )
+}
+
+object FinanceBubbleShortcutModule : BubbleShortcutModule {
+    override val spec = BubbleShortcutSpec(
+        id = "finance",
+        emoji = "📊",
+        label = "Financeiro",
+        action = BubbleShortcutAction.OpenFinance,
     )
 }
 
@@ -198,7 +209,8 @@ object BubbleShortcutCatalog {
         BackupBubbleShortcutModule,
         WhatsAppBubbleShortcutModule,
         TripConfirmationBubbleShortcutModule,
-        CollectorBubbleShortcutModule,
+        PassengerValueBubbleShortcutModule,
+        FinanceBubbleShortcutModule,
         ClearClipboardBubbleShortcutModule,
         DiagnosticBubbleShortcutModule,
         QuickRepliesBubbleShortcutModule,
@@ -207,7 +219,7 @@ object BubbleShortcutCatalog {
     )
 
     fun requireValid() {
-        require(modules.size == 15) { "O popup deve conter 15 módulos." }
+        require(modules.size == 16) { "O popup deve conter 16 módulos." }
         require(modules.map { it.spec.id }.distinct().size == modules.size) {
             "Cada atalho precisa ter identificador unico."
         }

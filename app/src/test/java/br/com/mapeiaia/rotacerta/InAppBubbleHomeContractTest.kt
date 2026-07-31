@@ -37,7 +37,6 @@ class InAppBubbleHomeContractTest {
 
         listOf(
             "ProfessionalBubbleItem(\"🟢\", \"WhatsApp\"",
-            "ProfessionalBubbleItem(\"🚗\", \"Coletor\"",
             "ProfessionalBubbleItem(\"🧹\", \"Limpar\"",
             "ProfessionalBubbleItem(\"🛠️\", \"Depurar\"",
             "ProfessionalBubbleItem(\"⏹️\", \"Encerrar\"",

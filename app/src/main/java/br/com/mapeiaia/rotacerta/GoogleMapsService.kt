@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import android.content.Context
+import android.os.SystemClock
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -82,6 +83,13 @@ class GoogleMapsService(context: Context? = null) {
             return@withContext List(destinations.size) { null }
         }
 
+        val routeStartedElapsedNanos0163 = SystemClock.elapsedRealtimeNanos()
+        FarolFlightRecorder0163.record(
+            stage = "MAPS_ROUTE_MATRIX_ENTER",
+            packageName = null,
+            details = "origin=$originAddress; destinations=${destinations.size}; apiKeyPresent=${apiKey.isNotBlank()}",
+            elapsedRealtimeNanos = routeStartedElapsedNanos0163,
+        )
         val normalizedOrigin = normalizeAddress(originAddress)
         val result = MutableList<Double?>(destinations.size) { null }
         val missingIndexes = mutableListOf<Int>()
@@ -98,7 +106,19 @@ class GoogleMapsService(context: Context? = null) {
             }
         }
 
-        if (missingIndexes.isEmpty()) return@withContext result
+        FarolFlightRecorder0163.record(
+            stage = "MAPS_ROUTE_CACHE_EVALUATED",
+            packageName = null,
+            details = "origin=$originAddress; hits=${destinations.size - missingIndexes.size}; misses=${missingIndexes.size}; destinations=${destinations.size}",
+        )
+        if (missingIndexes.isEmpty()) {
+            FarolFlightRecorder0163.record(
+                stage = "MAPS_ROUTE_MATRIX_COMPLETE",
+                packageName = null,
+                details = "path=cache_only; distances=$result; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - routeStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
+            )
+            return@withContext result
+        }
 
         val missingDestinations = missingIndexes.map(destinations::get)
         val body = addressRouteMatrixBody(originAddress, missingDestinations)
@@ -106,6 +126,11 @@ class GoogleMapsService(context: Context? = null) {
             requestAddressRouteMatrix(body, apiKey, missingDestinations.size)
         }
 
+        FarolFlightRecorder0163.record(
+            stage = "MAPS_ROUTE_NETWORK_RESULT",
+            packageName = null,
+            details = "requested=${missingDestinations.size}; returned=${fetched?.size ?: 0}; values=$fetched; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - routeStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
+        )
         fetched?.forEachIndexed { fetchedIndex, distanceKm ->
             if (distanceKm == null) return@forEachIndexed
             val originalIndex = missingIndexes[fetchedIndex]
@@ -116,6 +141,11 @@ class GoogleMapsService(context: Context? = null) {
             persistDistance(PERSISTENT_ADDRESS_ROUTE_PREFIX, cacheKey, distanceKm)
         }
 
+        FarolFlightRecorder0163.record(
+            stage = "MAPS_ROUTE_MATRIX_COMPLETE",
+            packageName = null,
+            details = "path=cache_and_network; distances=$result; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - routeStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
+        )
         result
     } // direct_address_route_matrix_0_1_128
 
@@ -178,11 +208,34 @@ class GoogleMapsService(context: Context? = null) {
             setRequestProperty("X-Android-Package", BuildConfig.APPLICATION_ID)
         }
 
+        val requestStartedElapsedNanos0163 = SystemClock.elapsedRealtimeNanos()
         return try {
             connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            if (connection.responseCode !in 200..299) return null
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            parseRouteMatrixDistances(response, destinationCount)
+            val responseCode0163 = connection.responseCode
+            FarolFlightRecorder0163.record(
+                stage = "MAPS_HTTP_RESPONSE",
+                packageName = null,
+                details = "endpoint=route_matrix; code=$responseCode0163; destinations=$destinationCount; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - requestStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
+            )
+            if (responseCode0163 !in 200..299) {
+                null
+            } else {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val parsed0163 = parseRouteMatrixDistances(response, destinationCount)
+                FarolFlightRecorder0163.record(
+                    stage = "MAPS_HTTP_PARSED",
+                    packageName = null,
+                    details = "endpoint=route_matrix; body_len=${response.length}; distances=$parsed0163",
+                )
+                parsed0163
+            }
+        } catch (error: Throwable) {
+            FarolFlightRecorder0163.record(
+                stage = "MAPS_HTTP_ERROR",
+                packageName = null,
+                details = "endpoint=route_matrix; error=${error::class.java.simpleName}:${error.message}; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - requestStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
+            )
+            throw error
         } finally {
             connection.disconnect()
         }

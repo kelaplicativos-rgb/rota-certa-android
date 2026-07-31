@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -108,6 +109,14 @@ fun RotaCertaApp(launchIntent: Intent?) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val repository = remember { SettingsRepository(context) }
     val settings by repository.settings.collectAsState(initial = AppSettings())
+    LaunchedEffect("work_mode_default_off_0_1_162") {
+        val migrationPrefs0162 = context.getSharedPreferences("rota_certa_runtime_migrations", Context.MODE_PRIVATE)
+        if (!migrationPrefs0162.getBoolean("work_mode_default_off_0_1_162", false)) {
+            val stored0162 = repository.settings.first()
+            repository.saveSettings(WorkModePolicy0162.setEnabled(stored0162, false))
+            migrationPrefs0162.edit().putBoolean("work_mode_default_off_0_1_162", true).apply()
+        }
+    }
     // in_app_bubble_immediate_state_0_1_98 substituido pela navegacao agrupada 0.1.115
     val history = emptyList<AnalysisResult>()
     val savedPlaces by repository.savedPlaces.collectAsState(initial = emptyList())
@@ -518,9 +527,6 @@ fun RotaCertaApp(launchIntent: Intent?) {
                 )
                 TAB_TOOLS -> ToolsScreen(
                     onOpenWhatsApp = { openWhatsAppApp(context) },
-                    onOpenBlaBlaCarCollector = {
-                        context.startActivity(Intent(context, BlaBlaCarCollectorActivity::class.java))
-                    },
                     onClearClipboard = { clearClipboard(context) },
                     onOpenWorkTracking = { context.startActivity(Intent(context, WorkTrackingActivity::class.java)) },
                 )
@@ -589,7 +595,6 @@ private fun ProfessionalBubbleDashboard(
     selectedGroup: String,
     onSelectGroup: (String) -> Unit,
     onOpenWhatsApp: () -> Unit,
-    onOpenCollector: () -> Unit,
     onClearClipboard: () -> Unit,
     onCreateSupportReport: () -> Unit,
     onStopApplication: () -> Unit,
@@ -630,7 +635,6 @@ private fun ProfessionalBubbleDashboard(
         ProfessionalBubbleRow(
             items = listOf(
                 ProfessionalBubbleItem("🟢", "WhatsApp", false, onOpenWhatsApp),
-                ProfessionalBubbleItem("🚗", "Coletor", false, onOpenCollector),
                 ProfessionalBubbleItem("🧹", "Limpar", false, onClearClipboard),
             ),
         )
@@ -1410,7 +1414,7 @@ private fun groupedBubbleTitle(group: String): String = when (group) {
 }
 
 private fun groupedBubbleDescription(group: String): String = when (group) {
-    BUBBLE_GROUP_GENERAL -> "Liga ou pausa o Rota Certa e os avisos."
+    BUBBLE_GROUP_GENERAL -> "Use o Modo Trabalho para ligar ou pausar todo o processamento."
     BUBBLE_GROUP_READING -> "Autoriza a Acessibilidade e controla a leitura da tela."
     BUBBLE_GROUP_ALERTS -> "Crie e edite somente alertas de proximidade."
     BUBBLE_GROUP_SAVED_PLACES -> "Gerencie somente locais salvos, sem alerta."
@@ -1458,14 +1462,13 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             style = MaterialTheme.typography.bodySmall,
         ) // maps_key_single_build_source_0_1_138
         SettingsSwitchRow(
-            label = "Rota Certa ligado",
-            checked = settings.appEnabled,
-            onCheckedChange = { enabled -> onChange(settings.copy(appEnabled = enabled)) },
+            label = "Modo Trabalho",
+            checked = WorkModePolicy0162.isEnabled(settings),
+            onCheckedChange = { enabled -> onChange(WorkModePolicy0162.setEnabled(settings, enabled)) },
         )
-        SettingsSwitchRow(
-            label = "Leitura ao vivo",
-            checked = settings.liveReadingEnabled,
-            onCheckedChange = { enabled -> onChange(settings.copy(liveReadingEnabled = enabled)) },
+        Text(
+            "Ligue somente ao iniciar o trabalho. Desligado, o farol, OCR, captura automática, rotas e avisos ficam em espera.",
+            style = MaterialTheme.typography.bodySmall,
         )
         SettingsSwitchRow(
             label = "Falar radares e proximidade",
@@ -1483,10 +1486,10 @@ private fun SystemControlCard(settings: AppSettings, onChange: (AppSettings) -> 
             Text(if (accessibilityGranted) "Revisar permissão de acessibilidade" else "Conceder permissão de acessibilidade")
         }
         Text(
-            when {
-                !settings.appEnabled -> "Rota Certa pausado: leitura e avisos ficam em espera."
-                !settings.liveReadingEnabled -> "Alertas podem continuar ativos, mas a leitura dos cards está pausada."
-                else -> "Rota Certa e leitura ao vivo estão ativos."
+            if (WorkModePolicy0162.isEnabled(settings)) {
+                "Modo Trabalho ATIVO: leitura por eventos e recuperação automática prontas."
+            } else {
+                "Modo Trabalho DESLIGADO: nenhum card, screenshot ou rota é processado."
             },
             style = MaterialTheme.typography.bodySmall,
         )
@@ -1885,7 +1888,6 @@ private fun WorkRegionCard(
 @Composable
 private fun ToolsScreen(
     onOpenWhatsApp: () -> Unit,
-    onOpenBlaBlaCarCollector: () -> Unit,
     onClearClipboard: () -> Unit,
     onOpenWorkTracking: () -> Unit = {},
 ) {
@@ -1909,16 +1911,6 @@ private fun ToolsScreen(
                 Text("WhatsApp", fontWeight = FontWeight.Bold)
                 Text("Abre o WhatsApp instalado no celular.", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = onOpenWhatsApp, modifier = Modifier.fillMaxWidth()) { Text("Abrir WhatsApp") }
-            }
-        }
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Coletor BlaBlaCar", fontWeight = FontWeight.Bold)
-                Text(
-                    "Registro manual de viagem logada: passageiros, telefones, WhatsApp, rotas, faturamento, despesas e lucro.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Button(onClick = onOpenBlaBlaCarCollector, modifier = Modifier.fillMaxWidth()) { Text("Abrir coletor") }
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -2163,7 +2155,6 @@ private fun formatDate(value: Long): String =
 
 // professional_bubble_named_action_markers_0_1_118
 // label = "WhatsApp"
-// label = "Coletor"
 // label = "Limpar"
 // label = "Depurar"
 // label = "Encerrar"

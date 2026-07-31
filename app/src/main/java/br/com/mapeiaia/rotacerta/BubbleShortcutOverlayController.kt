@@ -34,6 +34,9 @@ class BubbleShortcutOverlayController(
     private val appearanceStore = PopupAppearanceStore(context)
     private var shortcutView: View? = null
     private var alertPopupView: View? = null
+    private var silentStatusView: View? = null
+    private var silentStatusDismiss: Runnable? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     val shortcutsVisible: Boolean
         get() = shortcutView != null
@@ -165,9 +168,54 @@ class BubbleShortcutOverlayController(
         trace("proximity.popup.closed")
     }
 
+    fun showSilentStatus159(message: String, success: Boolean) {
+        hideShortcuts()
+        hideSilentStatus159()
+        val scale = appearanceStore.scale()
+        val label = TextView(context).apply {
+            text = message
+            textSize = scaledSp(13f, scale)
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            isFocusable = false
+            setPadding(scaledDp(14, scale), scaledDp(9, scale), scaledDp(14, scale), scaledDp(9, scale))
+            background = GradientDrawable().apply {
+                cornerRadius = scaledDp(16, scale).toFloat()
+                setColor(if (success) Color.rgb(33, 105, 63) else Color.rgb(130, 72, 25))
+            }
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = scaledDp(72, scale)
+        }
+        if (runCatching { windowManager.addView(label, params) }.isSuccess) {
+            silentStatusView = label
+            val dismiss = Runnable { hideSilentStatus159() }
+            silentStatusDismiss = dismiss
+            mainHandler.postDelayed(dismiss, 1_500L)
+        }
+    }
+
+    fun hideSilentStatus159() {
+        silentStatusDismiss?.let(mainHandler::removeCallbacks)
+        silentStatusDismiss = null
+        val view = silentStatusView ?: return
+        runCatching { windowManager.removeView(view) }
+        silentStatusView = null
+    }
+
     fun hideAll() {
         hideShortcuts()
         hideProximityAlert()
+        hideSilentStatus159()
     }
 
     private fun showShortcuts(

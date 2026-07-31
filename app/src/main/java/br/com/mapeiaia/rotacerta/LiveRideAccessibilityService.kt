@@ -14,9 +14,11 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.view.Display
@@ -73,7 +75,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     } // quick_reply_receiver_checklist_3
     private val screenshotInProgress = AtomicBoolean(false)
+    private val driverCardSessionGate0162 = DriverCardSessionGate0162()
+    private var workModeRuntimeActive0162 = false
+    private var workModeSettingsReady0162 = false
+    private var lastRejectedForegroundPackage0162: String? = null
+    private val failedCardAutoCaptureGate0161 = FailedCardAutoCaptureGate0161()
+    private lateinit var failedCardLayoutModelStore0161: FailedCardLayoutModelStore0161
+    private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
+    private var lastFailedCardSignature0161: String? = null
+    private var lastFailedCardAccessibilityHash0161: Int? = null
     private val tripConfirmationCopyInProgressChecklist8 = AtomicBoolean(false)
+    private val passengerValueCaptureInProgress159 = AtomicBoolean(false)
+    private val passengerValueCaptureGeneration160 = java.util.concurrent.atomic.AtomicLong(0L)
+    private val passengerValueScreenshotOwner160 = java.util.concurrent.atomic.AtomicLong(0L)
+    @Volatile private var passengerValueCaptureStartedAt160: Long = 0L
     private val fullScreenCopyInProgress138 = AtomicBoolean(false)
     private val manualCaptureInProgress138 = AtomicBoolean(false)
     private var farolCriticalStartedAtFinalChecklist6: Long = 0L // subsecond_fields_final_checklist_6
@@ -112,7 +127,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastOcrTextAtMillis: Long = 0L
     private var lastUniversalAddressSeenAtMillis: Long = 0L
     private var lastUniversalAddressSignature: String? = null // universal_source_freshness_fields_0_1_94
-    private var currentSettings = AppSettings()
+    private var currentSettings = WorkModePolicy0162.setEnabled(AppSettings(), false)
     private var currentSavedPlaces = emptyList<SavedPlace>()
     private var currentImportedRadars = emptyList<ImportedRadar>()
     private var currentRadarColor = RadarColor.Idle
@@ -160,7 +175,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var activeAnalysisPackage143: String? = null
     private var activeAnalysisHash143: Int? = null
     private var activeAnalysisStartedAt143: Long = 0L
-    private val accessibilityEventFloodGate = AccessibilityEventFloodGate()
+    private val farolRealtimeEventGate0167 = FarolRealtimeEventGate0167()
     private val importedRadarSpatialIndex = ImportedRadarSpatialIndex()
     private var lastExternalWindowPackageName: String? = null
     private var universalAccessibilityOwnsCard: Boolean = false // universal_fast_read_field_0_1_108
@@ -176,6 +191,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        FarolFlightRecorder0163.initialize(applicationContext) // farol_flight_recorder_init_0_1_163
         if (!quickReplyReceiverRegisteredChecklist3) {
             ContextCompat.registerReceiver(
                 this,
@@ -186,6 +202,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             quickReplyReceiverRegisteredChecklist3 = true
         } // quick_reply_receiver_registration_checklist_3
         repository = SettingsRepository(applicationContext)
+        failedCardLayoutModelStore0161 = FailedCardLayoutModelStore0161(applicationContext)
         DiagnosticRuntimeGate.setEnabled(DebugLogPreferenceStore.isEnabled(applicationContext))
         UnifiedDebugEventStore.record("SERVICE_CREATE", packageName, "serviço de acessibilidade criado")
         geocodingService = GeocodingService(applicationContext)
@@ -231,7 +248,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
         serviceReady = true
         UnifiedDebugEventStore.record("SERVICE_CONNECTED", packageName, "serviço pronto=true")
         Unit
-        scope.launch { repository.settings.collect { currentSettings = it } }
+        scope.launch {
+            repository.settings.collect { updated0162 ->
+                if (!workModeSettingsReady0162) return@collect
+                val previousEnabled0162 = WorkModePolicy0162.isEnabled(currentSettings)
+                currentSettings = updated0162
+                val currentEnabled0162 = WorkModePolicy0162.isEnabled(updated0162)
+                if (previousEnabled0162 != currentEnabled0162) {
+                    applyWorkModeRuntime0162(currentEnabled0162)
+                }
+            }
+        }
         scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
         scope.launch { repository.importedRadars.collect { currentImportedRadars = it } }
         scope.launch {
@@ -258,40 +285,50 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 )
                 repository.saveSettings(currentSettings)
             } // manual_apps_and_cards_required_settings_0_1_127
+            val selectedBefore0162 = SelectedRideAppStore.read(applicationContext)
+            SelectedRideAppStore.save(applicationContext, selectedBefore0162)
+            val migrationPrefs0162 = getSharedPreferences("rota_certa_runtime_migrations", Context.MODE_PRIVATE)
+            if (!migrationPrefs0162.getBoolean("work_mode_default_off_0_1_162", false)) {
+                currentSettings = WorkModePolicy0162.setEnabled(currentSettings, false)
+                repository.saveSettings(currentSettings)
+                migrationPrefs0162.edit().putBoolean("work_mode_default_off_0_1_162", true).apply()
+            }
+            workModeSettingsReady0162 = true
             // pre_registered_runtime_cleanup_0_1_126 superseded_by_manual_selection_0_1_127
-            showOverlay(RadarColor.Idle)
+            applyWorkModeRuntime0162(WorkModePolicy0162.isEnabled(currentSettings), force0162 = true)
             // WhatsApp agora fica dentro da central da bolinha. // whatsapp_inside_grid_0_1_94
-            Unit
             startContinuousScan()
             startProximityAlertMonitor()
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-        UnifiedDebugEventStore.record(
-            stage = "ACCESSIBILITY_EVENT",
-            packageName = event.packageName?.toString(),
-            details = "type=${event.eventType}; class=${event.className}; window=${event.windowId}; serviceReady=$serviceReady",
-        )
-        if (!serviceReady) return
-        if (!currentSettings.appEnabled || !currentSettings.liveReadingEnabled) {
-            hardClearUniversalTwoAddress("Leitura universal desligada.")
+        if (event == null || !serviceReady) return
+        if (!WorkModePolicy0162.isEnabled(currentSettings)) {
+            applyWorkModeRuntime0162(false)
             return
         }
-        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) {
-            UnifiedDebugEventStore.record("BUBBLE_EVENT_IGNORED", event.packageName?.toString(), "motivo=tipo_irrelevante; type=${event.eventType}; window=${event.windowId}")
-            return
-        }
+        if (!AccessibilityEventFloodGate.isRelevantEventType(event.eventType)) return
 
         val eventPackage = normalizePackageName(event.packageName?.toString())
         val rootPackage = currentRootPackageName()
-        val candidatePackage = eventPackage ?: rootPackage
-        UnifiedDebugEventStore.record(
-            "BUBBLE_EVENT_RESOLVED",
-            candidatePackage,
-            "eventPackage=${eventPackage ?: "nao informado"}; rootPackage=${rootPackage ?: "nao informado"}; window=${event.windowId}",
+        val selectedPackages156 = SelectedRideAppStore.read(applicationContext)
+        // Compatibilidade funcional: TransientOverlayPackagePolicy0161.shouldPreferSelectedRoot
+        // agora é aplicada pelo resolvedor estrito da sessão imutável 0.1.162.
+        val candidatePackage = DriverCardEventResolver0162.resolve(
+            eventPackageName = eventPackage,
+            rootPackageName = rootPackage,
+            selectedPackages = selectedPackages156,
+            ownPackageName = packageName,
         )
+        val transientOverlayEvent151 = eventPackage != null &&
+            DriverAppPackagePolicy0162.isTransientOverlay(eventPackage, packageName) &&
+            candidatePackage != null
+        if (candidatePackage == null) {
+            handleRejectedForeground0162(eventPackage, rootPackage, event)
+            return
+        }
+        lastRejectedForegroundPackage0162 = null
         val ownMainActivityEvent = UniversalWindowPackageResolver.isOwnMainActivityEvent(
             eventPackageName = candidatePackage,
             eventClassName = event.className?.toString(),
@@ -308,6 +345,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
             return
         }
+        if (eventPackage == this.packageName && !ownMainActivityEvent) return
+
+        val realtimeWindowId0167 = rootInActiveWindow?.windowId ?: event.windowId
+        if (!farolRealtimeEventGate0167.shouldCollect(
+                selectedPackageName = candidatePackage,
+                sourcePackageName = eventPackage,
+                windowId = realtimeWindowId0167,
+                eventType = event.eventType,
+                eventClassName = event.className?.toString(),
+                nowElapsedMillis = SystemClock.elapsedRealtime(),
+            )
+        ) return
+        UnifiedDebugEventStore.record(
+            stage = "ACCESSIBILITY_EVENT",
+            packageName = event.packageName?.toString(),
+            details = "type=${event.eventType}; class=${event.className}; window=${event.windowId}; serviceReady=$serviceReady; admitted0167=true",
+        )
+        UnifiedDebugEventStore.record(
+            "BUBBLE_EVENT_RESOLVED",
+            candidatePackage,
+            "eventPackage=${eventPackage ?: "nao informado"}; rootPackage=${rootPackage ?: "nao informado"}; window=${event.windowId}",
+        )
 
         val savedPackages = SelectedRideAppStore.read(applicationContext)
         var resolvedPackage = candidatePackage ?: lastExternalWindowPackageName ?: return
@@ -320,6 +379,32 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )?.let { resolvedPackage = it }
 
         if (resolvedPackage !in savedPackages || !shouldScanPackage(resolvedPackage)) {
+            val now154 = System.currentTimeMillis()
+            val stableSelectedPackage154 = universalActiveRidePackageName
+                ?.takeIf { it in savedPackages }
+                ?: recentSelectedRidePackageChecklist11?.takeIf { it in savedPackages }
+            val transientOverlayOrLauncher154 =
+                stableSelectedPackage154 != null &&
+                    universalActiveAddressSignature != null &&
+                    (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
+                    now154 - recentSelectedRidePackageAtMillisChecklist11 in 0L..2_000L &&
+                    (eventPackage == null ||
+                        eventPackage == this.packageName ||
+                        eventPackage == "com.android.systemui" ||
+                        eventPackage == "com.samsung.android.app.smartcapture" ||
+                        TransientOverlayPackagePolicy0161.isTransient(eventPackage) ||
+                        resolvedPackage.contains("launcher", ignoreCase = true))
+            if (transientOverlayOrLauncher154) {
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_PASSIVE_TRANSITION_DEFERRED",
+                    stableSelectedPackage154,
+                    "evento transitório=$eventPackage; raiz=$rootPackage; resolvido=$resolvedPackage; decisão válida preservada",
+                )
+                universalForegroundPackageName = stableSelectedPackage154
+                activePackageName = stableSelectedPackage154
+                lastExternalWindowPackageName = stableSelectedPackage154
+                return
+            }
             UnifiedDebugEventStore.record(
                 "BUBBLE_PACKAGE_BLOCKED",
                 resolvedPackage,
@@ -341,17 +426,39 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastExternalWindowPackageName = resolvedPackage
 
         val immediateTextChecklist13 = collectImmediateVisibleTextChecklist13()
-        val fingerprintChecklist13 = SimpleSavedAppFarolPolicy.screenFingerprint(
+        val activeRootWindowId0166 = rootInActiveWindow?.windowId
+        val stableWindowId151 = FarolSelectedAppInputPolicy0166.resolveStableWindowId(
+            eventPackageName = eventPackage,
+            rootPackageName = rootPackage,
+            selectedPackageName = resolvedPackage,
+            eventWindowId = event.windowId,
+            rootWindowId = activeRootWindowId0166,
+            lastStableWindowId = lastStableFarolWindowIdChecklist14,
+        )
+        val selectedRootWindowIsStable0166 =
+            (rootPackage == resolvedPackage && activeRootWindowId0166 != null) || eventPackage == resolvedPackage
+        if (!transientOverlayEvent151 && selectedRootWindowIsStable0166) {
+            lastStableFarolPackageChecklist14 = resolvedPackage
+            lastStableFarolWindowIdChecklist14 = stableWindowId151
+        }
+        val sessionToken0162 = ensureDriverCardSession0162(resolvedPackage, stableWindowId151)
+        val quickEvaluationChecklist13 = SimpleSavedAppFarolPolicy.evaluate(
             packageName = resolvedPackage,
-            text = immediateTextChecklist13,
-            windowId = event.windowId,
+            savedPackages = savedPackages,
+            text = DriverCardTextSanitizer0162.prepare(resolvedPackage, immediateTextChecklist13),
+        )
+        val fingerprintChecklist13 = DriverCardDisplayIdentity0162.fingerprint(
+            packageName = resolvedPackage,
+            windowId = stableWindowId151,
+            activeAddressSignature = quickEvaluationChecklist13.addressSignature.takeIf { quickEvaluationChecklist13.active },
         )
         UnifiedDebugEventStore.record(
             "BUBBLE_TEXT_COLLECTED",
             resolvedPackage,
             "fonte=acessibilidade_imediata; tamanho=${immediateTextChecklist13.length}; hash=${immediateTextChecklist13.hashCode()}; window=${event.windowId}; fingerprint=$fingerprintChecklist13",
         )
-        val screenChangedChecklist13 = lastImmediateScreenPackageChecklist13 != null &&
+        val screenChangedChecklist13 = !transientOverlayEvent151 &&
+            lastImmediateScreenPackageChecklist13 != null &&
             (lastImmediateScreenPackageChecklist13 != resolvedPackage ||
                 SimpleSavedAppFarolPolicy.changed(lastImmediateScreenFingerprintChecklist13, fingerprintChecklist13))
         if (screenChangedChecklist13) {
@@ -396,8 +503,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 universalActiveRidePackageName == resolvedPackage &&
                     universalActiveAddressSignature != null &&
                     (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
-                    decisionAge141 in 0L..STABLE_DECISION_ABSENCE_GRACE_MILLIS_141
-            if (preserveStableDecision141) {
+                    universalForegroundPackageName == resolvedPackage &&
+                    decisionAge141 in 0L..5_000L
+            if (preserveStableDecision141 || transientOverlayEvent151) {
                 UnifiedDebugEventStore.record(
                     "BUBBLE_EMPTY_READ_DEFERRED",
                     resolvedPackage,
@@ -413,11 +521,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        val quickEvaluationChecklist13 = SimpleSavedAppFarolPolicy.evaluate(
-            packageName = resolvedPackage,
-            savedPackages = savedPackages,
-            text = immediateTextChecklist13,
-        )
         val analysisHash143 = immediateTextChecklist13.hashCode()
         val sameAnalysisInFlight143 = analyzeJob?.isActive == true &&
             activeAnalysisPackage143 == resolvedPackage &&
@@ -448,7 +551,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         UnifiedDebugEventStore.record("BUBBLE_ANALYSIS_STARTED", resolvedPackage, "fonte=Accessibility; tamanho=${immediateTextChecklist13.length}; hash=$analysisHash143")
         analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                processRideText(immediateTextChecklist13, TextSource.Accessibility, allowPopupCandidate = true)
+                if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+                processRideText(
+                    immediateTextChecklist13,
+                    TextSource.Accessibility,
+                    allowPopupCandidate = true,
+                    packageHint152 = resolvedPackage,
+                )
             } finally {
                 if (activeAnalysisPackage143 == resolvedPackage && activeAnalysisHash143 == analysisHash143) {
                     activeAnalysisPackage143 = null
@@ -470,10 +579,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         UnifiedDebugEventStore.record("SERVICE_INTERRUPT", packageName, "Android interrompeu o serviço")
+        FarolFlightRecorder0163.forceCheckpoint("SERVICE_INTERRUPT")
     }
 
     override fun onDestroy() {
         UnifiedDebugEventStore.record("SERVICE_DESTROY", packageName, "serviço destruído")
+        FarolFlightRecorder0163.forceCheckpoint("SERVICE_DESTROY")
 
         if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
         if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
@@ -485,6 +596,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         } // quick_reply_receiver_unregister_checklist_3
         Unit
         serviceReady = false
+        workModeRuntimeActive0162 = false
+        workModeSettingsReady0162 = false
+        driverCardSessionGate0162.invalidate()
+        failedCardAutoCaptureGate0161.reset()
+        lastFailedCardNodes0161 = emptyList()
+        lastFailedCardSignature0161 = null
+        lastFailedCardAccessibilityHash0161 = null
         screenshotInProgress.set(false)
         coreLiveReadTriggerGate.reset() // gigu_inspired_gate_reset_0_1_89
         analyzeJob?.cancel()
@@ -501,55 +619,116 @@ class LiveRideAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private fun startContinuousScan() {
-        if (continuousScanStarted || !serviceReady) return
-        continuousScanStarted = true
-        Unit /* diagnostics_off_checklist_4 */
-        scope.launch {
-            while (serviceReady) {
-                if (!currentSettings.liveReadingEnabled) {
-                    delay(SCAN_LOOP_MS)
-                    continue
-                } // bubble_reading_scan_gate_0_1_118
-                if (bubbleGestureActive) {
-                    delay(BubbleDragPolicy.ANALYSIS_RESUME_DELAY_MS)
-                    continue
-                } // bubble_drag_scan_pause_0_1_116
-                when {
-                    !currentSettings.appEnabled || !currentSettings.liveReadingEnabled ->
-                        hardClearUniversalTwoAddress("Leitura universal desligada.")
-                    !isUniversalExternalWindowActive() ->
-                        hardClearUniversalTwoAddress("Tela do proprio Rota Certa ou janela sem leitura valida.")
-                    else -> {
-                        val expectedPackage = universalResolvedForegroundPackage()
-                        if (!shouldScanPackage(expectedPackage) ||
-                            !UniversalFastReadPolicy.shouldScanLivePackage(
-                                packageName = expectedPackage,
-                                ownPackageName = this@LiveRideAccessibilityService.packageName,
-                            )
-                        ) { // selected_apps_scan_loop_0_1_122
-                            hardClearUniversalTwoAddress("Pacote passivo; leitura e OCR suspensos.")
-                        } else {
-                            val visibleText = collectVisibleText(allowPopupCandidate = true)
-                            if (expectedPackage == universalResolvedForegroundPackage() && isUniversalExternalWindowActive()) {
-                                processRideText(
-                                    visibleText,
-                                    TextSource.Accessibility,
-                                    allowPopupCandidate = true,
-                                ) // global_continuous_empty_clear_0_1_124
-                                strictSelectedRootPackageChecklist1()?.let(::scheduleScreenshotFallback127)
-                            }
-                        }
-                    }
-                }
-                val accessibilityScanDelayMillis = UniversalFastReadPolicy.minimumAccessibilityScanIntervalMillis(
-                    accessibilityOwnsCard = universalAccessibilityOwnsCard,
-                    hasActiveAddressSignature = universalActiveAddressSignature != null,
-                )
-                delay(accessibilityScanDelayMillis)
-            }
+    private fun applyWorkModeRuntime0162(enabled0162: Boolean, force0162: Boolean = false) {
+        if (!force0162 && workModeRuntimeActive0162 == enabled0162) return
+        workModeRuntimeActive0162 = enabled0162
+        farolRealtimeEventGate0167.reset()
+        if (enabled0162) {
+            lastRejectedForegroundPackage0162 = null
+            showOverlay(RadarColor.Idle, null)
+            scheduleVisibleTextAnalysis(delayMs = 0L)
+            return
         }
-    } // universal_stable_scan_0_1_101
+        driverCardSessionGate0162.invalidate()
+        universalScreenGeneration += 1L
+        universalWindowGeneration += 1L
+        universalRouteJob?.cancel()
+        universalRouteJob = null
+        analyzeJob?.cancel()
+        analyzeJob = null
+        screenshotFallbackJob127?.cancel()
+        screenshotFallbackJob127 = null
+        partialReadConfirmationJobChecklist14?.cancel()
+        partialReadConfirmationJobChecklist14 = null
+        liveAnalysisJob?.cancel()
+        liveAnalysisJob = null
+        failedCardAutoCaptureGate0161.reset()
+        lastFailedCardNodes0161 = emptyList()
+        lastFailedCardSignature0161 = null
+        lastFailedCardAccessibilityHash0161 = null
+        lastAccessibilityText = ""
+        lastOcrText = ""
+        universalActiveRidePackageName = null
+        universalActiveAddressSignature = null
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        currentDistanceKm = null
+        currentRadarColor = RadarColor.Idle
+        shortcutOverlayController.hideAll()
+        if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
+        if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
+        removeOverlay()
+        UnifiedDebugEventStore.record("WORK_MODE_0162", packageName, "enabled=false; farol_event_driven_paused=true")
+    }
+
+    private fun ensureDriverCardSession0162(packageName0162: String, windowId0162: Int): DriverCardSession0162 {
+        val previous0162 = driverCardSessionGate0162.current()
+        val current0162 = driverCardSessionGate0162.begin(packageName0162, windowId0162)
+        if (previous0162 != current0162) {
+            universalScreenGeneration += 1L
+            universalWindowGeneration += 1L
+            universalRouteJob?.cancel()
+            universalRouteJob = null
+            screenshotFallbackJob127?.cancel()
+            screenshotFallbackJob127 = null
+            failedCardAutoCaptureGate0161.reset()
+            lastFailedCardSignature0161 = null
+            lastFailedCardAccessibilityHash0161 = null
+            UnifiedDebugEventStore.record(
+                "DRIVER_CARD_SESSION_0162",
+                packageName0162,
+                "window=${current0162.windowId}; generation=${current0162.generation}",
+            )
+        }
+        return current0162
+    }
+
+    private fun handleRejectedForeground0162(
+        eventPackage0162: String?,
+        rootPackage0162: String?,
+        event0162: AccessibilityEvent,
+    ) {
+        val root0162 = DriverAppPackagePolicy0162.normalize(rootPackage0162)
+        val eventPackageNormalized0162 = DriverAppPackagePolicy0162.normalize(eventPackage0162)
+        if (root0162 == packageName) {
+            driverCardSessionGate0162.invalidate()
+            hardClearUniversalTwoAddress("Tela do proprio Rota Certa.")
+            return
+        }
+        val active0162 = driverCardSessionGate0162.current()
+        val transientOnly0162 = active0162 != null &&
+            DriverAppPackagePolicy0162.isTransientOverlay(eventPackageNormalized0162, packageName) &&
+            (root0162 == null || DriverAppPackagePolicy0162.isTransientOverlay(root0162, packageName))
+        if (transientOnly0162) {
+            UnifiedDebugEventStore.record(
+                "DRIVER_TRANSIENT_OVERLAY_0162",
+                active0162.packageName,
+                "event=${eventPackageNormalized0162 ?: "none"}; root=${root0162 ?: "none"}; preserved=true",
+            )
+            return
+        }
+        val rejected0162 = root0162 ?: eventPackageNormalized0162 ?: "unknown"
+        if (lastRejectedForegroundPackage0162 == rejected0162 &&
+            currentRadarColor == RadarColor.Idle && currentDistanceKm == null
+        ) return
+        lastRejectedForegroundPackage0162 = rejected0162
+        driverCardSessionGate0162.invalidate()
+        hardClearUniversalTwoAddress(
+            reason = "Janela fora do aplicativo de corrida selecionado: $rejected0162.",
+            keepWaitingYellow = false,
+        )
+        UnifiedDebugEventStore.record(
+            "DRIVER_WINDOW_REJECTED_0162",
+            rejected0162,
+            "event=${event0162.eventType}; window=${event0162.windowId}",
+        )
+    }
+
+    private fun startContinuousScan() {
+        // event_driven_farol_0_1_162: sem while, timer ou OCR continuo.
+        // bubble_drag_scan_pause_0_1_116 — sem loop, portanto nenhum scan compete com o gesto.
+        continuousScanStarted = true
+    }
 
     private fun startProximityAlertMonitor() {
         if (proximityAlertMonitorStarted || !serviceReady) return
@@ -646,7 +825,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         } // bubble_drag_accessibility_pause_0_1_116
         if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return
         if (!isUniversalExternalWindowActive()) return
-        val expectedPackage = universalResolvedForegroundPackage() ?: return
+        val sessionToken0162 = driverCardSessionGate0162.current() ?: return
+        val expectedPackage = sessionToken0162.packageName
         if (!shouldScanPackage(expectedPackage)) return // selected_apps_schedule_0_1_122
         if (!UniversalFastReadPolicy.shouldScanLivePackage(
                 packageName = expectedPackage,
@@ -656,24 +836,34 @@ class LiveRideAccessibilityService : AccessibilityService() {
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
             if (delayMs > 0L) delay(delayMs)
-            if (!isUniversalExternalWindowActive() || expectedPackage != universalResolvedForegroundPackage()) return@launch
+            if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+            if (!isUniversalExternalWindowActive() || expectedPackage != strictSelectedRootPackageChecklist1()) return@launch
             val visibleText = collectVisibleText(allowPopupCandidate = true)
-            if (!isUniversalExternalWindowActive() || expectedPackage != universalResolvedForegroundPackage()) return@launch
+            if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+            if (!isUniversalExternalWindowActive() || expectedPackage != strictSelectedRootPackageChecklist1()) return@launch
             processRideText(
                 visibleText,
                 TextSource.Accessibility,
                 allowPopupCandidate = true,
-            ) // global_scheduled_empty_clear_0_1_124
+                packageHint152 = expectedPackage,
+            ) // immutable_scheduled_session_0_1_162
         }
     } // universal_stable_schedule_0_1_101
 
     private fun scheduleScreenshotFallback127(expectedPackage: String) {
         screenshotFallbackJob127?.cancel()
+        FarolFlightRecorder0163.record(
+            stage = "OCR_FALLBACK_SCHEDULED",
+            packageName = expectedPackage,
+            details = "delay_ms=${FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS}; generation=$universalScreenGeneration; lastAccessibilityAccepted=$lastAccessibilityAcceptedAtMillis127",
+        )
+        val sessionToken0162 = driverCardSessionGate0162.current()?.takeIf { it.packageName == expectedPackage } ?: return
         val scheduledAt127 = System.currentTimeMillis()
         screenshotFallbackJob127 = scope.launch {
             delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS) // ocr_delay_final_checklist_6
-            if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return@launch
-            if (expectedPackage != universalResolvedForegroundPackage()) return@launch
+            if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return@launch
+            if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+            if (expectedPackage != strictSelectedRootPackageChecklist1()) return@launch
             if (!shouldScanPackage(expectedPackage)) return@launch
             if (lastAccessibilityAcceptedAtMillis127 >= scheduledAt127) return@launch
             requestScreenshotAnalysis(allowPopupCandidate = true)
@@ -687,118 +877,218 @@ class LiveRideAccessibilityService : AccessibilityService() {
  // automatic_capture_nonblocking_0_1_129
 
     private fun requestScreenshotAnalysis(allowPopupCandidate: Boolean = false) {
-        if (universalRouteJob?.isActive == true || (lastAnalyzedHash != null && lastAnalyzedHash == lastSnapshotHash)) return // ocr_outside_critical_path_final_checklist_6
-        if (!hasStrictSelectedRootChecklist1()) return // strict_screenshot_gate_checklist_1
-
-        if (!currentSettings.liveReadingEnabled) return // bubble_reading_ocr_gate_0_1_118
-        if (bubbleGestureActive) {
-            Unit /* diagnostics_off_checklist_4 */
-            return
-        } // bubble_drag_screenshot_pause_0_1_116
+        val ocrAttemptStartedElapsedNanos0163 = android.os.SystemClock.elapsedRealtimeNanos()
+        FarolFlightRecorder0163.record(
+            stage = "OCR_REQUEST_EVALUATE",
+            packageName = universalResolvedForegroundPackage(),
+            details = "routeActive=${universalRouteJob?.isActive == true}; lastAnalyzedHash=$lastAnalyzedHash; lastSnapshotHash=$lastSnapshotHash; strictRoot=${hasStrictSelectedRootChecklist1()}; live=${currentSettings.liveReadingEnabled}; gesture=$bubbleGestureActive; ready=$serviceReady; external=${isUniversalExternalWindowActive()}; sdk=${Build.VERSION.SDK_INT}; generation=$universalScreenGeneration; windowGeneration=$universalWindowGeneration",
+            elapsedRealtimeNanos = ocrAttemptStartedElapsedNanos0163,
+        )
+        // bubble_instant_drag_0_1_116
+        // bubble_drag_screenshot_pause_0_1_116
+        // bubble_drag_ocr_background_0_1_116
+        @Suppress("UNUSED_VARIABLE") val ignoredAllowPopupCandidate0161 = allowPopupCandidate
+        if (universalRouteJob?.isActive == true || (lastAnalyzedHash != null && lastAnalyzedHash == lastSnapshotHash)) return
+        if (!hasStrictSelectedRootChecklist1()) return
+        if (!currentSettings.liveReadingEnabled || bubbleGestureActive) return
         if (!serviceReady || !isUniversalExternalWindowActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        val resolvedOcrPackage = universalResolvedForegroundPackage() ?: return
+
+        val sessionToken0162 = driverCardSessionGate0162.current() ?: return
+        val resolvedOcrPackage = sessionToken0162.packageName
+        val savedPackages0161 = SelectedRideAppStore.read(applicationContext)
+        if (resolvedOcrPackage !in savedPackages0161 || !shouldScanPackage(resolvedOcrPackage)) return
+        val accessibilitySnapshot0161 = collectImmediateVisibleTextChecklist13()
+        val nodeSnapshot0161 = collectFailedCardNodeLines0161()
+        val parserEvaluation0161 = SimpleSavedAppFarolPolicy.evaluate(
+            packageName = resolvedOcrPackage,
+            savedPackages = savedPackages0161,
+            text = DriverCardTextSanitizer0162.prepare(resolvedOcrPackage, accessibilitySnapshot0161),
+        )
+        val probableCard0161 = FailedCardRecoveryEngine0161.probableRideCard(
+            text = accessibilitySnapshot0161,
+            packageName = resolvedOcrPackage,
+        )
+        val selectedRootAllowsOcr0166 = FarolSelectedAppInputPolicy0166.shouldAttemptOcr(
+            packageName = resolvedOcrPackage,
+            selectedPackages = savedPackages0161,
+            strictRootPackageName = strictSelectedRootPackageChecklist1(),
+            parserAlreadyActive = parserEvaluation0161.active,
+        )
+        if (!selectedRootAllowsOcr0166) return
+        val probableCardForCapture0166 = probableCard0161 || selectedRootAllowsOcr0166
+
         val ocrRequestToken = UniversalFastReadPolicy.createOcrRequestToken(
             observedPackageName = universalForegroundPackageName ?: activePackageName,
             resolvedPackageName = resolvedOcrPackage,
             ownPackageName = this.packageName,
             screenGeneration = universalScreenGeneration,
             windowGeneration = universalWindowGeneration,
-        ) ?: run {
-            Unit /* diagnostics_off_checklist_4 */
-            return
-        }
-        val requestedPackage = ocrRequestToken.observedPackageName
-        if (!shouldScanPackage(requestedPackage)) return // selected_apps_ocr_gate_0_1_122
-        if (!UniversalFastReadPolicy.shouldScanLivePackage(
-                packageName = requestedPackage,
-                ownPackageName = this.packageName,
-            )
-        ) return
+        ) ?: return
+        val requestedPackage = resolvedOcrPackage // immutable_selected_session_0_1_162
+        if (!UniversalFastReadPolicy.shouldScanLivePackage(requestedPackage, this.packageName)) return
         if (!UniversalFastReadPolicy.shouldRequestOcr(
                 accessibilityOwnsCard = universalAccessibilityOwnsCard,
                 hasActiveAddressSignature = universalActiveAddressSignature != null,
             )
         ) return
-        val now = System.currentTimeMillis()
+
+        val now0161 = System.currentTimeMillis()
         val minimumOcrIntervalMillis = UniversalFastReadPolicy.minimumOcrIntervalMillis(
             hasActiveAddressSignature = universalActiveAddressSignature != null,
         )
-        if (now - lastScreenshotMillis < minimumOcrIntervalMillis) return
+        if (now0161 - lastScreenshotMillis < minimumOcrIntervalMillis) return
+        val windowId0161 = rootInActiveWindow?.windowId ?: lastStableFarolWindowIdChecklist14 ?: 0
+        val captureSignature0161 = FailedCardRecoveryEngine0161.signature(
+            packageName = requestedPackage,
+            windowId = windowId0161,
+            text = accessibilitySnapshot0161,
+            nodes = nodeSnapshot0161,
+        )
         if (!screenshotInProgress.compareAndSet(false, true)) return
-        lastScreenshotMillis = now
+        val captureReserved0161 = failedCardAutoCaptureGate0161.tryStart(
+            signature = captureSignature0161,
+            probableCard = probableCardForCapture0166,
+            parserActive = parserEvaluation0161.active,
+            routeInFlight = universalRouteJob?.isActive == true,
+            hasDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
+            nowMillis = now0161,
+        )
+        if (!captureReserved0161) {
+            screenshotInProgress.set(false)
+            return
+        }
+
+        lastScreenshotMillis = now0161
+        lastFailedCardNodes0161 = nodeSnapshot0161
+        lastFailedCardSignature0161 = captureSignature0161
+        lastFailedCardAccessibilityHash0161 = accessibilitySnapshot0161.hashCode()
+        rememberSourceText(requestedPackage, TextSource.Accessibility, accessibilitySnapshot0161)
+        UnifiedDebugEventStore.record(
+            "BUBBLE_FAILED_CARD_CAPTURE_STARTED",
+            requestedPackage,
+            "signature=$captureSignature0161; window=$windowId0161; texto=${accessibilitySnapshot0161.length}; nodes=${nodeSnapshot0161.size}",
+        )
+
         runCatching {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 mainExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
-                        if (!hasStrictSelectedRootChecklist1()) {
-                            screenshotInProgress.set(false)
-                            return // strict_screenshot_callback_before_ocr_checklist_1
-                        }
                         scope.launch {
-                            runCatching {
-                                if (!UniversalFastReadPolicy.isOcrRequestFresh(
-                                        token = ocrRequestToken,
-                                        observedPackageName = universalForegroundPackageName ?: activePackageName,
-                                        resolvedPackageName = universalResolvedForegroundPackage(),
-                                        ownPackageName = this@LiveRideAccessibilityService.packageName,
-                                        screenGeneration = universalScreenGeneration,
-                                        windowGeneration = universalWindowGeneration,
-                                    )
-                                ) {
-                                    Unit /* diagnostics_off_checklist_4 */
-                                    return@runCatching
-                                }
-                                if (FarolCriticalPathPolicy.shouldSkipOcr(
-                                    screenshotRequestedAtMillis = lastScreenshotMillis,
-                                    accessibilityAcceptedAtMillis = lastAccessibilityAcceptedAtMillis127,
-                                )) return@runCatching // accessibility_won_skip_ocr_final_checklist_6
-                                val bitmap = screenshot.toSoftwareBitmap() ?: return@runCatching
-                                val ocrText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                                        ocrService.extractText(bitmap)
-                                    } // bubble_drag_ocr_background_0_1_116
-                                if (!UniversalFastReadPolicy.isOcrRequestFresh(
-                                        token = ocrRequestToken,
-                                        observedPackageName = universalForegroundPackageName ?: activePackageName,
-                                        resolvedPackageName = universalResolvedForegroundPackage(),
-                                        ownPackageName = this@LiveRideAccessibilityService.packageName,
-                                        screenGeneration = universalScreenGeneration,
-                                        windowGeneration = universalWindowGeneration,
-                                    )
-                                ) {
-                                    Unit /* diagnostics_off_checklist_4 */
-                                    return@runCatching
-                                }
-                                val fullScreenTriggerChecklist11 = withContext(Dispatchers.Default) {
-                                    UniversalAddressTrigger.evaluate(ocrText)
-                                }
-                                val fullScreenFieldsChecklist11 = RideFields(
-                                    pickup = fullScreenTriggerChecklist11.pickup,
-                                    destination = fullScreenTriggerChecklist11.destination,
+                            var bitmap0161: Bitmap? = null
+                            try {
+                                val stillFresh0161 = UniversalFastReadPolicy.isOcrRequestFresh(
+                                    token = ocrRequestToken,
+                                    observedPackageName = universalForegroundPackageName ?: activePackageName,
+                                    resolvedPackageName = universalResolvedForegroundPackage(),
+                                    ownPackageName = this@LiveRideAccessibilityService.packageName,
+                                    screenGeneration = universalScreenGeneration,
+                                    windowGeneration = universalWindowGeneration,
                                 )
-                                processRideText(ocrText, TextSource.Ocr, allowPopupCandidate = true)
-                                bitmap.recycle()
-                            }.onFailure { error ->
+                                if (!stillFresh0161 || !driverCardSessionGate0162.isCurrent(sessionToken0162) ||
+                                    strictSelectedRootPackageChecklist1() != requestedPackage
+                                ) return@launch
+                                val currentAccessibility0162 = collectImmediateVisibleTextChecklist13()
+                                val currentNodes0162 = collectFailedCardNodeLines0161()
+                                val currentCaptureSignature0162 = FailedCardRecoveryEngine0161.signature(
+                                    packageName = requestedPackage,
+                                    windowId = windowId0161,
+                                    text = currentAccessibility0162,
+                                    nodes = currentNodes0162,
+                                )
+                                if (currentCaptureSignature0162 != captureSignature0161) return@launch
+
+                                bitmap0161 = screenshot.toSoftwareBitmap() ?: return@launch
+                                val ocrText0161 = withContext(Dispatchers.Default) {
+                                    ocrService.extractText(bitmap0161)
+                                }
+                                rememberSourceText(requestedPackage, TextSource.Ocr, ocrText0161)
+                                val models0161 = failedCardLayoutModelStore0161.modelsFor(requestedPackage)
+                                val recovery0161 = withContext(Dispatchers.Default) {
+                                    FailedCardRecoveryEngine0161.recover(
+                                        packageName = requestedPackage,
+                                        savedPackages = savedPackages0161,
+                                        accessibilityText = DriverCardTextSanitizer0162.prepare(requestedPackage, accessibilitySnapshot0161),
+                                        ocrText = DriverCardTextSanitizer0162.prepare(requestedPackage, ocrText0161),
+                                        nodes = nodeSnapshot0161,
+                                        knownModels = models0161,
+                                    )
+                                }
+                                recovery0161?.modelCandidate?.let(failedCardLayoutModelStore0161::saveCandidate)
+
+                                if (recovery0161 != null) {
+                                    applyRecoveredCard0161(
+                                        selectedPackage0161 = requestedPackage,
+                                        snapshotText0161 = mergeRideTexts(accessibilitySnapshot0161, ocrText0161),
+                                        recovery0161 = recovery0161,
+                                    )
+                                } else {
+                                    processRideText(
+                                        ocrText0161,
+                                        TextSource.Ocr,
+                                        allowPopupCandidate = true,
+                                        packageHint152 = requestedPackage,
+                                    )
+                                }
+
+                                withContext(Dispatchers.IO) {
+                                    FailedCardTechnicalCaptureStore0161.save(
+                                        context = applicationContext,
+                                        snapshot = FailedCardTechnicalSnapshot0161(
+                                            signature = captureSignature0161,
+                                            packageName = requestedPackage,
+                                            windowId = windowId0161,
+                                            createdAtMillis = now0161,
+                                            accessibilityText = accessibilitySnapshot0161,
+                                            ocrText = ocrText0161,
+                                            nodes = nodeSnapshot0161,
+                                            recovered = recovery0161 != null,
+                                            recoveryStrategy = recovery0161?.strategy,
+                                        ),
+                                        bitmap = bitmap0161,
+                                    )
+                                }
+                                UnifiedDebugEventStore.record(
+                                    "BUBBLE_FAILED_CARD_CAPTURE_FINISHED",
+                                    requestedPackage,
+                                    "signature=$captureSignature0161; recovered=${recovery0161 != null}; strategy=${recovery0161?.strategy ?: "nenhuma"}",
+                                )
+                            } catch (error0161: Throwable) {
                                 recordDiagnostic(
-                                    stage = "screenshot_ocr_error",
-                                    reason = "Falha ao ler texto do print da tela.",
-                                    error = error,
+                                    stage = "failed_card_auto_capture_error_0161",
+                                    reason = "Falha isolada na captura automatica do card amarelo.",
+                                    error = error0161,
                                 )
+                            } finally {
+                                bitmap0161?.takeUnless(Bitmap::isRecycled)?.recycle()
+                                failedCardAutoCaptureGate0161.finish(captureSignature0161)
+                                screenshotInProgress.set(false)
                             }
-                            screenshotInProgress.set(false)
                         }
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        failedCardAutoCaptureGate0161.finish(captureSignature0161)
                         screenshotInProgress.set(false)
+                        UnifiedDebugEventStore.record(
+                            "BUBBLE_FAILED_CARD_CAPTURE_FAILED",
+                            requestedPackage,
+                            "signature=$captureSignature0161; codigo=$errorCode",
+                        )
                     }
                 },
             )
-        }.onFailure {
+        }.onFailure { error0161 ->
+            failedCardAutoCaptureGate0161.releaseForRetry(captureSignature0161)
             screenshotInProgress.set(false)
+            recordDiagnostic(
+                stage = "failed_card_auto_capture_request_error_0161",
+                reason = "Android nao iniciou a captura automatica do card amarelo.",
+                error = error0161,
+            )
         }
-    } // universal_stable_screenshot_0_1_101
+    } // failed_card_auto_capture_0_1_161
 
     private fun collectVisibleText(allowPopupCandidate: Boolean = false): String {
         if (!hasStrictSelectedRootChecklist1()) return "" // strict_tree_gate_checklist_1
@@ -822,6 +1112,57 @@ class LiveRideAccessibilityService : AccessibilityService() {
             collectNodeText(runCatching { node.getChild(index) }.getOrNull(), lines)
         }
     }
+
+
+    private fun collectFailedCardNodeLines0161(): List<FailedCardNodeLine0161> {
+        val root0161 = rootInActiveWindow ?: return emptyList()
+        val rootPackage0161 = normalizePackageName(root0161.packageName?.toString())
+        val selectedPackages0161 = SelectedRideAppStore.read(applicationContext)
+        if (rootPackage0161 !in selectedPackages0161) return emptyList()
+        val output0161 = mutableListOf<FailedCardNodeLine0161>()
+        collectFailedCardNodeLines0161(root0161, output0161)
+        return output0161
+            .filter { it.text.isNotBlank() }
+            .distinctBy { listOf(it.text.trim(), it.top, it.left, it.className, it.viewId) }
+            .take(160)
+    }
+
+    private fun collectFailedCardNodeLines0161(
+        node0161: AccessibilityNodeInfo?,
+        output0161: MutableList<FailedCardNodeLine0161>,
+    ) {
+        if (node0161 == null || output0161.size >= 160) return
+        val bounds0161 = Rect()
+        node0161.getBoundsInScreen(bounds0161)
+        val className0161 = node0161.className?.toString().orEmpty()
+        val viewId0161 = node0161.viewIdResourceName.orEmpty()
+        linkedSetOf(
+            node0161.text?.toString().orEmpty(),
+            node0161.contentDescription?.toString().orEmpty(),
+        ).asSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .forEach { text0161 ->
+                if (output0161.size < 160) {
+                    output0161 += FailedCardNodeLine0161(
+                        text = text0161.take(500),
+                        top = bounds0161.top,
+                        left = bounds0161.left,
+                        bottom = bounds0161.bottom,
+                        right = bounds0161.right,
+                        className = className0161.take(160),
+                        viewId = viewId0161.take(200),
+                    )
+                }
+            }
+        for (index0161 in 0 until node0161.childCount) {
+            if (output0161.size >= 160) break
+            collectFailedCardNodeLines0161(
+                runCatching { node0161.getChild(index0161) }.getOrNull(),
+                output0161,
+            )
+        }
+    } // failed_card_accessibility_structure_0_1_161
 
     private fun forceClearUniversalResult(reason: String) {
         invalidateLiveAnalysis("universal_clear:" + reason)
@@ -853,14 +1194,38 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun collectImmediateVisibleTextChecklist13(): String {
         val root = rootInActiveWindow ?: return ""
-        val lines = mutableListOf<String>()
-        collectNodeText(root, lines)
-        return lines.asSequence()
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
-            .joinToString("\n")
-    }
+        val pendingNodes0167 = java.util.ArrayDeque<AccessibilityNodeInfo>()
+        val uniqueLines0167 = LinkedHashSet<String>(64)
+        pendingNodes0167.add(root)
+        var visitedNodes0167 = 0
+        var acceptedCharacters0167 = 0
+
+        fun acceptLine0167(raw: CharSequence?) {
+            if (acceptedCharacters0167 >= MAX_ACCESSIBILITY_TEXT_CHARS_0167) return
+            val line = raw?.toString()?.trim().orEmpty()
+            if (line.isBlank() || line in uniqueLines0167) return
+            val remaining = MAX_ACCESSIBILITY_TEXT_CHARS_0167 - acceptedCharacters0167
+            val bounded = line.take(remaining)
+            if (bounded.isNotBlank()) {
+                uniqueLines0167 += bounded
+                acceptedCharacters0167 += bounded.length + 1
+            }
+        }
+
+        while (pendingNodes0167.isNotEmpty() &&
+            visitedNodes0167 < MAX_ACCESSIBILITY_NODES_0167 &&
+            acceptedCharacters0167 < MAX_ACCESSIBILITY_TEXT_CHARS_0167
+        ) {
+            val node0167 = pendingNodes0167.removeLast()
+            visitedNodes0167 += 1
+            acceptLine0167(node0167.text)
+            acceptLine0167(node0167.contentDescription)
+            for (index0167 in node0167.childCount - 1 downTo 0) {
+                runCatching { node0167.getChild(index0167) }.getOrNull()?.let(pendingNodes0167::addLast)
+            }
+        }
+        return uniqueLines0167.joinToString("\n")
+    } // bounded_allocation_light_accessibility_tree_0_1_167
 
     private fun fastWorkRegionTargetsChecklist13(settings: AppSettings): FastWorkRegionTargetsChecklist13 {
         val home = settings.homeCoordinate.takeIf { settings.homeTargetEnabled }
@@ -923,7 +1288,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
             partialReadConfirmationJobChecklist14 = null
             if (confirmedEvaluationChecklist14.active) {
-                processRideText(confirmedTextChecklist14, TextSource.Accessibility, allowPopupCandidate = true)
+                processRideText(
+                    confirmedTextChecklist14,
+                    TextSource.Accessibility,
+                    allowPopupCandidate = true,
+                    packageHint152 = packageName,
+                )
             } else {
                 hardClearUniversalTwoAddress(
                     reason = "O card saiu da tela; cor e quilometros removidos.",
@@ -940,8 +1310,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
         text: String,
         source: TextSource,
         allowPopupCandidate: Boolean = false,
+        packageHint152: String? = null,
     ) {
         @Suppress("UNUSED_VARIABLE") val ignoredPopupCandidateChecklist13 = allowPopupCandidate
+        
+        FarolFlightRecorder0163.recordTextSnapshot(
+            stage = "BUBBLE_PROCESS",
+            packageName = universalResolvedForegroundPackage(),
+            source = source.name,
+            text = text,
+        )
         UnifiedDebugEventStore.record(
             "BUBBLE_PROCESS_ENTER",
             universalResolvedForegroundPackage(),
@@ -949,20 +1327,27 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (bubbleGestureActive || !serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return // bubble_drag_process_pause_0_1_116
         val savedPackagesChecklist13 = SelectedRideAppStore.read(applicationContext)
-        val selectedPackageChecklist13 = strictSelectedRootPackageChecklist1()
-            ?: normalizePackageName(universalResolvedForegroundPackage())
-                ?.takeIf { it in savedPackagesChecklist13 }
-            ?: run {
-                hardClearUniversalTwoAddress("Aplicativo não selecionado; leitura e rota bloqueadas.")
-                return
-            }
+        val selectedPackageChecklist13 = normalizePackageName(packageHint152)
+            ?.takeIf { it in savedPackagesChecklist13 && DriverAppPackagePolicy0162.isEligible(it, packageName) }
+            ?: return // immutable_package_required_0_1_162
+        val sessionToken0162 = driverCardSessionGate0162.current()
+            ?.takeIf { it.packageName == selectedPackageChecklist13 }
+            ?: return
+        if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return
 
         val snapshotTextChecklist13 = text.trim()
+        val evaluationText0162 = DriverCardTextSanitizer0162.prepare(selectedPackageChecklist13, snapshotTextChecklist13)
+        if (source == TextSource.Accessibility && lastFailedCardAccessibilityHash0161 != snapshotTextChecklist13.hashCode()) {
+            lastOcrText = ""
+            lastOcrTextAtMillis = 0L
+            lastFailedCardAccessibilityHash0161 = snapshotTextChecklist13.hashCode()
+        }
+        rememberSourceText(selectedPackageChecklist13, source, snapshotTextChecklist13)
         val evaluationChecklist13 = withContext(Dispatchers.Default) {
             SimpleSavedAppFarolPolicy.evaluate(
                 packageName = selectedPackageChecklist13,
                 savedPackages = savedPackagesChecklist13,
-                text = snapshotTextChecklist13,
+                text = evaluationText0162,
             )
         }
         UnifiedDebugEventStore.record(
@@ -971,12 +1356,68 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "ativo=${evaluationChecklist13.active}; pickup=${evaluationChecklist13.pickup.orEmpty()}; destination=${evaluationChecklist13.destination.orEmpty()}; assinatura=${evaluationChecklist13.addressSignature}; screenHash=${evaluationChecklist13.screenHash}",
         )
         if (!evaluationChecklist13.active) {
+            val failureNodes0161 = if (source == TextSource.Accessibility) {
+                collectFailedCardNodeLines0161().also { lastFailedCardNodes0161 = it }
+            } else {
+                lastFailedCardNodes0161
+            }
+            val now0161 = System.currentTimeMillis()
+            val freshAccessibility0161 = lastAccessibilityText.takeIf {
+                now0161 - lastAccessibilityTextAtMillis in 0L..2_000L
+            }.orEmpty()
+            val freshOcr0161 = lastOcrText.takeIf {
+                now0161 - lastOcrTextAtMillis in 0L..2_000L
+            }.orEmpty()
+            val models0161 = failedCardLayoutModelStore0161.modelsFor(selectedPackageChecklist13)
+            val recovery0161 = withContext(Dispatchers.Default) {
+                FailedCardRecoveryEngine0161.recover(
+                    packageName = selectedPackageChecklist13,
+                    savedPackages = savedPackagesChecklist13,
+                    accessibilityText = DriverCardTextSanitizer0162.prepare(
+                        selectedPackageChecklist13,
+                        freshAccessibility0161.ifBlank { snapshotTextChecklist13 },
+                    ),
+                    ocrText = DriverCardTextSanitizer0162.prepare(selectedPackageChecklist13, freshOcr0161),
+                    nodes = failureNodes0161,
+                    knownModels = models0161,
+                )
+            }
+            if (recovery0161 != null) {
+                recovery0161.modelCandidate?.let(failedCardLayoutModelStore0161::saveCandidate)
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_FAILED_CARD_RECOVERED",
+                    selectedPackageChecklist13,
+                    "strategy=${recovery0161.strategy}; confidence=${recovery0161.confidence}; pickup=${recovery0161.fields.pickup.orEmpty()}; destination=${recovery0161.fields.destination.orEmpty()}",
+                )
+                applyRecoveredCard0161(
+                    selectedPackage0161 = selectedPackageChecklist13,
+                    snapshotText0161 = mergeRideTexts(freshAccessibility0161, freshOcr0161),
+                    recovery0161 = recovery0161,
+                )
+                return
+            }
+            val mergedFailureText0161 = mergeRideTexts(freshAccessibility0161, freshOcr0161)
+            if (FailedCardRecoveryEngine0161.probableRideCard(mergedFailureText0161, selectedPackageChecklist13)) {
+                val windowId0161 = rootInActiveWindow?.windowId ?: lastStableFarolWindowIdChecklist14 ?: 0
+                lastFailedCardSignature0161 = FailedCardRecoveryEngine0161.signature(
+                    packageName = selectedPackageChecklist13,
+                    windowId = windowId0161,
+                    text = mergedFailureText0161,
+                    nodes = failureNodes0161,
+                )
+                UnifiedDebugEventStore.record(
+                    "BUBBLE_FAILED_CARD_CAPTURE_ARMED",
+                    selectedPackageChecklist13,
+                    "signature=${lastFailedCardSignature0161}; window=$windowId0161; source=${source.name}",
+                )
+            }
             val decisionAge141 = System.currentTimeMillis() - universalLastActiveReadAtMillis
             val preserveStableDecision141 =
                 universalActiveRidePackageName == selectedPackageChecklist13 &&
                     universalActiveAddressSignature != null &&
                     (currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red) &&
-                    decisionAge141 in 0L..STABLE_DECISION_ABSENCE_GRACE_MILLIS_141
+                    universalForegroundPackageName == selectedPackageChecklist13 &&
+                    decisionAge141 in 0L..5_000L
             val preserveRouteInFlight143 =
                 universalActiveRidePackageName == selectedPackageChecklist13 &&
                     universalActiveAddressSignature != null &&
@@ -985,7 +1426,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             val preserveRecentValidatedCard144 =
                 universalActiveRidePackageName == selectedPackageChecklist13 &&
                     universalActiveAddressSignature != null &&
-                    decisionAge141 in 0L..8_000L
+                    universalForegroundPackageName == selectedPackageChecklist13 &&
+                    decisionAge141 in 0L..5_000L
             if (preserveStableDecision141 || preserveRouteInFlight143 || preserveRecentValidatedCard144) {
                 UnifiedDebugEventStore.record(
                     "BUBBLE_INVALID_READ_DEFERRED",
@@ -1088,11 +1530,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
+        screenshotFallbackJob127?.cancel()
+        screenshotFallbackJob127 = null
+        lastAccessibilityAcceptedAtMillis127 = System.currentTimeMillis()
+        // accessibility_card_cancels_ocr_0_1_157
         UnifiedDebugEventStore.record("BUBBLE_ROUTE_REQUESTED", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=$generationChecklist13")
         rememberBubbleReason("universal_waiting", "Dois enderecos identificados; calculando o ultimo destino.")
-        showOverlay(RadarColor.Default, distanceKm = null)
+        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
+            showOverlay(RadarColor.Default, distanceKm = null)
+        } // waiting_render_noop_0_1_157
         bubblePrefs.edit().putString("fast_farol_last_path", "rota_google").apply()
         universalRouteJob = scope.launch {
+            if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
             analyzeUniversalTwoAddress(
                 snapshotText = snapshotTextChecklist13,
                 fields = fieldsChecklist13,
@@ -1107,6 +1556,117 @@ class LiveRideAccessibilityService : AccessibilityService() {
  // universal_stable_process_0_1_101
 
     //    private fun resolveRidePackageForText( compatibility_boundary_0_1_102
+
+    private suspend fun applyRecoveredCard0161(
+        selectedPackage0161: String,
+        snapshotText0161: String,
+        recovery0161: FailedCardRecoveryResult0161,
+    ) {
+        val pickup0161 = recovery0161.fields.pickup
+            ?.let(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .orEmpty()
+        val destination0161 = recovery0161.fields.destination
+            ?.let(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .orEmpty()
+        if (pickup0161.isBlank() || destination0161.isBlank() ||
+            pickup0161.equals(destination0161, ignoreCase = true)
+        ) return
+        if (selectedPackage0161 !in SelectedRideAppStore.read(applicationContext) ||
+            !shouldScanPackage(selectedPackage0161)
+        ) return
+
+        val fields0161 = RideFields(pickup = pickup0161, destination = destination0161)
+        val signature0161 = DestinationAddressIdentityPolicy.signature(selectedPackage0161, destination0161)
+        val screenHash0161 = FarolDisplayStabilityPolicy.stableScreenHash(selectedPackage0161, signature0161)
+        val cardChanged0161 = universalActiveAddressSignature != signature0161 || lastSnapshotHash != screenHash0161
+        if (cardChanged0161 && (
+                universalActiveAddressSignature != null ||
+                    currentDistanceKm != null ||
+                    currentRadarColor == RadarColor.Green ||
+                    currentRadarColor == RadarColor.Red
+            )
+        ) {
+            hardClearUniversalTwoAddress(
+                reason = "Novo destino recuperado pela captura automatica; resultado anterior removido.",
+                keepWaitingYellow = true,
+            )
+        }
+
+        universalLastActiveReadAtMillis = System.currentTimeMillis()
+        universalActiveRidePackageName = selectedPackage0161
+        universalActiveAddressSignature = signature0161
+        lastSnapshotHash = screenHash0161
+        universalAccessibilityOwnsCard = recovery0161.strategy == "modelo_local"
+        screenshotFallbackJob127?.cancel()
+        screenshotFallbackJob127 = null
+        lastAccessibilityAcceptedAtMillis127 = System.currentTimeMillis()
+
+        if (cardChanged0161) {
+            universalScreenGeneration += 1L
+            universalRouteJob?.cancel()
+            universalRouteJob = null
+            lastAnalyzedHash = null
+            currentDistanceKm = null
+            fastFarolStartedAtChecklist13 = System.currentTimeMillis()
+            bubblePrefs.edit()
+                .putLong("fast_farol_started_at", fastFarolStartedAtChecklist13)
+                .putString("fast_farol_last_destination", destination0161)
+                .putString("fast_farol_recovery_strategy_0161", recovery0161.strategy)
+                .apply()
+        } else if (lastAnalyzedHash == screenHash0161 || universalRouteJob?.isActive == true) {
+            return
+        }
+
+        val settings0161 = currentSettings
+        val targets0161 = fastWorkRegionTargetsChecklist13(settings0161)
+        if (targets0161.destinations.isEmpty()) {
+            rememberBubbleReason("work_region_missing", "Configure Casa ou pelo menos um alfinete com coordenada validada.")
+            showOverlay(RadarColor.Default, distanceKm = null)
+            return
+        }
+
+        val cachedDistances0161 = googleMapsService.cachedDrivingDistancesFromAddressKm(
+            originAddress = destination0161,
+            destinations = targets0161.destinations,
+        )
+        val generation0161 = universalScreenGeneration
+        if (cachedDistances0161 != null) {
+            val cachedResult0161 = decideFastWorkRegionChecklist13(
+                snapshotText = snapshotText0161,
+                fields = fields0161,
+                settings = settings0161,
+                targets = targets0161,
+                routeDistances = cachedDistances0161,
+            )
+            bubblePrefs.edit().putString("fast_farol_last_path", "cache_exato_recuperado_0161").apply()
+            applyUniversalTwoAddressResult(cachedResult0161, screenHash0161, signature0161, generation0161)
+            return
+        }
+
+        UnifiedDebugEventStore.record(
+            "BUBBLE_ROUTE_REQUESTED",
+            selectedPackage0161,
+            "destino=$destination0161; alvos=${targets0161.destinations.size}; generation=$generation0161; recovery=${recovery0161.strategy}",
+        )
+        rememberBubbleReason("universal_waiting", "Card recuperado; calculando o ultimo destino.")
+        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
+            showOverlay(RadarColor.Default, distanceKm = null)
+        }
+        val recoverySession0162 = driverCardSessionGate0162.current()
+            ?.takeIf { it.packageName == selectedPackage0161 }
+            ?: return
+        bubblePrefs.edit().putString("fast_farol_last_path", "rota_google_recuperada_0161").apply()
+        universalRouteJob = scope.launch {
+            if (!driverCardSessionGate0162.isCurrent(recoverySession0162)) return@launch
+            analyzeUniversalTwoAddress(
+                snapshotText = snapshotText0161,
+                fields = fields0161,
+                screenHash = screenHash0161,
+                addressSignature = signature0161,
+                generation = generation0161,
+            )
+        }
+    } // failed_card_recovered_route_0_1_161
 
     private suspend fun analyzeUniversalTwoAddress(
         snapshotText: String,
@@ -1221,6 +1781,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         reason: String,
         keepWaitingYellow: Boolean = false,
     ) {
+        val passiveClear156 = reason.contains("Pacote passivo", ignoreCase = true) ||
+            reason.contains("Aplicativo não selecionado", ignoreCase = true)
+        if (passiveClear156 &&
+            currentRadarColor == RadarColor.Idle &&
+            currentDistanceKm == null &&
+            universalActiveAddressSignature == null
+        ) {
+            return // passive_clear_noop_0_1_156
+        }
         UnifiedDebugEventStore.record(
             "BUBBLE_CLEAR_REQUEST",
             universalResolvedForegroundPackage(),
@@ -1308,6 +1877,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // locked_popup_session_guard_0_1_128
 
     private fun universalResolvedForegroundPackage(): String? {
+        driverCardSessionGate0162.current()?.takeIf { shouldScanPackage(it.packageName) }?.let { return it.packageName }
         val resolution = UniversalWindowPackageResolver.resolve(
             rootPackageName = currentRootPackageName(),
             activePackageName = universalForegroundPackageName ?: activePackageName,
@@ -1563,21 +2133,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun strictSelectedRootPackageChecklist1(): String? {
-        val nowChecklist11 = System.currentTimeMillis()
-        val selectedChecklist11 = SelectedRideAppStore.read(applicationContext)
-        val resolvedChecklist11 = SelectedRideOverlayWindowPolicy.resolve(
+        val selected0162 = SelectedRideAppStore.read(applicationContext)
+        return DriverCardEventResolver0162.resolve(
+            eventPackageName = null,
             rootPackageName = currentRootPackageName(),
-            lastSelectedPackageName = recentSelectedRidePackageChecklist11,
-            lastSelectedAtMillis = recentSelectedRidePackageAtMillisChecklist11,
-            selectedPackages = selectedChecklist11,
-            nowMillis = nowChecklist11,
-        ) ?: return null
-        if (currentRootPackageName() == resolvedChecklist11) {
-            recentSelectedRidePackageChecklist11 = resolvedChecklist11
-            recentSelectedRidePackageAtMillisChecklist11 = nowChecklist11
-        }
-        return resolvedChecklist11.takeIf { shouldScanPackage(it) }
-    } // selected_overlay_root_bridge_checklist_11
+            selectedPackages = selected0162,
+            ownPackageName = packageName,
+        )?.takeIf(::shouldScanPackage)
+    } // immutable_selected_root_0_1_162
 
     private fun hasStrictSelectedRootChecklist1(): Boolean =
         strictSelectedRootPackageChecklist1() != null // strict_selected_root_helper_checklist_1
@@ -1636,9 +2199,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         normalizePackageName(rootInActiveWindow?.packageName?.toString())
 
     private fun shouldScanPackage(packageName: String?): Boolean {
-        if (!serviceReady || !currentSettings.appEnabled || !currentSettings.liveReadingEnabled) return false
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return false
         val normalized = normalizePackageName(packageName) ?: return false
-        if (normalized == this.packageName) return false
+        if (!DriverAppPackagePolicy0162.isEligible(normalized, this.packageName)) return false
         return normalized in SelectedRideAppStore.read(applicationContext)
     } // strict_selected_app_policy_checklist_1
 
@@ -1670,9 +2233,25 @@ class LiveRideAccessibilityService : AccessibilityService() {
         fields: RideFields? = null,
         result: AnalysisResult? = null,
         error: Throwable? = null,
-    ) = Unit
+    ) {
+        FarolFlightRecorder0163.recordDiagnostic(
+            stage = stage,
+            packageName = universalResolvedForegroundPackage(),
+            color = color?.name,
+            reason = reason,
+            text = text,
+            fields = fields,
+            result = result,
+            error = error,
+        )
+    }
 
     private fun traceEvent(message: String) {
+        FarolFlightRecorder0163.record(
+            stage = "TRACE",
+            packageName = universalResolvedForegroundPackage(),
+            details = message,
+        )
         Unit /* diagnostics_off_checklist_4 */ // session_diagnostic_trace_v2
 
         if (message.startsWith("event passive ignored")) {
@@ -1714,6 +2293,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             currentDistanceKm = distanceKm
             return // overlay_idempotent_same_value_checklist_15
         }
+        FarolFlightRecorder0163.record(
+            stage = "OVERLAY_RENDER_REQUEST",
+            packageName = universalResolvedForegroundPackage(),
+            details = "requestedColor=$color; requestedDistance=$distanceKm; currentColor=$currentRadarColor; currentDistance=$currentDistanceKm; ready=$serviceReady",
+        )
         currentRadarColor = color
         currentDistanceKm = distanceKm
         val view = existingViewChecklist15 ?: TextView(this).also { newView ->
@@ -1736,6 +2320,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             setColor(color.argb(currentSettings))
             setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
         }
+        FarolFlightRecorder0163.record(
+            stage = "OVERLAY_RENDER_APPLIED",
+            packageName = universalResolvedForegroundPackage(),
+            details = "color=$color; distance=$distanceKm; text=${view.text}; viewCreated=${existingViewChecklist15 == null}",
+        )
     } // no_duplicate_overlay_render_checklist_15
  // no_duplicate_overlay_render_checklist_15
 
@@ -1850,6 +2439,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         Unit /* diagnostics_off_checklist_4 */
         when (spec.action) {
             BubbleShortcutAction.CopyTripConfirmation -> copyTripConfirmationFromBubbleChecklist8() // trip_confirmation_action_checklist_8
+            BubbleShortcutAction.CopyPassengerValue -> copyPassengerValue159()
+            BubbleShortcutAction.OpenFinance -> openFinance159()
             BubbleShortcutAction.OpenQuickReplies -> openQuickRepliesFromBubble(createNew = false) // quick_reply_action_checklist_3
             BubbleShortcutAction.OpenRoute,
             BubbleShortcutAction.OpenDestination,
@@ -1864,7 +2455,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             -> openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))
 
             BubbleShortcutAction.OpenScreenWhatsApp -> capturePhoneAndOpenWhatsApp118()
-            BubbleShortcutAction.OpenCollector -> openCollectorFromBubble()
             BubbleShortcutAction.ClearClipboard -> clearClipboardFromBubble()
             BubbleShortcutAction.ExportDiagnostic -> exportDiagnosticFromBubble()
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
@@ -1907,7 +2497,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
             recentSelectedRidePackageChecklist11,
             lastExternalWindowPackageName,
         ).firstNotNullOfOrNull { candidate ->
-            normalizePackageName(candidate)?.takeUnless { it == packageName }
+            normalizePackageName(candidate)?.takeIf {
+                DriverAppPackagePolicy0162.isEligible(it, packageName)
+            }
         }
         if (externalPackage == null) {
             manualCaptureInProgress138.set(false)
@@ -1915,10 +2507,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         val visibleText = collectAllVisibleTextForCopy138()
-        SelectedRideAppStore.save(
-            applicationContext,
-            SelectedRideAppStore.read(applicationContext) + externalPackage,
-        )
+        SelectedRideAppStore.add(applicationContext, externalPackage)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !screenshotInProgress.compareAndSet(false, true)) {
             ManualAppScreenCaptureStore.save(applicationContext, externalPackage, visibleText, null)
             manualCaptureInProgress138.set(false)
@@ -2117,6 +2706,147 @@ class LiveRideAccessibilityService : AccessibilityService() {
         overlayView?.announceForAccessibility("Texto completo da tela copiado")
     }
 
+    private fun copyPassengerValue159() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+
+        val now = System.currentTimeMillis()
+        val previousGeneration = passengerValueCaptureGeneration160.get()
+        val activeAge = now - passengerValueCaptureStartedAt160
+        if (passengerValueCaptureInProgress159.get() && activeAge in 0L until PASSENGER_VALUE_STALE_AFTER_MS_160) {
+            shortcutOverlayController.showSilentStatus159("Leitura em andamento. Aguarde um instante.", false)
+            return
+        }
+
+        if (passengerValueScreenshotOwner160.compareAndSet(previousGeneration, 0L)) {
+            screenshotInProgress.set(false)
+        }
+        val generation = passengerValueCaptureGeneration160.incrementAndGet()
+        passengerValueCaptureStartedAt160 = now
+        passengerValueCaptureInProgress159.set(true)
+        armPassengerValueWatchdog160(generation)
+
+        val accessibilityText = collectAllVisibleTextForCopy138()
+        val immediate = PassengerValueFormatter.extract(accessibilityText)
+        if (immediate != null) {
+            completePassengerValue159(immediate)
+            finishPassengerValueCapture160(generation)
+            return
+        }
+        requestPassengerValueOcr159(accessibilityText, attempt = 0, generation = generation)
+    }
+
+    private fun armPassengerValueWatchdog160(generation: Long) {
+        scope.launch {
+            delay(PASSENGER_VALUE_WATCHDOG_MS_160)
+            if (passengerValueCaptureGeneration160.get() == generation && passengerValueCaptureInProgress159.get()) {
+                finishPassengerValueCapture160(generation)
+                shortcutOverlayController.showSilentStatus159("Leitura liberada. Toque em Valor novamente.", false)
+            }
+        }
+    }
+
+    private fun finishPassengerValueCapture160(generation: Long) {
+        if (passengerValueCaptureGeneration160.get() != generation) return
+        passengerValueCaptureInProgress159.set(false)
+        passengerValueCaptureStartedAt160 = 0L
+        if (passengerValueScreenshotOwner160.compareAndSet(generation, 0L)) {
+            screenshotInProgress.set(false)
+        }
+    }
+
+    private fun requestPassengerValueOcr159(accessibilityText: String, attempt: Int, generation: Long) {
+        if (passengerValueCaptureGeneration160.get() != generation) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            finishPassengerValueCapture160(generation)
+            shortcutOverlayController.showSilentStatus159("Deixe nome, rota, lugares e valor visíveis", false)
+            return
+        }
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            if (attempt < PASSENGER_VALUE_SCREENSHOT_RETRIES_160) {
+                scope.launch {
+                    delay(120L)
+                    requestPassengerValueOcr159(accessibilityText, attempt + 1, generation)
+                }
+            } else {
+                finishPassengerValueCapture160(generation)
+                shortcutOverlayController.showSilentStatus159("Tente novamente em um instante", false)
+            }
+            return
+        }
+        passengerValueScreenshotOwner160.set(generation)
+        runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap: Bitmap? = null
+                            try {
+                                if (passengerValueCaptureGeneration160.get() != generation) return@launch
+                                bitmap = screenshot.toSoftwareBitmap()
+                                val ocrText = bitmap?.let { ocrService.extractText(it) }.orEmpty()
+                                val combined = listOf(accessibilityText, ocrText)
+                                    .filter(String::isNotBlank)
+                                    .joinToString("\n")
+                                val data = PassengerValueFormatter.extract(combined)
+                                if (data == null) {
+                                    shortcutOverlayController.showSilentStatus159("Deixe nome, rota, lugares e valor visíveis", false)
+                                } else {
+                                    completePassengerValue159(data)
+                                }
+                            } finally {
+                                bitmap?.recycle()
+                                finishPassengerValueCapture160(generation)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        finishPassengerValueCapture160(generation)
+                        shortcutOverlayController.showSilentStatus159("Não foi possível ler esta tela", false)
+                    }
+                },
+            )
+        }.onFailure {
+            finishPassengerValueCapture160(generation)
+            shortcutOverlayController.showSilentStatus159("Não foi possível ler esta tela", false)
+        }
+    }
+
+    private fun completePassengerValue159(data: PassengerValueData) {
+        val message = PassengerValueFormatter.format(data)
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Valor da reserva", message))
+        val registration = runCatching {
+            FinancialRepository(applicationContext).registerPassengerValue(
+                data = data,
+                sourcePackage = currentRootPackageName() ?: currentWindowPackageName(),
+            )
+        }.getOrNull()
+        val status = when (registration) {
+            is PassengerRevenueRegistration.Added -> "Valor copiado • receita pendente"
+            is PassengerRevenueRegistration.AlreadyExists -> "Valor copiado • já registrado"
+            is PassengerRevenueRegistration.AmountConflict -> "Valor copiado • confira o Financeiro"
+            null -> "Valor copiado • falha ao registrar"
+        }
+        shortcutOverlayController.showSilentStatus159(status, registration !is PassengerRevenueRegistration.AmountConflict && registration != null)
+    }
+
+    private fun openFinance159() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        runCatching {
+            startActivity(
+                Intent(this, FinancialActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+        }.onFailure {
+            shortcutOverlayController.showSilentStatus159("Não foi possível abrir o Financeiro", false)
+        }
+    }
+
     private fun copyTripConfirmationFromBubbleChecklist8() {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
@@ -2255,17 +2985,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
     } // open_quick_replies_checklist_3
 
-    private fun openCollectorFromBubble() {
-        shortcutOverlayController.hideAll()
-        persistResourceShortcutState()
-        runCatching {
-            startActivity(
-                Intent(this@LiveRideAccessibilityService, BlaBlaCarCollectorActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }.onFailure { toast("Nao foi possivel abrir o Coletor.") }
-    }
-
     private fun exportDiagnosticFromBubble() {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
@@ -2287,60 +3006,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun toggleLiveReadingFromBubble() {
         shortcutOverlayController.hideShortcuts()
         persistResourceShortcutState()
-        val enabled = !currentSettings.liveReadingEnabled
-        val updated = currentSettings.copy(liveReadingEnabled = enabled)
-        currentSettings = updated
-        scope.launch { runCatching { repository.saveSettings(updated) } }
-        if (enabled) {
-            showOverlay(RadarColor.Default)
-            scheduleVisibleTextAnalysis(delayMs = 0L)
-            requestScreenshotAnalysis()
-        } else {
-            analyzeJob?.cancel()
-            analyzeJob = null
-            screenshotInProgress.set(false)
-            lastAccessibilityText = ""
-            lastOcrText = ""
-            resetToIdle("Leitura pausada pelo atalho da bolinha.", record = false)
-        }
-        val message = if (enabled) "Leitura ao vivo ATIVADA" else "Leitura ao vivo PAUSADA"
-        Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
-        overlayView?.announceForAccessibility(message)
-        bubblePrefs.edit().putString("runtime_reading_status", if (enabled) "active" else "paused").apply()
-        Unit /* diagnostics_off_checklist_4 */
-        Unit /* diagnostics_off_checklist_4 */
-    } // reading_visible_feedback_0_1_120
+        val enabled0162 = !WorkModePolicy0162.isEnabled(currentSettings)
+        val updated0162 = WorkModePolicy0162.setEnabled(currentSettings, enabled0162)
+        currentSettings = updated0162
+        applyWorkModeRuntime0162(enabled0162)
+        scope.launch { runCatching { repository.saveSettings(updated0162) } }
+        Toast.makeText(
+            applicationContext,
+            if (enabled0162) "Modo Trabalho ATIVADO" else "Modo Trabalho DESLIGADO",
+            Toast.LENGTH_LONG,
+        ).show()
+        bubblePrefs.edit().putString("runtime_reading_status", if (enabled0162) "active" else "paused").apply()
+    } // master_work_mode_from_bubble_0_1_162
 
     private fun stopApplicationFromBubble() {
-        val updated = currentSettings.copy(
-            appEnabled = false,
-            liveReadingEnabled = false,
-            proximityAlertsEnabled = false,
-        )
-        currentSettings = updated
-        analyzeJob?.cancel()
-        analyzeJob = null
-        screenshotInProgress.set(false)
+        val updated0162 = WorkModePolicy0162.setEnabled(currentSettings, false)
+        currentSettings = updated0162
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
-        Unit /* diagnostics_off_checklist_4 */
-        Unit /* diagnostics_off_checklist_4 */
-        scope.launch {
-            runCatching { repository.saveSettings(updated) }
-            toast("Rota Certa pausado. Confirme Forcar interrupcao para encerrar totalmente.")
-            runCatching {
-                startActivity(
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + packageName))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }.onFailure {
-                startActivity(Intent(Settings.ACTION_APPLICATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            delay(220L)
-            removeOverlay()
-            disableSelf()
-        }
-    }
+        applyWorkModeRuntime0162(false)
+        scope.launch { runCatching { repository.saveSettings(updated0162) } }
+        toast("Modo Trabalho desligado. Abra o Rota Certa para ligar novamente.")
+    } // reversible_stop_work_mode_0_1_162
 
     private fun openResourceGroup(group: String, tab: String) {
         shortcutOverlayController.hideAll()
@@ -2749,6 +3436,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private companion object {
+        const val PASSENGER_VALUE_STALE_AFTER_MS_160 = 4_000L
+        const val PASSENGER_VALUE_WATCHDOG_MS_160 = 6_000L
+        const val PASSENGER_VALUE_SCREENSHOT_RETRIES_160 = 8
         const val DIRECTIONAL_ALERT_ACTIVE_LOOP_MILLIS_CHECKLIST_5 = 500L
         const val DIRECTIONAL_ALERT_IDLE_LOOP_MILLIS_CHECKLIST_5 = 1_500L
         const val PRECISE_FIX_OVERLAY_GRACE_MILLIS_CHECKLIST_5 = 1_800L
@@ -2761,6 +3451,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         const val LIVE_ANALYSIS_TIMEOUT_MS = 8_000L
         const val CARD_TEXT_PREVIEW_LIMIT = 1200
         const val DECISION_OVERLAY_STICKY_MS = 2_800L
+        private const val MAX_ACCESSIBILITY_NODES_0167 = 768
+        private const val MAX_ACCESSIBILITY_TEXT_CHARS_0167 = 24_000
         const val BUBBLE_PREFS = "rota_certa_bubble"
         const val KEY_RUNTIME_SHORTCUTS_OPEN = "runtime_shortcuts_open"
         const val KEY_RUNTIME_SHORTCUT_COUNT = "runtime_shortcut_count"

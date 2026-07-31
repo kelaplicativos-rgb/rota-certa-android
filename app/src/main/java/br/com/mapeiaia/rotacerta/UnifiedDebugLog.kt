@@ -28,6 +28,12 @@ object UnifiedDebugEventStore {
     private val events = ArrayDeque<Event>(MAX_EVENTS)
 
     fun record(stage: String, packageName: String?, details: String = "", nowMillis: Long = System.currentTimeMillis()) {
+        FarolFlightRecorder0163.record(
+            stage = stage,
+            packageName = packageName,
+            details = details,
+            wallTimeMillis = nowMillis,
+        )
         if (!DiagnosticRuntimeGate.isEnabled(nowMillis)) return
         val event = Event(
             atMillis = nowMillis,
