@@ -1,11 +1,15 @@
-name: Materialize Rota Certa 0.1.172
+name: Build Rota Certa 0.1.172
 
 on:
   pull_request:
     branches: [main]
     paths:
       - .github/workflows/materialize-rota-certa-0.1.172.yml
-      - scripts/fix_accessibility_resilience_tools_0172.py
+      - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part00
+      - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part01
+      - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part02
+      - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part03
+      - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part04
       - docs/PROJECT_STATUS.md
       - docs/DECISIONS.md
   workflow_dispatch:
@@ -15,9 +19,11 @@ permissions:
   actions: read
 
 jobs:
-  materialize:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -36,6 +42,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Materialize source through 0.1.171
         working-directory: source
@@ -69,15 +83,106 @@ jobs:
           python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
           python ../patches/scripts/fix_uber_notification_wakeup_0169.py .
           python ../patches/scripts/fix_notification_wakeup_crash_containment_0170.py .
-          cat ../patches/scripts/fix_home_modules_long_press_0171.py.part00 ../patches/scripts/fix_home_modules_long_press_0171.py.part01 ../patches/scripts/fix_home_modules_long_press_0171.py.part02 ../patches/scripts/fix_home_modules_long_press_0171.py.part03 ../patches/scripts/fix_home_modules_long_press_0171.py.part04 > /tmp/fix_home_modules_long_press_0171.py
+          cat \
+            ../patches/scripts/fix_home_modules_long_press_0171.py.part00 \
+            ../patches/scripts/fix_home_modules_long_press_0171.py.part01 \
+            ../patches/scripts/fix_home_modules_long_press_0171.py.part02 \
+            ../patches/scripts/fix_home_modules_long_press_0171.py.part03 \
+            ../patches/scripts/fix_home_modules_long_press_0171.py.part04 \
+            > /tmp/fix_home_modules_long_press_0171.py
+          python -m py_compile /tmp/fix_home_modules_long_press_0171.py
           python /tmp/fix_home_modules_long_press_0171.py .
           grep -q 'versionName = "0.1.171"' app/build.gradle.kts
-          tar -czf rota-certa-0.1.171-materialized-source.tar.gz app/src app/build.gradle.kts
+          grep -q 'versionCode = 5320' app/build.gradle.kts
 
-      - name: Upload materialized source
+      - name: Decode and apply 0.1.172 patch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          cat \
+            ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part00 \
+            ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part01 \
+            ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part02 \
+            ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part03 \
+            ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part04 \
+            > /tmp/fix_accessibility_resilience_tools_0172.patch.gz.b64
+          base64 --decode /tmp/fix_accessibility_resilience_tools_0172.patch.gz.b64 \
+            | gzip --decompress > /tmp/fix_accessibility_resilience_tools_0172.patch
+          echo 'c22d3884779f17f9fff7b42dd6f3450cf3c416c62f33ac219e4611d55d345ae7  /tmp/fix_accessibility_resilience_tools_0172.patch' | sha256sum --check
+          git apply --check /tmp/fix_accessibility_resilience_tools_0172.patch
+          git apply /tmp/fix_accessibility_resilience_tools_0172.patch
+          git apply --reverse --check /tmp/fix_accessibility_resilience_tools_0172.patch
+          grep -q 'versionName = "0.1.172"' app/build.gradle.kts
+          grep -q 'versionCode = 5330' app/build.gradle.kts
+          grep -q 'accessibility_resilience_tools_0_1_172' app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt
+
+      - name: Verify protected contracts and new features
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+          grep -q 'override fun onAccessibilityEvent(event: AccessibilityEvent?)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'handleAccessibilityEvent0172' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'CoroutineExceptionHandler' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'invalidateServiceRuntime0172' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'BackHandler' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'QuickLinksActivity' app/src/main/AndroidManifest.xml
+          grep -q 'MessageTemplatesActivity' app/src/main/AndroidManifest.xml
+          grep -q 'OutlinedTextFieldDefaults.colors' app/src/main/java/br/com/mapeiaia/rotacerta/QuickRepliesActivity.kt
+          grep -q 'ClearApplicationCache' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'OpenPrimaryQuickLink' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+          grep -q 'WORK_TRACKING_LOCATION_FAILURE_CONTAINED_0172' app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingService.kt
+          ! grep -q 'while (true).*takeScreenshot' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Unit and contract tests
+        working-directory: source
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        working-directory: source
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        working-directory: source
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          OUT=rota-certa-0.1.172-estabilidade-acessibilidade-ferramentas-validado.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.172-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.172-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING" | tee rota-certa-0.1.172-badging.txt
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5330'"
+          echo "$BADGING" | grep -q "versionName='0.1.172'"
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'RotaCertaTools0172' dex-strings.txt
+          grep -q 'QuickLinksActivity' dex-strings.txt
+          grep -q 'MessageTemplatesActivity' dex-strings.txt
+          grep -q 'ACCESSIBILITY_EVENT_FAILURE_CONTAINED_0172' dex-strings.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee rota-certa-0.1.172-sha256.txt
+          stat -c '%n %s bytes' "$OUT" | tee rota-certa-0.1.172-tamanho.txt
+          printf 'Versao: 0.1.172 (5330)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: acessibilidade resiliente, navegação, links rápidos, cache seguro, OCR manual, frases editáveis e diagnóstico temporário\nContrato da bolinha: preservado\n' > rota-certa-0.1.172-validacao.txt
+
+      - name: Upload validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.171-materialized-source
-          path: source/rota-certa-0.1.171-materialized-source.tar.gz
-          retention-days: 7
+          name: rota-certa-0.1.172-accessibility-resilience-tools-validated
+          path: |
+            source/rota-certa-0.1.172-estabilidade-acessibilidade-ferramentas-validado.apk
+            source/rota-certa-0.1.172-sha256.txt
+            source/rota-certa-0.1.172-assinatura.txt
+            source/rota-certa-0.1.172-badging.txt
+            source/rota-certa-0.1.172-tamanho.txt
+            source/rota-certa-0.1.172-validacao.txt
+          retention-days: 90
           if-no-files-found: error
