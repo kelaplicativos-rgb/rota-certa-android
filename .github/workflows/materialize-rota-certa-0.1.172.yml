@@ -2,7 +2,7 @@ name: Build Rota Certa 0.1.172
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, agent/customizable-shortcut-long-press-0.1.171]
     paths:
       - .github/workflows/materialize-rota-certa-0.1.172.yml
       - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part00
