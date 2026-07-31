@@ -1,5 +1,17 @@
 # Rota Certa — Decisões técnicas
 
+## 31/07/2026 — falha no despertar por notificação deve ser contida sem derrubar a acessibilidade
+
+- **Evidência:** o vídeo real `1000876918.mp4`, gravado no Samsung SM-S911B/Android 16 com o APK 0.1.169 validado, mostra o Android informando que o Rota Certa fechou por erro; depois disso, `Rota Certa – leitura ao vivo` aparece como não funcionando/desativado.
+- **Limite da evidência:** o vídeo não contém stack trace. Portanto, não atribuir a falha a uma linha única sem relatório ou `logcat` correspondente.
+- **Decisão:** toda a entrada adicionada pela 0.1.169 para `TYPE_NOTIFICATION_STATE_CHANGED` deve ser uma fronteira fail-closed: exceções síncronas não podem escapar de `onAccessibilityEvent`, e exceções assíncronas do trabalho de confirmação não podem alcançar o tratador global do processo.
+- **Circuito de proteção:** após uma exceção, pausar somente o caminho de despertar por notificação durante 60 segundos. O restante do serviço, a bolinha, alertas e leitura normal por eventos permanecem ativos.
+- **Limpeza:** em falha, invalidar token, cancelar trabalho, liberar o marcador de screenshot e limpar o estado visual transitório. Não reutilizar distância, cor ou card anterior.
+- **Diagnóstico:** registrar apenas o estágio e o tipo da exceção nos buffers limitados existentes; não criar log contínuo, screenshot em ciclo ou conteúdo persistente da notificação.
+- **Fronteira protegida:** Manifest, permissões, XML de acessibilidade, parser, decisão, Google Maps, Casa/Alfinetes e o contrato verde/vermelho não serão modificados por esta contenção.
+- **Módulos afetados:** `LiveRideAccessibilityService`, novo `FarolNotificationFailureCircuit0170` e testes de contrato 0.1.170.
+- **Condição para revisão:** após novo teste em aparelho, usar o relatório exportado ou `logcat` para localizar a exceção original. A contenção não substitui a investigação da causa exata se o evento voltar a ocorrer.
+
 ## 31/07/2026 — notificação selecionada pode despertar OCR, mas nunca autoriza decisão
 
 - **Decisão:** incluir `TYPE_NOTIFICATION_STATE_CHANGED` como gatilho nativo e orientado a evento para ofertas que aparecem como overlay sobre launcher/System UI sem gerar mudança acessível de janela ou conteúdo.
