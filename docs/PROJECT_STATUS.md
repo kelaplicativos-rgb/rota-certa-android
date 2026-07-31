@@ -3,7 +3,7 @@
 ## 31/07/2026 — 0.1.172 (5330) — acessibilidade resiliente e ferramentas rápidas
 
 - **Branch:** `agent/accessibility-resilience-and-tools-0.1.172`; **PR:** #41, empilhada sobre `agent/customizable-shortcut-long-press-0.1.171`, em rascunho, aberta e sem merge.
-- **Commit funcional validado:** `57761d1e5ec26b50867fe7d4b16f94a69d2ae4c9`.
+- **Commit funcional:** `57761d1e5ec26b50867fe7d4b16f94a69d2ae4c9`; **head documentado e validado:** `d2140b31892b0869aedb186a7a70ba0b9dfb73d0`.
 - **Pedido do usuário:** reunir os erros encontrados na simulação de fluxos com as sugestões registradas na conversa e iniciar imediatamente as correções e implementações.
 - **Situação anterior:** o Samsung SM-S911B/Android 16 mantinha a permissão de acessibilidade aparentemente autorizada, mas o relatório manual mostrava `session=not-initialized`, nenhum evento de ciclo de vida e somente `REPORT_EXPORT`. A bolinha conservava estado amarelo, destino antigo e `serviceReady=true`, embora o serviço não estivesse conectado. A auditoria também confirmou navegação presa nos módulos, contraste ruim em Respostas rápidas e ausência dos recursos de links, limpeza segura, OCR manual universal e edição compartilhada de frases.
 - **Causas localizadas:**
@@ -42,12 +42,12 @@
   - `.github/workflows/materialize-rota-certa-0.1.172.yml`.
 - **Fronteira protegida:** contrato cinza/amarelo/verde/vermelho, seleção manual de aplicativos, confirmação real do card, destino final, Casa/Alfinetes, `DecisionEngine`, `RideTextParser`, Google Maps, cancelamento de resultados antigos, ausência de km sem rota e ausência de polling visual foram preservados.
 - **Testes e validações executados:** materialização completa 0.1.151–0.1.171; checksum e aplicação limpa do patch 0.1.172; contratos estruturais; catálogo com 17 módulos e IDs/ações únicas; testes unitários e de contrato; Android Lint; `clean assembleDebug`; integridade ZIP; Manifest; DEX; pacote; versão; versionCode; assinatura APK Signature Scheme v2 e certificado.
-- **Workflow funcional validado:** `Build Rota Certa 0.1.172`, run `30651398524`, job `91225252189`; todos os passos concluídos com sucesso.
-- **Artifact funcional:** `rota-certa-0.1.172-accessibility-resilience-tools-validated`, ID `8801644887`.
+- **Workflow final validado:** `Build Rota Certa 0.1.172`, run `30652259589`, job `91228117546`; todos os passos concluídos com sucesso no head documentado.
+- **Artifact final:** `rota-certa-0.1.172-accessibility-resilience-tools-validated`, ID `8801978634`, retenção até 29/10/2026.
 - **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.172`, versionCode `5330`.
-- **APK:** `rota-certa-0.1.172-estabilidade-acessibilidade-ferramentas-validado.apk`, 55.973.267 bytes.
-- **SHA-256 do APK:** `268607c3f88678692470d020732ea76d704e2104c1976d4b8b5c8a0f12b211f3`.
-- **SHA-256 do ZIP do artifact:** `850a8a432ec959166c4ed90cd65e8507cbd60bd0167e2de7649ff40112c840e7`.
+- **APK:** `rota-certa-0.1.172-estabilidade-acessibilidade-ferramentas-validado.apk`, 55.976.915 bytes.
+- **SHA-256 do APK:** `eda20d6e8d96a8e7db3e30ce5bcab556ce5df63cbac1268f71f61b4ee0c26009`.
+- **SHA-256 do ZIP do artifact:** `b02d7520df453232ae8564888c74cb881ee1fdf7d9728f1257378416bd5f74f2`.
 - **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
 - **Pendências, riscos e próxima validação:** instalar no Samsung SM-S911B/Android 16 e confirmar conexão real da acessibilidade, permanência do serviço durante ofertas da Uber/99/inDrive, geração dos novos marcadores, retorno físico/gesto de todos os módulos, contraste em tema claro e escuro, abertura de links, confirmação e escopo da limpeza, OCR pontual em imagem/vídeo pausado/jogo, persistência das frases e encerramento automático do diagnóstico intensivo. A PR #41 permanece em rascunho e não deve ser mesclada antes desses testes.
 
