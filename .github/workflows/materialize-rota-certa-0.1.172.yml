@@ -116,9 +116,9 @@ jobs:
           grep -q 'versionName = "0.1.172"' app/build.gradle.kts || { echo 'FALHA_CONTRATO_VERSION_NAME_0172'; exit 1; }
           grep -q 'versionCode = 5330' app/build.gradle.kts || { echo 'FALHA_CONTRATO_VERSION_CODE_0172'; exit 1; }
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt || { echo 'FALHA_ARQUIVO_CENTRAL_0172'; exit 1; }
-          grep -q 'assertEquals(if (hasManualCapture) 18 else 17, ids.size)' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+          grep -q 'assertEquals(if (hasManualCapture) 17 else 16, ids.size)' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
           grep -q '"quick_links" in ids' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
-          grep -q '"message_templates" in ids' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+          grep -q 'class MessageTemplatesActivity' app/src/main/java/br/com/mapeiaia/rotacerta/MessageTemplatesActivity.kt
 
       - name: Verify protected contracts and new features
         working-directory: source
