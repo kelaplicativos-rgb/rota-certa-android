@@ -21,7 +21,7 @@ SEMANTIC_HASH_OLD = '''service, semantic_replacements = re.subn(
     service,
 )'''
 SEMANTIC_HASH_NEW = '''service, semantic_replacements = re.subn(
-    r"(?im)(\\bval\\s+[A-Za-z_][A-Za-z0-9_]*analysisHash[A-Za-z0-9_]*\\s*=\\s*)([A-Za-z_][A-Za-z0-9_]*text[A-Za-z0-9_]*)\\.hashCode\\(\\)",
+    r"(?m)(\\bval\\s+analysisHash[A-Za-z0-9_]*\\s*=\\s*)([A-Za-z_][A-Za-z0-9_]*)\\.hashCode\\(\\)",
     r"\\1FarolUnifiedVisual0168.semanticHash(\\2)",
     service,
 )'''
@@ -56,7 +56,6 @@ def corrected_source() -> str:
 
 
 def validate_runtime_patch(source: str) -> None:
-    namespace: dict[str, object] = {"re": re}
     sample_signature = '''private suspend fun processRideText(
         text: String,
         source: UniversalRideSource,
@@ -75,7 +74,7 @@ def validate_runtime_patch(source: str) -> None:
         lastFailedCardAccessibilityHash0161 = snapshotTextChecklist13.hashCode()
     '''
     stabilized, count = re.subn(
-        r"(?im)(\bval\s+[A-Za-z_][A-Za-z0-9_]*analysisHash[A-Za-z0-9_]*\s*=\s*)([A-Za-z_][A-Za-z0-9_]*text[A-Za-z0-9_]*)\.hashCode\(\)",
+        r"(?m)(\bval\s+analysisHash[A-Za-z0-9_]*\s*=\s*)([A-Za-z_][A-Za-z0-9_]*)\.hashCode\(\)",
         r"\1FarolUnifiedVisual0168.semanticHash(\2)",
         sample_service,
     )
