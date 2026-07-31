@@ -4,7 +4,7 @@
 
 - **Branch:** `agent/farol-unified-visual-0.1.168`; **PR:** #37, rascunho e sem merge na `main`.
 - **Commit funcional validado:** `f66d8daefce26f5cc9f78d8c27c581bfd9734314`.
-- **Commit documental validado:** `cae46bbc2439db0aa0c0179e8d066285733fbb54`.
+- **Commit documental final:** `bd35e0b721b34b03d8b90d7f36f3ca9cacc1163d`.
 - **Pedido:** reunir as falhas reais da Uber, 99 e inDrive e corrigir de uma única vez a leitura de pop-ups individuais e telas/listas de corridas, preservando o Modo Trabalho como chave mestre e os aplicativos escolhidos como filtro de privacidade.
 - **Situação anterior:** a Uber agendava OCR, mas o primeiro pedido efetivo podia ocorrer depois do desaparecimento do pop-up; a 99 expunha árvore Flutter vazia e um fragmento como `Rua Joaquim` podia chegar à rota; o inDrive rejeitava locais nomeados e o texto global da lista podia misturar endereços de ofertas diferentes. Contadores, preços e distâncias voláteis também mudavam o hash da mesma oferta e reabriam a análise.
 - **Causas comprovadas:**
