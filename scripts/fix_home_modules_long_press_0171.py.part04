@@ -21,6 +21,7 @@ private fun ShortcutModuleCard0171(
     store0171: ShortcutLongPressPreferenceStore0171,
     onOpenModule: (BubbleShortcutSpec) -> Unit,
 ) {
+    val context = LocalContext.current
     var expanded by remember(spec.id) { mutableStateOf(highlighted) }
     var savedChoice by remember(spec.id) { mutableStateOf(store0171.read(spec.id)) }
     var draftChoice by remember(spec.id) { mutableStateOf(savedChoice) }
