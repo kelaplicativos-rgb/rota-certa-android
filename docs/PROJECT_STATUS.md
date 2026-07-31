@@ -1,5 +1,40 @@
 # Rota Certa — Estado do projeto
 
+## 31/07/2026 — 0.1.169 (5300) — despertar pontual de cards sobrepostos validado
+
+- **Branch:** `agent/fix-uber-overlay-event-gap-0.1.169`; **PR:** #38, rascunho e sem merge na `main`.
+- **Commit funcional validado:** `f2ba7afe6bed450393ae6e9a479330644fa06239`.
+- **Pedido do usuário:** analisar o vídeo `1000876623.mp4` e o relatório `rota-certa-relatorio-depuracao (16).txt`, localizar por que um card UberX ficava visível sobre a tela inicial enquanto a bolinha permanecia cinza e aplicar a correção completa, sem polling contínuo.
+- **Situação anterior:** o card Uber aparecia sobre o launcher por vários segundos, mas o serviço não recebia evento de janela ou conteúdo durante esse intervalo. Sem evento, o pipeline não solicitava screenshot, não executava OCR, não confirmava o card, não calculava a rota e não atualizava a bolinha.
+- **Causa comprovada:** o relatório registrou um intervalo de aproximadamente 25,9 segundos sem nenhum `ACCESSIBILITY_EVENT`, justamente cobrindo o período visual do card no vídeo. A configuração do serviço escutava `typeWindowStateChanged`, `typeWindowContentChanged` e `typeWindowsChanged`, mas não `typeNotificationStateChanged`. Alguns overlays de oferta não alteram a raiz acessível do launcher e, portanto, não despertavam o núcleo.
+- **Correção aplicada:**
+  - inclusão de `typeNotificationStateChanged` na configuração do serviço e no filtro de eventos relevantes;
+  - criação de `FarolNotificationWakeGate0169`, que aceita somente notificações de pacote selecionado pelo usuário, com Modo Trabalho, leitura ao vivo e serviço prontos;
+  - criação de token por geração, deduplicação e TTL de 12 segundos;
+  - máximo rígido de quatro capturas pontuais por token, canceláveis e sem laço de polling;
+  - captura visual imediata, uma repetição curta se necessário e verificações limitadas enquanto o mesmo card pode continuar visível;
+  - texto da notificação não autoriza verde/vermelho: OCR, isolamento do card, dois endereços válidos, rota real e decisão normal continuam obrigatórios;
+  - cancelamento ao entrar no aplicativo selecionado, desligar o Modo Trabalho ou destruir o serviço;
+  - proteção para que launcher/System UI transitórios não encerrem o token antes da confirmação visual.
+- **Arquivos principais alterados/materializados:**
+  - `scripts/fix_uber_notification_wakeup_0169.py`;
+  - `.github/workflows/build-rota-certa-0.1.169.yml`;
+  - `app/src/main/res/xml/rota_certa_accessibility.xml`;
+  - `AccessibilityEventFloodGate.kt`;
+  - `LiveRideAccessibilityService.kt`;
+  - novo `FarolNotificationWakeup0169.kt`;
+  - novos testes `FarolNotificationWakeup0169Test.kt` e `FarolNotificationWakeupContract0169Test.kt`.
+- **Fronteira protegida:** `AndroidManifest.xml` e permissões permaneceram idênticos; hashes de `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt`, `FarolSelectedAppInputPolicy0166.kt`, `FarolRealtimeEventGate0167.kt` e `FarolUnifiedVisual0168.kt` foram preservados. Casa/Alfinetes, Google Maps, parser, regra de card confirmado e limpeza por geração não foram alterados.
+- **Testes executados:** aplicação completa 0.1.151–0.1.169 duas vezes; idempotência; fronteira exata; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP; Manifest; DEX; pacote, versão, versionCode e assinatura validados.
+- **Workflow validado:** `Build Rota Certa 0.1.169`, run `30625265577`, job `91138922633`, todos os passos concluídos com sucesso.
+- **Artifact:** `rota-certa-0.1.169-uber-notification-wakeup-validated`, ID `8791189083`, retenção até 29/10/2026.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.169`, versionCode `5300`.
+- **APK:** `rota-certa-0.1.169-uber-notification-wakeup-validado.apk`, 55.911.275 bytes.
+- **SHA-256 do APK:** `0c11a2f7292516f0daf00cf10e30f52e7279f87200a209be78f647458a9d7915`.
+- **SHA-256 do ZIP do artifact:** `f767155278c62f7990ee190147e97c810d53a306eff8d86118995e7611958391`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências e riscos:** instalar no Samsung SM-S911B com Android 16 e confirmar que o sistema entrega `TYPE_NOTIFICATION_STATE_CHANGED` para a oferta real da Uber; verificar amarelo imediato, verde/vermelho somente após destino final confirmado, limpeza ao desaparecer e ausência de captura em notificações de apps não selecionados. O build está validado, mas comportamento do overlay de terceiro e particularidades do firmware ainda exigem aparelho real. Se esse firmware também suprimir o evento de notificação, a próxima investigação deve procurar outro gatilho nativo do sistema, sem introduzir polling.
+
 ## 31/07/2026 — 0.1.168 (5290) — visão unificada validada
 
 - **Branch:** `agent/farol-unified-visual-0.1.168`; **PR:** #37, rascunho e sem merge na `main`.
