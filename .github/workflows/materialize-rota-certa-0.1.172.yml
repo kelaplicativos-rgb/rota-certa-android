@@ -10,6 +10,7 @@ on:
       - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part02
       - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part03
       - scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part04
+      - scripts/fix_accessibility_resilience_tools_0172_test_contract.py
       - docs/PROJECT_STATUS.md
       - docs/DECISIONS.md
   workflow_dispatch:
@@ -111,9 +112,13 @@ jobs:
           echo 'c22d3884779f17f9fff7b42dd6f3450cf3c416c62f33ac219e4611d55d345ae7  /tmp/fix_accessibility_resilience_tools_0172.patch' | sha256sum --check
           git apply --check --verbose /tmp/fix_accessibility_resilience_tools_0172.patch
           git apply --verbose /tmp/fix_accessibility_resilience_tools_0172.patch
+          python ../patches/scripts/fix_accessibility_resilience_tools_0172_test_contract.py .
           grep -q 'versionName = "0.1.172"' app/build.gradle.kts || { echo 'FALHA_CONTRATO_VERSION_NAME_0172'; exit 1; }
           grep -q 'versionCode = 5330' app/build.gradle.kts || { echo 'FALHA_CONTRATO_VERSION_CODE_0172'; exit 1; }
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt || { echo 'FALHA_ARQUIVO_CENTRAL_0172'; exit 1; }
+          grep -q 'assertEquals(if (hasManualCapture) 18 else 17, ids.size)' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+          grep -q '"quick_links" in ids' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+          grep -q '"message_templates" in ids' app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
 
       - name: Verify protected contracts and new features
         working-directory: source
