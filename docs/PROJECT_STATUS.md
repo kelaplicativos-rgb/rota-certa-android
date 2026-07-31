@@ -1,128 +1,37 @@
 # Rota Certa — Estado do projeto
 
-## 30/07/2026 — 0.1.167 (5280) — núcleo determinístico do farol em tempo real
+## 31/07/2026 — 0.1.168 (5290) — visão unificada validada
 
-- **Branch:** `agent/farol-realtime-0.1.167`
-- **Commit funcional validado:** `b95405970a7e629babebeb0218767e8362dfd3b9`
-- **PR:** #35, rascunho e sem merge na `main`
-- **Pedido:** fazer o farol decidir e pintar em frações de segundo, com máxima rapidez e estabilidade, sem restaurar polling, OCR contínuo ou processamento pesado.
-- **Situação anterior comprovada pelo aparelho:** a versão 0.1.166 conseguia calcular e pintar decisões, porém o relatório real registrou uma tempestade de eventos de acessibilidade. A mesma árvore era coletada repetidamente e só depois o conteúdo duplicado era descartado. O gravador exportou 2.500 eventos, descartou 810 pelo limite e os exemplos medidos apresentaram aproximadamente 227 a 302 ms entre `BUBBLE_DECISION_READY` e o início da renderização, embora a aplicação visual em si levasse poucos milissegundos.
-- **Causa:** a deduplicação ocorria tarde, depois da travessia da árvore de acessibilidade e de alocações na thread principal. Checkpoints do gravador e telemetria visual também podiam disputar a thread principal com uma decisão pronta. A consulta de rota não era a única causa: respostas HTTP reais ficaram aproximadamente entre 0,39 e 0,46 s, enquanto o aparelho adicionava centenas de milissegundos de trabalho local evitável.
-- **Correção aplicada:** núcleo `FarolRealtimeEventGate0167`, com admissão determinística e confluente. O primeiro evento útil é processado imediatamente, rajadas equivalentes são recusadas antes da coleta da árvore e o estado mais novo prevalece. Não foi introduzido atraso artificial de debounce.
-- **Caminho crítico otimizado:**
-  - deduplicação antes da travessia de `rootInActiveWindow`;
-  - árvore limitada a 768 nós e 24.000 caracteres, com coleta de baixa alocação;
-  - construção do snapshot de checkpoint totalmente em executor de IO de baixa prioridade;
-  - retorno imediato de atualização visual idêntica antes de telemetria e novas alocações;
-  - cancelamento e validade por geração continuam impedindo resultado atrasado de substituir card novo;
-  - OCR continua pontual e somente quando a acessibilidade não entrega os dois endereços.
-- **Arquivos principais materializados:**
-  - `LiveRideAccessibilityService.kt`;
-  - `FarolFlightRecorder0163.kt`;
-  - `FarolRealtimeEventGate0167.kt`;
-  - `FarolRealtimeEventGate0167Test.kt`;
-  - `FarolRealtimeCriticalPathContract0167Test.kt`;
-  - `app/build.gradle.kts`.
-- **Arquivos de entrega:**
-  - `scripts/fix_farol_realtime_0167.py`;
-  - `scripts/fix_farol_realtime_0167_rerun.py`;
-  - `scripts/farol_realtime_0167.payload`;
-  - `.github/workflows/build-rota-certa-0.1.167.yml`.
-- **Limite protegido:** `DecisionEngine`, `RideTextParser`, `GoogleMapsService`, `FarolSelectedAppInputPolicy0166`, `ManualTechnicalReportBuilder`, `FarolDiagnosticSummary0165`, Manifest, permissões, componentes, Casa/Alfinetes e Coletor permaneceram inalterados. O Coletor continua ausente.
-- **Testes executados:** aplicação idempotente; fronteira exata de arquivos; testes do gate para primeiro evento imediato, rajadas duplicadas, troca de janela/pacote e passagem do estado mais novo; contrato do caminho crítico; suíte unitária e de contrato; Android Lint; `clean assembleDebug`; inspeção de Manifest e DEX; pacote, versão, versionCode, assinatura e integridade ZIP.
-- **Workflow final do código:** `Build Rota Certa 0.1.167`, run `30589543081`, job `91028584795`, todos os passos concluídos com sucesso.
-- **Artifact final:** `rota-certa-0.1.167-farol-realtime-core-validated`, ID `8777937895`, retenção até 28/10/2026.
-- **SHA-256 do APK:** `a814ab44e94c8db6ce3a7822e7c76348a314d4a0dfa4b6514614b4a45ebce59b`.
-- **SHA-256 do ZIP do artifact:** `e408893bc39ec7edc71066d93e3eefe0c47754754abcee8ac26926c8caceb70e`.
-- **Tamanho do APK:** 55.894.891 bytes.
-- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
-- **Resultado esperado:** eliminar o atraso local provocado pela tempestade de eventos e permitir que a pintura ocorra assim que a rota/decisão válida retornar. Rotas inéditas ainda dependem da rede e do Google Maps; cache exato pode responder de forma muito mais rápida.
-- **Pendência prática:** instalar a 0.1.167 e medir cards reais da 99, Uber, inDrive e ao menos outro aplicativo selecionado. Build e contratos comprovam a arquitetura e a integridade, mas nenhum software Android dependente de conteúdo de terceiros e rede pode ser honestamente declarado 100% perfeito sem validação real em diferentes aparelhos e condições.
+- **Branch:** `agent/farol-unified-visual-0.1.168`; **PR:** #37, rascunho e sem merge na `main`.
+- **Commit funcional validado:** `f66d8daefce26f5cc9f78d8c27c581bfd9734314`.
+- **Pedido:** analisar os workflows anexados, localizar a primeira causa real, corrigir a 0.1.168 sem regressão do núcleo 0.1.167 e entregar um APK efetivamente validado.
+- **Situação anterior:** os workflows 0.1.168 encerravam antes de testes, Lint e build. Depois da primeira âncora, novas incompatibilidades do aplicador antigo surgiam em sequência; a suíte também revelou mistura entre dois cards, caminho de teste dependente do diretório e contrato legado que ainda exigia atraso fixo no OCR.
+- **Causas comprovadas:**
+  - a expressão do aplicador não aceitava o parâmetro válido chamado exatamente `text`;
+  - o hash semântico não reconhecia `immediateTextChecklist13` no `analysisHash143`;
+  - o fallback atual usa `Job`/corrotina, mas o aplicador procurava `Handler.postDelayed`;
+  - o OCR real está em `AndroidServices.kt`, enquanto a correção auxiliar procurava uma chamada direta ao ML Kit dentro do serviço de acessibilidade;
+  - expressões com `\s+` ao redor de `Pular` consumiam a quebra de linha e juntavam o início do card seguinte.
+- **Correção aplicada:** executor idempotente e fechado para adaptar as âncoras à base 0.1.167 real; hash semântico somente no hash de análise; remoção exclusiva do atraso artificial do fallback, preservando cancelamento, geração e filtros; integração espacial dentro do `OcrService` usando o mesmo resultado ML Kit, sem segunda leitura; limites horizontais `[ \t]+` preservando quebras entre cards; contratos compatíveis com execução pela raiz ou pelo módulo `app`.
+- **Arquivos principais da entrega:**
+  - `scripts/run_fix_farol_unified_visual_0168.py`;
+  - `scripts/fix_farol_unified_visual_0168_compile.py`;
+  - `.github/workflows/build-rota-certa-0.1.168-final.yml`;
+  - `.github/workflows/build-rota-certa-0.1.168.yml`;
+  - código materializado: `FarolUnifiedVisual0168.kt`, `AndroidServices.kt`, `LiveRideAccessibilityService.kt`, `RideTextParser.kt` e testes 0.1.168.
+- **Fronteira protegida:** Manifest e permissões inalterados; hashes de `DecisionEngine.kt`, `GoogleMapsService.kt`, `FarolSelectedAppInputPolicy0166.kt` e `FarolRealtimeEventGate0167.kt` preservados; Casa/Alfinetes, Modo Trabalho e regra de somente card confirmado continuam vigentes.
+- **Testes executados:** materialização completa 0.1.151–0.1.168 duas vezes; idempotência; fronteira exata; contratos visuais; **237 testes unitários e de contrato aprovados**; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP; Manifest; DEX; pacote, versão, versionCode e assinatura APK v2.
+- **Workflows validados:**
+  - `Build Rota Certa 0.1.168 Final`, run `30601624749`, job `91065374576`, sucesso em todos os passos;
+  - `Build Rota Certa 0.1.168`, run `30601624765`, job `91065374526`, sucesso em todos os passos.
+- **Artifact:** `rota-certa-0.1.168-farol-visual-unificado-validated`, ID `8782207626`, retenção até 29/10/2026.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.168`, versionCode `5290`.
+- **APK:** `rota-certa-0.1.168-farol-visual-unificado-validado.apk`, 55.894.891 bytes.
+- **SHA-256 do APK:** `386cbf256e471bcb6ab2bc79c8564ff9826dbf52bec2fac5bb5a98fd2fe69de2`.
+- **SHA-256 do ZIP do artifact:** `feef33784c0c111842976e645937fb8a32e08cc8265f8515102bdbfc4197553b`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendência prática:** instalar em aparelho real e testar cards individuais e listas da Uber, 99, inDrive e de outro aplicativo selecionado, verificando mudança imediata para amarelo/verde/vermelho, limpeza ao sair do card e ausência de mistura entre ofertas. Build, testes e APK estão validados; conteúdo visual de terceiros e condições reais de acessibilidade/OCR ainda exigem aparelho.
 
-## 30/07/2026 — 0.1.166 (5270) — farol universal para todos os aplicativos selecionados
+## Histórico anterior
 
-- **Branch:** `agent/fix-99-ocr-0.1.166`
-- **Commit de código e workflow validado:** `1b8422f1387c358eab2996164c04cb59cf4f99d9`
-- **PR:** #34, rascunho e sem merge na `main`
-- **Pedido:** corrigir as falhas reais da 99 e do Uber usando uma tecnologia mais robusta, sem limitar o farol aos três aplicativos conhecidos; qualquer pacote selecionado pelo usuário deve usar o mesmo motor.
-- **Situação anterior:** 99 e Uber estavam selecionados, mas nenhuma tentativa chegou à rota. O inDrive havia conseguido decisões em sessão anterior, descartando Google Maps, Casa/Alfinetes e o motor de decisão como causa geral.
-- **Problema e causa — 99:** a acessibilidade entregava texto vazio ou incompleto e o fallback chegava a `OCR_REQUEST_EVALUATE`, porém o método exigia que o texto incompleto já parecesse um card antes de autorizar o screenshot. O OCR necessário para recuperar os endereços era bloqueado pela própria pré-condição.
-- **Problema e causa — Uber:** a captura OCR chegou a iniciar na janela real `1759`, mas um evento transitório com pacote nulo usou o `event.windowId` `1766`, abriu uma nova sessão e invalidou a captura antes do resultado.
-- **Correção aplicada:** nova política pura `FarolSelectedAppInputPolicy0166`. A autorização usa exclusivamente o conjunto persistido de pacotes escolhidos pelo usuário e a raiz estrita atual. A janela estável vem de `rootInActiveWindow.windowId` quando a raiz pertence ao pacote selecionado. OCR continua pontual, orientado a eventos, sem loop ou polling, e só entra quando o parser ainda não encontrou os dois endereços.
-- **Universalidade comprovada:** teste com pacote fictício `com.parceiro.corridas.driver` selecionado; nenhum nome de 99, Uber ou inDrive existe na nova política de produção. Pacote não selecionado permanece bloqueado.
-- **Arquivos principais alterados:**
-  - `scripts/fix_farol_selected_apps_0166.py`
-  - `scripts/fix_farol_selected_apps_0166_rerun.py`
-  - `.github/workflows/build-rota-certa-0.1.166.yml`
-  - `.github/validation/rota-certa-0.1.166.txt`
-  - código materializado: `LiveRideAccessibilityService.kt`, `FarolSelectedAppInputPolicy0166.kt` e `FarolSelectedAppInputPolicy0166Test.kt`
-- **Limite protegido:** `DecisionEngine`, `RideTextParser`, `GoogleMapsService`, `ManualTechnicalReportBuilder`, `FarolDiagnosticSummary0165`, Manifest, permissões, componentes, Casa/Alfinetes e Coletor permaneceram inalterados. O Coletor continua ausente.
-- **Testes executados:** scripts idempotentes; fronteira exata de arquivos; preservação da janela raiz diante de overlay; pacote arbitrário selecionado; bloqueio de pacote não selecionado; bloqueio de OCR quando o parser já está ativo; suíte unitária e de contrato; Android Lint; `clean assembleDebug`; inspeção de Manifest e DEX; pacote, versão, versionCode e assinatura APK v2.
-- **Workflow final:** `Build Rota Certa 0.1.166`, run `30586897527`, job `91020295162`, todos os passos concluídos com sucesso.
-- **Artifact final:** `rota-certa-0.1.166-universal-selected-app-farol-validated`, ID `8776986529`, retenção até 28/10/2026.
-- **SHA-256 do APK:** `b4dbe016dd27e2915e2f16335df6cd8da40828779cc201f6e238547d56a94635`.
-- **SHA-256 do ZIP do artifact:** `2d911fee20549cefd7073335aaebea9e64ae3df5afec75b79a8825337661851f`.
-- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
-- **Pendência prática:** instalar o APK e testar cards reais da 99, Uber e de ao menos outro aplicativo selecionado. O build comprova a regra universal e a integridade do APK, mas a confirmação visual de OCR e mudança verde/vermelho ainda depende do aparelho real.
-
-## 30/07/2026 — 0.1.165 (5260) — linha do tempo autoritativa por tentativas
-
-- **Branch:** `codex/diagnostic-attempt-timeline-0.1.165`
-- **Commit de código:** `0515c349f59bf8fc5c0f5d5bb76cf4f83d2106a4`
-- **Commit final validado pelo workflow:** `b4710587a1ecd704dd6092fb95ead3d88ac9f161`
-- **PR:** #33, rascunho e sem merge na `main`
-- **Pedido:** analisar o relatório real da versão 0.1.164 e corrigir somente o módulo que apresentou falha, sem alterar módulos definidos como OK.
-- **Situação anterior:** o resumo autoritativo dizia que havia endereços, mas nenhuma rota, embora a trilha completa registrasse uma decisão verde válida.
-- **Problema e causa:** o resumo 0.1.164 selecionava o último estado global e podia ser substituído por leitura incompleta posterior. Os padrões de alguns campos também não tratavam corretamente os delimitadores `|` e `;`.
-- **Evidência funcional do aparelho:** a rota para `Rua Manoel Joaquim Ginjo, 35a` recebeu HTTP 200, retornou `5,363 km` e pintou verde. A tentativa posterior para `Rua Peramirim, 157` recebeu `4,161 km`, mas o estado foi limpo por `com.android.systemui` aproximadamente 31 ms antes da resposta, portanto o resultado não foi aplicado.
-- **Correção aplicada:** reconstrução de tentativas independentes por mudança real de destino, considerando somente avaliações ativas com embarque e destino. O relatório agora separa a última decisão válida da última tentativa reconhecida e informa HTTP, distância, limpeza anterior e intervalo em milissegundos.
-- **Arquivos do escopo:**
-  - `scripts/fix_diagnostic_attempt_timeline_0165.py`
-  - `scripts/fix_diagnostic_attempt_timeline_0165_rerun.py`
-  - `.github/workflows/build-rota-certa-0.1.165.yml`
-  - `.github/validation/rota-certa-0.1.165.txt`
-  - código materializado: `FarolDiagnosticSummary0165.kt`, teste e integração mínima no `ManualTechnicalReportBuilder.kt`
-- **Limite protegido:** hashes inalterados de `LiveRideAccessibilityService`, `DecisionEngine`, `RideTextParser`, `GoogleMapsService` e `FarolDiagnosticSummary0164`; Manifest e permissões inalterados; nenhum módulo funcional definido como OK foi alterado.
-- **Testes executados:** aplicação idempotente, limite exato de arquivos, casos de decisão válida seguida de ruído, leitura incompleta posterior, resposta após limpeza, região inativa, testes unitários e de contrato, Android Lint, `clean assembleDebug`, Manifest, DEX, pacote, versão e assinatura APK v2.
-- **Workflow final:** `Build Rota Certa 0.1.165`, run `30579419913`, job `90995655120`, todos os passos concluídos com sucesso.
-- **Artifact final:** `rota-certa-0.1.165-diagnostic-attempt-timeline-validated`, ID `8774158117`, retenção até 28/10/2026.
-- **SHA-256 do APK:** `ad762c731545b01b7f37d7f5b9eefe7042da820708befbaa3f4235fb904c9702`.
-- **SHA-256 do ZIP final:** `7010c8a742e844fb406bb4b5a02aeba1b8bdecf7a096106f226a454708cab39c`.
-- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`.
-- **Pendência prática:** instalar o APK e exportar um novo relatório. O farol não foi alterado; se o card continuar visível quando `com.android.systemui` assumir a raiz, essa situação deverá ser confirmada em nova captura antes de qualquer mudança funcional.
-
-## 30/07/2026 — 0.1.164 (5250) — resumo autoritativo do diagnóstico
-
-- **Branch:** `codex/diagnostic-session-summary-0.1.164`
-- **Commit de código validado:** `6af1cfe9b4017ac127183b7fb53c801af192d5d6`
-- **Commit do workflow final validado:** `69f79729727e21c99423666a370b6cae37c2910c`
-- **PR:** #32, rascunho e sem merge na `main`
-- **Pedido:** analisar o relatório real da versão 0.1.163 e localizar por que o farol permaneceu amarelo sem calcular a rota.
-- **Problema confirmado:** o inDrive foi reconhecido e os dois endereços foram extraídos, porém Casa e Alfinetes estavam desativados. Pela regra atual, não existe alvo para comparar o destino e a execução termina antes de `BUBBLE_ROUTE_REQUESTED`.
-- **Defeito adicional encontrado:** a seção legada do relatório declarou que nenhuma sessão de leitura havia sido registrada e exibiu estado persistido antigo, apesar de o gravador de voo conter sessões e endereços válidos da execução atual.
-- **Causa:** o resumo legado lia campos independentes do `SharedPreferences`; ele não reconstruía a tentativa atual a partir da trilha do gravador.
-- **Correção aplicada:** novo resumo autoritativo derivado somente dos eventos da sessão atual. Ele informa card, endereços, região ativa, solicitação de rota, cache, Google Maps e decisão, preservando o relatório completo abaixo.
-- **Arquivos do escopo:**
-  - `scripts/fix_diagnostic_session_summary_0164.py`
-  - `scripts/fix_diagnostic_session_summary_0164_rerun.py`
-  - `.github/workflows/build-rota-certa-0.1.164.yml`
-  - `.github/validation/rota-certa-0.1.164.txt`
-  - código materializado: `FarolDiagnosticSummary0164.kt`, teste e integração mínima no `ManualTechnicalReportBuilder.kt`
-- **Limite protegido:** hashes inalterados de `LiveRideAccessibilityService`, `DecisionEngine`, `RideTextParser` e `GoogleMapsService`; sem alteração em Casa/Alfinetes, cores, raio, overlay, Manifest, permissões, atividades ou serviços.
-- **Testes executados:** aplicação idempotente, limite exato de arquivos, testes unitários e de contrato, Android Lint, `clean assembleDebug`, inspeção de Manifest e DEX, pacote, versão e assinatura APK v2.
-- **Workflow final:** `Build Rota Certa 0.1.164`, run `30575223919`, job `90981695281`, todos os passos concluídos com sucesso.
-- **Artifact final:** `rota-certa-0.1.164-diagnostic-session-summary-validated`, ID `8772551211`, retenção até 28/10/2026.
-- **SHA-256 do APK:** `9a76ad94d4b84edad27ede3d6154c225c81217dbd29b11f74c18108e0e23960e`.
-- **SHA-256 do ZIP do artifact:** `436ef82c87f6fdf7d693e52c5e044f0679deedcba24cb444b07020173b4f978f`.
-- **Assinatura:** APK Signature Scheme v2 válida; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`.
-- **Risco/pendência prática:** para o farol calcular verde ou vermelho, o usuário deve ativar Casa ou ao menos um Alfinete com coordenada válida. A versão 0.1.164 não altera essa regra funcional.
-
-## 30/07/2026 — 0.1.163 (5240) — gravador de voo do farol
-
-- **Branch:** `codex/farol-flight-recorder-0.1.163`
-- **Commit validado:** `1a6e6544b72d894db886305427dfee56364d0993`
-- **PR:** #31, rascunho
-- **Workflow:** run `30569838311`, job `90963452922`, concluído com sucesso
-- **Artifact:** `rota-certa-0.1.163-farol-flight-recorder-validated`, ID `8770445998`
-- **SHA-256 do APK:** `1e82eb1cef67467862d0c979343be35c8645df039402787d08386307f491086b`
-- **Resultado prático:** o primeiro relatório real provou que a leitura e o parser funcionaram e que a interrupção ocorreu antes da rota por ausência de região ativa.
+O estado completo registrado até 30/07/2026 foi preservado, sem alteração de bytes, em [`docs/archive/PROJECT_STATUS-pre-0.1.168.md`](archive/PROJECT_STATUS-pre-0.1.168.md).
