@@ -109,9 +109,11 @@ jobs:
           base64 --decode /tmp/fix_accessibility_resilience_tools_0172.patch.gz.b64 \
             | gzip --decompress > /tmp/fix_accessibility_resilience_tools_0172.patch
           echo 'c22d3884779f17f9fff7b42dd6f3450cf3c416c62f33ac219e4611d55d345ae7  /tmp/fix_accessibility_resilience_tools_0172.patch' | sha256sum --check
-          git apply --check /tmp/fix_accessibility_resilience_tools_0172.patch
-          git apply /tmp/fix_accessibility_resilience_tools_0172.patch
-          git apply --reverse --check /tmp/fix_accessibility_resilience_tools_0172.patch
+          echo 'PATCH_CHECK_BEGIN'
+          git apply --check --verbose /tmp/fix_accessibility_resilience_tools_0172.patch
+          echo 'PATCH_APPLY_BEGIN'
+          git apply --verbose /tmp/fix_accessibility_resilience_tools_0172.patch
+          echo 'PATCH_APPLY_DONE'
           grep -q 'versionName = "0.1.172"' app/build.gradle.kts
           grep -q 'versionCode = 5330' app/build.gradle.kts
           grep -q 'accessibility_resilience_tools_0_1_172' app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt
