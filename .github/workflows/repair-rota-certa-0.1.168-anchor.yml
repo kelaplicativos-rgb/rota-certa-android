@@ -1,0 +1,115 @@
+name: Repair Rota Certa 0.1.168 anchor
+
+on:
+  push:
+    branches:
+      - agent/farol-unified-visual-0.1.168
+    paths:
+      - .github/workflows/repair-rota-certa-0.1.168-anchor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/farol-unified-visual-0.1.168
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Repair exact text parameter anchor and document cause
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          script_path = Path('scripts/fix_farol_unified_visual_0168.py')
+          script = script_path.read_text(encoding='utf-8')
+          old = 'params = list(re.finditer(r"\\b([A-Za-z_][A-Za-z0-9_]*text[A-Za-z0-9_]*)\\s*:\\s*String\\b", signature, re.I))'
+          new = '''string_params = list(
+              re.finditer(r"\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*String\\b", signature, re.I)
+          )
+          params = [match for match in string_params if "text" in match.group(1).lower()]'''
+          count = script.count(old)
+          if count == 1:
+              script = script.replace(old, new, 1)
+              script_path.write_text(script, encoding='utf-8')
+          elif new not in script:
+              raise SystemExit(f'anchor esperado exatamente uma vez; encontrado {count}')
+
+          # Regressão mínima: o nome exato "text" deve ser aceito, sem liberar
+          # parâmetros String alheios ao caminho textual.
+          import re
+          sample = '''private suspend fun processRideText(
+              text: String,
+              source: TextSource,
+              packageHint152: String? = null,
+          )'''
+          matches = list(re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*String\b", sample, re.I))
+          textual = [match.group(1) for match in matches if 'text' in match.group(1).lower()]
+          assert textual == ['text'], textual
+
+          status_path = Path('docs/PROJECT_STATUS.md')
+          status = status_path.read_text(encoding='utf-8')
+          status_marker = '## 30/07/2026 — correção do aplicador 0.1.168 — parâmetro `text`'
+          if status_marker not in status:
+              entry = '''## 30/07/2026 — correção do aplicador 0.1.168 — parâmetro `text`
+
+- **Branch:** `agent/farol-unified-visual-0.1.168`; **PR:** #37, rascunho.
+- **Pedido analisado:** conferir os workflows anexados e localizar a primeira causa real da falha da versão 0.1.168.
+- **Situação anterior:** os runs `30596433706`, `30596433696` e `30596376134` falharam antes de testes, lint, compilação, validação e upload do APK.
+- **Causa comprovada:** `scripts/fix_farol_unified_visual_0168.py` procurava nomes com caracteres obrigatórios antes do trecho `text`. O serviço materializado possui o parâmetro válido chamado exatamente `text` em `processRideText`, por isso o aplicador encerrava com `parâmetro textual do processamento ao vivo não encontrado`.
+- **Correção aplicada:** a descoberta passa a enumerar parâmetros `String` válidos e depois filtrar somente nomes que contenham `text`, incluindo o nome exato. A seleção continua falhando de forma fechada quando nenhum parâmetro textual existe.
+- **Escopo:** somente o aplicador 0.1.168 e documentação; nenhum código funcional materializado, Manifest, permissão, `DecisionEngine`, `GoogleMapsService`, Casa/Alfinetes ou núcleo 0.1.167 foi alterado neste commit.
+- **Teste local do reparo:** regressão sintética confirma que `text: String` é reconhecido e `packageHint152: String?` não é aceito como parâmetro textual.
+- **Validação pendente:** rerodar o workflow final e somente então registrar testes, lint, APK, assinatura, artifact e SHA-256.
+
+'''
+              heading = '# Rota Certa — Estado do projeto\n\n'
+              if not status.startswith(heading):
+                  raise SystemExit('cabeçalho de PROJECT_STATUS.md inesperado')
+              status_path.write_text(heading + entry + status[len(heading):], encoding='utf-8')
+
+          decisions_path = Path('docs/DECISIONS.md')
+          decisions = decisions_path.read_text(encoding='utf-8')
+          decision_marker = '## 30/07/2026 — Aplicadores devem reconhecer o nome exato `text`'
+          if decision_marker not in decisions:
+              entry = '''## 30/07/2026 — Aplicadores devem reconhecer o nome exato `text`
+
+- **Decisão:** scripts que localizam entradas textuais em assinaturas Kotlin devem primeiro reconhecer identificadores `String` válidos e depois aplicar o filtro semântico; não podem exigir prefixo ou sufixo ao redor da palavra `text`.
+- **Motivo:** a expressão anterior excluía o identificador mínimo e válido `text`, interrompendo a materialização 0.1.168 antes de qualquer teste ou build.
+- **Módulos afetados:** somente scripts de materialização/CI da visão unificada 0.1.168.
+- **Condições para revisão:** alterar apenas se o serviço abandonar parâmetros textuais `String`; nesse caso, o aplicador deve falhar fechado e exigir uma nova integração explícita.
+
+'''
+              heading = '# Rota Certa — Decisões técnicas\n\n'
+              if not decisions.startswith(heading):
+                  raise SystemExit('cabeçalho de DECISIONS.md inesperado')
+              decisions_path.write_text(heading + entry + decisions[len(heading):], encoding='utf-8')
+          PY
+
+          python -m py_compile scripts/fix_farol_unified_visual_0168.py
+          git diff --check
+          git diff -- scripts/fix_farol_unified_visual_0168.py docs/PROJECT_STATUS.md docs/DECISIONS.md
+
+      - name: Commit isolated repair
+        run: |
+          set -euo pipefail
+          git config user.name 'Rota Certa CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scripts/fix_farol_unified_visual_0168.py docs/PROJECT_STATUS.md docs/DECISIONS.md
+          if git diff --cached --quiet; then
+            echo 'Reparo já aplicado; nenhum commit necessário.'
+            exit 0
+          fi
+          git commit -m 'fix(ci): reconhecer parâmetro text no aplicador 0.1.168'
+          git push origin HEAD:agent/farol-unified-visual-0.1.168
