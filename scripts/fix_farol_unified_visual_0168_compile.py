@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
-SERVICE = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+MAIN = ROOT / "app/src/main/java/br/com/mapeiaia/rotacerta"
+SERVICE = MAIN / "LiveRideAccessibilityService.kt"
 TEST = ROOT / "app/src/test/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisualCriticalPath0168Test.kt"
 MARKER = "farol_visual_blocks_integrated_0_1_168"
 
@@ -38,6 +39,29 @@ def matching_brace(text: str, opening: int) -> int:
             if depth == 0:
                 return index
     fail("lambda OCR sem fechamento")
+
+
+def print_ocr_diagnostic() -> None:
+    print("--- OCR 0.1.167 MATERIALIZADO ---")
+    found = False
+    for path in sorted(MAIN.rglob("*.kt")):
+        text = path.read_text(encoding="utf-8")
+        positions = [
+            position
+            for token in ("class OcrService", "object OcrService", "fun extractText(", "suspend fun extractText(")
+            if (position := text.find(token)) >= 0
+        ]
+        if not positions:
+            continue
+        found = True
+        position = min(positions)
+        start = max(0, position - 1_500)
+        end = min(len(text), position + 8_000)
+        print(f"ARQUIVO={path.relative_to(ROOT)}")
+        print(text[start:end])
+        print("--- FIM DO TRECHO OCR ---")
+    if not found:
+        print("Nenhuma declaração OcrService/extractText encontrada nos arquivos Kotlin.")
 
 
 if not SERVICE.exists() or not TEST.exists():
@@ -74,7 +98,6 @@ if MARKER not in service:
         integrated = True
         break
     if not integrated:
-        # Some versions assign the ML Kit task before attaching the listener.
         candidates = list(re.finditer(r"addOnSuccessListener\s*\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*->", service))
         for match in candidates:
             result_name = match.group(1)
@@ -89,7 +112,8 @@ if MARKER not in service:
                 integrated = True
                 break
     if not integrated:
-        fail("resultado textual do ML Kit OCR não localizado")
+        print_ocr_diagnostic()
+        fail("resultado textual do ML Kit OCR não localizado; diagnóstico acima")
     SERVICE.write_text(service, encoding="utf-8")
 
 print("Integração espacial e contrato 0.1.168 concluídos")
