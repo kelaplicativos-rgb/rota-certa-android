@@ -11,10 +11,13 @@ required = {
     'versionName': 'versionName = "0.1.173"' in build,
     'versionCode': 'versionCode = 5340' in build,
     'fixed policy': 'object ShortcutGridPolicy0173' in policy,
+    'secondary restored': 'ShortcutLongPressResolved0173.Secondary' in policy,
+    'primary fallback restored': 'ShortcutLongPressResolved0173.Primary' in policy,
     'fixed handler': 'executeShortcutLongPress0173' in service,
     'fixed event': 'SHORTCUT_LONG_PRESS_FIXED_0173' in service,
-    'legacy cleanup': 'clearLegacyPreferences' in policy and 'prefs.edit().clear()' in policy,
+    'legacy cleanup': 'clearLegacyPreferences' in policy and '.clear()' in policy,
     'home fixed text': 'Ações fixas na grade' in main,
+    'home primary fallback': 'quando não existe ação secundária, repete a principal' in main,
     'home no personalization': 'não podem ser personalizadas' in main,
     'cache confirmation': 'ShortcutGridPolicy0173.requiresConfirmation' in service,
 }
@@ -28,8 +31,9 @@ for forbidden in (
     'Ação ao manter pressionado o atalho',
     'choice0171 =',
     'shortcutLongPressStore0171.read',
+    'ShortcutLongPressChoice0171',
 ):
     if forbidden in main or forbidden in service or forbidden in policy:
         raise SystemExit(f'FALHA_PERSONALIZACAO_REMOVIDA_0173: {forbidden}')
 
-print('CONTRATO_ATALHOS_DETERMINISTICOS_0173_OK')
+print('CONTRATO_RESTAURACAO_ATALHOS_0173_OK')
