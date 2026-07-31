@@ -6,20 +6,23 @@ import sys
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
 test = root / 'app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt'
 catalog_file = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt'
+templates_file = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/MessageTemplatesActivity.kt'
 text = test.read_text(encoding='utf-8')
 
 old_name = 'fun catalogProgressesFromThirteenToFourteenModulesWithoutCardModels()'
-new_name = 'fun catalogIncludesQuickLinksAndEditableTemplatesWithoutCardModels()'
+new_name = 'fun catalogIncludesQuickLinksAndKeepsSharedTemplateEditorOutsideTheGrid()'
 old_count = 'assertEquals(if (hasManualCapture) 16 else 15, ids.size)'
-new_count = 'assertEquals(if (hasManualCapture) 18 else 17, ids.size)'
+new_count = 'assertEquals(if (hasManualCapture) 17 else 16, ids.size)'
 anchor = '        assertTrue("A bolinha Financeiro precisa existir", "finance" in ids)\n'
-addition = (
-    anchor
-    + '        assertTrue("O módulo Links rápidos precisa existir", "quick_links" in ids)\n'
-    + '        assertTrue("O gerenciador de frases precisa existir", "message_templates" in ids)\n'
-)
+addition = anchor + '        assertTrue("O módulo Links rápidos precisa existir", "quick_links" in ids)\n'
 
-if not (new_name in text and new_count in text and '"quick_links" in ids' in text and '"message_templates" in ids' in text):
+already_updated = (
+    new_name in text
+    and new_count in text
+    and '"quick_links" in ids' in text
+    and '"message_templates" in ids' not in text
+)
+if not already_updated:
     for expected, label in ((old_name, 'nome do teste'), (old_count, 'quantidade antiga'), (anchor, 'âncora Financeiro')):
         count = text.count(expected)
         if count != 1:
@@ -29,9 +32,15 @@ if not (new_name in text and new_count in text and '"quick_links" in ids' in tex
     text = text.replace(old_count, new_count, 1)
     text = text.replace(anchor, addition, 1)
     test.write_text(text, encoding='utf-8')
-    print('Contrato do catálogo atualizado para 18 módulos na 0.1.172')
+    print('Contrato do catálogo atualizado para 17 módulos na 0.1.172')
 else:
     print('Contrato 0.1.172 do catálogo já atualizado')
+
+if not templates_file.is_file() or templates_file.stat().st_size == 0:
+    raise SystemExit('Editor compartilhado de frases não foi materializado')
+templates = templates_file.read_text(encoding='utf-8')
+if 'class MessageTemplatesActivity' not in templates:
+    raise SystemExit('MessageTemplatesActivity ausente do editor compartilhado')
 
 catalog = catalog_file.read_text(encoding='utf-8')
 list_match = re.search(
@@ -46,3 +55,4 @@ required_match = re.search(r'require\(modules\.size == (\d+)\)', catalog)
 print(f'CATALOGO_0172_QUANTIDADE={len(module_objects)}')
 print('CATALOGO_0172_OBJETOS=' + ','.join(module_objects))
 print('CATALOGO_0172_REQUIRE=' + (required_match.group(1) if required_match else 'ausente'))
+print('EDITOR_FRASES_0172=MessageTemplatesActivity')
