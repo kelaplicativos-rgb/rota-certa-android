@@ -108,32 +108,35 @@ jobs:
             app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt \
             > /tmp/protected-0173.sha256
 
-      - name: Apply deterministic grid 0.1.173
+      - name: Apply restored grid 0.1.173
         working-directory: source
         run: |
           set -euo pipefail
           base64 --decode ../patches/scripts/fix_deterministic_shortcut_grid_0173.patch.gz.b64 \
             | gzip --decompress > /tmp/fix0173.patch
-          echo '87c96f35445755bf8cb27f3a8065d3bd41c1ec6c15b03e30b739ec94f4019e88  /tmp/fix0173.patch' | sha256sum --check
+          echo 'acb4ddf9d31d942c9cff86f40965fe2b2910ffee6090cd8c2b804a7530317a6c  /tmp/fix0173.patch' | sha256sum --check
           git apply --check --verbose /tmp/fix0173.patch
           git apply --verbose /tmp/fix0173.patch
           python ../patches/scripts/fix_deterministic_shortcut_grid_0173_test_contract.py .
           sha256sum --check /tmp/protected-0173.sha256
 
-      - name: Verify deterministic shortcut contract
+      - name: Verify restored shortcut contract
         working-directory: source
         run: |
           set -euo pipefail
           test -n "${GOOGLE_MAPS_API_KEY:-}"
-          grep -q 'versionName = "0.1.173"' app/build.gradle.kts
-          grep -q 'versionCode = 5340' app/build.gradle.kts
-          grep -q 'object ShortcutGridPolicy0173' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutLongPressPolicy0171.kt
-          grep -q 'executeShortcutLongPress0173' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'SHORTCUT_LONG_PRESS_FIXED_0173' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'Ações fixas na grade' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-          ! grep -q 'ShortcutLongPressPreferenceStore0171' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          ! grep -q 'Salvar ação do toque longo' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-          ! grep -q 'Ação ao manter pressionado o atalho' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'versionName = "0.1.173"' app/build.gradle.kts || { echo FALHA_VERSION_NAME_0173; exit 1; }
+          grep -q 'versionCode = 5340' app/build.gradle.kts || { echo FALHA_VERSION_CODE_0173; exit 1; }
+          grep -q 'object ShortcutGridPolicy0173' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutLongPressPolicy0171.kt || { echo FALHA_POLITICA_FIXA_0173; exit 1; }
+          grep -q 'ShortcutLongPressResolved0173.Secondary' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutLongPressPolicy0171.kt || { echo FALHA_SECUNDARIA_RESTAURADA_0173; exit 1; }
+          grep -q 'ShortcutLongPressResolved0173.Primary' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutLongPressPolicy0171.kt || { echo FALHA_FALLBACK_PRIMARIO_0173; exit 1; }
+          grep -q 'executeShortcutLongPress0173' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt || { echo FALHA_DESPACHO_FIXO_0173; exit 1; }
+          grep -q 'SHORTCUT_LONG_PRESS_FIXED_0173' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt || { echo FALHA_EVENTO_FIXO_0173; exit 1; }
+          grep -q 'Ações fixas na grade' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt || { echo FALHA_HOME_FIXA_0173; exit 1; }
+          grep -q 'quando não existe ação secundária, repete a principal' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt || { echo FALHA_TEXTO_FALLBACK_0173; exit 1; }
+          ! grep -q 'ShortcutLongPressPreferenceStore0171' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt || { echo FALHA_STORE_LEGADO_SERVICO_0173; exit 1; }
+          ! grep -q 'Salvar ação do toque longo' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt || { echo FALHA_UI_PERSONALIZACAO_0173; exit 1; }
+          ! grep -q 'Ação ao manter pressionado o atalho' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt || { echo FALHA_UI_ESCOLHA_0173; exit 1; }
           grep -q 'ClearApplicationCache' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'CopyAllVisibleText' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
           grep -q 'OpenPrimaryQuickLink' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
@@ -155,35 +158,34 @@ jobs:
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
-          OUT=rota-certa-0.1.173-atalhos-grade-deterministicos-validado.apk
+          OUT=rota-certa-0.1.173-atalhos-grade-restaurados-validado.apk
           test -s "$APK"
           unzip -t "$APK" >/dev/null
           APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
           AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.173-assinatura.txt
-          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.173-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.173-assinatura.txt || { echo FALHA_CERTIFICADO_0173; exit 1; }
           BADGING=$($AAPT dump badging "$APK" | head -1)
           echo "$BADGING" | tee rota-certa-0.1.173-badging.txt
-          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
-          echo "$BADGING" | grep -q "versionCode='5340'"
-          echo "$BADGING" | grep -q "versionName='0.1.173'"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'" || { echo FALHA_PACOTE_0173; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='5340'" || { echo FALHA_BADGING_CODE_0173; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.1.173'" || { echo FALHA_BADGING_NAME_0173; exit 1; }
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
-          grep -q 'ShortcutGridPolicy0173' dex-strings.txt
-          grep -q 'SHORTCUT_LONG_PRESS_FIXED_0173' dex-strings.txt
-          grep -q 'Ações fixas na grade' dex-strings.txt
-          ! grep -q 'ShortcutLongPressPreferenceStore0171' dex-strings.txt
-          ! grep -q 'Salvar ação do toque longo' dex-strings.txt
+          grep -q 'SHORTCUT_LONG_PRESS_FIXED_0173' dex-strings.txt || { echo FALHA_DEX_EVENTO_0173; exit 1; }
+          grep -q 'Ações fixas na grade' dex-strings.txt || { echo FALHA_DEX_HOME_0173; exit 1; }
+          ! grep -q 'ShortcutLongPressPreferenceStore0171' dex-strings.txt || { echo FALHA_DEX_STORE_LEGADO_0173; exit 1; }
+          ! grep -q 'Salvar ação do toque longo' dex-strings.txt || { echo FALHA_DEX_UI_PERSONALIZACAO_0173; exit 1; }
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee rota-certa-0.1.173-sha256.txt
           stat -c '%n %s bytes' "$OUT" | tee rota-certa-0.1.173-tamanho.txt
-          printf 'Versao: 0.1.173 (5340)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: grade com ações fixas; personalização removida; preferências antigas ignoradas e limpas\nContrato da bolinha: preservado\n' > rota-certa-0.1.173-validacao.txt
+          printf 'Versao: 0.1.173 (5340)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: grade restaurada; toque simples principal; toque longo secundário original ou fallback principal; personalização removida\nContrato da bolinha: preservado\n' > rota-certa-0.1.173-validacao.txt
 
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.173-deterministic-shortcut-grid-validated
+          name: rota-certa-0.1.173-restored-shortcut-grid-validated
           path: |
-            source/rota-certa-0.1.173-atalhos-grade-deterministicos-validado.apk
+            source/rota-certa-0.1.173-atalhos-grade-restaurados-validado.apk
             source/rota-certa-0.1.173-sha256.txt
             source/rota-certa-0.1.173-assinatura.txt
             source/rota-certa-0.1.173-badging.txt
