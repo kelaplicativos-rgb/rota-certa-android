@@ -13,7 +13,6 @@ on:
 permissions:
   contents: read
   actions: read
-  issues: write
 
 jobs:
   build:
@@ -21,7 +20,6 @@ jobs:
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -166,7 +164,6 @@ jobs:
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Validate APK
-        id: validate
         working-directory: source
         run: |
           set -euo pipefail
@@ -187,13 +184,9 @@ jobs:
           grep -q 'HOME_MODULE_BUBBLE_GRID_0175' dex-strings.txt
           grep -q 'HomeModuleBubbleGridPolicy0175' dex-strings.txt
           cp "$APK" "$OUT"
-          SHA=$(sha256sum "$OUT" | awk '{print $1}')
-          SIZE=$(stat -c '%s' "$OUT")
-          echo "$SHA  $OUT" | tee rota-certa-0.1.175-sha256.txt
-          echo "$OUT $SIZE bytes" | tee rota-certa-0.1.175-tamanho.txt
+          sha256sum "$OUT" | tee rota-certa-0.1.175-sha256.txt
+          stat -c '%n %s bytes' "$OUT" | tee rota-certa-0.1.175-tamanho.txt
           printf 'Versao: 0.1.175 (5360)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: Home com uma bolinha para cada modulo/recurso; conteudo abaixo da fileira selecionada\nGrade flutuante e farol: preservados\n' > rota-certa-0.1.175-validacao.txt
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
@@ -208,12 +201,3 @@ jobs:
             source/rota-certa-0.1.175-validacao.txt
           retention-days: 90
           if-no-files-found: error
-
-      - name: Report validation to PR
-        if: success()
-        run: |
-          set -euo pipefail
-          sleep 3
-          ARTIFACT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '.artifacts[] | select(.name=="rota-certa-0.1.175-home-bubble-grid-validated") | .id' | head -1)
-          JOB_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" --jq '.jobs[0].id')
-          gh api "repos/${GITHUB_REPOSITORY}/issues/44/comments" -f body="<!-- VALIDATION_0175 -->\n✅ **Validação automática 0.1.175 concluída**\n\n- head: \`${GITHUB_SHA}\`\n- run: \`${GITHUB_RUN_ID}\`\n- job: \`${JOB_ID}\`\n- artifact: \`rota-certa-0.1.175-home-bubble-grid-validated\`\n- artifact ID: \`${ARTIFACT_ID}\`\n- APK SHA-256: \`${{ steps.validate.outputs.sha }}\`\n- APK bytes: \`${{ steps.validate.outputs.size }}\`\n- testes, Lint, build, pacote, versão, DEX e assinatura: aprovados"
