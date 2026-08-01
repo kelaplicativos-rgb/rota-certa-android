@@ -1,8 +1,8 @@
 name: Inspect Home Modules 0.1.174
 
 on:
-  push:
-    branches: [agent/home-module-launcher-0.1.174]
+  pull_request:
+    branches: [agent/deterministic-shortcut-grid-0.1.173]
     paths:
       - .github/workflows/inspect-home-modules-0.1.174.yml
   workflow_dispatch:
