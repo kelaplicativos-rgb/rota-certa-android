@@ -1,5 +1,42 @@
 # Rota Certa — Estado do projeto
 
+## 01/08/2026 — 0.1.174 (5350) — conteúdo dos módulos dentro do próprio expander
+
+- **Branch:** `agent/home-module-launcher-0.1.174`; **PR:** #43, empilhada sobre `agent/deterministic-shortcut-grid-0.1.173`, aberta, em rascunho e sem merge.
+- **Commit funcional validado:** `c617f7a558d8f77a5f6f805762b8d0ff3e58842f`.
+- **Pedido do usuário:** ao tocar em um expander, mostrar o conteúdo do módulo imediatamente dentro do próprio cartão, sem renderizá-lo no final da página e sem obrigar o usuário a percorrer toda a Home.
+- **Evidência:** o vídeo real `1000878234.mp4` mostrou que a lista de módulos era expandida no topo, mas o conteúdo selecionado continuava sendo renderizado por um `SettingsScreen` global depois de todos os cartões.
+- **Causa:** `ShortcutModulesHome0171` apenas alterava `selectedBubbleGroup`; em seguida, a Home sempre compunha um único `SettingsScreen` fora da lista. O expander não possuía o conteúdo do módulo como filho visual.
+- **Correção aplicada:**
+  - cada módulo passa a compor seu conteúdo dentro do próprio `Card` expandido;
+  - somente um módulo permanece aberto por vez, controlado por `HomeModuleExpansionPolicy0174`;
+  - tocar novamente no módulo aberto recolhe o conteúdo no mesmo local;
+  - removido o botão genérico `Abrir módulo` dos módulos internos;
+  - Destino, Rota, Alertas, Locais, Radares, Aparência, Permissões, Backup, Cards, Encerrar e Relatórios são renderizados inline no expander correspondente;
+  - módulos que exigem Activity própria mantêm, dentro do próprio expander, resumo e botão com ação específica;
+  - removido o `SettingsScreen` global que aparecia após toda a lista;
+  - grade flutuante, toque simples/longo restaurado e contrato do farol foram preservados.
+- **Arquivos principais alterados/materializados:**
+  - `app/build.gradle.kts`;
+  - `app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt`;
+  - novo `app/src/main/java/br/com/mapeiaia/rotacerta/HomeModuleExpansionPolicy0174.kt`;
+  - novo teste `HomeModuleExpansionPolicy0174Test.kt`;
+  - contrato legado `ShortcutLongPressContract0171Test.kt` atualizado para validar a arquitetura inline sem reintroduzir personalização;
+  - `scripts/fix_home_inline_modules_0174.patch.gz.b64`;
+  - `scripts/fix_home_inline_modules_0174_test_contract.py`;
+  - `.github/workflows/build-rota-certa-0.1.174.yml`.
+- **Fronteira protegida:** `AndroidManifest.xml`, `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt` e `LiveRideAccessibilityService.kt` permaneceram preservados por checksum. Não houve alteração em permissões, parser, OCR automático, rota, Casa/Alfinetes, confirmação de card, cores, km ou cancelamento de resultado atrasado.
+- **Testes e validações:** materialização completa 0.1.151–0.1.173; aplicação limpa do patch; contrato estrutural inline; política de apenas um expander aberto; 244 testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP, DEX, pacote, versão, versionCode, assinatura v2 e certificado validados.
+- **Falha intermediária localizada:** o primeiro pipeline chegou aos testes e falhou porque o contrato legado 0.1.171 ainda exigia a antiga interface de abertura. O teste foi atualizado para exigir disponibilidade de todos os módulos, conteúdo dentro do cartão, ausência do botão genérico e preservação do toque longo determinístico e das confirmações sensíveis.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.174`, run `30698222636`, job `91364596001`; todos os passos concluídos com sucesso.
+- **Artifact funcional:** `rota-certa-0.1.174-inline-home-modules-validated`, ID `8818002744`, retenção até 30/10/2026.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.174`, versionCode `5350`.
+- **APK:** `rota-certa-0.1.174-modulos-inline-validado.apk`, 55.976.915 bytes.
+- **SHA-256 do APK:** `ce3560232b905499246d1d215784fb18af3162c9be8aeb005f587df605e0ba5b`.
+- **SHA-256 do ZIP do artifact:** `efdf7ebf547159b06e187216c611ac81a8b711c884f15cfcff157dd9892d9444`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências e próxima validação:** instalar no Samsung SM-S911B/Android 16 e confirmar visualmente que o conteúdo surge logo abaixo do título do módulo tocado, que o módulo anterior recolhe, que não há salto ao fim da página, que os botões de Activities externas abrem o destino correto e que a grade e o farol não regrediram. A PR #43 deve continuar em rascunho até essa validação real.
+
 ## 01/08/2026 — 0.1.173 (5340) — grade restaurada sem personalização
 
 - **Branch:** `agent/deterministic-shortcut-grid-0.1.173`; **PR:** #42, empilhada sobre `agent/accessibility-resilience-and-tools-0.1.172`, aberta, mergeável, em rascunho e sem merge.
