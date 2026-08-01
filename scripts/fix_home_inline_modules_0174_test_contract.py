@@ -92,3 +92,5 @@ class ShortcutLongPressContract0171Test {
 
 print("CONTRATO_HOME_INLINE_0174_OK")
 print("CONTRATO_LEGADO_HOME_0171_ATUALIZADO_PARA_INLINE_0174")
+
+# Alteração técnica sem efeito funcional para validar o head documentado por commit normal.
