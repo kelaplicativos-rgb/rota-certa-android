@@ -1,5 +1,18 @@
 # Rota Certa — Decisões técnicas
 
+## 01/08/2026 — o conteúdo do módulo pertence ao próprio expander
+
+- **Decisão:** o conteúdo funcional de um módulo da Home deve ser composto como filho do cartão expandido daquele módulo, imediatamente abaixo do seu cabeçalho.
+- **Motivo:** selecionar um grupo e renderizar um painel global depois da lista cria distância entre comando e resultado, exige rolagem desnecessária e faz parecer que o expander não funcionou.
+- **Expansão exclusiva:** somente um módulo permanece aberto por vez. Abrir outro recolhe o anterior; tocar novamente no módulo aberto o fecha.
+- **Módulos internos:** telas e grupos que já são componentes Compose devem ser renderizados inline, sem botão intermediário `Abrir módulo` e sem painel global no fim da página.
+- **Módulos externos:** recursos que dependem de Activity própria permanecem representados dentro do expander com descrição curta e botão de ação específico; não usar rótulo genérico quando o destino puder ser nomeado.
+- **Estado:** a expansão é controlada por um único ID autoritativo na Home, não por um estado local independente em cada cartão.
+- **Desempenho:** somente o conteúdo do módulo atualmente aberto é composto. Não manter todos os módulos pesados montados, não adicionar polling e não executar ações ao apenas expandir o cartão.
+- **Navegação:** fechar ou alternar expanders não altera a grade flutuante, não dispara a ação rápida do módulo e não muda o estado do farol.
+- **Fronteira protegida:** esta decisão é exclusiva de apresentação e navegação da Home. Manifest, permissões, acessibilidade, parser, OCR automático, rota, Casa/Alfinetes, decisão, cores, km e proteção contra resultados atrasados permanecem inalterados.
+- **Condição para revisão:** revisar somente se a Home adotar navegação formal por rotas ou telas independentes. Mesmo nesse caso, comando e conteúdo devem continuar visualmente próximos e a volta deve preservar a posição do usuário.
+
 ## 01/08/2026 — a grade usa ações fixas e restaura o contrato original
 
 - **Decisão:** a grade flutuante não oferece personalização de toque simples ou toque longo por usuário.
