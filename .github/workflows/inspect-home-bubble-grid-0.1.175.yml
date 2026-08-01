@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -92,16 +92,24 @@ jobs:
           base64 --decode ../patches/scripts/fix_home_inline_modules_0174.patch.gz.b64 | gzip --decompress > /tmp/fix0174.patch
           git apply /tmp/fix0174.patch
 
-      - name: Upload materialized Home sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-0.1.174-materialized-home-sources
-          path: |
-            source/app/build.gradle.kts
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/HomeModuleExpansionPolicy0174.kt
-            source/app/src/test/java/br/com/mapeiaia/rotacerta/HomeModuleExpansionPolicy0174Test.kt
-            source/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt
-          retention-days: 3
-          if-no-files-found: error
+      - name: Commit materialized Home sources for inspection
+        run: |
+          set -euo pipefail
+          rm -rf patches/inspection/0.1.174
+          mkdir -p patches/inspection/0.1.174/main patches/inspection/0.1.174/test
+          cp source/app/build.gradle.kts patches/inspection/0.1.174/build.gradle.kts
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt patches/inspection/0.1.174/main/MainActivity.kt
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt patches/inspection/0.1.174/main/BubbleShortcutModule.kt
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/HomeModuleExpansionPolicy0174.kt patches/inspection/0.1.174/main/HomeModuleExpansionPolicy0174.kt
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/HomeModuleExpansionPolicy0174Test.kt patches/inspection/0.1.174/test/HomeModuleExpansionPolicy0174Test.kt
+          cp source/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt patches/inspection/0.1.174/test/ShortcutLongPressContract0171Test.kt
+          cd patches
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add inspection/0.1.174
+          if git diff --cached --quiet; then
+            echo 'Inspection snapshot already current.'
+          else
+            git commit -m 'ci: materialize Home sources for 0.1.175 design'
+            git push origin HEAD:agent/home-module-bubble-grid-0.1.175
+          fi
