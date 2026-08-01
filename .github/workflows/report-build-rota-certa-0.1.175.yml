@@ -1,0 +1,59 @@
+name: Report Rota Certa 0.1.175 Build
+
+on:
+  push:
+    branches: [agent/home-module-bubble-grid-0.1.175]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.175.yml
+      - .github/workflows/report-build-rota-certa-0.1.175.yml
+      - scripts/fix_home_bubble_grid_0175.py
+      - docs/PROJECT_STATUS.md
+      - docs/DECISIONS.md
+
+permissions:
+  actions: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for build and report result
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          CONCLUSION=""
+          for attempt in $(seq 1 120); do
+            RUN_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-rota-certa-0.1.175.yml/runs?branch=agent/home-module-bubble-grid-0.1.175&per_page=20")
+            RUN_ID=$(echo "$RUN_JSON" | jq -r --arg sha "$GITHUB_SHA" '.workflow_runs[] | select(.head_sha==$sha) | .id' | head -1)
+            if [ -n "$RUN_ID" ]; then
+              STATUS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq '.status')
+              if [ "$STATUS" = "completed" ]; then
+                CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" --jq '.conclusion')
+                break
+              fi
+            fi
+            sleep 15
+          done
+
+          if [ -z "$RUN_ID" ] || [ -z "$CONCLUSION" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/44/comments" -f body="<!-- VALIDATION_0175_REPORT -->\n⚠️ Não consegui localizar a conclusão do workflow 0.1.175 para o head \`${GITHUB_SHA}\`."
+            exit 1
+          fi
+
+          JOB_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --jq '.jobs[0].id')
+          if [ "$CONCLUSION" != "success" ]; then
+            FIRST_FAILED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --jq '.jobs[0].steps[] | select(.conclusion=="failure") | .name' | head -1)
+            gh api "repos/${GITHUB_REPOSITORY}/issues/44/comments" -f body="<!-- VALIDATION_0175_REPORT -->\n❌ **Validação 0.1.175 falhou**\n\n- head: \`${GITHUB_SHA}\`\n- run: \`${RUN_ID}\`\n- job: \`${JOB_ID}\`\n- primeira etapa com falha: \`${FIRST_FAILED}\`"
+            exit 1
+          fi
+
+          ARTIFACT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name=="rota-certa-0.1.175-home-bubble-grid-validated") | .id' | head -1)
+          rm -rf /tmp/rota175 && mkdir -p /tmp/rota175
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" -n rota-certa-0.1.175-home-bubble-grid-validated -D /tmp/rota175
+          SHA=$(awk '{print $1}' /tmp/rota175/rota-certa-0.1.175-sha256.txt)
+          SIZE=$(awk '{print $(NF-1)}' /tmp/rota175/rota-certa-0.1.175-tamanho.txt)
+          gh api "repos/${GITHUB_REPOSITORY}/issues/44/comments" -f body="<!-- VALIDATION_0175_REPORT -->\n✅ **Validação 0.1.175 concluída**\n\n- head: \`${GITHUB_SHA}\`\n- run: \`${RUN_ID}\`\n- job: \`${JOB_ID}\`\n- artifact ID: \`${ARTIFACT_ID}\`\n- APK SHA-256: \`${SHA}\`\n- APK bytes: \`${SIZE}\`\n- testes, Lint, build, pacote, versão, DEX e assinatura: aprovados"
