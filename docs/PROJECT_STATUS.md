@@ -1,5 +1,43 @@
 # Rota Certa — Estado do projeto
 
+## 01/08/2026 — 0.1.173 (5340) — grade restaurada sem personalização
+
+- **Branch:** `agent/deterministic-shortcut-grid-0.1.173`; **PR:** #42, empilhada sobre `agent/accessibility-resilience-and-tools-0.1.172`, aberta, mergeável, em rascunho e sem merge.
+- **Commit funcional:** `e339adbb1590a872f6d3bec34a489abb5553bc05`; **commit do workflow final validado:** `c49fb2cbac19d0cfedec5c7b4febf488d48ecb5c`.
+- **Pedido do usuário:** os atalhos da grade não estavam executando corretamente o comportamento determinado; remover a personalização e restaurar as ações originais dos atalhos.
+- **Situação anterior:** a 0.1.171 permitia escolher individualmente a ação do toque longo e a 0.1.172 herdava essas preferências. Na validação prática, a combinação entre estado persistido, ação escolhida, ação principal e ação secundária tornou o resultado difícil de prever e de diagnosticar.
+- **Causa:** a personalização passou a participar do despacho da grade e substituiu o contrato original, no qual o toque simples executava a ação principal e o toque longo executava a ação secundária existente ou repetia a principal quando não havia secundária.
+- **Correção aplicada:**
+  - removida a interface de escolha da ação do toque longo na Home;
+  - removida a leitura de preferências personalizadas durante o gesto;
+  - preferências antigas da personalização são ignoradas e limpas;
+  - toque simples permanece ligado à ação principal fixa do módulo;
+  - toque longo restaura a ação secundária original e, quando ela não existe, repete a ação principal;
+  - ações sensíveis mantêm confirmação quando prevista, incluindo limpeza do cache;
+  - módulos continuam disponíveis diretamente pela Home;
+  - falha de ação encerra de forma segura, sem alterar o farol;
+  - nenhum polling, novo serviço ou processamento em segundo plano foi adicionado.
+- **Arquivos principais alterados/materializados:**
+  - `app/build.gradle.kts`;
+  - `LiveRideAccessibilityService.kt`;
+  - `MainActivity.kt`;
+  - `ShortcutLongPressPolicy0171.kt`;
+  - testes `ShortcutLongPressPolicy0171Test.kt` e `ShortcutLongPressContract0171Test.kt`;
+  - `scripts/fix_deterministic_shortcut_grid_0173.patch.gz.b64`;
+  - `scripts/fix_deterministic_shortcut_grid_0173_test_contract.py`;
+  - `.github/workflows/build-rota-certa-0.1.173.yml`.
+- **Fronteira protegida:** `AndroidManifest.xml`, permissões, `DecisionEngine.kt`, `RideTextParser.kt`, `GoogleMapsService.kt`, seleção de aplicativos, confirmação de card, OCR automático, rota, Casa/Alfinetes, cores, km e cancelamento de resultados antigos permaneceram preservados por checksum.
+- **Testes e validações:** materialização completa 0.1.151–0.1.172; aplicação limpa do patch; contrato de restauração; testes unitários e de contrato; Android Lint; `clean assembleDebug`; integridade ZIP; pacote; versão; versionCode; marcador DEX estável; assinatura APK Signature Scheme v2 e certificado.
+- **Falha intermediária do workflow:** a primeira compilação e todos os testes passaram, mas a validação procurava a frase acentuada `Ações fixas na grade` por `strings` bruto no DEX e gerou `FALHA_DEX_HOME_0173`. A checagem inadequada foi removida; a frase continua validada diretamente no código-fonte e o marcador ASCII compilado permanece validado no APK.
+- **Workflow final validado:** `Build Rota Certa 0.1.173`, run `30682334191`, job `91321705773`; todos os passos concluídos com sucesso.
+- **Artifact:** `rota-certa-0.1.173-restored-shortcut-grid-validated`, ID `8812754254`, retenção até 30/10/2026.
+- **SHA-256 do ZIP do artifact:** `ee1e20b5796608d544e98b2afa69698498725ad924a5335d8d5d89934de7f5c4`.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.173`, versionCode `5340`.
+- **APK:** `rota-certa-0.1.173-atalhos-grade-restaurados-validado.apk`, 55.976.911 bytes.
+- **SHA-256 do APK:** `c9e554dfba02128ed2a0132e0c50afc5d2d9cb6fae20039fef20abdd73499ac6`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências e próxima validação:** instalar no Samsung SM-S911B/Android 16 e testar cada atalho da grade com toque simples e toque longo, especialmente módulos com secundária própria, módulos com fallback para a principal, limpeza com confirmação, Copiar/OCR e Links rápidos. Confirmar também que preferências antigas não reaparecem após atualização ou reinício e que o farol permanece inalterado. A PR #42 deve continuar em rascunho até essa validação real.
+
 ## 31/07/2026 — 0.1.172 (5330) — acessibilidade resiliente e ferramentas rápidas
 
 - **Branch:** `agent/accessibility-resilience-and-tools-0.1.172`; **PR:** #41, empilhada sobre `agent/customizable-shortcut-long-press-0.1.171`, em rascunho, aberta e sem merge.
