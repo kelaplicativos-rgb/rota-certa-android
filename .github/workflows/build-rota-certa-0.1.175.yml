@@ -1,0 +1,219 @@
+name: Build Rota Certa 0.1.175
+
+on:
+  push:
+    branches: [agent/home-module-bubble-grid-0.1.175]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.175.yml
+      - scripts/fix_home_bubble_grid_0175.py
+      - scripts/finalize_docs_0175.py
+      - docs/PROJECT_STATUS.md
+      - docs/DECISIONS.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/home-module-bubble-grid-0.1.175
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize source through 0.1.171
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163_rerun.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164_rerun.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165_rerun.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166.py .
+          python ../patches/scripts/fix_farol_selected_apps_0166_rerun.py .
+          python ../patches/scripts/fix_farol_realtime_0167.py .
+          python ../patches/scripts/fix_farol_realtime_0167_rerun.py .
+          python ../patches/scripts/run_fix_farol_unified_visual_0168.py .
+          python ../patches/scripts/fix_farol_unified_visual_0168_compile.py .
+          python ../patches/scripts/fix_uber_notification_wakeup_0169.py .
+          python ../patches/scripts/fix_notification_wakeup_crash_containment_0170.py .
+          cat ../patches/scripts/fix_home_modules_long_press_0171.py.part0{0,1,2,3,4} > /tmp/fix0171.py
+          python -m py_compile /tmp/fix0171.py
+          python /tmp/fix0171.py .
+
+      - name: Apply 0.1.172
+        working-directory: source
+        run: |
+          set -euo pipefail
+          cat ../patches/scripts/fix_accessibility_resilience_tools_0172.patch.gz.b64.part0{0,1,2,3,4} > /tmp/fix0172.b64
+          base64 --decode /tmp/fix0172.b64 | gzip --decompress > /tmp/fix0172.patch
+          echo 'c22d3884779f17f9fff7b42dd6f3450cf3c416c62f33ac219e4611d55d345ae7  /tmp/fix0172.patch' | sha256sum --check
+          git apply --check /tmp/fix0172.patch
+          git apply /tmp/fix0172.patch
+          python ../patches/scripts/fix_accessibility_resilience_tools_0172_test_contract.py .
+
+      - name: Apply 0.1.173
+        working-directory: source
+        run: |
+          set -euo pipefail
+          base64 --decode ../patches/scripts/fix_deterministic_shortcut_grid_0173.patch.gz.b64 | gzip --decompress > /tmp/fix0173.patch
+          echo 'acb4ddf9d31d942c9cff86f40965fe2b2910ffee6090cd8c2b804a7530317a6c  /tmp/fix0173.patch' | sha256sum --check
+          git apply --check /tmp/fix0173.patch
+          git apply /tmp/fix0173.patch
+          python ../patches/scripts/fix_deterministic_shortcut_grid_0173_test_contract.py .
+
+      - name: Apply 0.1.174
+        working-directory: source
+        run: |
+          set -euo pipefail
+          base64 --decode ../patches/scripts/fix_home_inline_modules_0174.patch.gz.b64 | gzip --decompress > /tmp/fix0174.patch
+          echo '1a0622e82db7aa3468851a7fcfab324d885b7c614567de0f4485e8553784e154  /tmp/fix0174.patch' | sha256sum --check
+          git apply --check /tmp/fix0174.patch
+          git apply /tmp/fix0174.patch
+          python ../patches/scripts/fix_home_inline_modules_0174_test_contract.py .
+
+      - name: Snapshot protected contracts
+        working-directory: source
+        run: |
+          set -euo pipefail
+          sha256sum \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutLongPressPolicy0171.kt \
+            > /tmp/protected-0175.sha256
+
+      - name: Apply Home bubble grid 0.1.175
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python ../patches/scripts/fix_home_bubble_grid_0175.py .
+          sha256sum --check /tmp/protected-0175.sha256
+
+      - name: Verify Home bubble-grid contract
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+          grep -q 'versionName = "0.1.175"' app/build.gradle.kts
+          grep -q 'versionCode = 5360' app/build.gradle.kts
+          grep -q 'HOME_MODULE_BUBBLE_GRID_0175' app/src/main/java/br/com/mapeiaia/rotacerta/HomeModuleBubbleGridPolicy0175.kt
+          grep -q 'HomeModuleBubble0175' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'HomeModuleInlinePanel0175' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'HomeModuleBubbleGridPolicy0175.rows' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'uma bolinha para cada módulo e recurso' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          ! grep -q 'ShortcutModuleCard0174' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          ! grep -q 'combinedClickable' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+
+      - name: Unit and contract tests
+        working-directory: source
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        working-directory: source
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        working-directory: source
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          OUT=rota-certa-0.1.175-home-grade-bolinhas-validado.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.175-assinatura.txt
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' rota-certa-0.1.175-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING" | tee rota-certa-0.1.175-badging.txt
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5360'"
+          echo "$BADGING" | grep -q "versionName='0.1.175'"
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
+          grep -q 'HOME_MODULE_BUBBLE_GRID_0175' dex-strings.txt
+          grep -q 'HomeModuleBubbleGridPolicy0175' dex-strings.txt
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee rota-certa-0.1.175-sha256.txt
+          stat -c '%n %s bytes' "$OUT" | tee rota-certa-0.1.175-tamanho.txt
+          printf 'Versao: 0.1.175 (5360)\nPacote: br.com.mapeiaia.rotacerta\nEscopo: Home com uma bolinha para cada modulo/recurso; conteudo abaixo da fileira selecionada\nGrade flutuante e farol: preservados\n' > rota-certa-0.1.175-validacao.txt
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.175-home-bubble-grid-validated
+          path: |
+            source/rota-certa-0.1.175-home-grade-bolinhas-validado.apk
+            source/rota-certa-0.1.175-sha256.txt
+            source/rota-certa-0.1.175-assinatura.txt
+            source/rota-certa-0.1.175-badging.txt
+            source/rota-certa-0.1.175-tamanho.txt
+            source/rota-certa-0.1.175-validacao.txt
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Update project records
+        working-directory: patches
+        run: |
+          set -euo pipefail
+          python scripts/finalize_docs_0175.py .
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          if git diff --cached --quiet; then
+            echo 'Project records already current.'
+          else
+            git commit -m 'docs: register Home bubble grid 0.1.175'
+            git push origin HEAD:agent/home-module-bubble-grid-0.1.175
+          fi

@@ -1,5 +1,19 @@
 # Rota Certa — Decisões técnicas
 
+## 01/08/2026 — a Home é o catálogo completo em bolinhas; a grade flutuante continua sendo o painel rápido
+
+- **Decisão:** cada módulo ou recurso registrado no catálogo possui uma bolinha própria na Home, enquanto a grade flutuante permanece separada e dedicada às ações rápidas sobre outros aplicativos.
+- **Motivo:** a Home precisa permitir reconhecimento visual rápido de todos os recursos sem transformar a grade flutuante em navegação completa nem ocultar módulos em uma lista longa de cartões.
+- **Home:** usa bolinhas grandes, com ícone e nome curto, em três colunas. Cada bolinha representa exatamente um módulo do catálogo autoritativo.
+- **Interação:** somente toque simples. Tocar seleciona ou recolhe; não existe personalização nem gesto longo na Home.
+- **Conteúdo:** aparece imediatamente abaixo da fileira que contém a bolinha selecionada. Não renderizar painel global no fim da lista e não deslocar o resultado para outro ponto da página.
+- **Estado:** apenas um módulo pode permanecer aberto. A seleção usa o mesmo ID autoritativo da política de expansão e não cria estados independentes por bolinha.
+- **Grade flutuante:** conserva as ações fixas restauradas na 0.1.173. A mudança visual da Home não altera despacho, toque simples, toque longo, confirmação de ações sensíveis ou sobreposição.
+- **Segurança durante condução:** a interface reduz procura visual, mas não autoriza manipulação prolongada do celular com o veículo em movimento. Configurações e tarefas detalhadas devem ser preparadas com o veículo parado.
+- **Desempenho:** somente o conteúdo do módulo selecionado é composto; nenhuma bolinha inicia OCR, rota, captura, serviço ou polling apenas por estar visível.
+- **Fronteira protegida:** Manifest, permissões, acessibilidade, parser, OCR automático, Google Maps, Casa/Alfinetes, confirmação de card, decisão, cores, km, cancelamento de resultados antigos e grade flutuante permanecem inalterados.
+- **Condição para revisão:** revisar quantidade de colunas ou dimensões somente após teste visual em diferentes larguras de tela. Não remover a correspondência de uma bolinha por módulo sem decisão explícita.
+
 ## 01/08/2026 — o conteúdo do módulo pertence ao próprio expander
 
 - **Decisão:** o conteúdo funcional de um módulo da Home deve ser composto como filho do cartão expandido daquele módulo, imediatamente abaixo do seu cabeçalho.

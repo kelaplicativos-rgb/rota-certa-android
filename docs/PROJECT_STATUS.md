@@ -1,5 +1,42 @@
 # Rota Certa — Estado do projeto
 
+## 01/08/2026 — 0.1.175 (5360) — Home em grade de bolinhas por módulo e recurso
+
+- **Branch:** `agent/home-module-bubble-grid-0.1.175`; **PR:** #44, empilhada sobre `agent/home-module-launcher-0.1.174`, aberta, mergeável, em rascunho e sem merge.
+- **Commit funcional validado:** `7ea558deb4307fd1cdc273509695abf04487b04f`.
+- **Pedido do usuário:** manter a grade flutuante como painel de ações rápidas e transformar a Home no catálogo completo do aplicativo, com uma bolinha própria para cada módulo ou recurso.
+- **Situação anterior:** a Home 0.1.174 usava cartões expansíveis verticais. Embora o conteúdo já aparecesse no local correto, a lista continuava longa e menos adequada à identificação rápida de todos os recursos.
+- **Causa:** a apresentação por cartões priorizava detalhes textuais antes da seleção. Para o contexto de uso do Rota Certa, o catálogo completo precisava privilegiar reconhecimento visual, alvos grandes e uma entrada direta para cada módulo.
+- **Correção aplicada:**
+  - todos os 17 módulos do `BubbleShortcutCatalog` são apresentados na Home como bolinhas circulares de 96 dp, com ícone e nome;
+  - a grade da Home usa três colunas e seis fileiras, preservando a ordem autoritativa do catálogo;
+  - toque simples seleciona ou recolhe o módulo, sem toque longo e sem personalização;
+  - apenas um módulo fica aberto por vez;
+  - o conteúdo aparece imediatamente abaixo da fileira da bolinha selecionada, sem salto ao fim da página;
+  - a bolinha selecionada recebe destaque visual;
+  - a grade flutuante permanece separada e conserva suas ações fixas de toque simples e longo restauradas na 0.1.173;
+  - nenhuma ação é executada apenas por compor ou visualizar a grade da Home.
+- **Arquivos principais alterados/materializados:**
+  - `app/build.gradle.kts`;
+  - `MainActivity.kt`;
+  - novo `HomeModuleBubbleGridPolicy0175.kt`;
+  - novo `HomeModuleBubbleGridPolicy0175Test.kt`;
+  - contrato `ShortcutLongPressContract0171Test.kt` atualizado para a Home em bolinhas;
+  - `scripts/fix_home_bubble_grid_0175.py`;
+  - `scripts/fix_home_bubble_grid_0175_contract.py`;
+  - `.github/workflows/build-rota-certa-0.1.175.yml`.
+- **Fronteira protegida:** `AndroidManifest.xml`, `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt`, `LiveRideAccessibilityService.kt`, `BubbleShortcutOverlayController.kt`, `BubbleShortcutModule.kt` e `ShortcutLongPressPolicy0171.kt` permaneceram preservados por checksum. Não houve mudança em permissões, acessibilidade, parser, OCR, rota, Casa/Alfinetes, confirmação real de card, decisão, cores, km ou grade flutuante.
+- **Testes e validações:** materialização completa 0.1.151–0.1.174; contratos estruturais; 267 testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP, DEX, pacote, versão, versionCode, assinatura v2 e certificado validados.
+- **Falhas intermediárias localizadas:** dois testes legados ainda exigiam textos e estrutura dos cartões expansíveis e foram atualizados para o novo contrato; posteriormente, a única falha do pipeline era um passo não funcional que tentava comentar automaticamente na PR, removido sem alteração do APK.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.175`, run `30713519235`, job `91405065129`; todos os passos concluídos com sucesso.
+- **Artifact funcional:** `rota-certa-0.1.175-home-bubble-grid-validated`, ID `8822675670`, retenção até 30/10/2026.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.175`, versionCode `5360`.
+- **APK:** `rota-certa-0.1.175-home-grade-bolinhas-validado.apk`, 55.993.299 bytes.
+- **SHA-256 do APK:** `33c8f8eb41c61eb4cb69fd0a5aba8eefd4f09474c027a9648a050ebc47170816`.
+- **SHA-256 do ZIP do artifact funcional:** `16c942dac2374259a3c5d7d91284eb2efa2174353af3f377c20573a011fb25d7`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências e próxima validação:** instalar no Samsung SM-S911B/Android 16 e confirmar visualmente as 17 bolinhas, legibilidade dos nomes, três colunas sem sobreposição, conteúdo abaixo da fileira correta, recolhimento ao tocar novamente, troca entre módulos e ausência de regressão na grade flutuante e no farol. A PR #44 deve permanecer em rascunho até essa validação real.
+
 ## 01/08/2026 — 0.1.174 (5350) — conteúdo dos módulos dentro do próprio expander
 
 - **Branch:** `agent/home-module-launcher-0.1.174`; **PR:** #43, empilhada sobre `agent/deterministic-shortcut-grid-0.1.173`, aberta, mergeável, em rascunho e sem merge.
