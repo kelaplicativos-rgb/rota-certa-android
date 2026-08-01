@@ -1,0 +1,28 @@
+name: Compute Home Inline Patch SHA 0.1.174
+
+on:
+  push:
+    branches: [agent/home-module-launcher-0.1.174]
+    paths:
+      - .github/workflows/compute-home-inline-patch-sha-0.1.174.yml
+      - scripts/fix_home_inline_modules_0174.patch.gz.b64
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checksum:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/home-module-launcher-0.1.174
+      - name: Decode and print checksum
+        run: |
+          set -euo pipefail
+          base64 --decode scripts/fix_home_inline_modules_0174.patch.gz.b64 | gzip --decompress > /tmp/fix0174.patch
+          sha256sum /tmp/fix0174.patch
+          test -s /tmp/fix0174.patch
+          grep -q 'HOME_MODULE_CONTENT_INLINE_0174' /tmp/fix0174.patch
