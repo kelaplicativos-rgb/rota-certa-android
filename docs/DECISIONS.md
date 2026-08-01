@@ -1,5 +1,19 @@
 # Rota Certa — Decisões técnicas
 
+## 01/08/2026 — a grade usa ações fixas e restaura o contrato original
+
+- **Decisão:** a grade flutuante não oferece personalização de toque simples ou toque longo por usuário.
+- **Motivo:** preferências individuais criaram combinações persistidas que dificultavam garantir e diagnosticar qual ação seria executada por cada atalho.
+- **Toque simples:** executa sempre a ação principal definida no catálogo do módulo.
+- **Toque longo:** executa a ação secundária original quando ela existir; quando não existir, repete a ação principal, preservando o comportamento anterior à personalização.
+- **Migração:** preferências antigas de toque longo são ignoradas e removidas. Elas não podem voltar a influenciar o despacho após atualização ou reinício.
+- **Segurança:** confirmação continua obrigatória quando a ação fixa já for sensível, como limpeza de cache. Não criar fallback destrutivo para ação ausente ou falha de abertura.
+- **Home:** todos os módulos continuam acessíveis diretamente pela Home; a remoção da personalização não remove módulos nem transforma a grade na única entrada para diagnóstico.
+- **Desempenho:** a resolução é local e orientada ao gesto, sem observador, polling, novo serviço, OCR ou captura em segundo plano.
+- **Validação:** texto de interface com caracteres acentuados deve ser validado no código-fonte ou por teste de recurso, não por `strings` bruto sobre DEX. O APK mantém validação por marcador ASCII estável, pacote, versão, assinatura e contratos de código.
+- **Fronteira protegida:** Manifest, permissões, acessibilidade, parser, OCR automático, Google Maps, Casa/Alfinetes, confirmação real de card, decisão, cores e quilometragem não podem ser alterados pela restauração da grade.
+- **Condição para revisão:** revisar apenas se o catálogo de ações mudar de forma explícita. Qualquer nova personalização exigirá evidência de necessidade, migração determinística e testes em aparelho antes de voltar ao produto.
+
 ## 31/07/2026 — acessibilidade falha fechada e ferramentas manuais não usam polling
 
 - **Fronteira do serviço:** `onAccessibilityEvent`, criação, conexão, interrupção e destruição do serviço são fronteiras fail-closed. Uma exceção inesperada deve ser contida, registrada de forma limitada e limpar somente o estado transitório; não pode escapar silenciosamente para o Android.
