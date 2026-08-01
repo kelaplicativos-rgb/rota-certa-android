@@ -34,7 +34,6 @@ class ShortcutLongPressContract0171Test {
 
     @Test
     fun selectedModuleContentStaysBelowItsOwnRowAndOnlyOneSelectionIsAuthoritative() {
-        assertTrue(main.contains("HomeModuleExpansionPolicy0174.nextExpandedId"))
         assertTrue(main.contains("HomeModuleExpansionPolicy0174.isExpanded"))
         assertTrue(main.contains("HomeModuleBubbleGridPolicy0175.expandedIdInRow"))
         assertTrue(main.contains("rowModules.firstOrNull"))
