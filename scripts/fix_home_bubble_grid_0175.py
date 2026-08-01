@@ -2,6 +2,7 @@
 # HOME_BUBBLE_GRID_BUILD_TRIGGER_0175
 # HOME_BUBBLE_GRID_VALIDATION_TRIGGER_0175
 from pathlib import Path
+import subprocess
 import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
@@ -190,5 +191,10 @@ if old not in contract:
     raise SystemExit("Contrato legado da Home nao encontrado")
 contract = contract.replace(old, new)
 contract_test_path.write_text(contract, encoding="utf-8")
+
+subprocess.run(
+    [sys.executable, str(Path(__file__).with_name("fix_home_bubble_grid_0175_contract.py")), str(root)],
+    check=True,
+)
 
 print("HOME_MODULE_BUBBLE_GRID_0175 applied")
