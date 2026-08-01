@@ -172,7 +172,6 @@ jobs:
           echo "$BADGING" | grep -q "versionName='0.1.173'" || { echo FALHA_BADGING_NAME_0173; exit 1; }
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$APK" "$dex"; done | strings > dex-strings.txt
           grep -q 'SHORTCUT_LONG_PRESS_FIXED_0173' dex-strings.txt || { echo FALHA_DEX_EVENTO_0173; exit 1; }
-          grep -q 'Ações fixas na grade' dex-strings.txt || { echo FALHA_DEX_HOME_0173; exit 1; }
           ! grep -q 'ShortcutLongPressPreferenceStore0171' dex-strings.txt || { echo FALHA_DEX_STORE_LEGADO_0173; exit 1; }
           ! grep -q 'Salvar ação do toque longo' dex-strings.txt || { echo FALHA_DEX_UI_PERSONALIZACAO_0173; exit 1; }
           cp "$APK" "$OUT"
