@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # HOME_BUBBLE_GRID_BUILD_TRIGGER_0175
 # HOME_BUBBLE_GRID_VALIDATION_TRIGGER_0175
+# HOME_BUBBLE_GRID_CONTRACT_FIX_TRIGGER_0175
 from pathlib import Path
 import subprocess
 import sys
