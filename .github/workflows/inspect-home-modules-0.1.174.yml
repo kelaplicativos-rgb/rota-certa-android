@@ -1,8 +1,8 @@
 name: Inspect Home Modules 0.1.174
 
 on:
-  pull_request:
-    branches: [agent/deterministic-shortcut-grid-0.1.173]
+  push:
+    branches: [agent/home-module-launcher-0.1.174]
     paths:
       - .github/workflows/inspect-home-modules-0.1.174.yml
   workflow_dispatch:
@@ -89,6 +89,12 @@ jobs:
           git apply --check /tmp/fix0173.patch
           git apply /tmp/fix0173.patch
 
+      - name: Show legacy Home contract test
+        working-directory: source
+        run: |
+          set -euo pipefail
+          sed -n '1,220p' app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt
+
       - name: Collect source inspection bundle
         working-directory: source
         run: |
@@ -104,6 +110,7 @@ jobs:
           cp app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinksActivity.kt /tmp/home-modules-source/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/MessageTemplatesActivity.kt /tmp/home-modules-source/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/RotaCertaTools0172.kt /tmp/home-modules-source/
+          cp app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutLongPressContract0171Test.kt /tmp/home-modules-source/
           sha256sum /tmp/home-modules-source/* > /tmp/home-modules-source/SHA256SUMS.txt
 
       - name: Upload inspection bundle
