@@ -247,7 +247,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShortcutModuleFocusContract0177Test {
-    private fun source(path: String): String = Files.readString(Paths.get(path))
+    private fun source(path: String): String =
+        String(Files.readAllBytes(Paths.get(path)), Charsets.UTF_8)
 
     @Test
     fun floatingGridSendsModuleIdentityAndHomeBringsPanelIntoView() {
