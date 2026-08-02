@@ -109,3 +109,5 @@ jobs:
           path: shortcut-dispatch-source
           retention-days: 7
           if-no-files-found: error
+
+# Trigger after PR creation so the pull_request workflow uses this file.
