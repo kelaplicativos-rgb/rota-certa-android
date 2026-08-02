@@ -3,7 +3,11 @@ set -euo pipefail
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0177.sh"
-PATCH_B64="$PATCHES/patches/radar-edit-delete-dismiss-0178.patch.gz.b64"
+PATCH_PARTS=(
+  "$PATCHES/patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part00"
+  "$PATCHES/patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part01"
+  "$PATCHES/patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part02"
+)
 PATCH_SHA256="fe415b2697699db7093238dabca24dbf4687d8a35b0cb605cd78b9c18155251b"
 
 bash "$BASE_BUILD" "$PATCHES"
@@ -22,10 +26,12 @@ PROTECTED_FILES=(
 before_hashes="$(mktemp)"
 after_hashes="$(mktemp)"
 patch_file="$(mktemp --suffix=.patch)"
-trap 'rm -f "$before_hashes" "$after_hashes" "$patch_file"' EXIT
+patch_b64="$(mktemp --suffix=.b64)"
+trap 'rm -f "$before_hashes" "$after_hashes" "$patch_file" "$patch_b64"' EXIT
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 
-base64 --decode "$PATCH_B64" | gzip --decompress > "$patch_file"
+cat "${PATCH_PARTS[@]}" > "$patch_b64"
+base64 --decode "$patch_b64" | gzip --decompress > "$patch_file"
 echo "$PATCH_SHA256  $patch_file" | sha256sum --check
 git apply --check "$patch_file"
 git apply "$patch_file"
