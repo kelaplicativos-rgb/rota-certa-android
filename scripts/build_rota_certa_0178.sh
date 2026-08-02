@@ -66,9 +66,9 @@ grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OU
 for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do
   unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"
 done | strings > "$OUTPUT_DIR/dex-strings.txt"
-grep -F 'radar_edit_delete_dismiss_0_1_178' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'ApproachDismissGate0178' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'ImportedRadarEditPolicy0178' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'DirectionalRadarDismiss0178Test' app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
 
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
