@@ -1,5 +1,39 @@
 # Rota Certa — Estado do projeto
 
+## 02/08/2026 — 0.1.176 (5370) — toque simples da grade com despacho seguro
+
+- **Branch:** `agent/fix-shortcut-single-tap-0.1.176`; **PR:** #45, empilhada sobre `agent/home-module-bubble-grid-0.1.175`, aberta, mergeável, em rascunho e sem merge.
+- **Commit funcional validado:** `47fa9cbd4d96815794ab3db88253f984453b217d`.
+- **Pedido do usuário:** corrigir bolinhas da grade flutuante que recebiam um toque simples, fechavam a grade, mas não abriam nem executavam o módulo correspondente.
+- **Evidência real:** o relatório manual da versão 0.1.175 registrou `bubble.shortcut.clicked` para `saved_places`, `alerts`, `radars` e `quick_replies`, sem evento posterior de abertura ou execução. Isso comprovou que a área clicável e o reconhecimento do toque funcionavam e isolou a falha no despacho da ação principal.
+- **Causa:** os métodos que abriam Activities chamavam `shortcutOverlayController.hideAll()` antes de `startActivity`. No Android moderno, remover também a última janela visível antes do despacho podia retirar a condição de interação visível e fazer o sistema bloquear silenciosamente a abertura iniciada pelo usuário.
+- **Correção aplicada:**
+  - criado o lançador único `launchShortcutActivity0176`;
+  - a bolinha principal permanece visível enquanto o despacho solicitado pelo usuário é enviado;
+  - Android 14 ou superior usa `PendingIntent` com opt-in explícito do criador e do remetente para início de Activity em segundo plano;
+  - a sobreposição é escondida somente depois que o despacho foi aceito sem exceção;
+  - falhas permanecem fail-closed e registram apenas os marcadores limitados `SHORTCUT_ACTIVITY_DISPATCHED_0176` ou `SHORTCUT_ACTIVITY_DISPATCH_FAILED_0176`;
+  - Locais, Alertas, Radares, Respostas, Rota, Destino, Financeiro, Links, Diagnóstico, Aparência, Backup e demais destinos internos passaram pelo mesmo caminho seguro;
+  - ações que não abrem Activity continuaram com o comportamento original.
+- **Arquivos principais alterados/materializados:**
+  - `scripts/fix_shortcut_single_tap_0176.py`;
+  - `scripts/fix_shortcut_single_tap_0176_test_contract.py`;
+  - `.github/workflows/build-rota-certa-0.1.176.yml`;
+  - `LiveRideAccessibilityService.kt`;
+  - novo `ShortcutActivityLaunchPolicy0176.kt`;
+  - novos testes `ShortcutActivityLaunchPolicy0176Test.kt` e `ShortcutActivityLaunchContract0176Test.kt`.
+- **Fronteira protegida:** `AndroidManifest.xml`, `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt`, `BubbleShortcutOverlayController.kt`, `BubbleShortcutModule.kt`, `ShortcutLongPressPolicy0171.kt` e `MainActivity.kt` permaneceram idênticos por SHA-256. Manifest, permissões, catálogo, toque longo, Home, farol, parser, OCR, rota, Casa/Alfinetes, confirmação real do card, cores e km não foram alterados.
+- **Testes e validações:** materialização completa 0.1.151–0.1.175; contratos do despacho; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP, DEX, pacote, versão, versionCode, assinatura v2 e certificado validados.
+- **Falhas intermediárias localizadas:** as duas primeiras execuções pararam em um literal incorreto do novo teste gerado. Nenhuma delas chegou a Lint ou APK. O contrato foi corrigido sem alterar o código funcional e a execução final passou integralmente.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.176`, run `30749272318`, job `91500269757`; todos os passos concluídos com sucesso.
+- **Artifact:** `rota-certa-0.1.176-shortcut-single-tap-validated`, ID `8833961162`, retenção de 90 dias.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.176`, versionCode `5370`.
+- **APK:** `rota-certa-0.1.176-toque-simples-grade-validado.apk`, 55.993.295 bytes.
+- **SHA-256 do APK:** `b7180112912cc0656fd41c592e23e737677a37dbdcbedeef0afef2956d04eddb`.
+- **Digest do ZIP publicado pelo GitHub Actions:** `9c9417a2e08aa5c93678c213b8a595273cdaef53def39136ef49a5c9b80c6db3`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências e próxima validação:** instalar no Samsung SM-S911B/Android 16 e testar toque simples nas 17 bolinhas, com prioridade para Locais, Alertas, Radares, Respostas, Rota, Destino, Financeiro, Links e Diagnóstico. Confirmar abertura imediata, retorno da bolinha, preservação do toque longo e ausência de regressão do farol. A PR #45 deve permanecer em rascunho até essa validação real.
+
 ## 01/08/2026 — 0.1.175 (5360) — Home em grade de bolinhas por módulo e recurso
 
 - **Branch:** `agent/home-module-bubble-grid-0.1.175`; **PR:** #44, empilhada sobre `agent/home-module-launcher-0.1.174`, aberta, mergeável, em rascunho e sem merge.

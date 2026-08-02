@@ -1,5 +1,15 @@
 # Rota Certa — Decisões técnicas
 
+## 02/08/2026 — Preservar janela visível até o despacho dos atalhos flutuantes
+
+- **Decisão:** qualquer toque da grade flutuante que precise abrir uma Activity interna deve manter a bolinha principal visível até o sistema receber o despacho solicitado pelo usuário.
+- **Motivo:** remover todas as sobreposições antes da abertura pode eliminar a condição de interação visível e permitir bloqueio silencioso da Activity em Android moderno.
+- **Implementação:** Android 14 ou superior usa `PendingIntent` com permissão explícita do criador e do remetente para início em segundo plano; versões anteriores usam `startActivity`. A sobreposição só é escondida após o envio sem exceção.
+- **Módulos afetados:** roteamento da grade para Activities internas, incluindo Locais, Alertas, Radares, Respostas, Rota, Destino, Financeiro, Links, Diagnóstico, Aparência e Backup.
+- **Fronteira:** não muda catálogo, toque longo, Home, Manifest, permissões, farol, parser, OCR, Google Maps, Casa/Alfinetes ou decisão de cores.
+- **Diagnóstico:** manter somente marcadores de evento limitados para despacho aceito ou falha; não criar polling nem log contínuo adicional.
+- **Revisão futura:** somente se nova política do Android alterar o contrato de background activity launch ou se teste real demonstrar falha residual.
+
 ## 01/08/2026 — a Home é o catálogo completo em bolinhas; a grade flutuante continua sendo o painel rápido
 
 - **Decisão:** cada módulo ou recurso registrado no catálogo possui uma bolinha própria na Home, enquanto a grade flutuante permanece separada e dedicada às ações rápidas sobre outros aplicativos.
