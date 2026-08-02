@@ -1,5 +1,16 @@
 # Rota Certa — Decisões técnicas
 
+## 02/08/2026 — atalhos inline navegam pela identidade do módulo e recebem foco único
+
+- **Decisão:** todo atalho da grade flutuante cujo destino é um módulo composto dentro da Home deve enviar o ID autoritativo do módulo, além de grupo e aba; enviar somente o grupo não é navegação suficiente.
+- **Motivo:** a Home expande a bolinha pelo ID do catálogo. Grupo e aba identificam o conteúdo, mas não determinam qual bolinha/painel precisa ficar aberto.
+- **Foco visual:** após a composição do módulo solicitado, a Home executa uma única operação `bringIntoView` para a fileira e o painel correspondentes. O mesmo módulo pode receber novo foco quando chegar um novo Intent explícito.
+- **Desempenho:** o foco é estritamente orientado ao toque e ao novo Intent. Não usar polling, temporizador recorrente, observador contínuo, OCR, captura ou trabalho em segundo plano para manter a posição.
+- **Módulos afetados:** Rota, Destino, Alertas, Locais, Radares, Aparência, Permissões, Backup, Relatórios e Configurações da Home. Activities dedicadas continuam usando o lançador seguro da 0.1.176.
+- **Capturar:** o toque simples continua abrindo `Aplicativos e cards autorizados`; mudança de finalidade exige pedido explícito e nova decisão.
+- **Fronteira protegida:** Manifest, permissões, catálogo, toque longo, farol, parser, OCR, Google Maps, Casa/Alfinetes, confirmação real de card, decisão de cores, km e proteção contra resultado atrasado não podem ser alterados por esta navegação.
+- **Condição para revisão:** revisar somente se a Home adotar navegação formal por rotas/telas independentes ou se teste real mostrar que o foco único não é suficiente em algum fabricante. Qualquer revisão deve continuar orientada a eventos e sem processamento contínuo.
+
 ## 02/08/2026 — Preservar janela visível até o despacho dos atalhos flutuantes
 
 - **Decisão:** qualquer toque da grade flutuante que precise abrir uma Activity interna deve manter a bolinha principal visível até o sistema receber o despacho solicitado pelo usuário.
