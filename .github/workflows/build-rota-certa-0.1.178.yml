@@ -6,7 +6,9 @@ on:
     paths:
       - .github/workflows/build-rota-certa-0.1.178.yml
       - scripts/build_rota_certa_0178.sh
-      - patches/radar-edit-delete-dismiss-0178.patch.gz.b64
+      - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part00
+      - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part01
+      - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part02
   pull_request:
     branches: [agent/fix-shortcut-module-focus-0.1.177]
   workflow_dispatch:
