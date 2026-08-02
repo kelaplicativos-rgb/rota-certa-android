@@ -39,6 +39,7 @@ def main() -> None:
     activity = replace_once(
         activity,
         "import androidx.compose.foundation.verticalScroll\n",
+        "import androidx.compose.foundation.ExperimentalFoundationApi\n"
         "import androidx.compose.foundation.verticalScroll\n"
         "import androidx.compose.foundation.relocation.BringIntoViewRequester\n"
         "import androidx.compose.foundation.relocation.bringIntoViewRequester\n",
@@ -78,7 +79,8 @@ def main() -> None:
     }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 '''
-    new_signature_and_rows = '''private fun ShortcutModulesHome0171(
+    new_signature_and_rows = '''@OptIn(ExperimentalFoundationApi::class)
+private fun ShortcutModulesHome0171(
     expandedModuleId: String?,
     navigationRequestKey0177: Int,
     onToggleModule: (BubbleShortcutSpec) -> Unit,
@@ -254,6 +256,7 @@ class ShortcutModuleFocusContract0177Test {
         assertTrue(service.contains("openShortcutModule0171(spec) // shortcut_module_identity_focus_0177"))
         assertFalse(service.contains("openResourceGroup(requireNotNull(spec.targetGroup), requireNotNull(spec.targetTab))"))
         assertTrue(activity.contains("navigationRequestKey0177 = System.identityHashCode(launchIntent)"))
+        assertTrue(activity.contains("@OptIn(ExperimentalFoundationApi::class)"))
         assertTrue(activity.contains("BringIntoViewRequester()"))
         assertTrue(activity.contains("Modifier.bringIntoViewRequester(rowFocusRequester0177)"))
         assertTrue(activity.contains("moduleFocusRequesters0177[requestedModuleId0177]?.bringIntoView()"))
