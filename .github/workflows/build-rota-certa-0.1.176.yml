@@ -6,11 +6,13 @@ on:
     paths:
       - .github/workflows/build-rota-certa-0.1.176.yml
       - scripts/fix_shortcut_single_tap_0176.py
+      - scripts/fix_shortcut_single_tap_0176_test_contract.py
   pull_request:
     branches: [agent/home-module-bubble-grid-0.1.175]
     paths:
       - .github/workflows/build-rota-certa-0.1.176.yml
       - scripts/fix_shortcut_single_tap_0176.py
+      - scripts/fix_shortcut_single_tap_0176_test_contract.py
   workflow_dispatch:
 
 permissions:
@@ -143,6 +145,7 @@ jobs:
         run: |
           set -euo pipefail
           python ../patches/scripts/fix_shortcut_single_tap_0176.py .
+          python ../patches/scripts/fix_shortcut_single_tap_0176_test_contract.py .
           sha256sum --check /tmp/protected-0176.sha256
 
       - name: Verify shortcut launch contract
