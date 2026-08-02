@@ -9,6 +9,7 @@ on:
       - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part00
       - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part01
       - patches/radar-edit-delete-dismiss-0178.patch.gz.b64.part02
+      - patches/radar-editor-compile-fix-0178.patch
   pull_request:
     branches: [agent/fix-shortcut-module-focus-0.1.177]
   workflow_dispatch:
