@@ -5,6 +5,10 @@ on:
     branches: [agent/fix-shortcut-single-tap-0.1.176]
     paths:
       - .github/workflows/inspect-shortcut-dispatch-0.1.176.yml
+  pull_request:
+    branches: [agent/home-module-bubble-grid-0.1.175]
+    paths:
+      - .github/workflows/inspect-shortcut-dispatch-0.1.176.yml
   workflow_dispatch:
 
 permissions:
