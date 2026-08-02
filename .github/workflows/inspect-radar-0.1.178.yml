@@ -6,6 +6,11 @@ on:
     paths:
       - .github/workflows/inspect-radar-0.1.178.yml
       - scripts/inspect_radar_0178.sh
+  pull_request:
+    branches: [agent/fix-shortcut-module-focus-0.1.177]
+    paths:
+      - .github/workflows/inspect-radar-0.1.178.yml
+      - scripts/inspect_radar_0178.sh
   workflow_dispatch:
 
 permissions:
