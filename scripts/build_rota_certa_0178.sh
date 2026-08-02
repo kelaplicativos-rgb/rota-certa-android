@@ -4,6 +4,7 @@ set -euo pipefail
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0177.sh"
 PATCH_B64="$PATCHES/patches/radar-edit-delete-dismiss-0178.patch.gz.b64"
+PATCH_SHA256="fe415b2697699db7093238dabca24dbf4687d8a35b0cb605cd78b9c18155251b"
 
 bash "$BASE_BUILD" "$PATCHES"
 
@@ -25,6 +26,7 @@ trap 'rm -f "$before_hashes" "$after_hashes" "$patch_file"' EXIT
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 
 base64 --decode "$PATCH_B64" | gzip --decompress > "$patch_file"
+echo "$PATCH_SHA256  $patch_file" | sha256sum --check
 git apply --check "$patch_file"
 git apply "$patch_file"
 
@@ -36,10 +38,11 @@ grep -F 'versionName = "0.1.178"' app/build.gradle.kts
 grep -F 'radar_edit_delete_dismiss_0_1_178' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'dismissGate0178.isDismissed(key)' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
 grep -F 'onEditRadar' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+test -f app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
 
-gradle testDebugUnitTest --no-daemon --stacktrace
-gradle lintDebug --no-daemon --stacktrace
-gradle clean assembleDebug --no-daemon --stacktrace
+./gradlew testDebugUnitTest --no-daemon --stacktrace
+./gradlew lintDebug --no-daemon --stacktrace
+./gradlew clean assembleDebug --no-daemon --stacktrace
 
 APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
 OUTPUT_DIR="artifact-0.1.178"
@@ -51,14 +54,21 @@ cp "$APK_SOURCE" "$OUTPUT_DIR/$APK_NAME"
 unzip -tqq "$OUTPUT_DIR/$APK_NAME"
 unzip -l "$OUTPUT_DIR/$APK_NAME" | grep -F 'classes.dex'
 
-BUILD_TOOLS_DIR="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-AAPT="$BUILD_TOOLS_DIR/aapt"
-APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -n 1)"
 
 "$AAPT" dump badging "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/badging.txt"
 grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5390' versionName='0.1.178'" "$OUTPUT_DIR/badging.txt"
-"$APKSIGNER" verify --verbose --print-certs "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/signature.txt"
+"$APKSIGNER" verify --verbose --print-certs "$OUTPUT_DIR/$APK_NAME" | tee "$OUTPUT_DIR/signature.txt"
 grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUTPUT_DIR/signature.txt"
+grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUTPUT_DIR/signature.txt"
+
+for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do
+  unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"
+done | strings > "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'radar_edit_delete_dismiss_0_1_178' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'ApproachDismissGate0178' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'ImportedRadarEditPolicy0178' "$OUTPUT_DIR/dex-strings.txt"
 
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
@@ -70,6 +80,7 @@ cp "$after_hashes" "$OUTPUT_DIR/protected-source-sha256.txt"
   echo 'scope=radar_edit_delete_dismiss'
   echo 'dismissal=current_approach_until_exit'
   echo 'farol_protected=true'
+  echo 'manifest_permissions_unchanged=true'
 } > "$OUTPUT_DIR/validation.txt"
 
 cat "$OUTPUT_DIR/sha256.txt"
