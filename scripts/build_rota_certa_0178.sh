@@ -11,6 +11,8 @@ PATCH_PARTS=(
 PATCH_SHA256="fe415b2697699db7093238dabca24dbf4687d8a35b0cb605cd78b9c18155251b"
 COMPILE_FIX_PATCH="$PATCHES/patches/radar-editor-compile-fix-0178.patch"
 COMPILE_FIX_SHA256="b212da9543a64eac22e996d3b15d54ce93ecdf5fb7592fd0144e9a848df2864c"
+CONTRACT_TEST_FIX_PATCH="$PATCHES/patches/radar-contract-test-fix-0178.patch"
+CONTRACT_TEST_FIX_SHA256="df42b21258480224e978243808b6a109ecc9eb667a9bad36b7e658c87247f796"
 
 bash "$BASE_BUILD" "$PATCHES"
 
@@ -42,6 +44,10 @@ echo "$COMPILE_FIX_SHA256  $COMPILE_FIX_PATCH" | sha256sum --check
 git apply --check "$COMPILE_FIX_PATCH"
 git apply "$COMPILE_FIX_PATCH"
 
+echo "$CONTRACT_TEST_FIX_SHA256  $CONTRACT_TEST_FIX_PATCH" | sha256sum --check
+git apply --check "$CONTRACT_TEST_FIX_PATCH"
+git apply "$CONTRACT_TEST_FIX_PATCH"
+
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
 
@@ -51,6 +57,7 @@ grep -F 'radar_edit_delete_dismiss_0_1_178' app/src/main/java/br/com/mapeiaia/ro
 grep -F 'dismissGate0178.isDismissed(key)' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
 grep -F 'onEditRadar' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
 grep -F 'import androidx.compose.material3.OutlinedTextField' app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
+grep -F 'val highlightedRadar = radars.firstOrNull' app/src/test/java/br/com/mapeiaia/rotacerta/RadarEditDeleteDismissContract0178Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
 
 ./gradlew testDebugUnitTest --no-daemon --stacktrace
