@@ -27,7 +27,6 @@ def replace_once(relative: str, old: str, new: str) -> None:
     write(relative, text.replace(old, new, 1))
 
 
-# Version.
 replace_once(
     "app/build.gradle.kts",
     '        versionCode = 5430\n        versionName = "0.1.182"',
@@ -35,9 +34,6 @@ replace_once(
 )
 
 service = "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-
-# A tap on a grid item now opens its small contextual action menu. The overlay
-# still resolves the gesture immediately and keeps drag cancellation from 0.1.182.
 replace_once(
     service,
     '''    private fun executeShortcutQuickTap0180(entry0180: ResolvedShortcutGridEntry0179) {
@@ -122,6 +118,13 @@ new_menu = '''    private fun showShortcutActionMenu0183(spec: BubbleShortcutSpe
                 setOnClickListener {
                     hideShortcutModulePopup0181()
                     clearOwnCache0183()
+                }
+            })
+            popup.addView(Button(this).apply {
+                text = "Abrir módulo Limpar"
+                setOnClickListener {
+                    hideShortcutModulePopup0181()
+                    openShortcutModule0171(spec)
                 }
             })
         } else {
@@ -223,13 +226,14 @@ object ShortcutContextMenuPolicy0183 {
         "links" -> "Abrir Links"
         "finance" -> "Abrir Financeiro"
         "whatsapp" -> "Abrir WhatsApp"
+        "copy_trip_confirmation" -> "Copiar confirmação da viagem"
+        "passenger_value" -> "Capturar valor do passageiro"
         else -> "Executar ação"
     }
 }
 ''',
 )
 
-# Update inherited direct-tap contracts to the contextual-menu contract.
 replace_once(
     "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt",
     '''    fun singleTapDispatchesTheSelectedShortcutWithoutGestureDelay() {
@@ -278,6 +282,8 @@ class ShortcutPerEntryMenuContract0180Test {
         assertTrue(service.contains("SHORTCUT_CONTEXT_MENU_0183"))
         assertTrue(service.contains("Escolha o que deseja fazer agora."))
         assertTrue(service.contains("event.actionMasked == MotionEvent.ACTION_OUTSIDE"))
+        assertTrue(service.contains("Abrir módulo Limpar"))
+        assertTrue(service.contains("openShortcutModule0171(spec)"))
     }
 }
 ''',
@@ -353,7 +359,7 @@ class ShortcutContextMenuPolicy0183Test {
     }
 
     @Test
-    fun clearUsesItsDedicatedTwoActionsInsteadOfGenericQuickAction() {
+    fun clearUsesItsDedicatedActionsInsteadOfGenericQuickAction() {
         assertNull(
             ShortcutContextMenuPolicy0183.quickActionLabel(
                 "clear_clipboard",
@@ -373,7 +379,6 @@ class ShortcutContextMenuPolicy0183Test {
 ''',
 )
 
-# Marker in deterministic source for artifact verification.
 policy_path = "app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutContextMenuPolicy0183.kt"
 policy_text = read(policy_path)
 if MARKER not in policy_text:
