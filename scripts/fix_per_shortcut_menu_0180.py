@@ -40,4 +40,28 @@ new_helper = '''def replace_all_exact(relative: str, old: str, new: str, expecte
 if source.count(old_helper) != 1:
     raise RuntimeError("Unexpected 0.1.180 transformer helper structure")
 source = source.replace(old_helper, new_helper, 1)
+
+# Gradle formatting may insert comments or blank lines between the two fields.
+# Require both exact old values independently instead of relying on adjacency.
+old_version_block = '''replace_once(
+    "app/build.gradle.kts",
+    '        versionCode = 5400\\n        versionName = "0.1.179"',
+    '        versionCode = 5410\\n        versionName = "0.1.180"',
+)
+'''
+new_version_block = '''replace_once(
+    "app/build.gradle.kts",
+    "versionCode = 5400",
+    "versionCode = 5410",
+)
+replace_once(
+    "app/build.gradle.kts",
+    'versionName = "0.1.179"',
+    'versionName = "0.1.180"',
+)
+'''
+if source.count(old_version_block) != 1:
+    raise RuntimeError("Unexpected 0.1.180 version transform structure")
+source = source.replace(old_version_block, new_version_block, 1)
+
 exec(compile(source, str(parts[0]), "exec"), globals(), globals())
