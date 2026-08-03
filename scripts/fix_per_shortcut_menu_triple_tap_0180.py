@@ -71,3 +71,14 @@ wrapper_source = wrapper_source.replace(
     1,
 )
 exec(compile(wrapper_source, str(wrapper_path), "exec"), globals(), globals())
+
+# The 0.1.179 contract still looked for a delayed 1.5-second Runnable. In
+# 0.1.180 the hold is intentionally classified only on ACTION_UP so it cannot
+# conflict with the bounded triple-tap sequence.
+contract_path = Path.cwd() / "app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt"
+contract_text = contract_path.read_text(encoding="utf-8")
+old_contract = 'assertTrue(overlay.contains("postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)"))'
+new_contract = 'assertTrue(overlay.contains("heldMillis >= ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS"))'
+if contract_text.count(old_contract) != 1:
+    raise RuntimeError("Unexpected AuthorizedAppsCards146 hold contract")
+contract_path.write_text(contract_text.replace(old_contract, new_contract, 1), encoding="utf-8")
