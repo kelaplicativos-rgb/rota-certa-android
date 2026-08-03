@@ -1,0 +1,200 @@
+    private fun openShortcutModule0171''',
+    'replace fixed long press dispatcher',
+    flags=re.S,
+)
+service = replace_once(
+    service,
+    '''    private fun openShortcutCustomization0179() {
+        val intent0179 = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+            .putExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, true)
+        launchShortcutActivity0176(''',
+    '''    private fun openShortcutCustomization0179(entryId0180: String? = null) {
+        val intent0179 = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
+            .putExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, true)
+            .apply {
+                if (!entryId0180.isNullOrBlank()) {
+                    putExtra(EXTRA_OPEN_SHORTCUT_ENTRY_0180, entryId0180)
+                }
+            }
+        launchShortcutActivity0176(''',
+    'entry-specific customization intent',
+)
+service = service.replace('openShortcutCustomization0179()\n            }', 'openShortcutCustomization0179(null)\n            }')
+service += '\n// per_shortcut_gesture_dispatch_0_1_180\n'
+write(service_path, service)
+
+# Main UI ---------------------------------------------------------------------
+main_path = 'app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt'
+main = read(main_path)
+main = replace_once(
+    main,
+    '    var shortcutCustomizationVisible0179 by remember { mutableStateOf(false) }\n',
+    '    var shortcutCustomizationVisible0179 by remember { mutableStateOf(false) }\n    var shortcutCustomizationEntryId0180 by remember { mutableStateOf<String?>(null) }\n',
+    'entry customization state',
+)
+main = replace_once(
+    main,
+    '''        shortcutCustomizationVisible0179 = launchIntent?.getBooleanExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, false) == true
+        moduleNavigationActive0172 = shortcutCustomizationVisible0179 ||''',
+    '''        shortcutCustomizationVisible0179 = launchIntent?.getBooleanExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, false) == true
+        shortcutCustomizationEntryId0180 = launchIntent?.getStringExtra(EXTRA_OPEN_SHORTCUT_ENTRY_0180)
+        moduleNavigationActive0172 = shortcutCustomizationVisible0179 ||''',
+    'read selected entry extra',
+)
+main = replace_once(
+    main,
+    '''                        ShortcutGridCustomizationScreen0179(
+                            onClose = {
+                                shortcutCustomizationVisible0179 = false
+                                moduleNavigationActive0172 = false
+                            },
+                        )''',
+    '''                        ShortcutGridCustomizationScreen0179(
+                            initialEntryId0180 = shortcutCustomizationEntryId0180,
+                            onClose = {
+                                shortcutCustomizationVisible0179 = false
+                                shortcutCustomizationEntryId0180 = null
+                                moduleNavigationActive0172 = false
+                            },
+                        )''',
+    'pass selected entry',
+)
+main = replace_once(
+    main,
+    '''                        onOpenCustomization = {
+                            shortcutCustomizationVisible0179 = true
+                            moduleNavigationActive0172 = true
+                        },''',
+    '''                        onOpenCustomization = {
+                            shortcutCustomizationEntryId0180 = null
+                            shortcutCustomizationVisible0179 = true
+                            moduleNavigationActive0172 = true
+                        },''',
+    'clear selected entry for central',
+)
+main = replace_once(
+    main,
+    'const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"\n',
+    'const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"\nconst val EXTRA_OPEN_SHORTCUT_ENTRY_0180 = "open_shortcut_entry_0180"\n',
+    'entry extra constant',
+)
+main = replace_once(
+    main,
+    '''private fun ShortcutGridCustomizationScreen0179(
+    onClose: () -> Unit,
+) {''',
+    '''private fun ShortcutGridCustomizationScreen0179(
+    initialEntryId0180: String?,
+    onClose: () -> Unit,
+) {''',
+    'screen initial entry parameter',
+)
+main = replace_once(
+    main,
+    '''    var pendingDeleteEntryId0179 by remember { mutableStateOf<String?>(null) }
+    var confirmReset0179 by remember { mutableStateOf(false) }''',
+    '''    var pendingDeleteEntryId0179 by remember { mutableStateOf<String?>(null) }
+    var pendingGestureMenuEntryId0180 by remember(initialEntryId0180) { mutableStateOf(initialEntryId0180) }
+    var pendingGestureSlot0180 by remember { mutableStateOf<ShortcutGestureSlot0180?>(null) }
+    var confirmReset0179 by remember { mutableStateOf(false) }''',
+    'gesture dialog state',
+)
+main = replace_once(
+    main,
+    '''    fun save0179(showToast: Boolean = true) {
+        store0179.write(entries0179.toList())
+        savedEntries0179 = entries0179.toList()
+        if (showToast) Toast.makeText(context, "Grade de atalhos salva.", Toast.LENGTH_SHORT).show()
+    }
+
+    pendingDeleteEntryId0179?.let''',
+    '''    fun save0179(showToast: Boolean = true) {
+        store0179.write(entries0179.toList())
+        savedEntries0179 = entries0179.toList()
+        if (showToast) Toast.makeText(context, "Grade de atalhos salva.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun updateEntryAndPersist0180(
+        entryId0180: String,
+        transform0180: (ShortcutGridEntry0179) -> ShortcutGridEntry0179,
+    ) {
+        val index0180 = entries0179.indexOfFirst { it.entryId == entryId0180 }
+        if (index0180 < 0) return
+        entries0179[index0180] = transform0180(entries0179[index0180])
+        save0179(showToast = false)
+    }
+
+    pendingGestureSlot0180?.let { slot0180 ->
+        val entryId0180 = pendingGestureMenuEntryId0180
+        val item0180 = entries0179.firstOrNull { it.entryId == entryId0180 }
+        if (entryId0180 == null || item0180 == null) {
+            pendingGestureSlot0180 = null
+        } else {
+            AlertDialog(
+                onDismissRequest = { pendingGestureSlot0180 = null },
+                title = {
+                    Text(if (slot0180 == ShortcutGestureSlot0180.QUICK_TAP) "Um toque rápido" else "Toque de 1,5 segundo")
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Escolha o que a bolinha ${item0180.label} deve fazer neste gesto.")
+                        ShortcutGestureAction0180.values().forEach { action0180 ->
+                            OutlinedButton(
+                                onClick = {
+                                    updateEntryAndPersist0180(entryId0180) { current0180 ->
+                                        when (slot0180) {
+                                            ShortcutGestureSlot0180.QUICK_TAP -> current0180.copy(quickAction0180 = action0180)
+                                            ShortcutGestureSlot0180.HOLD_1500 -> current0180.copy(holdAction0180 = action0180)
+                                        }
+                                    }
+                                    pendingGestureSlot0180 = null
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(action0180.displayLabel0180())
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { pendingGestureSlot0180 = null }) { Text("Voltar") }
+                },
+            )
+        }
+    }
+
+    pendingGestureMenuEntryId0180?.let { entryId0180 ->
+        val item0180 = entries0179.firstOrNull { it.entryId == entryId0180 }
+        if (item0180 == null) {
+            pendingGestureMenuEntryId0180 = null
+        } else if (pendingGestureSlot0180 == null) {
+            AlertDialog(
+                onDismissRequest = { pendingGestureMenuEntryId0180 = null },
+                title = { Text("Configurar ${item0180.label}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { pendingGestureSlot0180 = ShortcutGestureSlot0180.QUICK_TAP },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Um toque rápido: ${item0180.quickAction0180.displayLabel0180()}")
+                        }
+                        Button(
+                            onClick = { pendingGestureSlot0180 = ShortcutGestureSlot0180.HOLD_1500 },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Toque de 1,5 segundo: ${item0180.holdAction0180.displayLabel0180()}")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                updateEntryAndPersist0180(entryId0180) { current0180 ->
+                                    current0180.copy(
+                                        quickAction0180 = ShortcutGestureAction0180.NONE,
+                                        holdAction0180 = ShortcutGestureAction0180.NONE,
+                                    )
+                                }
