@@ -2,7 +2,7 @@ from pathlib import Path
 
 parts = [
     Path(__file__).with_name(f"fix_per_shortcut_menu_0180.py.part{index:02d}")
-    for index in range(5)
+    for index in range(6)
 ]
 missing = [str(path) for path in parts if not path.is_file()]
 if missing:
