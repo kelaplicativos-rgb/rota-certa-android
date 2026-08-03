@@ -1,5 +1,6 @@
 name: Build Rota Certa 0.1.180
 
+# Validates the per-shortcut three-stage gesture contract.
 on:
   push:
     branches: [agent/per-shortcut-gesture-menu-0.1.180]
