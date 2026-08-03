@@ -1,5 +1,17 @@
 # Rota Certa — Decisões técnicas
 
+## 03/08/2026 — cadeia Gradle limitada e contratos de gesto versionados
+
+- **Decisão:** builds cumulativos da 0.1.179 devem herdar limites globais de Gradle: daemon e paralelismo desligados, um worker, VFS watch desligado, heap e metaspace limitados e compilador Kotlin em processo.
+- **Motivo:** a cadeia de materialização executa versões anteriores antes do código final e o runner estava encerrando o Gradle com `exit code 137`. A solução deve reduzir concorrência e pico de memória sem apagar testes, lint ou assemble.
+- **Cobertura obrigatória:** todos os testes unitários/de contrato, Android Lint e `clean assembleDebug` permanecem obrigatórios. Não mascarar falta de memória pulando validações de versões-base.
+- **Contrato de gesto:** `ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS` é a fonte autoritativa do toque longo de 2 segundos. Testes não devem voltar a exigir o literal legado de 1,5 segundo.
+- **Contrato de despacho:** a grade personalizável resolve primeiro a entrada selecionada e então despacha `entry0179.spec`. Testes legados devem validar a entrada resolvida, não exigir o caminho direto antigo por `module.spec`.
+- **Versionamento dos contratos:** ajustes de compatibilidade em testes materializados são aplicados por patch dedicado, com SHA-256 conhecido e `git apply --check`; não usar substituição textual silenciosa durante o build e não remover testes conflitantes.
+- **Segurança do workflow:** checkouts de build usam `persist-credentials: false`; gatilhos de push e PR devem ficar restritos aos arquivos que podem alterar o resultado da 0.1.179.
+- **Fronteira protegida:** esta decisão é exclusiva do pipeline e dos contratos de teste. Manifest, permissões, farol, parser, OCR, Google Maps, Casa/Alfinetes, decisão de cores, km, radares, alertas e proteção contra resultados atrasados não podem ser alterados para resolver pressão de memória do runner.
+- **Condição para revisão:** revisar os limites quando o runner ou a estrutura de materialização mudar. Uma futura separação entre materialização e validação única só pode substituir a cadeia atual se testes de equivalência comprovarem que nenhuma proteção das versões-base foi perdida.
+
 ## 02/08/2026 — atalhos inline navegam pela identidade do módulo e recebem foco único
 
 - **Decisão:** todo atalho da grade flutuante cujo destino é um módulo composto dentro da Home deve enviar o ID autoritativo do módulo, além de grupo e aba; enviar somente o grupo não é navegação suficiente.
