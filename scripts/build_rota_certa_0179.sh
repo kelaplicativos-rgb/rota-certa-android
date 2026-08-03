@@ -10,6 +10,8 @@ PATCH_PARTS=(
   "$PATCHES/patches/customizable-shortcut-grid-0179.patch.part03"
 )
 PATCH_SHA256="4167d17dc9cde54d2ae3962c3480bdc8211d43f3b7e969ef9b252cb829a3aa8c"
+CONTRACT_PATCH="$PATCHES/patches/customizable-shortcut-grid-0179-contracts.patch"
+CONTRACT_PATCH_SHA256="181bb7a9036db57a95d56234cf0859bbb2f8c9cf45a79d0fe5570fa800f4d721"
 
 # Toda a cadeia cumulativa (0.1.177 -> 0.1.178 -> 0.1.179) herda estes
 # limites. Isso impede daemons Kotlin separados e compilação paralela de
@@ -64,6 +66,11 @@ cat "${PATCH_PARTS[@]}" > "$patch_file"
 echo "$PATCH_SHA256  $patch_file" | sha256sum --check
 git apply --check "$patch_file"
 git apply "$patch_file"
+
+echo "$CONTRACT_PATCH_SHA256  $CONTRACT_PATCH" | sha256sum --check
+git apply --check "$CONTRACT_PATCH"
+git apply "$CONTRACT_PATCH"
+
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
 
@@ -79,6 +86,8 @@ grep -F 'newView.setOnClickListener { toggleResourceShortcuts() }' app/src/main/
 
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt
+grep -F 'ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS' app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt
+grep -F 'onShortcut(entry0179.spec)' app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt
 
 ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
 ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
