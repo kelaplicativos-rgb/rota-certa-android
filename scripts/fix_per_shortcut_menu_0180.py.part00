@@ -1,0 +1,170 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MARKER = "per_shortcut_menu_0_1_180"
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def write(relative: str, content: str) -> None:
+    (ROOT / relative).write_text(content, encoding="utf-8")
+
+
+def replace_once(relative: str, old: str, new: str) -> None:
+    text = read(relative)
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"{relative}: expected exactly one occurrence, found {count}: {old[:140]!r}")
+    write(relative, text.replace(old, new, 1))
+
+
+def replace_all_exact(relative: str, old: str, new: str, expected: int) -> None:
+    text = read(relative)
+    count = text.count(old)
+    if count != expected:
+        raise RuntimeError(f"{relative}: expected {expected} occurrences, found {count}: {old[:140]!r}")
+    write(relative, text.replace(old, new))
+
+
+# Version.
+replace_once(
+    "app/build.gradle.kts",
+    '        versionCode = 5400\n        versionName = "0.1.179"',
+    '        versionCode = 5410\n        versionName = "0.1.180"',
+)
+
+# Persisted model: two user-configurable gesture slots. Five seconds is reserved for editing.
+customization = "app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt"
+replace_once(
+    customization,
+    """data class ShortcutGridEntry0179(
+    val entryId: String,
+    val shortcutId: String,
+    val label: String,
+    val emoji: String,
+    val enabled: Boolean = true,
+)
+
+data class ResolvedShortcutGridEntry0179(
+    val entryId: String,
+    val spec: BubbleShortcutSpec,
+)
+
+object ShortcutGesturePolicy0179 {
+    const val SHORTCUT_LONG_PRESS_MILLIS: Long = 2_000L
+    const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L""",
+    """enum class ShortcutGestureAction0180(val displayLabel: String) {
+    PRIMARY_ACTION("Executar ação imediatamente"),
+    OPEN_MODULE("Abrir módulo"),
+    NONE("Não fazer nada"),
+}
+
+enum class ShortcutGestureSlot0180(val displayLabel: String) {
+    QUICK_TAP("Toque rápido"),
+    HOLD_1500("Segurar 1,5 segundo"),
+}
+
+data class ShortcutGridEntry0179(
+    val entryId: String,
+    val shortcutId: String,
+    val label: String,
+    val emoji: String,
+    val enabled: Boolean = true,
+    val quickAction0180: ShortcutGestureAction0180 = ShortcutGestureAction0180.PRIMARY_ACTION,
+    val holdAction0180: ShortcutGestureAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+)
+
+data class ResolvedShortcutGridEntry0179(
+    val entryId: String,
+    val shortcutId: String,
+    val spec: BubbleShortcutSpec,
+    val quickAction0180: ShortcutGestureAction0180,
+    val holdAction0180: ShortcutGestureAction0180,
+)
+
+object ShortcutGesturePolicy0179 {
+    const val SHORTCUT_LONG_PRESS_MILLIS: Long = 1_500L
+    const val SHORTCUT_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L
+    const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L""",
+)
+replace_once(
+    customization,
+    """                ResolvedShortcutGridEntry0179(
+                    entryId = entry.entryId,
+                    spec = original.copy(
+                        emoji = entry.emoji,
+                        label = entry.label,
+                        displayLabel = entry.label,
+                    ),
+                )""",
+    """                ResolvedShortcutGridEntry0179(
+                    entryId = entry.entryId,
+                    shortcutId = entry.shortcutId,
+                    spec = original.copy(
+                        emoji = entry.emoji,
+                        label = entry.label,
+                        displayLabel = entry.label,
+                    ),
+                    quickAction0180 = entry.quickAction0180,
+                    holdAction0180 = entry.holdAction0180,
+                )""",
+)
+replace_once(
+    customization,
+    """                            emoji = item.optString("emoji"),
+                            enabled = item.optBoolean("enabled", true),
+                        ),""",
+    """                            emoji = item.optString("emoji"),
+                            enabled = item.optBoolean("enabled", true),
+                            quickAction0180 = parseGestureAction0180(
+                                item.optString("quickAction0180"),
+                                ShortcutGestureAction0180.PRIMARY_ACTION,
+                            ),
+                            holdAction0180 = parseGestureAction0180(
+                                item.optString("holdAction0180"),
+                                ShortcutGestureAction0180.OPEN_MODULE,
+                            ),
+                        ),""",
+)
+replace_once(
+    customization,
+    """                    .put("emoji", entry.emoji)
+                    .put("enabled", entry.enabled),""",
+    """                    .put("emoji", entry.emoji)
+                    .put("enabled", entry.enabled)
+                    .put("quickAction0180", entry.quickAction0180.name)
+                    .put("holdAction0180", entry.holdAction0180.name),""",
+)
+replace_once(
+    customization,
+    """    fun reset() {
+        prefs.edit().remove(KEY_GRID).apply()
+    }
+
+    private companion object {""",
+    """    fun reset() {
+        prefs.edit().remove(KEY_GRID).apply()
+    }
+
+    private fun parseGestureAction0180(
+        raw: String,
+        fallback: ShortcutGestureAction0180,
+    ): ShortcutGestureAction0180 = runCatching {
+        ShortcutGestureAction0180.valueOf(raw)
+    }.getOrDefault(fallback)
+
+    private companion object {""",
+)
+with_marker = read(customization)
+if MARKER not in with_marker:
+    write(customization, with_marker + f"\n// {MARKER}\n")
+
+# Overlay: quick action on release before 1.5 s, hold action on release between
+# 1.5 and 5 s, and individual editor exactly at 5 s. This prevents the 1.5 s
+# action from firing before a user reaches the five-second configuration gesture.
+overlay = "app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt"
+replace_all_exact(
+    overlay,
+    """        onShortcut: (BubbleShortcutSpec) -> Unit,
