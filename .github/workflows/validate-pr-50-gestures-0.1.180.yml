@@ -23,6 +23,14 @@ jobs:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0180
     steps:
+      - name: Announce validation start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/50/comments" \
+            --method POST \
+            -f body="### Validação 0.1.180 iniciada\n\nRun: \`${GITHUB_RUN_ID}\` — branch \`agent/per-shortcut-gesture-menu-0.1.180\`."
+
       - name: Checkout protected source
         uses: actions/checkout@v4
         with:
