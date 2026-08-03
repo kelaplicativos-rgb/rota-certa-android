@@ -1,5 +1,37 @@
 # Rota Certa — Estado do projeto
 
+## 03/08/2026 — 0.1.179 (5400) — CI estabilizado e grade personalizável validada
+
+- **Branch:** `agent/customizable-shortcut-grid-0.1.179`; **PR:** #48, aberta, mergeável, em rascunho e sem merge.
+- **Commit funcional validado:** `fd9cd3db74d1f5433bff68a0e385e2c22832dcc2`.
+- **Pedido do usuário:** aplicar uma correção segura no build da versão 0.1.179, sem remover validações nem alterar o comportamento funcional do aplicativo.
+- **Situação anterior:** os builds da 0.1.179 eram encerrados pelo runner com `exit code 137` durante a cadeia cumulativa de Gradle. Após limitar a memória, a execução avançou e revelou dois contratos antigos de teste incompatíveis com o gesto e o despacho autoritativos da 0.1.179.
+- **Causa:** a cadeia 0.1.177 → 0.1.178 → 0.1.179 executava testes, lint e assemble com concorrência e processos Kotlin suficientes para pressionar a memória do runner. Além disso, `AuthorizedAppsCards146ContractTest` ainda exigia o literal antigo de 1,5 segundo e `ShortcutActivityLaunchContract0176Test` ainda exigia despacho direto por `module.spec`, embora a 0.1.179 resolva a entrada personalizável antes do despacho.
+- **Correção aplicada:**
+  - toda a cadeia cumulativa herda Gradle sem daemon, sem paralelismo, com um worker, VFS watch desligado, heap limitado a 2.560 MiB, metaspace de 768 MiB e compilador Kotlin em processo;
+  - testes unitários/de contrato, Android Lint e `clean assembleDebug` continuam obrigatórios e não foram pulados;
+  - os dois checkouts do workflow usam `persist-credentials: false`;
+  - o timeout do job foi ampliado para 180 minutos, privilegiando estabilidade em vez de concorrência;
+  - os gatilhos de push e PR ficaram restritos aos arquivos que realmente materializam a 0.1.179;
+  - criado o patch versionado `customizable-shortcut-grid-0179-contracts.patch`, validado por SHA-256 e `git apply --check`, que atualiza somente as duas asserções legadas para o contrato autoritativo de 2 segundos e despacho pela entrada resolvida;
+  - nenhum teste foi removido e nenhum código funcional Kotlin do aplicativo foi alterado por esta correção de CI.
+- **Arquivos principais alterados:**
+  - `scripts/build_rota_certa_0179.sh`;
+  - `.github/workflows/build-rota-certa-0.1.179.yml`;
+  - `patches/customizable-shortcut-grid-0179-contracts.patch`;
+  - `scripts/inspect_shortcut_customization_0179.sh`;
+  - contratos materializados `AuthorizedAppsCards146ContractTest.kt` e `ShortcutActivityLaunchContract0176Test.kt`.
+- **Fronteira protegida:** `AndroidManifest.xml`, permissões, `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt`, OCR, confirmação real de card, Casa/Alfinetes, cores, km, cancelamento de resultados antigos, radares e alertas direcionais permaneceram protegidos por checksums e validações do artifact.
+- **Testes e validações:** todos os testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP e DEX, pacote, versão, versionCode, assinatura v2, certificado e marcadores da personalização validados.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.179`, run `30786663851`, job `91601374049`; todos os passos concluídos com sucesso.
+- **Artifact:** `rota-certa-0.1.179-customizable-shortcut-grid-validated`, ID `8845723352`, 33.710.976 bytes, retenção até 01/11/2026.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.179`, versionCode `5400`, minSdk 26 e targetSdk 35.
+- **APK:** `rota-certa-0.1.179-grade-atalhos-personalizavel-validado.apk`, 56.042.447 bytes.
+- **SHA-256 do APK:** `081cffc8837b8544c69d1422f21286ab0da3ffb483f378810d5feb70d565f52c`.
+- **SHA-256 do ZIP do artifact:** `71d8a6c52c5bc7f0a1a6eb0ca7484c292f4574da90838c061ba9e1e98fb80ca8`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências, riscos e próxima validação:** instalar no Samsung SM-S911B com Android 16 e validar toque simples na ação principal selecionada, toque longo de 2 segundos abrindo o módulo correspondente na Home, toque de 5 segundos na bolinha principal abrindo a personalização, preservação do toque simples e duplo da bolinha principal, migração/ordem/duplicidade do catálogo e ausência de regressão do farol, rota, radares e alertas. A PR #48 deve permanecer em rascunho até essa validação real.
+
 ## 02/08/2026 — 0.1.177 (5380) — módulos da grade abrem e entram na área visível
 
 - **Branch:** `agent/fix-shortcut-module-focus-0.1.177`; **PR:** #46, empilhada sobre `agent/fix-shortcut-single-tap-0.1.176`, aberta, mergeável, em rascunho e sem merge.

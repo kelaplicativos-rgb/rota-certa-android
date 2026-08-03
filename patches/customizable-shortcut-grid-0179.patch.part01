@@ -1,0 +1,267 @@
+                     val deltaY = event.rawY - downRawY
+                     if (!moved && BubbleDragPolicy.hasExceededTouchSlop(deltaX, deltaY, touchSlop)) {
+                         moved = true
++                        mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
+                         closeResourceShortcuts() // popup_close_only_on_drag_0_1_120
+                     }
+ 
+@@ -3935,7 +3953,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                 MotionEvent.ACTION_UP -> {
+                     val elapsedMillis = (event.eventTime - bubbleDragStartedAtMillis).coerceAtLeast(0L)
+                     bubbleGestureActive = false
+-                    if (moved) {
++                    mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
++                    mainHoldView0179 = null
++                    if (mainHoldTriggered0179) {
++                        mainHoldTriggered0179 = false
++                        pendingSingleTapJob?.cancel()
++                        pendingSingleTapJob = null
++                        lastTapUpMillis = 0L
++                    } else if (moved) {
+                         bubblePrefs.edit()
+                             .putInt(KEY_BUBBLE_X, params.x)
+                             .putInt(KEY_BUBBLE_Y, params.y)
+@@ -3972,6 +3997,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
+ 
+                 MotionEvent.ACTION_CANCEL -> {
+                     bubbleGestureActive = false
++                    mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
++                    mainHoldView0179 = null
++                    mainHoldTriggered0179 = false
+                     Unit /* diagnostics_off_checklist_4 */
+                     return true
+                 }
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+index 882776f..a7a433a 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
+ import androidx.activity.compose.setContent
+ import androidx.activity.result.contract.ActivityResultContracts
+ import androidx.compose.foundation.Image
++import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
+@@ -56,6 +57,7 @@ import androidx.compose.runtime.DisposableEffect
+ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateListOf
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+@@ -64,6 +66,7 @@ import androidx.compose.runtime.withFrameNanos
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.asImageBitmap
+ import androidx.compose.ui.layout.ContentScale
++import androidx.compose.ui.input.pointer.pointerInput
+ import androidx.compose.ui.focus.FocusRequester
+ import androidx.compose.ui.focus.focusRequester
+ import androidx.compose.ui.platform.LocalContext
+@@ -152,6 +155,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+     var supportReportStatus by remember { mutableStateOf("") }
+     var debugLogEnabled by remember { mutableStateOf(DebugLogPreferenceStore.isEnabled(context)) }
+     var highlightedShortcutModule0171 by remember { mutableStateOf<String?>(null) }
++    var shortcutCustomizationVisible0179 by remember { mutableStateOf(false) }
+     var moduleNavigationActive0172 by remember { mutableStateOf(false) }
+ 
+ 
+@@ -389,7 +393,8 @@ fun RotaCertaApp(launchIntent: Intent?) {
+         highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+         highlightedImportedRadarId0178 = launchIntent?.getStringExtra(EXTRA_IMPORTED_RADAR_ID_0178)
+         highlightedShortcutModule0171 = launchIntent?.getStringExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171)
+-        moduleNavigationActive0172 = highlightedShortcutModule0171 != null || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL
++        shortcutCustomizationVisible0179 = launchIntent?.getBooleanExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, false) == true
++        moduleNavigationActive0172 = shortcutCustomizationVisible0179 || highlightedShortcutModule0171 != null || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL
+         launchIntent?.getStringExtra(EXTRA_CREATE_SAVED_PLACE_TYPE_138)?.let { rawType ->
+             val requestedType = runCatching { SavedPlaceType.valueOf(rawType) }.getOrNull()
+             if (requestedType != null) createSavedPlaceFromHome(requestedType, requestNameDialog = true)
+@@ -501,14 +506,19 @@ fun RotaCertaApp(launchIntent: Intent?) {
+     }
+ 
+     BackHandler(
+-        enabled = moduleNavigationActive0172 || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL || highlightedShortcutModule0171 != null,
++        enabled = shortcutCustomizationVisible0179 || moduleNavigationActive0172 || tab != TAB_CONFIG || selectedBubbleGroup != BUBBLE_GROUP_GENERAL || highlightedShortcutModule0171 != null,
+     ) {
+-        tab = TAB_CONFIG
+-        selectedBubbleGroup = BUBBLE_GROUP_GENERAL
+-        highlightedShortcutModule0171 = null
+-        highlightedSavedPlaceId = null
+-        highlightedImportedRadarId0178 = null
+-        moduleNavigationActive0172 = false
++        if (shortcutCustomizationVisible0179) {
++            shortcutCustomizationVisible0179 = false
++            moduleNavigationActive0172 = false
++        } else {
++            tab = TAB_CONFIG
++            selectedBubbleGroup = BUBBLE_GROUP_GENERAL
++            highlightedShortcutModule0171 = null
++            highlightedSavedPlaceId = null
++            highlightedImportedRadarId0178 = null
++            moduleNavigationActive0172 = false
++        }
+     }
+ 
+     Scaffold(
+@@ -540,9 +550,20 @@ fun RotaCertaApp(launchIntent: Intent?) {
+                 
+                 )
+                 TAB_CONFIG -> {
+-                    ShortcutModulesHome0171(
++                    if (shortcutCustomizationVisible0179) {
++                        ShortcutGridCustomizationScreen0179(
++                            onClose = {
++                                shortcutCustomizationVisible0179 = false
++                                moduleNavigationActive0172 = false
++                            },
++                        )
++                    } else ShortcutModulesHome0171(
+                         expandedModuleId = highlightedShortcutModule0171,
+                         navigationRequestKey0177 = System.identityHashCode(launchIntent),
++                        onOpenCustomization = {
++                            shortcutCustomizationVisible0179 = true
++                            moduleNavigationActive0172 = true
++                        },
+                         onToggleModule = { spec ->
+                             highlightedShortcutModule0171 = HomeModuleExpansionPolicy0174.toggle(
+                                 currentId = highlightedShortcutModule0171,
+@@ -758,6 +779,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
+ const val EXTRA_CREATE_SAVED_PLACE_TYPE_138 = "create_saved_place_type_138"
+ const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+ const val EXTRA_OPEN_SHORTCUT_MODULE_0171 = "open_shortcut_module_0171"
++const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"
+ const val EXTRA_IMPORTED_RADAR_ID_0178 = "imported_radar_id_0178"
+ 
+ private const val BUBBLE_GROUP_GENERAL = "general"
+@@ -791,6 +813,7 @@ private val BUBBLE_GROUP_VALUES = setOf(
+ private fun ShortcutModulesHome0171(
+     expandedModuleId: String?,
+     navigationRequestKey0177: Int,
++    onOpenCustomization: () -> Unit,
+     onToggleModule: (BubbleShortcutSpec) -> Unit,
+     moduleContent: @Composable (BubbleShortcutSpec) -> Unit,
+ ) {
+@@ -824,6 +847,9 @@ private fun ShortcutModulesHome0171(
+             "Esta grade é o catálogo completo do Rota Certa. A grade flutuante continua separada e executa apenas as ações rápidas sobre outros aplicativos.",
+             style = MaterialTheme.typography.bodySmall,
+         )
++        OutlinedButton(onClick = onOpenCustomization, modifier = Modifier.fillMaxWidth()) {
++            Text("Central de atalhos da grade flutuante")
++        }
+         moduleRows.forEach { rowModules ->
+             val expandedIdForRow = HomeModuleBubbleGridPolicy0175.expandedIdInRow(
+                 rowIds = rowModules.map { it.spec.id },
+@@ -862,6 +888,235 @@ private fun ShortcutModulesHome0171(
+     }
+ } // home_module_bubble_grid_0_1_175
+ 
++@Composable
++private fun ShortcutGridCustomizationScreen0179(
++    onClose: () -> Unit,
++) {
++    val context = LocalContext.current
++    val store0179 = remember { ShortcutGridPreferenceStore0179(context) }
++    val entries0179 = remember {
++        mutableStateListOf<ShortcutGridEntry0179>().apply { addAll(store0179.read()) }
++    }
++    var savedEntries0179 by remember { mutableStateOf(entries0179.toList()) }
++    var addShortcutId0179 by remember {
++        mutableStateOf(BubbleShortcutCatalog.modules.firstOrNull()?.spec?.id.orEmpty())
++    }
++    var pendingDeleteEntryId0179 by remember { mutableStateOf<String?>(null) }
++    var confirmReset0179 by remember { mutableStateOf(false) }
++
++    fun replaceEntries0179(updated: List<ShortcutGridEntry0179>) {
++        entries0179.clear()
++        entries0179.addAll(ShortcutGridCustomizationPolicy0179.normalize(updated))
++    }
++
++    fun save0179(showToast: Boolean = true) {
++        store0179.write(entries0179.toList())
++        savedEntries0179 = entries0179.toList()
++        if (showToast) Toast.makeText(context, "Grade de atalhos salva.", Toast.LENGTH_SHORT).show()
++    }
++
++    pendingDeleteEntryId0179?.let { entryId0179 ->
++        val item0179 = entries0179.firstOrNull { it.entryId == entryId0179 }
++        AlertDialog(
++            onDismissRequest = { pendingDeleteEntryId0179 = null },
++            title = { Text("Excluir atalho?") },
++            text = { Text(item0179?.label ?: "Este atalho será removido somente da grade flutuante.") },
++            confirmButton = {
++                TextButton(onClick = {
++                    replaceEntries0179(entries0179.filterNot { it.entryId == entryId0179 })
++                    pendingDeleteEntryId0179 = null
++                }) { Text("Excluir") }
++            },
++            dismissButton = {
++                TextButton(onClick = { pendingDeleteEntryId0179 = null }) { Text("Cancelar") }
++            },
++        )
++    }
++
++    if (confirmReset0179) {
++        AlertDialog(
++            onDismissRequest = { confirmReset0179 = false },
++            title = { Text("Restaurar grade original?") },
++            text = { Text("Nomes, ícones, ordem e atalhos personalizados serão substituídos pelo catálogo padrão.") },
++            confirmButton = {
++                TextButton(onClick = {
++                    store0179.reset()
++                    replaceEntries0179(ShortcutGridCustomizationPolicy0179.defaults())
++                    savedEntries0179 = entries0179.toList()
++                    confirmReset0179 = false
++                }) { Text("Restaurar") }
++            },
++            dismissButton = {
++                TextButton(onClick = { confirmReset0179 = false }) { Text("Cancelar") }
++            },
++        )
++    }
++
++    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
++        Text("Central de atalhos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
++        Text(
++            "Personalize somente a grade flutuante. A Home continua com todos os módulos disponíveis.",
++            style = MaterialTheme.typography.bodySmall,
++        )
++        Text(
++            "Toque curto executa a ação escolhida. Segure um atalho por dois segundos para abrir o módulo correspondente. Segure a bolinha principal por cinco segundos para voltar a esta Central.",
++            style = MaterialTheme.typography.bodySmall,
++        )
++        Text(
++            "Ativos: ${entries0179.count { it.enabled }} de ${entries0179.size}. Limite: ${ShortcutGesturePolicy0179.MAX_GRID_ITEMS}.",
++            fontWeight = FontWeight.Bold,
++        )
++
++        Card(modifier = Modifier.fillMaxWidth()) {
++            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Text("Adicionar atalho", fontWeight = FontWeight.Bold)
++                val candidate0179 = BubbleShortcutCatalog.findSpec(addShortcutId0179)
++                OutlinedButton(
++                    onClick = {
++                        addShortcutId0179 = ShortcutGridCustomizationPolicy0179.nextShortcutId(addShortcutId0179)
++                    },
++                    modifier = Modifier.fillMaxWidth(),
++                ) {
++                    Text("${candidate0179?.emoji.orEmpty()}  ${candidate0179?.displayLabel ?: "Escolher ação"}")
++                }
++                Button(
++                    onClick = {
++                        replaceEntries0179(
++                            ShortcutGridCustomizationPolicy0179.add(
++                                entries = entries0179.toList(),
++                                shortcutId = addShortcutId0179,
++                                nowMillis = System.currentTimeMillis(),
++                            ),
++                        )
++                    },
++                    enabled = addShortcutId0179.isNotBlank() && entries0179.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS,
++                    modifier = Modifier.fillMaxWidth(),
++                ) {
++                    Text("Adicionar à grade")
++                }
++            }
++        }
++
