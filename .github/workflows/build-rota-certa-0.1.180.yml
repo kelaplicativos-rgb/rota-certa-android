@@ -7,6 +7,7 @@ on:
       - .github/workflows/build-rota-certa-0.1.180.yml
       - scripts/build_rota_certa_0180.sh
       - scripts/fix_per_shortcut_menu_0180.py
+      - scripts/fix_per_shortcut_menu_triple_tap_0180.py
       - scripts/fix_per_shortcut_menu_0180.py.part00
       - scripts/fix_per_shortcut_menu_0180.py.part01
       - scripts/fix_per_shortcut_menu_0180.py.part02
@@ -19,6 +20,7 @@ on:
       - .github/workflows/build-rota-certa-0.1.180.yml
       - scripts/build_rota_certa_0180.sh
       - scripts/fix_per_shortcut_menu_0180.py
+      - scripts/fix_per_shortcut_menu_triple_tap_0180.py
       - scripts/fix_per_shortcut_menu_0180.py.part00
       - scripts/fix_per_shortcut_menu_0180.py.part01
       - scripts/fix_per_shortcut_menu_0180.py.part02
