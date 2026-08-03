@@ -11,6 +11,37 @@ PATCH_PARTS=(
 )
 PATCH_SHA256="4167d17dc9cde54d2ae3962c3480bdc8211d43f3b7e969ef9b252cb829a3aa8c"
 
+# Toda a cadeia cumulativa (0.1.177 -> 0.1.178 -> 0.1.179) herda estes
+# limites. Isso impede daemons Kotlin separados e compilação paralela de
+# excederem a memória do runner sem remover testes, lint ou assemble.
+cleanup_gradle_home=false
+if [[ -z "${GRADLE_USER_HOME:-}" ]]; then
+  GRADLE_USER_HOME="$(mktemp -d)"
+  cleanup_gradle_home=true
+fi
+export GRADLE_USER_HOME
+mkdir -p "$GRADLE_USER_HOME"
+cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+org.gradle.daemon=false
+org.gradle.parallel=false
+org.gradle.workers.max=1
+org.gradle.vfs.watch=false
+org.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+kotlin.compiler.execution.strategy=in-process
+kotlin.incremental=false
+EOF
+
+before_hashes="$(mktemp)"
+after_hashes="$(mktemp)"
+patch_file="$(mktemp --suffix=.patch)"
+cleanup() {
+  rm -f "$before_hashes" "$after_hashes" "$patch_file"
+  if [[ "$cleanup_gradle_home" == "true" ]]; then
+    rm -rf "$GRADLE_USER_HOME"
+  fi
+}
+trap cleanup EXIT
+
 bash "$BASE_BUILD" "$PATCHES"
 
 PROTECTED_FILES=(
@@ -27,11 +58,6 @@ PROTECTED_FILES=(
   app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/LiveSpeechEngine.kt
 )
-
-before_hashes="$(mktemp)"
-after_hashes="$(mktemp)"
-patch_file="$(mktemp --suffix=.patch)"
-trap 'rm -f "$before_hashes" "$after_hashes" "$patch_file"' EXIT
 
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 cat "${PATCH_PARTS[@]}" > "$patch_file"
@@ -54,9 +80,9 @@ grep -F 'newView.setOnClickListener { toggleResourceShortcuts() }' app/src/main/
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomizationContract0179Test.kt
 
-./gradlew testDebugUnitTest --no-daemon --stacktrace
-./gradlew lintDebug --no-daemon --stacktrace
-./gradlew clean assembleDebug --no-daemon --stacktrace
+./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
 
 APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
 OUTPUT_DIR="artifact-0.1.179"
