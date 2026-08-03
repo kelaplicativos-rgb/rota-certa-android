@@ -21,7 +21,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
@@ -30,6 +30,7 @@ jobs:
         with:
           ref: codex/unified-debug-log-0.1.139
           fetch-depth: 0
+          persist-credentials: false
           path: source
 
       - name: Checkout cumulative patches
@@ -37,6 +38,7 @@ jobs:
         with:
           ref: agent/customizable-shortcut-grid-0.1.179
           fetch-depth: 0
+          persist-credentials: false
           path: patches
 
       - uses: actions/setup-python@v5
@@ -53,6 +55,8 @@ jobs:
 
       - name: Build, test, lint and validate 0.1.179
         working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0179
         run: bash ../patches/scripts/build_rota_certa_0179.sh ../patches
 
       - name: Upload validated APK
