@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# validation_trigger=shortcut_in_place_0181_pr
+# validation_trigger=shortcut_in_place_0181_import_fix
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0180.sh"
+NORMALIZE_POPUP="$PATCHES/scripts/normalize_saved_place_popup_imports_0181.py"
 TRANSFORM_POPUP="$PATCHES/scripts/fix_saved_place_popup_0181.py"
 TRANSFORM_IN_PLACE="$PATCHES/scripts/fix_shortcut_in_place_0181.py"
 TRANSFORM_TESTS="$PATCHES/scripts/fix_shortcut_in_place_tests_0181.py"
@@ -35,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python -m py_compile "$TRANSFORM_POPUP" "$TRANSFORM_IN_PLACE" "$TRANSFORM_TESTS"
+python -m py_compile "$NORMALIZE_POPUP" "$TRANSFORM_POPUP" "$TRANSFORM_IN_PLACE" "$TRANSFORM_TESTS"
 bash "$BASE_BUILD" "$PATCHES"
 
 PROTECTED_FILES=(
@@ -56,6 +57,7 @@ PROTECTED_FILES=(
 )
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 
+python "$NORMALIZE_POPUP"
 python "$TRANSFORM_POPUP"
 python "$TRANSFORM_IN_PLACE"
 python "$TRANSFORM_TESTS"
