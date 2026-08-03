@@ -3,7 +3,9 @@ set -euo pipefail
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0180.sh"
-TRANSFORM="$PATCHES/scripts/fix_saved_place_popup_0181.py"
+TRANSFORM_POPUP="$PATCHES/scripts/fix_saved_place_popup_0181.py"
+TRANSFORM_IN_PLACE="$PATCHES/scripts/fix_shortcut_in_place_0181.py"
+TRANSFORM_TESTS="$PATCHES/scripts/fix_shortcut_in_place_tests_0181.py"
 
 cleanup_gradle_home=false
 if [[ -z "${GRADLE_USER_HOME:-}" ]]; then
@@ -32,7 +34,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python -m py_compile "$TRANSFORM"
+python -m py_compile "$TRANSFORM_POPUP" "$TRANSFORM_IN_PLACE" "$TRANSFORM_TESTS"
 bash "$BASE_BUILD" "$PATCHES"
 
 PROTECTED_FILES=(
@@ -53,7 +55,9 @@ PROTECTED_FILES=(
 )
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 
-python "$TRANSFORM"
+python "$TRANSFORM_POPUP"
+python "$TRANSFORM_IN_PLACE"
+python "$TRANSFORM_TESTS"
 
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
@@ -61,17 +65,24 @@ diff -u "$before_hashes" "$after_hashes"
 grep -F 'versionCode = 5420' app/build.gradle.kts
 grep -F 'versionName = "0.1.181"' app/build.gradle.kts
 grep -F 'private fun showSavePlacePopup' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -F 'showSavePlacePopup(coordinate, resolved.addressLine)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -F 'WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'showSavePlacePopup(coordinate, resolved.addressLine, type)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'Endereco completo' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -F 'Digite um nome ou salve vazio para usar Local salvo.' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'Nome do alerta' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'OPEN_MODULE -> showShortcutModulePopup0181(entry0180.spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'dispatchShortcutPrimaryInPlace0181' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'SHORTCUT_IN_PLACE_POPUP_0181' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'Voce continua no aplicativo e na tela que estava usando.' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutInPlacePolicy0181.kt
 grep -F 'text = "Cancelar"' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'text = "Salvar"' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'Local salvo pela bolinha sem sair da tela atual.' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'Alerta de proximidade salvo pela bolinha sem sair da tela atual.' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 
 test -f app/src/main/java/br/com/mapeiaia/rotacerta/SavedPlacePopupPolicy0181.kt
+test -f app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutInPlacePolicy0181.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupPolicy0181Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181Test.kt
+test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlacePolicy0181Test.kt
+test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt
 
 ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
 ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -79,7 +90,7 @@ test -f app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181T
 
 APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
 OUTPUT_DIR="artifact-0.1.181"
-APK_NAME="rota-certa-0.1.181-salvar-local-popup-endereco-completo-validado.apk"
+APK_NAME="rota-certa-0.1.181-atalhos-em-popup-endereco-completo-validado.apk"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 cp "$APK_SOURCE" "$OUTPUT_DIR/$APK_NAME"
@@ -100,7 +111,8 @@ for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.de
   unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"
 done | strings > "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'SavedPlacePopupPolicy0181' "$OUTPUT_DIR/dex-strings.txt"
-grep -F 'bubble_save_place' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'ShortcutInPlacePolicy0181' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'SHORTCUT_IN_PLACE_POPUP_0181' "$OUTPUT_DIR/dex-strings.txt"
 
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
@@ -109,13 +121,16 @@ cp "$after_hashes" "$OUTPUT_DIR/protected-source-sha256.txt"
   echo 'package=br.com.mapeiaia.rotacerta'
   echo 'versionName=0.1.181'
   echo 'versionCode=5420'
-  echo 'scope=saved_place_overlay_full_address_only'
-  echo 'save_place_opens_main_activity=false'
+  echo 'scope=shortcut_grid_in_place_overlays_and_full_address'
+  echo 'open_module_gesture_switches_app=false'
+  echo 'internal_primary_actions_overlay_first=true'
+  echo 'explicit_external_actions_keep_original_purpose=true'
   echo 'save_place_keeps_external_app_visible=true'
-  echo 'save_place_popup_focusable=true'
-  echo 'save_place_popup_fields=title_instruction_full_address_name_cancel_save'
-  echo 'blank_name_fallback=Local salvo'
-  echo 'proximity_alert_flow_unchanged=true'
+  echo 'save_alert_keeps_external_app_visible=true'
+  echo 'save_popup_focusable=true'
+  echo 'save_popup_fields=title_instruction_full_address_name_cancel_save'
+  echo 'blank_place_name_fallback=Local salvo'
+  echo 'blank_alert_name_fallback=Alerta de proximidade'
   echo 'gps_resolver_unchanged=true'
   echo 'manifest_permissions_unchanged=true'
   echo 'farol_route_ocr_protected=true'
