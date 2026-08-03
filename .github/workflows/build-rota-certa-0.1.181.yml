@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/build-rota-certa-0.1.181.yml
       - scripts/build_rota_certa_0181.sh
+      - scripts/normalize_saved_place_popup_imports_0181.py
       - scripts/fix_saved_place_popup_0181.py
       - scripts/fix_shortcut_in_place_0181.py
       - scripts/fix_shortcut_in_place_tests_0181.py
