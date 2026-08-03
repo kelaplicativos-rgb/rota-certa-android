@@ -90,6 +90,14 @@ new_menu = '''    private fun showShortcutActionMenu0183(spec: BubbleShortcutSpe
                 setPadding(0, dp(8), 0, dp(10))
             })
         }
+        popup.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                hideShortcutModulePopup0181()
+                true
+            } else {
+                false
+            }
+        }
 
         ShortcutContextMenuPolicy0183.quickActionLabel(spec.id, spec.doubleTapAction)?.let { label ->
             popup.addView(Button(this).apply {
@@ -269,6 +277,7 @@ class ShortcutPerEntryMenuContract0180Test {
         assertTrue(service.contains("showShortcutActionMenu0183(entry0180.spec)"))
         assertTrue(service.contains("SHORTCUT_CONTEXT_MENU_0183"))
         assertTrue(service.contains("Escolha o que deseja fazer agora."))
+        assertTrue(service.contains("event.actionMasked == MotionEvent.ACTION_OUTSIDE"))
     }
 }
 ''',
