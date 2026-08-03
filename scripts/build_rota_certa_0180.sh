@@ -3,7 +3,7 @@ set -euo pipefail
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0179.sh"
-TRANSFORM="$PATCHES/scripts/fix_per_shortcut_menu_0180.py"
+TRANSFORM="$PATCHES/scripts/fix_per_shortcut_menu_triple_tap_0180.py"
 TRANSFORM_PARTS=(
   "$PATCHES/scripts/fix_per_shortcut_menu_0180.py.part00"
   "$PATCHES/scripts/fix_per_shortcut_menu_0180.py.part01"
