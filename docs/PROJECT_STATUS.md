@@ -1,5 +1,37 @@
 # Rota Certa — Estado do projeto
 
+## 03/08/2026 — 0.1.183 (5440) — menu contextual por bolinha da grade
+
+- **Branch:** `agent/contextual-shortcut-menu-0.1.183`; **PR:** empilhada sobre a 0.1.182.
+- **Commit funcional validado:** `06129186a41b1aa85845138e6a4c9521b1f3a081`.
+- **Pedido do usuário:** ao tocar numa bolinha da grade, abrir um pop-up específico com ações rápidas relacionadas ao recurso e uma opção para abrir o módulo completo; exemplos: criar alerta, criar radar, usar GPS como destino, capturar agora e opções separadas de limpeza.
+- **Situação anterior:** a 0.1.182 executava imediatamente a ação principal de cada atalho. Isso era rápido, porém não permitia escolher entre a tarefa imediata e a abertura do módulo, e podia executar uma ação por engano.
+- **Causa:** o caminho direto da 0.1.182 normalizava qualquer toque para `PRIMARY_ACTION` e ignorava o menu contextual herdado, que era genérico e não oferecia botões úteis por recurso.
+- **Correção aplicada:**
+  - o toque na bolinha principal continua abrindo a grade sem atraso;
+  - o toque seguinte numa bolinha abre imediatamente um menu contextual leve em `TYPE_ACCESSIBILITY_OVERLAY`;
+  - Alertas: `Criar alerta aqui` e `Abrir módulo Alertas`;
+  - Radares: `Criar radar neste local` e `Abrir módulo Radares`;
+  - Destino: `Usar localização atual como destino` e `Abrir módulo Destino`;
+  - Locais: `Salvar localização atual` e `Abrir módulo Locais`;
+  - Capturar: `Capturar aplicativo e tela agora` e `Abrir aplicativos e cards`;
+  - Respostas: `Criar resposta rápida` e `Abrir Respostas`;
+  - Limpar: `Limpar área de transferência`, `Limpar cache do Rota Certa` e `Abrir módulo Limpar`;
+  - a limpeza de cache é limitada ao cache do próprio aplicativo e roda fora da thread principal;
+  - toque fora/Fechar não executa nada e arraste continua cancelando o clique;
+  - Alertas e Locais mantêm seus editores reais em sobreposição sem trocar automaticamente de aplicativo.
+- **Arquivos principais alterados/materializados:** `LiveRideAccessibilityService.kt`, novo `ShortcutContextMenuPolicy0183.kt`, testes de política/contrato, `scripts/fix_contextual_shortcuts_0183.py`, script de build e workflow 0.1.183.
+- **Fronteira protegida:** Manifest, permissões, `BubbleShortcutOverlayController`, catálogo de atalhos, Home, `DecisionEngine`, Google Maps, parser, OCR, confirmação real de card, Casa/Alfinetes, farol, cores, km, cancelamento de resultados antigos, radares e alertas direcionais permaneceram protegidos por SHA-256.
+- **Testes e validações:** testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP/DEX, pacote, versão, versionCode, marcadores compilados, assinatura v2 e certificado validados.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.183`, run `30862120893`.
+- **Artifact:** `rota-certa-0.1.183-contextual-shortcut-menu-validated`, ID `8875362563`, digest `cf4f4f9eec19d5acdbdcdd14523d00222cdbe5ecfc84b60f30663aa6d6814d68`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/30862120893/artifacts/8875362563
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.183`, versionCode `5440`.
+- **APK:** `rota-certa-0.1.183-menu-contextual-atalhos-validado.apk`, 56058831 bytes.
+- **SHA-256 do APK:** `d35964849443e3e74d5fd1aacafdb222d3f6b7fcf7dffa195675688059bfec33`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado de depuração do Rota Certa validado pelo build.
+- **Pendências, riscos e próxima validação:** instalar no Samsung SM-S911B/Android 16 e testar todas as bolinhas da grade. Confirmar especialmente Alertas, Radares, Destino, Capturar e Limpar; confirmar que o cache apagado é somente o do Rota Certa, que Fechar não executa ações e que o farol não pisca nem perde a decisão durante ofertas reais.
+
 ## 03/08/2026 — 0.1.182 (5430) — grade direta em no máximo dois toques
 
 - **Branch:** `agent/direct-shortcut-grid-0.1.182`; **PR:** #53, aberta, mergeável, em rascunho e sem merge.
