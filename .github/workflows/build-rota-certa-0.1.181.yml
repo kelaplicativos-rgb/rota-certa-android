@@ -1,0 +1,76 @@
+name: Build Rota Certa 0.1.181
+
+on:
+  pull_request:
+    branches: [agent/per-shortcut-menu-0.1.180]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.181.yml
+      - scripts/build_rota_certa_0181.sh
+      - scripts/fix_saved_place_popup_0181.py
+      - scripts/fix_shortcut_in_place_0181.py
+      - scripts/fix_shortcut_in_place_tests_0181.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/saved-place-full-address-0.1.181
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.181
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0181
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0181.sh ../patches 2>&1 | tee build-0.1.181.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.181-failure-diagnostic
+          path: source/build-0.1.181.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.181-shortcut-in-place-overlays-validated
+          path: source/artifact-0.1.181/
+          retention-days: 90
+          if-no-files-found: error
