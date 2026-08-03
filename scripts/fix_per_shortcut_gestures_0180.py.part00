@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+ROOT = Path('.')
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding='utf-8')
+
+
+def write(path: str, text: str) -> None:
+    (ROOT / path).write_text(text, encoding='utf-8')
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+    return text.replace(old, new, 1)
+
+
+def regex_once(text: str, pattern: str, replacement: str, label: str, flags: int = 0) -> str:
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+    if count != 1:
+        raise RuntimeError(f'{label}: expected exactly one regex match, found {count}')
+    return updated
+
+
+# Version --------------------------------------------------------------------
+build = read('app/build.gradle.kts')
+build = replace_once(build, 'versionCode = 5400', 'versionCode = 5410', 'versionCode')
+build = replace_once(build, 'versionName = "0.1.179"', 'versionName = "0.1.180"', 'versionName')
+write('app/build.gradle.kts', build)
+
+# Persisted model -------------------------------------------------------------
+store_path = 'app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt'
+store = read(store_path)
+store = replace_once(
+    store,
+    '/** Entrada persistida da grade flutuante. A ação sempre referencia o catálogo seguro. */\ndata class ShortcutGridEntry0179(',
+    '''enum class ShortcutGestureAction0180 {
+    EXECUTE_IMMEDIATELY,
+    OPEN_MODULE,
+    NONE,
+}
+
+enum class ShortcutGestureSlot0180 {
+    QUICK_TAP,
+    HOLD_1500,
+}
+
+/** Entrada persistida da grade flutuante. As ações sempre referenciam o catálogo seguro. */
+data class ShortcutGridEntry0179(''',
+    'insert gesture enums',
+)
+store = replace_once(
+    store,
+    '''    val emoji: String,
+    val enabled: Boolean = true,
+)''',
+    '''    val emoji: String,
+    val enabled: Boolean = true,
+    val quickAction0180: ShortcutGestureAction0180 = ShortcutGestureAction0180.EXECUTE_IMMEDIATELY,
+    val holdAction0180: ShortcutGestureAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+)''',
+    'entry gesture fields',
+)
+store = replace_once(
+    store,
+    '''data class ResolvedShortcutGridEntry0179(
+    val entryId: String,
+    val spec: BubbleShortcutSpec,
+)''',
+    '''data class ResolvedShortcutGridEntry0179(
+    val entryId: String,
+    val spec: BubbleShortcutSpec,
+    val quickAction0180: ShortcutGestureAction0180,
+    val holdAction0180: ShortcutGestureAction0180,
+)''',
+    'resolved gesture fields',
+)
+store = replace_once(
+    store,
+    '''object ShortcutGesturePolicy0179 {
+    const val SHORTCUT_LONG_PRESS_MILLIS: Long = 2_000L
+    const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L''',
+    '''object ShortcutGesturePolicy0179 {
+    const val SHORTCUT_LONG_PRESS_MILLIS: Long = 1_500L
+    const val SHORTCUT_CONFIGURATION_HOLD_MILLIS: Long = 5_000L
+    const val MAIN_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L''',
+    'gesture durations',
+)
+store = replace_once(
+    store,
+    '''                ResolvedShortcutGridEntry0179(
+                    entryId = entry.entryId,
+                    spec = original.copy(
+                        emoji = entry.emoji,
+                        label = entry.label,
+                        displayLabel = entry.label,
+                    ),
+                )''',
+    '''                ResolvedShortcutGridEntry0179(
+                    entryId = entry.entryId,
+                    spec = original.copy(
+                        emoji = entry.emoji,
+                        label = entry.label,
+                        displayLabel = entry.label,
+                    ),
+                    quickAction0180 = entry.quickAction0180,
+                    holdAction0180 = entry.holdAction0180,
+                )''',
+    'resolve gesture actions',
+)
+store = replace_once(
+    store,
+    '''                            emoji = item.optString("emoji"),
+                            enabled = item.optBoolean("enabled", true),
+                        ),''',
+    '''                            emoji = item.optString("emoji"),
+                            enabled = item.optBoolean("enabled", true),
+                            quickAction0180 = parseGestureAction0180(
+                                item.optString("quickAction0180"),
+                                ShortcutGestureAction0180.EXECUTE_IMMEDIATELY,
+                            ),
+                            holdAction0180 = parseGestureAction0180(
+                                item.optString("holdAction0180"),
+                                ShortcutGestureAction0180.OPEN_MODULE,
+                            ),
+                        ),''',
+    'read gesture actions',
+)
+store = replace_once(
+    store,
+    '''                    .put("emoji", entry.emoji)
+                    .put("enabled", entry.enabled),''',
+    '''                    .put("emoji", entry.emoji)
+                    .put("enabled", entry.enabled)
+                    .put("quickAction0180", entry.quickAction0180.name)
+                    .put("holdAction0180", entry.holdAction0180.name),''',
+    'write gesture actions',
+)
+store = replace_once(
+    store,
+    '''class ShortcutGridPreferenceStore0179(context: Context) {''',
+    '''private fun parseGestureAction0180(
+    raw: String,
+    fallback: ShortcutGestureAction0180,
+): ShortcutGestureAction0180 = runCatching {
+    ShortcutGestureAction0180.valueOf(raw)
+}.getOrDefault(fallback)
+
+fun ShortcutGestureAction0180.displayLabel0180(): String = when (this) {
+    ShortcutGestureAction0180.EXECUTE_IMMEDIATELY -> "Executar imediatamente"
+    ShortcutGestureAction0180.OPEN_MODULE -> "Abrir módulo"
+    ShortcutGestureAction0180.NONE -> "Não fazer nada"
+}
+
+class ShortcutGridPreferenceStore0179(context: Context) {''',
+    'gesture parser and labels',
+)
+store = store.replace('// shortcut_grid_customization_0_1_179', '// shortcut_grid_customization_0_1_179\n// per_shortcut_gesture_menu_0_1_180')
+write(store_path, store)
+
+# Overlay gesture recognizer --------------------------------------------------
+overlay_path = 'app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt'
+overlay = read(overlay_path)
+overlay = replace_once(
+    overlay,
+    '''        onShortcut: (BubbleShortcutSpec) -> Unit,
+        onShortcutLongPress: (BubbleShortcutSpec) -> Unit,
+        onCustomize: () -> Unit,''',
+    '''        onShortcutGesture0180: (ResolvedShortcutGridEntry0179, ShortcutGestureAction0180) -> Unit,
+        onCustomizeEntry0180: (String) -> Unit,
+        onCustomize: () -> Unit,''',
+    'toggle callback signature',
+)
+overlay = replace_once(
+    overlay,
+    'showShortcuts(anchor, shortcuts, onShortcut, onShortcutLongPress, onCustomize)',
+    'showShortcuts(anchor, shortcuts, onShortcutGesture0180, onCustomizeEntry0180, onCustomize)',
+    'toggle callback forwarding',
+)
+overlay = replace_once(
+    overlay,
+    '''        onShortcut: (BubbleShortcutSpec) -> Unit,
+        onShortcutLongPress: (BubbleShortcutSpec) -> Unit,
+        onCustomize: () -> Unit,''',
+    '''        onShortcutGesture0180: (ResolvedShortcutGridEntry0179, ShortcutGestureAction0180) -> Unit,
+        onCustomizeEntry0180: (String) -> Unit,
+        onCustomize: () -> Unit,''',
+    'show callback signature',
+)
+overlay = replace_once(
+    overlay,
+    '''                        singleAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.clicked entry=${entry0179.entryId} id=${entry0179.spec.id}")
