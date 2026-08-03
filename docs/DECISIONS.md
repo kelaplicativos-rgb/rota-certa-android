@@ -1,5 +1,13 @@
 # Rota Certa — Decisões técnicas
 
+## 03/08/2026 — Menu contextual como contrato dos atalhos da grade
+
+- **Decisão:** o toque numa bolinha interna da grade não executa mais uma ação automaticamente; ele abre um menu contextual específico daquela bolinha.
+- **Motivo:** permitir escolher com clareza entre uma ação rápida e a abertura do módulo completo, reduzindo toques acidentais sem reintroduzir gestos demorados, toque triplo ou espera de 900 ms.
+- **Módulos afetados:** somente o despacho da grade em `LiveRideAccessibilityService` e a política de rótulos do menu contextual.
+- **Condições para revisão:** revisar apenas se a validação real mostrar que o terceiro toque necessário para escolher a ação ficou lento ou se algum aplicativo bloquear `TYPE_ACCESSIBILITY_OVERLAY`. Não restaurar execução automática global sem pedido explícito.
+- **Limite de limpeza:** `Limpar cache` pode apagar apenas `cacheDir` do próprio Rota Certa; configurações, banco, cards, destinos e dados de outros aplicativos não podem ser apagados por essa ação.
+
 ## 2026-08-03 — A grade flutuante executa em no máximo dois toques
 
 - **Decisão:** um toque na bolinha principal abre/fecha a grade; um toque na bolinha escolhida executa imediatamente sua ação principal. Não existe espera para toque triplo nem classificação de 1,5 segundo no caminho da grade.
