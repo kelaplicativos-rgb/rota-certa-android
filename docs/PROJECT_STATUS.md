@@ -24,7 +24,7 @@
 - **Fronteira protegida:** `AndroidManifest.xml`, permissões, `DecisionEngine.kt`, `GoogleMapsService.kt`, `RideTextParser.kt`, OCR, confirmação real de card, Casa/Alfinetes, cores, km, cancelamento de resultados antigos, radares e alertas direcionais permaneceram protegidos por checksums e validações do artifact.
 - **Testes e validações:** todos os testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP e DEX, pacote, versão, versionCode, assinatura v2, certificado e marcadores da personalização validados.
 - **Workflow funcional validado:** `Build Rota Certa 0.1.179`, run `30786663851`, job `91601374049`; todos os passos concluídos com sucesso.
-- **Artifact:** `rota-certa-0.1.179-customizable-shortcut-grid-validated`, ID `8845723352`, 31.599.304 bytes, retenção até 01/11/2026.
+- **Artifact:** `rota-certa-0.1.179-customizable-shortcut-grid-validated`, ID `8845723352`, 33.710.976 bytes, retenção até 01/11/2026.
 - **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.179`, versionCode `5400`, minSdk 26 e targetSdk 35.
 - **APK:** `rota-certa-0.1.179-grade-atalhos-personalizavel-validado.apk`, 56.042.447 bytes.
 - **SHA-256 do APK:** `081cffc8837b8544c69d1422f21286ab0da3ffb483f378810d5feb70d565f52c`.
