@@ -305,8 +305,9 @@ class ShortcutInPlaceContract0181Test {
 
     @Test
     fun alertAndSavedPlaceQuickActionsKeepTheirRealOverlayEditors() {
-        assertTrue(service.contains("\"alerts\" -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)"))
-        assertTrue(service.contains("\"saved_places\" -> saveCurrentPlaceFromBubble(SavedPlaceType.Place)"))
+        assertTrue(service.contains("executeShortcutContextAction0183"))
+        assertTrue(service.contains("saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert)"))
+        assertTrue(service.contains("saveCurrentPlaceFromBubble(SavedPlaceType.Place)"))
     }
 
     @Test
