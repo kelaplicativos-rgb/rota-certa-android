@@ -207,6 +207,8 @@ object ShortcutContextMenuPolicy0183 {
         BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation ->
             "Usar localização atual como destino"
         BubbleShortcutQuickAction.CaptureCurrentAppAndScreen -> "Capturar aplicativo e tela agora"
+        BubbleShortcutQuickAction.OpenPrimaryQuickLink -> "Abrir link principal"
+        BubbleShortcutQuickAction.ClearApplicationCache -> "Limpar cache do Rota Certa"
         null -> null
     }.takeUnless { shortcutId == "clear_clipboard" }
 
@@ -223,6 +225,7 @@ object ShortcutContextMenuPolicy0183 {
         "collector" -> "Abrir Coletor"
         "diagnostic" -> "Exportar diagnóstico"
         "stop_app" -> "Encerrar Rota Certa"
+        "quick_links" -> "Abrir módulo Links rápidos"
         "links" -> "Abrir Links"
         "finance" -> "Abrir Financeiro"
         "whatsapp" -> "Abrir WhatsApp"
@@ -356,6 +359,13 @@ class ShortcutContextMenuPolicy0183Test {
                 BubbleShortcutQuickAction.CaptureCurrentAppAndScreen,
             ),
         )
+        assertEquals(
+            "Abrir link principal",
+            ShortcutContextMenuPolicy0183.quickActionLabel(
+                "quick_links",
+                BubbleShortcutQuickAction.OpenPrimaryQuickLink,
+            ),
+        )
     }
 
     @Test
@@ -363,7 +373,7 @@ class ShortcutContextMenuPolicy0183Test {
         assertNull(
             ShortcutContextMenuPolicy0183.quickActionLabel(
                 "clear_clipboard",
-                BubbleShortcutQuickAction.CopyAllVisibleText,
+                BubbleShortcutQuickAction.ClearApplicationCache,
             ),
         )
     }
@@ -374,6 +384,7 @@ class ShortcutContextMenuPolicy0183Test {
         assertEquals("Abrir módulo Radares", ShortcutContextMenuPolicy0183.primaryActionLabel("radars"))
         assertEquals("Abrir módulo Destino", ShortcutContextMenuPolicy0183.primaryActionLabel("destination"))
         assertEquals("Abrir aplicativos e cards", ShortcutContextMenuPolicy0183.primaryActionLabel("manual_capture"))
+        assertEquals("Abrir módulo Links rápidos", ShortcutContextMenuPolicy0183.primaryActionLabel("quick_links"))
     }
 }
 ''',
