@@ -3,13 +3,6 @@ name: Validate Rota Certa 0.1.180 PR
 on:
   pull_request:
     branches: [agent/validation-base-per-shortcut-0.1.180]
-    paths:
-      - .github/workflows/build-rota-certa-0.1.180.yml
-      - scripts/build_rota_certa_0180.sh
-      - scripts/fix_per_shortcut_gestures_0180.py.part00
-      - scripts/fix_per_shortcut_gestures_0180.py.part01
-      - scripts/fix_per_shortcut_gestures_0180.py.part02
-      - scripts/fix_per_shortcut_gestures_0180.py.part03
   workflow_dispatch:
 
 permissions:
