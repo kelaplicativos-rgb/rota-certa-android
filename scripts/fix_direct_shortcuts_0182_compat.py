@@ -16,3 +16,24 @@ if source.count(old) != 1:
     raise RuntimeError("Unexpected 0.1.182 compatibility anchor")
 source = source.replace(old, new, 1)
 exec(compile(source, str(transform_path), "exec"), globals(), globals())
+
+# The original generator used escaped quotes inside a Python triple-quoted
+# Kotlin source block. Python consumed those escapes and produced invalid
+# nested Kotlin string literals. Keep the same assertions without nesting a
+# quoted Compose call inside the searched text.
+contract_path = Path.cwd() / (
+    "app/src/test/java/br/com/mapeiaia/rotacerta/"
+    "ShortcutPerEntryMenuContract0180Test.kt"
+)
+contract = contract_path.read_text(encoding="utf-8")
+replacements = {
+    '        assertFalse(main.contains("Text("Toque rápido:"))\n':
+        '        assertFalse(main.contains("Toque rápido:"))\n',
+    '        assertFalse(main.contains("Text("Segurar 1,5 s:"))\n':
+        '        assertFalse(main.contains("Segurar 1,5 s:"))\n',
+}
+for invalid, valid in replacements.items():
+    if contract.count(invalid) != 1:
+        raise RuntimeError(f"Unexpected generated Kotlin quote anchor: {invalid!r}")
+    contract = contract.replace(invalid, valid, 1)
+contract_path.write_text(contract, encoding="utf-8")
