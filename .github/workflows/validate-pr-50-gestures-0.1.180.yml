@@ -1,0 +1,96 @@
+name: Validate PR 50 gestures 0.1.180
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: validate-pr-50-gestures-0180
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: ${{ github.event.issue.pull_request && github.event.issue.number == 50 && github.event.comment.body == '/validate-0.1.180-gestures' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0180
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout 0.1.180 changes
+        uses: actions/checkout@v4
+        with:
+          ref: agent/per-shortcut-gesture-menu-0.1.180
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.180
+        id: validate
+        working-directory: source
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0180.sh ../patches 2>&1 | tee ../build-0.1.180.log
+
+      - name: Upload validated APK
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.180-per-shortcut-gesture-menu-validated
+          path: source/artifact-0.1.180/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Report result
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STEP_OUTCOME: ${{ steps.validate.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          tail -n 120 build-0.1.180.log > build-tail-0.1.180.txt 2>/dev/null || true
+          {
+            echo '### Resultado da validação 0.1.180'
+            echo
+            echo "- Etapa principal: **${STEP_OUTCOME}**"
+            echo "- Run: \`${RUN_ID}\`, tentativa \`${RUN_ATTEMPT}\`"
+            echo "- Branch validada: \`agent/per-shortcut-gesture-menu-0.1.180\`"
+            echo "- Link: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+            echo
+            echo '<details><summary>Trecho final do log</summary>'
+            echo
+            echo '```text'
+            cat build-tail-0.1.180.txt
+            echo '```'
+            echo '</details>'
+          } > validation-comment-0.1.180.md
+          gh api "repos/${GITHUB_REPOSITORY}/issues/50/comments" --method POST --input validation-comment-0.1.180.md
