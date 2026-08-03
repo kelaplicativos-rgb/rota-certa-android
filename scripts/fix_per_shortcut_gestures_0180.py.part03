@@ -1,0 +1,181 @@
+                                pendingGestureMenuEntryId0180 = null
+                                Toast.makeText(context, "Bolinha mantida sem ações.", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Não fazer nada")
+                        }
+                        TextButton(
+                            onClick = {
+                                pendingGestureMenuEntryId0180 = null
+                                pendingDeleteEntryId0179 = entryId0180
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Excluir da grade")
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { pendingGestureMenuEntryId0180 = null }) { Text("Fechar") }
+                },
+            )
+        }
+    }
+
+    pendingDeleteEntryId0179?.let''',
+    'insert gesture dialogs',
+)
+main = replace_once(
+    main,
+    '''                    replaceEntries0179(entries0179.filterNot { it.entryId == entryId0179 })
+                    pendingDeleteEntryId0179 = null''',
+    '''                    replaceEntries0179(entries0179.filterNot { it.entryId == entryId0179 })
+                    save0179(showToast = false)
+                    pendingDeleteEntryId0179 = null''',
+    'persist delete immediately',
+)
+main = replace_once(
+    main,
+    '''            "Toque curto executa a ação escolhida. Segure um atalho por dois segundos para abrir o módulo correspondente. Segure a bolinha principal por cinco segundos para voltar a esta Central.",''',
+    '''            "Cada bolinha tem dois gestos configuráveis: toque rápido e toque de 1,5 segundo. Segure a própria bolinha por cinco segundos para abrir seu menu sem executar os outros gestos.",''',
+    'central instructions',
+)
+main = replace_once(
+    main,
+    '''                onDelete = { pendingDeleteEntryId0179 = entry0179.entryId },
+            )''',
+    '''                onConfigureGestures0180 = { pendingGestureMenuEntryId0180 = entry0179.entryId },
+                onDelete = { pendingDeleteEntryId0179 = entry0179.entryId },
+            )''',
+    'editor configure callback',
+)
+main = replace_once(
+    main,
+    '''    onMove: (Int, Int) -> Unit,
+    onDelete: () -> Unit,
+) {''',
+    '''    onMove: (Int, Int) -> Unit,
+    onConfigureGestures0180: () -> Unit,
+    onDelete: () -> Unit,
+) {''',
+    'editor configure parameter',
+)
+main = replace_once(
+    main,
+    '''            OutlinedButton(
+                onClick = {
+                    onUpdate(entry.copy(emoji = ShortcutGridCustomizationPolicy0179.nextEmoji(entry.emoji)))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Ícone: ${entry.emoji}")
+            }
+            TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {''',
+    '''            OutlinedButton(
+                onClick = {
+                    onUpdate(entry.copy(emoji = ShortcutGridCustomizationPolicy0179.nextEmoji(entry.emoji)))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Ícone: ${entry.emoji}")
+            }
+            OutlinedButton(onClick = onConfigureGestures0180, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Gestos: toque ${entry.quickAction0180.displayLabel0180()} · 1,5 s ${entry.holdAction0180.displayLabel0180()}",
+                )
+            }
+            TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {''',
+    'editor gestures button',
+)
+main += '\n// per_shortcut_gesture_menu_0_1_180\n'
+write(main_path, main)
+
+# Tests -----------------------------------------------------------------------
+test_path = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGestureMenu0180Test.kt'
+test_path.write_text('''package br.com.mapeiaia.rotacerta
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ShortcutGestureMenu0180Test {
+    @Test
+    fun defaultsMatchAlertExampleAndCanBeInverted() {
+        val entry = ShortcutGridCustomizationPolicy0179.defaults().first()
+        assertEquals(ShortcutGestureAction0180.EXECUTE_IMMEDIATELY, entry.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, entry.holdAction0180)
+        val inverted = entry.copy(
+            quickAction0180 = ShortcutGestureAction0180.OPEN_MODULE,
+            holdAction0180 = ShortcutGestureAction0180.EXECUTE_IMMEDIATELY,
+        )
+        assertEquals(ShortcutGestureAction0180.OPEN_MODULE, inverted.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.EXECUTE_IMMEDIATELY, inverted.holdAction0180)
+    }
+
+    @Test
+    fun gestureDurationsAreExactlyUserDefined() {
+        assertEquals(1_500L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+        assertEquals(5_000L, ShortcutGesturePolicy0179.SHORTCUT_CONFIGURATION_HOLD_MILLIS)
+    }
+
+    @Test
+    fun bothGesturesCanBeDisabledWithoutRemovingEntry() {
+        val entry = ShortcutGridCustomizationPolicy0179.defaults().first().copy(
+            quickAction0180 = ShortcutGestureAction0180.NONE,
+            holdAction0180 = ShortcutGestureAction0180.NONE,
+        )
+        val resolved = ShortcutGridCustomizationPolicy0179.resolve(listOf(entry)).single()
+        assertEquals(ShortcutGestureAction0180.NONE, resolved.quickAction0180)
+        assertEquals(ShortcutGestureAction0180.NONE, resolved.holdAction0180)
+    }
+}
+''', encoding='utf-8')
+
+contract_path = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGestureMenuContract0180Test.kt'
+contract_path.write_text('''package br.com.mapeiaia.rotacerta
+
+import java.io.File
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ShortcutGestureMenuContract0180Test {
+    private val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt").readText()
+    private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+    private val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
+    private val store = File("src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt").readText()
+
+    @Test
+    fun fiveSecondsConfiguresEntryWithoutFiringOnePointFiveSecondAction() {
+        assertTrue(overlay.contains("SHORTCUT_CONFIGURATION_HOLD_MILLIS"))
+        assertTrue(overlay.contains("configurationTriggered0180"))
+        assertTrue(overlay.contains("elapsed0180 >= ShortcutGesturePolicy0179.SHORTCUT_CONFIGURATION_HOLD_MILLIS"))
+        assertTrue(overlay.contains("elapsed0180 >= ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS"))
+        assertFalse(overlay.contains("handler.postDelayed(longPressAction"))
+    }
+
+    @Test
+    fun eachEntryCarriesIndependentQuickAndHoldActions() {
+        assertTrue(store.contains("quickAction0180"))
+        assertTrue(store.contains("holdAction0180"))
+        assertTrue(store.contains("EXECUTE_IMMEDIATELY"))
+        assertTrue(store.contains("OPEN_MODULE"))
+        assertTrue(store.contains("NONE"))
+        assertTrue(service.contains("executeShortcutGesture0180"))
+    }
+
+    @Test
+    fun directMenuContainsRequiredButtonsAndEntryId() {
+        assertTrue(service.contains("EXTRA_OPEN_SHORTCUT_ENTRY_0180"))
+        assertTrue(main.contains("Um toque rápido"))
+        assertTrue(main.contains("Toque de 1,5 segundo"))
+        assertTrue(main.contains("Não fazer nada"))
+        assertTrue(main.contains("Excluir da grade"))
+        assertTrue(main.contains("Executar imediatamente"))
+        assertTrue(main.contains("Abrir módulo"))
+    }
+}
+''', encoding='utf-8')
+
+print('Applied per-shortcut gesture menu 0.1.180')
