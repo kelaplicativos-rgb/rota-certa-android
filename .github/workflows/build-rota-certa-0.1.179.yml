@@ -13,6 +13,14 @@ on:
       - patches/customizable-shortcut-grid-0179-contracts.patch
   pull_request:
     branches: [agent/radar-edit-delete-dismiss-0.1.178]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.179.yml
+      - scripts/build_rota_certa_0179.sh
+      - patches/customizable-shortcut-grid-0179.patch.part00
+      - patches/customizable-shortcut-grid-0179.patch.part01
+      - patches/customizable-shortcut-grid-0179.patch.part02
+      - patches/customizable-shortcut-grid-0179.patch.part03
+      - patches/customizable-shortcut-grid-0179-contracts.patch
   workflow_dispatch:
 
 permissions:
