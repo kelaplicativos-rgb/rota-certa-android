@@ -1,14 +1,6 @@
 name: Build Rota Certa 0.1.181
 
 on:
-  push:
-    branches: [agent/saved-place-full-address-0.1.181]
-    paths:
-      - .github/workflows/build-rota-certa-0.1.181.yml
-      - scripts/build_rota_certa_0181.sh
-      - scripts/fix_saved_place_popup_0181.py
-      - scripts/fix_shortcut_in_place_0181.py
-      - scripts/fix_shortcut_in_place_tests_0181.py
   pull_request:
     branches: [agent/per-shortcut-menu-0.1.180]
     paths:
