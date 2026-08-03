@@ -1,0 +1,200 @@
+                            onShortcut(entry0179.spec)
+                        },
+                        longAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.long_press entry=${entry0179.entryId} id=${entry0179.spec.id}")
+                            onShortcutLongPress(entry0179.spec)
+                        },''',
+    '''                        singleAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.quick entry=${entry0179.entryId} id=${entry0179.spec.id} action=${entry0179.quickAction0180}")
+                            onShortcutGesture0180(entry0179, entry0179.quickAction0180)
+                        },
+                        longAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.hold1500 entry=${entry0179.entryId} id=${entry0179.spec.id} action=${entry0179.holdAction0180}")
+                            onShortcutGesture0180(entry0179, entry0179.holdAction0180)
+                        },
+                        configureAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.configure5000 entry=${entry0179.entryId} id=${entry0179.spec.id}")
+                            onCustomizeEntry0180(entry0179.entryId)
+                        },''',
+    'entry callbacks',
+)
+overlay = replace_once(
+    overlay,
+    '''                    longAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.long_press")
+                        onCustomize()
+                    },''',
+    '''                    longAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.long_press")
+                        onCustomize()
+                    },
+                    configureAction = {
+                        hideShortcuts()
+                        trace("bubble.shortcut.customize.five_seconds")
+                        onCustomize()
+                    },''',
+    'plus configure callback',
+)
+overlay = replace_once(
+    overlay,
+    '        longAction: () -> Unit,\n    ): TextView = TextView(context).apply {',
+    '        longAction: () -> Unit,\n        configureAction: () -> Unit,\n    ): TextView = TextView(context).apply {',
+    'shortcutBubble configure parameter',
+)
+overlay = replace_once(
+    overlay,
+    'contentDescription = "${spec.label}. Toque para executar; mantenha pressionado por dois segundos para abrir o módulo."',
+    'contentDescription = "${spec.label}. Toque rápido e toque de um segundo e meio são configuráveis; segure por cinco segundos para editar esta bolinha."',
+    'content description',
+)
+old_touch = '''        val handler = Handler(Looper.getMainLooper())
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        var downX = 0f
+        var downY = 0f
+        var longPressTriggered = false
+        val longPressAction = Runnable {
+            longPressTriggered = true
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            longAction()
+        }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    longPressTriggered = false
+                    view.isPressed = true
+                    handler.postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        handler.removeCallbacks(longPressAction)
+                        view.isPressed = false
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    if (!longPressTriggered) singleAction()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    handler.removeCallbacks(longPressAction)
+                    view.isPressed = false
+                    true
+                }
+                else -> true
+            }
+        }'''
+new_touch = '''        val handler = Handler(Looper.getMainLooper())
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        var downX = 0f
+        var downY = 0f
+        var downEventTime0180 = 0L
+        var cancelled0180 = false
+        var configurationTriggered0180 = false
+        val holdFeedback0180 = Runnable {
+            if (!cancelled0180 && !configurationTriggered0180) {
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+        }
+        val configureAction0180 = Runnable {
+            if (!cancelled0180 && !configurationTriggered0180) {
+                configurationTriggered0180 = true
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                configureAction()
+            }
+        }
+        fun cancelTimers0180() {
+            handler.removeCallbacks(holdFeedback0180)
+            handler.removeCallbacks(configureAction0180)
+        }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    downEventTime0180 = event.eventTime
+                    cancelled0180 = false
+                    configurationTriggered0180 = false
+                    view.isPressed = true
+                    handler.postDelayed(holdFeedback0180, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+                    handler.postDelayed(configureAction0180, ShortcutGesturePolicy0179.SHORTCUT_CONFIGURATION_HOLD_MILLIS)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val moved = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        cancelled0180 = true
+                        cancelTimers0180()
+                        view.isPressed = false
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val elapsed0180 = (event.eventTime - downEventTime0180).coerceAtLeast(0L)
+                    cancelTimers0180()
+                    view.isPressed = false
+                    if (!cancelled0180 && !configurationTriggered0180) {
+                        when {
+                            elapsed0180 >= ShortcutGesturePolicy0179.SHORTCUT_CONFIGURATION_HOLD_MILLIS -> configureAction()
+                            elapsed0180 >= ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS -> longAction()
+                            else -> singleAction()
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
+                    cancelled0180 = true
+                    cancelTimers0180()
+                    view.isPressed = false
+                    true
+                }
+                else -> true
+            }
+        }'''
+overlay = replace_once(overlay, old_touch, new_touch, 'three-stage touch recognizer')
+overlay += '\n// per_shortcut_gesture_menu_0_1_180\n'
+write(overlay_path, overlay)
+
+# Service dispatch ------------------------------------------------------------
+service_path = 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+service = read(service_path)
+service = replace_once(
+    service,
+    '''            onShortcut = ::executeShortcutModule,
+            onShortcutLongPress = ::executeShortcutLongPress0179,
+            onCustomize = ::openShortcutCustomization0179,''',
+    '''            onShortcutGesture0180 = ::executeShortcutGesture0180,
+            onCustomizeEntry0180 = ::openShortcutCustomization0179,
+            onCustomize = { openShortcutCustomization0179(null) },''',
+    'service overlay callbacks',
+)
+service = regex_once(
+    service,
+    r'''    private fun executeShortcutLongPress0179\(spec: BubbleShortcutSpec\) \{.*?\n    \}\n\n    private fun openShortcutModule0171''',
+    '''    private fun executeShortcutGesture0180(
+        entry0180: ResolvedShortcutGridEntry0179,
+        action0180: ShortcutGestureAction0180,
+    ) {
+        UnifiedDebugEventStore.record(
+            "SHORTCUT_GESTURE_0180",
+            universalResolvedForegroundPackage(),
+            "entry=${entry0180.entryId}; id=${entry0180.spec.id}; action=${action0180.name}",
+        )
+        when (action0180) {
+            ShortcutGestureAction0180.EXECUTE_IMMEDIATELY -> executeShortcutModule(entry0180.spec)
+            ShortcutGestureAction0180.OPEN_MODULE -> openShortcutModule0171(entry0180.spec)
+            ShortcutGestureAction0180.NONE -> Unit
+        }
+    }
+
