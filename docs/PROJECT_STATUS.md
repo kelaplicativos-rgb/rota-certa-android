@@ -1,5 +1,32 @@
 # Rota Certa — Estado do projeto
 
+## 03/08/2026 — 0.1.182 (5430) — grade direta em no máximo dois toques
+
+- **Branch:** `agent/direct-shortcut-grid-0.1.182`; **PR:** #53, aberta, mergeável, em rascunho e sem merge.
+- **Commit funcional validado:** `4094b598dab6374067ef1f480bf3f70d7684ccab`.
+- **Pedido do usuário:** alinhar a grade para ser realmente um conjunto de atalhos: no máximo um toque na bolinha principal para abrir a grade e outro toque na bolinha escolhida para executar sua ação.
+- **Situação anterior:** a 0.1.180 aguardava uma janela de 900 ms para distinguir toque triplo e classificava também o gesto de 1,5 segundo. A 0.1.181 ainda podia abrir um painel genérico antes da função principal. Na prática, o toque rápido tinha atraso e alguns recursos exigiam uma terceira interação.
+- **Causa:** reconhecimento de edição e navegação completa estavam misturados ao caminho crítico de execução rápida. A grade acumulava `tapCount0180`, finalizador atrasado, toque de 1,5 segundo e despacho `overlay first`, contrariando o papel de atalho.
+- **Correção aplicada:**
+  - `ACTION_UP` válido executa imediatamente uma única ação, sem aguardar toque triplo;
+  - removida a classificação de 1,5 segundo do toque nas bolinhas da grade;
+  - preferências antigas de gesto são normalizadas para a ação principal e não conseguem desativar o atalho;
+  - a bolinha `+` permanece como caminho único para editar nome, recurso, ícone, ordem e visibilidade;
+  - atalhos comuns não param mais no painel informativo genérico e seguem diretamente para sua ação/módulo real;
+  - `Salvar local` e `Alertas` preservam o pop-up real da própria ação sobre a tela atual;
+  - nenhum polling, serviço, observador contínuo ou alocação recorrente foi adicionado.
+- **Arquivos principais alterados/materializados:** `BubbleShortcutOverlayController.kt`, `LiveRideAccessibilityService.kt`, `MainActivity.kt`, novo `ShortcutDirectTapPolicy0182.kt`, testes de política/contrato, `scripts/fix_direct_shortcuts_0182.py`, compatibilidade da base 0.1.181, script de build e workflow 0.1.182.
+- **Falhas intermediárias localizadas:** run `30846355142`, job `91795491937`, interrompido porque o transformador procurava o nome antigo do contrato de cinco segundos, enquanto a base já usava toque triplo; run `30848470633`, job `91802437114`, avançou à compilação dos testes 0.1.182 e encontrou duas aspas internas inválidas em asserções Kotlin geradas. Ambos os pontos foram corrigidos somente nos transformadores/contratos, sem mascarar testes, sem erro de memória e sem alterar a lógica funcional do aplicativo.
+- **Fronteira protegida:** Manifest e permissões, geocodificação, `DecisionEngine`, Google Maps, parser, OCR, confirmação real de card, Casa/Alfinetes, farol, cores, km, cancelamento de resultados antigos, radares e alertas direcionais permaneceram protegidos por SHA-256.
+- **Testes e validações:** todos os testes unitários/de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP/DEX, pacote, versão, versionCode, marcadores compilados, assinatura v2 e certificado validados.
+- **Workflow funcional validado:** `Build Rota Certa 0.1.182`, run `30850540090`, job `91809194366`; todos os passos concluídos com sucesso.
+- **Artifact:** `rota-certa-0.1.182-direct-shortcut-grid-validated`, ID `8871170435`, 33732084 bytes, digest `sha256:470a7ed0cdaa599a70ae578bc2b56b7c6e30110a52e861bd478efc01852f78d7`.
+- **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.182`, versionCode `5430`.
+- **APK:** `rota-certa-0.1.182-grade-atalhos-dois-toques-validado.apk`, 56058835 bytes.
+- **SHA-256 do APK:** `1d654096731fec7e8fb0c66500066305b0ee6658ebf0c101352cf239d1f401f7`.
+- **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **Pendências, riscos e próxima validação:** instalar no Samsung SM-S911B/Android 16 e testar a sequência bolinha principal → cada atalho, confirmando execução com exatamente dois toques totais, ausência do atraso de 900 ms, ausência de ação por arraste, funcionamento da bolinha `+`, pop-ups reais de Local/Alerta e ausência de regressão do farol durante ofertas reais. A PR #53 permanece em rascunho até essa validação prática.
+
 ## 03/08/2026 — 0.1.179 (5400) — CI estabilizado e grade personalizável validada
 
 - **Branch:** `agent/customizable-shortcut-grid-0.1.179`; **PR:** #48, aberta, mergeável, em rascunho e sem merge.
