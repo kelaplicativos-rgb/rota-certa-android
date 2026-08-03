@@ -6,11 +6,21 @@ on:
     paths:
       - .github/workflows/inspect-shortcut-customization-0.1.179.yml
       - scripts/inspect_shortcut_customization_0179.sh
+      - patches/customizable-shortcut-grid-0179.patch.part00
+      - patches/customizable-shortcut-grid-0179.patch.part01
+      - patches/customizable-shortcut-grid-0179.patch.part02
+      - patches/customizable-shortcut-grid-0179.patch.part03
+      - patches/customizable-shortcut-grid-0179-contracts.patch
   pull_request:
     branches: [agent/radar-edit-delete-dismiss-0.1.178]
     paths:
       - .github/workflows/inspect-shortcut-customization-0.1.179.yml
       - scripts/inspect_shortcut_customization_0179.sh
+      - patches/customizable-shortcut-grid-0179.patch.part00
+      - patches/customizable-shortcut-grid-0179.patch.part01
+      - patches/customizable-shortcut-grid-0179.patch.part02
+      - patches/customizable-shortcut-grid-0179.patch.part03
+      - patches/customizable-shortcut-grid-0179-contracts.patch
   workflow_dispatch:
 
 permissions:
@@ -29,6 +39,7 @@ jobs:
         with:
           ref: codex/unified-debug-log-0.1.139
           fetch-depth: 0
+          persist-credentials: false
           path: source
 
       - name: Checkout cumulative patches
@@ -36,6 +47,7 @@ jobs:
         with:
           ref: agent/customizable-shortcut-grid-0.1.179
           fetch-depth: 0
+          persist-credentials: false
           path: patches
 
       - uses: actions/setup-python@v5
@@ -50,7 +62,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Materialize 0.1.178 and collect shortcut sources
+      - name: Materialize 0.1.179 and collect shortcut sources
         working-directory: source
         run: bash ../patches/scripts/inspect_shortcut_customization_0179.sh ../patches
 
