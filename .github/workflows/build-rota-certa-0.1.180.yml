@@ -70,7 +70,18 @@ jobs:
         working-directory: source
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0180
-        run: bash ../patches/scripts/build_rota_certa_0180.sh ../patches
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0180.sh ../patches 2>&1 | tee build-0.1.180.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.180-failure-diagnostic
+          path: source/build-0.1.180.log
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Upload validated APK
         uses: actions/upload-artifact@v4
