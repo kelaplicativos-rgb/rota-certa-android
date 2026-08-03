@@ -55,6 +55,11 @@ test_repairs = {
             + backslash
             + '""))',
         ),
+        (
+            'assertTrue(service.contains("Voce continua no aplicativo e na tela que estava usando."))',
+            'assertTrue(File("src/main/java/br/com/mapeiaia/rotacerta/ShortcutInPlacePolicy0181.kt")'
+            '.readText().contains("Voce continua no aplicativo e na tela que estava usando."))',
+        ),
     ],
 }
 
