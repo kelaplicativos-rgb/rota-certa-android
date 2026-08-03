@@ -29,6 +29,17 @@ for name in "${MAIN_FILES[@]}"; do
 done
 
 find app/src/test/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f \( -iname '*Shortcut*' -o -iname '*Bubble*' -o -iname '*Catalog*' \) -exec cp {} "$OUT/app/src/test/java/br/com/mapeiaia/rotacerta/" \;
+
+# Inclui contratos legados que validam diretamente o despacho da grade, mesmo
+# quando o nome do arquivo não contém Shortcut/Bubble/Catalog. Isso permite
+# comparar com segurança a personalização atual sem ampliar o bundle inteiro.
+for name in AuthorizedAppsCards146ContractTest.kt; do
+  path="app/src/test/java/br/com/mapeiaia/rotacerta/$name"
+  if [[ -f "$path" ]]; then
+    cp "$path" "$OUT/app/src/test/java/br/com/mapeiaia/rotacerta/$name"
+  fi
+done
+
 cp app/build.gradle.kts "$OUT/app/build.gradle.kts"
 cp app/src/main/AndroidManifest.xml "$OUT/app/src/main/AndroidManifest.xml"
 find "$OUT" -type f -print0 | sort -z | xargs -0 sha256sum > "$OUT/source-sha256.txt"
