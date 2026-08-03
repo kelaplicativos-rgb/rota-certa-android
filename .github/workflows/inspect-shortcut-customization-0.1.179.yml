@@ -6,6 +6,11 @@ on:
     paths:
       - .github/workflows/inspect-shortcut-customization-0.1.179.yml
       - scripts/inspect_shortcut_customization_0179.sh
+  pull_request:
+    branches: [agent/radar-edit-delete-dismiss-0.1.178]
+    paths:
+      - .github/workflows/inspect-shortcut-customization-0.1.179.yml
+      - scripts/inspect_shortcut_customization_0179.sh
   workflow_dispatch:
 
 permissions:
