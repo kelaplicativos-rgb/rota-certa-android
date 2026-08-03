@@ -3,7 +3,7 @@ set -euo pipefail
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0181.sh"
-TRANSFORM="$PATCHES/scripts/fix_direct_shortcuts_0182.py"
+TRANSFORM="$PATCHES/scripts/fix_direct_shortcuts_0182_compat.py"
 
 cleanup_gradle_home=false
 if [[ -z "${GRADLE_USER_HOME:-}" ]]; then
