@@ -30,21 +30,30 @@ for old, new in replacements:
     text = text.replace(old, new, 1)
 service.write_text(text, encoding="utf-8")
 
+backslash = chr(92)
 test_repairs = {
     "app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181Test.kt": [
         (
             'assertTrue(service.contains("text = "Cancelar""))',
-            'assertTrue(service.contains("text = \\"Cancelar\\""))',
+            'assertTrue(service.contains("text = ' + backslash + '"Cancelar' + backslash + '""))',
         ),
         (
             'assertTrue(service.contains("text = "Salvar""))',
-            'assertTrue(service.contains("text = \\"Salvar\\""))',
+            'assertTrue(service.contains("text = ' + backslash + '"Salvar' + backslash + '""))',
         ),
     ],
     "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt": [
         (
             'assertTrue(service.contains("text = if (isAlert) "Nome do alerta" else "Nome do local""))',
-            'assertTrue(service.contains("text = if (isAlert) \\"Nome do alerta\\" else \\"Nome do local\\""))',
+            'assertTrue(service.contains("text = if (isAlert) '
+            + backslash
+            + '"Nome do alerta'
+            + backslash
+            + '" else '
+            + backslash
+            + '"Nome do local'
+            + backslash
+            + '""))',
         ),
     ],
 }
