@@ -1,5 +1,15 @@
 # Rota Certa — Decisões técnicas
 
+## 2026-08-03 — A grade flutuante executa em no máximo dois toques
+
+- **Decisão:** um toque na bolinha principal abre/fecha a grade; um toque na bolinha escolhida executa imediatamente sua ação principal. Não existe espera para toque triplo nem classificação de 1,5 segundo no caminho da grade.
+- **Motivo:** a grade é uma superfície de ação rápida. Gestos múltiplos e painéis informativos intermediários aumentavam latência, ambiguidade e número de interações.
+- **Configuração:** a bolinha permanente `+` é o caminho autoritativo para editar nome, recurso, ícone, ordem e visibilidade. Preferências legadas de toque rápido/segurar são ignoradas no despacho.
+- **Exceções funcionais:** quando a própria ação exige dados ou confirmação, o segundo toque pode abrir diretamente o pop-up real dessa ação, como em `Salvar local` e `Alertas`; não pode abrir um painel genérico antes dela.
+- **Módulos afetados:** `BubbleShortcutOverlayController`, despacho da grade em `LiveRideAccessibilityService`, Central de atalhos na `MainActivity` e política `ShortcutDirectTapPolicy0182`.
+- **Condições para revisão:** somente mediante pedido explícito e com alternativa que preserve a meta de no máximo dois toques, não atrase o toque simples e não misture edição ao caminho crítico.
+- **Validação:** commit `4094b598dab6374067ef1f480bf3f70d7684ccab`, workflow run `30850540090`, artifact `8871170435`, APK SHA-256 `1d654096731fec7e8fb0c66500066305b0ee6658ebf0c101352cf239d1f401f7`.
+
 ## 03/08/2026 — cadeia Gradle limitada e contratos de gesto versionados
 
 - **Decisão:** builds cumulativos da 0.1.179 devem herdar limites globais de Gradle: daemon e paralelismo desligados, um worker, VFS watch desligado, heap e metaspace limitados e compilador Kotlin em processo.
