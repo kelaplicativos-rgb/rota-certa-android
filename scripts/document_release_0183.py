@@ -53,7 +53,7 @@ def main() -> None:
   - Locais: `Salvar localização atual` e `Abrir módulo Locais`;
   - Capturar: `Capturar aplicativo e tela agora` e `Abrir aplicativos e cards`;
   - Respostas: `Criar resposta rápida` e `Abrir Respostas`;
-  - Limpar: `Limpar área de transferência` e `Limpar cache do Rota Certa`;
+  - Limpar: `Limpar área de transferência`, `Limpar cache do Rota Certa` e `Abrir módulo Limpar`;
   - a limpeza de cache é limitada ao cache do próprio aplicativo e roda fora da thread principal;
   - toque fora/Fechar não executa nada e arraste continua cancelando o clique;
   - Alertas e Locais mantêm seus editores reais em sobreposição sem trocar automaticamente de aplicativo.
