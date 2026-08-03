@@ -1,0 +1,76 @@
+name: Build Rota Certa 0.1.183
+
+on:
+  pull_request:
+    branches: [agent/direct-shortcut-grid-0.1.182]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.183.yml
+      - scripts/build_rota_certa_0183.sh
+      - scripts/fix_contextual_shortcuts_0183.py
+      - docs/PROJECT_STATUS.md
+      - docs/DECISIONS.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/contextual-shortcut-menu-0.1.183
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.183
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0183
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0183.sh ../patches 2>&1 | tee build-0.1.183.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.183-failure-diagnostic
+          path: source/build-0.1.183.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.183-contextual-shortcut-menu-validated
+          path: source/artifact-0.1.183/
+          retention-days: 90
+          if-no-files-found: error
