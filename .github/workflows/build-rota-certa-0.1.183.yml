@@ -10,6 +10,10 @@ on:
       - scripts/document_release_0183.py
   workflow_dispatch:
 
+concurrency:
+  group: rota-certa-0.1.183-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   actions: read
