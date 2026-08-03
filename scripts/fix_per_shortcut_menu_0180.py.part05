@@ -1,0 +1,8 @@
+# Final callable-reference adjustment: a function with a default argument does not
+# adapt to a zero-argument callback through ::reference, so keep the full-Central
+# action as an explicit lambda.
+replace_once(
+    service,
+    "            onCustomize = ::openShortcutCustomization0179,",
+    "            onCustomize = { openShortcutCustomization0179() },",
+)
