@@ -33,18 +33,18 @@ service.write_text(text, encoding="utf-8")
 test_repairs = {
     "app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181Test.kt": [
         (
-            r'assertTrue(service.contains("text = "Cancelar""))'.replace(r'\"', '"'),
-            r'assertTrue(service.contains("text = \"Cancelar\""))'.replace(r'\"text', '"text').replace(r'\"))', '"))'),
+            'assertTrue(service.contains("text = "Cancelar""))',
+            'assertTrue(service.contains("text = \\"Cancelar\\""))',
         ),
         (
-            r'assertTrue(service.contains("text = "Salvar""))'.replace(r'\"', '"'),
-            r'assertTrue(service.contains("text = \"Salvar\""))'.replace(r'\"text', '"text').replace(r'\"))', '"))'),
+            'assertTrue(service.contains("text = "Salvar""))',
+            'assertTrue(service.contains("text = \\"Salvar\\""))',
         ),
     ],
     "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt": [
         (
-            r'assertTrue(service.contains("text = if (isAlert) "Nome do alerta" else "Nome do local""))'.replace(r'\"', '"'),
-            r'assertTrue(service.contains("text = if (isAlert) \"Nome do alerta\" else \"Nome do local\""))'.replace(r'\"text', '"text').replace(r'\"))', '"))'),
+            'assertTrue(service.contains("text = if (isAlert) "Nome do alerta" else "Nome do local""))',
+            'assertTrue(service.contains("text = if (isAlert) \\"Nome do alerta\\" else \\"Nome do local\\""))',
         ),
     ],
 }
