@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# validation_trigger=shortcut_in_place_0181_import_fix
+# validation_trigger=shortcut_in_place_0181_structural
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0180.sh"
-NORMALIZE_POPUP="$PATCHES/scripts/normalize_saved_place_popup_imports_0181.py"
-TRANSFORM_POPUP="$PATCHES/scripts/fix_saved_place_popup_0181.py"
+TRANSFORM_POPUP="$PATCHES/scripts/fix_saved_place_popup_structural_0181.py"
 TRANSFORM_IN_PLACE="$PATCHES/scripts/fix_shortcut_in_place_0181.py"
 TRANSFORM_TESTS="$PATCHES/scripts/fix_shortcut_in_place_tests_0181.py"
+TRANSFORM_COMPAT="$PATCHES/scripts/fix_shortcut_in_place_compat_0181.py"
 
 cleanup_gradle_home=false
 if [[ -z "${GRADLE_USER_HOME:-}" ]]; then
@@ -36,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python -m py_compile "$NORMALIZE_POPUP" "$TRANSFORM_POPUP" "$TRANSFORM_IN_PLACE" "$TRANSFORM_TESTS"
+python -m py_compile "$TRANSFORM_POPUP" "$TRANSFORM_IN_PLACE" "$TRANSFORM_TESTS" "$TRANSFORM_COMPAT"
 bash "$BASE_BUILD" "$PATCHES"
 
 PROTECTED_FILES=(
@@ -57,10 +57,10 @@ PROTECTED_FILES=(
 )
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 
-python "$NORMALIZE_POPUP"
 python "$TRANSFORM_POPUP"
 python "$TRANSFORM_IN_PLACE"
 python "$TRANSFORM_TESTS"
+python "$TRANSFORM_COMPAT"
 
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
@@ -68,7 +68,7 @@ diff -u "$before_hashes" "$after_hashes"
 grep -F 'versionCode = 5420' app/build.gradle.kts
 grep -F 'versionName = "0.1.181"' app/build.gradle.kts
 grep -F 'private fun showSavePlacePopup' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -F 'showSavePlacePopup(coordinate, resolved.addressLine, type)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'showSavePlacePopup(coordinate, resolved.addressLine, type, defaultName)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'Endereco completo' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'Nome do alerta' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'OPEN_MODULE -> showShortcutModulePopup0181(entry0180.spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -134,6 +134,7 @@ cp "$after_hashes" "$OUTPUT_DIR/protected-source-sha256.txt"
   echo 'save_popup_fields=title_instruction_full_address_name_cancel_save'
   echo 'blank_place_name_fallback=Local salvo'
   echo 'blank_alert_name_fallback=Alerta de proximidade'
+  echo 'suggested_name_compatibility=true'
   echo 'gps_resolver_unchanged=true'
   echo 'manifest_permissions_unchanged=true'
   echo 'farol_route_ocr_protected=true'
