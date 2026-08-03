@@ -1,5 +1,19 @@
 # Rota Certa — Decisões técnicas
 
+## 03/08/2026 — três faixas de gesto por bolinha com ação intermediária somente ao soltar
+
+- **Decisão:** cada entrada da grade flutuante possui toque rápido configurável, gesto configurável de 1,5 segundo e gesto reservado de 5 segundos para abrir o editor daquela própria entrada.
+- **Resolução temporal:** soltar antes de 1,5 segundo resolve `QuickTap`; soltar entre 1,5 e 5 segundos resolve `HoldOnePointFiveSeconds`; atingir 5 segundos resolve `Customize`. Movimento além do limite cancela todos os gestos.
+- **Proteção contra execução dupla:** a ação de 1,5 segundo nunca é disparada por temporizador. Ela é executada somente no `ACTION_UP`; assim, quem continua segurando até 5 segundos abre a configuração sem executar antes a ação intermediária.
+- **Ações permitidas:** os dois slots configuráveis aceitam exclusivamente `ExecuteImmediately`, `OpenModule` e `DoNothing`. A persistência guarda apenas enums conhecidos e IDs do catálogo seguro; não aceitar intents, pacotes, URIs ou comandos arbitrários.
+- **Executar imediatamente:** reutiliza a ação rápida existente do recurso. Quando o recurso não possui ação rápida dedicada, mantém o fallback seguro para sua ação principal.
+- **Abrir módulo:** usa o roteamento autoritativo existente por ID do módulo, grupo e aba, preservando o foco único da Home e o lançamento seguro de Activities.
+- **Editor individual:** segurar uma bolinha por 5 segundos abre diretamente sua entrada. O menu deve exibir nome, recurso, ícone, visibilidade, botão de toque rápido, botão de 1,5 segundo, opção `Não fazer nada` e `Excluir da grade`.
+- **Migração:** configurações 0.1.179 sem campos de gesto migram para toque rápido = executar imediatamente e 1,5 segundo = abrir módulo, preservando o comportamento útil anterior.
+- **Desempenho:** processamento estritamente orientado aos eventos de toque. Não criar polling, coroutine recorrente, observador contínuo, captura, OCR ou serviço para medir gestos.
+- **Fronteira protegida:** esta decisão não autoriza mudanças em Manifest, permissões, farol, parser, OCR, Google Maps, Casa/Alfinetes, decisão de cores, km, proteção contra resultados atrasados, radares ou alertas direcionais.
+- **Condição para revisão:** revisar apenas se testes reais mostrarem conflito de duração em fabricante específico ou necessidade explícita de novas ações seguras. O limiar de 5 segundos continua reservado à configuração individual para garantir recuperação da entrada.
+
 ## 03/08/2026 — cadeia Gradle limitada e contratos de gesto versionados
 
 - **Decisão:** builds cumulativos da 0.1.179 devem herdar limites globais de Gradle: daemon e paralelismo desligados, um worker, VFS watch desligado, heap e metaspace limitados e compilador Kotlin em processo.
