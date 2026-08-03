@@ -1,0 +1,74 @@
+name: Build Rota Certa 0.1.180
+
+on:
+  push:
+    branches: [agent/per-shortcut-gesture-menu-0.1.180]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.180.yml
+      - scripts/build_rota_certa_0180.sh
+      - scripts/fix_per_shortcut_gestures_0180.py.part00
+      - scripts/fix_per_shortcut_gestures_0180.py.part01
+      - scripts/fix_per_shortcut_gestures_0180.py.part02
+      - scripts/fix_per_shortcut_gestures_0180.py.part03
+  pull_request:
+    branches: [agent/customizable-shortcut-grid-0.1.179]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.180.yml
+      - scripts/build_rota_certa_0180.sh
+      - scripts/fix_per_shortcut_gestures_0180.py.part00
+      - scripts/fix_per_shortcut_gestures_0180.py.part01
+      - scripts/fix_per_shortcut_gestures_0180.py.part02
+      - scripts/fix_per_shortcut_gestures_0180.py.part03
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0180
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/per-shortcut-gesture-menu-0.1.180
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.180
+        working-directory: source
+        run: bash ../patches/scripts/build_rota_certa_0180.sh ../patches
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.180-per-shortcut-gesture-menu-validated
+          path: source/artifact-0.1.180/
+          retention-days: 90
+          if-no-files-found: error
