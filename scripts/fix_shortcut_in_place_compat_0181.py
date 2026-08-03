@@ -30,14 +30,35 @@ for old, new in replacements:
     text = text.replace(old, new, 1)
 service.write_text(text, encoding="utf-8")
 
-for relative in (
-    "app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181Test.kt",
-    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt",
-):
+test_repairs = {
+    "app/src/test/java/br/com/mapeiaia/rotacerta/SavedPlacePopupContract0181Test.kt": [
+        (
+            r'assertTrue(service.contains("text = "Cancelar""))',
+            r'assertTrue(service.contains("text = \"Cancelar\""))',
+        ),
+        (
+            r'assertTrue(service.contains("text = "Salvar""))',
+            r'assertTrue(service.contains("text = \"Salvar\""))',
+        ),
+    ],
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutInPlaceContract0181Test.kt": [
+        (
+            r'assertTrue(service.contains("text = if (isAlert) "Nome do alerta" else "Nome do local""))',
+            r'assertTrue(service.contains("text = if (isAlert) \"Nome do alerta\" else \"Nome do local\""))',
+        ),
+    ],
+}
+
+for relative, repairs in test_repairs.items():
     path = ROOT / relative
     test = path.read_text(encoding="utf-8")
     test = test.replace(
         "showSavePlacePopup(coordinate, resolved.addressLine, type)",
         "showSavePlacePopup(coordinate, resolved.addressLine, type, defaultName)",
     )
+    for old, new in repairs:
+        count = test.count(old)
+        if count != 1:
+            raise RuntimeError(f"{relative}: expected one generated Kotlin literal to repair, found {count}: {old!r}")
+        test = test.replace(old, new, 1)
     path.write_text(test, encoding="utf-8")
