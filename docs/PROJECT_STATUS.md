@@ -27,8 +27,8 @@
 - **Artifact:** `rota-certa-0.1.179-customizable-shortcut-grid-validated`, ID `8845723352`, 31.599.304 bytes, retenção até 01/11/2026.
 - **Pacote e versão validados:** `br.com.mapeiaia.rotacerta`, versão `0.1.179`, versionCode `5400`, minSdk 26 e targetSdk 35.
 - **APK:** `rota-certa-0.1.179-grade-atalhos-personalizavel-validado.apk`, 56.042.447 bytes.
-- **SHA-256 do APK:** `081c9651f0733213c364d6f9502788c6fc4e6c443c62c1d02439b2bd58215713`.
-- **SHA-256 do ZIP do artifact:** `71d8e08bbb41261cdd16a9a90ee3106276867c99e25a92254663a01747f94a26`.
+- **SHA-256 do APK:** `081cffc8837b8544c69d1422f21286ab0da3ffb483f378810d5feb70d565f52c`.
+- **SHA-256 do ZIP do artifact:** `71d8a6c52c5bc7f0a1a6eb0ca7484c292f4574da90838c061ba9e1e98fb80ca8`.
 - **Assinatura:** APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
 - **Pendências, riscos e próxima validação:** instalar no Samsung SM-S911B com Android 16 e validar toque simples na ação principal selecionada, toque longo de 2 segundos abrindo o módulo correspondente na Home, toque de 5 segundos na bolinha principal abrindo a personalização, preservação do toque simples e duplo da bolinha principal, migração/ordem/duplicidade do catálogo e ausência de regressão do farol, rota, radares e alertas. A PR #48 deve permanecer em rascunho até essa validação real.
 
