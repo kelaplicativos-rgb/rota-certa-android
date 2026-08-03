@@ -56,6 +56,7 @@ for index in "${!TRANSFORM_PARTS[@]}"; do
 done
 echo "$TRANSFORM_COMBINED_SHA256  $combined_transform" | sha256sum --check
 python -m py_compile "$combined_transform"
+python -m py_compile "$TRANSFORM"
 
 bash "$BASE_BUILD" "$PATCHES"
 
@@ -84,10 +85,12 @@ grep -F 'versionCode = 5410' app/build.gradle.kts
 grep -F 'versionName = "0.1.180"' app/build.gradle.kts
 grep -F 'per_shortcut_menu_0_1_180' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
 grep -F 'SHORTCUT_LONG_PRESS_MILLIS: Long = 1_500L' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
-grep -F 'SHORTCUT_CUSTOMIZATION_HOLD_MILLIS: Long = 5_000L' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+grep -F 'SHORTCUT_TRIPLE_TAP_WINDOW_MILLIS: Long = 900L' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+grep -F 'if (tapCount0180 >= 3)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
 grep -F 'onShortcutCustomize(entry0179)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
 grep -F 'executeShortcutQuickTap0180' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'executeShortcutHold0180' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'SHORTCUT_TRIPLE_TAP_OPEN_EDITOR_0180' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'openShortcutEntryCustomization0180' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'Toque rápido:' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
 grep -F 'Segurar 1,5 s:' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
@@ -125,7 +128,7 @@ for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.de
 done | strings > "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'ShortcutGestureAction0180' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'ShortcutPerEntryMenu0180Test' "$OUTPUT_DIR/dex-strings.txt" || true
-grep -F 'SHORTCUT_HOLD_OPEN_EDITOR_0180' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'SHORTCUT_TRIPLE_TAP_OPEN_EDITOR_0180' "$OUTPUT_DIR/dex-strings.txt"
 
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
@@ -134,11 +137,12 @@ cp "$after_hashes" "$OUTPUT_DIR/protected-source-sha256.txt"
   echo 'package=br.com.mapeiaia.rotacerta'
   echo 'versionName=0.1.180'
   echo 'versionCode=5410'
-  echo 'scope=per_shortcut_configurable_gestures'
-  echo 'quick_tap=configurable_primary_module_none'
+  echo 'scope=per_shortcut_configurable_gestures_triple_tap_editor'
+  echo 'quick_tap=configurable_primary_module_none_delayed_for_triple_tap'
   echo 'hold_1500=configurable_primary_module_none'
-  echo 'hold_5000=individual_shortcut_editor_reserved'
-  echo 'five_seconds_does_not_fire_1500_action_first=true'
+  echo 'triple_tap_window_millis=900'
+  echo 'triple_tap=individual_shortcut_editor_reserved'
+  echo 'triple_tap_does_not_fire_quick_or_hold=true'
   echo 'individual_menu=quick_hold_none_delete'
   echo 'farol_protected=true'
   echo 'radars_protected=true'
