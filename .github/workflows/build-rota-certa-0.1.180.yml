@@ -3,6 +3,7 @@ name: Build Rota Certa 0.1.180
 # Validates the per-shortcut three-stage gesture contract.
 # PR validation synchronization marker.
 # Non-conflicting validation base active.
+# Validation base refreshed.
 on:
   push:
     branches: [agent/per-shortcut-gesture-menu-0.1.180]
