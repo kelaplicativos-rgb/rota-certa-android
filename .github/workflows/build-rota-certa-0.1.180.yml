@@ -4,6 +4,7 @@ name: Build Rota Certa 0.1.180
 # PR validation synchronization marker.
 # Non-conflicting validation base active.
 # Validation base refreshed.
+# Final PR validation trigger.
 on:
   push:
     branches: [agent/per-shortcut-gesture-menu-0.1.180]
