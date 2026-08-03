@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# validation_trigger=shortcut_in_place_0181
 
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0180.sh"
