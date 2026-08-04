@@ -1,11 +1,11 @@
 Rota Certa 0.1.184 (5450)
 branch=agent/home-catalog-directional-shortcuts-0.1.184
-functional_commit=c3560c62fa398d3b660d99c8f2f24389e58442d6
-workflow_run=30911279540
+functional_commit=d4e51978873b4296ba4239932a163037bd32e884
+workflow_run=30954770550
 artifact_name=rota-certa-0.1.184-home-action-catalog-directional-validated
-artifact_id=8894266032
-artifact_digest=e62d3aad9b53929c598305e4eefd98c072b1e30fe4e74bdb91e0d4fa4e84ac60
-artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/30911279540/artifacts/8894266032
+artifact_id=8911487204
+artifact_digest=a3d791b9d45ceae688e5164be0fd532596bf09afad13c4fdcd3d455658565e12
+artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/30954770550/artifacts/8911487204
 apk=rota-certa-0.1.184-home-acoes-direcao-validado.apk
 apk_size=56058835
 apk_sha256=1c95e8fad4bb7b7a189bf116ea98d75428789f82b237df5772332b3f0b6bb78c
