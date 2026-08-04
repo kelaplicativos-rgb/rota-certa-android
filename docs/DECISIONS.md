@@ -1,5 +1,16 @@
 # Rota Certa — Decisões técnicas
 
+## 03/08/2026 — A grade armazena ações tipadas; a Home é o catálogo e o filtro direcional falha fechado
+
+- **Decisão:** cada entrada da grade representa exatamente uma ação interna registrada em `ShortcutActionCatalog0184`, não um módulo e não um comando arbitrário.
+- **Home:** todos os módulos permanecem visíveis; cada painel mostra suas ações com `Adicionar` ou `Remover`. Ações diferentes do mesmo módulo podem coexistir, como `Criar backup` e `Restaurar backup`.
+- **Grade:** instalação nova começa vazia; atualização preserva ou migra a grade; máximo de 32 ações; a mesma ação não é duplicada; a bolinha `+` não faz parte do painel de execução.
+- **Interação:** bolinha principal abre a grade; o toque na ação executa imediatamente. Quando vazia, a bolinha principal abre a Home. Pop-up específico da própria ação continua permitido quando necessário para nome, confirmação ou seletor de arquivo.
+- **Segurança:** não aceitar código, shell, URI livre, pacote livre ou Intent fornecida pelo usuário. Nova função só vira atalho após receber identificador estável, executor explícito e testes.
+- **Direção:** sem GPS recente, precisão, velocidade e rumo confiáveis, não notificar. Alvo deve estar à frente e aproximar-se em duas amostras reais. Direção cadastrada deve coincidir; sentido oposto falha fechado.
+- **Compatibilidade:** dados antigos sem direção continuam válidos, mas dependem do cone à frente e da aproximação estrita. Novos alertas/radares manuais guardam o rumo quando disponível.
+- **Fronteira:** não alterar decisão do farol, OCR, parser, rotas, cores, km ou cancelamento de resultados antigos para implementar a grade ou os avisos direcionais.
+
 ## 03/08/2026 — Menu contextual como contrato dos atalhos da grade
 
 - **Decisão:** o toque numa bolinha interna da grade não executa mais uma ação automaticamente; ele abre um menu contextual específico daquela bolinha.

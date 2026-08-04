@@ -1,5 +1,34 @@
 # Rota Certa — Estado do projeto
 
+## 03/08/2026 — 0.1.184 (5450) — Home completa, atalhos por ação e direção rigorosa
+
+- **Branch:** `agent/home-catalog-directional-shortcuts-0.1.184`; **PR:** #55, empilhada sobre a 0.1.183.
+- **Commit funcional validado:** `c3560c62fa398d3b660d99c8f2f24389e58442d6`.
+- **Pedido do usuário:** executar a evolução continuamente por etapas; colocar todos os módulos na Home; deixar a grade inicialmente vazia; permitir criar bolinhas independentes para cada ação real; restaurar o limite de dois toques totais; e impedir alertas/radares do sentido oposto.
+- **Situação anterior:** a 0.1.183 armazenava módulos na grade e abria um menu contextual intermediário. A mesma bolinha agrupava ações distintas, como criar/restaurar backup ou limpar cache/área de transferência. O motor direcional aceitava uma única amostra de aproximação e tolerâncias angulares mais amplas.
+- **Causa:** a persistência usava `shortcutId` de módulo, não identidade de ação. A Home não administrava cada ação individualmente e a grade continha uma bolinha `+`. No filtro direcional, aproximação podia incluir distância estável dentro da margem de erro do GPS.
+- **Correção aplicada:**
+  - criado catálogo tipado e fechado de ações internas, sem código, URI ou Intent arbitrária;
+  - Home ampliada para 21 módulos, incluindo Permissões, Histórico, Frases e Rastreamento;
+  - cada módulo oferece `Adicionar`/`Remover` para suas ações específicas;
+  - ações independentes para criar/restaurar backup, limpar cache/clipboard, copiar texto, capturar card/pacote, valor, WhatsApp, alertas, locais, radar, destino, links, respostas e rastreamento;
+  - instalações novas começam sem ações na grade; atualizações migram o JSON ou a antiga grade implícita;
+  - limite rígido de 32 ações e bloqueio de duplicidade da mesma ação;
+  - removida a bolinha `+` da grade; organização permanece na Home;
+  - grade vazia abre a Home; grade configurada executa diretamente no toque seguinte;
+  - alertas e radares exigem GPS recente/preciso, rumo, velocidade, alvo à frente e duas reduções reais de distância;
+  - tolerâncias direcionais reduzidas e direção do deslocamento salva em novos alertas/radares manuais quando disponível;
+  - alertas/radares antigos continuam compatíveis, mas ainda precisam estar à frente e em aproximação real.
+- **Arquivos principais:** `ShortcutActionCatalog0184.kt`, `ShortcutActionHome0184.kt`, `ShortcutGridCustomization0179.kt`, `BubbleShortcutModule.kt`, `BubbleShortcutOverlayController.kt`, `MainActivity.kt`, `LiveRideAccessibilityService.kt`, `DirectionalAlertPolicy.kt`, `DirectionalProximityAlertEngine.kt`, `Models.kt`, testes, transformador, build e workflow 0.1.184.
+- **Fronteira protegida:** Manifest/permissões, `DecisionEngine`, Google Maps, parser, geocodificação, repositórios, fala, overlay direcional e contrato do farol permaneceram protegidos por SHA-256.
+- **Testes:** unitários e contratos aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; pacote, versão, DEX, assinatura v2, certificado e SHA-256 validados.
+- **Workflow:** `Build Rota Certa 0.1.184`, run `30911279540`.
+- **Artifact:** `rota-certa-0.1.184-home-action-catalog-directional-validated`, ID `8894266032`, digest `e62d3aad9b53929c598305e4eefd98c072b1e30fe4e74bdb91e0d4fa4e84ac60`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/30911279540/artifacts/8894266032
+- **APK:** `rota-certa-0.1.184-home-acoes-direcao-validado.apk`, 56058835 bytes; pacote `br.com.mapeiaia.rotacerta`; versão `0.1.184`; versionCode `5450`.
+- **SHA-256 do APK:** `1c95e8fad4bb7b7a189bf116ea98d75428789f82b237df5772332b3f0b6bb78c`.
+- **Pendências:** instalação e teste no Samsung SM-S911B/Android 16. Validar migração da grade existente, instalação limpa vazia, todas as ações escolhidas, SAF de backup, rastreamento, direção em vias paralelas e ausência de regressão do farol durante cards reais.
+
 ## 03/08/2026 — 0.1.183 (5440) — menu contextual por bolinha da grade
 
 - **Branch:** `agent/contextual-shortcut-menu-0.1.183`; **PR:** empilhada sobre a 0.1.182.
