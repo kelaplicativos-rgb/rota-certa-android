@@ -4,6 +4,8 @@ set -euo pipefail
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0183.sh"
 PATCH_FILE="$(mktemp --suffix=.patch)"
+FIX_PATCH="$PATCHES/patches/home-action-shortcuts-0184-tests-fix.patch"
+FIX_PATCH_SHA256="703c80b53ae08800318657d9e2feab7c413f0600d7b56dc5532d2ae9d0cab014"
 PARTS=(
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part00"
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part01"
@@ -81,6 +83,9 @@ PROTECTED_FILES=(
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 git apply --check "$PATCH_FILE"
 git apply "$PATCH_FILE"
+echo "$FIX_PATCH_SHA256  $FIX_PATCH" | sha256sum --check
+git apply --check "$FIX_PATCH"
+git apply "$FIX_PATCH"
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
 
@@ -96,6 +101,13 @@ grep -F 'const val REQUIRED_APPROACHING_SAMPLES = 2' app/src/main/java/br/com/ma
 grep -F 'const val TARGET_AHEAD_TOLERANCE_DEGREES = 40.0' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
 grep -F 'const val RADAR_DIRECTION_TOLERANCE_DEGREES = 30.0' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
 grep -F 'const val MIN_DISTANCE_PROGRESS_METERS = 1.5' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+grep -F '"copy_trip_confirmation"' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+grep -F '"stop_app"' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+! grep -F '"trip_confirmation",' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+! grep -F '"stop",' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
+grep -F 'modules.size >= 21' app/src/test/java/br/com/mapeiaia/rotacerta/AccessibilityResilienceAndTools0172ContractTest.kt
+grep -F 'catálogo completo da Home' app/src/test/java/br/com/mapeiaia/rotacerta/GeneralControlsPlacesPopupChecklist7Test.kt
+grep -F 'fix(-0.0018)' app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalRadarDismiss0178Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/HomeActionShortcutsContract0184Test.kt
 
