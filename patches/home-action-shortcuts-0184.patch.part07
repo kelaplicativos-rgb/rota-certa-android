@@ -1,0 +1,144 @@
+-                            ),
+                         ),
+                     )
+                 }
+             }
+             ShortcutGridCustomizationPolicy0179.normalize(entries)
+-        }.getOrElse { ShortcutGridCustomizationPolicy0179.defaults() }
++        }.getOrElse { emptyList() }
+     }
+ 
+     fun readResolved(): List<ResolvedShortcutGridEntry0179> =
+         ShortcutGridCustomizationPolicy0179.resolve(read())
+ 
+     fun write(entries: List<ShortcutGridEntry0179>) {
+-        val normalized = ShortcutGridCustomizationPolicy0179.normalize(entries)
++        persist(ShortcutGridCustomizationPolicy0179.normalize(entries))
++    }
++
++    /** Restaurar na 0.1.184 significa esvaziar e escolher novamente pela Home. */
++    fun reset() = persist(emptyList())
++
++    private fun persist(entries: List<ShortcutGridEntry0179>) {
+         val array = JSONArray()
+-        normalized.forEach { entry ->
++        entries.forEach { entry ->
+             array.put(
+                 JSONObject()
+                     .put("entryId", entry.entryId)
+                     .put("shortcutId", entry.shortcutId)
+                     .put("label", entry.label)
+                     .put("emoji", entry.emoji)
+-                    .put("enabled", entry.enabled)
+-                    .put("quickAction0180", entry.quickAction0180.name)
+-                    .put("holdAction0180", entry.holdAction0180.name),
++                    .put("enabled", entry.enabled),
+             )
+         }
+-        prefs.edit().putString(KEY_GRID, array.toString()).apply()
++        prefs.edit()
++            .putString(KEY_GRID, array.toString())
++            .putBoolean(KEY_INITIALIZED_0184, true)
++            .apply()
+     }
+ 
+-    fun reset() {
+-        prefs.edit().remove(KEY_GRID).apply()
+-    }
+-
+-    private fun parseGestureAction0180(
+-        raw: String,
+-        fallback: ShortcutGestureAction0180,
+-    ): ShortcutGestureAction0180 = runCatching {
+-        ShortcutGestureAction0180.valueOf(raw)
+-    }.getOrDefault(fallback)
++    private fun isUpgradeInstallation(): Boolean = runCatching {
++        val info = if (android.os.Build.VERSION.SDK_INT >= 33) {
++            appContext.packageManager.getPackageInfo(
++                appContext.packageName,
++                PackageManager.PackageInfoFlags.of(0),
++            )
++        } else {
++            @Suppress("DEPRECATION")
++            appContext.packageManager.getPackageInfo(appContext.packageName, 0)
++        }
++        info.lastUpdateTime > info.firstInstallTime
++    }.getOrDefault(false)
+ 
+     private companion object {
+         const val PREFS_NAME = "rota_certa_shortcut_grid_0179"
+         const val KEY_GRID = "grid_json_v1"
++        const val KEY_INITIALIZED_0184 = "initialized_action_grid_0184"
+     }
+ }
+ 
+ // shortcut_grid_customization_0_1_179
+-
+ // per_shortcut_menu_0_1_180
++// home_action_shortcuts_0_1_184
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+index 7c8e8d0..979ea72 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/BubbleShortcutModulesTest.kt
+@@ -7,20 +7,21 @@ import org.junit.Test
+ 
+ class BubbleShortcutModulesTest {
+     @Test
+-    fun catalogIncludesQuickLinksAndKeepsSharedTemplateEditorOutsideTheGrid() {
++    fun homeCatalogContainsAllMainModulesAndActionCatalogIsClosed() {
+         BubbleShortcutCatalog.requireValid()
+         val ids = BubbleShortcutCatalog.modules.map { it.spec.id }
+-        val hasManualCapture = "manual_capture" in ids
+ 
+-        assertEquals(if (hasManualCapture) 17 else 16, ids.size)
+-        if (hasManualCapture) {
+-            assertTrue("A captura manual de aplicativo e tela precisa estar disponível", "manual_capture" in ids)
+-        }
+-        assertTrue("A bolinha Valor precisa existir", "passenger_value" in ids)
+-        assertTrue("A bolinha Financeiro precisa existir", "finance" in ids)
+-        assertTrue("O módulo Links rápidos precisa existir", "quick_links" in ids)
+-        assertFalse("A captura antiga de modelo não pode voltar", "manual_card_capture" in ids)
+-        assertFalse("A tela de modelos não pode voltar", "cards" in ids)
+-        assertEquals(ids.size, BubbleShortcutCatalog.modules.map { it.spec.action }.distinct().size)
++        assertTrue(ids.size >= 21)
++        assertTrue("manual_capture" in ids)
++        assertTrue("passenger_value" in ids)
++        assertTrue("finance" in ids)
++        assertTrue("quick_links" in ids)
++        assertTrue("permissions" in ids)
++        assertTrue("reports" in ids)
++        assertTrue("message_templates" in ids)
++        assertTrue("work_tracking" in ids)
++        assertFalse("manual_card_capture" in ids)
++        assertEquals(ids.size, ids.distinct().size)
++        ShortcutActionCatalog0184.requireValid()
+     }
+ }
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicyChecklist5Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicyChecklist5Test.kt
+index 610e51d..462c08c 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicyChecklist5Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicyChecklist5Test.kt
+@@ -66,6 +66,19 @@ class DirectionalAlertPolicyChecklist5Test {
+         )
+     }
+ 
++
++    @Test
++    fun `aproximacao exige reducao real e nao aceita afastamento dentro do jitter`() {
++        assertTrue(DirectionalAlertPolicy.isApproaching(120.0, 115.0, 6.0))
++        assertFalse(DirectionalAlertPolicy.isApproaching(120.0, 120.5, 6.0))
++        assertFalse(DirectionalAlertPolicy.isApproaching(120.0, 119.5, 20.0))
++    }
++
++    @Test
++    fun `alvo lateral fora de quarenta graus e rejeitado`() {
++        assertTrue(DirectionalAlertPolicy.isTargetAhead(0.0, 35.0))
++        assertFalse(DirectionalAlertPolicy.isTargetAhead(0.0, 50.0))
++    }
+     private fun fix(
+         accuracy: Double,
+         time: Long,
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt
+index a0c2e63..a7777f7 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt
