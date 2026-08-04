@@ -6,6 +6,8 @@ BASE_BUILD="$PATCHES/scripts/build_rota_certa_0183.sh"
 PATCH_FILE="$(mktemp --suffix=.patch)"
 FIX_PATCH="$PATCHES/patches/home-action-shortcuts-0184-tests-fix.patch"
 FIX_PATCH_SHA256="703c80b53ae08800318657d9e2feab7c413f0600d7b56dc5532d2ae9d0cab014"
+DEX_MARKER_PATCH="$PATCHES/patches/home-action-shortcuts-0184-dex-marker-fix.patch"
+DEX_MARKER_PATCH_SHA256="e919903b1d58ecaa7786c7f917a08421d97c7ba93fb95fce103f16f656c48a75"
 PARTS=(
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part00"
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part01"
@@ -86,13 +88,16 @@ git apply "$PATCH_FILE"
 echo "$FIX_PATCH_SHA256  $FIX_PATCH" | sha256sum --check
 git apply --check "$FIX_PATCH"
 git apply "$FIX_PATCH"
+echo "$DEX_MARKER_PATCH_SHA256  $DEX_MARKER_PATCH" | sha256sum --check
+git apply --check "$DEX_MARKER_PATCH"
+git apply "$DEX_MARKER_PATCH"
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
 
 grep -F 'versionCode = 5450' app/build.gradle.kts
 grep -F 'versionName = "0.1.184"' app/build.gradle.kts
 grep -F 'SHORTCUT_ACTION_CATALOG_0184' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
-grep -F 'home_action_shortcuts_0_1_184' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+grep -F 'HOME_ACTION_SHORTCUTS_0184' app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
 grep -F 'executeShortcutModule(entry0180.spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 ! grep -F 'showShortcutActionMenu0183(entry0180.spec)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 ! grep -F 'shortcut_add_0179' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
@@ -132,7 +137,7 @@ grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUTPUT_DIR/
 grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUTPUT_DIR/signature.txt"
 for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'SHORTCUT_ACTION_CATALOG_0184' "$OUTPUT_DIR/dex-strings.txt"
-grep -F 'home_action_shortcuts_0_1_184' "$OUTPUT_DIR/dex-strings.txt"
+grep -F 'HOME_ACTION_SHORTCUTS_0184' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'STRICT_DIRECTIONAL_APPROACH_0184' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'empty_action_grid_0184' "$OUTPUT_DIR/dex-strings.txt"
 grep -F 'action_create_backup' "$OUTPUT_DIR/dex-strings.txt"
