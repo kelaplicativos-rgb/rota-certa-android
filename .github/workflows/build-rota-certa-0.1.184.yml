@@ -6,9 +6,10 @@ on:
     paths:
       - .github/workflows/build-rota-certa-0.1.184.yml
       - scripts/build_rota_certa_0184.sh
-      - scripts/fix_home_action_shortcuts_0184.py.gz.b64
       - scripts/document_release_0184.py
       - docs/SHORTCUT_ACTION_CATALOG_0.1.184.md
+      - patches/home-action-shortcuts-0184.patch.part*
+      - patches/home-action-shortcuts-0184-tests-fix.patch
   workflow_dispatch:
 
 concurrency:
