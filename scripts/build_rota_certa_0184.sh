@@ -34,7 +34,7 @@ cleanup() {
 trap cleanup EXIT
 
 base64 --decode "$TRANSFORM_B64" | gzip --decompress > "$TRANSFORM"
-echo "663c8c3fd527fa8b0c782d2aadb57e454859f0856d380e1a7fac22500bb9f560  $TRANSFORM" | sha256sum --check
+echo "7414dbf112bad4a293f386c73bec2c3d99923ce5f8f1fd44b8fdf9c554aa4210  $TRANSFORM" | sha256sum --check
 python -m py_compile "$TRANSFORM"
 bash "$BASE_BUILD" "$PATCHES"
 
