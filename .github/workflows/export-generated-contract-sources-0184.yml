@@ -2,8 +2,8 @@ name: Export generated contract sources 0.1.184
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/home-catalog-directional-shortcuts-0.1.184]
+  pull_request:
+    branches: [agent/contextual-shortcut-menu-0.1.183]
     paths:
       - .github/workflows/export-generated-contract-sources-0184.yml
 
