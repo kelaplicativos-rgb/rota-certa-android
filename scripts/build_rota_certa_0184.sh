@@ -7,7 +7,7 @@ PATCH_FILE="$(mktemp --suffix=.patch)"
 FIX_PATCH="$PATCHES/patches/home-action-shortcuts-0184-tests-fix.patch"
 FIX_PATCH_SHA256="703c80b53ae08800318657d9e2feab7c413f0600d7b56dc5532d2ae9d0cab014"
 DEX_MARKER_PATCH="$PATCHES/patches/home-action-shortcuts-0184-dex-marker-fix.patch"
-DEX_MARKER_PATCH_SHA256="e919903b1d58ecaa7786c7f917a08421d97c7ba93fb95fce103f16f656c48a75"
+DEX_MARKER_PATCH_SHA256="2a4593e9eba23cbff4c97511459d5dcfd6ccd18045cf72c948301e915863a4e9"
 PARTS=(
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part00"
   "$PATCHES/patches/home-action-shortcuts-0184.patch.part01"
