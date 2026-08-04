@@ -1,0 +1,106 @@
+name: Build Rota Certa 0.1.184
+
+on:
+  pull_request:
+    branches: [agent/contextual-shortcut-menu-0.1.183]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.184.yml
+      - scripts/build_rota_certa_0184.sh
+      - scripts/fix_home_action_shortcuts_0184.py.gz.b64
+      - scripts/document_release_0184.py
+      - docs/SHORTCUT_ACTION_CATALOG_0.1.184.md
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.184-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/home-catalog-directional-shortcuts-0.1.184
+          fetch-depth: 0
+          persist-credentials: true
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.184
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0184
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0184.sh ../patches 2>&1 | tee build-0.1.184.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.184-failure-diagnostic
+          path: source/build-0.1.184.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        id: upload_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.184-home-action-catalog-directional-validated
+          path: source/artifact-0.1.184/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Document validated release
+        working-directory: patches
+        env:
+          ARTIFACT_ID: ${{ steps.upload_apk.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload_apk.outputs.artifact-digest }}
+          RUN_ID: ${{ github.run_id }}
+          BRANCH_NAME: agent/home-catalog-directional-shortcuts-0.1.184
+        run: |
+          set -euo pipefail
+          FUNCTIONAL_COMMIT="$(git rev-parse HEAD)"
+          python scripts/document_release_0184.py \
+            --artifact-dir ../source/artifact-0.1.184 \
+            --artifact-id "$ARTIFACT_ID" \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --run-id "$RUN_ID" \
+            --branch "$BRANCH_NAME" \
+            --functional-commit "$FUNCTIONAL_COMMIT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md validation/0.1.184/latest.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Document validated Rota Certa 0.1.184 [skip ci]"
+            git push origin "HEAD:$BRANCH_NAME"
+          fi
