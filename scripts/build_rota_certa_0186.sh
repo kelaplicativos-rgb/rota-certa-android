@@ -4,8 +4,8 @@ set -euo pipefail
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0185.sh"
 PATCH_ARCHIVE="$(mktemp --suffix=.patch.gz.b64)"
-PATCH_ARCHIVE_SHA256="0ad5d74b01c879d98eeb2d9d40f3b21234f0271f6c27144652aad642afb737eb"
-PATCH_SHA256="552498d4b4a5b2431c99e59680957304c4e5894f1928832ccbdced9896cce2a0"
+PATCH_ARCHIVE_SHA256="96eeb390e29798a407f6963936dc963b79385e7a2c4bb0c6796c9b90a76dccb9"
+PATCH_SHA256="107497299518e76b43b8fd9469dbf3d51aa21142953418f5946f32f8cd414c27"
 PATCH_PARTS=(
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part00"
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part01"
@@ -14,6 +14,7 @@ PATCH_PARTS=(
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part04"
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part05"
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part06"
+  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part07"
 )
 PATCH_FILE="$(mktemp --suffix=.patch)"
 
@@ -43,6 +44,7 @@ cleanup() {
 trap cleanup EXIT
 
 cat "${PATCH_PARTS[@]}" > "$PATCH_ARCHIVE"
+printf '\n' >> "$PATCH_ARCHIVE"
 echo "$PATCH_ARCHIVE_SHA256  $PATCH_ARCHIVE" | sha256sum --check
 base64 --decode "$PATCH_ARCHIVE" | gzip -dc > "$PATCH_FILE"
 echo "$PATCH_SHA256  $PATCH_FILE" | sha256sum --check
@@ -65,11 +67,35 @@ PROTECTED_FILES=(
   app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
 )
+for protected_file in "${PROTECTED_FILES[@]}"; do
+  test -f "$protected_file" || {
+    echo "Arquivo protegido ausente: $protected_file" >&2
+    exit 1
+  }
+done
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 git apply --check "$PATCH_FILE"
 git apply "$PATCH_FILE"
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
+
+REQUIRED_FILES=(
+  app/build.gradle.kts
+  app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/SpeechOutputMode0186.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinkSearchPolicy0186.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+)
+for required_file in "${REQUIRED_FILES[@]}"; do
+  test -f "$required_file" || {
+    echo "Arquivo obrigatório ausente: $required_file" >&2
+    exit 1
+  }
+done
 
 grep -F 'versionCode = 5470' app/build.gradle.kts
 grep -F 'versionName = "0.1.186"' app/build.gradle.kts
@@ -78,6 +104,8 @@ grep -F 'PERSISTED_HOLD_ACTION_0186' app/src/main/java/br/com/mapeiaia/rotacerta
 grep -F 'CONFIGURABLE_SPEECH_OUTPUT_0186' app/src/main/java/br/com/mapeiaia/rotacerta/SpeechOutputMode0186.kt
 grep -F 'LOCAL_LINK_SEARCH_0186' app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinkSearchPolicy0186.kt
 grep -F 'OFFLINE_TEXT_CORRECTION_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
+grep -F 'protectSpans' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
+grep -F 'cancelShortcutGestures0186' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
 grep -F 'SAFE_TEXT_REPLACEMENT_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
 grep -F 'EXTRA_HOME_LAUNCH_MODE_0186' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
 ! grep -F 'SHORTCUT_TRIPLE_TAP_OPEN_EDITOR_0180' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -129,6 +157,8 @@ for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
+if count <= 0:
+    raise SystemExit("Nenhum teste foi descoberto")
 if failures:
     raise SystemExit(1)
 PY
@@ -147,6 +177,7 @@ quick_tap_no_900ms_window=true
 hold_threshold_millis=1500
 hold_release_does_not_run_quick=true
 drag_cancels_both_gestures=true
+stale_hold_callbacks_cancelled=true
 generic_home_collapsed=true
 deliberate_module_launch_expands_only_requested=true
 hold_action_persisted_and_typed=true
@@ -155,9 +186,12 @@ single_tts_engine=true
 links_search_local=true
 links_buttons=open,copy,edit,delete
 text_correction=offline_conservative_reviewable
+url_email_spans_preserved=true
 text_replacement=explicit_exact_context_only
 manifest_permissions_unchanged=true
 farol_core_protected_by_sha256=true
+protected_source_commit=32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+tests_discovered_positive=true
 VALIDATION
 cat "$OUTPUT_DIR/test-count.txt"
 cat "$OUTPUT_DIR/sha256.txt"
