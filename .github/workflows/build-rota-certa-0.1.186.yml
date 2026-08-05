@@ -1,0 +1,143 @@
+name: Build Rota Certa 0.1.186
+
+on:
+  pull_request:
+    branches: [agent/fix-indrive-card-isolation-0.1.185]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.186.yml
+      - scripts/build_rota_certa_0186.sh
+      - scripts/document_release_0186.py
+      - patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part*
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.186-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/shortcut-audio-links-text-correction-0.1.186
+          fetch-depth: 0
+          persist-credentials: true
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.186
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0186
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0186.sh ../patches 2>&1 | tee build-0.1.186.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.186-failure-diagnostic
+          path: source/build-0.1.186.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        id: upload_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.186-shortcuts-audio-links-text-validated
+          path: source/artifact-0.1.186/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish permanent latest signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="source/artifact-0.1.186/rota-certa-0.1.186-grade-audio-links-corretor-validado.apk"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.186/sha256.txt)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-latest.apk"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-0.1.186.apk"
+          cat > "${RUNNER_TEMP}/release-notes.md" <<NOTES
+          Rota Certa 0.1.186 (5470)
+
+          - Pacote: br.com.mapeiaia.rotacerta
+          - Testes, contratos, Android Lint, clean assembleDebug, ZIP/DEX e assinatura v2 aprovados
+          - SHA-256: ${ACTUAL_SHA}
+          - Grade: fechamento externo consumido; toque rápido e gesto longo configurável
+          - Home: abertura genérica recolhida e abertura deliberada de módulo
+          - Áudio: Sem som, Alarme ou Mídia com um único TTS
+          - Links: busca local e Abrir/Copiar/Editar/Excluir
+          - Correção de texto: básica, offline, revisável e substituição fail-closed
+          - Validação no Samsung SM-S911B/Android 16 ainda necessária
+          NOTES
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit latest --repo "$GITHUB_REPOSITORY" --title "Rota Certa — versão mais recente (0.1.186)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          else
+            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Rota Certa — versão mais recente (0.1.186)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          fi
+          gh release upload latest "${RUNNER_TEMP}/rota-certa-latest.apk" "${RUNNER_TEMP}/rota-certa-0.1.186.apk" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify permanent public download
+        run: |
+          set -euo pipefail
+          URL="https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
+          curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
+          test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.186/sha256.txt)"
+
+      - name: Document validated release
+        working-directory: patches
+        env:
+          ARTIFACT_ID: ${{ steps.upload_apk.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload_apk.outputs.artifact-digest }}
+          RUN_ID: ${{ github.run_id }}
+          BRANCH_NAME: agent/shortcut-audio-links-text-correction-0.1.186
+        run: |
+          set -euo pipefail
+          FUNCTIONAL_COMMIT="$(git rev-parse HEAD)"
+          python scripts/document_release_0186.py \
+            --artifact-dir ../source/artifact-0.1.186 \
+            --artifact-id "$ARTIFACT_ID" \
+            --artifact-digest "$ARTIFACT_DIGEST" \
+            --run-id "$RUN_ID" \
+            --branch "$BRANCH_NAME" \
+            --functional-commit "$FUNCTIONAL_COMMIT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md validation/0.1.186/latest.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Document validated Rota Certa 0.1.186 [skip ci]"
+            git push origin "HEAD:$BRANCH_NAME"
+          fi
