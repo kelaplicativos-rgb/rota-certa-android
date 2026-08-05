@@ -7,8 +7,8 @@ PATCH_ARCHIVE="$(mktemp --suffix=.patch.gz.b64)"
 PATCH_ARCHIVE_SHA256="96eeb390e29798a407f6963936dc963b79385e7a2c4bb0c6796c9b90a76dccb9"
 PATCH_SHA256="107497299518e76b43b8fd9469dbf3d51aa21142953418f5946f32f8cd414c27"
 HARDENING_ARCHIVE_SOURCE="$PATCHES/patches/shortcut-hardening-0186.patch.gz.b64"
-HARDENING_ARCHIVE_SHA256="5509805d3f9ca41a468beecd2474ab6fa73bee74a147881022ce7a1e17a04b2f"
-HARDENING_PATCH_SHA256="fbd12df2b61915586a7f2517ccdd469eddfbd0b54cc7d5d92d5b5a89ed9d6b1f"
+HARDENING_ARCHIVE_SHA256="71ac9605e1b56f4276f1a5443af85ae11fee023db1b71a8db8de96ad21ece274"
+HARDENING_PATCH_SHA256="03d102222b81ca80ce7e6ea7f9c18f8e9f94fc8fea0828ecd465094e847e6ca0"
 PATCH_PARTS=(
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part00"
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part01"
@@ -118,6 +118,7 @@ grep -F 'LOCAL_LINK_SEARCH_0186' app/src/main/java/br/com/mapeiaia/rotacerta/Qui
 grep -F 'OFFLINE_TEXT_CORRECTION_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
 grep -F 'protectSpans' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
 grep -F 'allowedFinalLength' app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
+grep -F 'removeExtra(EXTRA_TEXT_CORRECTION_INITIAL_0186)' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
 grep -F 'QuickLinkCapacityPolicy0186.canCreate' app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinksActivity.kt
 grep -F 'cancelShortcutGestures0186' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
 grep -F 'SAFE_TEXT_REPLACEMENT_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
@@ -204,6 +205,7 @@ url_email_spans_preserved=true
 text_replacement=explicit_exact_context_only
 text_replacement_overflow=fail_closed_without_truncation
 quick_links_capacity=40_block_new_before_data_loss
+text_correction_intent_extras_cleared=true
 manifest_permissions_unchanged=true
 farol_core_protected_by_sha256=true
 protected_source_commit=32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
