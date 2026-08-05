@@ -28,10 +28,14 @@ jobs:
       - name: Checkout protected source
         uses: actions/checkout@v4
         with:
-          ref: codex/unified-debug-log-0.1.139
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
           fetch-depth: 0
           persist-credentials: false
           path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
 
       - name: Checkout cumulative patches
         uses: actions/checkout@v4
