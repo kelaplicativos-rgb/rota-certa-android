@@ -7,10 +7,16 @@ on:
       - .github/workflows/inspect-rota-certa-0.1.186.yml
       - scripts/**
       - patches/**
+  pull_request:
+    branches: [agent/fix-indrive-card-isolation-0.1.185]
+    paths:
+      - .github/workflows/inspect-rota-certa-0.1.186.yml
+      - scripts/**
+      - patches/**
   workflow_dispatch:
 
 concurrency:
-  group: inspect-rota-certa-0.1.186
+  group: inspect-rota-certa-0.1.186-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
