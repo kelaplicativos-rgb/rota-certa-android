@@ -61,7 +61,7 @@ PROTECTED_FILES=(
   app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-  app/src/main/java/br/com/mapeiaia/rotacerta/OcrService.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
 )
