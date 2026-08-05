@@ -91,11 +91,21 @@ grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5460' versionNam
 "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_DIR/$APK_NAME" | tee "$OUTPUT_DIR/signature.txt"
 grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUTPUT_DIR/signature.txt"
 grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUTPUT_DIR/signature.txt"
-for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
-grep -F 'BUBBLE_UNCONFIRMED_CARD_REJECTED_0185' "$OUTPUT_DIR/dex-strings.txt"
-grep -F 'EXPLICIT_EXTERNAL_PACKAGE_REJECTED_0185' "$OUTPUT_DIR/dex-strings.txt"
+for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
+COMPILED_CONTRACTS=(
+  RideCardConfirmationPolicy0185
+  ExplicitPackageTransitionPolicy0185
+  safeRootInActiveWindow0185
+  safeNodePackageName0185
+)
+for contract in "${COMPILED_CONTRACTS[@]}"; do
+  if ! grep -F "$contract" "$OUTPUT_DIR/dex-strings.txt"; then
+    echo "Contrato compilado ausente no DEX: $contract" >&2
+    exit 1
+  fi
+done
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
-stat --printf='%s\\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
+stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
 cp "$after_hashes" "$OUTPUT_DIR/protected-source-sha256.txt"
 cat > "$OUTPUT_DIR/validation.txt" <<'VALIDATION'
 package=br.com.mapeiaia.rotacerta
@@ -108,6 +118,7 @@ indrive_background_offers_excluded=true
 explicit_external_package_rejected_before_stale_root=true
 accessibility_node_reads_contained=true
 failure_containment_paints_idle=true
+compiled_policy_classes_and_safe_methods_present=true
 route_and_decision_engine_unchanged=true
 manifest_permissions_unchanged=true
 VALIDATION
