@@ -1,11 +1,11 @@
 Rota Certa 0.1.185 (5460)
 branch=agent/fix-indrive-card-isolation-0.1.185
-functional_commit=eb7c6b117e08e9dd91c48c27deb063ee5424c76f
-workflow_run=31009074787
+functional_commit=3097c8deeccf15d3f9103cc7dc0766eb46f3eb53
+workflow_run=31017486557
 artifact_name=rota-certa-0.1.185-indrive-card-isolation-validated
-artifact_id=8932998388
-artifact_digest=bdf035e9d54aeef9be91e682348d0ea10fccbf327ac2290e3fefb1d1b729f6ca
-artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31009074787/artifacts/8932998388
+artifact_id=8936521541
+artifact_digest=e3d2057df80be9e0734e2cc48f7b96faa8c52ee4ce8dc177bc480ae30eb00a39
+artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31017486557/artifacts/8936521541
 apk=rota-certa-0.1.185-card-individual-indrive-validado.apk
 apk_size=56075219
 apk_sha256=0288b3b99546b7179ac6034122936bdfe42305b5c356607844c3bcec92ef9f07
@@ -17,4 +17,3 @@ lint=passed
 assembleDebug=passed
 signature_v2=valid
 real_device_validation=pending
-permanent_apk_url=https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
