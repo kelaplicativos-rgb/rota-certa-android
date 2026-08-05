@@ -1,0 +1,11 @@
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+@@ -1808,7 +1808,7 @@
+         val text = FarolUnifiedVisual0168.normalizeForAnalysis(textRaw0168) // farol_unified_visual_0_1_168
+ 
+         @Suppress("UNUSED_VARIABLE") val ignoredPopupCandidateChecklist13 = allowPopupCandidate
+-        
++
+         FarolFlightRecorder0163.recordTextSnapshot(
+             stage = "BUBBLE_PROCESS",
+             packageName = universalResolvedForegroundPackage(),
