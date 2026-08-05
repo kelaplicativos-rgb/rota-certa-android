@@ -8,6 +8,7 @@ on:
       - scripts/build_rota_certa_0186.sh
       - scripts/document_release_0186.py
       - patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part*
+      - patches/shortcut-audio-links-text-correction-0186-v2.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
