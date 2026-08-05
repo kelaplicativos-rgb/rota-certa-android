@@ -6,16 +6,7 @@ BASE_BUILD="$PATCHES/scripts/build_rota_certa_0185.sh"
 PATCH_ARCHIVE="$(mktemp --suffix=.patch.gz.b64)"
 PATCH_ARCHIVE_SHA256="96eeb390e29798a407f6963936dc963b79385e7a2c4bb0c6796c9b90a76dccb9"
 PATCH_SHA256="107497299518e76b43b8fd9469dbf3d51aa21142953418f5946f32f8cd414c27"
-PATCH_PARTS=(
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part00"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part01"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part02"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part03"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part04"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part05"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part06"
-  "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part07"
-)
+PATCH_ARCHIVE_SOURCE="$PATCHES/patches/shortcut-audio-links-text-correction-0186-v2.patch.gz.b64"
 PATCH_FILE="$(mktemp --suffix=.patch)"
 
 cleanup_gradle_home=false
@@ -43,8 +34,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cat "${PATCH_PARTS[@]}" > "$PATCH_ARCHIVE"
-printf '\n' >> "$PATCH_ARCHIVE"
+cp "$PATCH_ARCHIVE_SOURCE" "$PATCH_ARCHIVE"
 echo "$PATCH_ARCHIVE_SHA256  $PATCH_ARCHIVE" | sha256sum --check
 base64 --decode "$PATCH_ARCHIVE" | gzip -dc > "$PATCH_FILE"
 echo "$PATCH_SHA256  $PATCH_FILE" | sha256sum --check
