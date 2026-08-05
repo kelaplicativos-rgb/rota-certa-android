@@ -79,6 +79,55 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      - name: Publish permanent latest signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="source/artifact-0.1.185/rota-certa-0.1.185-card-individual-indrive-validado.apk"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.185/sha256.txt)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          STABLE_APK="${RUNNER_TEMP}/rota-certa-latest.apk"
+          VERSIONED_APK="${RUNNER_TEMP}/rota-certa-0.1.185.apk"
+          cp "$APK" "$STABLE_APK"
+          cp "$APK" "$VERSIONED_APK"
+
+          cat > "${RUNNER_TEMP}/release-notes.md" <<EOF
+          Rota Certa 0.1.185 (5460)
+
+          - Pacote: br.com.mapeiaia.rotacerta
+          - APK assinado com assinatura v2 validada
+          - SHA-256: ${ACTUAL_SHA}
+          - Build, testes unitários, contratos, Android Lint e assembleDebug aprovados
+          - Correção: isolamento do card individual do inDrive e contenção da leitura de acessibilidade
+          - Validação em aparelho real: pendente no Samsung SM-S911B / Android 16
+
+          O arquivo rota-certa-latest.apk mantém um endereço permanente e será substituído pela versão validada mais recente.
+          EOF
+
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Rota Certa — versão mais recente (0.1.185)" \
+              --notes-file "${RUNNER_TEMP}/release-notes.md"
+          else
+            gh release create latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Rota Certa — versão mais recente (0.1.185)" \
+              --notes-file "${RUNNER_TEMP}/release-notes.md"
+          fi
+
+          gh release upload latest \
+            "$STABLE_APK" \
+            "$VERSIONED_APK" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view latest --repo "$GITHUB_REPOSITORY" --json url,tagName,name,assets
+
       - name: Document validated release
         working-directory: patches
         env:
