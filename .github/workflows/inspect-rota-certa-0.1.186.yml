@@ -1,12 +1,6 @@
 name: Inspect Rota Certa 0.1.186 source
 
 on:
-  push:
-    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
-    paths:
-      - .github/workflows/inspect-rota-certa-0.1.186.yml
-      - scripts/**
-      - patches/**
   pull_request:
     branches: [agent/fix-indrive-card-isolation-0.1.185]
     paths:
@@ -64,20 +58,16 @@ jobs:
               if cut is None:
                   continue
               trimmed = lines[:cut]
-              trimmed.extend([
-                  '',
-                  'echo "materialized_only=true"',
-                  'exit 0',
-              ])
+              trimmed.extend(['', 'echo "materialized_only=true"', 'exit 0'])
               path.write_text('\n'.join(trimmed) + '\n', encoding='utf-8')
               print(f'materialization-only: {path}')
           PY
 
-      - name: Materialize exact 0.1.185 source
+      - name: Materialize exact 0.1.185 source with trace
         working-directory: source
         run: |
           set -o pipefail
-          bash ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee inspect-0.1.186.log
+          bash -x ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee inspect-0.1.186.log
           grep -F 'versionCode = 5460' app/build.gradle.kts
           grep -F 'versionName = "0.1.185"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
