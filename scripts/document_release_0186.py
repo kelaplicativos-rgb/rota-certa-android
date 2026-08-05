@@ -43,7 +43,7 @@ def main() -> None:
 - **Branch:** `{args.branch}`; **PR:** #57, empilhada sobre a 0.1.185.
 - **Commit funcional validado:** `{args.functional_commit}`.
 - **Pedido:** fechamento seguro da grade por toque externo/bolinha, Home genérica recolhida, gesto longo de 1,5 s configurável, saída Sem som/Alarme/Mídia, pesquisa e cópia em Links e novo módulo offline Correção de texto.
-- **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; cancelamento de callback longo ao fechar/desanexar a grade; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações; correção conservadora offline com preservação exata de URLs/e-mails e substituição somente em contexto editável exato.
+- **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; cancelamento de callback longo ao fechar/desanexar a grade; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações e bloqueio explícito ao atingir 40 itens; correção conservadora offline com preservação exata de URLs/e-mails, substituição somente em contexto editável exato e rejeição sem truncamento quando o resultado excederia 12.000 caracteres.
 - **Fronteira protegida:** Manifest/permissões, `DecisionEngine`, parser, Google Maps, Casa/Alfinetes, confirmação 0.1.185, OCR e políticas universais permaneceram byte a byte inalterados por SHA-256.
 - **Testes:** {tests}; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado.
 - **Workflow:** `Build Rota Certa 0.1.186`, run `{args.run_id}`; fonte protegida fixada no commit `32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42`; descoberta positiva de testes obrigatória.
@@ -62,8 +62,8 @@ def main() -> None:
 - **Home:** abertura genérica envia modo `collapsed`; abertura deliberada envia modo `module` e identidade do módulo.
 - **Persistência:** cada entrada mantém ação rápida e armazena ação longa como módulo relacionado, outra ação do catálogo tipado ou nenhuma ação.
 - **Áudio:** um único TTS consulta a preferência Sem som/Alarme/Mídia em cada fala; Sem som trata o evento sem bloquear avisos visuais.
-- **Links:** pesquisa exclusivamente local por nome, descrição ou URL normalizados; copiar coloca somente a URL na área de transferência.
-- **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; URLs e e-mails são isolados e restaurados byte a byte; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem.
+- **Links:** pesquisa exclusivamente local por nome, descrição ou URL normalizados; copiar coloca somente a URL na área de transferência; ao atingir 40 itens, nova inclusão é bloqueada antes de alterar o link principal ou descartar dados.
+- **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; URLs e e-mails são isolados e restaurados byte a byte; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem; resultado acima do limite é rejeitado sem cortar o sufixo do texto original.
 - **Fronteira:** interfaces e ferramentas não podem alterar o motor universal do farol.
 """
 
