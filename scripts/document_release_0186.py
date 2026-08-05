@@ -5,10 +5,18 @@ from datetime import date
 from pathlib import Path
 
 
-def prepend(path: Path, block: str) -> None:
+def prepend_unique(path: Path, start_marker: str, end_marker: str, block: str) -> None:
     current = path.read_text(encoding="utf-8") if path.exists() else ""
+    while start_marker in current:
+        start = current.index(start_marker)
+        end = current.find(end_marker, start)
+        if end < 0:
+            current = current[:start]
+            break
+        current = current[:start] + current[end + len(end_marker):]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(block.rstrip() + "\n\n" + current.lstrip(), encoding="utf-8")
+    marked = f"{start_marker}\n{block.rstrip()}\n{end_marker}"
+    path.write_text(marked + "\n\n" + current.lstrip(), encoding="utf-8")
 
 
 def main() -> None:
@@ -35,10 +43,10 @@ def main() -> None:
 - **Branch:** `{args.branch}`; **PR:** #57, empilhada sobre a 0.1.185.
 - **Commit funcional validado:** `{args.functional_commit}`.
 - **Pedido:** fechamento seguro da grade por toque externo/bolinha, Home genérica recolhida, gesto longo de 1,5 s configurável, saída Sem som/Alarme/Mídia, pesquisa e cópia em Links e novo módulo offline Correção de texto.
-- **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações; correção conservadora offline e substituição somente em contexto editável exato.
+- **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; cancelamento de callback longo ao fechar/desanexar a grade; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações; correção conservadora offline com preservação exata de URLs/e-mails e substituição somente em contexto editável exato.
 - **Fronteira protegida:** Manifest/permissões, `DecisionEngine`, parser, Google Maps, Casa/Alfinetes, confirmação 0.1.185, OCR e políticas universais permaneceram byte a byte inalterados por SHA-256.
 - **Testes:** {tests}; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado.
-- **Workflow:** `Build Rota Certa 0.1.186`, run `{args.run_id}`.
+- **Workflow:** `Build Rota Certa 0.1.186`, run `{args.run_id}`; fonte protegida fixada no commit `32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42`; descoberta positiva de testes obrigatória.
 - **Artifact:** `rota-certa-0.1.186-shortcuts-audio-links-text-validated`, ID `{args.artifact_id}`, digest `{args.artifact_digest}`.
 - **Link do artifact:** {artifact_url}
 - **Link permanente do APK:** {permanent_url}
@@ -50,17 +58,27 @@ def main() -> None:
     decisions = f"""## {today} — grade fecha sem atravessar, Home genérica recolhe e ação longa é tipada
 
 - **Fechamento:** a grade usa uma camada transparente de tela inteira que consome o toque externo e é removida junto com o menu; fechar não altera o farol.
-- **Gestos:** toque rápido executa imediatamente; 1,5 segundo consome o gesto longo no limiar; movimento cancela ambos; toque triplo e janela de 900 ms permanecem ausentes.
+- **Gestos:** toque rápido executa imediatamente; 1,5 segundo consome o gesto longo no limiar; movimento, fechamento e desanexação cancelam callbacks pendentes; toque triplo e janela de 900 ms permanecem ausentes.
 - **Home:** abertura genérica envia modo `collapsed`; abertura deliberada envia modo `module` e identidade do módulo.
 - **Persistência:** cada entrada mantém ação rápida e armazena ação longa como módulo relacionado, outra ação do catálogo tipado ou nenhuma ação.
 - **Áudio:** um único TTS consulta a preferência Sem som/Alarme/Mídia em cada fala; Sem som trata o evento sem bloquear avisos visuais.
 - **Links:** pesquisa exclusivamente local por nome, descrição ou URL normalizados; copiar coloca somente a URL na área de transferência.
-- **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem.
+- **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; URLs e e-mails são isolados e restaurados byte a byte; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem.
 - **Fronteira:** interfaces e ferramentas não podem alterar o motor universal do farol.
 """
 
-    prepend(Path("docs/PROJECT_STATUS.md"), status)
-    prepend(Path("docs/DECISIONS.md"), decisions)
+    prepend_unique(
+        Path("docs/PROJECT_STATUS.md"),
+        "<!-- ROTA_CERTA_0_1_186_STATUS_START -->",
+        "<!-- ROTA_CERTA_0_1_186_STATUS_END -->",
+        status,
+    )
+    prepend_unique(
+        Path("docs/DECISIONS.md"),
+        "<!-- ROTA_CERTA_0_1_186_DECISION_START -->",
+        "<!-- ROTA_CERTA_0_1_186_DECISION_END -->",
+        decisions,
+    )
     validation = Path("validation/0.1.186/latest.txt")
     validation.parent.mkdir(parents=True, exist_ok=True)
     validation.write_text(
