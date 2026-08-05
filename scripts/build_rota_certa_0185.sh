@@ -4,8 +4,8 @@ set -euo pipefail
 PATCHES="${1:-../patches}"
 BASE_BUILD="$PATCHES/scripts/build_rota_certa_0184.sh"
 PATCH_ARCHIVE="$PATCHES/patches/fix-live-card-isolation-0185.patch.gz.b64"
-PATCH_ARCHIVE_SHA256="bc00670d72a17f1165777cb592f2d6bcb2fe4f239aba32c2af39b8e2dab481c5"
-PATCH_SHA256="6d2c1530c71d92a49266f671b6dca53b5d4f0d144ea8e45b389cc520182eb8b6"
+PATCH_ARCHIVE_SHA256="b08fb28bdb615cf9abc44aed0b5da047f743d69ac32c8dbd54af318f0b738050"
+PATCH_SHA256="0b99d321789aa8702bcce771dada59b4549a8c038dc970e5f93e314bdecd8a0c"
 PATCH_FILE="$(mktemp --suffix=.patch)"
 
 cleanup_gradle_home=false
@@ -65,6 +65,9 @@ grep -F 'EXPLICIT_EXTERNAL_PACKAGE_REJECTION_0185' app/src/main/java/br/com/mape
 grep -F 'BUBBLE_UNCONFIRMED_CARD_REJECTED_0185' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'EXPLICIT_EXTERNAL_PACKAGE_REJECTED_0185' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'runCatching { node0167.text }.getOrNull()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'private fun safeRootInActiveWindow0185()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'safeNodePackageName0185(safeRootInActiveWindow0185())' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -F 'runCatching { node.text?.toString() }.getOrNull()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -F 'hardClearUniversalTwoAddress(failureReason0185, keepWaitingYellow = false)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185Test.kt
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/ExplicitPackageTransitionPolicy0185Test.kt
