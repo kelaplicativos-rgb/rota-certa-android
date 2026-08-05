@@ -8,7 +8,7 @@ on:
       - scripts/build_rota_certa_0186.sh
       - scripts/document_release_0186.py
       - patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part*
-      - patches/shortcut-audio-links-text-correction-0186-v2.patch.gz.b64
+      - patches/shortcut-hardening-0186.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
@@ -104,8 +104,8 @@ jobs:
           - Grade: fechamento externo consumido; toque rápido e gesto longo configurável
           - Home: abertura genérica recolhida e abertura deliberada de módulo
           - Áudio: Sem som, Alarme ou Mídia com um único TTS
-          - Links: busca local e Abrir/Copiar/Editar/Excluir
-          - Correção de texto: básica, offline, revisável e substituição fail-closed
+          - Links: busca local e Abrir/Copiar/Editar/Excluir; limite de 40 sem descarte silencioso
+          - Correção de texto: básica, offline, revisável e substituição fail-closed sem truncamento
           - Validação no Samsung SM-S911B/Android 16 ainda necessária
           NOTES
           if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
