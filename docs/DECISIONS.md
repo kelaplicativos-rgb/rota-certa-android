@@ -10,6 +10,7 @@
 - **OCR/recuperação:** nenhum caminho alternativo pode contornar a mesma política de confirmação do card.
 - **Fronteira:** não alterar `DecisionEngine`, cálculo de rota, parser genérico, Manifest, permissões, Casa/Alfinetes, grade, alertas ou radares para resolver esta regressão.
 - **Condição para revisão:** revisar marcadores somente após evidência real de mudança da interface do inDrive, mantendo a exigência de identidade inequívoca do card individual.
+- **Distribuição permanente:** a tag fixa `latest` publica somente APK previamente validado e mantém o endereço `https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk`; versões futuras devem substituir o asset `rota-certa-latest.apk` apenas após testes, lint, build, assinatura e SHA-256 aprovados.
 
 ## 03/08/2026 — A grade armazena ações tipadas; a Home é o catálogo e o filtro direcional falha fechado
 

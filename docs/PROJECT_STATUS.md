@@ -21,6 +21,7 @@
 - **Workflow:** `Build Rota Certa 0.1.185`, run `31009074787`.
 - **Artifact:** `rota-certa-0.1.185-indrive-card-isolation-validated`, ID `8932998388`, digest `bdf035e9d54aeef9be91e682348d0ea10fccbf327ac2290e3fefb1d1b729f6ca`.
 - **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31009074787/artifacts/8932998388
+- **Link permanente do APK assinado:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
 - **APK:** `rota-certa-0.1.185-card-individual-indrive-validado.apk`, 56075219 bytes; pacote `br.com.mapeiaia.rotacerta`; versão `0.1.185`; versionCode `5460`.
 - **SHA-256 do APK:** `0288b3b99546b7179ac6034122936bdfe42305b5c356607844c3bcec92ef9f07`.
 - **Pendências:** instalar no Samsung SM-S911B/Android 16 e validar com várias ofertas simultâneas do inDrive, abertura/fechamento do card individual, troca para DocumentsUI, saída do card, ausência de mistura de endereços, limpeza imediata de km/cor e ausência de pisca. O PR permanece em rascunho até essa validação real.

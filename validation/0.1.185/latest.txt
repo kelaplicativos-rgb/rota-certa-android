@@ -17,3 +17,4 @@ lint=passed
 assembleDebug=passed
 signature_v2=valid
 real_device_validation=pending
+permanent_apk_url=https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
