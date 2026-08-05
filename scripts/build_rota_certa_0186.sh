@@ -6,6 +6,9 @@ BASE_BUILD="$PATCHES/scripts/build_rota_certa_0185.sh"
 PATCH_ARCHIVE="$(mktemp --suffix=.patch.gz.b64)"
 PATCH_ARCHIVE_SHA256="96eeb390e29798a407f6963936dc963b79385e7a2c4bb0c6796c9b90a76dccb9"
 PATCH_SHA256="107497299518e76b43b8fd9469dbf3d51aa21142953418f5946f32f8cd414c27"
+HARDENING_ARCHIVE_SOURCE="$PATCHES/patches/shortcut-hardening-0186.patch.gz.b64"
+HARDENING_ARCHIVE_SHA256="5509805d3f9ca41a468beecd2474ab6fa73bee74a147881022ce7a1e17a04b2f"
+HARDENING_PATCH_SHA256="fbd12df2b61915586a7f2517ccdd469eddfbd0b54cc7d5d92d5b5a89ed9d6b1f"
 PATCH_PARTS=(
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part00"
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part01"
@@ -17,6 +20,8 @@ PATCH_PARTS=(
   "$PATCHES/patches/shortcut-audio-links-text-correction-0186.patch.gz.b64.part07"
 )
 PATCH_FILE="$(mktemp --suffix=.patch)"
+HARDENING_ARCHIVE="$(mktemp --suffix=.patch.gz.b64)"
+HARDENING_PATCH_FILE="$(mktemp --suffix=.patch)"
 
 cleanup_gradle_home=false
 if [[ -z "${GRADLE_USER_HOME:-}" ]]; then
@@ -38,7 +43,7 @@ GRADLE
 before_hashes="$(mktemp)"
 after_hashes="$(mktemp)"
 cleanup() {
-  rm -f "$before_hashes" "$after_hashes" "$PATCH_FILE" "$PATCH_ARCHIVE"
+  rm -f "$before_hashes" "$after_hashes" "$PATCH_FILE" "$PATCH_ARCHIVE" "$HARDENING_ARCHIVE" "$HARDENING_PATCH_FILE"
   if [[ "$cleanup_gradle_home" == "true" ]]; then rm -rf "$GRADLE_USER_HOME"; fi
 }
 trap cleanup EXIT
@@ -48,6 +53,10 @@ printf '\n' >> "$PATCH_ARCHIVE"
 echo "$PATCH_ARCHIVE_SHA256  $PATCH_ARCHIVE" | sha256sum --check
 base64 --decode "$PATCH_ARCHIVE" | gzip -dc > "$PATCH_FILE"
 echo "$PATCH_SHA256  $PATCH_FILE" | sha256sum --check
+cp "$HARDENING_ARCHIVE_SOURCE" "$HARDENING_ARCHIVE"
+echo "$HARDENING_ARCHIVE_SHA256  $HARDENING_ARCHIVE" | sha256sum --check
+base64 --decode "$HARDENING_ARCHIVE" | gzip -dc > "$HARDENING_PATCH_FILE"
+echo "$HARDENING_PATCH_SHA256  $HARDENING_PATCH_FILE" | sha256sum --check
 
 bash "$BASE_BUILD" "$PATCHES"
 
@@ -76,6 +85,8 @@ done
 sha256sum "${PROTECTED_FILES[@]}" > "$before_hashes"
 git apply --check "$PATCH_FILE"
 git apply "$PATCH_FILE"
+git apply --check "$HARDENING_PATCH_FILE"
+git apply "$HARDENING_PATCH_FILE"
 sha256sum "${PROTECTED_FILES[@]}" > "$after_hashes"
 diff -u "$before_hashes" "$after_hashes"
 
@@ -105,6 +116,8 @@ grep -F 'CONFIGURABLE_SPEECH_OUTPUT_0186' app/src/main/java/br/com/mapeiaia/rota
 grep -F 'LOCAL_LINK_SEARCH_0186' app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinkSearchPolicy0186.kt
 grep -F 'OFFLINE_TEXT_CORRECTION_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
 grep -F 'protectSpans' app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionEngine0186.kt
+grep -F 'allowedFinalLength' app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
+grep -F 'QuickLinkCapacityPolicy0186.canCreate' app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinksActivity.kt
 grep -F 'cancelShortcutGestures0186' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
 grep -F 'SAFE_TEXT_REPLACEMENT_0186' app/src/main/java/br/com/mapeiaia/rotacerta/TextReplacementSession0186.kt
 grep -F 'EXTRA_HOME_LAUNCH_MODE_0186' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
@@ -188,6 +201,8 @@ links_buttons=open,copy,edit,delete
 text_correction=offline_conservative_reviewable
 url_email_spans_preserved=true
 text_replacement=explicit_exact_context_only
+text_replacement_overflow=fail_closed_without_truncation
+quick_links_capacity=40_block_new_before_data_loss
 manifest_permissions_unchanged=true
 farol_core_protected_by_sha256=true
 protected_source_commit=32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
