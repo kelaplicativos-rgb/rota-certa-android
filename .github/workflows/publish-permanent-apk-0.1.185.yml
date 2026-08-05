@@ -21,7 +21,15 @@ jobs:
       ARTIFACT_NAME: rota-certa-0.1.185-indrive-card-isolation-validated
       APK_NAME: rota-certa-0.1.185-card-individual-indrive-validado.apk
       EXPECTED_SHA256: 0288b3b99546b7179ac6034122936bdfe42305b5c356607844c3bcec92ef9f07
+      PERMANENT_URL: https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
     steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-indrive-card-isolation-0.1.185
+          fetch-depth: 0
+          persist-credentials: true
+
       - name: Download previously validated artifact
         run: |
           set -euo pipefail
@@ -83,9 +91,52 @@ jobs:
       - name: Verify permanent public download
         run: |
           set -euo pipefail
-          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/latest/rota-certa-latest.apk"
-          curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
+          curl --fail --location --retry 4 --output downloaded-latest.apk "$PERMANENT_URL"
           ACTUAL_SHA256="$(sha256sum downloaded-latest.apk | awk '{print $1}')"
           test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
-          echo "permanent_url=$URL"
+          echo "permanent_url=$PERMANENT_URL"
           echo "sha256=$ACTUAL_SHA256"
+
+      - name: Register permanent distribution policy
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          url = os.environ["PERMANENT_URL"]
+          project = Path("docs/PROJECT_STATUS.md")
+          decisions = Path("docs/DECISIONS.md")
+          validation = Path("validation/0.1.185/latest.txt")
+
+          project_text = project.read_text(encoding="utf-8")
+          project_line = f"- **Link permanente do APK assinado:** {url}\n"
+          if project_line not in project_text:
+              anchor = "- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31009074787/artifacts/8932998388\n"
+              if anchor not in project_text:
+                  raise SystemExit("PROJECT_STATUS anchor not found")
+              project_text = project_text.replace(anchor, anchor + project_line, 1)
+              project.write_text(project_text, encoding="utf-8")
+
+          decisions_text = decisions.read_text(encoding="utf-8")
+          decision_line = f"- **Distribuição permanente:** a tag fixa `latest` publica somente APK previamente validado e mantém o endereço `{url}`; versões futuras devem substituir o asset `rota-certa-latest.apk` apenas após testes, lint, build, assinatura e SHA-256 aprovados.\n"
+          if decision_line not in decisions_text:
+              anchor = "- **Condição para revisão:** revisar marcadores somente após evidência real de mudança da interface do inDrive, mantendo a exigência de identidade inequívoca do card individual.\n"
+              if anchor not in decisions_text:
+                  raise SystemExit("DECISIONS anchor not found")
+              decisions_text = decisions_text.replace(anchor, anchor + decision_line, 1)
+              decisions.write_text(decisions_text, encoding="utf-8")
+
+          validation_text = validation.read_text(encoding="utf-8")
+          validation_line = f"permanent_apk_url={url}\n"
+          if validation_line not in validation_text:
+              validation.write_text(validation_text.rstrip() + "\n" + validation_line, encoding="utf-8")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md validation/0.1.185/latest.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Document permanent APK download [skip ci]'
+            git push origin HEAD:agent/fix-indrive-card-isolation-0.1.185
+          fi
