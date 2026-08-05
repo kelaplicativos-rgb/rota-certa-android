@@ -1,0 +1,91 @@
+name: Publish permanent Rota Certa 0.1.185 APK
+
+on:
+  pull_request:
+    branches: [agent/home-catalog-directional-shortcuts-0.1.184]
+    paths:
+      - .github/workflows/publish-permanent-apk-0.1.185.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VALIDATED_RUN_ID: '31009074787'
+      ARTIFACT_NAME: rota-certa-0.1.185-indrive-card-isolation-validated
+      APK_NAME: rota-certa-0.1.185-card-individual-indrive-validado.apk
+      EXPECTED_SHA256: 0288b3b99546b7179ac6034122936bdfe42305b5c356607844c3bcec92ef9f07
+    steps:
+      - name: Download previously validated artifact
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          gh run download "$VALIDATED_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir artifact
+
+      - name: Verify immutable validated APK
+        run: |
+          set -euo pipefail
+          APK="artifact/$APK_NAME"
+          test -f "$APK"
+          unzip -tqq "$APK"
+          ACTUAL_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+          test "$(stat --printf='%s' "$APK")" = '56075219'
+
+      - name: Publish fixed permanent download address
+        run: |
+          set -euo pipefail
+          APK="artifact/$APK_NAME"
+          cp "$APK" rota-certa-latest.apk
+          cp "$APK" rota-certa-0.1.185.apk
+
+          cat > release-notes.md <<EOF
+          Rota Certa 0.1.185 (5460)
+
+          - Pacote: br.com.mapeiaia.rotacerta
+          - APK assinado; assinatura v2 e certificado validados no workflow 31009074787
+          - SHA-256: $EXPECTED_SHA256
+          - Testes unitários, contratos, Android Lint e assembleDebug aprovados
+          - Correção: isolamento do card individual do inDrive e contenção da leitura de acessibilidade
+          - Validação em aparelho real: pendente no Samsung SM-S911B / Android 16
+
+          O arquivo rota-certa-latest.apk mantém um endereço permanente e será substituído somente por uma versão mais recente validada.
+          EOF
+
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --title 'Rota Certa — versão mais recente (0.1.185)' \
+              --notes-file release-notes.md
+          else
+            gh release create latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title 'Rota Certa — versão mais recente (0.1.185)' \
+              --notes-file release-notes.md
+          fi
+
+          gh release upload latest \
+            rota-certa-latest.apk \
+            rota-certa-0.1.185.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Verify permanent public download
+        run: |
+          set -euo pipefail
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/latest/rota-certa-latest.apk"
+          curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
+          ACTUAL_SHA256="$(sha256sum downloaded-latest.apk | awk '{print $1}')"
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+          echo "permanent_url=$URL"
+          echo "sha256=$ACTUAL_SHA256"

@@ -1,5 +1,16 @@
 # Rota Certa — Decisões técnicas
 
+## 05/08/2026 — o inDrive só autoriza decisão com card individual confirmado
+
+- **Decisão:** texto agregado da lista/feed do inDrive nunca autoriza verde ou vermelho, mesmo contendo dois ou mais endereços.
+- **Confirmação:** a decisão exige o modal individual com marcadores coerentes de pedido, ação de aceite e fechamento; o recorte deve excluir ofertas visíveis ao fundo.
+- **Fail-closed:** sem card individual confirmado, limpar imediatamente decisão, km e cor anteriores e manter o estado de espera do aplicativo monitorado.
+- **Transição de pacote:** um pacote externo explícito deve ser rejeitado antes de consultar ou reutilizar a raiz ativa anterior.
+- **Acessibilidade:** cada leitura de `AccessibilityNodeInfo` deve ser contida individualmente; uma propriedade defeituosa não pode derrubar o evento nem conservar visual antigo.
+- **OCR/recuperação:** nenhum caminho alternativo pode contornar a mesma política de confirmação do card.
+- **Fronteira:** não alterar `DecisionEngine`, cálculo de rota, parser genérico, Manifest, permissões, Casa/Alfinetes, grade, alertas ou radares para resolver esta regressão.
+- **Condição para revisão:** revisar marcadores somente após evidência real de mudança da interface do inDrive, mantendo a exigência de identidade inequívoca do card individual.
+
 ## 03/08/2026 — A grade armazena ações tipadas; a Home é o catálogo e o filtro direcional falha fechado
 
 - **Decisão:** cada entrada da grade representa exatamente uma ação interna registrada em `ShortcutActionCatalog0184`, não um módulo e não um comando arbitrário.

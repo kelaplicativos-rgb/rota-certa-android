@@ -1,5 +1,30 @@
 # Rota Certa — Estado do projeto
 
+## 05/08/2026 — 0.1.185 (5460) — card individual do inDrive e contenção de acessibilidade
+
+- **Branch:** `agent/fix-indrive-card-isolation-0.1.185`; **PR:** #56, empilhada sobre a 0.1.184.
+- **Commit funcional validado:** `eb7c6b117e08e9dd91c48c27deb063ee5424c76f`.
+- **Pedido do usuário:** corrigir a mistura de endereços entre ofertas simultâneas do inDrive, impedir alternância/pisca da bolinha e conter a falha ao abrir o seletor de arquivos sem alterar rota, decisão, permissões ou outros módulos.
+- **Situação anterior:** a tela de lista do inDrive podia combinar embarque de uma oferta com destino de outra, alternando distâncias e repintando a bolinha. Um evento explícito do `com.google.android.documentsui` também podia reutilizar uma raiz antiga do inDrive e provocar `NullPointerException` durante a leitura da árvore de acessibilidade.
+- **Causa:** a confirmação universal considerava o texto completo da tela com dois endereços, sem provar qual card individual estava aberto. O pacote externo era rejeitado tarde demais e propriedades de `AccessibilityNodeInfo` ainda eram lidas sem contenção individual completa.
+- **Correção aplicada:**
+  - no inDrive, somente o modal individual com `Pedido de viagem`, ação de aceite e `Fechar` autoriza a leitura decisória;
+  - o texto é recortado nos limites do card aberto e exclui ofertas de fundo;
+  - feed/lista sem card individual falha fechado, limpa cor e km anteriores e permanece aguardando;
+  - a confirmação vale para acessibilidade e para a recuperação/OCR, sem caminho alternativo de autorização;
+  - pacote externo explícito é rejeitado antes de consultar uma raiz possivelmente antiga;
+  - leituras de raiz, pacote, texto, descrição, quantidade de filhos e filhos são isoladas com contenção por nó;
+  - falha inesperada limpa também o visual da bolinha, impedindo estado persistido divergente.
+- **Arquivos principais materializados:** `LiveRideAccessibilityService.kt`, `RideCardConfirmationPolicy0185.kt`, `ExplicitPackageTransitionPolicy0185.kt`, testes das duas políticas, `app/build.gradle.kts`, patch, script e workflow 0.1.185.
+- **Fronteira protegida:** Manifest/permissões, `GpsAddressResolver`, `DecisionEngine`, Google Maps, parser genérico, radares, alertas direcionais, repositórios, fala, Casa/Alfinetes e catálogo da grade permaneceram inalterados por SHA-256.
+- **Testes:** testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado; pacote, versão, ZIP/DEX, assinatura v2, certificado, marcadores compilados e SHA-256 validados.
+- **Workflow:** `Build Rota Certa 0.1.185`, run `31009074787`.
+- **Artifact:** `rota-certa-0.1.185-indrive-card-isolation-validated`, ID `8932998388`, digest `bdf035e9d54aeef9be91e682348d0ea10fccbf327ac2290e3fefb1d1b729f6ca`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31009074787/artifacts/8932998388
+- **APK:** `rota-certa-0.1.185-card-individual-indrive-validado.apk`, 56075219 bytes; pacote `br.com.mapeiaia.rotacerta`; versão `0.1.185`; versionCode `5460`.
+- **SHA-256 do APK:** `0288b3b99546b7179ac6034122936bdfe42305b5c356607844c3bcec92ef9f07`.
+- **Pendências:** instalar no Samsung SM-S911B/Android 16 e validar com várias ofertas simultâneas do inDrive, abertura/fechamento do card individual, troca para DocumentsUI, saída do card, ausência de mistura de endereços, limpeza imediata de km/cor e ausência de pisca. O PR permanece em rascunho até essa validação real.
+
 ## 03/08/2026 — 0.1.184 (5450) — Home completa, atalhos por ação e direção rigorosa
 
 - **Branch:** `agent/home-catalog-directional-shortcuts-0.1.184`; **PR:** #55, empilhada sobre a 0.1.183.
