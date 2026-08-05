@@ -51,6 +51,16 @@ A grade usava `FLAG_NOT_TOUCH_MODAL` e `FLAG_WATCH_OUTSIDE_TOUCH`. Ela podia rec
 
 Manifest e permissões, `DecisionEngine`, `RideTextParser`, `UniversalScreenAddressParser`, OCR, Google Maps, Casa/Alfinetes, confirmação de cards, cores, quilômetros, alertas e radares não são alterados.
 
+## Workflow preparado, ainda não executado
+
+- arquivo: `.github/workflows/validate-shortcut-grid-close-0.1.186.yml`;
+- acionamento: somente quando a descrição da PR #58 for deliberadamente editada contendo `RUN_GRID_CLOSE_VALIDATION_0186`;
+- o commit que adiciona o workflow não inicia a validação automaticamente;
+- fonte protegida fixada no commit imutável `32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42`;
+- o workflow materializa a 0.1.185, verifica o SHA-256 do patch, compara o escopo exato, protege arquivos centrais por SHA-256, executa testes, Android Lint e `assembleDebug`;
+- permissões do workflow são somente leitura;
+- não existe etapa de upload de artifact, publicação de release ou entrega de APK.
+
 ## Não executado nesta etapa
 
 - testes Gradle Android;
