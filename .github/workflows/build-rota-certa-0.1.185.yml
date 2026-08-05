@@ -1,0 +1,74 @@
+name: Build Rota Certa 0.1.185
+
+on:
+  pull_request:
+    branches: [agent/home-catalog-directional-shortcuts-0.1.184]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.185.yml
+      - scripts/build_rota_certa_0185.sh
+      - patches/fix-live-card-isolation-0185.patch.gz.b64
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.185-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-indrive-card-isolation-0.1.185
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, test, lint and validate 0.1.185
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0185
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee build-0.1.185.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.185-failure-diagnostic
+          path: source/build-0.1.185.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.185-indrive-card-isolation-validated
+          path: source/artifact-0.1.185/
+          retention-days: 90
+          if-no-files-found: error
