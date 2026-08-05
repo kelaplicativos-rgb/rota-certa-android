@@ -1,11 +1,15 @@
 name: Materialize full Rota Certa 0.1.185 for 0.1.186
 
 on:
-  push:
-    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
+  pull_request:
+    branches: [agent/fix-indrive-card-isolation-0.1.185]
     paths:
       - .github/workflows/materialize-full-rota-certa-0.1.186.yml
   workflow_dispatch:
+
+concurrency:
+  group: materialize-full-rota-certa-0.1.186-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
