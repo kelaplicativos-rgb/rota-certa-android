@@ -41,10 +41,16 @@ jobs:
       - name: Checkout cumulative patches
         uses: actions/checkout@v4
         with:
-          ref: agent/shortcut-audio-links-text-correction-0.1.186
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: true
           path: patches
+
+      - name: Verify cumulative patch commit
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
 
       - uses: actions/setup-python@v5
         with:
@@ -111,7 +117,7 @@ jobs:
           if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit latest --repo "$GITHUB_REPOSITORY" --title "Rota Certa — versão mais recente (0.1.186)" --notes-file "${RUNNER_TEMP}/release-notes.md"
           else
-            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Rota Certa — versão mais recente (0.1.186)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$(git -C patches rev-parse HEAD)" --title "Rota Certa — versão mais recente (0.1.186)" --notes-file "${RUNNER_TEMP}/release-notes.md"
           fi
           gh release upload latest "${RUNNER_TEMP}/rota-certa-latest.apk" "${RUNNER_TEMP}/rota-certa-0.1.186.apk" --repo "$GITHUB_REPOSITORY" --clobber
 
