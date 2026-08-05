@@ -26,9 +26,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
-    env:
-      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    timeout-minutes: 90
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -50,24 +48,42 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Prepare materialization-only copies
+        working-directory: patches
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in sorted(Path('scripts').glob('build_rota_certa_*.sh')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              cut = None
+              for index, line in enumerate(lines):
+                  if line.lstrip().startswith('./gradlew '):
+                      cut = index
+                      break
+              if cut is None:
+                  continue
+              trimmed = lines[:cut]
+              trimmed.extend([
+                  '',
+                  'echo "materialized_only=true"',
+                  'exit 0',
+              ])
+              path.write_text('\n'.join(trimmed) + '\n', encoding='utf-8')
+              print(f'materialization-only: {path}')
+          PY
 
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Materialize and validate 0.1.185
+      - name: Materialize exact 0.1.185 source
         working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0186-inspect
         run: |
           set -o pipefail
           bash ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee inspect-0.1.186.log
+          grep -F 'versionCode = 5460' app/build.gradle.kts
+          grep -F 'versionName = "0.1.185"' app/build.gradle.kts
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184.kt
 
       - name: Collect exact materialized source
-        if: success()
         working-directory: source
         run: |
           set -euo pipefail
@@ -82,7 +98,6 @@ jobs:
           grep -RniE 'Link|AudioAttributes|TextToSpeech|Shortcut|Bubble|Correction|Spell|Grammar|clipboard' app/src/main/java/br/com/mapeiaia/rotacerta > materialized-0.1.185/relevant-symbols.txt || true
 
       - name: Upload materialized source
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.185-materialized-source-for-0.1.186
