@@ -7,9 +7,10 @@ on:
       - .github/workflows/build-rota-certa-0.1.187.yml
       - scripts/build_rota_certa_0187.sh
       - scripts/inject_build_rota_certa_0187.py
-      - scripts/finalize_farol_docs_0187.py
       - patches/farol-runtime-0187.patch.gz.b64
       - patches/farol-runtime-0187-test-compat.patch.gz.b64
+      - patches/farol-runtime-0187-phase2.patch.gz.b64
+      - patches/farol-runtime-0187-phase2-testfix.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
@@ -105,11 +106,11 @@ jobs:
           cat > "${RUNNER_TEMP}/release-notes.md" <<NOTES
           Rota Certa 0.1.187 (5471)
 
-          - Corrige recuperação atrasada de OCR vinculando pacote, sessão, janela, geração e assinatura do mesmo card.
-          - Remove a combinação direta de buffers de acessibilidade e OCR de momentos distintos.
-          - Usa relógio monotônico nas idades críticas do farol.
-          - Conflui rajadas repetidas de pacotes externos quando o farol já está cinza.
-          - Diagnóstico e gravador de voo não podem lançar exceções no caminho crítico.
+          - Captura pacote, janela e texto a partir da mesma raiz de acessibilidade.
+          - Revalida pacote, sessão, janela e gerações antes e depois do processamento assíncrono.
+          - Descarta leitura, OCR ou rota atrasada antes de alterar destino, quilômetros ou cor.
+          - Mantém a recuperação vinculada à assinatura e ao mesmo card confirmado.
+          - Conflui eventos externos repetidos e mantém diagnóstico fora do caminho crítico.
           - Testes, Android Lint, assembleDebug, pacote, versão, ZIP/DEX e assinatura validados no workflow.
           - SHA-256: ${ACTUAL_SHA}
           - Validação funcional final no Samsung SM-S911B/Android 16 ainda necessária.
@@ -127,21 +128,3 @@ jobs:
           URL="https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
           curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
           test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
-
-      - name: Finalize project records and remove temporary diagnostics
-        if: github.event_name == 'pull_request'
-        working-directory: patches
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          python3 scripts/finalize_farol_docs_0187.py
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "project_records_0187=already_final"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Document validated farol runtime fix 0.1.187"
-          git push origin "HEAD:${HEAD_BRANCH}"
