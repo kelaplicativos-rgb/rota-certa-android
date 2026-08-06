@@ -26,7 +26,7 @@ rm -f "$PATCH_0187"
 PATCH_0187_TEST_B64="$PATCH_REPOSITORY_0187/patches/farol-runtime-0187-test-compat.patch.gz.b64"
 PATCH_0187_TEST="$(mktemp --suffix=.farol-runtime-0187-test-compat.patch)"
 base64 --decode "$PATCH_0187_TEST_B64" | gzip --decompress > "$PATCH_0187_TEST"
-test "$(sha256sum "$PATCH_0187_TEST" | awk '{print $1}')" = "45a571974b4d047dc496fc5582a330c1e744aad229e64c07bbea7710d081c26f"
+test "$(sha256sum "$PATCH_0187_TEST" | awk '{print $1}')" = "10873357628acf1e1e464e4d650fe3c7e67ad316773406ce4e1d13f594972769"
 git apply --check "$PATCH_0187_TEST"
 git apply "$PATCH_0187_TEST"
 rm -f "$PATCH_0187_TEST"
@@ -37,7 +37,7 @@ grep -Fq 'SAME_CARD_RECOVERY_BINDING_0187' app/src/main/java/br/com/mapeiaia/rot
 grep -Fq 'MONOTONIC_FAROL_TIME_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'BUBBLE_FAILED_CARD_RECOVERY_DISCARDED_0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'FarolExternalPackageEventGate0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -Fq 'universalLastActiveReadAtElapsedMillis =' app/src/test/java/br/com/mapeiaia/rotacerta/SelectedAppWaitingYellow127Test.kt
+grep -Fq 'universalLastActiveReadAtElapsedMillis0187 =' app/src/test/java/br/com/mapeiaia/rotacerta/SelectedAppWaitingYellow127Test.kt
 if grep -Fq 'System.currentTimeMillis() - universalLastActiveReadAtMillis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt; then
   echo 'Relógio civil ainda presente na idade crítica do farol' >&2
   exit 1
