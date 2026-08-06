@@ -6,6 +6,7 @@ Data: 06/08/2026
 
 - Repositório: `kelaplicativos-rgb/rota-certa-android`
 - Branch: `agent/ci-stabilization-phase1-0.1.187`
+- PR: #65
 - Base: `agent/fix-farol-runtime-0.1.187`
 - Base SHA: `cb3abe04125e7d33c6730b77b1da3704dc7be11d`
 - Commit da remoção: `35756938301888e605a9f3be9cd771596b0fe4cd`
@@ -34,8 +35,8 @@ Separadamente, o build Android `31120432822` falhou em `Set up job` porque o Git
 
 ## Verificações
 
-- comparação contra a base: branch está um commit à frente e zero atrás;
-- único arquivo funcionalmente alterado antes deste registro: remoção do workflow obsoleto;
+- comparação contra a base: sete commits à frente e zero atrás, devido aos commits de remoção, documentação e limpeza dos marcadores temporários;
+- diff final limitado a três arquivos: remoção do workflow obsoleto e inclusão de dois documentos técnicos;
 - alterações no aplicativo Android: nenhuma;
 - testes Android, Lint e assembleDebug: não executados nesta fase, pois o escopo é apenas remover a fonte de falhas falsas;
 - artifact e APK: não gerados nesta fase;
