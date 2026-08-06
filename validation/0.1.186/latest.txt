@@ -1,0 +1,19 @@
+versionName=0.1.186
+versionCode=5470
+package=br.com.mapeiaia.rotacerta
+branch=agent/shortcut-audio-links-text-correction-0.1.186
+functional_commit=960bd48f897d776ec41aa68d92965f028ac0637b
+run_id=31066287734
+artifact_id=8954056458
+artifact_digest=c797b9bada36516b186f66f9c512fe81b6dd155e51a831e64404f3057dc52d57
+apk=rota-certa-0.1.186-grade-audio-links-corretor-validado.apk
+size_bytes=56124367
+sha256=42b8903255818aa1264c6d9b97439b097b279878a9e2851da8a0d27ff51495a2
+tests=342; failures=0
+artifact_url=https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31066287734/artifacts/8954056458
+permanent_url=https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
+pipeline_mode=single_final_gradle_validation
+compose_weight_import_compatibility=true
+shortcut_contract_compatibility=true
+test_count_staged_before_clean=true
+device_validation=pendent_samsung_sm_s911b_android_16
