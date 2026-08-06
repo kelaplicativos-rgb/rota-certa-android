@@ -1,0 +1,216 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+index d529857..ccb0b5d 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+@@ -14,6 +14,7 @@ import android.view.View
+ import android.view.ViewGroup
+ import android.view.ViewConfiguration
+ import android.view.WindowManager
++import android.widget.FrameLayout
+ import android.widget.GridLayout
+ import android.widget.LinearLayout
+ import android.widget.ScrollView
+@@ -369,32 +370,53 @@ class BubbleShortcutOverlayController(
+             gap = scaledDp(8, scale),
+             safeMargin = dp(4),
+         )
++        // SHORTCUT_GRID_BACKDROP_DISMISS_0186: the full-screen transparent window owns the
++        // complete touch stream. A tap outside the panel (including over the main bubble)
++        // closes the grid without leaking the gesture to the application underneath.
++        menu.isClickable = true
++        menu.isFocusable = false
++        val backdrop = FrameLayout(context).apply {
++            setBackgroundColor(Color.TRANSPARENT)
++            isClickable = true
++            isFocusable = false
++            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
++            setOnTouchListener { _, event ->
++                if (ShortcutGridBackdropPolicy0186.shouldDismiss(event.actionMasked)) {
++                    hideShortcuts()
++                }
++                true
++            }
++            addView(
++                menu,
++                FrameLayout.LayoutParams(
++                    menuWidth,
++                    if (needsVerticalScroll) visibleMenuHeight else ViewGroup.LayoutParams.WRAP_CONTENT,
++                ).apply {
++                    gravity = Gravity.TOP or Gravity.START
++                    leftMargin = position.x
++                    topMargin = position.y
++                },
++            )
++        }
+         val params = WindowManager.LayoutParams(
+-            menuWidth,
+-            if (needsVerticalScroll) visibleMenuHeight else WindowManager.LayoutParams.WRAP_CONTENT,
++            WindowManager.LayoutParams.MATCH_PARENT,
++            WindowManager.LayoutParams.MATCH_PARENT,
+             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
++            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+             PixelFormat.TRANSLUCENT,
+         ).apply {
+             gravity = Gravity.TOP or Gravity.START
+-            x = position.x
+-            y = position.y
++            x = 0
++            y = 0
+         }
+-        menu.setOnTouchListener { _, event ->
+-            if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
+-                hideShortcuts()
+-                true
+-            } else {
+-                false
+-            }
+-        }
+-        if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
+-            shortcutView = menu
++        if (runCatching { windowManager.addView(backdrop, params) }.isSuccess) {
++            shortcutView = backdrop
+             trace(
+                 "bubble.shortcuts.opened count=${visibleShortcuts0179.size} plus=0 " +
+                     "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
+                     "menu=${position.x},${position.y},$menuWidth,$visibleMenuHeight " +
+-                    "estimatedHeight=$estimatedMenuHeight scroll=$needsVerticalScroll scale=$scale columns=$columns",
++                    "estimatedHeight=$estimatedMenuHeight scroll=$needsVerticalScroll scale=$scale columns=$columns " +
++                    "backdrop=full_screen_consumed_0186",
+             )
+         }
+     }
+@@ -539,6 +561,12 @@ class BubbleShortcutOverlayController(
+     }
+ }
+ 
++internal object ShortcutGridBackdropPolicy0186 {
++    const val CONTRACT_MARKER: String = "SHORTCUT_GRID_BACKDROP_DISMISS_0186"
++
++    fun shouldDismiss(actionMasked: Int): Boolean = actionMasked == MotionEvent.ACTION_DOWN
++}
++
+ data class ProximityAlertPopupActions(
+     val onEdit: (SavedPlace) -> Unit,
+     val onDelete: (SavedPlace) -> Unit,
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropContract0186Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropContract0186Test.kt
+new file mode 100644
+index 0000000..571cfad
+--- /dev/null
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropContract0186Test.kt
+@@ -0,0 +1,88 @@
++package br.com.mapeiaia.rotacerta
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShortcutGridBackdropContract0186Test {
++    private val overlay = File(
++        "src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt",
++    ).readText()
++    private val toggleShortcuts = overlay.substringAfter("fun toggleShortcuts(")
++        .substringBefore("fun hideShortcuts()")
++    private val hideShortcuts = overlay.substringAfter("fun hideShortcuts()")
++        .substringBefore("fun showProximityAlert(")
++    private val showShortcuts = overlay.substringAfter("private fun showShortcuts(")
++        .substringBefore("private fun shortcutBubble(")
++    private val backdropBlock = showShortcuts.substringAfter("val backdrop = FrameLayout(context)")
++        .substringBefore("val params = WindowManager.LayoutParams(")
++
++    @Test
++    fun gridUsesFullScreenTouchOwningBackdrop() {
++        assertTrue(showShortcuts.contains("SHORTCUT_GRID_BACKDROP_DISMISS_0186"))
++        assertTrue(showShortcuts.contains("val backdrop = FrameLayout(context)"))
++        assertTrue(showShortcuts.contains("WindowManager.LayoutParams.MATCH_PARENT"))
++        assertTrue(showShortcuts.contains("windowManager.addView(backdrop, params)"))
++        assertTrue(showShortcuts.contains("shortcutView = backdrop"))
++    }
++
++    @Test
++    fun outsideDownClosesAndConsumesWithoutPassThroughFlags() {
++        assertTrue(backdropBlock.contains("ShortcutGridBackdropPolicy0186.shouldDismiss(event.actionMasked)"))
++        assertTrue(backdropBlock.contains("hideShortcuts()"))
++        assertTrue(backdropBlock.trimEnd().endsWith("}"))
++        assertTrue(backdropBlock.contains("true"))
++        assertFalse(showShortcuts.contains("FLAG_NOT_TOUCH_MODAL"))
++        assertFalse(showShortcuts.contains("FLAG_WATCH_OUTSIDE_TOUCH"))
++        assertFalse(showShortcuts.contains("MotionEvent.ACTION_OUTSIDE"))
++    }
++
++    @Test
++    fun panelKeepsItsOwnTouchTargetAndAccessibilityChildren() {
++        assertTrue(showShortcuts.contains("menu.isClickable = true"))
++        assertTrue(showShortcuts.contains("addView(\n                menu,"))
++        assertTrue(showShortcuts.contains("View.IMPORTANT_FOR_ACCESSIBILITY_NO"))
++        assertFalse(showShortcuts.contains("IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS"))
++    }
++
++    @Test
++    fun panelKeepsPositionPolicyAndEdgePlacement() {
++        assertTrue(showShortcuts.contains("BubbleShortcutPositionPolicy.place("))
++        assertTrue(showShortcuts.contains("leftMargin = position.x"))
++        assertTrue(showShortcuts.contains("topMargin = position.y"))
++        assertTrue(showShortcuts.contains("WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE"))
++    }
++
++    @Test
++    fun tappingMainBubbleAreaWhileOpenUsesExistingToggleClosePath() {
++        assertTrue(toggleShortcuts.contains("if (shortcutView != null)"))
++        assertTrue(toggleShortcuts.contains("hideShortcuts()"))
++        assertTrue(toggleShortcuts.contains("showShortcuts("))
++    }
++
++    @Test
++    fun backdropNeverDispatchesShortcutOrFarolActions() {
++        assertFalse(backdropBlock.contains("onShortcut("))
++        assertFalse(backdropBlock.contains("onShortcutLongPress("))
++        assertFalse(backdropBlock.contains("onShortcutCustomize("))
++        assertFalse(backdropBlock.contains("DecisionEngine"))
++        assertFalse(backdropBlock.contains("GoogleMapsService"))
++        assertFalse(backdropBlock.contains("RideTextParser"))
++    }
++
++    @Test
++    fun closeRemainsIdempotent() {
++        assertTrue(hideShortcuts.contains("val view = shortcutView ?: return"))
++        assertTrue(hideShortcuts.contains("windowManager.removeView(view)"))
++        assertTrue(hideShortcuts.contains("shortcutView = null"))
++    }
++
++    @Test
++    fun shortcutTouchAndDragHandlingRemainPresent() {
++        assertTrue(overlay.contains("SHORTCUT_DIRECT_TAP_0182"))
++        assertTrue(overlay.contains("MotionEvent.ACTION_MOVE"))
++        assertTrue(overlay.contains("movedOutsideGesture = true"))
++        assertTrue(overlay.contains("singleAction()"))
++    }
++}
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropPolicy0186Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropPolicy0186Test.kt
+new file mode 100644
+index 0000000..9b79a8d
+--- /dev/null
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropPolicy0186Test.kt
+@@ -0,0 +1,21 @@
++package br.com.mapeiaia.rotacerta
++
++import android.view.MotionEvent
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShortcutGridBackdropPolicy0186Test {
++    @Test
++    fun actionDownClosesImmediately() {
++        assertTrue(ShortcutGridBackdropPolicy0186.shouldDismiss(MotionEvent.ACTION_DOWN))
++    }
++
++    @Test
++    fun laterEventsDoNotRequestAnotherClose() {
++        assertFalse(ShortcutGridBackdropPolicy0186.shouldDismiss(MotionEvent.ACTION_MOVE))
++        assertFalse(ShortcutGridBackdropPolicy0186.shouldDismiss(MotionEvent.ACTION_UP))
++        assertFalse(ShortcutGridBackdropPolicy0186.shouldDismiss(MotionEvent.ACTION_CANCEL))
++        assertFalse(ShortcutGridBackdropPolicy0186.shouldDismiss(MotionEvent.ACTION_OUTSIDE))
++    }
++}

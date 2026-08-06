@@ -1,0 +1,253 @@
+name: Validate Rota Certa 0.1.186 grid close
+
+on:
+  pull_request:
+    branches:
+      - agent/fix-indrive-card-isolation-0.1.185
+    types: [edited]
+
+concurrency:
+  group: rota-certa-grid-close-0186-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    if: contains(github.event.pull_request.body || '', 'RUN_GRID_CLOSE_VALIDATION_0186')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PROTECTED_SOURCE_COMMIT: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+      PATCH_SHA256: 7ddb46422bf27507083e1a361511373dd36aea4045a71bf7dbb2d00928e98a80
+
+    steps:
+      - name: Checkout immutable protected source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PROTECTED_SOURCE_COMMIT }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "$PROTECTED_SOURCE_COMMIT"
+
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify pull request head
+        working-directory: patches
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize validated 0.1.185 base
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-grid-close-0186
+        run: |
+          set -euo pipefail
+          bash ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee base-0.1.185-materialization.log
+          rm -rf artifact-0.1.185
+
+      - name: Verify patch checksum and protected inputs
+        working-directory: source
+        run: |
+          set -euo pipefail
+          PATCH_FILE="../patches/patches/fix-shortcut-grid-close-0186.patch"
+          echo "$PATCH_SHA256  $PATCH_FILE" | sha256sum --check
+
+          cat > "${RUNNER_TEMP}/grid-close-protected-files.txt" <<'EOF'
+          app/src/main/AndroidManifest.xml
+          app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/ExplicitPackageTransitionPolicy0185.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealtimeEventGate0167.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+          EOF
+          sed -i 's/^          //' "${RUNNER_TEMP}/grid-close-protected-files.txt"
+          mapfile -t PROTECTED_FILES < "${RUNNER_TEMP}/grid-close-protected-files.txt"
+          for protected_file in "${PROTECTED_FILES[@]}"; do
+            test -f "$protected_file" || {
+              echo "Arquivo protegido ausente: $protected_file" >&2
+              exit 1
+            }
+          done
+          sha256sum "${PROTECTED_FILES[@]}" > "${RUNNER_TEMP}/protected-before.txt"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+
+          roots = [Path('app/build.gradle.kts'), Path('app/src/main'), Path('app/src/test')]
+          hashes = {}
+          for root in roots:
+              paths = [root] if root.is_file() else sorted(p for p in root.rglob('*') if p.is_file())
+              for path in paths:
+                  hashes[path.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+          Path('/tmp/grid-close-before.json').write_text(json.dumps(hashes, sort_keys=True), encoding='utf-8')
+          PY
+
+      - name: Check and apply isolated grid patch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          PATCH_FILE="../patches/patches/fix-shortcut-grid-close-0186.patch"
+          git apply --check "$PATCH_FILE"
+          git apply "$PATCH_FILE"
+
+      - name: Verify protected files remain unchanged
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mapfile -t PROTECTED_FILES < "${RUNNER_TEMP}/grid-close-protected-files.txt"
+          sha256sum "${PROTECTED_FILES[@]}" > "${RUNNER_TEMP}/protected-after.txt"
+          diff -u "${RUNNER_TEMP}/protected-before.txt" "${RUNNER_TEMP}/protected-after.txt"
+
+      - name: Verify exact materialized scope
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+
+          before = json.loads(Path('/tmp/grid-close-before.json').read_text(encoding='utf-8'))
+          roots = [Path('app/build.gradle.kts'), Path('app/src/main'), Path('app/src/test')]
+          after = {}
+          for root in roots:
+              paths = [root] if root.is_file() else sorted(p for p in root.rglob('*') if p.is_file())
+              for path in paths:
+                  after[path.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+          changed = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+          expected = sorted([
+              'app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropContract0186Test.kt',
+              'app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridBackdropPolicy0186Test.kt',
+          ])
+          print('changed_files=')
+          print('\n'.join(changed))
+          if changed != expected:
+              raise SystemExit(f'Escopo materializado divergente. Esperado={expected}; encontrado={changed}')
+          PY
+
+      - name: Verify patch hygiene
+        working-directory: source
+        run: |
+          set -euo pipefail
+          echo "Repository status after isolated patch:"
+          git status --short
+          git diff --check
+
+      - name: Verify grid backdrop contract
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt')
+          text = path.read_text(encoding='utf-8')
+          show = text.split('private fun showShortcuts(', 1)[1].split('private fun shortcutBubble(', 1)[0]
+          required = [
+              'SHORTCUT_GRID_BACKDROP_DISMISS_0186',
+              'val backdrop = FrameLayout(context)',
+              'WindowManager.LayoutParams.MATCH_PARENT',
+              'WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE',
+              'windowManager.addView(backdrop, params)',
+              'shortcutView = backdrop',
+              'View.IMPORTANT_FOR_ACCESSIBILITY_NO',
+          ]
+          forbidden = [
+              'FLAG_NOT_TOUCH_MODAL',
+              'FLAG_WATCH_OUTSIDE_TOUCH',
+              'IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS',
+          ]
+          for marker in required:
+              if marker not in show:
+                  raise SystemExit(f'Marcador obrigatório ausente: {marker}')
+          for marker in forbidden:
+              if marker in show:
+                  raise SystemExit(f'Marcador proibido presente na grade: {marker}')
+          PY
+
+      - name: Run unit and contract tests
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-grid-close-0186
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          tests = 0
+          failures = 0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root = ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          if tests <= 0:
+              raise SystemExit('Nenhum teste foi descoberto')
+          if failures:
+              raise SystemExit('Existem testes com falha')
+          PY
+
+      - name: Run Android Lint
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-grid-close-0186
+        run: ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Compile debug package without publishing it
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-grid-close-0186
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          unzip -tqq app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'classes.dex'
+          echo "Build de validação concluído. Nenhum artifact ou release foi publicado." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Confirm publication remains disabled
+        run: |
+          set -euo pipefail
+          echo "artifact_upload=false" >> "$GITHUB_STEP_SUMMARY"
+          echo "release_publish=false" >> "$GITHUB_STEP_SUMMARY"
+          echo "apk_delivery=false" >> "$GITHUB_STEP_SUMMARY"
