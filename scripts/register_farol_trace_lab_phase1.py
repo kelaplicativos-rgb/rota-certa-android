@@ -7,7 +7,7 @@ DECISION_MARKER = "<!-- FAROL_TRACE_LAB_PHASE1_DECISION_START -->"
 STATUS_BLOCK = """<!-- FAROL_TRACE_LAB_PHASE1_STATUS_START -->
 ## 06/08/2026 — fase 1 — laboratório determinístico do farol
 
-- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base:** `main`.
+- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base real:** `agent/shortcut-audio-links-text-correction-0.1.186`.
 - **Versão confirmada:** `0.1.187` (`versionCode` 5471), pacote `br.com.mapeiaia.rotacerta`.
 - **Pedido:** iniciar a correção estrutural criando primeiro uma reprodução determinística dos erros do relatório, sem alterar ainda o comportamento de produção da bolinha.
 - **Fonte:** `rota-certa-relatorio-depuracao (29).txt`, exportado em 06/08/2026 10:08 no Samsung SM-S911B/Android 16.
