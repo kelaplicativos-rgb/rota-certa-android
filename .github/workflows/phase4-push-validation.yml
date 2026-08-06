@@ -3,6 +3,8 @@ name: Validate Rota Certa phase 4 on isolated push
 on:
   push:
     branches: [agent/phase4-validation-base]
+    paths-ignore:
+      - phase4-validation-result.json
 
 permissions:
   contents: write
@@ -37,6 +39,10 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    outputs:
+      apk_sha: ${{ steps.metadata.outputs.apk_sha }}
+      apk_size: ${{ steps.metadata.outputs.apk_size }}
+      tests: ${{ steps.metadata.outputs.tests }}
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
@@ -122,3 +128,56 @@ jobs:
           set -euo pipefail
           curl --fail --location --retry 4 --output downloaded-latest.apk "https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
           test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
+      - name: Export validation metadata
+        id: metadata
+        run: |
+          set -euo pipefail
+          echo "apk_sha=$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$(stat -c '%s' source/artifact-0.1.187/rota-certa-0.1.187-farol-runtime-validado.apk)" >> "$GITHUB_OUTPUT"
+          echo "tests=$(cat source/artifact-0.1.187/test-summary.txt 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')" >> "$GITHUB_OUTPUT"
+
+  report:
+    if: always()
+    needs: [replay, build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Record observable validation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLAY_RESULT: ${{ needs.replay.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          APK_SHA: ${{ needs.build.outputs.apk_sha }}
+          APK_SIZE: ${{ needs.build.outputs.apk_size }}
+          TESTS: ${{ needs.build.outputs.tests }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          mkdir control
+          cd control
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin agent/phase4-validation-base
+          git checkout -B agent/phase4-validation-base FETCH_HEAD
+          python3 - <<'PY'
+          import json, os
+          result = {
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "functional_head_sha": os.environ["PHASE4_HEAD_SHA"],
+              "replay_result": os.environ.get("REPLAY_RESULT", ""),
+              "build_result": os.environ.get("BUILD_RESULT", ""),
+              "apk_sha256": os.environ.get("APK_SHA", ""),
+              "apk_size": os.environ.get("APK_SIZE", ""),
+              "tests": os.environ.get("TESTS", ""),
+              "artifact_name": "rota-certa-0.1.187-phase4-validated",
+          }
+          with open("phase4-validation-result.json", "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add phase4-validation-result.json
+          git commit -m "Record phase 4 validation result" || exit 0
+          git push origin HEAD:agent/phase4-validation-base
