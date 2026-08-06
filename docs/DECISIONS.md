@@ -1,3 +1,15 @@
+<!-- FAROL_PHASE3_VALIDATED_DECISION_START -->
+## 06/08/2026 — rejeitar uma leitura não é prova para apagar o farol
+
+- **Descartar sem efeito:** SystemUI, teclado, overlay do Rota Certa, evento sem pacote, raiz ausente, raiz divergente e demais snapshots incoerentes não alteram cor, destino, quilômetros ou decisão já confirmada.
+- **Invalidar leitura mantendo visual:** incompatibilidade entre janela do evento selecionado e janela da raiz cancela sessão, OCR, análise e rota em andamento e avança a geração, mas mantém o último visual confirmado até surgir evidência coerente.
+- **Amarelo:** somente uma leitura coerente do aplicativo selecionado que prove ausência, fechamento ou troca do card pode limpar decisão e distância para o estado de espera.
+- **Cinza:** somente uma transição externa real e confirmada para aplicativo passivo ou não selecionado pode limpar para inativo.
+- **Ordem:** nenhuma rejeição de snapshot pode chamar `hardClearUniversalTwoAddress` ou `showOverlay`; primeiro descartar/inutilizar o trabalho, depois aguardar evidência positiva.
+- **Concorrência:** resultado pertencente à sessão, janela ou geração invalidada continua proibido de pintar, mesmo que o visual anterior tenha sido preservado.
+- **Núcleo universal:** adaptadores continuam sem autoridade para decidir cor; confirmação de destino final, rota real e `DecisionEngine` permanecem os únicos caminhos para verde/vermelho.
+<!-- FAROL_PHASE3_VALIDATED_DECISION_END -->
+
 <!-- FAROL_PHASE2_VALIDATED_DECISION_START -->
 ## 06/08/2026 — pacote, raiz, janela e geração formam uma leitura indivisível
 
