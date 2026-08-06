@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 180
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
@@ -64,7 +64,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build, test, lint and validate 0.1.186
+      - name: Materialize once, test, lint and validate 0.1.186
         working-directory: source
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0186
@@ -106,6 +106,7 @@ jobs:
 
           - Pacote: br.com.mapeiaia.rotacerta
           - Testes, contratos, Android Lint, clean assembleDebug, ZIP/DEX e assinatura v2 aprovados
+          - Pipeline cumulativo materializado sem repetir Gradle; validação completa executada uma vez no estado final
           - SHA-256: ${ACTUAL_SHA}
           - Grade: fechamento externo consumido; toque rápido e gesto longo configurável
           - Home: abertura genérica recolhida e abertura deliberada de módulo
