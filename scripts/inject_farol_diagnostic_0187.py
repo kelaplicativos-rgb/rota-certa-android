@@ -43,6 +43,20 @@ if text.count(needle) != 1:
 path.write_text(text.replace(needle, diagnostic + needle, 1), encoding="utf-8")
 PYFAROL
 
+python3 - "$MATERIALIZE_REPOSITORY/scripts" <<'PYTRACE'
+from pathlib import Path
+import sys
+
+scripts = Path(sys.argv[1])
+marker = "set -euo pipefail\n"
+trace = "set -euo pipefail\nPS4='+${BASH_SOURCE}:${LINENO}: '\nset -x\n"
+for path in sorted(scripts.glob("build_rota_certa_*.sh")):
+    text = path.read_text(encoding="utf-8")
+    if text.count(marker) != 1:
+        raise SystemExit(f"Unexpected strict-mode marker in {path.name}")
+    path.write_text(text.replace(marker, trace, 1), encoding="utf-8")
+PYTRACE
+
 bash -n "${ORIGINAL_SCRIPT}"
 # END_FAROL_DIAGNOSTIC_INJECTION
 """
