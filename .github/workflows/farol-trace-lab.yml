@@ -2,7 +2,7 @@ name: Farol deterministic trace lab
 
 on:
   pull_request:
-    branches: [main]
+    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
     paths:
       - .github/workflows/farol-trace-lab.yml
       - tools/farol_trace_lab.py
