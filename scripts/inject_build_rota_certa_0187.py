@@ -39,6 +39,14 @@ git apply --check "$PATCH_0187_PHASE2"
 git apply "$PATCH_0187_PHASE2"
 rm -f "$PATCH_0187_PHASE2"
 
+PATCH_0187_PHASE2_TESTFIX_B64="$PATCH_REPOSITORY_0187/patches/farol-runtime-0187-phase2-testfix.patch.gz.b64"
+PATCH_0187_PHASE2_TESTFIX="$(mktemp --suffix=.farol-runtime-0187-phase2-testfix.patch)"
+base64 --decode "$PATCH_0187_PHASE2_TESTFIX_B64" | gzip --decompress > "$PATCH_0187_PHASE2_TESTFIX"
+test "$(sha256sum "$PATCH_0187_PHASE2_TESTFIX" | awk '{print $1}')" = "58a9e41f9d917767dea1127125511212b5f459fbfdf9d2272eef0fe3be01d4af"
+git apply --check "$PATCH_0187_PHASE2_TESTFIX"
+git apply "$PATCH_0187_PHASE2_TESTFIX"
+rm -f "$PATCH_0187_PHASE2_TESTFIX"
+
 grep -Fq 'versionCode = 5471' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.187"' app/build.gradle.kts
 grep -Fq 'SAME_CARD_RECOVERY_BINDING_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
