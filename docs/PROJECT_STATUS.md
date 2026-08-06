@@ -1,3 +1,19 @@
+<!-- FAROL_TRACE_LAB_PHASE1_STATUS_START -->
+## 06/08/2026 — fase 1 — laboratório determinístico do farol
+
+- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base real:** `agent/shortcut-audio-links-text-correction-0.1.186`.
+- **Versão confirmada:** `0.1.187` (`versionCode` 5471), pacote `br.com.mapeiaia.rotacerta`.
+- **Pedido:** iniciar a correção estrutural criando primeiro uma reprodução determinística dos erros do relatório, sem alterar ainda o comportamento de produção da bolinha.
+- **Fonte:** `rota-certa-relatorio-depuracao (29).txt`, exportado em 06/08/2026 10:08 no Samsung SM-S911B/Android 16.
+- **Implementação:** laboratório Python independente, fixture sanitizada, oráculo de estado e workflow próprio. Endereços e textos pessoais não foram incorporados.
+- **Cobertura reproduzida:** 2.473 eventos; 1.440 eventos externos com raiz antiga do inDrive; 455 eventos repetidos; 562 limpezas; resultado de rota atrasado; raiz nula; raiz de outro pacote; seis sinais de falha; desaparecimento de card.
+- **Invariantes:** portão de pacote antes da raiz; geração antiga não pinta; verde/vermelho exigem destino e distância; cinza/amarelo não retêm km; falha termina fechada; limpeza idempotente; card desaparecido elimina decisão.
+- **Validação local:** sete testes aprovados; zero violações; zero divergências do oráculo; 454 eventos confluídos; 561 limpezas redundantes sem redesenho; apenas dez mudanças visuais no replay completo.
+- **Arquivos:** `tools/farol_trace_lab.py`, `tests/fixtures/farol_trace_20260806_sanitized.json`, `tests/test_farol_trace_lab.py`, `.github/workflows/farol-trace-lab.yml`, `docs/FAROL_TRACE_REPLAY_LAB.md`.
+- **Fronteira protegida:** nenhum arquivo Kotlin, Manifest, permissão, `DecisionEngine`, parser, rota, OCR, radar, alerta ou overlay foi alterado nesta fase.
+- **Pendência:** conectar o oráculo aos contratos Kotlin e ao caminho real de acessibilidade somente após autorização explícita para a fase seguinte.
+<!-- FAROL_TRACE_LAB_PHASE1_STATUS_END -->
+
 <!-- ROTA_CERTA_0_1_186_STATUS_START -->
 ## 06/08/2026 — 0.1.186 (5470) — grade, áudio, Links e Correção de texto
 

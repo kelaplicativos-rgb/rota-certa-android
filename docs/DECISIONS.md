@@ -1,3 +1,14 @@
+<!-- FAROL_TRACE_LAB_PHASE1_DECISION_START -->
+## 06/08/2026 — toda correção do farol deve passar pelo replay do relatório
+
+- O relatório sanitizado é uma fixture de regressão, não um log contínuo de produção.
+- O portão de pacote é a primeira decisão e deve ocorrer antes de qualquer consulta à raiz.
+- Pacote, janela, geração, assinatura do card e destino formam a identidade mínima de uma leitura.
+- Resultado atrasado, raiz nula ou raiz de outro pacote falham fechado e nunca recuperam distância anterior.
+- Repetição da mesma tela e limpeza redundante não podem gerar processamento ou redesenho ilimitado.
+- O laboratório permanece independente do Android nesta fase; a próxima fase ligará o mesmo contrato ao Kotlin sem permitir que o oráculo passe por mera inspeção textual.
+<!-- FAROL_TRACE_LAB_PHASE1_DECISION_END -->
+
 <!-- ROTA_CERTA_0_1_186_DECISION_START -->
 ## 06/08/2026 — grade fecha sem atravessar, Home genérica recolhe e ação longa é tipada
 
