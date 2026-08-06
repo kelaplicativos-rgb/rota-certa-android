@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PATCH_REPOSITORY="${1:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)}"
+PATCH_REPOSITORY="${1:?Informe o repositório cumulativo de patches}"
 PATCH_REPOSITORY="$(git -C "$PATCH_REPOSITORY" rev-parse --show-toplevel)"
-WRAPPER="$(mktemp --suffix=.build-rota-certa-0187.sh)"
+WRAPPER="$PATCH_REPOSITORY/scripts/.build-rota-certa-0187-$$.sh"
 cleanup() {
   rm -f "$WRAPPER"
 }
