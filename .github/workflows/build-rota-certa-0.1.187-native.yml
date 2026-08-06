@@ -1,8 +1,8 @@
 name: Build Rota Certa 0.1.187 Native
 
 on:
-  push:
-    branches: [agent/ci-stabilization-phase1-0.1.187]
+  pull_request:
+    branches: [agent/fix-farol-runtime-0.1.187]
     paths:
       - .github/workflows/build-rota-certa-0.1.187-native.yml
       - scripts/ci_native_android_0187.sh
@@ -38,8 +38,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
       PROTECTED_SOURCE_SHA: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
-      PATCH_SHA: ${{ github.sha }}
-      PR_NUMBER: '65'
+      PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '65' }}
     steps:
       - name: Native bootstrap, Android validation and permanent publication
         shell: bash
