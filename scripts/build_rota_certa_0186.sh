@@ -131,10 +131,49 @@ new_test_call = '''if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 
     fi
   done
   exit 1
-fi'''
+fi
+TEST_COUNT_STAGING_0186="test-count-0.1.186.staging.txt"
+python3 - <<'PYTESTCOUNT' > "$TEST_COUNT_STAGING_0186"
+import glob, xml.etree.ElementTree as ET
+count = 0
+failures = 0
+for report_path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+    root = ET.parse(report_path).getroot()
+    count += int(root.attrib.get('tests', 0))
+    failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
+print(f'tests={count}')
+print(f'failures={failures}')
+if count <= 0:
+    raise SystemExit("Nenhum teste foi descoberto antes do clean")
+if failures:
+    raise SystemExit(1)
+PYTESTCOUNT
+echo "test_count_staged_before_clean=true"'''
 if text.count(old_test_call) != 1:
     raise SystemExit("Expected final test call not found exactly once")
 text = text.replace(old_test_call, new_test_call, 1)
+
+old_test_count_block = '''python3 - <<'PY' > "$OUTPUT_DIR/test-count.txt"
+import glob, xml.etree.ElementTree as ET
+count = 0
+failures = 0
+for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+    root = ET.parse(path).getroot()
+    count += int(root.attrib.get('tests', 0))
+    failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
+print(f'tests={count}')
+print(f'failures={failures}')
+if count <= 0:
+    raise SystemExit("Nenhum teste foi descoberto")
+if failures:
+    raise SystemExit(1)
+PY'''
+new_test_count_block = '''test -s "$TEST_COUNT_STAGING_0186"
+cp "$TEST_COUNT_STAGING_0186" "$OUTPUT_DIR/test-count.txt"
+rm -f "$TEST_COUNT_STAGING_0186"'''
+if text.count(old_test_count_block) != 1:
+    raise SystemExit("Expected post-clean test-count block not found exactly once")
+text = text.replace(old_test_count_block, new_test_count_block, 1)
 
 path.write_text(text, encoding="utf-8")
 PY
