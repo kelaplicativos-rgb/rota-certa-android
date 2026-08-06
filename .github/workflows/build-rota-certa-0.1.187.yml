@@ -7,10 +7,12 @@ on:
       - .github/workflows/build-rota-certa-0.1.187.yml
       - scripts/build_rota_certa_0187.sh
       - scripts/inject_build_rota_certa_0187.py
+      - scripts/inject_build_rota_certa_0187_phase2_contract.py
       - patches/farol-runtime-0187.patch.gz.b64
       - patches/farol-runtime-0187-test-compat.patch.gz.b64
       - patches/farol-runtime-0187-phase2.patch.gz.b64
       - patches/farol-runtime-0187-phase2-testfix.patch.gz.b64
+      - patches/farol-runtime-0187-phase2-legacy-contract.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
