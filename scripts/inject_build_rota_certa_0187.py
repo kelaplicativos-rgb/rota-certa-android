@@ -31,13 +31,34 @@ git apply --check "$PATCH_0187_TEST"
 git apply "$PATCH_0187_TEST"
 rm -f "$PATCH_0187_TEST"
 
+PATCH_0187_PHASE2_B64="$PATCH_REPOSITORY_0187/patches/farol-runtime-0187-phase2.patch.gz.b64"
+PATCH_0187_PHASE2="$(mktemp --suffix=.farol-runtime-0187-phase2.patch)"
+base64 --decode "$PATCH_0187_PHASE2_B64" | gzip --decompress > "$PATCH_0187_PHASE2"
+test "$(sha256sum "$PATCH_0187_PHASE2" | awk '{print $1}')" = "96e1d1fcdd6f238bc16ff2c325952c4fcbb53ed66527618bc9f6702b528d5ed5"
+git apply --check "$PATCH_0187_PHASE2"
+git apply "$PATCH_0187_PHASE2"
+rm -f "$PATCH_0187_PHASE2"
+
 grep -Fq 'versionCode = 5471' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.187"' app/build.gradle.kts
 grep -Fq 'SAME_CARD_RECOVERY_BINDING_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'MONOTONIC_FAROL_TIME_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
+grep -Fq 'ATOMIC_ROOT_SNAPSHOT_GATE_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
+grep -Fq 'ACCESSIBILITY_READ_BINDING_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'BUBBLE_FAILED_CARD_RECOVERY_DISCARDED_0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'BUBBLE_ROOT_SNAPSHOT_REJECTED_0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'BUBBLE_ACCESSIBILITY_READ_DISCARDED_0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'captureRootHandle0187()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'FarolExternalPackageEventGate0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'universalLastActiveReadAtElapsedMillis0187 =' app/src/test/java/br/com/mapeiaia/rotacerta/SelectedAppWaitingYellow127Test.kt
+if grep -Fq 'val rootPackage = currentRootPackageName()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt; then
+  echo 'Leitura crítica ainda consulta pacote fora do snapshot da raiz' >&2
+  exit 1
+fi
+if grep -Fq 'val currentWindow0187 = safeRootWindowId0185()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt; then
+  echo 'Recuperação ainda consulta janela separada da raiz usada para texto' >&2
+  exit 1
+fi
 if grep -Fq 'System.currentTimeMillis() - universalLastActiveReadAtMillis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt; then
   echo 'Relógio civil ainda presente na idade crítica do farol' >&2
   exit 1
@@ -77,7 +98,9 @@ suffix = suffix.replace(
     contracts_marker
     + '  FarolRuntimeSafety0187\n'
     + '  SAME_CARD_RECOVERY_BINDING_0187\n'
-    + '  MONOTONIC_FAROL_TIME_0187\n',
+    + '  MONOTONIC_FAROL_TIME_0187\n'
+    + '  ATOMIC_ROOT_SNAPSHOT_GATE_0187\n'
+    + '  ACCESSIBILITY_READ_BINDING_0187\n',
     1,
 )
 
