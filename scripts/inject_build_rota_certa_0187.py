@@ -6,7 +6,7 @@ wrapper = Path(sys.argv[1])
 text = wrapper.read_text(encoding="utf-8")
 marker = 'bash -n "$ORIGINAL_SCRIPT"'
 
-injection = r"""python3 - "$ORIGINAL_SCRIPT" "$PATCH_REPOSITORY" <<'PY0187'
+injection = r"""python3 - "$ORIGINAL_SCRIPT" <<'PY0187'
 from pathlib import Path
 import re
 import sys
@@ -14,7 +14,7 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-apply_block = r'''PATCH_0187_B64="$PATCH_REPOSITORY/patches/farol-runtime-0187.patch.gz.b64"
+apply_block = r'''PATCH_0187_B64="${1:?Informe o repositório cumulativo}/patches/farol-runtime-0187.patch.gz.b64"
 PATCH_0187="$(mktemp --suffix=.farol-runtime-0187.patch)"
 base64 --decode "$PATCH_0187_B64" | gzip --decompress > "$PATCH_0187"
 test "$(sha256sum "$PATCH_0187" | awk '{print $1}')" = "9d04b2f3b26808676b7dfedbf82bbe0c68e79aff8e3e2fb968decf56fcb44d9d"
