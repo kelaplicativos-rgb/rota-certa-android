@@ -1,44 +1,20 @@
-name: Register validated farol phase 2
+name: Verify registered farol phase 2
 
 on:
-  pull_request:
-    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
-    paths:
-      - .github/workflows/register-farol-phase2.yml
-      - scripts/register_farol_phase2_validated.py
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: register-farol-phase2-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  register:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Register validated phase 2
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
+      - name: Verify project records
         run: |
           set -euo pipefail
-          python3 scripts/register_farol_phase2_validated.py
-          if git diff --quiet; then
-            echo "phase2_records=already_registered"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
-          git commit -m "Document validated farol phase 2"
-          git push origin "HEAD:${HEAD_BRANCH}"
+          grep -Fq '<!-- FAROL_PHASE2_VALIDATED_STATUS_START -->' docs/PROJECT_STATUS.md
+          grep -Fq '<!-- FAROL_PHASE2_VALIDATED_DECISION_START -->' docs/DECISIONS.md
+          grep -Fq '8873d82eaf914919c4b41491bb5f51209c9ec142774ff63b81f3c3d8216e90e5' docs/PROJECT_STATUS.md
