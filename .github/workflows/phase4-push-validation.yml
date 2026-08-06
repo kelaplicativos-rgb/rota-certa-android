@@ -1,0 +1,124 @@
+name: Validate Rota Certa phase 4 on isolated push
+
+on:
+  push:
+    branches: [agent/phase4-validation-base]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: phase4-isolated-push-validation
+  cancel-in-progress: true
+
+env:
+  PHASE4_HEAD_SHA: e818395276965ba59a6598e83affc63c42694721
+
+jobs:
+  replay:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact functional head without marketplace actions
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$PHASE4_HEAD_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$PHASE4_HEAD_SHA"
+      - name: Run deterministic farol replays
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_farol_trace*.py' -v
+          python3 tools/farol_trace_lab.py --fixture tests/fixtures/farol_trace_20260806_sanitized.json --strict
+
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+      - name: Verify protected source
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+      - name: Checkout exact phase 4 patch head
+        uses: actions/checkout@v4
+        with:
+          ref: e818395276965ba59a6598e83affc63c42694721
+          fetch-depth: 0
+          persist-credentials: true
+          path: patches
+      - name: Verify patch head
+        working-directory: patches
+        run: test "$(git rev-parse HEAD)" = "e818395276965ba59a6598e83affc63c42694721"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Materialize, test, lint, assemble and validate
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-phase4
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee build-phase4.log
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.187-phase4-failure
+          path: source/build-phase4.log
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.187-phase4-validated
+          path: source/artifact-0.1.187/
+          retention-days: 90
+          if-no-files-found: error
+      - name: Publish permanent latest APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="source/artifact-0.1.187/rota-certa-0.1.187-farol-runtime-validado.apk"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
+          test "$(sha256sum "$APK" | awk '{print $1}')" = "$EXPECTED_SHA"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-latest.apk"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-0.1.187-fase4.apk"
+          cat > "${RUNNER_TEMP}/release-notes.md" <<NOTES
+          Rota Certa 0.1.187 (5471) — fase 4
+
+          - Resultado de rota vinculado a pacote, sessão, janela, gerações, tela e destino.
+          - Resultado atrasado é descartado mesmo se a rede ignorar o cancelamento.
+          - Cancelamento centralizado de rota, análise, OCR e confirmação parcial.
+          - Testes, Lint, assembleDebug, pacote, versão e assinatura validados.
+          - SHA-256: ${EXPECTED_SHA}
+          - Validação física no Samsung SM-S911B/Android 16 ainda necessária.
+          NOTES
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit latest --repo "$GITHUB_REPOSITORY" --title "Rota Certa — versão mais recente (0.1.187)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          else
+            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$PHASE4_HEAD_SHA" --title "Rota Certa — versão mais recente (0.1.187)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          fi
+          gh release upload latest "${RUNNER_TEMP}/rota-certa-latest.apk" "${RUNNER_TEMP}/rota-certa-0.1.187-fase4.apk" --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Verify permanent public download
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --output downloaded-latest.apk "https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
+          test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
