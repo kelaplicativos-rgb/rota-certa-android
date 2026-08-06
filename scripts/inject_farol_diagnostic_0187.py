@@ -5,6 +5,7 @@ import sys
 wrapper = Path(sys.argv[1])
 text = wrapper.read_text(encoding="utf-8")
 needle = 'bash -n "$ORIGINAL_SCRIPT"'
+run_needle = 'bash "$ORIGINAL_SCRIPT" "$MATERIALIZE_REPOSITORY"'
 
 injected = r"""python3 - "$ORIGINAL_SCRIPT" <<'PYFAROL'
 from pathlib import Path
@@ -48,4 +49,12 @@ bash -n "${ORIGINAL_SCRIPT}"
 
 if text.count(needle) != 1:
     raise SystemExit("Wrapper bash -n marker not found exactly once")
-wrapper.write_text(text.replace(needle, injected, 1), encoding="utf-8")
+if text.count(run_needle) != 1:
+    raise SystemExit("Wrapper execution marker not found exactly once")
+text = text.replace(needle, injected, 1)
+text = text.replace(
+    run_needle,
+    "PS4='+${BASH_SOURCE}:${LINENO}: ' bash -x \"$ORIGINAL_SCRIPT\" \"$MATERIALIZE_REPOSITORY\"",
+    1,
+)
+wrapper.write_text(text, encoding="utf-8")
