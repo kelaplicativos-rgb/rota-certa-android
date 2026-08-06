@@ -1,3 +1,17 @@
+<!-- FAROL_PHASE2_VALIDATED_DECISION_START -->
+## 06/08/2026 — pacote, raiz, janela e geração formam uma leitura indivisível
+
+- **Entrada:** pacote externo explícito deve ser rejeitado antes de consultar uma raiz potencialmente antiga.
+- **Snapshot:** para evento autorizado, pacote da raiz, janela, texto e nós devem derivar do mesmo objeto `AccessibilityNodeInfo`; é proibido remontar a leitura mediante novas aquisições de `rootInActiveWindow`.
+- **Admissão:** evento, pacote selecionado, pacote da raiz e janela precisam ser coerentes. Raiz nula, pacote divergente ou janela incompatível falham fechado antes da travessia completa.
+- **Vínculo:** toda leitura assíncrona transporta pacote, geração da sessão, janela, geração da tela e geração da janela. O vínculo é revalidado antes e após qualquer suspensão.
+- **Ordem:** validação ocorre antes de alterar buffers de OCR, destino, assinatura, cache, geração de rota ou visual. Resultado descartado não pode pintar e depois tentar se corrigir.
+- **Recuperação:** OCR não é autorização alternativa; acessibilidade, nós, assinatura e confirmação continuam sujeitos ao mesmo card e ao mesmo instante lógico.
+- **Estado visual:** cinza ou amarelo não conservam quilômetros; falha, troca de card ou desaparecimento eliminam imediatamente decisão e distância antigas.
+- **Desempenho:** a coleta completa continua depois do gate de eventos e a raiz é reutilizada no evento, evitando aquisição e travessia duplicadas.
+- **Fronteira:** nenhuma correção de concorrência pode alterar `DecisionEngine`, cálculo de rota, raio, Casa/Alfinete ou permitir que um adaptador decida a cor.
+<!-- FAROL_PHASE2_VALIDATED_DECISION_END -->
+
 <!-- FAROL_TRACE_LAB_PHASE1_DECISION_START -->
 ## 06/08/2026 — toda correção do farol deve passar pelo replay do relatório
 
