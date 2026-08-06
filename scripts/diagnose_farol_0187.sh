@@ -12,4 +12,4 @@ trap cleanup EXIT
 cp "$PATCH_REPOSITORY/scripts/build_rota_certa_0186.sh" "$WRAPPER"
 python3 "$PATCH_REPOSITORY/scripts/inject_farol_diagnostic_0187.py" "$WRAPPER"
 bash -n "$WRAPPER"
-bash "$WRAPPER" "$PATCH_REPOSITORY"
+PS4='+${BASH_SOURCE}:${LINENO}: ' bash -x "$WRAPPER" "$PATCH_REPOSITORY"
