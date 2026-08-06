@@ -1,0 +1,49 @@
+name: Register validated farol phase 3
+
+on:
+  pull_request:
+    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
+    paths:
+      - .github/workflows/register-farol-phase3.yml
+      - scripts/register_farol_phase3_validated.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: register-farol-phase3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  register:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Register phase 3 records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          python3 scripts/register_farol_phase3_validated.py
+          if git diff --quiet; then
+            echo "phase3_records=already_registered"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          git commit -m "Document validated farol phase 3"
+          gh auth setup-git
+          git push origin "HEAD:${HEAD_BRANCH}"
