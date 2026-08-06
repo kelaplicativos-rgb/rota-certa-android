@@ -95,6 +95,30 @@ new_base_call = 'ROTA_CERTA_MATERIALIZE_ONLY=1 bash "$BASE_BUILD" "$PATCHES"'
 if text.count(old_base_call) != 1:
     raise SystemExit("Expected cumulative base-build call not found exactly once")
 text = text.replace(old_base_call, new_base_call, 1)
+
+old_test_call = './gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace'
+new_test_call = '''if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace; then
+  echo "--- TEST CONTRACT DIAGNOSTIC 0.1.186 ---" >&2
+  TEST_DIAGNOSTIC_FILES=(
+    app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt
+    app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt
+    app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+    app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+    app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+    app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutInteractionPolicy0186.kt
+  )
+  for diagnostic_file in "${TEST_DIAGNOSTIC_FILES[@]}"; do
+    if [[ -f "$diagnostic_file" ]]; then
+      echo "--- $diagnostic_file ---" >&2
+      nl -ba "$diagnostic_file" >&2
+    fi
+  done
+  exit 1
+fi'''
+if text.count(old_test_call) != 1:
+    raise SystemExit("Expected final test call not found exactly once")
+text = text.replace(old_test_call, new_test_call, 1)
+
 path.write_text(text, encoding="utf-8")
 PY
 
