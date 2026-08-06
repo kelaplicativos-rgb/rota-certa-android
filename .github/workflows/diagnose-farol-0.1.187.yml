@@ -54,7 +54,7 @@ jobs:
           set -o pipefail
           bash ../patches/scripts/diagnose_farol_0187.sh ../patches 2>&1 | tee farol-diagnostic-0.1.187.log
 
-      - name: Upload materialized farol source
+      - name: Upload full materialized application source
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -63,11 +63,7 @@ jobs:
             source/farol-diagnostic-0.1.187.log
             source/app/build.gradle.kts
             source/app/src/main/AndroidManifest.xml
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/ExplicitPackageTransitionPolicy0185.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealtimeEventGate0167.kt
-            source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt
-            source/app/src/test/java/br/com/mapeiaia/rotacerta/
+            source/app/src/main/java/
+            source/app/src/test/java/
           retention-days: 14
           if-no-files-found: error
