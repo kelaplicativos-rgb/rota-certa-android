@@ -42,7 +42,9 @@ if text.count(needle) != 1:
 path.write_text(text.replace(needle, diagnostic + needle, 1), encoding="utf-8")
 PYFAROL
 
-bash -n "$ORIGINAL_SCRIPT""" 
+bash -n "${ORIGINAL_SCRIPT}"
+# END_FAROL_DIAGNOSTIC_INJECTION
+"""
 
 if text.count(needle) != 1:
     raise SystemExit("Wrapper bash -n marker not found exactly once")
