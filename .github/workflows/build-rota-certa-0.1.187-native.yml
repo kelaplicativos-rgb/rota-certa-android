@@ -1,0 +1,68 @@
+name: Build Rota Certa 0.1.187 Native
+
+on:
+  pull_request:
+    branches: [agent/fix-farol-runtime-0.1.187]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.187-native.yml
+      - scripts/ci_native_android_0187.sh
+      - scripts/build_rota_certa_0187.sh
+      - scripts/build_rota_certa_0186.sh
+      - scripts/inject_build_rota_certa_0187.py
+      - scripts/inject_build_rota_certa_0187_phase2_contract.py
+      - scripts/inject_build_rota_certa_0187_phase3.py
+      - scripts/inject_build_rota_certa_0187_phase4.py
+      - patches/farol-runtime-0187.patch.gz.b64
+      - patches/farol-runtime-0187-test-compat.patch.gz.b64
+      - patches/farol-runtime-0187-phase2.patch.gz.b64
+      - patches/farol-runtime-0187-phase2-testfix.patch.gz.b64
+      - patches/farol-runtime-0187-phase2-legacy-contract.patch.gz.b64
+      - patches/farol-runtime-0187-phase3.patch
+      - patches/farol-runtime-0187-phase4.patch.gz.b64
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.187-native-phase2
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  validate-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      PROTECTED_SOURCE_SHA: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+      PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '65' }}
+    steps:
+      - name: Native bootstrap, Android validation and permanent publication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PATCH_DIR="$GITHUB_WORKSPACE/patches"
+          rm -rf "$PATCH_DIR"
+          git init "$PATCH_DIR"
+          git -C "$PATCH_DIR" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+
+          fetched=0
+          for attempt in 1 2 3 4 5; do
+            if git -C "$PATCH_DIR" -c http.version=HTTP/1.1 fetch --force --no-tags origin "$PATCH_SHA"; then
+              fetched=1
+              break
+            fi
+            echo "native_patch_fetch_retry=$attempt/5" >&2
+            sleep 20
+          done
+          test "$fetched" = "1"
+
+          git -C "$PATCH_DIR" checkout --detach FETCH_HEAD
+          test "$(git -C "$PATCH_DIR" rev-parse HEAD)" = "$PATCH_SHA"
+          git -C "$PATCH_DIR" diff --check
+          bash -n "$PATCH_DIR/scripts/ci_native_android_0187.sh"
+          bash "$PATCH_DIR/scripts/ci_native_android_0187.sh" "$PROTECTED_SOURCE_SHA" "$PATCH_SHA"
