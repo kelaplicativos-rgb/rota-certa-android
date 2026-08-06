@@ -7,7 +7,9 @@ on:
       - .github/workflows/build-rota-certa-0.1.187.yml
       - scripts/build_rota_certa_0187.sh
       - scripts/inject_build_rota_certa_0187.py
+      - scripts/finalize_farol_docs_0187.py
       - patches/farol-runtime-0187.patch.gz.b64
+      - patches/farol-runtime-0187-test-compat.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
@@ -125,3 +127,21 @@ jobs:
           URL="https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
           curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
           test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
+
+      - name: Finalize project records and remove temporary diagnostics
+        if: github.event_name == 'pull_request'
+        working-directory: patches
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          python3 scripts/finalize_farol_docs_0187.py
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "project_records_0187=already_final"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Document validated farol runtime fix 0.1.187"
+          git push origin "HEAD:${HEAD_BRANCH}"
