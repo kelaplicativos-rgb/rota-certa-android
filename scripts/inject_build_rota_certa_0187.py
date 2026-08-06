@@ -14,7 +14,8 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-apply_block = r'''PATCH_0187_B64="${1:?Informe o repositório cumulativo}/patches/farol-runtime-0187.patch.gz.b64"
+apply_block = r'''PATCH_REPOSITORY_0187="${1:?Informe o repositório cumulativo}"
+PATCH_0187_B64="$PATCH_REPOSITORY_0187/patches/farol-runtime-0187.patch.gz.b64"
 PATCH_0187="$(mktemp --suffix=.farol-runtime-0187.patch)"
 base64 --decode "$PATCH_0187_B64" | gzip --decompress > "$PATCH_0187"
 test "$(sha256sum "$PATCH_0187" | awk '{print $1}')" = "9d04b2f3b26808676b7dfedbf82bbe0c68e79aff8e3e2fb968decf56fcb44d9d"
@@ -22,12 +23,21 @@ git apply --check "$PATCH_0187"
 git apply "$PATCH_0187"
 rm -f "$PATCH_0187"
 
+PATCH_0187_TEST_B64="$PATCH_REPOSITORY_0187/patches/farol-runtime-0187-test-compat.patch.gz.b64"
+PATCH_0187_TEST="$(mktemp --suffix=.farol-runtime-0187-test-compat.patch)"
+base64 --decode "$PATCH_0187_TEST_B64" | gzip --decompress > "$PATCH_0187_TEST"
+test "$(sha256sum "$PATCH_0187_TEST" | awk '{print $1}')" = "45a571974b4d047dc496fc5582a330c1e744aad229e64c07bbea7710d081c26f"
+git apply --check "$PATCH_0187_TEST"
+git apply "$PATCH_0187_TEST"
+rm -f "$PATCH_0187_TEST"
+
 grep -Fq 'versionCode = 5471' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.187"' app/build.gradle.kts
 grep -Fq 'SAME_CARD_RECOVERY_BINDING_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'MONOTONIC_FAROL_TIME_0187' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'BUBBLE_FAILED_CARD_RECOVERY_DISCARDED_0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'FarolExternalPackageEventGate0187' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'universalLastActiveReadAtElapsedMillis =' app/src/test/java/br/com/mapeiaia/rotacerta/SelectedAppWaitingYellow127Test.kt
 if grep -Fq 'System.currentTimeMillis() - universalLastActiveReadAtMillis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt; then
   echo 'Relógio civil ainda presente na idade crítica do farol' >&2
   exit 1
