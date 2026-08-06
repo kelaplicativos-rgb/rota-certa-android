@@ -45,6 +45,7 @@ def main() -> None:
 - **Pedido:** fechamento seguro da grade por toque externo/bolinha, Home genérica recolhida, gesto longo de 1,5 s configurável, saída Sem som/Alarme/Mídia, pesquisa e cópia em Links e novo módulo offline Correção de texto.
 - **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; cancelamento de callback longo ao fechar/desanexar a grade; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações e bloqueio explícito ao atingir 40 itens; correção conservadora offline com preservação exata de URLs/e-mails, substituição somente em contexto editável exato, rejeição sem truncamento quando o resultado excederia 12.000 caracteres e remoção imediata do texto/token capturado do `Intent` após consumo.
 - **Compatibilidade de compilação:** removidos, de forma estritamente validada, dois imports diretos de `androidx.compose.foundation.layout.weight` incompatíveis com a versão Compose usada; o uso de `Modifier.weight` permanece no escopo público de `RowScope`/`ColumnScope`, sem mudança funcional.
+- **Contratos de regressão:** o teste de toque direto passou a verificar o marcador atual `SHORTCUT_DIRECT_TAP_AND_HOLD_0186`; o cenário de migração legado agora limpa explicitamente o novo campo tipado antes de validar `holdAction0180=NONE`. Nenhuma regra de gesto foi alterada para fazer os testes passarem.
 - **Fronteira protegida:** Manifest/permissões, `DecisionEngine`, parser, Google Maps, Casa/Alfinetes, confirmação 0.1.185, OCR e políticas universais permaneceram byte a byte inalterados por SHA-256.
 - **Pipeline:** as versões-base são materializadas em ordem, com verificação de patches, hashes e contratos estruturais, mas sem repetir Gradle; `testDebugUnitTest`, `lintDebug` e `clean assembleDebug` são executados uma única vez sobre a árvore final 0.1.186.
 - **Testes:** {tests}; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado.
@@ -68,6 +69,7 @@ def main() -> None:
 - **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; URLs e e-mails são isolados e restaurados byte a byte; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem; resultado acima do limite é rejeitado sem cortar o sufixo do texto original; texto, token e chave de solicitação são removidos do `Intent` logo após serem copiados para o estado efêmero da tela.
 - **Pipeline cumulativo:** scripts anteriores continuam aplicando patches e verificações de integridade, porém encerram antes do primeiro Gradle quando executados em modo de materialização. A validação completa ocorre uma vez na árvore final; o wrapper confirma sintaxe e exige que a 0.1.185 receba explicitamente esse modo.
 - **Compose:** imports diretos de `foundation.layout.weight` são removidos somente quando aparecem exatamente uma vez nos dois arquivos afetados; qualquer divergência falha fechado. O layout continua usando a extensão pública disponível no escopo de linha/coluna.
+- **Testes legados:** expectativas são ajustadas apenas para representar corretamente o contrato atual e a ausência do campo tipado em dados realmente legados; a implementação dos gestos não é relaxada nem alterada para satisfazer o teste.
 - **Fronteira:** interfaces e ferramentas não podem alterar o motor universal do farol.
 """
 
@@ -93,6 +95,7 @@ def main() -> None:
         f"artifact_url={artifact_url}\npermanent_url={permanent_url}\n"
         "pipeline_mode=single_final_gradle_validation\n"
         "compose_weight_import_compatibility=true\n"
+        "shortcut_contract_compatibility=true\n"
         "device_validation=pendent_samsung_sm_s911b_android_16\n",
         encoding="utf-8",
     )
