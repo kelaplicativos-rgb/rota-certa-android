@@ -1,0 +1,127 @@
+name: Build Rota Certa 0.1.187
+
+on:
+  pull_request:
+    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.187.yml
+      - scripts/build_rota_certa_0187.sh
+      - scripts/inject_build_rota_certa_0187.py
+      - patches/farol-runtime-0187.patch.gz.b64
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.187-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          path: patches
+
+      - name: Verify cumulative patch commit
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize, test, lint, assemble and validate 0.1.187
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0187
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee build-0.1.187.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.187-failure-diagnostic
+          path: source/build-0.1.187.log
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload validated APK
+        id: upload_apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.187-farol-runtime-validated
+          path: source/artifact-0.1.187/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish permanent latest APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="source/artifact-0.1.187/rota-certa-0.1.187-farol-runtime-validado.apk"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-latest.apk"
+          cp "$APK" "${RUNNER_TEMP}/rota-certa-0.1.187.apk"
+          cat > "${RUNNER_TEMP}/release-notes.md" <<NOTES
+          Rota Certa 0.1.187 (5471)
+
+          - Corrige recuperação atrasada de OCR vinculando pacote, sessão, janela, geração e assinatura do mesmo card.
+          - Remove a combinação direta de buffers de acessibilidade e OCR de momentos distintos.
+          - Usa relógio monotônico nas idades críticas do farol.
+          - Conflui rajadas repetidas de pacotes externos quando o farol já está cinza.
+          - Diagnóstico e gravador de voo não podem lançar exceções no caminho crítico.
+          - Testes, Android Lint, assembleDebug, pacote, versão, ZIP/DEX e assinatura validados no workflow.
+          - SHA-256: ${ACTUAL_SHA}
+          - Validação funcional final no Samsung SM-S911B/Android 16 ainda necessária.
+          NOTES
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit latest --repo "$GITHUB_REPOSITORY" --title "Rota Certa — versão mais recente (0.1.187)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          else
+            gh release create latest --repo "$GITHUB_REPOSITORY" --target "$(git -C patches rev-parse HEAD)" --title "Rota Certa — versão mais recente (0.1.187)" --notes-file "${RUNNER_TEMP}/release-notes.md"
+          fi
+          gh release upload latest "${RUNNER_TEMP}/rota-certa-latest.apk" "${RUNNER_TEMP}/rota-certa-0.1.187.apk" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify permanent public download
+        run: |
+          set -euo pipefail
+          URL="https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk"
+          curl --fail --location --retry 4 --output downloaded-latest.apk "$URL"
+          test "$(sha256sum downloaded-latest.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.187/sha256.txt)"
