@@ -85,7 +85,24 @@ for compose_file in "${COMPOSE_WEIGHT_IMPORT_FIX_FILES[@]}"; do
   fi
   sed -i '/^import androidx.compose.foundation.layout.weight$/d' "$compose_file"
 done
-echo "compose_weight_import_compatibility=applied"'''
+echo "compose_weight_import_compatibility=applied"
+
+AUTHORIZED_APPS_TEST="app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt"
+old_marker_count="$(grep -Foc 'SHORTCUT_DIRECT_TAP_0182' "$AUTHORIZED_APPS_TEST" || true)"
+if [[ "$old_marker_count" != "1" ]]; then
+  echo "Marcador legado inesperado em $AUTHORIZED_APPS_TEST: $old_marker_count" >&2
+  exit 1
+fi
+sed -i 's/SHORTCUT_DIRECT_TAP_0182/SHORTCUT_DIRECT_TAP_AND_HOLD_0186/' "$AUTHORIZED_APPS_TEST"
+
+LEGACY_GESTURE_TEST="app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutPerEntryMenu0180Test.kt"
+legacy_hold_line_count="$(grep -Fxc '            holdAction0180 = ShortcutGestureAction0180.NONE,' "$LEGACY_GESTURE_TEST" || true)"
+if [[ "$legacy_hold_line_count" != "1" ]]; then
+  echo "Cenário legado inesperado em $LEGACY_GESTURE_TEST: $legacy_hold_line_count" >&2
+  exit 1
+fi
+sed -i '/^            holdAction0180 = ShortcutGestureAction0180.NONE,$/a\            holdActionType0186 = null,' "$LEGACY_GESTURE_TEST"
+echo "shortcut_contract_compatibility=applied"'''
 if text.count(old_whitespace) != 1:
     raise SystemExit("Expected whitespace-fix block not found exactly once")
 text = text.replace(old_whitespace, new_whitespace, 1)
