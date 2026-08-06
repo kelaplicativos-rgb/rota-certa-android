@@ -1,3 +1,24 @@
+<!-- ROTA_CERTA_0_1_186_STATUS_START -->
+## 06/08/2026 — 0.1.186 (5470) — grade, áudio, Links e Correção de texto
+
+- **Branch:** `agent/shortcut-audio-links-text-correction-0.1.186`; **PR:** #57, empilhada sobre a 0.1.185.
+- **Commit funcional validado:** `960bd48f897d776ec41aa68d92965f028ac0637b`.
+- **Pedido:** fechamento seguro da grade por toque externo/bolinha, Home genérica recolhida, gesto longo de 1,5 s configurável, saída Sem som/Alarme/Mídia, pesquisa e cópia em Links e novo módulo offline Correção de texto.
+- **Correção:** backdrop transparente consumível e removível; gesto determinístico sem janela de 900 ms; cancelamento de callback longo ao fechar/desanexar a grade; ação longa tipada/persistida; navegação explícita `collapsed`/`module`; um único TTS com `AudioAttributes`; filtro local normalizado; editor de links com quatro ações e bloqueio explícito ao atingir 40 itens; correção conservadora offline com preservação exata de URLs/e-mails, substituição somente em contexto editável exato, rejeição sem truncamento quando o resultado excederia 12.000 caracteres e remoção imediata do texto/token capturado do `Intent` após consumo.
+- **Compatibilidade de compilação:** removidos, de forma estritamente validada, dois imports diretos de `androidx.compose.foundation.layout.weight` incompatíveis com a versão Compose usada; o uso de `Modifier.weight` permanece no escopo público de `RowScope`/`ColumnScope`, sem mudança funcional.
+- **Contratos de regressão:** o teste de toque direto passou a verificar o marcador atual `SHORTCUT_DIRECT_TAP_AND_HOLD_0186`; o cenário de migração legado agora limpa explicitamente o novo campo tipado antes de validar `holdAction0180=NONE`. Nenhuma regra de gesto foi alterada para fazer os testes passarem.
+- **Fronteira protegida:** Manifest/permissões, `DecisionEngine`, parser, Google Maps, Casa/Alfinetes, confirmação 0.1.185, OCR e políticas universais permaneceram byte a byte inalterados por SHA-256.
+- **Pipeline:** as versões-base são materializadas em ordem, com verificação de patches, hashes e contratos estruturais, mas sem repetir Gradle; `testDebugUnitTest`, `lintDebug` e `clean assembleDebug` são executados uma única vez sobre a árvore final 0.1.186. A contagem dos XMLs de testes é validada e preservada antes do `clean`, que remove `app/build`.
+- **Testes:** tests=342; failures=0; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado.
+- **Workflow:** `Build Rota Certa 0.1.186`, run `31066287734`; fonte protegida fixada no commit `32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42`; descoberta positiva de testes obrigatória.
+- **Artifact:** `rota-certa-0.1.186-shortcuts-audio-links-text-validated`, ID `8954056458`, digest `c797b9bada36516b186f66f9c512fe81b6dd155e51a831e64404f3057dc52d57`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31066287734/artifacts/8954056458
+- **Link permanente do APK:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
+- **APK:** `rota-certa-0.1.186-grade-audio-links-corretor-validado.apk`, 56124367 bytes; pacote `br.com.mapeiaia.rotacerta`; versão `0.1.186`; versionCode `5470`.
+- **SHA-256 do APK:** `42b8903255818aa1264c6d9b97439b097b279878a9e2851da8a0d27ff51495a2`.
+- **Pendências reais:** instalar no Samsung SM-S911B/Android 16 e validar toque externo sem atravessar, 1,5 s/arraste, migração da grade, canais de áudio/Bluetooth, layout de Links e substituição de texto em aplicativos reais. Não declarar essas verificações físicas como concluídas antes do teste no aparelho.
+<!-- ROTA_CERTA_0_1_186_STATUS_END -->
+
 # Rota Certa — Estado do projeto
 
 ## 05/08/2026 — 0.1.185 (5460) — card individual do inDrive e contenção de acessibilidade

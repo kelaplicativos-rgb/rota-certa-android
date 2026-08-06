@@ -1,3 +1,19 @@
+<!-- ROTA_CERTA_0_1_186_DECISION_START -->
+## 06/08/2026 — grade fecha sem atravessar, Home genérica recolhe e ação longa é tipada
+
+- **Fechamento:** a grade usa uma camada transparente de tela inteira que consome o toque externo e é removida junto com o menu; fechar não altera o farol.
+- **Gestos:** toque rápido executa imediatamente; 1,5 segundo consome o gesto longo no limiar; movimento, fechamento e desanexação cancelam callbacks pendentes; toque triplo e janela de 900 ms permanecem ausentes.
+- **Home:** abertura genérica envia modo `collapsed`; abertura deliberada envia modo `module` e identidade do módulo.
+- **Persistência:** cada entrada mantém ação rápida e armazena ação longa como módulo relacionado, outra ação do catálogo tipado ou nenhuma ação.
+- **Áudio:** um único TTS consulta a preferência Sem som/Alarme/Mídia em cada fala; Sem som trata o evento sem bloquear avisos visuais.
+- **Links:** pesquisa exclusivamente local por nome, descrição ou URL normalizados; copiar coloca somente a URL na área de transferência; ao atingir 40 itens, nova inclusão é bloqueada antes de alterar o link principal ou descartar dados.
+- **Correção de texto:** mecanismo conservador e offline, sem Samsung/nuvem/histórico; URLs e e-mails são isolados e restaurados byte a byte; resultado sempre revisável; substituição somente por ação explícita e se pacote, classe, texto e seleção ainda coincidirem; resultado acima do limite é rejeitado sem cortar o sufixo do texto original; texto, token e chave de solicitação são removidos do `Intent` logo após serem copiados para o estado efêmero da tela.
+- **Pipeline cumulativo:** scripts anteriores continuam aplicando patches e verificações de integridade, porém encerram antes do primeiro Gradle quando executados em modo de materialização. A validação completa ocorre uma vez na árvore final; o wrapper confirma sintaxe e exige que a 0.1.185 receba explicitamente esse modo. A evidência de quantidade/falhas dos testes é capturada antes de `clean assembleDebug` e depois copiada para o artifact.
+- **Compose:** imports diretos de `foundation.layout.weight` são removidos somente quando aparecem exatamente uma vez nos dois arquivos afetados; qualquer divergência falha fechado. O layout continua usando a extensão pública disponível no escopo de linha/coluna.
+- **Testes legados:** expectativas são ajustadas apenas para representar corretamente o contrato atual e a ausência do campo tipado em dados realmente legados; a implementação dos gestos não é relaxada nem alterada para satisfazer o teste.
+- **Fronteira:** interfaces e ferramentas não podem alterar o motor universal do farol.
+<!-- ROTA_CERTA_0_1_186_DECISION_END -->
+
 # Rota Certa — Decisões técnicas
 
 ## 05/08/2026 — o inDrive só autoriza decisão com card individual confirmado
