@@ -1,0 +1,162 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
+index c5f27ea..4ff0a3c 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
+@@ -102,6 +102,25 @@ object FarolRootSnapshotPolicy0187 {
+     }
+ }
+ 
++enum class FarolRejectedSnapshotEffect0187Phase3 {
++    DISCARD_WITHOUT_EFFECT,
++    INVALIDATE_READ_KEEP_VISUAL,
++}
++
++/**
++ * A rejected snapshot proves only that this read is incoherent. It does not prove
++ * that the confirmed card disappeared. Visual clearing remains reserved for a
++ * coherent selected-app screen without a valid card or a confirmed external app.
++ */
++object FarolRejectedSnapshotPolicy0187Phase3 {
++    const val CONTRACT_MARKER = "REJECTED_SNAPSHOT_HAS_NO_VISUAL_SIDE_EFFECT_0187_PHASE3"
++
++    fun effect(reason: String): FarolRejectedSnapshotEffect0187Phase3 = when (reason) {
++        "event_root_window_mismatch" -> FarolRejectedSnapshotEffect0187Phase3.INVALIDATE_READ_KEEP_VISUAL
++        else -> FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT
++    }
++}
++
+ data class FarolReadBinding0187(
+     val packageName: String,
+     val sessionGeneration: Long,
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+index bf6e8ad..50f771e 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+@@ -474,17 +474,25 @@ class LiveRideAccessibilityService : AccessibilityService() {
+             activeSessionWindowId = activeSessionBeforeRootGate0187?.windowId,
+         )
+         if (!rootAdmission0187.accepted || rootHandle0187 == null) {
++            val rejectionEffect0187Phase3 = FarolRejectedSnapshotPolicy0187Phase3.effect(rootAdmission0187.reason)
+             UnifiedDebugEventStore.record(
+                 "BUBBLE_ROOT_SNAPSHOT_REJECTED_0187",
+                 candidatePackage,
+-                "reason=${rootAdmission0187.reason}; eventPackage=${eventPackage ?: "none"}; rootPackage=${rootPackage ?: "none"}; eventWindow=$eventWindowId0187; rootWindow=${rootHandle0187?.windowId ?: 0}",
+-            )
+-            driverCardSessionGate0162.invalidate()
+-            universalWindowGeneration += 1L
+-            hardClearUniversalTwoAddress(
+-                reason = "Leitura descartada porque pacote, raiz e janela não pertencem ao mesmo instante.",
+-                keepWaitingYellow = true,
++                "reason=${rootAdmission0187.reason}; effect=$rejectionEffect0187Phase3; eventPackage=${eventPackage ?: "none"}; rootPackage=${rootPackage ?: "none"}; eventWindow=$eventWindowId0187; rootWindow=${rootHandle0187?.windowId ?: 0}",
+             )
++            when (rejectionEffect0187Phase3) {
++                FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT -> {
++                    UnifiedDebugEventStore.record(
++                        "BUBBLE_ROOT_SNAPSHOT_DISCARDED_0187_PHASE3",
++                        candidatePackage,
++                        "reason=${rootAdmission0187.reason}; visualPreserved=true; color=$currentRadarColor; distance=$currentDistanceKm",
++                    )
++                }
++
++                FarolRejectedSnapshotEffect0187Phase3.INVALIDATE_READ_KEEP_VISUAL -> {
++                    invalidateRejectedSnapshotRead0187Phase3(rootAdmission0187.reason, candidatePackage)
++                }
++            }
+             return
+         }
+         lastRejectedForegroundPackage0162 = null
+@@ -973,6 +981,33 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         return current0162
+     }
+ 
++    private fun invalidateRejectedSnapshotRead0187Phase3(
++        reason0187Phase3: String,
++        packageName0187Phase3: String,
++    ) {
++        driverCardSessionGate0162.invalidate()
++        universalWindowGeneration += 1L
++        universalRouteJob?.cancel()
++        universalRouteJob = null
++        analyzeJob?.cancel()
++        analyzeJob = null
++        screenshotFallbackJob127?.cancel()
++        screenshotFallbackJob127 = null
++        failedCardAutoCaptureGate0161.reset()
++        lastFailedCardNodes0161 = emptyList()
++        lastFailedCardSignature0161 = null
++        lastFailedCardAccessibilityHash0161 = null
++        lastAccessibilityText = ""
++        lastAccessibilityTextAtMillis = 0L
++        lastOcrText = ""
++        lastOcrTextAtMillis = 0L
++        UnifiedDebugEventStore.record(
++            "BUBBLE_ROOT_SNAPSHOT_READ_INVALIDATED_0187_PHASE3",
++            packageName0187Phase3,
++            "reason=$reason0187Phase3; visualPreserved=true; color=$currentRadarColor; distance=$currentDistanceKm",
++        )
++    }
++
+     private fun handleRejectedForeground0162(
+         eventPackage0162: String?,
+         rootPackage0162: String?,
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeFix0187ContractTest.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeFix0187ContractTest.kt
+index 97b2396..e1c2c41 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeFix0187ContractTest.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeFix0187ContractTest.kt
+@@ -59,4 +59,22 @@ class FarolRuntimeFix0187ContractTest {
+         assertFalse(service.contains("val currentNodes0187 = collectFailedCardNodeLines0161()"))
+     }
+ 
++    @Test
++    fun rejectedRootSnapshotCannotClearOrRenderTheBubble() {
++        val service = read("LiveRideAccessibilityService.kt")
++        val safety = read("FarolRuntimeSafety0187.kt")
++        val start = service.indexOf("if (!rootAdmission0187.accepted || rootHandle0187 == null)")
++        val end = service.indexOf("lastRejectedForegroundPackage0162 = null", start)
++        assertTrue(start >= 0)
++        assertTrue(end > start)
++        val rejectionBlock = service.substring(start, end)
++        assertTrue(safety.contains("REJECTED_SNAPSHOT_HAS_NO_VISUAL_SIDE_EFFECT_0187_PHASE3"))
++        assertTrue(rejectionBlock.contains("FarolRejectedSnapshotPolicy0187Phase3.effect"))
++        assertTrue(rejectionBlock.contains("BUBBLE_ROOT_SNAPSHOT_DISCARDED_0187_PHASE3"))
++        assertTrue(rejectionBlock.contains("invalidateRejectedSnapshotRead0187Phase3"))
++        assertFalse(rejectionBlock.contains("hardClearUniversalTwoAddress"))
++        assertFalse(rejectionBlock.contains("showOverlay"))
++    }
++
++
+ }
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt
+index 865795d..027ca2b 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt
+@@ -109,4 +109,29 @@ class FarolRuntimeSafety0187Test {
+         assertFalse(fresh(windowGeneration = 5L))
+     }
+ 
++    @Test
++    fun rejectedSnapshotNeverClearsVisualWithoutPositiveScreenEvidence() {
++        assertTrue(
++            FarolRejectedSnapshotPolicy0187Phase3.effect("transient_root_window_mismatch") ==
++                FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT,
++        )
++        assertTrue(
++            FarolRejectedSnapshotPolicy0187Phase3.effect("transient_without_selected_session") ==
++                FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT,
++        )
++        assertTrue(
++            FarolRejectedSnapshotPolicy0187Phase3.effect("event_package_missing_without_same_session") ==
++                FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT,
++        )
++        assertTrue(
++            FarolRejectedSnapshotPolicy0187Phase3.effect("root_package_mismatch") ==
++                FarolRejectedSnapshotEffect0187Phase3.DISCARD_WITHOUT_EFFECT,
++        )
++        assertTrue(
++            FarolRejectedSnapshotPolicy0187Phase3.effect("event_root_window_mismatch") ==
++                FarolRejectedSnapshotEffect0187Phase3.INVALIDATE_READ_KEEP_VISUAL,
++        )
++    }
++
++
+ }

@@ -1,3 +1,68 @@
+<!-- FAROL_PHASE3_VALIDATED_STATUS_START -->
+## 06/08/2026 — fase 3 validada — rejeição de snapshot não apaga decisão válida
+
+- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base real:** `agent/shortcut-audio-links-text-correction-0.1.186`.
+- **Commit funcional validado:** `941e280c580037d484eaab34145fdd7d6e37d29b`; workflow independente do replay validado no head `846f0163f4d93e7037996bd86e6a32dfb338a4ee`.
+- **Versão:** `0.1.187`; **versionCode:** 5471; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Fonte da regressão:** `rota-certa-relatorio-depuracao (30).txt`, exportado em 06/08/2026 12:40 no Samsung SM-S911B/Android 16.
+- **Situação anterior:** a fase 2 rejeitava corretamente raízes, pacotes e janelas incoerentes, porém toda rejeição chamava a limpeza visual. Uma decisão verde de 1,788 km foi apagada cerca de 109 ms depois por evento transitório do SystemUI/Rota Certa, sem prova de desaparecimento do card.
+- **Causa:** o caminho crítico confundia “esta leitura não é confiável” com “o card confirmado desapareceu”. A rejeição de snapshot invalidava sessão e geração e chamava `hardClearUniversalTwoAddress`, transformando ruído transitório em amarelo.
+- **Correção:** `FarolRejectedSnapshotPolicy0187Phase3` separa efeitos. Eventos transitórios, raiz ausente, pacote divergente ou evento sem pacote são descartados sem qualquer efeito visual. `event_root_window_mismatch` invalida somente trabalho assíncrono e buffers de leitura, preservando cor, destino e distância já confirmados. O bloco de rejeição não chama `hardClearUniversalTwoAddress` nem `showOverlay`.
+- **Transições positivas preservadas:** tela coerente do aplicativo selecionado sem card válido continua limpando para amarelo; transição externa real e confirmada continua limpando para cinza; novo destino confirmado pode substituir a decisão anterior.
+- **Arquivos principais:** `FarolRuntimeSafety0187.kt`, `LiveRideAccessibilityService.kt`, `FarolRuntimeSafety0187Test.kt`, `FarolRuntimeFix0187ContractTest.kt`, `tests/test_farol_trace_phase3.py`, patch e injetor da fase 3 e workflow do laboratório sem dependência de Marketplace Actions.
+- **Fronteira protegida:** `AndroidManifest.xml`, permissões, `DecisionEngine`, rota Google, raio, Casa/Alfinetes, parser universal, confirmação 0.1.185, OCR como fonte auxiliar, radares e alertas não foram alterados.
+- **Testes Android:** tests=354; failures=0; testes unitários e de contrato aprovados; Android Lint aprovado; `clean assembleDebug` aprovado.
+- **Replay:** `Farol deterministic trace lab`, run `31120432823`, aprovado; valida verde preservado na leitura rejeitada, amarelo somente após desaparecimento coerente e cinza somente após pacote externo confirmado. O replay histórico estrito também permaneceu verde.
+- **Workflow funcional:** `Build Rota Certa 0.1.187`, run `31118222427`, concluído com sucesso em testes, Lint, compilação, artifact, publicação e verificação do download permanente.
+- **Artifact:** `rota-certa-0.1.187-farol-runtime-validated`, ID `8974060308`, digest `cf7b6facbd474656e42c65ff12857de223e755212ed98ffbafdab152774d3f1b`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31118222427/artifacts/8974060308
+- **Link permanente do APK:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
+- **APK:** `rota-certa-0.1.187-farol-runtime-validado.apk`, 56.124.367 bytes; pacote/versão/versionCode conferidos; assinatura APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`.
+- **SHA-256 do APK:** `0f7b9f8f8e8b592a7165746a9c8c2132c002ddd25cea88acc44cc0a536ff0332`.
+- **Infraestrutura:** execuções redundantes posteriores falharam em `Set up job` por `Service Unavailable` ao baixar Marketplace Actions, antes do checkout e sem executar código; não contradizem o build funcional aprovado. O laboratório foi tornado independente dessas Actions e concluiu com sucesso.
+- **Pendência real:** instalar este APK no Samsung SM-S911B/Android 16 e repetir decisão verde/vermelha com SystemUI, bolinha, teclado, retorno ao feed, troca de card e saída real do aplicativo; confirmar ausência de pisca e que eventos rejeitados registram preservação sem `BUBBLE_CLEAR_REQUEST` decorrente da rejeição.
+<!-- FAROL_PHASE3_VALIDATED_STATUS_END -->
+
+<!-- FAROL_PHASE2_VALIDATED_STATUS_START -->
+## 06/08/2026 — fase 2 validada — raiz atômica e vínculo imutável da leitura
+
+- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base real:** `agent/shortcut-audio-links-text-correction-0.1.186`.
+- **Commit funcional validado:** `16e130912d4294d269dd2abb15ad6e68105aa4ac`.
+- **Versão:** `0.1.187`; **versionCode:** 5471; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Pedido:** ligar as invariantes do laboratório da fase 1 ao caminho Kotlin real, corrigindo pacote/raiz/janela/geração e a origem das exceções sem alterar `DecisionEngine`, rota ou regras de cor.
+- **Situação anterior:** o serviço podia consultar pacote da raiz, janela, texto e nós mediante aquisições diferentes de `rootInActiveWindow`. O Android podia invalidar ou trocar a raiz entre consultas; uma leitura antiga ainda podia chegar após troca de janela, sessão ou geração.
+- **Causa:** a evidência de uma leitura não possuía uma única raiz física nem um token imutável revalidado depois das suspensões. A contenção anterior vinculava a recuperação, mas ainda permitia montar parte da evidência em instantes diferentes.
+- **Correção:** `FarolRootHandle0187` captura uma única raiz e deriva dela pacote e janela; `FarolRootSnapshotPolicy0187` confere evento, pacote selecionado, raiz e janela antes da travessia; `FarolReadBinding0187` carrega pacote, sessão, janela e gerações; o vínculo é revalidado antes e depois do processamento assíncrono e qualquer divergência descarta a leitura antes de destino, OCR, rota, quilômetros ou cor.
+- **Recuperação/OCR:** acessibilidade, nós e assinatura são coletados da mesma raiz; recuperação antiga, raiz nula ou raiz de outro pacote falham fechado e não reutilizam distância anterior.
+- **Desempenho:** o gate de eventos permanece antes da coleta completa; eventos externos continuam rejeitados antes de consultar raiz antiga; chamadas repetidas de limpeza e renderização continuam confluídas pelo núcleo já existente.
+- **Arquivos principais:** `LiveRideAccessibilityService.kt`, `FarolRuntimeSafety0187.kt`, `FarolRuntimeSafety0187Test.kt`, `FarolRuntimeFix0187ContractTest.kt`, `FarolRealtimeCriticalPathContract0167Test.kt`, patches e scripts cumulativos 0.1.187.
+- **Fronteira protegida comprovada por SHA-256:** `AndroidManifest.xml`, `DecisionEngine.kt`, `RideTextParser.kt`, `GoogleMapsService.kt`, `GpsAddressResolver.kt`, confirmação 0.1.185, políticas de eventos/visual, parser universal, alertas e radares não foram alterados.
+- **Testes:** tests=352; failures=0; testes unitários e de contrato aprovados; laboratório determinístico aprovado; Android Lint aprovado; `clean assembleDebug` aprovado.
+- **Workflow validado:** `Build Rota Certa 0.1.187`, run `31112248496`; fonte protegida `32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42`.
+- **Artifact:** `rota-certa-0.1.187-farol-runtime-validated`, ID `8972452959`, digest `fe1ec1fc52d3b7550088dabf6c27d9802c31cff490dcaba8b6473992c2fc3099`.
+- **Link do artifact:** https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/31112248496/artifacts/8972452959
+- **Link permanente do APK:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/latest/rota-certa-latest.apk
+- **APK:** `rota-certa-0.1.187-farol-runtime-validado.apk`, 56.124.367 bytes; ZIP íntegro; pacote/versão/versionCode conferidos; assinatura APK Signature Scheme v2 válida; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`.
+- **SHA-256 do APK:** `8873d82eaf914919c4b41491bb5f51209c9ec142774ff63b81f3c3d8216e90e5`.
+- **Pendência real:** instalar no Samsung SM-S911B/Android 16 e validar card individual, troca rápida entre ofertas, saída do card, sobreposição do SystemUI/teclado/Android Auto, ausência de destino/km antigo, ausência de pisca e nenhuma exceção `accessibility_event_0172`. A PR permanece em rascunho até essa comprovação física.
+<!-- FAROL_PHASE2_VALIDATED_STATUS_END -->
+
+<!-- FAROL_TRACE_LAB_PHASE1_STATUS_START -->
+## 06/08/2026 — fase 1 — laboratório determinístico do farol
+
+- **Branch:** `agent/fix-farol-runtime-0.1.187`; **PR:** #59; **base real:** `agent/shortcut-audio-links-text-correction-0.1.186`.
+- **Versão confirmada:** `0.1.187` (`versionCode` 5471), pacote `br.com.mapeiaia.rotacerta`.
+- **Pedido:** iniciar a correção estrutural criando primeiro uma reprodução determinística dos erros do relatório, sem alterar ainda o comportamento de produção da bolinha.
+- **Fonte:** `rota-certa-relatorio-depuracao (29).txt`, exportado em 06/08/2026 10:08 no Samsung SM-S911B/Android 16.
+- **Implementação:** laboratório Python independente, fixture sanitizada, oráculo de estado e workflow próprio. Endereços e textos pessoais não foram incorporados.
+- **Cobertura reproduzida:** 2.473 eventos; 1.440 eventos externos com raiz antiga do inDrive; 455 eventos repetidos; 562 limpezas; resultado de rota atrasado; raiz nula; raiz de outro pacote; seis sinais de falha; desaparecimento de card.
+- **Invariantes:** portão de pacote antes da raiz; geração antiga não pinta; verde/vermelho exigem destino e distância; cinza/amarelo não retêm km; falha termina fechada; limpeza idempotente; card desaparecido elimina decisão.
+- **Validação local:** sete testes aprovados; zero violações; zero divergências do oráculo; 454 eventos confluídos; 561 limpezas redundantes sem redesenho; apenas dez mudanças visuais no replay completo.
+- **Arquivos:** `tools/farol_trace_lab.py`, `tests/fixtures/farol_trace_20260806_sanitized.json`, `tests/test_farol_trace_lab.py`, `.github/workflows/farol-trace-lab.yml`, `docs/FAROL_TRACE_REPLAY_LAB.md`.
+- **Fronteira protegida:** nenhum arquivo Kotlin, Manifest, permissão, `DecisionEngine`, parser, rota, OCR, radar, alerta ou overlay foi alterado nesta fase.
+- **Pendência:** conectar o oráculo aos contratos Kotlin e ao caminho real de acessibilidade somente após autorização explícita para a fase seguinte.
+<!-- FAROL_TRACE_LAB_PHASE1_STATUS_END -->
+
 <!-- ROTA_CERTA_0_1_186_STATUS_START -->
 ## 06/08/2026 — 0.1.186 (5470) — grade, áudio, Links e Correção de texto
 

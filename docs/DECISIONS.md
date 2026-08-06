@@ -1,3 +1,40 @@
+<!-- FAROL_PHASE3_VALIDATED_DECISION_START -->
+## 06/08/2026 — rejeitar uma leitura não é prova para apagar o farol
+
+- **Descartar sem efeito:** SystemUI, teclado, overlay do Rota Certa, evento sem pacote, raiz ausente, raiz divergente e demais snapshots incoerentes não alteram cor, destino, quilômetros ou decisão já confirmada.
+- **Invalidar leitura mantendo visual:** incompatibilidade entre janela do evento selecionado e janela da raiz cancela sessão, OCR, análise e rota em andamento e avança a geração, mas mantém o último visual confirmado até surgir evidência coerente.
+- **Amarelo:** somente uma leitura coerente do aplicativo selecionado que prove ausência, fechamento ou troca do card pode limpar decisão e distância para o estado de espera.
+- **Cinza:** somente uma transição externa real e confirmada para aplicativo passivo ou não selecionado pode limpar para inativo.
+- **Ordem:** nenhuma rejeição de snapshot pode chamar `hardClearUniversalTwoAddress` ou `showOverlay`; primeiro descartar/inutilizar o trabalho, depois aguardar evidência positiva.
+- **Concorrência:** resultado pertencente à sessão, janela ou geração invalidada continua proibido de pintar, mesmo que o visual anterior tenha sido preservado.
+- **Núcleo universal:** adaptadores continuam sem autoridade para decidir cor; confirmação de destino final, rota real e `DecisionEngine` permanecem os únicos caminhos para verde/vermelho.
+<!-- FAROL_PHASE3_VALIDATED_DECISION_END -->
+
+<!-- FAROL_PHASE2_VALIDATED_DECISION_START -->
+## 06/08/2026 — pacote, raiz, janela e geração formam uma leitura indivisível
+
+- **Entrada:** pacote externo explícito deve ser rejeitado antes de consultar uma raiz potencialmente antiga.
+- **Snapshot:** para evento autorizado, pacote da raiz, janela, texto e nós devem derivar do mesmo objeto `AccessibilityNodeInfo`; é proibido remontar a leitura mediante novas aquisições de `rootInActiveWindow`.
+- **Admissão:** evento, pacote selecionado, pacote da raiz e janela precisam ser coerentes. Raiz nula, pacote divergente ou janela incompatível falham fechado antes da travessia completa.
+- **Vínculo:** toda leitura assíncrona transporta pacote, geração da sessão, janela, geração da tela e geração da janela. O vínculo é revalidado antes e após qualquer suspensão.
+- **Ordem:** validação ocorre antes de alterar buffers de OCR, destino, assinatura, cache, geração de rota ou visual. Resultado descartado não pode pintar e depois tentar se corrigir.
+- **Recuperação:** OCR não é autorização alternativa; acessibilidade, nós, assinatura e confirmação continuam sujeitos ao mesmo card e ao mesmo instante lógico.
+- **Estado visual:** cinza ou amarelo não conservam quilômetros; falha, troca de card ou desaparecimento eliminam imediatamente decisão e distância antigas.
+- **Desempenho:** a coleta completa continua depois do gate de eventos e a raiz é reutilizada no evento, evitando aquisição e travessia duplicadas.
+- **Fronteira:** nenhuma correção de concorrência pode alterar `DecisionEngine`, cálculo de rota, raio, Casa/Alfinete ou permitir que um adaptador decida a cor.
+<!-- FAROL_PHASE2_VALIDATED_DECISION_END -->
+
+<!-- FAROL_TRACE_LAB_PHASE1_DECISION_START -->
+## 06/08/2026 — toda correção do farol deve passar pelo replay do relatório
+
+- O relatório sanitizado é uma fixture de regressão, não um log contínuo de produção.
+- O portão de pacote é a primeira decisão e deve ocorrer antes de qualquer consulta à raiz.
+- Pacote, janela, geração, assinatura do card e destino formam a identidade mínima de uma leitura.
+- Resultado atrasado, raiz nula ou raiz de outro pacote falham fechado e nunca recuperam distância anterior.
+- Repetição da mesma tela e limpeza redundante não podem gerar processamento ou redesenho ilimitado.
+- O laboratório permanece independente do Android nesta fase; a próxima fase ligará o mesmo contrato ao Kotlin sem permitir que o oráculo passe por mera inspeção textual.
+<!-- FAROL_TRACE_LAB_PHASE1_DECISION_END -->
+
 <!-- ROTA_CERTA_0_1_186_DECISION_START -->
 ## 06/08/2026 — grade fecha sem atravessar, Home genérica recolhe e ação longa é tipada
 
