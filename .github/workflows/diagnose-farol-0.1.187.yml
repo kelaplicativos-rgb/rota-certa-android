@@ -1,0 +1,62 @@
+name: Diagnose Rota Certa farol 0.1.187
+
+on:
+  pull_request:
+    branches: [agent/shortcut-audio-links-text-correction-0.1.186]
+    paths:
+      - .github/workflows/diagnose-farol-0.1.187.yml
+      - scripts/diagnose_farol_0187.sh
+      - scripts/inject_farol_diagnostic_0187.py
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-farol-diagnostic-0.1.187-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize and print farol source evidence
+        working-directory: source
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/diagnose_farol_0187.sh ../patches 2>&1 | tee farol-diagnostic-0.1.187.log
+
+      - name: Upload diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-source-diagnostic-0.1.187
+          path: source/farol-diagnostic-0.1.187.log
+          retention-days: 14
+          if-no-files-found: error
