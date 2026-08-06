@@ -6,15 +6,15 @@ wrapper = Path(sys.argv[1])
 text = wrapper.read_text(encoding="utf-8")
 marker = 'bash -n "$ORIGINAL_SCRIPT"'
 
-injection = r'''python3 - "$ORIGINAL_SCRIPT" "$PATCH_REPOSITORY" <<'PY0187'
+injection = r"""python3 - "$ORIGINAL_SCRIPT" "$PATCH_REPOSITORY" <<'PY0187'
 from pathlib import Path
+import re
 import sys
 
 path = Path(sys.argv[1])
 patch_repository = Path(sys.argv[2])
 text = path.read_text(encoding="utf-8")
 
-gradle_marker = 'if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace; then'
 apply_block = r'''PATCH_0187_B64="$PATCH_REPOSITORY/patches/farol-runtime-0187.patch.gz.b64"
 PATCH_0187="$(mktemp --suffix=.farol-runtime-0187.patch)"
 base64 --decode "$PATCH_0187_B64" | gzip --decompress > "$PATCH_0187"
@@ -35,9 +35,15 @@ if grep -Fq 'System.currentTimeMillis() - universalLastActiveReadAtMillis' app/s
 fi
 echo 'farol_runtime_patch_0187=applied_and_verified'
 '''
-if text.count(gradle_marker) != 1:
-    raise SystemExit("Final Gradle validation marker not found exactly once")
-text = text.replace(gradle_marker, apply_block + gradle_marker, 1)
+pattern = re.compile(
+    r'(?m)^(?P<indent>[ \t]*)(?P<command>(?:if ! )?\./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace(?:; then)?)$'
+)
+matches = list(pattern.finditer(text))
+if len(matches) != 1:
+    raise SystemExit(f"Final Gradle validation command count was {len(matches)}, expected exactly one")
+match = matches[0]
+replacement = apply_block + match.group('indent') + match.group('command')
+text = text[:match.start()] + replacement + text[match.end():]
 text = text.replace('0.1.186', '0.1.187')
 text = text.replace('5470', '5471')
 text = text.replace(
@@ -48,7 +54,7 @@ path.write_text(text, encoding="utf-8")
 PY0187
 
 bash -n "$ORIGINAL_SCRIPT"
-'''
+"""
 
 if text.count(marker) != 1:
     raise SystemExit("0.1.186 wrapper validation marker not found exactly once")
