@@ -1,0 +1,36 @@
+name: Farol deterministic trace lab
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/farol-trace-lab.yml
+      - tools/farol_trace_lab.py
+      - tests/test_farol_trace_lab.py
+      - tests/fixtures/farol_trace_20260806_sanitized.json
+      - docs/FAROL_TRACE_REPLAY_LAB.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-trace-lab-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run replay unit tests
+        run: python3 -m unittest discover -s tests -p 'test_farol_trace_lab.py' -v
+      - name: Run strict report replay
+        run: >-
+          python3 tools/farol_trace_lab.py
+          --fixture tests/fixtures/farol_trace_20260806_sanitized.json
+          --strict
