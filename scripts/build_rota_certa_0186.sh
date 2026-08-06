@@ -71,7 +71,21 @@ elif git apply --reverse --check "$WHITESPACE_FIX_PATCH"; then
 else
   echo "Auxiliary whitespace fix is neither applicable nor already present" >&2
   exit 1
-fi'''
+fi
+
+COMPOSE_WEIGHT_IMPORT_FIX_FILES=(
+  app/src/main/java/br/com/mapeiaia/rotacerta/QuickLinksActivity.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/TextCorrectionModule0186.kt
+)
+for compose_file in "${COMPOSE_WEIGHT_IMPORT_FIX_FILES[@]}"; do
+  import_count="$(grep -Fxc 'import androidx.compose.foundation.layout.weight' "$compose_file" || true)"
+  if [[ "$import_count" != "1" ]]; then
+    echo "Import Compose weight inesperado em $compose_file: $import_count" >&2
+    exit 1
+  fi
+  sed -i '/^import androidx.compose.foundation.layout.weight$/d' "$compose_file"
+done
+echo "compose_weight_import_compatibility=applied"'''
 if text.count(old_whitespace) != 1:
     raise SystemExit("Expected whitespace-fix block not found exactly once")
 text = text.replace(old_whitespace, new_whitespace, 1)
