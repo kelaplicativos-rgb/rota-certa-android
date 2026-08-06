@@ -11,5 +11,6 @@ trap cleanup EXIT
 
 cp "$PATCH_REPOSITORY/scripts/build_rota_certa_0186.sh" "$WRAPPER"
 python3 "$PATCH_REPOSITORY/scripts/inject_build_rota_certa_0187.py" "$WRAPPER"
+python3 "$PATCH_REPOSITORY/scripts/inject_build_rota_certa_0187_phase2_contract.py" "$WRAPPER"
 bash -n "$WRAPPER"
 bash "$WRAPPER" "$PATCH_REPOSITORY"
