@@ -70,38 +70,39 @@ jobs:
           bash ../patches/scripts/build_rota_certa_0185.sh ../patches 2>&1 | tee base-0.1.185-materialization.log
           rm -rf artifact-0.1.185
 
-      - name: Apply isolated grid patch and protect unrelated code
+      - name: Verify patch checksum and protected inputs
         working-directory: source
         run: |
           set -euo pipefail
           PATCH_FILE="../patches/patches/fix-shortcut-grid-close-0186.patch"
           echo "$PATCH_SHA256  $PATCH_FILE" | sha256sum --check
 
-          PROTECTED_FILES=(
-            app/src/main/AndroidManifest.xml
-            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/ExplicitPackageTransitionPolicy0185.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealtimeEventGate0167.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
-            app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
-          )
+          cat > "${RUNNER_TEMP}/grid-close-protected-files.txt" <<'EOF'
+          app/src/main/AndroidManifest.xml
+          app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/RideCardConfirmationPolicy0185.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/ExplicitPackageTransitionPolicy0185.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealtimeEventGate0167.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolSelectedAppInputPolicy0166.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/FarolUnifiedVisual0168.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+          app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+          EOF
+          sed -i 's/^          //' "${RUNNER_TEMP}/grid-close-protected-files.txt"
+          mapfile -t PROTECTED_FILES < "${RUNNER_TEMP}/grid-close-protected-files.txt"
           for protected_file in "${PROTECTED_FILES[@]}"; do
             test -f "$protected_file" || {
               echo "Arquivo protegido ausente: $protected_file" >&2
               exit 1
             }
           done
-
           sha256sum "${PROTECTED_FILES[@]}" > "${RUNNER_TEMP}/protected-before.txt"
 
           python3 - <<'PY'
@@ -117,12 +118,26 @@ jobs:
           Path('/tmp/grid-close-before.json').write_text(json.dumps(hashes, sort_keys=True), encoding='utf-8')
           PY
 
+      - name: Check and apply isolated grid patch
+        working-directory: source
+        run: |
+          set -euo pipefail
+          PATCH_FILE="../patches/patches/fix-shortcut-grid-close-0186.patch"
           git apply --check "$PATCH_FILE"
           git apply "$PATCH_FILE"
 
+      - name: Verify protected files remain unchanged
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mapfile -t PROTECTED_FILES < "${RUNNER_TEMP}/grid-close-protected-files.txt"
           sha256sum "${PROTECTED_FILES[@]}" > "${RUNNER_TEMP}/protected-after.txt"
           diff -u "${RUNNER_TEMP}/protected-before.txt" "${RUNNER_TEMP}/protected-after.txt"
 
+      - name: Verify exact materialized scope
+        working-directory: source
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json
@@ -147,8 +162,18 @@ jobs:
               raise SystemExit(f'Escopo materializado divergente. Esperado={expected}; encontrado={changed}')
           PY
 
+      - name: Verify patch hygiene
+        working-directory: source
+        run: |
+          set -euo pipefail
+          echo "Repository status after isolated patch:"
+          git status --short
           git diff --check
 
+      - name: Verify grid backdrop contract
+        working-directory: source
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
