@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   deterministic-replay:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - name: Checkout exact pull request head without marketplace actions
