@@ -9,12 +9,14 @@ on:
       - scripts/inject_build_rota_certa_0187.py
       - scripts/inject_build_rota_certa_0187_phase2_contract.py
       - scripts/inject_build_rota_certa_0187_phase3.py
+      - scripts/inject_build_rota_certa_0187_phase4.py
       - patches/farol-runtime-0187.patch.gz.b64
       - patches/farol-runtime-0187-test-compat.patch.gz.b64
       - patches/farol-runtime-0187-phase2.patch.gz.b64
       - patches/farol-runtime-0187-phase2-testfix.patch.gz.b64
       - patches/farol-runtime-0187-phase2-legacy-contract.patch.gz.b64
       - patches/farol-runtime-0187-phase3.patch
+      - patches/farol-runtime-0187-phase4.patch.gz.b64
   workflow_dispatch:
 
 concurrency:
@@ -111,11 +113,11 @@ jobs:
           Rota Certa 0.1.187 (5471)
 
           - Captura pacote, janela e texto a partir da mesma raiz de acessibilidade.
-          - Revalida pacote, sessão, janela e gerações antes e depois do processamento assíncrono.
           - Snapshot incoerente é descartado sem apagar decisão válida da bolinha.
-          - Incompatibilidade de janela invalida apenas o trabalho assíncrono e preserva o visual.
+          - Todas as rotas carregam pacote, sessão, janela, gerações, hash da tela e assinatura do destino.
+          - Resultado de rota atrasado é rejeitado mesmo quando a chamada de rede ignora o cancelamento.
+          - Troca de sessão, rejeição de janela e limpeza usam cancelamento central de rota, análise, OCR e confirmação parcial.
           - Amarelo exige tela coerente do aplicativo selecionado sem card válido; cinza exige transição externa confirmada.
-          - Mantém a recuperação vinculada à assinatura e ao mesmo card confirmado.
           - Testes, Android Lint, assembleDebug, pacote, versão, ZIP/DEX e assinatura validados no workflow.
           - SHA-256: ${ACTUAL_SHA}
           - Validação funcional final no Samsung SM-S911B/Android 16 ainda necessária.
