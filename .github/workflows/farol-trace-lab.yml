@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: farol-trace-lab-${{ github.event.pull_request.number || github.ref }}
@@ -25,13 +25,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Checkout exact pull request head without marketplace actions
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify Python runtime
+        run: python3 --version
       - name: Run replay unit tests
         run: python3 -m unittest discover -s tests -p 'test_farol_trace*.py' -v
       - name: Run strict report replay
@@ -39,19 +44,3 @@ jobs:
           python3 tools/farol_trace_lab.py
           --fixture tests/fixtures/farol_trace_20260806_sanitized.json
           --strict
-      - name: Register validated phase in project records
-        if: github.event_name == 'pull_request'
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          python3 scripts/register_farol_trace_lab_phase1.py
-          if git diff --quiet; then
-            echo "trace_lab_project_records=already_registered"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
-          git commit -m "Document deterministic farol trace lab phase"
-          git push origin "HEAD:${HEAD_BRANCH}"
