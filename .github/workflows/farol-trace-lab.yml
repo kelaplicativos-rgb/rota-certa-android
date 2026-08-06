@@ -7,6 +7,7 @@ on:
       - .github/workflows/farol-trace-lab.yml
       - tools/farol_trace_lab.py
       - tests/test_farol_trace_lab.py
+      - tests/test_farol_trace_phase3.py
       - tests/fixtures/farol_trace_20260806_sanitized.json
       - scripts/register_farol_trace_lab_phase1.py
       - docs/FAROL_TRACE_REPLAY_LAB.md
@@ -32,7 +33,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run replay unit tests
-        run: python3 -m unittest discover -s tests -p 'test_farol_trace_lab.py' -v
+        run: python3 -m unittest discover -s tests -p 'test_farol_trace*.py' -v
       - name: Run strict report replay
         run: >-
           python3 tools/farol_trace_lab.py
