@@ -12,7 +12,6 @@ import re
 import sys
 
 path = Path(sys.argv[1])
-patch_repository = Path(sys.argv[2])
 text = path.read_text(encoding="utf-8")
 
 apply_block = r'''PATCH_0187_B64="$PATCH_REPOSITORY/patches/farol-runtime-0187.patch.gz.b64"
@@ -42,15 +41,39 @@ matches = list(pattern.finditer(text))
 if len(matches) != 1:
     raise SystemExit(f"Final Gradle validation command count was {len(matches)}, expected exactly one")
 match = matches[0]
-replacement = apply_block + match.group('indent') + match.group('command')
-text = text[:match.start()] + replacement + text[match.end():]
-text = text.replace('0.1.186', '0.1.187')
-text = text.replace('5470', '5471')
-text = text.replace(
-    'rota-certa-0.1.187-grade-audio-links-corretor-validado.apk',
-    'rota-certa-0.1.187-farol-runtime-validado.apk',
+prefix = text[:match.start()]
+suffix = text[match.start():]
+
+# Preserve every byte of the validated 0.1.186 materialization and its embedded
+# patches. Only the final validation/output tail runs after 0.1.187 is applied.
+replacements = {
+    'OUTPUT_DIR="artifact-0.1.186"': 'OUTPUT_DIR="artifact-0.1.187"',
+    'APK_NAME="rota-certa-0.1.186-grade-audio-links-corretor-validado.apk"': 'APK_NAME="rota-certa-0.1.187-farol-runtime-validado.apk"',
+    "versionCode='5470' versionName='0.1.186'": "versionCode='5471' versionName='0.1.187'",
+    'versionName=0.1.186': 'versionName=0.1.187',
+    'versionCode=5470': 'versionCode=5471',
+}
+for old, new in replacements.items():
+    count = suffix.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected exactly one final-tail marker {old!r}, found {count}")
+    suffix = suffix.replace(old, new, 1)
+
+contracts_marker = 'COMPILED_CONTRACTS=(\n'
+if suffix.count(contracts_marker) != 1:
+    raise SystemExit("Compiled-contract marker not found exactly once")
+suffix = suffix.replace(
+    contracts_marker,
+    contracts_marker
+    + '  FarolRuntimeSafety0187\n'
+    + '  SAME_CARD_RECOVERY_BINDING_0187\n'
+    + '  MONOTONIC_FAROL_TIME_0187\n',
+    1,
 )
-path.write_text(text, encoding="utf-8")
+
+replacement = apply_block + match.group('indent') + match.group('command')
+suffix = replacement + suffix[match.end() - match.start():]
+path.write_text(prefix + suffix, encoding="utf-8")
 PY0187
 
 bash -n "$ORIGINAL_SCRIPT"
