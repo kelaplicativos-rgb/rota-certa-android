@@ -21,6 +21,8 @@ jobs:
   materialize:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -66,7 +68,7 @@ jobs:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-real-device
         run: |
           set -o pipefail
-          bash ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee materialize-real-device.log
+          bash -x ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee materialize-real-device.log
 
       - name: Package effective farol source and diagnostics
         if: always()
