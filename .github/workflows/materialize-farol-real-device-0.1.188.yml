@@ -1,0 +1,92 @@
+name: Materialize farol real-device source 0.1.188
+
+on:
+  pull_request:
+    branches: [agent/fix-farol-runtime-0.1.187]
+    paths:
+      - .github/workflows/materialize-farol-real-device-0.1.188.yml
+      - scripts/**
+      - tests/**
+      - patches/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-real-device-materialize-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify diagnostic commit
+        working-directory: patches
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize and validate current 0.1.187 source
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-real-device
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee materialize-real-device.log
+
+      - name: Package effective farol source
+        run: |
+          set -euo pipefail
+          mkdir -p effective-source/app-main effective-source/app-test
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt effective-source/app-main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt effective-source/app-main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt effective-source/app-main/
+          cp source/app/src/main/java/br/com/mapeiaia/rotacerta/RideOfferDetector.kt effective-source/app-main/ 2>/dev/null || true
+          find source/app/src/test/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f \
+            \( -name '*Farol*Test.kt' -o -name '*Ride*Test.kt' -o -name '*Universal*Test.kt' \) \
+            -exec cp {} effective-source/app-test/ \;
+          cp source/materialize-real-device.log effective-source/
+          cp -a source/artifact-0.1.187 effective-source/
+          find effective-source -type f -print0 | sort -z | xargs -0 sha256sum > effective-source/files.sha256
+
+      - name: Upload effective source and validated baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: farol-effective-source-0.1.187-real-device
+          path: effective-source/
+          retention-days: 14
+          if-no-files-found: error
