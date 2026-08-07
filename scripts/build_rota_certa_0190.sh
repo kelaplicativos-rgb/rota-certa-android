@@ -14,7 +14,8 @@ cleanup() {
 trap cleanup EXIT
 
 # 1) Reproduz exatamente a candidata 0.1.189 já validada em CI.
-bash "$PATCH_REPOSITORY/scripts/build_rota_certa_0189.sh" "$PATCH_REPOSITORY"
+#    Usa as partes com SHA-256, que são a fonte robusta da 0.1.189; o transporte .gz.b64 é regenerado no runner.
+bash "$PATCH_REPOSITORY/scripts/build_rota_certa_0189_parts.sh" "$PATCH_REPOSITORY"
 grep -Fq 'versionCode = 5473' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.189"' app/build.gradle.kts
 
