@@ -15,6 +15,11 @@ git apply --check "$PATCH_0187_PHASE4"
 git apply "$PATCH_0187_PHASE4"
 rm -f "$PATCH_0187_PHASE4"
 
+PHASE4_SIGNATURE_FIX="$PATCH_REPOSITORY_0187_PHASE4/scripts/fix_farol_phase4_address_signature.py"
+PHASE4_SERVICE="app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+python3 "$PHASE4_SIGNATURE_FIX" --self-test
+python3 "$PHASE4_SIGNATURE_FIX" "$PHASE4_SERVICE"
+
 grep -Fq 'DECISION_RESULT_MONOTONIC_BINDING_0187_PHASE4' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
 grep -Fq 'BUBBLE_ASYNC_WORK_INVALIDATED_0187_PHASE4' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'BUBBLE_ROUTE_RESULT_DISCARDED_0187_PHASE4' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -28,6 +33,8 @@ if 'FarolDecisionBindingPolicy0187Phase4.isFresh' not in service:
     raise SystemExit('Resultado da rota não usa o vínculo monotônico da fase 4')
 if 'DECISION_RESULT_MONOTONIC_BINDING_0187_PHASE4' not in safety:
     raise SystemExit('Contrato de vínculo monotônico ausente')
+if 'addressSignature = addressSignature' in service:
+    raise SystemExit('Referência addressSignature fora de escopo permanece após reparo')
 start = service.index('private fun invalidateFarolAsyncWork0187Phase4')
 end = service.index('private fun invalidateRejectedSnapshotRead0187Phase3', start)
 block = service[start:end]
