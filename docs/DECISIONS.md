@@ -1,3 +1,17 @@
+<!-- FAROL_0189_DECISION_START -->
+## 07/08/2026 — autoridade visual monotônica e estado laranja
+
+- **Cinza:** aplicativo monitorado inativo ou tela externa/passiva confirmada.
+- **Amarelo:** pacote selecionado ativo, ainda sem destino final suficientemente confirmado.
+- **Laranja:** dois ou mais endereços pertencem ao mesmo bloco/card atual e o último foi confirmado como destino final; a rota real para Casa/Alfinete já está em cálculo. Laranja nunca exibe quilômetros antigos.
+- **Verde/vermelho:** continuam exclusivamente após rota real e `DecisionEngine`, conforme raio de Casa/Alfinete.
+- **Prioridade:** maior camada de janela vence; dentro dela o bloco visual superior atual possui autoridade. Novo bloco superior invalida imediatamente OCR, rota e identidade visual anteriores.
+- **Último endereço:** com dois ou mais endereços no mesmo bloco coerente, o último desse bloco é o destino final; é proibido usar o último endereço do texto global da tela ou juntar cards distintos.
+- **OCR:** no máximo uma execução ativa por identidade de pacote/sessão/janela/geração/bloco; eventos repetidos são deduplicados e trabalho antigo é cancelado na mudança de autoridade.
+- **Universalidade:** nenhuma regra depende de Uber, 99 ou inDrive para decidir cor; aplicativos conhecidos e desconhecidos seguem o mesmo núcleo.
+- **Limite real:** latência de rede do provedor de rota não pode ser garantida abaixo de 1 segundo, mas o aplicativo não adiciona espera deliberada depois de confirmar o destino; cache válido pode finalizar imediatamente.
+<!-- FAROL_0189_DECISION_END -->
+
 <!-- FAROL_0188_DECISION_START -->
 ## 06/08/2026 — nenhuma rota sem card coerente atual
 
