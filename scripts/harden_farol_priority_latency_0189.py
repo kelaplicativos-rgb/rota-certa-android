@@ -45,6 +45,7 @@ def main() -> None:
         "RadarColor.Orange",
         "collectAccessibilityCardBlocks0188",
         "collectOcrCardBlocks0188",
+        'details = "delay_ms=0;',
     ))
 
     gate = require(root / GATE, (
@@ -81,6 +82,9 @@ def main() -> None:
         "separatedAddressLinesWithIntermediateContentStayInSameVisualCard",
         "largeGapSeparatesStackedCards",
     ))
+
+    if "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS)" in service:
+        raise SystemExit("OCR fallback voltou a introduzir espera artificial")
 
     if "applyRecoveredCard0161(" in service.replace("private suspend fun applyRecoveredCard0161(", ""):
         raise SystemExit("Recuperação antiga voltou a possuir chamada capaz de pintar o farol")
