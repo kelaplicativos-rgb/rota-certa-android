@@ -1,15 +1,29 @@
-<!-- FAROL_0188_CI_PENDING_DEVICE_START -->
-## 06/08/2026 — 0.1.188 aprovada em CI, validação física obrigatória pendente
+<!-- FAROL_0189_CI_PENDING_DEVICE_START -->
+## 07/08/2026 — 0.1.189 prioridade visual/latência aprovada em CI; aparelho pendente
 
-- **Branch:** `agent/fix-farol-real-device-0.1.188`; **base:** `agent/fix-farol-runtime-0.1.187`.
-- **Head validado em CI:** `7ee92f9bd3b87fa43323aeec7498285643ce557b`; **workflow run:** `31173363429`.
-- **Versão:** `0.1.188`; **versionCode:** 5472; **pacote:** `br.com.mapeiaia.rotacerta`.
-- **Reprovação anterior:** a 0.1.187 pintou decisões sem tentativa reconhecida no Samsung SM-S911B/Android 16 e não é funcionalmente aprovada.
-- **Correção:** captura por janela/subárvore, OCR espacial, segmentação de cards e autorização obrigatória antes da rota; a recuperação antiga ficou somente diagnóstica.
-- **Testes CI:** tests=364; failures=0; Android Lint e `clean assembleDebug` aprovados.
-- **APK candidato:** `rota-certa-0.1.188-candidate.apk`, 56157135 bytes; SHA-256 `7bd50214a7bbe7ee30395a8d9e3103ab4aeeae3d37df48e36a2f8b3d9dc3c851`.
-- **Link candidato:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.188/rota-certa-0.1.188-candidate.apk
-- **Distribuição:** o link permanente não foi substituído; aprovação funcional depende do teste físico completo.
+- **Branch:** `agent/fix-farol-priority-latency-0.1.189`; **PR:** #67; **base:** `agent/fix-farol-real-device-0.1.188`.
+- **Head validado em CI:** `abfc15ee017f1655804d94199fc63c76061d39e1`; **workflow run:** `31182848428`.
+- **Versão:** `0.1.189`; **versionCode:** 5473; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Pedido:** reduzir decisão para o caminho crítico mínimo, priorizar imediatamente a janela/bloco visual superior e preservar amarelo para pacote ativo, introduzindo laranja quando o último endereço do card atual foi confirmado e a rota real está em cálculo.
+- **Causa:** segmentação 0.1.188 tratava linhas OCR do mesmo card como blocos independentes e reagendava OCR repetidamente para a mesma geração; isso gerava falsos negativos e desperdício de tempo.
+- **Correção:** `FarolVisualPriority0189` agrupa fragmentos por geometria; maior camada de janela e bloco visual superior têm autoridade monotônica; novo bloco invalida a identidade anterior; dois ou mais endereços do mesmo bloco usam o último como destino; OCR é single-flight/deduplicado por identidade de geração/bloco; laranja é aplicado antes de cache/rede e nunca mostra quilômetros sem rota real.
+- **Fronteiras preservadas:** `DecisionEngine`, `GoogleMapsService`, `GpsAddressResolver`, `RideTextParser`, Manifest/permissões, radares e alertas permaneceram byte a byte iguais na cadeia de build.
+- **Testes CI:** tests=369; failures=0; Android Lint e `clean assembleDebug` aprovados.
+- **Artifact:** `rota-certa-0.1.189-release-candidate`, ID `8996015949`, referência/digest `45f10b1e15339d64c3c31da1e459422b238f1b8aa3d1d056c8b537bc69b35726`.
+- **APK candidato:** `rota-certa-0.1.189-candidate.apk`, 56157135 bytes; assinatura APK v2 conferida; SHA-256 `3c81ec2a4984970e9d1003a038c7021fa8ac448d36bf22df5c4aadd830e5eb36`.
+- **Link candidato:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.189/rota-certa-0.1.189-candidate.apk
+- **Distribuição:** `latest` não é substituído; aprovação funcional exige novo teste físico no Samsung SM-S911B/Android 16, especialmente 99, Uber popup, múltiplos cards, troca de bloco e tempo entre amarelo→laranja→verde/vermelho.
+<!-- FAROL_0189_CI_PENDING_DEVICE_END -->
+
+<!-- FAROL_0188_CI_PENDING_DEVICE_START -->
+## 07/08/2026 — 0.1.188 reprovada no aparelho real
+
+- **Branch:** `agent/fix-farol-real-device-0.1.188`; **PR:** #66; **versão:** `0.1.188`; **versionCode:** 5472; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **CI anterior:** run `31173363429`, tests=364, failures=0, Lint e `clean assembleDebug` aprovados; o sucesso do CI não representou aprovação funcional.
+- **Prova física:** relatório manual `rota-certa-relatorio-depuracao (32).txt`, Samsung SM-S911B / Android 16.
+- **Falha:** falso negativo real — OCR encontrou origem e destino da mesma oferta, mas o gate os classificou como blocos diferentes e recusou a rota; nenhuma decisão verde/vermelha foi pintada na sessão.
+- **Latência:** o relatório registrou `Tempo da ultima decisao: 1643 ms` e forte reagendamento de OCR para as mesmas gerações.
+- **Conclusão:** 0.1.188 permanece apenas como referência histórica/candidata reprovada; não promover para `latest`.
 <!-- FAROL_0188_CI_PENDING_DEVICE_END -->
 
 <!-- FAROL_PHASE4_VALIDATED_STATUS_START -->
