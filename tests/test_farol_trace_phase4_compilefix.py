@@ -12,34 +12,43 @@ SPEC.loader.exec_module(MODULE)
 
 
 class Phase4AddressSignatureCompileFixTest(unittest.TestCase):
-    def test_named_argument_value_is_rebound_to_destination_signature(self):
+    def test_named_argument_value_can_use_declared_destination_signature(self):
         source = """
 private fun createBinding(destinationSignature: String) {
-    val binding = Token(
-        addressSignature = addressSignature,
-    )
+    val token = Token(addressSignature = addressSignature)
 }
 """
         repaired = MODULE.repair_source(source)
         self.assertIn("addressSignature = destinationSignature", repaired)
-        self.assertNotIn("addressSignature = addressSignature", repaired)
+
+    def test_result_persistence_uses_immutable_phase4_binding(self):
+        source = """
+private fun applyResult(
+    binding0187Phase4: FarolDecisionBinding0187Phase4,
+) {
+    val signature = listOf(addressSignature, "green").joinToString("|")
+}
+"""
+        repaired = MODULE.repair_source(source)
+        self.assertIn("binding0187Phase4.addressSignature", repaired)
+        self.assertNotRegex(repaired, MODULE.BARE_ADDRESS_VALUE)
 
     def test_declared_address_signature_is_never_rewritten(self):
         source = """
-private fun createBinding(destinationSignature: String, addressSignature: String) {
-    val binding = Token(addressSignature)
+private fun applyResult(addressSignature: String) {
+    persist(addressSignature)
 }
 """
         with self.assertRaises(SystemExit):
             MODULE.repair_source(source)
 
-    def test_ambiguous_candidates_fail_closed(self):
+    def test_two_bindings_fail_closed(self):
         source = """
-private fun first(destinationSignature: String) {
-    use(addressSignature)
-}
-private fun second(destinationSignature: String) {
-    use(addressSignature)
+private fun applyResult(
+    first: FarolDecisionBinding0187Phase4,
+    second: FarolDecisionBinding0187Phase4,
+) {
+    persist(addressSignature)
 }
 """
         with self.assertRaises(SystemExit):
