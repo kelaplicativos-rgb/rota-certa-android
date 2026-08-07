@@ -1,8 +1,8 @@
 name: Materialize exact Rota Certa 0.1.188 effective source
 
 on:
-  push:
-    branches: [agent/fix-farol-priority-latency-0.1.189]
+  pull_request:
+    branches: [agent/fix-farol-real-device-0.1.188]
     paths:
       - .github/workflows/materialize-rota-certa-0.1.188-effective.yml
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rota-certa-0188-effective-source
+  group: rota-certa-0188-effective-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 180
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+      EFFECTIVE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -32,10 +33,14 @@ jobs:
       - name: Checkout exact cumulative head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.EFFECTIVE_HEAD }}
           fetch-depth: 0
           persist-credentials: false
           path: patches
+
+      - name: Verify exact head
+        working-directory: patches
+        run: test "$(git rev-parse HEAD)" = "$EFFECTIVE_HEAD"
 
       - uses: actions/setup-python@v5
         with:
@@ -66,7 +71,7 @@ jobs:
           cp source/app/src/main/AndroidManifest.xml effective-0188/AndroidManifest.xml
           cp source/effective-0188.log effective-0188/
           cp -a source/artifact-0.1.188 effective-0188/validated-artifact
-          printf 'head=%s\n' '${{ github.sha }}' > effective-0188/head.txt
+          printf 'head=%s\n' "$EFFECTIVE_HEAD" > effective-0188/head.txt
           find effective-0188 -type f -print0 | sort -z | xargs -0 sha256sum > effective-0188/files.sha256
 
       - name: Upload exact effective source
