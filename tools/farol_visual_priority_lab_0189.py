@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Deterministic oracle for Rota Certa 0.1.189 visual authority.
 
-This model is test-only. It encodes the runtime contract before the Android
-implementation is changed:
+Test-only model for the final user-visible contract:
 - highest interactive window layer wins;
 - inside that window, the uppermost coherent card wins;
 - a new authoritative card invalidates the previous one immediately;
-- yellow exists only after final destination confirmation and before route result;
+- gray means no selected app is active;
+- yellow means the selected app is active but no final destination is confirmed;
+- orange means a final destination was confirmed in the authoritative block and
+  the real route is pending;
+- green/red are intentionally outside this oracle because they require a real
+  route result and remain owned by DecisionEngine;
 - different cards are never merged merely to reach two addresses.
 """
 from __future__ import annotations
@@ -60,7 +64,7 @@ def select_authority(selected_package: str, blocks: list[VisualBlock]) -> Author
         return None
     highest_layer = max(block.window_layer for block in candidates)
     in_front_window = [block for block in candidates if block.window_layer == highest_layer]
-    # Android coordinates grow downward: smaller top means visually higher.
+    # Android screen coordinates grow downward: smaller top means visually higher.
     winner = min(in_front_window, key=lambda block: (block.top, block.bottom, block.block_id))
     return Authority(
         key=(winner.package_name, winner.window_id, winner.block_id),
@@ -68,8 +72,17 @@ def select_authority(selected_package: str, blocks: list[VisualBlock]) -> Author
     )
 
 
-def transition(previous: Authority | None, current: Authority | None) -> Transition:
+def transition(
+    previous: Authority | None,
+    current: Authority | None,
+    *,
+    selected_package_active: bool,
+) -> Transition:
     changed = previous is not None and (current is None or previous.key != current.key)
-    # New user contract: before final destination confirmation the bubble is gray.
-    color = "yellow" if current is not None else "gray"
+    if current is not None:
+        color = "orange"
+    elif selected_package_active:
+        color = "yellow"
+    else:
+        color = "gray"
     return Transition(previous, current, changed, color)
