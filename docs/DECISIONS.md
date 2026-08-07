@@ -1,3 +1,15 @@
+<!-- FAROL_PHASE4_VALIDATED_DECISION_START -->
+## 06/08/2026 — persistência e aplicação pertencem ao vínculo imutável da decisão
+
+- **Fonte única:** depois que uma rota é iniciada, pacote, sessão, janela, gerações, hash da tela e assinatura do destino pertencem ao mesmo `FarolDecisionBinding0187Phase4`.
+- **Sem parâmetros soltos:** aplicação, deduplicação e persistência do resultado não podem usar uma assinatura avulsa removida do escopo; devem ler a assinatura do vínculo que foi revalidado.
+- **Antes e depois da suspensão:** o vínculo deve continuar atual antes da chamada, após a rede/cache e imediatamente antes de alterar destino, quilômetros, cor ou histórico.
+- **Resultado atrasado:** vínculo de sessão ou janela anterior registra descarte e não substitui a decisão visual mais recente, mesmo que a chamada de rede ignore cancelamento.
+- **Reparo fail-closed:** correção de materialização só pode atuar quando existir exatamente uma referência nua inválida e uma única fonte tipada no método. Ambiguidade interrompe o build.
+- **Teste estrutural:** contratos devem verificar o uso da propriedade do vínculo no bloco funcional, não proibir sequências textuais legítimas em outras estruturas.
+- **Núcleo universal:** nenhuma correção de concorrência autoriza adaptador a decidir cor, altera `DecisionEngine`, mistura cards ou relaxa a confirmação do destino final.
+<!-- FAROL_PHASE4_VALIDATED_DECISION_END -->
+
 <!-- FAROL_PHASE3_VALIDATED_DECISION_START -->
 ## 06/08/2026 — rejeitar uma leitura não é prova para apagar o farol
 
