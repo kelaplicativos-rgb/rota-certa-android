@@ -1,3 +1,15 @@
+<!-- FAROL_0188_DECISION_START -->
+## 06/08/2026 — nenhuma rota sem card coerente atual
+
+- O pacote selecionado autoriza observar, mas nunca autoriza verde ou vermelho sozinho.
+- Acessibilidade e OCR preservam pacote, janela, limites e bloco de origem de cada texto.
+- Dois ou mais endereços só autorizam rota quando pertencem ao mesmo card/modal coerente.
+- O destino final é o último endereço confirmado dentro desse card, nunca o último endereço do texto global da tela.
+- Recuperação, cache, OCR ou modelo não podem criar decisão sem card atual confirmado.
+- Telas passivas, login, segurança, reconhecimento facial, status, documentos e carregamento falham fechado em amarelo, sem quilômetros.
+- Compilação e testes não substituem validação física do farol.
+<!-- FAROL_0188_DECISION_END -->
+
 <!-- FAROL_PHASE4_VALIDATED_DECISION_START -->
 ## 06/08/2026 — persistência e aplicação pertencem ao vínculo imutável da decisão
 
