@@ -41,7 +41,7 @@ class FarolVisualPriority0189Test(unittest.TestCase):
         ]
         self.assertIsNone(select_authority("unknown.driver", blocks))
 
-    def test_new_top_block_invalidates_previous_immediately(self) -> None:
+    def test_new_top_block_invalidates_previous_and_turns_orange(self) -> None:
         first = select_authority(
             "com.example.driver",
             [VisualBlock("com.example.driver", 40, 1, "old", 100, 500, ("O1", "O2"))],
@@ -50,19 +50,31 @@ class FarolVisualPriority0189Test(unittest.TestCase):
             "com.example.driver",
             [VisualBlock("com.example.driver", 41, 4, "new-popup", 450, 850, ("N1", "N2"))],
         )
-        change = transition(first, second)
+        change = transition(first, second, selected_package_active=True)
         self.assertTrue(change.invalidate_previous)
-        self.assertEqual("yellow", change.color)
+        self.assertEqual("orange", change.color)
         self.assertEqual("N2", change.current.destination)
 
-    def test_no_confirmed_destination_is_gray_not_yellow(self) -> None:
+    def test_selected_package_without_final_destination_is_yellow(self) -> None:
         current = select_authority(
             "com.example.driver",
             [VisualBlock("com.example.driver", 50, 2, "partial", 100, 500, ("ONLY_ONE",))],
         )
-        change = transition(None, current)
+        change = transition(None, current, selected_package_active=True)
         self.assertIsNone(current)
+        self.assertEqual("yellow", change.color)
+
+    def test_external_or_inactive_screen_is_gray(self) -> None:
+        change = transition(None, None, selected_package_active=False)
         self.assertEqual("gray", change.color)
+
+    def test_three_addresses_use_last_inside_same_authoritative_block(self) -> None:
+        authority = select_authority(
+            "com.example.driver",
+            [VisualBlock("com.example.driver", 60, 2, "ride", 100, 700, ("ORIGIN", "STOP", "FINAL"))],
+        )
+        self.assertEqual("FINAL", authority.destination)
+        self.assertEqual("orange", transition(None, authority, selected_package_active=True).color)
 
     def test_other_package_cannot_take_authority(self) -> None:
         blocks = [
