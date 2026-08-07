@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Corrige somente a referência de assinatura fora de escopo da fase 4.
 
-O reparo é intencionalmente fail-closed: exige um único método que declare
-`destinationSignature`, não declare `addressSignature` e contenha exatamente
-uma utilização de `addressSignature` que não seja o rótulo de argumento
-nomeado. Qualquer divergência imprime contexto sanitizado e interrompe a
-materialização.
+A fase 4 substituiu parâmetros soltos por um `FarolDecisionBinding0187Phase4`.
+O reparo é fail-closed: localiza exatamente um identificador nu
+`addressSignature` sem declaração no método e o vincula à única fonte válida
+no mesmo escopo — `destinationSignature` declarado ou a propriedade do único
+vínculo imutável da fase 4. Qualquer ambiguidade interrompe a materialização.
 """
 from __future__ import annotations
 
@@ -23,7 +23,15 @@ DESTINATION_DECLARATION = re.compile(
 ADDRESS_DECLARATION = re.compile(
     r"(?:\baddressSignature\s*:\s*String\b|\b(?:val|var)\s+addressSignature\b)"
 )
-ADDRESS_VALUE = re.compile(r"\baddressSignature\b(?!\s*=)")
+BARE_ADDRESS_VALUE = re.compile(
+    r"(?<![A-Za-z0-9_.])\baddressSignature\b(?!\s*=)"
+)
+BINDING_PARAMETER = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*FarolDecisionBinding0187Phase4\b"
+)
+BINDING_LOCAL = re.compile(
+    r"\b(?:val|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*createDecisionBinding0187Phase4\s*\("
+)
 
 
 def function_blocks(source: str) -> list[tuple[int, int]]:
@@ -36,30 +44,41 @@ def function_blocks(source: str) -> list[tuple[int, int]]:
 
 def print_address_context(source: str) -> None:
     lines = source.splitlines()
-    occurrences = [index for index, line in enumerate(lines) if "addressSignature" in line]
-    print(f"phase4_address_signature_occurrences={len(occurrences)}")
+    occurrences = [index for index, line in enumerate(lines) if BARE_ADDRESS_VALUE.search(line)]
+    print(f"phase4_bare_address_signature_occurrences={len(occurrences)}")
     for index in occurrences:
-        start = max(0, index - 8)
-        end = min(len(lines), index + 9)
-        print(f"--- addressSignature context line {index + 1} ---")
+        start = max(0, index - 60)
+        end = min(len(lines), index + 13)
+        print(f"--- bare addressSignature context line {index + 1} ---")
         for line_index in range(start, end):
             print(f"{line_index + 1:05d}: {lines[line_index]}")
 
 
+def replacement_for_block(block: str) -> str | None:
+    replacements: list[str] = []
+    if DESTINATION_DECLARATION.search(block):
+        replacements.append("destinationSignature")
+    binding_names = set(BINDING_PARAMETER.findall(block)) | set(BINDING_LOCAL.findall(block))
+    replacements.extend(f"{name}.addressSignature" for name in sorted(binding_names))
+    unique = list(dict.fromkeys(replacements))
+    return unique[0] if len(unique) == 1 else None
+
+
 def repair_source(source: str) -> str:
-    candidates: list[tuple[int, int, str]] = []
+    candidates: list[tuple[int, int, str, str]] = []
     for start, end in function_blocks(source):
         block = source[start:end]
-        if "addressSignature" not in block:
-            continue
-        if not DESTINATION_DECLARATION.search(block):
+        if not BARE_ADDRESS_VALUE.search(block):
             continue
         if ADDRESS_DECLARATION.search(block):
             continue
-        value_uses = list(ADDRESS_VALUE.finditer(block))
+        value_uses = list(BARE_ADDRESS_VALUE.finditer(block))
         if len(value_uses) != 1:
             continue
-        candidates.append((start, end, block))
+        replacement = replacement_for_block(block)
+        if replacement is None:
+            continue
+        candidates.append((start, end, block, replacement))
 
     if len(candidates) != 1:
         print_address_context(source)
@@ -67,44 +86,37 @@ def repair_source(source: str) -> str:
             "phase4 addressSignature scope candidate count=" + str(len(candidates))
         )
 
-    start, end, block = candidates[0]
-    repaired_block, replacements = ADDRESS_VALUE.subn("destinationSignature", block)
+    start, end, block, replacement = candidates[0]
+    repaired_block, replacements = BARE_ADDRESS_VALUE.subn(replacement, block)
     if replacements != 1:
         print_address_context(source)
         raise SystemExit(f"phase4 addressSignature replacement count={replacements}")
-    if not DESTINATION_DECLARATION.search(repaired_block):
-        raise SystemExit("phase4 destinationSignature declaration lost after repair")
-    if ADDRESS_VALUE.search(repaired_block):
+    if BARE_ADDRESS_VALUE.search(repaired_block):
         print_address_context(repaired_block)
-        raise SystemExit("phase4 unresolved addressSignature value remains")
+        raise SystemExit("phase4 unresolved bare addressSignature remains")
     return source[:start] + repaired_block + source[end:]
 
 
 def self_test() -> None:
-    named = """
+    destination = """
 private fun binding(destinationSignature: String) {
-    val binding = Token(
-        addressSignature = addressSignature,
-    )
+    val token = Token(addressSignature = addressSignature)
 }
 """
-    repaired_named = repair_source(named)
-    assert "addressSignature = destinationSignature" in repaired_named
+    assert "addressSignature = destinationSignature" in repair_source(destination)
 
-    positional = """
-private fun binding(destinationSignature: String) {
-    val binding = Token(
-        destinationSignature,
-        addressSignature,
-    )
+    immutable_binding = """
+private fun applyResult(
+    binding0187Phase4: FarolDecisionBinding0187Phase4,
+) {
+    persist(addressSignature)
 }
 """
-    repaired_positional = repair_source(positional)
-    assert repaired_positional.count("destinationSignature") == 3
+    assert "persist(binding0187Phase4.addressSignature)" in repair_source(immutable_binding)
 
     declared = """
 private fun binding(destinationSignature: String, addressSignature: String) {
-    val binding = Token(addressSignature)
+    persist(addressSignature)
 }
 """
     try:
@@ -113,6 +125,21 @@ private fun binding(destinationSignature: String, addressSignature: String) {
         pass
     else:
         raise AssertionError("declared addressSignature must not be rewritten")
+
+    ambiguous = """
+private fun applyResult(
+    first: FarolDecisionBinding0187Phase4,
+    second: FarolDecisionBinding0187Phase4,
+) {
+    persist(addressSignature)
+}
+"""
+    try:
+        repair_source(ambiguous)
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("ambiguous bindings must fail closed")
 
 
 def main() -> None:
@@ -133,7 +160,7 @@ def main() -> None:
     if repaired == original:
         raise SystemExit("phase4 addressSignature repair produced no change")
     args.path.write_text(repaired, encoding="utf-8")
-    print("phase4_address_signature_scope_fix=applied")
+    print("phase4_address_signature_scope_fix=immutable_binding")
 
 
 if __name__ == "__main__":
