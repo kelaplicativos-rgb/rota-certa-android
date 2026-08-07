@@ -1,3 +1,17 @@
+<!-- FAROL_0188_CI_PENDING_DEVICE_START -->
+## 06/08/2026 — 0.1.188 aprovada em CI, validação física obrigatória pendente
+
+- **Branch:** `agent/fix-farol-real-device-0.1.188`; **base:** `agent/fix-farol-runtime-0.1.187`.
+- **Head validado em CI:** `7ee92f9bd3b87fa43323aeec7498285643ce557b`; **workflow run:** `31173363429`.
+- **Versão:** `0.1.188`; **versionCode:** 5472; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Reprovação anterior:** a 0.1.187 pintou decisões sem tentativa reconhecida no Samsung SM-S911B/Android 16 e não é funcionalmente aprovada.
+- **Correção:** captura por janela/subárvore, OCR espacial, segmentação de cards e autorização obrigatória antes da rota; a recuperação antiga ficou somente diagnóstica.
+- **Testes CI:** tests=364; failures=0; Android Lint e `clean assembleDebug` aprovados.
+- **APK candidato:** `rota-certa-0.1.188-candidate.apk`, 56157135 bytes; SHA-256 `7bd50214a7bbe7ee30395a8d9e3103ab4aeeae3d37df48e36a2f8b3d9dc3c851`.
+- **Link candidato:** https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.188/rota-certa-0.1.188-candidate.apk
+- **Distribuição:** o link permanente não foi substituído; aprovação funcional depende do teste físico completo.
+<!-- FAROL_0188_CI_PENDING_DEVICE_END -->
+
 <!-- FAROL_PHASE4_VALIDATED_STATUS_START -->
 ## 06/08/2026 — fase 4 validada — resultado atrasado não substitui leitura nova
 
