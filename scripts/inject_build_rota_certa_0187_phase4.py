@@ -25,6 +25,7 @@ grep -Fq 'BUBBLE_ASYNC_WORK_INVALIDATED_0187_PHASE4' app/src/main/java/br/com/ma
 grep -Fq 'BUBBLE_ROUTE_RESULT_DISCARDED_0187_PHASE4' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 python3 - <<'PY_PHASE4_CONTRACT'
 from pathlib import Path
+import re
 service = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text(encoding='utf-8')
 safety = Path('app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt').read_text(encoding='utf-8')
 if 'private fun isUniversalResultFresh(' in service:
@@ -33,8 +34,13 @@ if 'FarolDecisionBindingPolicy0187Phase4.isFresh' not in service:
     raise SystemExit('Resultado da rota não usa o vínculo monotônico da fase 4')
 if 'DECISION_RESULT_MONOTONIC_BINDING_0187_PHASE4' not in safety:
     raise SystemExit('Contrato de vínculo monotônico ausente')
-if 'addressSignature = addressSignature' in service:
-    raise SystemExit('Referência addressSignature fora de escopo permanece após reparo')
+persistence_pattern = re.compile(
+    r'val\s+persistenceSignatureChecklist13\s*=\s*listOf\(\s*'
+    r'[A-Za-z_][A-Za-z0-9_]*\.addressSignature\s*,',
+    re.MULTILINE,
+)
+if persistence_pattern.search(service) is None:
+    raise SystemExit('Persistência não usa a assinatura do vínculo imutável da fase 4')
 start = service.index('private fun invalidateFarolAsyncWork0187Phase4')
 end = service.index('private fun invalidateRejectedSnapshotRead0187Phase3', start)
 block = service[start:end]
