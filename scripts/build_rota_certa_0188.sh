@@ -80,9 +80,10 @@ grep -Fq 'versionName = "0.1.188"' app/build.gradle.kts
 grep -Fq 'fun authorizeRoute0188(' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'BUBBLE_ROUTE_GATE_REJECTED_0188' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'BUBBLE_FAILED_CARD_EVIDENCE_ONLY_0188' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-grep -Fq 'candidateCount < 2' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'UniversalAddressTrigger.MINIMUM_VISIBLE_ADDRESSES' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
 grep -Fq 'flagRetrieveInteractiveWindows' app/src/main/res/xml/rota_certa_accessibility.xml
 test -f app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
+echo 'farol_real_device_0188_post_patch_contracts=passed'
 
 # 5) Validate the final 0.1.188 tree. No candidate can be emitted before all
 #    unit contracts, Android Lint and a clean APK build succeed.
