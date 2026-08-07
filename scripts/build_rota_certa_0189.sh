@@ -9,7 +9,7 @@ PATCH_FILE="$(mktemp --suffix=.farol-priority-latency-0189.patch)"
 BEFORE_HASHES="$(mktemp)"
 AFTER_HASHES="$(mktemp)"
 TEST_COUNT_STAGING="$(mktemp)"
-EXPECTED_PATCH_SHA="d97520cf2a13ccd4f3a0d318f31a0fca991a3d597db5929a75f45663a48327be"
+EXPECTED_PATCH_SHA="a64ae94d050499efcba6bc1b8231fe111fcb38b57030327cde911f0a46a06493"
 
 cleanup() {
   rm -f "$PATCH_FILE" "$BEFORE_HASHES" "$AFTER_HASHES" "$TEST_COUNT_STAGING"
