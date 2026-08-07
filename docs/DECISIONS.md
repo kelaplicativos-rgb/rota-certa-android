@@ -1,3 +1,15 @@
+<!-- DECISION_ALERT_POPUP_0190_START -->
+## 07/08/2026 — ciclo visual de radares e alertas após ultrapassar o ponto
+
+**Decisão:** o pop-up compartilhado de radar/alerta deve permanecer visível por `3.000 ms` depois que o motor indicar que o ponto foi ultrapassado, salvo fechamento manual. O botão `Fechar` silencia somente aquele alvo na aproximação/passagem atual; o alvo pode ser rearmado depois que o usuário sai da zona de reset e se aproxima novamente.
+
+**Motivo:** `750 ms` era curto demais para leitura humana. A semântica `dismissUntilExit` já atendia à necessidade de não reabrir imediatamente o mesmo ponto e deve ser preservada, em vez de criar bloqueio permanente ou alterar o cadastro do radar/alerta.
+
+**Fronteira:** esta decisão pertence ao controlador visual, não ao `DecisionEngine`, motor de rota, OCR, política direcional ou motor de proximidade. Não adicionar polling, timers globais contínuos ou estado persistente por ponto para cumprir esse comportamento.
+
+**Evidência:** 0.1.190 / versionCode 5474; commit funcional `c5805d89e0187d163c7e04a999554a95591700ca`; PR #68; workflow `31191545985`; 372 testes sem falhas; Lint e `clean assembleDebug` aprovados; artifact `8999711497`; APK SHA-256 `8c32f2bcf07cc1109e4ac996db406bbbe520c5cd155fab9e703d37ef1b8e9d34`. Validação física ainda obrigatória.
+<!-- DECISION_ALERT_POPUP_0190_END -->
+
 <!-- FAROL_0189_DECISION_START -->
 ## 07/08/2026 — autoridade visual monotônica e estado laranja
 
