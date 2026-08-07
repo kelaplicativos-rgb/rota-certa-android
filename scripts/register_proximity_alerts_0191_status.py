@@ -7,6 +7,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument('--head', required=True)
 parser.add_argument('--run-id', required=True)
+parser.add_argument('--pr-number', required=True)
 parser.add_argument('--tests', required=True)
 parser.add_argument('--apk-sha', required=True)
 parser.add_argument('--apk-size', required=True)
@@ -24,7 +25,7 @@ decision_marker = '<!-- DECISION_PROXIMITY_NO_DIRECTION_0191_START -->'
 status = f'''{status_marker}
 ## 07/08/2026 — 0.1.191: radares e alertas avisam por aproximação, sem filtro de sentido
 
-- **Branch:** `agent/proximity-alerts-no-direction-0.1.191`; **PR:** #69; **base:** `agent/alert-popup-lifecycle-0.1.190`.
+- **Branch:** `agent/proximity-alerts-no-direction-0.1.191`; **PR:** #{args.pr_number}; **base:** `agent/alert-popup-lifecycle-0.1.190`.
 - **Commit funcional validado:** `{args.head}`; **workflow run:** `{args.run_id}`.
 - **Versão:** `0.1.191`; **versionCode:** `5475`; **pacote:** `br.com.mapeiaia.rotacerta`.
 - **Pedido:** retirar a exigência de o veículo estar no mesmo sentido do alerta/radar, pois heading e direção cadastrada estavam atrasando ou bloqueando avisos; alertar enquanto a distância confirma aproximação, independentemente do sentido.
