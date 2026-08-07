@@ -70,52 +70,31 @@ jobs:
           set -o pipefail
           bash -x ../patches/scripts/build_rota_certa_0187.sh ../patches 2>&1 | tee materialize-real-device.log
 
-      - name: Package effective farol source and diagnostics
+      - name: Package complete effective source and diagnostics
         if: always()
         run: |
           set -euo pipefail
-          mkdir -p effective-source/app-main effective-source/app-test effective-source/scripts effective-source/patches
+          mkdir -p effective-source/scripts effective-source/patches
           printf 'baseline_outcome=%s\n' '${{ steps.baseline.outcome }}' > effective-source/baseline-outcome.txt
           printf 'functional_head=%s\n' '3537a13edbc0d72627d650a18b4da58da8ecb316' > effective-source/functional-head.txt
           cp source/materialize-real-device.log effective-source/ 2>/dev/null || true
-          for file in \
-            LiveRideAccessibilityService.kt \
-            FarolRuntimeSafety0187.kt \
-            RideTextParser.kt \
-            RideOfferDetector.kt \
-            SimpleSavedAppFarolPolicy.kt \
-            UniversalAddressTrigger.kt \
-            UniversalScreenAddressParser.kt \
-            UniversalTwoAddressConfirmation0185.kt \
-            SelectedRideOverlayWindowPolicy.kt \
-            UniversalWindowPackageResolver.kt \
-            UniversalFastReadPolicy.kt; do
-            find source/app/src/main/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f -name "$file" \
-              -exec cp {} effective-source/app-main/ \; 2>/dev/null || true
-          done
-          if [[ -d source/app/src/test/java/br/com/mapeiaia/rotacerta ]]; then
-            find source/app/src/test/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f \
-              \( -name '*Farol*Test.kt' -o -name '*Ride*Test.kt' -o -name '*Universal*Test.kt' -o -name '*Card*Test.kt' -o -name '*Overlay*Test.kt' \) \
-              -exec cp {} effective-source/app-test/ \;
-          fi
+          cp -a source/app/src/main/java/br/com/mapeiaia/rotacerta effective-source/full-main
+          cp -a source/app/src/test/java/br/com/mapeiaia/rotacerta effective-source/full-test
+          cp source/app/build.gradle.kts effective-source/
+          cp source/app/src/main/AndroidManifest.xml effective-source/
           cp patches/scripts/build_rota_certa_0187.sh effective-source/scripts/
           cp patches/scripts/build_rota_certa_0186.sh effective-source/scripts/
           cp patches/scripts/inject_build_rota_certa_0187*.py effective-source/scripts/ 2>/dev/null || true
           cp patches/scripts/fix_farol_phase4_address_signature.py effective-source/scripts/ 2>/dev/null || true
           cp patches/patches/farol-runtime-0187-phase3.patch effective-source/patches/ 2>/dev/null || true
           cp patches/patches/farol-runtime-0187-phase4.patch.gz.b64 effective-source/patches/ 2>/dev/null || true
-          if [[ -d source/artifact-0.1.187 ]]; then
-            cp -a source/artifact-0.1.187 effective-source/
-          fi
-          find source/app/src/main/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f -printf '%f\n' \
-            | sort > effective-source/materialized-main-files.txt
           find effective-source -type f -print0 | sort -z | xargs -0 sha256sum > effective-source/files.sha256
 
-      - name: Upload exact effective source and diagnostic evidence
+      - name: Upload exact complete source and diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: farol-effective-source-0.1.187-real-device
+          name: farol-effective-source-0.1.187-complete
           path: effective-source/
           retention-days: 14
           if-no-files-found: error
