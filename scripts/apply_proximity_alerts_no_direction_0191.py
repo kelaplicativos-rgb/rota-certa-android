@@ -37,7 +37,7 @@ policy_text = replace_once(
 policy_text = replace_once(
     policy_text,
     '''    fun hasPassed(\n        headingDegrees: Double?,\n        bearingToTargetDegrees: Double,\n        minimumDistanceMeters: Double,\n        currentDistanceMeters: Double,\n        increasingSamples: Int,\n    ): Boolean {\n        val heading = headingDegrees ?: return false\n        val targetBehind = GeoDistance.angleDifferenceDegrees(heading, bearingToTargetDegrees) >= TARGET_BEHIND_DEGREES\n        val movedAway = currentDistanceMeters >= minimumDistanceMeters + PASS_DISTANCE_INCREASE_METERS\n        return targetBehind && movedAway && increasingSamples >= REQUIRED_INCREASING_SAMPLES\n    }\n''',
-    '''    fun hasPassed(\n        minimumDistanceMeters: Double,\n        currentDistanceMeters: Double,\n        increasingSamples: Int,\n    ): Boolean {\n        val movedAway = currentDistanceMeters >= minimumDistanceMeters + PASS_DISTANCE_INCREASE_METERS\n        return movedAway && increasingSamples >= REQUIRED_INCREASING_SAMPLES\n    }\n''',
+    '''    fun hasPassed(\n        headingDegrees: Double?,\n        bearingToTargetDegrees: Double,\n        minimumDistanceMeters: Double,\n        currentDistanceMeters: Double,\n        increasingSamples: Int,\n    ): Boolean = hasPassedByDistance(\n        minimumDistanceMeters = minimumDistanceMeters,\n        currentDistanceMeters = currentDistanceMeters,\n        increasingSamples = increasingSamples,\n    )\n\n    fun hasPassedByDistance(\n        minimumDistanceMeters: Double,\n        currentDistanceMeters: Double,\n        increasingSamples: Int,\n    ): Boolean {\n        val movedAway = currentDistanceMeters >= minimumDistanceMeters + PASS_DISTANCE_INCREASE_METERS\n        return movedAway && increasingSamples >= REQUIRED_INCREASING_SAMPLES\n    }\n''',
     'ultrapassagem por tendência de distância',
 )
 policy.write_text(policy_text, encoding='utf-8')
@@ -89,7 +89,7 @@ engine_text = replace_once(engine_text, 'status = "Aproximando — sentido confi
 engine_text = replace_once(
     engine_text,
     '''        fun hasPassed(headingDegrees: Double?, bearingToTargetDegrees: Double, distanceMeters: Double): Boolean =\n            insideZone && DirectionalAlertPolicy.hasPassed(\n                headingDegrees = headingDegrees,\n                bearingToTargetDegrees = bearingToTargetDegrees,\n                minimumDistanceMeters = minimumDistanceMeters,\n                currentDistanceMeters = distanceMeters,\n                increasingSamples = increasingSamples,\n            )\n''',
-    '''        fun hasPassed(distanceMeters: Double): Boolean =\n            insideZone && DirectionalAlertPolicy.hasPassed(\n                minimumDistanceMeters = minimumDistanceMeters,\n                currentDistanceMeters = distanceMeters,\n                increasingSamples = increasingSamples,\n            )\n''',
+    '''        fun hasPassed(distanceMeters: Double): Boolean =\n            insideZone && DirectionalAlertPolicy.hasPassedByDistance(\n                minimumDistanceMeters = minimumDistanceMeters,\n                currentDistanceMeters = distanceMeters,\n                increasingSamples = increasingSamples,\n            )\n''',
     'runtime passagem sem heading',
 )
 engine.write_text(engine_text, encoding='utf-8')
@@ -127,12 +127,22 @@ class ProximityAlertsNoDirection0191ContractTest {
 
     @Test
     fun `passagem e detectada por afastamento depois do ponto sem heading`() {
-        val hasPassed = policy.substringAfter("fun hasPassed(").substringBefore("fun isApproaching(")
-        assertFalse(hasPassed.contains("headingDegrees"))
-        assertFalse(hasPassed.contains("bearingToTargetDegrees"))
-        assertTrue(hasPassed.contains("PASS_DISTANCE_INCREASE_METERS"))
-        assertTrue(hasPassed.contains("REQUIRED_INCREASING_SAMPLES"))
+        val hasPassedByDistance = policy.substringAfter("fun hasPassedByDistance(").substringBefore("fun isApproaching(")
+        assertFalse(hasPassedByDistance.contains("headingDegrees"))
+        assertFalse(hasPassedByDistance.contains("bearingToTargetDegrees"))
+        assertTrue(hasPassedByDistance.contains("PASS_DISTANCE_INCREASE_METERS"))
+        assertTrue(hasPassedByDistance.contains("REQUIRED_INCREASING_SAMPLES"))
         assertTrue(engine.contains("runtime.hasPassed(distance)"))
+        assertTrue(engine.contains("DirectionalAlertPolicy.hasPassedByDistance("))
+    }
+
+    @Test
+    fun `assinatura antiga de passagem permanece compativel sem decidir por sentido`() {
+        val compatibility = policy.substringAfter("fun hasPassed(").substringBefore("fun hasPassedByDistance(")
+        assertTrue(compatibility.contains("headingDegrees: Double?"))
+        assertTrue(compatibility.contains("bearingToTargetDegrees: Double"))
+        assertTrue(compatibility.contains("= hasPassedByDistance("))
+        assertFalse(compatibility.contains("targetBehind"))
     }
 
     @Test
@@ -152,3 +162,4 @@ print('heading_gate=false')
 print('radar_direction_gate=false')
 print('approach_basis=distance_trend')
 print('passed_basis=distance_increase_after_minimum')
+print('legacy_has_passed_signature=preserved')
