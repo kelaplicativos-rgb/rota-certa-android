@@ -4,7 +4,8 @@
 O reparo é intencionalmente fail-closed: exige um único método que declare
 `destinationSignature`, não declare `addressSignature` e contenha exatamente
 uma utilização de `addressSignature` que não seja o rótulo de argumento
-nomeado. Qualquer divergência interrompe a materialização.
+nomeado. Qualquer divergência imprime contexto sanitizado e interrompe a
+materialização.
 """
 from __future__ import annotations
 
@@ -33,6 +34,18 @@ def function_blocks(source: str) -> list[tuple[int, int]]:
     ]
 
 
+def print_address_context(source: str) -> None:
+    lines = source.splitlines()
+    occurrences = [index for index, line in enumerate(lines) if "addressSignature" in line]
+    print(f"phase4_address_signature_occurrences={len(occurrences)}")
+    for index in occurrences:
+        start = max(0, index - 8)
+        end = min(len(lines), index + 9)
+        print(f"--- addressSignature context line {index + 1} ---")
+        for line_index in range(start, end):
+            print(f"{line_index + 1:05d}: {lines[line_index]}")
+
+
 def repair_source(source: str) -> str:
     candidates: list[tuple[int, int, str]] = []
     for start, end in function_blocks(source):
@@ -49,6 +62,7 @@ def repair_source(source: str) -> str:
         candidates.append((start, end, block))
 
     if len(candidates) != 1:
+        print_address_context(source)
         raise SystemExit(
             "phase4 addressSignature scope candidate count=" + str(len(candidates))
         )
@@ -56,10 +70,12 @@ def repair_source(source: str) -> str:
     start, end, block = candidates[0]
     repaired_block, replacements = ADDRESS_VALUE.subn("destinationSignature", block)
     if replacements != 1:
+        print_address_context(source)
         raise SystemExit(f"phase4 addressSignature replacement count={replacements}")
     if not DESTINATION_DECLARATION.search(repaired_block):
         raise SystemExit("phase4 destinationSignature declaration lost after repair")
     if ADDRESS_VALUE.search(repaired_block):
+        print_address_context(repaired_block)
         raise SystemExit("phase4 unresolved addressSignature value remains")
     return source[:start] + repaired_block + source[end:]
 
