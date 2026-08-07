@@ -34,19 +34,17 @@ jobs:
         working-directory: source
         run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
 
-      - name: Checkout diagnostic branch
+      - name: Checkout exact functional head that built installed APK
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: 3537a13edbc0d72627d650a18b4da58da8ecb316
           fetch-depth: 0
           persist-credentials: false
           path: patches
 
-      - name: Verify diagnostic commit
+      - name: Verify exact functional head
         working-directory: patches
-        env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+        run: test "$(git rev-parse HEAD)" = "3537a13edbc0d72627d650a18b4da58da8ecb316"
 
       - uses: actions/setup-python@v5
         with:
@@ -60,7 +58,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Materialize and validate current 0.1.187 source
+      - name: Materialize and validate exact installed 0.1.187 source
         id: baseline
         continue-on-error: true
         working-directory: source
@@ -76,19 +74,26 @@ jobs:
           set -euo pipefail
           mkdir -p effective-source/app-main effective-source/app-test effective-source/scripts effective-source/patches
           printf 'baseline_outcome=%s\n' '${{ steps.baseline.outcome }}' > effective-source/baseline-outcome.txt
+          printf 'functional_head=%s\n' '3537a13edbc0d72627d650a18b4da58da8ecb316' > effective-source/functional-head.txt
           cp source/materialize-real-device.log effective-source/ 2>/dev/null || true
           for file in \
             LiveRideAccessibilityService.kt \
             FarolRuntimeSafety0187.kt \
             RideTextParser.kt \
             RideOfferDetector.kt \
-            UniversalTwoAddressConfirmation0185.kt; do
+            SimpleSavedAppFarolPolicy.kt \
+            UniversalAddressTrigger.kt \
+            UniversalScreenAddressParser.kt \
+            UniversalTwoAddressConfirmation0185.kt \
+            SelectedRideOverlayWindowPolicy.kt \
+            UniversalWindowPackageResolver.kt \
+            UniversalFastReadPolicy.kt; do
             find source/app/src/main/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f -name "$file" \
               -exec cp {} effective-source/app-main/ \; 2>/dev/null || true
           done
           if [[ -d source/app/src/test/java/br/com/mapeiaia/rotacerta ]]; then
             find source/app/src/test/java/br/com/mapeiaia/rotacerta -maxdepth 1 -type f \
-              \( -name '*Farol*Test.kt' -o -name '*Ride*Test.kt' -o -name '*Universal*Test.kt' -o -name '*Card*Test.kt' \) \
+              \( -name '*Farol*Test.kt' -o -name '*Ride*Test.kt' -o -name '*Universal*Test.kt' -o -name '*Card*Test.kt' -o -name '*Overlay*Test.kt' \) \
               -exec cp {} effective-source/app-test/ \;
           fi
           cp patches/scripts/build_rota_certa_0187.sh effective-source/scripts/
@@ -104,7 +109,7 @@ jobs:
             | sort > effective-source/materialized-main-files.txt
           find effective-source -type f -print0 | sort -z | xargs -0 sha256sum > effective-source/files.sha256
 
-      - name: Upload effective source and diagnostic evidence
+      - name: Upload exact effective source and diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -116,5 +121,5 @@ jobs:
       - name: Preserve baseline failure status
         if: steps.baseline.outcome != 'success'
         run: |
-          echo 'A materialização da linha-base falhou; o artifact diagnóstico foi preservado.' >&2
+          echo 'A materialização do head funcional exato falhou; o artifact diagnóstico foi preservado.' >&2
           exit 1
