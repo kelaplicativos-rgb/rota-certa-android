@@ -1,6 +1,12 @@
 name: Build Rota Certa 0.1.190 alert popup lifecycle
 
 on:
+  push:
+    branches: [agent/alert-popup-lifecycle-0.1.190]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.190.yml
+      - scripts/build_rota_certa_0190.sh
+      - scripts/apply_alert_popup_lifecycle_0190.py
   pull_request:
     branches: [agent/fix-farol-priority-latency-0.1.189]
     paths:
