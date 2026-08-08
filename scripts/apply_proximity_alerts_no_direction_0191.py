@@ -8,9 +8,10 @@ root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
 gradle = root / 'app/build.gradle.kts'
 policy = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt'
 engine = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt'
+legacy_directional_test = root / 'app/src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt'
 test = root / 'app/src/test/java/br/com/mapeiaia/rotacerta/ProximityAlertsNoDirection0191ContractTest.kt'
 
-for path in (gradle, policy, engine):
+for path in (gradle, policy, engine, legacy_directional_test):
     if not path.is_file():
         raise SystemExit(f'Arquivo obrigatório ausente: {path.relative_to(root)}')
 
@@ -174,6 +175,48 @@ if 'DirectionalAlertPolicy.radarDirectionMatches(' in engine_text:
 
 engine.write_text(engine_text, encoding='utf-8')
 
+# A 0.1.184 introduziu contratos que exigiam sentido coincidente. Eles continuam
+# úteis para fala única e passagem, mas as três expectativas de heading ficaram
+# incompatíveis com a decisão explícita da 0.1.191 e são migradas de forma exata.
+legacy_text = legacy_directional_test.read_text(encoding='utf-8')
+legacy_text = replace_once(
+    legacy_text,
+    '        assertTrue(requireNotNull(visual).status.contains("sentido confirmado"))\n',
+    '        assertTrue(requireNotNull(visual).status.contains("Aproximando"))\n',
+    'contrato legado: status sem confirmação de sentido',
+)
+legacy_text = replace_once(
+    legacy_text,
+    '    fun `radar no sentido contrario nao aparece nem fala`() {\n',
+    '    fun `radar em sentido contrario tambem aparece e fala`() {\n',
+    'contrato legado: nome do teste de sentido contrário',
+)
+legacy_text = replace_once(
+    legacy_text,
+    '        assertNull(visual)\n        assertEquals(0, speech.radarCalls)\n',
+    '        assertNotNull(visual)\n        assertEquals(1, speech.radarCalls)\n',
+    'contrato legado: sentido contrário não bloqueia proximidade',
+)
+legacy_text = replace_once(
+    legacy_text,
+    '    fun `mudanca para sentido contrario remove painel imediatamente`() {\n',
+    '    fun `mudanca de heading nao remove painel enquanto distancia aproxima`() {\n',
+    'contrato legado: mudança de heading não remove painel',
+)
+legacy_text = replace_once(
+    legacy_text,
+    '        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0009, heading = 270.0), settings(), { visual = it })\n        assertNull(visual)\n',
+    '        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0009, heading = 270.0), settings(), { visual = it })\n        assertNotNull(visual)\n        assertEquals(1, speech.radarCalls)\n',
+    'contrato legado: heading oposto preserva painel durante aproximação',
+)
+legacy_text = replace_once(
+    legacy_text,
+    'import org.junit.Assert.assertNull\n',
+    '',
+    'contrato legado: remover import assertNull obsoleto',
+)
+legacy_directional_test.write_text(legacy_text, encoding='utf-8')
+
 # Regressão estrutural: protege exatamente a retirada do filtro de sentido sem
 # acoplar os testes JVM ao GPS/WindowManager do Android.
 test.write_text(r'''package br.com.mapeiaia.rotacerta
@@ -188,6 +231,7 @@ class ProximityAlertsNoDirection0191ContractTest {
     private val policy = File("src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt").readText()
     private val engine = File("src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt").readText()
     private val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt").readText()
+    private val legacyDirectional = File("src/test/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngineChecklist5Test.kt").readText()
 
     @Test
     fun `gps utilizavel nao exige heading para avisar proximidade`() {
@@ -228,6 +272,15 @@ class ProximityAlertsNoDirection0191ContractTest {
     }
 
     @Test
+    fun `contratos direcionais legados seguem proximidade sem bloquear sentido oposto`() {
+        assertFalse(legacyDirectional.contains("radar no sentido contrario nao aparece nem fala"))
+        assertFalse(legacyDirectional.contains("mudanca para sentido contrario remove painel imediatamente"))
+        assertFalse(legacyDirectional.contains("sentido confirmado"))
+        assertTrue(legacyDirectional.contains("radar em sentido contrario tambem aparece e fala"))
+        assertTrue(legacyDirectional.contains("mudanca de heading nao remove painel enquanto distancia aproxima"))
+    }
+
+    @Test
     fun `contrato visual de tres segundos e fechamento manual continua preservado`() {
         assertTrue(overlay.contains("const val PASSED_CLOSE_DELAY_MILLIS = 3_000L"))
         assertFalse(engine.contains("sentido confirmado"))
@@ -246,3 +299,4 @@ print('approach_basis=distance_trend')
 print('passed_basis=distance_increase_after_minimum')
 print('legacy_has_passed_signature=preserved')
 print('distance_passage_flows=2')
+print('legacy_directional_contracts=migrated')
