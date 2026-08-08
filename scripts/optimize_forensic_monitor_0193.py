@@ -19,19 +19,31 @@ if text.count(old_fingerprint) != 1:
     raise SystemExit('Monitor: fingerprint esperado ausente ou ambíguo')
 text = text.replace(old_fingerprint, new_fingerprint, 1)
 
-old_result = '''    private fun isResultStage(stage: String): Boolean {
-        val value = stage.uppercase(Locale.ROOT)
-        return value.contains("DECISION") || value.contains("RESULT") || value.contains("OVERLAY_RENDER_APPLIED") || value.contains("ROUTE_APPLIED") || value.contains("CACHE_APPLIED")
-    }
+# Troca o bloco de helpers por intervalo sem depender de escaping/indentação interna.
+# O materializador base precisa expor exatamente um início e um fim reconhecíveis.
+start_anchor = '    private fun isResultStage(stage: String): Boolean {'
+end_anchor = '    private fun anomaly(packageName: String?, stage: String, details: String) {'
+if text.count(start_anchor) != 1:
+    raise SystemExit(f'Monitor: início do bloco de parsing esperado exatamente 1 vez, encontrado {text.count(start_anchor)}')
+if text.count(end_anchor) != 1:
+    raise SystemExit(f'Monitor: fim do bloco de parsing esperado exatamente 1 vez, encontrado {text.count(end_anchor)}')
+start = text.index(start_anchor)
+end = text.index(end_anchor)
+if start >= end:
+    raise SystemExit('Monitor: intervalo de parsing inválido')
+old_interval = text[start:end]
+for required in (
+    'private fun isResultStage(',
+    'private fun numericToken(',
+    'private fun safeStage(',
+    'Regex(',
+):
+    if old_interval.count(required) < 1:
+        raise SystemExit(f'Monitor: contrato base ausente no intervalo de parsing: {required}')
+if old_interval.count('private fun numericToken(') != 1 or old_interval.count('private fun safeStage(') != 1:
+    raise SystemExit('Monitor: helpers de parsing base estão ambíguos')
 
-    private fun numericToken(details: String, key: String): Long? {
-        val match = Regex("(?:^|[; ,])${Regex.escape(key)}=(-?\\d+)").find(details) ?: return null
-        return match.groupValues[1].toLongOrNull()
-    }
-
-    private fun safeStage(stage: String): String = stage.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(96)
-'''
-new_result = '''    private fun isResultStage(stage: String): Boolean =
+new_interval = '''    private fun isResultStage(stage: String): Boolean =
         stage.contains("DECISION") ||
             stage.contains("RESULT") ||
             stage.contains("OVERLAY_RENDER_APPLIED") ||
@@ -80,10 +92,9 @@ new_result = '''    private fun isResultStage(stage: String): Boolean =
             index += 1
         }
     }
+
 '''
-if text.count(old_result) != 1:
-    raise SystemExit('Monitor: bloco de parsing esperado ausente ou ambíguo')
-text = text.replace(old_result, new_result, 1)
+text = text[:start] + new_interval + text[end:]
 monitor.write_text(text, encoding='utf-8')
 
 test.write_text(r'''package br.com.mapeiaia.rotacerta
@@ -104,6 +115,15 @@ class ForensicHotPath0193ContractTest {
         assertTrue(source.contains("details.indexOf(needle, searchFrom)"))
         assertTrue(source.contains("SystemClock.elapsedRealtimeNanos()"))
     }
+
+    @Test
+    fun `parser otimizado preserva delimitadores e escopo por pacote`() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt").readText()
+        assertTrue(source.contains("details[start - 1] == ';'"))
+        assertTrue(source.contains("details[start - 1] == ' '"))
+        assertTrue(source.contains("details[start - 1] == ','"))
+        assertTrue(source.contains("packageName?.hashCode() ?: 0"))
+    }
 }
 ''', encoding='utf-8')
 
@@ -112,6 +132,8 @@ if 'Regex(' in final:
     raise SystemExit('Monitor: Regex ainda presente no caminho forense')
 if final.count('details.indexOf(needle, searchFrom)') != 1:
     raise SystemExit('Monitor: parser manual não ficou único')
+if final.count('private fun numericToken(') != 1 or final.count('private fun safeStage(') != 1:
+    raise SystemExit('Monitor: helpers otimizados não ficaram únicos')
 
 print('forensic_hot_path_0193=optimized')
 print('regex_in_event_path=false')
