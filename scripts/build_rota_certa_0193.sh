@@ -35,6 +35,7 @@ for file in "${PROTECTED_FILES[@]}"; do test -f "$file" || { echo "Arquivo prote
 sha256sum "${PROTECTED_FILES[@]}" > "$BEFORE_HASHES"
 
 python3 "$PATCH_REPOSITORY/scripts/apply_forensic_incident_monitor_0193.py" "$SOURCE_REPOSITORY"
+python3 "$PATCH_REPOSITORY/scripts/optimize_forensic_monitor_0193.py" "$SOURCE_REPOSITORY"
 python3 "$PATCH_REPOSITORY/scripts/enhance_forensic_popup_timing_0193.py" "$SOURCE_REPOSITORY"
 python3 "$PATCH_REPOSITORY/scripts/wire_manual_incident_marker_0193.py" "$SOURCE_REPOSITORY"
 
@@ -54,6 +55,8 @@ grep -Fq 'ALERT_OVERLAY_ENGINE_IDLE_PRESERVED_0193' app/src/main/java/br/com/map
 grep -Fq 'FORENSIC_EVENT_STORM_0193' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
 grep -Fq 'FORENSIC_STALE_GENERATION_RESULT_0193' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
 grep -Fq 'FORENSIC_MANUAL_INCIDENT_MARK_0193' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
+grep -Fq 'details.indexOf(needle, searchFrom)' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
+! grep -Fq 'Regex(' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
 ! grep -E -n 'Timer\(|scheduleAtFixedRate|while \(true\)|takeScreenshot|delay\(' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
 
 echo 'forensic_incident_monitor_0193_contracts=passed'
@@ -71,8 +74,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 389:
-    raise SystemExit(f'Esperados pelo menos 389 testes após 0.1.193, encontrados {count}')
+if count < 390:
+    raise SystemExit(f'Esperados pelo menos 390 testes após 0.1.193, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.193')
 PY
@@ -130,6 +133,8 @@ automatic_event_storm_detection=true
 automatic_ocr_storm_detection=true
 stale_generation_detection=true
 final_color_without_distance_detection=true
+forensic_event_path_regex_allocation=false
+forensic_fingerprint_scoped_by_package=true
 alert_popup_post_pass_telemetry=true
 alert_popup_monotonic_elapsed_measurement=true
 alert_popup_early_cancel_trace=true
