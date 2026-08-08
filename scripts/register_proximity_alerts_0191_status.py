@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+# Stage 7 CI trigger only; no functional behavior change.
 import argparse
 from pathlib import Path
 
