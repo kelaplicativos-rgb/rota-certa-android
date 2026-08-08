@@ -1,3 +1,17 @@
+<!-- DECISION_PROXIMITY_NO_DIRECTION_0191_START -->
+## 07/08/2026 — proximidade tem prioridade sobre sentido em radares e alertas
+
+**Decisão:** radares importados e alertas manuais não podem depender do heading do aparelho, de `isTargetAhead` nem da direção cadastrada do radar para avisar. O aviso é autorizado por GPS recente/preciso, distância dentro do limite e tendência de aproximação.
+
+**Passagem:** depois do menor valor observado, crescimento consistente da distância identifica que o ponto foi ultrapassado. O pop-up mantém os 3.000 ms pós-passagem da 0.1.190 e o fechamento manual continua silenciando somente a passagem atual até sair da zona de reset.
+
+**Motivo:** heading/azimute pode chegar atrasado, oscilar ou ficar indisponível mesmo quando a posição e a redução de distância são suficientes para concluir que o veículo se aproxima. Para segurança do aviso, falso negativo por sentido é pior do que avisar um ponto próximo vindo pelo sentido oposto.
+
+**Fronteira:** esta mudança pertence somente ao subsistema de proximidade. Não altera `DecisionEngine`, leitura de cards, OCR, rota, Casa/Alfinete, cores do farol, Manifest ou permissões.
+
+**Evidência:** 0.1.191 / versionCode 5475; commit funcional `474f995ed9c02f4b00fcfe55f48cb5a9484b75db`; workflow `31258805798`; 378 testes sem falhas; artifact `9022428483`; APK SHA-256 `543395feaa02018c3e7e13854a16e3c505005c53b7f8d0ea7e5041766b13b075`. Validação física ainda obrigatória.
+<!-- DECISION_PROXIMITY_NO_DIRECTION_0191_END -->
+
 <!-- DECISION_ALERT_POPUP_0190_START -->
 ## 07/08/2026 — ciclo visual de radares e alertas após ultrapassar o ponto
 
