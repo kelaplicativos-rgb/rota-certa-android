@@ -1,3 +1,22 @@
+<!-- ALERT_POPUP_POST_PASS_HOLD_0192_CI_PENDING_DEVICE_START -->
+## 08/08/2026 — 0.1.192: pop-up de radar/alerta preserva os 3 s reais após a passagem
+
+- **Branch:** `agent/fix-alert-popup-hold-0.1.192`; **PR:** #70; **base:** `agent/proximity-alerts-no-direction-0.1.191`.
+- **Commit funcional validado:** `1a337fc97dc0d52d3e8efce180797a536df9782d`; **workflow run:** `31265686664`.
+- **Versão:** `0.1.192`; **versionCode:** `5476`; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Pedido / evidência física:** na 0.1.191 o pop-up dos radares e alertas fechava rápido demais, apesar do contrato documentado de 3.000 ms.
+- **Causa:** `DirectionalAlertOverlayController.showOrUpdate()` agendava o fechamento em 3.000 ms quando `visual.shouldClose=true`, porém a avaliação seguinte do motor podia retornar `visual=null` porque o alvo já estava `passed`; o serviço então chamava `directionalAlertOverlayChecklist5.hide()`, e `hide()` cancelava `pendingClose`, removendo a janela imediatamente.
+- **Correção:** ausência normal de visual vinda do motor usa `hideFromEngineIdle()`. Se existe `pendingClose` pós-passagem, o overlay permanece até o callback de 3.000 ms. Fechamentos explícitos continuam usando `hide()` e permanecem imediatos.
+- **Preservado:** botão `Fechar`, exclusão, alerta desligado, ausência prolongada de GPS, destruição do serviço e novo alvo continuam capazes de fechar/substituir imediatamente; radar continua com no máximo 1 fala por aproximação, alerta manual até 2; regra sem filtro de sentido da 0.1.191 permanece intacta.
+- **Fronteira:** `DirectionalAlertPolicy`, `DirectionalProximityAlertEngine`, `DecisionEngine`, OCR, parser, rota, `RadarImport`, Manifest e permissões permaneceram byte a byte protegidos durante a transformação 0.1.192.
+- **Testes finais:** `tests=382`; `failures=0`; Android Lint aprovado; `clean assembleDebug` aprovado.
+- **Artifact:** `rota-certa-0.1.192-alert-popup-hold-validated`, ID `9024417340`, digest `d462d34d345a2fe259ba0c0bba1fed57010ea0b59bdb43ca67d4882b5175a6fa`.
+- **APK:** `rota-certa-0.1.192-popup-radar-alerta-3s-validado-em-ci.apk`, `56157139` bytes; assinatura APK v2 conferida.
+- **SHA-256 do APK:** `348c676f722583c91b0388bbd1dbfa02ae3065c42f4f91e0fa7272e1fb64e137`.
+- **Candidato público verificado byte a byte:** `https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.192/rota-certa-0.1.192-candidate.apk`.
+- **Pendência física:** cronometrar radar importado e alerta manual no aparelho real, confirmando permanência aproximada de 3 s após a passagem, fechamento manual imediato, ausência de reaparecimento na mesma passagem e rearme após sair da zona.
+<!-- ALERT_POPUP_POST_PASS_HOLD_0192_CI_PENDING_DEVICE_END -->
+
 <!-- PROXIMITY_NO_DIRECTION_0191_CI_PENDING_DEVICE_START -->
 ## 07/08/2026 — 0.1.191: radares e alertas avisam por aproximação, sem filtro de sentido
 

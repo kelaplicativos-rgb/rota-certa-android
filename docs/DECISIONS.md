@@ -1,3 +1,17 @@
+<!-- DECISION_ALERT_POPUP_POST_PASS_HOLD_0192_START -->
+## 08/08/2026 — fechamento pós-passagem pertence ao overlay, não ao próximo snapshot do motor
+
+**Decisão:** depois que um visual de radar/alerta entra em `shouldClose`, o tempo de 3.000 ms é propriedade do `DirectionalAlertOverlayController`. Um `visual=null` normal na avaliação seguinte não pode cancelar esse temporizador.
+
+**Fechamento explícito:** desligar o recurso, perder GPS além da tolerância, excluir, tocar em `Fechar`, destruir o serviço ou substituir por novo visual continuam encerrando/cancelando imediatamente quando apropriado.
+
+**Motivo:** o motor marca o alvo como passado e deixa de considerá-lo elegível na avaliação seguinte. Usar esse `null` como ordem de fechamento fazia `hide()` cancelar `pendingClose`, tornando o atraso de 3.000 ms apenas nominal e não observável no aparelho.
+
+**Fronteira:** correção isolada no ciclo do overlay e na integração `onVisual`; não altera decisão de proximidade, direção, fala, farol, cards, OCR, rota, Casa/Alfinete, Manifest ou permissões.
+
+**Evidência:** 0.1.192 / versionCode 5476; commit funcional `1a337fc97dc0d52d3e8efce180797a536df9782d`; workflow `31265686664`; 382 testes sem falhas; artifact `9024417340`; APK SHA-256 `348c676f722583c91b0388bbd1dbfa02ae3065c42f4f91e0fa7272e1fb64e137`. Validação física do tempo ainda obrigatória.
+<!-- DECISION_ALERT_POPUP_POST_PASS_HOLD_0192_END -->
+
 <!-- DECISION_PROXIMITY_NO_DIRECTION_0191_START -->
 ## 07/08/2026 — proximidade tem prioridade sobre sentido em radares e alertas
 
