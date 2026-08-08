@@ -22,19 +22,34 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-def replace_once_before(text: str, anchor: str, old: str, new: str, label: str) -> str:
-    anchor_count = text.count(anchor)
-    if anchor_count != 1:
+def replace_once_between(
+    text: str,
+    start_anchor: str,
+    end_anchor: str,
+    old: str,
+    new: str,
+    label: str,
+) -> str:
+    start_count = text.count(start_anchor)
+    end_count = text.count(end_anchor)
+    if start_count != 1:
         raise SystemExit(
-            f'{label}: âncora semântica esperada exatamente 1 vez, encontrada {anchor_count}: {anchor!r}'
+            f'{label}: âncora inicial esperada exatamente 1 vez, encontrada {start_count}: {start_anchor!r}'
         )
-    before, after = text.split(anchor, 1)
-    count = before.count(old)
+    if end_count != 1:
+        raise SystemExit(
+            f'{label}: âncora final esperada exatamente 1 vez, encontrada {end_count}: {end_anchor!r}'
+        )
+    start = text.index(start_anchor)
+    end = text.index(end_anchor, start + len(start_anchor))
+    segment = text[start:end]
+    count = segment.count(old)
     if count != 1:
         raise SystemExit(
-            f'{label}: esperado exatamente 1 ocorrência antes da âncora, encontrado {count}: {old!r}'
+            f'{label}: esperado exatamente 1 ocorrência no bloco semântico, encontrado {count}: {old!r}'
         )
-    return before.replace(old, new, 1) + anchor + after
+    segment = segment.replace(old, new, 1)
+    return text[:start] + segment + text[end:]
 
 
 gradle_text = gradle.read_text(encoding='utf-8')
@@ -72,24 +87,30 @@ engine_text = replace_once(
     'diagnóstico sem direção',
 )
 
+old_target_ahead = '        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n'
 old_has_passed = '        if (runtime.hasPassed(fix.headingDegrees, bearingToTarget, distance)) {\n'
 new_has_passed = '        if (runtime.hasPassed(distance)) {\n'
 
+saved_bearing = '        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, alert.coordinate)\n'
 saved_eligible = '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
 saved_eligible_without_direction = '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
-engine_text = replace_once(
+engine_text = replace_once_between(
     engine_text,
-    '''        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, alert.coordinate)\n        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n''',
+    saved_bearing,
+    saved_eligible,
+    old_target_ahead,
     '',
-    'bearing e gate alvo à frente do alerta salvo',
+    'gate alvo à frente do alerta salvo no bloco semântico correto',
 )
-engine_text = replace_once_before(
+engine_text = replace_once_between(
     engine_text,
+    saved_bearing,
     saved_eligible,
     old_has_passed,
     new_has_passed,
     'passagem do alerta salvo no bloco semântico correto',
 )
+engine_text = replace_once(engine_text, saved_bearing, '', 'bearing alerta salvo')
 engine_text = replace_once(
     engine_text,
     saved_eligible,
@@ -97,21 +118,35 @@ engine_text = replace_once(
     'elegibilidade alerta salvo',
 )
 
+radar_bearing = '        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, radar.coordinate)\n'
+radar_direction_match = '        val radarDirectionMatch = DirectionalAlertPolicy.radarDirectionMatches(radar, fix.headingDegrees)\n'
 radar_eligible = '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            radarDirectionMatch &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
 radar_eligible_without_direction = '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
-engine_text = replace_once(
+engine_text = replace_once_between(
     engine_text,
-    '''        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, radar.coordinate)\n        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n        val radarDirectionMatch = DirectionalAlertPolicy.radarDirectionMatches(radar, fix.headingDegrees)\n''',
+    radar_bearing,
+    radar_eligible,
+    old_target_ahead,
     '',
-    'bearing e gates de direção do radar',
+    'gate alvo à frente do radar no bloco semântico correto',
 )
-engine_text = replace_once_before(
+engine_text = replace_once_between(
     engine_text,
+    radar_bearing,
+    radar_eligible,
+    radar_direction_match,
+    '',
+    'gate de direção cadastrada do radar no bloco semântico correto',
+)
+engine_text = replace_once_between(
+    engine_text,
+    radar_bearing,
     radar_eligible,
     old_has_passed,
     new_has_passed,
     'passagem do radar no bloco semântico correto',
 )
+engine_text = replace_once(engine_text, radar_bearing, '', 'bearing radar')
 engine_text = replace_once(
     engine_text,
     radar_eligible,
