@@ -36,6 +36,7 @@ sha256sum "${PROTECTED_FILES[@]}" > "$BEFORE_HASHES"
 
 python3 "$PATCH_REPOSITORY/scripts/apply_forensic_incident_monitor_0193.py" "$SOURCE_REPOSITORY"
 python3 "$PATCH_REPOSITORY/scripts/enhance_forensic_popup_timing_0193.py" "$SOURCE_REPOSITORY"
+python3 "$PATCH_REPOSITORY/scripts/wire_manual_incident_marker_0193.py" "$SOURCE_REPOSITORY"
 
 sha256sum "${PROTECTED_FILES[@]}" > "$AFTER_HASHES"
 diff -u "$BEFORE_HASHES" "$AFTER_HASHES"
@@ -44,6 +45,7 @@ grep -Fq 'versionCode = 5477' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.193"' app/build.gradle.kts
 grep -Fq 'ForensicIncidentMonitor0193.observe(stage, packageName, details)' app/src/main/java/br/com/mapeiaia/rotacerta/FarolFlightRecorder0163.kt
 grep -Fq 'ForensicIncidentMonitor0193.markManualReport()' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt
+test "$(grep -Fc 'FORENSIC_USER_INCIDENT_MARK_0193' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt)" -eq 2
 grep -Fq 'ALERT_OVERLAY_POST_PASS_SCHEDULED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
 grep -Fq 'ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
 grep -Fq 'ALERT_OVERLAY_PENDING_CLOSE_CANCELLED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
@@ -69,8 +71,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 388:
-    raise SystemExit(f'Esperados pelo menos 388 testes após 0.1.193, encontrados {count}')
+if count < 389:
+    raise SystemExit(f'Esperados pelo menos 389 testes após 0.1.193, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.193')
 PY
@@ -103,6 +105,7 @@ grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OU
 
 for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'ForensicIncidentMonitor0193' "$OUTPUT_DIR/dex-strings.txt"
+grep -Fq 'FORENSIC_USER_INCIDENT_MARK_0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'FORENSIC_MANUAL_INCIDENT_MARK_0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'ALERT_OVERLAY_POST_PASS_SCHEDULED_0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193' "$OUTPUT_DIR/dex-strings.txt"
@@ -121,7 +124,8 @@ versionName=0.1.193
 versionCode=5477
 status=ci_candidate_pending_real_device
 existing_flight_recorder_reused=true
-manual_report_marks_incident=true
+user_incident_mark_before_document_picker=true
+manual_report_marks_export_build=true
 automatic_event_storm_detection=true
 automatic_ocr_storm_detection=true
 stale_generation_detection=true
