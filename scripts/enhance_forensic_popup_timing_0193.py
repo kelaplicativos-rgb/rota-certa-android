@@ -28,17 +28,20 @@ text = replace_once(
     'estado monotônico do fechamento pós-passagem',
 )
 
+# O primeiro estágio 0.1.193 insere a telemetria substituindo uma substring da linha
+# handler; por isso as linhas internas ficam com a indentação abaixo. Casamos a fonte
+# materializada exata e a normalizamos no mesmo passo, em vez de aceitar um match frouxo.
 old_close = '''            val closeTarget = visual.targetId
             val close = Runnable {
                 if (activeTargetId == closeTarget) hide()
             }
             pendingClose = close
             FarolFlightRecorder0163.record(
-                stage = "ALERT_OVERLAY_POST_PASS_SCHEDULED_0193",
-                packageName = null,
-                details = "delay_ms=$PASSED_CLOSE_DELAY_MILLIS; target_hash=${visual.targetId.hashCode()}",
-            )
-            handler.postDelayed(close, PASSED_CLOSE_DELAY_MILLIS)'''
+            stage = "ALERT_OVERLAY_POST_PASS_SCHEDULED_0193",
+            packageName = null,
+            details = "delay_ms=$PASSED_CLOSE_DELAY_MILLIS; target_hash=${visual.targetId.hashCode()}",
+        )
+        handler.postDelayed(close, PASSED_CLOSE_DELAY_MILLIS)'''
 
 new_close = '''            val closeTarget = visual.targetId
             val scheduledAtNanos0193 = android.os.SystemClock.elapsedRealtimeNanos()
