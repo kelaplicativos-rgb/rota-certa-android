@@ -7,9 +7,11 @@ from pathlib import Path
 root = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
 overlay = root / 'app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt'
 test = root / 'app/src/test/java/br/com/mapeiaia/rotacerta/AlertPopupTimingTelemetry0193ContractTest.kt'
+legacy_hold_test = root / 'app/src/test/java/br/com/mapeiaia/rotacerta/AlertPopupPostPassHold0192ContractTest.kt'
 
-if not overlay.is_file():
-    raise SystemExit(f'Arquivo obrigatório ausente: {overlay.relative_to(root)}')
+for required in (overlay, legacy_hold_test):
+    if not required.is_file():
+        raise SystemExit(f'Arquivo obrigatório ausente: {required.relative_to(root)}')
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -111,6 +113,21 @@ text = replace_once(
 
 overlay.write_text(text, encoding='utf-8')
 
+# O contrato 0.1.192 continua obrigatório, mas a forma textual ganha telemetria antes
+# do return. Atualizamos somente a asserção estrutural obsoleta, mantendo a exigência
+# de preservar o fechamento pendente e de cair em hide() quando não há temporizador.
+legacy_text = legacy_hold_test.read_text(encoding='utf-8')
+legacy_text = replace_once(
+    legacy_text,
+    '        assertTrue(idleHide.contains("if (pendingClose != null) return"))\n',
+    '''        assertTrue(idleHide.contains("if (pendingClose != null) {"))
+        assertTrue(idleHide.contains("ALERT_OVERLAY_ENGINE_IDLE_PRESERVED_0193"))
+        assertTrue(idleHide.contains("return"))
+''',
+    'contrato legado de preservação do fechamento pós-passagem',
+)
+legacy_hold_test.write_text(legacy_text, encoding='utf-8')
+
 test.write_text(r'''package br.com.mapeiaia.rotacerta
 
 import java.io.File
@@ -133,6 +150,7 @@ class AlertPopupTimingTelemetry0193ContractTest {
 ''', encoding='utf-8')
 
 final = overlay.read_text(encoding='utf-8')
+legacy_final = legacy_hold_test.read_text(encoding='utf-8')
 for marker in (
     'ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193',
     'ALERT_OVERLAY_PENDING_CLOSE_CANCELLED_0193',
@@ -142,8 +160,13 @@ for marker in (
         raise SystemExit(f'Overlay: marcador {marker} deve existir exatamente uma vez')
 if final.count('const val PASSED_CLOSE_DELAY_MILLIS = 3_000L') != 1:
     raise SystemExit('Overlay: contrato de 3.000 ms deixou de ser único')
+if 'if (pendingClose != null) return' in legacy_final:
+    raise SystemExit('Teste legado 0.1.192 ainda exige forma textual anterior à telemetria')
+if legacy_final.count('ALERT_OVERLAY_ENGINE_IDLE_PRESERVED_0193') != 1:
+    raise SystemExit('Teste legado não passou a proteger a preservação instrumentada do fechamento')
 
 print('forensic_popup_timing_0193=applied')
 print('monotonic_real_hold_measurement=true')
 print('early_cancel_trace=true')
 print('early_timeout_anomaly=true')
+print('legacy_post_pass_hold_contract=preserved_with_telemetry')
