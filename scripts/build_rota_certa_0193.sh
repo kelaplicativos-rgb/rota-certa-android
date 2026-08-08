@@ -35,6 +35,7 @@ for file in "${PROTECTED_FILES[@]}"; do test -f "$file" || { echo "Arquivo prote
 sha256sum "${PROTECTED_FILES[@]}" > "$BEFORE_HASHES"
 
 python3 "$PATCH_REPOSITORY/scripts/apply_forensic_incident_monitor_0193.py" "$SOURCE_REPOSITORY"
+python3 "$PATCH_REPOSITORY/scripts/enhance_forensic_popup_timing_0193.py" "$SOURCE_REPOSITORY"
 
 sha256sum "${PROTECTED_FILES[@]}" > "$AFTER_HASHES"
 diff -u "$BEFORE_HASHES" "$AFTER_HASHES"
@@ -44,6 +45,9 @@ grep -Fq 'versionName = "0.1.193"' app/build.gradle.kts
 grep -Fq 'ForensicIncidentMonitor0193.observe(stage, packageName, details)' app/src/main/java/br/com/mapeiaia/rotacerta/FarolFlightRecorder0163.kt
 grep -Fq 'ForensicIncidentMonitor0193.markManualReport()' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt
 grep -Fq 'ALERT_OVERLAY_POST_PASS_SCHEDULED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+grep -Fq 'ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+grep -Fq 'ALERT_OVERLAY_PENDING_CLOSE_CANCELLED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+grep -Fq 'FORENSIC_ALERT_POPUP_EARLY_TIMEOUT_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
 grep -Fq 'ALERT_OVERLAY_ENGINE_IDLE_PRESERVED_0193' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
 grep -Fq 'FORENSIC_EVENT_STORM_0193' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
 grep -Fq 'FORENSIC_STALE_GENERATION_RESULT_0193' app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
@@ -65,8 +69,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 387:
-    raise SystemExit(f'Esperados pelo menos 387 testes após 0.1.193, encontrados {count}')
+if count < 388:
+    raise SystemExit(f'Esperados pelo menos 388 testes após 0.1.193, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.193')
 PY
@@ -101,6 +105,9 @@ for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.de
 grep -Fq 'ForensicIncidentMonitor0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'FORENSIC_MANUAL_INCIDENT_MARK_0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'ALERT_OVERLAY_POST_PASS_SCHEDULED_0193' "$OUTPUT_DIR/dex-strings.txt"
+grep -Fq 'ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193' "$OUTPUT_DIR/dex-strings.txt"
+grep -Fq 'ALERT_OVERLAY_PENDING_CLOSE_CANCELLED_0193' "$OUTPUT_DIR/dex-strings.txt"
+grep -Fq 'FORENSIC_ALERT_POPUP_EARLY_TIMEOUT_0193' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'FarolFlightRecorder0163' "$OUTPUT_DIR/dex-strings.txt"
 
 cp "$TEST_COUNT_STAGING" "$OUTPUT_DIR/test-count.txt"
@@ -120,6 +127,9 @@ automatic_ocr_storm_detection=true
 stale_generation_detection=true
 final_color_without_distance_detection=true
 alert_popup_post_pass_telemetry=true
+alert_popup_monotonic_elapsed_measurement=true
+alert_popup_early_cancel_trace=true
+alert_popup_early_timeout_anomaly=true
 extra_polling=false
 extra_screenshot=false
 extra_continuous_disk_log=false
