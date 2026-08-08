@@ -1,3 +1,21 @@
+<!-- PROXIMITY_NO_DIRECTION_0191_CI_PENDING_DEVICE_START -->
+## 07/08/2026 — 0.1.191: radares e alertas avisam por aproximação, sem filtro de sentido
+
+- **Branch:** `agent/proximity-alerts-no-direction-0.1.191`; **PR:** #69; **base:** `agent/alert-popup-lifecycle-0.1.190`.
+- **Commit funcional validado:** `474f995ed9c02f4b00fcfe55f48cb5a9484b75db`; **workflow run:** `31258805798`.
+- **Versão:** `0.1.191`; **versionCode:** `5475`; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Pedido:** retirar a exigência de o veículo estar no mesmo sentido do alerta/radar, pois heading e direção cadastrada estavam atrasando ou bloqueando avisos; alertar enquanto a distância confirma aproximação, independentemente do sentido.
+- **Situação anterior / causa:** `DirectionalProximityAlertEngine` exigia heading utilizável, `isTargetAhead(...)` e, para radar importado, `radarDirectionMatches(...)`. A passagem também dependia de o alvo ficar geometricamente atrás do heading. Leituras de rumo ausentes, instáveis ou divergentes podiam impedir o aviso mesmo com distância diminuindo.
+- **Correção:** elegibilidade de radar e alerta passa a usar GPS recente/preciso + distância dentro do limite + tendência de aproximação. Heading, azimute e direção cadastrada do radar deixam de autorizar ou bloquear o aviso. A passagem é reconhecida quando a distância cresce de forma consistente depois do mínimo observado.
+- **Preservado:** radar fala no máximo 1 vez por aproximação; alerta manual até 2; reset após sair da zona; `Fechar` silencia o ponto apenas na passagem atual; pop-up continua por 3 s após ultrapassar; farol, OCR, rota, Manifest e permissões não foram alterados.
+- **Testes finais:** `tests=378`; `failures=0`; Android Lint aprovado; `clean assembleDebug` aprovado.
+- **Artifact:** `rota-certa-0.1.191-proximity-no-direction-validated`, ID `9022428483`, digest `5bd0e44927de1c7c2182a470724d616b1d11fb0ab4c03b693898067e28b34959`.
+- **APK:** `rota-certa-0.1.191-alertas-sem-filtro-sentido-validado-em-ci.apk`, `56157135` bytes; assinatura APK v2 conferida.
+- **SHA-256 do APK:** `543395feaa02018c3e7e13854a16e3c505005c53b7f8d0ea7e5041766b13b075`.
+- **Candidato público verificado byte a byte:** `https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.191/rota-certa-0.1.191-candidate.apk`.
+- **Pendência física:** testar radar importado e alerta manual em aproximações nos dois sentidos, heading instável/ausente, trânsito lento, passagem do ponto, fechamento manual e nova aproximação futura; confirmar aviso oportuno sem duplicação.
+<!-- PROXIMITY_NO_DIRECTION_0191_CI_PENDING_DEVICE_END -->
+
 <!-- ALERT_POPUP_0190_CI_PENDING_DEVICE_START -->
 ## 07/08/2026 — 0.1.190: pop-ups de radares/alertas permanecem 3 s após o ponto; CI aprovado
 
