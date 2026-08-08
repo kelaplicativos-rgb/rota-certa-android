@@ -185,12 +185,17 @@ recorder_text = inject_after_function_open(
 recorder.write_text(recorder_text, encoding='utf-8')
 
 report_text = report.read_text(encoding='utf-8')
+export_count = report_text.count('FarolFlightRecorder0163.exportReport')
+if export_count != 1:
+    raise SystemExit(
+        f'Relatório: esperado exatamente 1 exportReport do gravador de voo, encontrado {export_count}'
+    )
 if 'ForensicIncidentMonitor0193.markManualReport()' not in report_text:
     report_text = inject_after_function_open(
         report_text,
         'build',
         '        ForensicIncidentMonitor0193.markManualReport()\n',
-        ('FarolFlightRecorder0163.exportReport',),
+        (),
     )
 report.write_text(report_text, encoding='utf-8')
 
@@ -261,6 +266,7 @@ class ForensicIncidentMonitor0193Test {
 contract.write_text(r'''package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -278,8 +284,9 @@ class ForensicIncidentMonitor0193ContractTest {
 
     @Test
     fun `relatorio manual marca momento exato da reclamacao`() {
-        assertTrue(report.contains("ForensicIncidentMonitor0193.markManualReport()"))
-        assertTrue(report.contains("FarolFlightRecorder0163.exportReport"))
+        assertEquals(1, Regex("FarolFlightRecorder0163\\.exportReport").findAll(report).count())
+        assertEquals(1, Regex("ForensicIncidentMonitor0193\\.markManualReport\\(\\)").findAll(report).count())
+        assertTrue(report.indexOf("ForensicIncidentMonitor0193.markManualReport()") < report.indexOf("FarolFlightRecorder0163.exportReport"))
     }
 
     @Test
