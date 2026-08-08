@@ -8,6 +8,7 @@ on:
       - scripts/build_rota_certa_0193.sh
       - scripts/apply_forensic_incident_monitor_0193.py
       - scripts/enhance_forensic_popup_timing_0193.py
+      - scripts/wire_manual_incident_marker_0193.py
   workflow_dispatch:
 
 concurrency:
@@ -61,6 +62,7 @@ jobs:
         run: |
           python3 -m py_compile scripts/apply_forensic_incident_monitor_0193.py
           python3 -m py_compile scripts/enhance_forensic_popup_timing_0193.py
+          python3 -m py_compile scripts/wire_manual_incident_marker_0193.py
 
       - uses: actions/setup-java@v4
         with:
@@ -127,7 +129,8 @@ jobs:
           - assinatura APK v2: conferida
           - SHA-256: ${ACTUAL_SHA}
           - reutiliza FarolFlightRecorder0163; não cria segundo logger
-          - relatório manual grava marcador forense do momento da reclamação
+          - toque em Gerar relatório/Depurar marca o incidente antes do seletor de arquivo
+          - montagem do relatório grava um segundo marcador temporal
           - detecta tempestade de eventos/OCR, resultado de geração antiga e cor final sem distância
           - ciclo pós-passagem de radar/alerta mede agendamento, cancelamento e callback real com relógio monotônico
           - sem polling, screenshot extra ou log contínuo adicional em disco
@@ -162,4 +165,4 @@ jobs:
           set -euo pipefail
           TEST_COUNT="$(awk -F= '/^tests=/{print $2}' ../source/artifact-0.1.193/test-count.txt)"
           APK_SHA="$(awk '{print $1}' ../source/artifact-0.1.193/sha256.txt)"
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "CI 0.1.193 concluída no run ${RUN_ID}. Diagnóstico forense reutiliza o gravador de voo existente, sem polling/screenshot extra, e mede o tempo real do pop-up com relógio monotônico. Testes: ${TEST_COUNT}; falhas: 0. SHA-256: ${APK_SHA}. Validação física do fluxo de relatório continua obrigatória."
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "CI 0.1.193 concluída no run ${RUN_ID}. Diagnóstico forense reutiliza o gravador de voo existente, marca a reclamação no toque e mede o tempo real do pop-up com relógio monotônico, sem polling/screenshot extra. Testes: ${TEST_COUNT}; falhas: 0. SHA-256: ${APK_SHA}. Validação física do fluxo de relatório continua obrigatória."
