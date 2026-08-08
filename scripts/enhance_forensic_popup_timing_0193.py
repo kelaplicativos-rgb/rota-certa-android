@@ -126,7 +126,7 @@ class AlertPopupTimingTelemetry0193ContractTest {
         assertTrue(source.contains("ALERT_OVERLAY_POST_PASS_TIMEOUT_FIRED_0193"))
         assertTrue(source.contains("ALERT_OVERLAY_PENDING_CLOSE_CANCELLED_0193"))
         assertTrue(source.contains("FORENSIC_ALERT_POPUP_EARLY_TIMEOUT_0193"))
-        assertTrue(source.contains("expected_ms=$PASSED_CLOSE_DELAY_MILLIS"))
+        assertTrue(source.contains("expected_ms=\$PASSED_CLOSE_DELAY_MILLIS"))
         assertTrue(source.contains("EARLY_TIMEOUT_TOLERANCE_MILLIS_0193 = 150L"))
     }
 }
