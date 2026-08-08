@@ -22,6 +22,21 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_once_before(text: str, anchor: str, old: str, new: str, label: str) -> str:
+    anchor_count = text.count(anchor)
+    if anchor_count != 1:
+        raise SystemExit(
+            f'{label}: âncora semântica esperada exatamente 1 vez, encontrada {anchor_count}: {anchor!r}'
+        )
+    before, after = text.split(anchor, 1)
+    count = before.count(old)
+    if count != 1:
+        raise SystemExit(
+            f'{label}: esperado exatamente 1 ocorrência antes da âncora, encontrado {count}: {old!r}'
+        )
+    return before.replace(old, new, 1) + anchor + after
+
+
 gradle_text = gradle.read_text(encoding='utf-8')
 gradle_text = replace_once(gradle_text, 'versionCode = 5474', 'versionCode = 5475', 'versionCode')
 gradle_text = replace_once(gradle_text, 'versionName = "0.1.190"', 'versionName = "0.1.191"', 'versionName')
@@ -56,33 +71,51 @@ engine_text = replace_once(
     'reason = "${visual.title} a ${selected.distanceMeters.roundToInt()} metros; aproximação confirmada.",',
     'diagnóstico sem direção',
 )
-engine_text = replace_once(engine_text, '        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, alert.coordinate)\n', '', 'bearing alerta salvo')
-engine_text = replace_once(engine_text, '        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n', '', 'gate alvo à frente salvo')
+
+old_has_passed = '        if (runtime.hasPassed(fix.headingDegrees, bearingToTarget, distance)) {\n'
+new_has_passed = '        if (runtime.hasPassed(distance)) {\n'
+
+saved_eligible = '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
+saved_eligible_without_direction = '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
 engine_text = replace_once(
     engine_text,
-    '        if (runtime.hasPassed(fix.headingDegrees, bearingToTarget, distance)) {\n',
-    '        if (runtime.hasPassed(distance)) {\n',
-    'passagem alerta salvo',
+    '''        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, alert.coordinate)\n        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n''',
+    '',
+    'bearing e gate alvo à frente do alerta salvo',
+)
+engine_text = replace_once_before(
+    engine_text,
+    saved_eligible,
+    old_has_passed,
+    new_has_passed,
+    'passagem do alerta salvo no bloco semântico correto',
 )
 engine_text = replace_once(
     engine_text,
-    '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n''',
-    '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n''',
+    saved_eligible,
+    saved_eligible_without_direction,
     'elegibilidade alerta salvo',
 )
-engine_text = replace_once(engine_text, '        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, radar.coordinate)\n', '', 'bearing radar')
-engine_text = replace_once(engine_text, '        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n', '', 'gate alvo à frente radar')
-engine_text = replace_once(engine_text, '        val radarDirectionMatch = DirectionalAlertPolicy.radarDirectionMatches(radar, fix.headingDegrees)\n', '', 'gate direção cadastrada radar')
+
+radar_eligible = '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            radarDirectionMatch &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
+radar_eligible_without_direction = '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n'''
 engine_text = replace_once(
     engine_text,
-    '        if (runtime.hasPassed(fix.headingDegrees, bearingToTarget, distance)) {\n',
-    '        if (runtime.hasPassed(distance)) {\n',
-    'passagem radar',
+    '''        val bearingToTarget = GeoDistance.bearingDegrees(fix.coordinate, radar.coordinate)\n        val targetAhead = DirectionalAlertPolicy.isTargetAhead(fix.headingDegrees, bearingToTarget)\n        val radarDirectionMatch = DirectionalAlertPolicy.radarDirectionMatches(radar, fix.headingDegrees)\n''',
+    '',
+    'bearing e gates de direção do radar',
+)
+engine_text = replace_once_before(
+    engine_text,
+    radar_eligible,
+    old_has_passed,
+    new_has_passed,
+    'passagem do radar no bloco semântico correto',
 )
 engine_text = replace_once(
     engine_text,
-    '''        val eligible = distance <= threshold &&\n            targetAhead &&\n            radarDirectionMatch &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n''',
-    '''        val eligible = distance <= threshold &&\n            runtime.approachingSamples >= REQUIRED_APPROACHING_SAMPLES &&\n            !runtime.passed\n''',
+    radar_eligible,
+    radar_eligible_without_direction,
     'elegibilidade radar',
 )
 engine_text = replace_once(engine_text, 'status = "Aproximando — sentido confirmado",', 'status = "Aproximando",', 'status aproximação')
@@ -92,6 +125,18 @@ engine_text = replace_once(
     '''        fun hasPassed(distanceMeters: Double): Boolean =\n            insideZone && DirectionalAlertPolicy.hasPassedByDistance(\n                minimumDistanceMeters = minimumDistanceMeters,\n                currentDistanceMeters = distanceMeters,\n                increasingSamples = increasingSamples,\n            )\n''',
     'runtime passagem sem heading',
 )
+
+if engine_text.count(new_has_passed) != 2:
+    raise SystemExit(
+        f'passagem por distância: esperado exatamente 2 fluxos materializados, encontrado {engine_text.count(new_has_passed)}'
+    )
+if old_has_passed in engine_text:
+    raise SystemExit('passagem por distância: chamada antiga com heading permaneceu no motor')
+if 'DirectionalAlertPolicy.isTargetAhead(' in engine_text:
+    raise SystemExit('gate alvo à frente permaneceu no motor após materialização')
+if 'DirectionalAlertPolicy.radarDirectionMatches(' in engine_text:
+    raise SystemExit('gate de direção cadastrada do radar permaneceu no motor após materialização')
+
 engine.write_text(engine_text, encoding='utf-8')
 
 # Regressão estrutural: protege exatamente a retirada do filtro de sentido sem
@@ -99,6 +144,7 @@ engine.write_text(engine_text, encoding='utf-8')
 test.write_text(r'''package br.com.mapeiaia.rotacerta
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -132,7 +178,8 @@ class ProximityAlertsNoDirection0191ContractTest {
         assertFalse(hasPassedByDistance.contains("bearingToTargetDegrees"))
         assertTrue(hasPassedByDistance.contains("PASS_DISTANCE_INCREASE_METERS"))
         assertTrue(hasPassedByDistance.contains("REQUIRED_INCREASING_SAMPLES"))
-        assertTrue(engine.contains("runtime.hasPassed(distance)"))
+        assertEquals(2, engine.split("runtime.hasPassed(distance)").size - 1)
+        assertFalse(engine.contains("runtime.hasPassed(fix.headingDegrees"))
         assertTrue(engine.contains("DirectionalAlertPolicy.hasPassedByDistance("))
     }
 
@@ -163,3 +210,4 @@ print('radar_direction_gate=false')
 print('approach_basis=distance_trend')
 print('passed_basis=distance_increase_after_minimum')
 print('legacy_has_passed_signature=preserved')
+print('distance_passage_flows=2')
