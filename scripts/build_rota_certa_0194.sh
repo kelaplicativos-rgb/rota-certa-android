@@ -31,7 +31,7 @@ PROTECTED_FILES=(
   app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
-  app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecoveryEngine0161.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecovery0161.kt
 )
 for file in "${PROTECTED_FILES[@]}"; do
   test -f "$file" || { echo "Arquivo protegido ausente: $file" >&2; exit 1; }
