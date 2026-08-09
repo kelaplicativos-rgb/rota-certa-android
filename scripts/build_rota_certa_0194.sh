@@ -10,16 +10,18 @@ TEST_COUNT_STAGING="$(mktemp)"
 cleanup() { rm -f "$BEFORE_HASHES" "$AFTER_HASHES" "$TEST_COUNT_STAGING"; }
 trap cleanup EXIT
 
-# 1) Reproduz exatamente a 0.1.193 validada e testada no aparelho pelo usuário.
+# 1) Reproduz exatamente a 0.1.193 já aprovada em CI e usada nos testes físicos.
 bash "$PATCH_REPOSITORY/scripts/build_rota_certa_0193.sh" "$PATCH_REPOSITORY"
 grep -Fq 'versionCode = 5477' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.193"' app/build.gradle.kts
 
-# 2) Protege tudo que não pertence à correção universal de leitura/segmentação.
+# 2) A 0.1.194 corrige somente o parser universal e seus testes.
+# Gate visual, OCR/segmentação, decisão, rota, serviço e permissões ficam protegidos.
 PROTECTED_FILES=(
   app/src/main/AndroidManifest.xml
   app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/RideTextParser.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/GpsAddressResolver.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt
@@ -42,21 +44,21 @@ diff -u "$BEFORE_HASHES" "$AFTER_HASHES"
 
 grep -Fq 'versionCode = 5478' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
-grep -Fq 'FAROL_SPLIT_CARD_RECOVERY_0194' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
 grep -Fq 'UNIVERSAL_CONTEXTUAL_PLACE_0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-grep -Fq 'recoverSplitUpperCard0194' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
 grep -Fq 'isRecognizedContextualPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-grep -Fq 'splitAddressFragmentsFromSameUpperCardRecoverAsOneCard0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
-grep -Fq 'splitAddressFragmentsFromDifferentCardsNeverCombine0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
-grep -Fq 'unknownSelectedPackageUsesSameSplitCardRecovery0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
-grep -Fq 'contextualPoiWithLocalityWithoutKnownPrefixIsRecognized0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'independentCurrentPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'realInDrivePoiDestinationYieldsTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'realWrappedLocalityContinuationRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'twoContextualPlacesOnSeparateLinesRemainDistinct0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'realInDrivePoiInsideOneCoherentCardIsAuthorized0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
+grep -Fq 'contextual99LocationsInsideOneOcrCardAreAuthorized0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
+grep -Fq 'unknownSelectedPackageUsesSameContextualPlaceParser0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
 
-# A correção funcional não pode depender de pacotes conhecidos.
+# O parser funcional não pode conhecer pacote/marca de aplicativo.
 ! grep -E -n 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver' \
-  app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt \
   app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 
-echo 'farol_universal_card_fix_0194_contracts=passed'
+echo 'farol_universal_parser_fix_0194_contracts=passed'
 
 # 3) Suíte Android completa, Lint e build limpo.
 ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -71,8 +73,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 398:
-    raise SystemExit(f'Esperados pelo menos 398 testes após 0.1.194, encontrados {count}')
+if count < 400:
+    raise SystemExit(f'Esperados pelo menos 400 testes após 0.1.194, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.194')
 PY
@@ -104,7 +106,6 @@ grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUTPUT_DIR/
 grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUTPUT_DIR/signature.txt"
 
 for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
-grep -Fq 'FAROL_SPLIT_CARD_RECOVERY_0194' "$OUTPUT_DIR/dex-strings.txt"
 grep -Fq 'UNIVERSAL_CONTEXTUAL_PLACE_0194' "$OUTPUT_DIR/dex-strings.txt"
 
 cp "$TEST_COUNT_STAGING" "$OUTPUT_DIR/test-count.txt"
@@ -113,7 +114,6 @@ sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
 cp "$AFTER_HASHES" "$OUTPUT_DIR/protected-source-sha256.txt"
 sha256sum \
-  app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt \
   app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
   > "$OUTPUT_DIR/changed-source-sha256.txt"
 cat > "$OUTPUT_DIR/validation.txt" <<'VALIDATION'
@@ -121,13 +121,11 @@ package=br.com.mapeiaia.rotacerta
 versionName=0.1.194
 versionCode=5478
 status=ci_candidate_pending_real_device
-split_upper_card_recovery=true
-recovery_requires_same_accessibility_source=true
-recovery_requires_structural_relation=true
-recovery_requires_spatial_relation=true
-lower_card_cannot_complete_upper_partial_card=true
 contextual_poi_with_strong_locality=true
+independent_second_place_line_separation=true
+wrapped_locality_continuation_preserved=true
 unknown_package_uses_same_core=true
+farol_route_gate_unchanged=true
 decision_engine_unchanged=true
 route_engine_unchanged=true
 ride_text_parser_unchanged=true
