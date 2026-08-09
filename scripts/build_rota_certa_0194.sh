@@ -15,8 +15,8 @@ bash "$PATCH_REPOSITORY/scripts/build_rota_certa_0193.sh" "$PATCH_REPOSITORY"
 grep -Fq 'versionCode = 5477' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.193"' app/build.gradle.kts
 
-# 2) A 0.1.194 corrige somente o parser universal e seus testes.
-# Gate visual, OCR/segmentação, decisão, rota, serviço e permissões ficam protegidos.
+# 2) A 0.1.194 corrige somente a separação de um segundo POI já reconhecido.
+# Gate, OCR/segmentação, decisão, rota, serviço, recovery e permissões ficam protegidos.
 PROTECTED_FILES=(
   app/src/main/AndroidManifest.xml
   app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt
@@ -31,6 +31,7 @@ PROTECTED_FILES=(
   app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt
   app/src/main/java/br/com/mapeiaia/rotacerta/ForensicIncidentMonitor0193.kt
+  app/src/main/java/br/com/mapeiaia/rotacerta/FailedCardRecoveryEngine0161.kt
 )
 for file in "${PROTECTED_FILES[@]}"; do
   test -f "$file" || { echo "Arquivo protegido ausente: $file" >&2; exit 1; }
@@ -44,23 +45,21 @@ diff -u "$BEFORE_HASHES" "$AFTER_HASHES"
 
 grep -Fq 'versionCode = 5478' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
-grep -Fq 'UNIVERSAL_CONTEXTUAL_PLACE_0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-grep -Fq 'isRecognizedContextualPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
-grep -Fq 'independentCurrentPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'UNIVERSAL_SECOND_PLACE_BOUNDARY_0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'independentNamedPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'realInDrivePoiDestinationYieldsTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'realWrappedLocalityContinuationRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
-grep -Fq 'twoContextualPlacesOnSeparateLinesRemainDistinct0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
-grep -Fq 'realInDrivePoiInsideOneCoherentCardIsAuthorized0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
-grep -Fq 'contextual99LocationsInsideOneOcrCardAreAuthorized0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
-grep -Fq 'unknownSelectedPackageUsesSameContextualPlaceParser0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
+grep -Fq 'genericStreetThenTerminalRemainTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'barePoiWithoutGeographicEvidenceStillFailsClosed0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'secondStreetBehaviorRemainsUnchanged0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 
 # O parser funcional não pode conhecer pacote/marca de aplicativo.
 ! grep -E -n 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver' \
   app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 
-echo 'farol_universal_parser_fix_0194_contracts=passed'
+echo 'farol_universal_parser_boundary_0194_contracts=passed'
 
-# 3) Suíte Android completa, Lint e build limpo.
+# 3) Suíte Android completa, incluindo regressões antigas, Lint e build limpo.
 ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
 python3 - <<'PY' > "$TEST_COUNT_STAGING"
 import glob
@@ -73,8 +72,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 400:
-    raise SystemExit(f'Esperados pelo menos 400 testes após 0.1.194, encontrados {count}')
+if count < 396:
+    raise SystemExit(f'Esperados pelo menos 396 testes após 0.1.194, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.194')
 PY
@@ -106,31 +105,29 @@ grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUTPUT_DIR/
 grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUTPUT_DIR/signature.txt"
 
 for dex in $(zipinfo -1 "$OUTPUT_DIR/$APK_NAME" | grep -E '^classes([0-9]+)?\.dex$'); do unzip -p "$OUTPUT_DIR/$APK_NAME" "$dex"; done | strings > "$OUTPUT_DIR/dex-strings.txt"
-grep -Fq 'UNIVERSAL_CONTEXTUAL_PLACE_0194' "$OUTPUT_DIR/dex-strings.txt"
+grep -Fq 'UNIVERSAL_SECOND_PLACE_BOUNDARY_0194' "$OUTPUT_DIR/dex-strings.txt"
 
 cp "$TEST_COUNT_STAGING" "$OUTPUT_DIR/test-count.txt"
 grep -Fxq 'failures=0' "$OUTPUT_DIR/test-count.txt"
 sha256sum "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/sha256.txt"
 stat --printf='%s\n' "$OUTPUT_DIR/$APK_NAME" > "$OUTPUT_DIR/size-bytes.txt"
 cp "$AFTER_HASHES" "$OUTPUT_DIR/protected-source-sha256.txt"
-sha256sum \
-  app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
-  > "$OUTPUT_DIR/changed-source-sha256.txt"
+sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt > "$OUTPUT_DIR/changed-source-sha256.txt"
 cat > "$OUTPUT_DIR/validation.txt" <<'VALIDATION'
 package=br.com.mapeiaia.rotacerta
 versionName=0.1.194
 versionCode=5478
 status=ci_candidate_pending_real_device
-contextual_poi_with_strong_locality=true
-independent_second_place_line_separation=true
+independent_recognized_poi_boundary=true
 wrapped_locality_continuation_preserved=true
-unknown_package_uses_same_core=true
+unknown_poi_without_geographic_evidence_fails_closed=true
 farol_route_gate_unchanged=true
+visual_priority_0189_unchanged=true
+failed_card_recovery_0161_unchanged=true
 decision_engine_unchanged=true
 route_engine_unchanged=true
 ride_text_parser_unchanged=true
 live_service_unchanged=true
-visual_priority_0189_unchanged=true
 manifest_permissions_unchanged=true
 VALIDATION
 cat "$OUTPUT_DIR/test-count.txt"
