@@ -54,6 +54,38 @@ grep -Fq 'changedDestinationNeverSkipsHeavyAnalysis' app/src/test/java/br/com/ma
 grep -Fq 'closedCardNeverSkipsHeavyAnalysis' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 grep -Fq 'differentPackageNeverReusesAnotherAppsDestination' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 
+# Prova estrutural: a otimização deve ficar dentro de processRideText, depois do snapshot
+# e de tudo que as versões anteriores materializaram, mas imediatamente antes da avaliação
+# pesada que queremos evitar em duplicatas confirmadas.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
+text = p.read_text(encoding='utf-8')
+fn = '    private suspend fun processRideText(\n'
+start = text.index(fn)
+end = text.find('\n    private ', start + len(fn))
+if end < 0:
+    end = len(text)
+region = text[start:end]
+snapshot = '        val snapshotTextChecklist13 = text.trim()\n'
+fast = '            FarolDestinationFastGate0195.shouldSkipHeavyAnalysis(\n'
+heavy = '''        val evaluationChecklist13 = withContext(Dispatchers.Default) {
+            SimpleSavedAppFarolPolicy.evaluate(
+'''
+for marker in (snapshot, fast, heavy):
+    if region.count(marker) != 1:
+        raise SystemExit(f'Marcador estrutural 0.1.195 inválido/duplicado: {marker!r}')
+snapshot_pos = region.index(snapshot)
+fast_pos = region.index(fast)
+heavy_pos = region.index(heavy)
+if not snapshot_pos < fast_pos < heavy_pos:
+    raise SystemExit('Ordem insegura: fast gate não está entre snapshot/guardas e avaliação pesada')
+preserved = region[snapshot_pos + len(snapshot):fast_pos]
+if not preserved.strip():
+    raise SystemExit('Guardas materializados anteriores ao fast gate não foram preservados')
+print('farol_fast_gate_order_0195=passed')
+PY
+
 # O helper não pode conhecer marca/pacote específico e não pode autorizar destino novo.
 ! grep -E -n 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver' \
   app/src/main/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195.kt
@@ -126,6 +158,7 @@ versionName=0.1.195
 versionCode=5479
 status=ci_candidate_pending_real_device
 confirmed_destination_fast_gate=true
+fast_gate_runs_after_materialized_prior_guards=true
 heavy_duplicate_analysis_before_route_result_removed=true
 same_destination_fare_time_changes_do_not_reanalyze=true
 changed_destination_falls_back_to_full_gate=true
