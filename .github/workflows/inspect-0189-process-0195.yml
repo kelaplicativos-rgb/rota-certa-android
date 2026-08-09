@@ -1,0 +1,75 @@
+name: Inspect 0.1.189 process hunk for 0.1.195
+
+on:
+  pull_request:
+    branches: [agent/fix-universal-card-confirmation-0.1.194]
+    paths:
+      - .github/workflows/inspect-0189-process-0195.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Extract LiveRide process hunk from exact 0.1.189 payload
+        run: |
+          set -euo pipefail
+          base64 --decode patches/farol-priority-latency-0189.patch.gz.b64 | gzip --decompress > /tmp/0189.patch
+          test "$(sha256sum /tmp/0189.patch | awk '{print $1}')" = 'a64ae94d050499efcba6bc1b8231fe111fcb38b57030327cde911f0a46a06493'
+          python3 - <<'PY'
+          from pathlib import Path
+          patch = Path('/tmp/0189.patch').read_text(encoding='utf-8')
+          target = 'diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          start = patch.find(target)
+          if start < 0:
+              raise SystemExit('diff do serviço não encontrado')
+          end = patch.find('\ndiff --git ', start + len(target))
+          if end < 0:
+              end = len(patch)
+          service_diff = patch[start:end]
+          lines = service_diff.splitlines()
+          needles = ('processRideText', 'snapshotTextChecklist13', 'evaluationChecklist13', 'SimpleSavedAppFarolPolicy.evaluate', 'FarolRealDeviceGate0188', 'FarolVisualPriority0189', 'BUBBLE_DESTINATION_CONFIRMED_ORANGE_0189')
+          selected = []
+          for i, line in enumerate(lines):
+              if any(n in line for n in needles):
+                  lo = max(0, i - 45)
+                  hi = min(len(lines), i + 90)
+                  selected.extend(lines[lo:hi])
+                  selected.append('\n--- MATCH BOUNDARY ---\n')
+          if not selected:
+              raise SystemExit('nenhum hunk relevante encontrado')
+          # Deduplica preservando ordem para manter o artifact pequeno e legível.
+          out = []
+          seen_blocks = set()
+          block = []
+          for line in selected:
+              if line == '\n--- MATCH BOUNDARY ---\n':
+                  key = '\n'.join(block)
+                  if key and key not in seen_blocks:
+                      out.extend(block)
+                      out.append('\n--- MATCH BOUNDARY ---\n')
+                      seen_blocks.add(key)
+                  block = []
+              else:
+                  block.append(line)
+          Path('inspection-0189-process.txt').write_text('\n'.join(out), encoding='utf-8')
+          PY
+          grep -nE 'processRideText|snapshotTextChecklist13|evaluationChecklist13|SimpleSavedAppFarolPolicy.evaluate|FarolRealDeviceGate0188|FarolVisualPriority0189|BUBBLE_DESTINATION_CONFIRMED_ORANGE_0189' inspection-0189-process.txt
+
+      - name: Upload inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspection-0189-process-0195
+          path: inspection-0189-process.txt
+          retention-days: 7
+          if-no-files-found: error
