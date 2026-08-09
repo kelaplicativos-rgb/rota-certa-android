@@ -16,6 +16,16 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def insert_after_once(path: Path, anchor: str, addition: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(anchor)
+    if count != 1:
+        raise SystemExit(f"{label}: esperado exatamente 1 ponto de inserção, encontrado {count}")
+    if "BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195" in text:
+        raise SystemExit(f"{label}: marcador 0.1.195 já existe antes da transformação")
+    path.write_text(text.replace(anchor, anchor + addition, 1), encoding="utf-8")
+
+
 def create_once(path: Path, content: str, label: str) -> None:
     if path.exists():
         raise SystemExit(f"{label}: arquivo já existe: {path}")
@@ -28,17 +38,8 @@ replace_once(gradle, "versionCode = 5478", "versionCode = 5479", "versionCode 0.
 replace_once(gradle, 'versionName = "0.1.194"', 'versionName = "0.1.195"', "versionName 0.1.195")
 
 service = root / "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-old_process = '''        val snapshotTextChecklist13 = text.trim()
-        val evaluationChecklist13 = withContext(Dispatchers.Default) {
-            SimpleSavedAppFarolPolicy.evaluate(
-                packageName = selectedPackageChecklist13,
-                savedPackages = savedPackagesChecklist13,
-                text = snapshotTextChecklist13,
-            )
-        }
-'''
-new_process = '''        val snapshotTextChecklist13 = text.trim()
-        val routeActive0195 = universalRouteJob?.isActive == true
+snapshot_anchor = "        val snapshotTextChecklist13 = text.trim()\n"
+fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive == true
         val stableDecision0195 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
         if (
             FarolDestinationFastGate0195.shouldSkipHeavyAnalysis(
@@ -60,15 +61,13 @@ new_process = '''        val snapshotTextChecklist13 = text.trim()
             )
             return
         }
-        val evaluationChecklist13 = withContext(Dispatchers.Default) {
-            SimpleSavedAppFarolPolicy.evaluate(
-                packageName = selectedPackageChecklist13,
-                savedPackages = savedPackagesChecklist13,
-                text = snapshotTextChecklist13,
-            )
-        }
 '''
-replace_once(service, old_process, new_process, "fast gate antes da análise pesada 0.1.195")
+insert_after_once(
+    service,
+    snapshot_anchor,
+    fast_gate_block,
+    "fast gate após snapshot real materializado 0.1.195",
+)
 
 helper = root / "app/src/main/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195.kt"
 create_once(
