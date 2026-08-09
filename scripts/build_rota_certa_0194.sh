@@ -50,6 +50,10 @@ grep -Fq 'strongIndependentPoiStartRegex0194' app/src/main/java/br/com/mapeiaia/
 grep -Fq 'ambiguousParkStartRegex0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'nestedLocalityParenthesisRegex0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'independentNamedPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+# Garante que o gerador Python preservou escapes de regex exigidos pelo Kotlin.
+grep -Fq '(?:\\b|(?=\\s))' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq '\\(\\s*(?:cidade|bairro|jardim' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+! LC_ALL=C grep -q $'\b' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'realInDrivePoiDestinationYieldsTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'realWrappedLocalityContinuationRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'genericStreetThenTerminalRemainTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
@@ -127,6 +131,7 @@ strong_independent_poi_boundary=true
 ambiguous_park_requires_nested_locality=true
 park_named_neighborhood_continuation_preserved=true
 wrapped_locality_continuation_preserved=true
+kotlin_regex_escapes_verified=true
 unknown_poi_without_geographic_evidence_fails_closed=true
 farol_route_gate_unchanged=true
 visual_priority_0189_unchanged=true
