@@ -150,4 +150,39 @@ parser_tests = '''    @Test
 '''
 insert_before_last_brace(parser_test, parser_tests, "testes do parser 0.1.194")
 
+gate_test = root / "app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt"
+gate_tests = '''    @Test
+    fun realInDrivePoiInsideOneCoherentBlockReachesUniversalGate0194() {
+        val packageName = "sinet.startup.indriver"
+        val decision = FarolRealDeviceGate0188.evaluate(
+            packageName,
+            setOf(packageName),
+            listOf(
+                FarolCardBlock0188(
+                    id = "real-0194",
+                    parentId = null,
+                    packageName = packageName,
+                    windowId = 6544,
+                    windowLayer = 1,
+                    depth = 2,
+                    text = "R. Carlos Vivaldi, 197 (Cidade Sao Mateus, Sao Paulo - SP, 03965-030)\\n" +
+                        "Parque do Carmo (Jardim Nossa Senhora do Carmo, Sao Paulo - SP)",
+                    source = FarolEvidenceSource0188.Accessibility,
+                    left = 80,
+                    top = 360,
+                    right = 1000,
+                    bottom = 720,
+                    syntheticRoot = false,
+                ),
+            ),
+        )
+        assertTrue(decision.authorized)
+        assertEquals(
+            "Parque do Carmo (Jardim Nossa Senhora do Carmo, Sao Paulo - SP)",
+            decision.authorization?.destination,
+        )
+    }
+'''
+insert_before_last_brace(gate_test, gate_tests, "teste de integração do gate 0.1.194")
+
 print("apply_farol_universal_card_fix_0194=passed")
