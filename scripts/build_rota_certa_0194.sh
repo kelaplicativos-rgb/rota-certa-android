@@ -61,6 +61,7 @@ grep -Fq 'parkNamedNeighborhoodAfterCompleteStreetRemainsOneAddress0194' app/src
 grep -Fq 'parkNamedNeighborhoodWithCityParenthesisRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'barePoiWithoutGeographicEvidenceStillFailsClosed0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'secondStreetBehaviorRemainsUnchanged0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'realInDrivePoiInsideOneCoherentBlockReachesUniversalGate0194' app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt
 
 # O parser funcional não pode conhecer pacote/marca de aplicativo.
 ! grep -E -n 'com\.app99\.driver|com\.ubercab\.driver|sinet\.startup\.indriver' \
@@ -81,8 +82,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 398:
-    raise SystemExit(f'Esperados pelo menos 398 testes após 0.1.194, encontrados {count}')
+if count < 399:
+    raise SystemExit(f'Esperados pelo menos 399 testes após 0.1.194, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.194')
 PY
@@ -131,6 +132,7 @@ strong_independent_poi_boundary=true
 ambiguous_park_requires_nested_locality=true
 park_named_neighborhood_continuation_preserved=true
 wrapped_locality_continuation_preserved=true
+real_indrive_poi_gate_integration=true
 kotlin_regex_escapes_verified=true
 unknown_poi_without_geographic_evidence_fails_closed=true
 farol_route_gate_unchanged=true
