@@ -1,3 +1,23 @@
+<!-- DECISION_FORENSIC_INCIDENT_MONITOR_0193_START -->
+## 08/08/2026 — diagnóstico forense observa o sistema; nunca participa da decisão
+
+**Decisão:** o diagnóstico da 0.1.193 reutiliza `FarolFlightRecorder0163` como único barramento/gravador de eventos. `ForensicIncidentMonitor0193` é somente observador: não pode autorizar cor, destino, rota, OCR, fala, radar, alerta ou alterar o estado do farol.
+
+**Marcação de incidente:** a ação manual deve registrar o instante percebido pelo usuário **antes** de abrir o seletor de documento e registrar outro marcador quando a montagem/exportação do relatório começar. Isso ancora o antes/durante/depois da reclamação sem novo fluxo de captura contínua.
+
+**Detecção automática:** anomalias podem ser inferidas somente de metadados técnicos já emitidos — repetição excessiva de eventos/OCR, geração ou janela antiga aplicada, cor final sem distância quando exposta nos detalhes, e temporização anormal do pop-up. A detecção nunca corrige automaticamente o estado funcional; apenas produz evidência.
+
+**Desempenho:** o caminho comum deve evitar `Regex`, polling, timers recorrentes, screenshot/OCR extras, rede e escrita contínua adicional. Fingerprints e parsing estruturado são locais, limitados e orientados aos eventos reais que já chegaram ao gravador.
+
+**Pop-up:** os 3.000 ms pós-passagem continuam pertencendo ao `DirectionalAlertOverlayController`. O diagnóstico mede o tempo real com relógio monotônico e registra agendamento, preservação, cancelamento e callback. A telemetria não pode encurtar, estender ou substituir o contrato visual; fechamento explícito continua imediato.
+
+**Privacidade:** eventos forenses carregam apenas estágio, contadores, hashes e tokens técnicos. Não introduzir armazenamento paralelo de texto bruto, endereço, telefone, screenshot ou conteúdo pessoal.
+
+**Fronteira:** `DecisionEngine`, parser, rota/Google Maps, `GpsAddressResolver`, `RadarImport`, `DirectionalAlertPolicy`, `DirectionalProximityAlertEngine`, `LiveRideAccessibilityService`, Manifest e permissões permanecem fora desta evolução e foram protegidos por SHA-256.
+
+**Evidência:** 0.1.193 / versionCode 5477; head funcional `b782e68ef13a5184df7ecd760421fb53ccc1fe2d`; workflow `31282319358`; job `93165519669`; 391 testes sem falhas; Lint e `clean assembleDebug` aprovados; artifact `9029132463`; APK SHA-256 `5286d46377d0034030def95a6dd108ee8aa53b7e52f794d93aaa092b04b7d93c`. Validação física do diagnóstico continua obrigatória antes de promover/mesclar.
+<!-- DECISION_FORENSIC_INCIDENT_MONITOR_0193_END -->
+
 <!-- DECISION_ALERT_POPUP_POST_PASS_HOLD_0192_START -->
 ## 08/08/2026 — fechamento pós-passagem pertence ao overlay, não ao próximo snapshot do motor
 
