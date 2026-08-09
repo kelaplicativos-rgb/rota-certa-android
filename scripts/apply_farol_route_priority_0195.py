@@ -16,14 +16,48 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-def insert_after_once(path: Path, anchor: str, addition: str, label: str) -> None:
+def insert_before_in_function_once(
+    path: Path,
+    function_marker: str,
+    snapshot_marker: str,
+    anchor: str,
+    addition: str,
+    label: str,
+) -> None:
     text = path.read_text(encoding="utf-8")
-    count = text.count(anchor)
-    if count != 1:
-        raise SystemExit(f"{label}: esperado exatamente 1 ponto de inserção, encontrado {count}")
     if "BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195" in text:
         raise SystemExit(f"{label}: marcador 0.1.195 já existe antes da transformação")
-    path.write_text(text.replace(anchor, anchor + addition, 1), encoding="utf-8")
+
+    function_count = text.count(function_marker)
+    if function_count != 1:
+        raise SystemExit(f"{label}: esperado exatamente 1 processRideText, encontrado {function_count}")
+    function_start = text.index(function_marker)
+    next_private = text.find("\n    private ", function_start + len(function_marker))
+    function_end = next_private if next_private >= 0 else len(text)
+    region = text[function_start:function_end]
+
+    snapshot_count = region.count(snapshot_marker)
+    anchor_count = region.count(anchor)
+    if snapshot_count != 1:
+        raise SystemExit(f"{label}: snapshot esperado 1 vez dentro de processRideText, encontrado {snapshot_count}")
+    if anchor_count != 1:
+        raise SystemExit(f"{label}: avaliação pesada esperada 1 vez dentro de processRideText, encontrado {anchor_count}")
+
+    snapshot_pos = region.index(snapshot_marker)
+    anchor_pos = region.index(anchor)
+    if snapshot_pos >= anchor_pos:
+        raise SystemExit(f"{label}: snapshot não precede a avaliação pesada")
+
+    # A 0.1.189 materializada contém guardas entre o snapshot e a avaliação pesada.
+    # O run #1 da 0.1.195 provou que essas regiões já não são adjacentes. Exigimos
+    # explicitamente que esse trecho exista e o preservamos integralmente, inserindo
+    # a otimização somente no último ponto seguro: imediatamente antes da avaliação.
+    preserved_between = region[snapshot_pos + len(snapshot_marker):anchor_pos]
+    if not preserved_between.strip():
+        raise SystemExit(f"{label}: guardas materializados entre snapshot e avaliação não encontrados")
+
+    absolute_anchor = function_start + anchor_pos
+    path.write_text(text[:absolute_anchor] + addition + text[absolute_anchor:], encoding="utf-8")
 
 
 def create_once(path: Path, content: str, label: str) -> None:
@@ -38,7 +72,11 @@ replace_once(gradle, "versionCode = 5478", "versionCode = 5479", "versionCode 0.
 replace_once(gradle, 'versionName = "0.1.194"', 'versionName = "0.1.195"', "versionName 0.1.195")
 
 service = root / "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
-snapshot_anchor = "        val snapshotTextChecklist13 = text.trim()\n"
+function_marker = "    private suspend fun processRideText(\n"
+snapshot_marker = "        val snapshotTextChecklist13 = text.trim()\n"
+heavy_evaluation_anchor = '''        val evaluationChecklist13 = withContext(Dispatchers.Default) {
+            SimpleSavedAppFarolPolicy.evaluate(
+'''
 fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive == true
         val stableDecision0195 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
         if (
@@ -51,8 +89,9 @@ fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive =
                 stableDecision = stableDecision0195,
             )
         ) {
-            // O destino completo já foi validado pelo gate pesado. Alterações de preço, tempo,
-            // animação ou layout do mesmo card não podem atrasar a entrega da rota já em curso.
+            // Todas as guardas materializadas das versões anteriores já executaram antes daqui.
+            // O destino completo já foi validado; ruído de preço/tempo/layout não repete a
+            // avaliação pesada nem interfere na rota já em andamento.
             universalLastActiveReadAtMillis = System.currentTimeMillis()
             UnifiedDebugEventStore.record(
                 "BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195",
@@ -62,11 +101,13 @@ fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive =
             return
         }
 '''
-insert_after_once(
+insert_before_in_function_once(
     service,
-    snapshot_anchor,
+    function_marker,
+    snapshot_marker,
+    heavy_evaluation_anchor,
     fast_gate_block,
-    "fast gate após snapshot real materializado 0.1.195",
+    "fast gate após guardas materializados e antes da análise pesada 0.1.195",
 )
 
 helper = root / "app/src/main/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195.kt"
