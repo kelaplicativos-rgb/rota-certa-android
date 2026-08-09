@@ -15,7 +15,7 @@ bash "$PATCH_REPOSITORY/scripts/build_rota_certa_0193.sh" "$PATCH_REPOSITORY"
 grep -Fq 'versionCode = 5477' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.193"' app/build.gradle.kts
 
-# 2) A 0.1.194 corrige somente a separação de um segundo POI já reconhecido.
+# 2) A 0.1.194 corrige somente a separação segura de um segundo POI já reconhecido.
 # Gate, OCR/segmentação, decisão, rota, serviço, recovery e permissões ficam protegidos.
 PROTECTED_FILES=(
   app/src/main/AndroidManifest.xml
@@ -46,10 +46,15 @@ diff -u "$BEFORE_HASHES" "$AFTER_HASHES"
 grep -Fq 'versionCode = 5478' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
 grep -Fq 'UNIVERSAL_SECOND_PLACE_BOUNDARY_0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'strongIndependentPoiStartRegex0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'ambiguousParkStartRegex0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
+grep -Fq 'nestedLocalityParenthesisRegex0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'independentNamedPlace0194' app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt
 grep -Fq 'realInDrivePoiDestinationYieldsTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'realWrappedLocalityContinuationRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'genericStreetThenTerminalRemainTwoLocations0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'parkNamedNeighborhoodAfterCompleteStreetRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
+grep -Fq 'parkNamedNeighborhoodWithCityParenthesisRemainsOneAddress0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'barePoiWithoutGeographicEvidenceStillFailsClosed0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 grep -Fq 'secondStreetBehaviorRemainsUnchanged0194' app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt
 
@@ -72,8 +77,8 @@ for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     failures += int(root.attrib.get('failures', 0)) + int(root.attrib.get('errors', 0))
 print(f'tests={count}')
 print(f'failures={failures}')
-if count < 396:
-    raise SystemExit(f'Esperados pelo menos 396 testes após 0.1.194, encontrados {count}')
+if count < 398:
+    raise SystemExit(f'Esperados pelo menos 398 testes após 0.1.194, encontrados {count}')
 if failures:
     raise SystemExit('Há testes com falha na 0.1.194')
 PY
@@ -118,7 +123,9 @@ package=br.com.mapeiaia.rotacerta
 versionName=0.1.194
 versionCode=5478
 status=ci_candidate_pending_real_device
-independent_recognized_poi_boundary=true
+strong_independent_poi_boundary=true
+ambiguous_park_requires_nested_locality=true
+park_named_neighborhood_continuation_preserved=true
 wrapped_locality_continuation_preserved=true
 unknown_poi_without_geographic_evidence_fails_closed=true
 farol_route_gate_unchanged=true
