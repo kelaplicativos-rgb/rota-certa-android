@@ -123,12 +123,12 @@ object FarolDestinationFastGate0195 {
         val out = StringBuilder(decomposed.length)
         var pendingSpace = false
         for (raw in decomposed) {
-            when (Character.getType(raw)) {
-                Character.NON_SPACING_MARK.toInt(),
-                Character.COMBINING_SPACING_MARK.toInt(),
-                Character.ENCLOSING_MARK.toInt(),
-                -> continue
-            }
+            val markType = Character.getType(raw)
+            if (
+                markType == Character.NON_SPACING_MARK.toInt() ||
+                markType == Character.COMBINING_SPACING_MARK.toInt() ||
+                markType == Character.ENCLOSING_MARK.toInt()
+            ) continue
             val ch = raw.lowercaseChar()
             if (ch.isLetterOrDigit()) {
                 if (pendingSpace && out.isNotEmpty()) out.append(' ')
