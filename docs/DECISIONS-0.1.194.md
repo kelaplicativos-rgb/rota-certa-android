@@ -6,19 +6,19 @@ Data: 09/08/2026
 
 **Decisão:** a 0.1.194 não cria nova regra de fusão de nós/cards. `FarolRealDeviceGate0188` e `FarolVisualPriority0189` permanecem inalterados.
 
-**Motivo:** a 0.1.189 já segmenta o OCR espacialmente e impede endereços de cards distintos de autorizarem uma rota. Introduzir uma segunda recomposição no gate aumentaria o risco de combinar cards irmãos e violaria o contrato universal. O menor reparo seguro é entregar ao gate os locais corretamente separados pelo parser.
+**Motivo:** a 0.1.189 já segmenta o OCR espacialmente e impede endereços de cards distintos de autorizarem uma rota. Introduzir uma segunda recomposição no gate aumentaria o risco de combinar cards irmãos e violaria o contrato universal.
 
-## Um segundo local completo não é continuação automática do primeiro
+## Um segundo POI já reconhecido não é continuação automática da rua anterior
 
-**Decisão:** `looksLikeContinuation` deve continuar recompondo endereços realmente quebrados, mas não pode colar a linha seguinte ao endereço anterior quando a linha seguinte já representa um POI/local independente suficientemente confirmado.
+**Decisão:** `looksLikeContinuation` continua recompondo endereços realmente quebrados, mas não deve colar a linha seguinte ao endereço anterior quando a rua anterior já é numerada/completa e a nova linha já satisfaz as regras existentes de POI reconhecido.
 
-**Preservações:** parêntese aberto, prefixo/localidade pendente e delimitador explícito continuam autorizando continuação. Assim endereços como `Rua Erundina (Jardim Rodolfo` + `Pirani, Sao Paulo - SP)` permanecem um único endereço, enquanto `R. Carlos Vivaldi, 197 (...)` + `Parque do Carmo (...)` permanecem dois locais.
+**Preservações:** parêntese aberto, prefixo/localidade pendente e delimitador explícito continuam autorizando continuação. Assim `Rua Erundina (Jardim Rodolfo` + `Pirani, Sao Paulo - SP)` permanece um único endereço, enquanto `R. Carlos Vivaldi, 197 (...)` + `Parque do Carmo (...)` permanecem dois locais.
 
-## POI desconhecido não pode depender de lista de marcas
+## POI desconhecido continua fail-closed
 
-**Decisão:** o parser universal pode reconhecer um nome de local/estabelecimento que não comece por categoria conhecida somente quando o próprio texto trouxer evidência geográfica forte: UF, CEP ou marcador de localidade (bairro, jardim, vila, distrito, município, centro etc.) e ao menos duas palavras alfabéticas úteis.
+**Decisão:** a 0.1.194 não amplia `isRecognizedAddress` para aceitar qualquer estabelecimento/local apenas por conter bairro, UF ou CEP.
 
-**Motivo:** destinos reais podem ser estabelecimentos e POIs ainda desconhecidos. Uma lista fixa de categorias cria falso negativo. Exigir contexto geográfico forte mantém o comportamento fail-closed e evita transformar texto de status, preço, botão ou mensagem livre em destino.
+**Motivo:** a primeira tentativa dessa ampliação fez uma regressão histórica mudar a fonte de confiança de `marcadores_confirmados` para `acessibilidade_mais_ocr`. Além disso, o relatório da 99 contém fragmentos que não permitem provar com segurança que um nome de estabelecimento desconhecido é o destino final do mesmo card. Portanto, essa hipótese permanece bloqueada até haver evidência estrutural suficiente.
 
 ## Fronteiras preservadas
 
@@ -26,6 +26,7 @@ A 0.1.194 não altera:
 
 - `FarolRealDeviceGate0188`;
 - `FarolVisualPriority0189`;
+- `FailedCardRecoveryEngine0161`;
 - `DecisionEngine`;
 - Google Maps/rota;
 - `RideTextParser`;
