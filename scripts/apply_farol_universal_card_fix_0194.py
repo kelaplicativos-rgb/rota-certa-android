@@ -178,7 +178,9 @@ gate_tests = '''    @Test
         )
         assertTrue(decision.authorized)
         assertEquals(
-            "Parque do Carmo (Jardim Nossa Senhora do Carmo, Sao Paulo - SP)",
+            DestinationAddressIdentityPolicy.cleanDisplayAddress(
+                "Parque do Carmo (Jardim Nossa Senhora do Carmo, Sao Paulo - SP)",
+            ),
             decision.authorization?.destination,
         )
     }
