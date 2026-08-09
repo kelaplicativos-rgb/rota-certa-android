@@ -1,3 +1,27 @@
+<!-- FORENSIC_INCIDENT_MONITOR_0193_CI_PENDING_DEVICE_START -->
+## 08/08/2026 — 0.1.193: diagnóstico forense leve validado em CI; aparelho pendente
+
+- **Branch:** `agent/forensic-incident-monitor-0.1.193`; **PR:** #71; **base:** `agent/fix-alert-popup-hold-0.1.192`.
+- **Head funcional validado:** `b782e68ef13a5184df7ecd760421fb53ccc1fe2d`; **workflow run:** `31282319358`; **job:** `93165519669`.
+- **Versão:** `0.1.193`; **versionCode:** `5477`; **pacote:** `br.com.mapeiaia.rotacerta`.
+- **Pedido:** elevar a capacidade de depuração para detectar reclamações com precisão, usando recursos de alta tecnologia, sem voltar a prejudicar o farol com logging pesado.
+- **Base reaproveitada:** `FarolFlightRecorder0163` permanece o único gravador de voo. A 0.1.193 não cria segundo logger, não adiciona polling, screenshot contínuo, OCR extra, timer recorrente nem log contínuo adicional em disco.
+- **Correção/evolução:** `ForensicIncidentMonitor0193` observa os eventos já emitidos pelo gravador, mantém somente estado mínimo e detecta tempestade de eventos/OCR, aplicação de resultado de geração/janela antiga e tentativa de cor final sem distância quando os metadados expõem essa inconsistência.
+- **Marcação da reclamação:** o toque que inicia o relatório grava `FORENSIC_USER_INCIDENT_MARK_0193` antes do seletor de documento; a montagem/exportação grava `FORENSIC_MANUAL_INCIDENT_MARK_0193`. Assim o relatório ancora o instante percebido pelo usuário e o instante real da exportação.
+- **Desempenho:** o caminho comum do monitor foi endurecido para não instanciar `Regex`; o parser de `generation`/`windowGeneration` usa busca manual, o fingerprint inclui o pacote e a camada não executa rede, captura, OCR ou I/O contínuo.
+- **Telemetria do pop-up:** o overlay registra agendamento pós-passagem, preservação em `engine idle`, cancelamento antecipado, callback realmente disparado e `elapsed_ms` medido por `SystemClock.elapsedRealtimeNanos()`. Callback significativamente anterior a 3.000 ms gera `FORENSIC_ALERT_POPUP_EARLY_TIMEOUT_0193`.
+- **Contrato preservado:** o atraso pós-passagem continua `3_000L`; `hideFromEngineIdle()` preserva `pendingClose`; fechamentos explícitos permanecem imediatos; novo visual continua cancelando o callback anterior antes de substituir o alvo.
+- **Fronteira protegida por SHA-256:** `AndroidManifest.xml`, `DecisionEngine.kt`, `RideTextParser.kt`, `GoogleMapsService.kt`, `GpsAddressResolver.kt`, `RadarImport.kt`, `DirectionalAlertPolicy.kt`, `DirectionalProximityAlertEngine.kt` e `LiveRideAccessibilityService.kt` permaneceram idênticos na transformação 0.1.193.
+- **Falhas intermediárias corretamente bloqueadas:** run `31275024207` falhou por guarda de `exportReport` restritivo demais; run `31276441820` por match textual frágil no otimizador; run `31279655978` por literal `$PASSED_CLOSE_DELAY_MILLIS` sem escape em teste; run `31281034103` executou 391 testes e encontrou 1 falha em contrato textual legado da 0.1.192, atualizado para validar a mesma proteção enriquecida com telemetria. Nenhum desses runs publicou APK.
+- **Validação final:** `tests=391`; `failures=0`; Android Lint aprovado; `clean assembleDebug` aprovado; integridade ZIP/DEX, pacote, versão, versionCode e marcadores compilados aprovados.
+- **Artifact:** `rota-certa-0.1.193-forensic-incident-validated`, ID `9029132463`, digest `607c7b13aaf2d14a9552f7f9c2924bc164ac962f055c4d99d1743d1bc76bced7`.
+- **APK:** `rota-certa-0.1.193-diagnostico-forense-validado-em-ci.apk`, `56157135` bytes.
+- **Assinatura:** APK Signature Scheme v2 válida; um signatário; certificado `CN=Rota Certa Debug, O=Kel Aplicativos, C=BR`; certificado SHA-256 `d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd`; RSA 2048 bits.
+- **SHA-256 do APK:** `5286d46377d0034030def95a6dd108ee8aa53b7e52f794d93aaa092b04b7d93c`.
+- **Candidato público verificado byte a byte pelo workflow:** `https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.193/rota-certa-0.1.193-candidate.apk`.
+- **Pendência física:** instalar no aparelho real, provocar uma reclamação reproduzível e gerar o relatório imediatamente; confirmar os dois marcadores manuais, ausência de impacto perceptível no farol/CPU/bateria, detecção correta de anomalias e `elapsed_ms` do pop-up próximo de 3.000 ms. A PR permanece em rascunho e não deve ser promovida/mesclada apenas pelo sucesso do CI.
+<!-- FORENSIC_INCIDENT_MONITOR_0193_CI_PENDING_DEVICE_END -->
+
 <!-- ALERT_POPUP_POST_PASS_HOLD_0192_CI_PENDING_DEVICE_START -->
 ## 08/08/2026 — 0.1.192: pop-up de radar/alerta preserva os 3 s reais após a passagem
 
