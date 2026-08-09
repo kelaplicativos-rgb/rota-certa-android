@@ -1,4 +1,4 @@
-name: Build Rota Certa 0.1.194 universal card confirmation
+name: Build Rota Certa 0.1.194 universal destination boundary
 
 on:
   pull_request:
@@ -110,7 +110,7 @@ jobs:
           test "$EXPECTED_SHA" = "$ACTUAL_SHA"
           TEST_COUNT="$(awk -F= '/^tests=/{print $2}' source/artifact-0.1.194/test-count.txt)"
           cat > "${RUNNER_TEMP}/candidate-notes.md" <<NOTES
-          Rota Certa 0.1.194 — correção universal de confirmação de cards
+          Rota Certa 0.1.194 — correção universal do limite entre destinos
 
           Candidato isolado. Não substitui o link permanente latest.
 
@@ -123,11 +123,10 @@ jobs:
           - clean assembleDebug: aprovado
           - assinatura APK v2: conferida
           - SHA-256: ${ACTUAL_SHA}
-          - fragmentos de origem/destino só podem ser reunidos quando pertencem ao card superior por relação estrutural e espacial
-          - card inferior continua proibido de completar card superior parcial
-          - POIs desconhecidos podem ser reconhecidos apenas com contexto geográfico forte
-          - aplicativo desconhecido usa o mesmo núcleo
-          - DecisionEngine, rota, serviço principal, segmentador 0.1.189, Manifest e permissões permanecem protegidos
+          - um POI já reconhecido não é mais anexado à rua anterior quando a rua está completa
+          - endereços realmente quebrados entre linhas continuam sendo recompostos
+          - nenhum reconhecimento genérico novo de POI desconhecido foi introduzido
+          - gate visual, anti-mistura de cards, FailedCardRecovery, DecisionEngine, rota, serviço principal, Manifest e permissões permanecem protegidos
           NOTES
           if gh release view ci-0.1.194 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release delete ci-0.1.194 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
@@ -135,7 +134,7 @@ jobs:
           gh release create ci-0.1.194 "$APK_CANDIDATE" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$VALIDATED_HEAD" \
-            --title 'Rota Certa 0.1.194 — correção universal de confirmação de cards' \
+            --title 'Rota Certa 0.1.194 — correção universal do limite entre destinos' \
             --notes-file "${RUNNER_TEMP}/candidate-notes.md" \
             --prerelease
 
@@ -157,4 +156,4 @@ jobs:
           set -euo pipefail
           TEST_COUNT="$(awk -F= '/^tests=/{print $2}' ../source/artifact-0.1.194/test-count.txt)"
           APK_SHA="$(awk '{print $1}' ../source/artifact-0.1.194/sha256.txt)"
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "CI 0.1.194 concluída no run ${RUN_ID}. Correção universal reúne apenas fragmentos estrutural e espacialmente pertencentes ao card superior, mantém bloqueio entre cards e amplia POIs somente com contexto geográfico forte. Testes: ${TEST_COUNT}; falhas: 0. SHA-256: ${APK_SHA}. Validação física nos aplicativos continua obrigatória."
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "CI 0.1.194 concluída no run ${RUN_ID}. Correção limitada ao parser: POI já reconhecido passa a ser mantido como segundo local após uma rua completa; endereços quebrados continuam recompostos. Gate/anti-mistura, FailedCardRecovery, DecisionEngine e rota permaneceram protegidos. Testes: ${TEST_COUNT}; falhas: 0. SHA-256: ${APK_SHA}. Validação física nos aplicativos continua obrigatória."
