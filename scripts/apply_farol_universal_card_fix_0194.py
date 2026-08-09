@@ -32,8 +32,22 @@ parser = root / "app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddr
 replace_once(
     parser,
     "object UniversalScreenAddressParser {\n",
-    'object UniversalScreenAddressParser {\n    const val SECOND_PLACE_BOUNDARY_MARKER_0194 = "UNIVERSAL_SECOND_PLACE_BOUNDARY_0194"\n',
-    "marcador do parser 0.1.194",
+    '''object UniversalScreenAddressParser {
+    const val SECOND_PLACE_BOUNDARY_MARKER_0194 = "UNIVERSAL_SECOND_PLACE_BOUNDARY_0194"
+    private val strongIndependentPoiStartRegex0194 = Regex(
+        "^(?:shopping|terminal|estacao|estação|aeroporto|rodoviaria|rodoviária|hospital|mercado|restaurante|hotel|pousada|escola|faculdade|universidade|posto|poupatempo|igreja|cemiterio|cemitério|loja|lojas)(?:\\b|(?=\\s))",
+        RegexOption.IGNORE_CASE,
+    )
+    private val ambiguousParkStartRegex0194 = Regex(
+        "^parque(?:\\b|(?=\\s))",
+        RegexOption.IGNORE_CASE,
+    )
+    private val nestedLocalityParenthesisRegex0194 = Regex(
+        "\\(\\s*(?:cidade|bairro|jardim|vila|distrito|municipio|município|residencial|condominio|condomínio|loteamento|centro|sitio|sítio|fazenda)(?:\\b|(?=\\s))",
+        RegexOption.IGNORE_CASE,
+    )
+''',
+    "marcador e predicados do parser 0.1.194",
 )
 replace_once(
     parser,
@@ -42,8 +56,16 @@ replace_once(
             normalized.length in 3..100
 ''',
     '''        val previousOpenParenthesis0194 = previous.count { it == '(' } > previous.count { it == ')' }
+        val standaloneNamedPlace0194 =
+            strongIndependentPoiStartRegex0194.containsMatchIn(value) ||
+                (
+                    ambiguousParkStartRegex0194.containsMatchIn(value) &&
+                        nestedLocalityParenthesisRegex0194.containsMatchIn(value)
+                    )
         val independentNamedPlace0194 =
-            isRecognizedNamedPlace(value) && isCompleteNumberedAddress(previous)
+            standaloneNamedPlace0194 &&
+                isRecognizedNamedPlace(value) &&
+                isCompleteNumberedAddress(previous)
         if (
             independentNamedPlace0194 &&
             !previousOpenParenthesis0194 &&
@@ -58,7 +80,7 @@ replace_once(
             (value.contains(',') || value.contains('(')) &&
             normalized.length in 3..100
 ''',
-    "limite entre rua completa e segundo local 0.1.194",
+    "limite seguro entre rua completa e segundo local 0.1.194",
 )
 
 parser_test = root / "app/src/test/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParserTest.kt"
@@ -92,6 +114,24 @@ parser_tests = '''    @Test
         )
         assertEquals(2, addresses.size)
         assertEquals("Terminal Central (Centro, Sao Paulo - SP)", addresses.last())
+    }
+
+    @Test
+    fun parkNamedNeighborhoodAfterCompleteStreetRemainsOneAddress0194() {
+        val addresses = UniversalScreenAddressParser.findAddresses(
+            "Rua Exemplo, 123\\nParque Sao Jorge, Sao Paulo - SP",
+        )
+        assertEquals(1, addresses.size)
+        assertEquals("Rua Exemplo, 123 Parque Sao Jorge, Sao Paulo - SP", addresses.single())
+    }
+
+    @Test
+    fun parkNamedNeighborhoodWithCityParenthesisRemainsOneAddress0194() {
+        val addresses = UniversalScreenAddressParser.findAddresses(
+            "Rua Exemplo, 123\\nParque Sao Jorge (Sao Paulo - SP)",
+        )
+        assertEquals(1, addresses.size)
+        assertEquals("Rua Exemplo, 123 Parque Sao Jorge (Sao Paulo - SP)", addresses.single())
     }
 
     @Test
