@@ -32,7 +32,7 @@ parser = root / "app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddr
 replace_once(
     parser,
     "object UniversalScreenAddressParser {\n",
-    '''object UniversalScreenAddressParser {
+    r'''object UniversalScreenAddressParser {
     const val SECOND_PLACE_BOUNDARY_MARKER_0194 = "UNIVERSAL_SECOND_PLACE_BOUNDARY_0194"
     private val strongIndependentPoiStartRegex0194 = Regex(
         "^(?:shopping|terminal|estacao|estação|aeroporto|rodoviaria|rodoviária|hospital|mercado|restaurante|hotel|pousada|escola|faculdade|universidade|posto|poupatempo|igreja|cemiterio|cemitério|loja|lojas)(?:\\b|(?=\\s))",
