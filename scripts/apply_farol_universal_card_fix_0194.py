@@ -81,6 +81,32 @@ replace_once(
     contextual_fn + "    private fun isPotentialStreetPrefix(value: String): Boolean {\n",
     "função contextual do parser 0.1.194",
 )
+replace_once(
+    parser,
+    '''        val wrappedLocalityContinuation = danglingAddressPrefix &&
+            (value.contains(',') || value.contains('(')) &&
+            normalized.length in 3..100
+''',
+    '''        val previousOpenParenthesis0194 = previous.count { it == '(' } > previous.count { it == ')' }
+        val independentCurrentPlace0194 = isRecognizedNamedPlace(value) ||
+            (isRecognizedContextualPlace0194(value) &&
+                (isCompleteNumberedAddress(previous) || isRecognizedContextualPlace0194(previous)))
+        if (
+            independentCurrentPlace0194 &&
+            !previousOpenParenthesis0194 &&
+            !danglingAddressPrefix &&
+            !previous.endsWith(',') &&
+            !previous.endsWith('-') &&
+            !previous.endsWith('–') &&
+            !previous.endsWith('—')
+        ) return false
+
+        val wrappedLocalityContinuation = danglingAddressPrefix &&
+            (value.contains(',') || value.contains('(')) &&
+            normalized.length in 3..100
+''',
+    "separação de POI independente 0.1.194",
+)
 
 gate = root / "app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt"
 replace_once(
