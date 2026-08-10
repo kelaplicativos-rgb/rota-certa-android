@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 if len(sys.argv) != 2:
@@ -19,14 +20,16 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
 def insert_before_in_function_once(
     path: Path,
     function_marker: str,
-    snapshot_marker: str,
-    anchor: str,
+    snapshot_pattern: re.Pattern[str],
+    heavy_evaluation_pattern: re.Pattern[str],
     addition: str,
     label: str,
 ) -> None:
     text = path.read_text(encoding="utf-8")
     if "BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195" in text:
         raise SystemExit(f"{label}: marcador 0.1.195 já existe antes da transformação")
+    if "universalLastActiveReadAtElapsedMillis0187" not in text:
+        raise SystemExit(f"{label}: relógio monotônico 0.1.187 ausente na fonte materializada")
 
     function_count = text.count(function_marker)
     if function_count != 1:
@@ -36,27 +39,28 @@ def insert_before_in_function_once(
     function_end = next_private if next_private >= 0 else len(text)
     region = text[function_start:function_end]
 
-    snapshot_count = region.count(snapshot_marker)
-    anchor_count = region.count(anchor)
-    if snapshot_count != 1:
-        raise SystemExit(f"{label}: snapshot esperado 1 vez dentro de processRideText, encontrado {snapshot_count}")
-    if anchor_count != 1:
-        raise SystemExit(f"{label}: avaliação pesada esperada 1 vez dentro de processRideText, encontrado {anchor_count}")
+    snapshot_matches = list(snapshot_pattern.finditer(region))
+    heavy_matches = list(heavy_evaluation_pattern.finditer(region))
+    if len(snapshot_matches) != 1:
+        raise SystemExit(
+            f"{label}: declaração semântica de snapshot esperada 1 vez dentro de processRideText, "
+            f"encontrada {len(snapshot_matches)}"
+        )
+    if len(heavy_matches) != 1:
+        raise SystemExit(
+            f"{label}: avaliação pesada semântica esperada 1 vez dentro de processRideText, "
+            f"encontrada {len(heavy_matches)}"
+        )
 
-    snapshot_pos = region.index(snapshot_marker)
-    anchor_pos = region.index(anchor)
-    if snapshot_pos >= anchor_pos:
+    snapshot_match = snapshot_matches[0]
+    heavy_match = heavy_matches[0]
+    if snapshot_match.start() >= heavy_match.start():
         raise SystemExit(f"{label}: snapshot não precede a avaliação pesada")
 
-    # A 0.1.189 materializada contém guardas entre o snapshot e a avaliação pesada.
-    # O run #1 da 0.1.195 provou que essas regiões já não são adjacentes. Exigimos
-    # explicitamente que esse trecho exista e o preservamos integralmente, inserindo
-    # a otimização somente no último ponto seguro: imediatamente antes da avaliação.
-    preserved_between = region[snapshot_pos + len(snapshot_marker):anchor_pos]
-    if not preserved_between.strip():
-        raise SystemExit(f"{label}: guardas materializados entre snapshot e avaliação não encontrados")
-
-    absolute_anchor = function_start + anchor_pos
+    # Insere no último ponto seguro: imediatamente antes da avaliação pesada real.
+    # Assim, qualquer guarda materializada pelas versões cumulativas anteriores continua
+    # executando antes do fast gate, sem depender da forma textual do RHS do snapshot.
+    absolute_anchor = function_start + heavy_match.start()
     path.write_text(text[:absolute_anchor] + addition + text[absolute_anchor:], encoding="utf-8")
 
 
@@ -73,10 +77,14 @@ replace_once(gradle, 'versionName = "0.1.194"', 'versionName = "0.1.195"', "vers
 
 service = root / "app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
 function_marker = "    private suspend fun processRideText(\n"
-snapshot_marker = "        val snapshotTextChecklist13 = text.trim()\n"
-heavy_evaluation_anchor = '''        val evaluationChecklist13 = withContext(Dispatchers.Default) {
-            SimpleSavedAppFarolPolicy.evaluate(
-'''
+snapshot_pattern = re.compile(
+    r"(?m)^[ \t]*val[ \t]+snapshotTextChecklist13[ \t]*=",
+)
+heavy_evaluation_pattern = re.compile(
+    r"(?ms)^[ \t]*val[ \t]+evaluationChecklist13[ \t]*=[ \t]*"
+    r"withContext\([ \t\r\n]*Dispatchers\.Default[ \t\r\n]*\)[ \t\r\n]*\{[ \t\r\n]*"
+    r"SimpleSavedAppFarolPolicy\.evaluate[ \t\r\n]*\(",
+)
 fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive == true
         val stableDecision0195 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
         if (
@@ -92,7 +100,7 @@ fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive =
             // Todas as guardas materializadas das versões anteriores já executaram antes daqui.
             // O destino completo já foi validado; ruído de preço/tempo/layout não repete a
             // avaliação pesada nem interfere na rota já em andamento.
-            universalLastActiveReadAtMillis = System.currentTimeMillis()
+            universalLastActiveReadAtElapsedMillis0187 = android.os.SystemClock.elapsedRealtime()
             UnifiedDebugEventStore.record(
                 "BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195",
                 selectedPackageChecklist13,
@@ -104,8 +112,8 @@ fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive =
 insert_before_in_function_once(
     service,
     function_marker,
-    snapshot_marker,
-    heavy_evaluation_anchor,
+    snapshot_pattern,
+    heavy_evaluation_pattern,
     fast_gate_block,
     "fast gate após guardas materializados e antes da análise pesada 0.1.195",
 )
