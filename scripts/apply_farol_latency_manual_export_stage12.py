@@ -35,12 +35,9 @@ PROTECTED_NEVER_WRITE = (
     HELPER,
 )
 
-ANCHOR = '''            appendLine("Logs continuos: DESATIVADOS")
-            appendLine()
-'''
+ANCHOR = "        ForensicIncidentMonitor0193.markManualReport()\n"
 
-SNAPSHOT_BLOCK = '''            appendLine("Logs continuos: DESATIVADOS")
-            appendLine()
+SNAPSHOT_BLOCK = """        ForensicIncidentMonitor0193.markManualReport()
             appendLine("--- FAROL_LATENCY_STAGE9_SNAPSHOT ---")
             val farolLatencyStage9SnapshotStage12 = FarolLatencyProbeStage9.dump()
             if (farolLatencyStage9SnapshotStage12.isBlank()) {
@@ -49,7 +46,7 @@ SNAPSHOT_BLOCK = '''            appendLine("Logs continuos: DESATIVADOS")
                 appendLine(farolLatencyStage9SnapshotStage12)
             }
             appendLine()
-'''
+"""
 
 EXPECTED_COUNTS = {
     'return_tokens': 283,
