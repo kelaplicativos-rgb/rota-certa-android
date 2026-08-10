@@ -35,9 +35,9 @@ PROTECTED_NEVER_WRITE = (
     HELPER,
 )
 
-ANCHOR = "        ForensicIncidentMonitor0193.markManualReport()\n"
+ANCHOR = "        return buildString {\n"
 
-SNAPSHOT_BLOCK = """        ForensicIncidentMonitor0193.markManualReport()
+SNAPSHOT_BLOCK = """        return buildString {
             appendLine("--- FAROL_LATENCY_STAGE9_SNAPSHOT ---")
             val farolLatencyStage9SnapshotStage12 = FarolLatencyProbeStage9.dump()
             if (farolLatencyStage9SnapshotStage12.isBlank()) {
