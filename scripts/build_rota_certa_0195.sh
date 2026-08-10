@@ -48,42 +48,62 @@ grep -Fq 'versionCode = 5479' app/build.gradle.kts
 grep -Fq 'versionName = "0.1.195"' app/build.gradle.kts
 grep -Fq 'BUBBLE_FAST_DESTINATION_DUPLICATE_SKIPPED_0195' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'FarolDestinationFastGate0195.shouldSkipHeavyAnalysis' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+grep -Fq 'universalLastActiveReadAtElapsedMillis0187 = android.os.SystemClock.elapsedRealtime()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+! grep -Fq 'universalLastActiveReadAtMillis = System.currentTimeMillis()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
 grep -Fq 'FAROL_CONFIRMED_DESTINATION_FAST_GATE_0195' app/src/main/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195.kt
 grep -Fq 'sameConfirmedDestinationWithFareChangeSkipsWhileRouteIsActive' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 grep -Fq 'changedDestinationNeverSkipsHeavyAnalysis' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 grep -Fq 'closedCardNeverSkipsHeavyAnalysis' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 grep -Fq 'differentPackageNeverReusesAnotherAppsDestination' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 
-# Prova estrutural: a otimização deve ficar dentro de processRideText, depois do snapshot
-# e de tudo que as versões anteriores materializaram, mas imediatamente antes da avaliação
-# pesada que queremos evitar em duplicatas confirmadas.
+# Prova estrutural fail-closed: usa identidade semântica das declarações, não o RHS textual
+# do snapshot. A otimização deve ficar depois do snapshot e imediatamente antes da única
+# avaliação pesada real do processRideText.
 python3 - <<'PY'
 from pathlib import Path
+import re
+
 p = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
 text = p.read_text(encoding='utf-8')
 fn = '    private suspend fun processRideText(\n'
+if text.count(fn) != 1:
+    raise SystemExit(f'processRideText estrutural inválido: {text.count(fn)} ocorrências')
 start = text.index(fn)
 end = text.find('\n    private ', start + len(fn))
 if end < 0:
     end = len(text)
 region = text[start:end]
-snapshot = '        val snapshotTextChecklist13 = text.trim()\n'
+
+snapshot_pattern = re.compile(r'(?m)^[ \t]*val[ \t]+snapshotTextChecklist13[ \t]*=')
+heavy_pattern = re.compile(
+    r'(?ms)^[ \t]*val[ \t]+evaluationChecklist13[ \t]*=[ \t]*'
+    r'withContext\([ \t\r\n]*Dispatchers\.Default[ \t\r\n]*\)[ \t\r\n]*\{[ \t\r\n]*'
+    r'SimpleSavedAppFarolPolicy\.evaluate[ \t\r\n]*\('
+)
 fast = '            FarolDestinationFastGate0195.shouldSkipHeavyAnalysis(\n'
-heavy = '''        val evaluationChecklist13 = withContext(Dispatchers.Default) {
-            SimpleSavedAppFarolPolicy.evaluate(
-'''
-for marker in (snapshot, fast, heavy):
-    if region.count(marker) != 1:
-        raise SystemExit(f'Marcador estrutural 0.1.195 inválido/duplicado: {marker!r}')
-snapshot_pos = region.index(snapshot)
+snapshot_matches = list(snapshot_pattern.finditer(region))
+heavy_matches = list(heavy_pattern.finditer(region))
+if len(snapshot_matches) != 1:
+    raise SystemExit(f'snapshot semântico 0.1.195 inválido/duplicado: {len(snapshot_matches)}')
+if len(heavy_matches) != 1:
+    raise SystemExit(f'avaliação pesada semântica 0.1.195 inválida/duplicada: {len(heavy_matches)}')
+if region.count(fast) != 1:
+    raise SystemExit(f'fast gate 0.1.195 inválido/duplicado: {region.count(fast)}')
+
+snapshot_pos = snapshot_matches[0].start()
 fast_pos = region.index(fast)
-heavy_pos = region.index(heavy)
+heavy_pos = heavy_matches[0].start()
 if not snapshot_pos < fast_pos < heavy_pos:
-    raise SystemExit('Ordem insegura: fast gate não está entre snapshot/guardas e avaliação pesada')
-preserved = region[snapshot_pos + len(snapshot):fast_pos]
-if not preserved.strip():
-    raise SystemExit('Guardas materializados anteriores ao fast gate não foram preservados')
+    raise SystemExit('Ordem insegura: fast gate não está entre snapshot e avaliação pesada')
+
+between_fast_and_heavy = region[fast_pos:heavy_pos]
+monotonic = 'universalLastActiveReadAtElapsedMillis0187 = android.os.SystemClock.elapsedRealtime()'
+if monotonic not in between_fast_and_heavy:
+    raise SystemExit('Fast gate não atualiza a leitura ativa pelo relógio monotônico 0.1.187')
+if 'universalLastActiveReadAtMillis' in between_fast_and_heavy:
+    raise SystemExit('Fast gate reintroduziu relógio civil legado')
 print('farol_fast_gate_order_0195=passed')
+print('farol_fast_gate_monotonic_clock_0195=passed')
 PY
 
 # O helper não pode conhecer marca/pacote específico e não pode autorizar destino novo.
@@ -159,6 +179,7 @@ versionCode=5479
 status=ci_candidate_pending_real_device
 confirmed_destination_fast_gate=true
 fast_gate_runs_after_materialized_prior_guards=true
+fast_gate_uses_monotonic_clock_0187=true
 heavy_duplicate_analysis_before_route_result_removed=true
 same_destination_fare_time_changes_do_not_reanalyze=true
 changed_destination_falls_back_to_full_gate=true
