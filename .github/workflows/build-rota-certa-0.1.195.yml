@@ -1,4 +1,5 @@
 name: Build Rota Certa 0.1.195 farol route priority
+# CI retrigger after semantic anchoring and monotonic-clock correction for 0.1.195.
 
 on:
   pull_request:
