@@ -1,0 +1,98 @@
+name: Build Rota Certa 0.1.195 farol route priority
+# CI retrigger after semantic anchoring and monotonic-clock correction for 0.1.195.
+
+on:
+  pull_request:
+    branches: [agent/fix-universal-card-confirmation-0.1.194]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.195.yml
+      - scripts/build_rota_certa_0195.sh
+      - scripts/apply_farol_route_priority_0195.py
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.195-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify cumulative patch commit
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate 0.1.195 transformation syntax
+        working-directory: patches
+        run: python3 -m py_compile scripts/apply_farol_route_priority_0195.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and validate 0.1.195
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0195
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0195.sh ../patches 2>&1 | tee build-0.1.195.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.195-validation-failure
+          path: |
+            source/build-0.1.195.log
+            source/app/build/reports/tests/
+            source/app/build/reports/lint-results-debug.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload CI validation evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.195-farol-priority-ci-evidence
+          path: source/artifact-0.1.195/
+          retention-days: 30
+          if-no-files-found: error
