@@ -56,9 +56,9 @@ grep -Fq 'changedDestinationNeverSkipsHeavyAnalysis' app/src/test/java/br/com/ma
 grep -Fq 'closedCardNeverSkipsHeavyAnalysis' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 grep -Fq 'differentPackageNeverReusesAnotherAppsDestination' app/src/test/java/br/com/mapeiaia/rotacerta/FarolDestinationFastGate0195Test.kt
 
-# Prova estrutural fail-closed: usa identidade semântica das declarações, não o RHS textual
-# do snapshot. A otimização deve ficar depois do snapshot e imediatamente antes da única
-# avaliação pesada real do processRideText.
+# Prova estrutural fail-closed: usa identidades semânticas independentes para snapshot,
+# declaração de evaluationChecklist13 e chamada SimpleSavedAppFarolPolicy.evaluate. A
+# otimização deve ficar imediatamente antes da declaração única, sem depender do RHS.
 python3 - <<'PY'
 from pathlib import Path
 import re
@@ -74,35 +74,82 @@ if end < 0:
     end = len(text)
 region = text[start:end]
 
+
+def declaration_association_boundary(region: str, declaration_match: re.Match[str]) -> int:
+    indent = declaration_match.group('indent')
+    line_end = region.find('\n', declaration_match.end())
+    if line_end < 0:
+        return len(region)
+
+    cursor = line_end + 1
+    while cursor < len(region):
+        next_line_end = region.find('\n', cursor)
+        if next_line_end < 0:
+            next_line_end = len(region)
+        line = region[cursor:next_line_end]
+        if line.strip() and not line.lstrip().startswith('//') and line.startswith(indent):
+            suffix = line[len(indent):]
+            if suffix and not suffix[0].isspace():
+                return cursor
+        if next_line_end == len(region):
+            break
+        cursor = next_line_end + 1
+    return len(region)
+
+
 snapshot_pattern = re.compile(r'(?m)^[ \t]*val[ \t]+snapshotTextChecklist13[ \t]*=')
-heavy_pattern = re.compile(
-    r'(?ms)^[ \t]*val[ \t]+evaluationChecklist13[ \t]*=[ \t]*'
-    r'withContext\([ \t\r\n]*Dispatchers\.Default[ \t\r\n]*\)[ \t\r\n]*\{[ \t\r\n]*'
-    r'SimpleSavedAppFarolPolicy\.evaluate[ \t\r\n]*\('
+evaluation_pattern = re.compile(
+    r'(?m)^(?P<indent>[ \t]*)val[ \t]+evaluationChecklist13[ \t]*='
+)
+heavy_call_pattern = re.compile(
+    r'SimpleSavedAppFarolPolicy[ \t\r\n]*\.[ \t\r\n]*evaluate[ \t\r\n]*\('
 )
 fast = '            FarolDestinationFastGate0195.shouldSkipHeavyAnalysis(\n'
 snapshot_matches = list(snapshot_pattern.finditer(region))
-heavy_matches = list(heavy_pattern.finditer(region))
+evaluation_matches = list(evaluation_pattern.finditer(region))
+heavy_call_matches = list(heavy_call_pattern.finditer(region))
 if len(snapshot_matches) != 1:
     raise SystemExit(f'snapshot semântico 0.1.195 inválido/duplicado: {len(snapshot_matches)}')
-if len(heavy_matches) != 1:
-    raise SystemExit(f'avaliação pesada semântica 0.1.195 inválida/duplicada: {len(heavy_matches)}')
+if len(evaluation_matches) != 1:
+    raise SystemExit(
+        f'declaração evaluationChecklist13 0.1.195 inválida/duplicada: {len(evaluation_matches)}'
+    )
+if len(heavy_call_matches) != 1:
+    raise SystemExit(
+        f'chamada SimpleSavedAppFarolPolicy.evaluate 0.1.195 inválida/duplicada: {len(heavy_call_matches)}'
+    )
 if region.count(fast) != 1:
     raise SystemExit(f'fast gate 0.1.195 inválido/duplicado: {region.count(fast)}')
 
+evaluation_match = evaluation_matches[0]
+heavy_call_match = heavy_call_matches[0]
+association_end = declaration_association_boundary(region, evaluation_match)
+if not evaluation_match.end() <= heavy_call_match.start() < association_end:
+    raise SystemExit(
+        'Chamada pesada única não está associada ao RHS da declaração evaluationChecklist13'
+    )
+
 snapshot_pos = snapshot_matches[0].start()
 fast_pos = region.index(fast)
-heavy_pos = heavy_matches[0].start()
-if not snapshot_pos < fast_pos < heavy_pos:
-    raise SystemExit('Ordem insegura: fast gate não está entre snapshot e avaliação pesada')
+evaluation_pos = evaluation_match.start()
+heavy_pos = heavy_call_match.start()
+if not snapshot_pos < fast_pos < evaluation_pos < heavy_pos:
+    raise SystemExit(
+        'Ordem insegura: esperado snapshot < fast gate < evaluationChecklist13 < avaliação pesada'
+    )
 
-between_fast_and_heavy = region[fast_pos:heavy_pos]
+fast_tail = '            return\n        }\n'
+if not region[:evaluation_pos].endswith(fast_tail):
+    raise SystemExit('Fast gate não termina imediatamente antes de evaluationChecklist13')
+
+between_fast_and_evaluation = region[fast_pos:evaluation_pos]
 monotonic = 'universalLastActiveReadAtElapsedMillis0187 = android.os.SystemClock.elapsedRealtime()'
-if monotonic not in between_fast_and_heavy:
+if monotonic not in between_fast_and_evaluation:
     raise SystemExit('Fast gate não atualiza a leitura ativa pelo relógio monotônico 0.1.187')
-if 'universalLastActiveReadAtMillis' in between_fast_and_heavy:
+if 'universalLastActiveReadAtMillis' in between_fast_and_evaluation:
     raise SystemExit('Fast gate reintroduziu relógio civil legado')
 print('farol_fast_gate_order_0195=passed')
+print('farol_fast_gate_evaluation_association_0195=passed')
 print('farol_fast_gate_monotonic_clock_0195=passed')
 PY
 

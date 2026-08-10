@@ -17,11 +17,34 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def declaration_association_boundary(region: str, declaration_match: re.Match[str]) -> int:
+    indent = declaration_match.group("indent")
+    line_end = region.find("\n", declaration_match.end())
+    if line_end < 0:
+        return len(region)
+
+    cursor = line_end + 1
+    while cursor < len(region):
+        next_line_end = region.find("\n", cursor)
+        if next_line_end < 0:
+            next_line_end = len(region)
+        line = region[cursor:next_line_end]
+        if line.strip() and not line.lstrip().startswith("//") and line.startswith(indent):
+            suffix = line[len(indent):]
+            if suffix and not suffix[0].isspace():
+                return cursor
+        if next_line_end == len(region):
+            break
+        cursor = next_line_end + 1
+    return len(region)
+
+
 def insert_before_in_function_once(
     path: Path,
     function_marker: str,
     snapshot_pattern: re.Pattern[str],
-    heavy_evaluation_pattern: re.Pattern[str],
+    evaluation_pattern: re.Pattern[str],
+    heavy_call_pattern: re.Pattern[str],
     addition: str,
     label: str,
 ) -> None:
@@ -40,27 +63,40 @@ def insert_before_in_function_once(
     region = text[function_start:function_end]
 
     snapshot_matches = list(snapshot_pattern.finditer(region))
-    heavy_matches = list(heavy_evaluation_pattern.finditer(region))
+    evaluation_matches = list(evaluation_pattern.finditer(region))
+    heavy_call_matches = list(heavy_call_pattern.finditer(region))
     if len(snapshot_matches) != 1:
         raise SystemExit(
             f"{label}: declaração semântica de snapshot esperada 1 vez dentro de processRideText, "
             f"encontrada {len(snapshot_matches)}"
         )
-    if len(heavy_matches) != 1:
+    if len(evaluation_matches) != 1:
         raise SystemExit(
-            f"{label}: avaliação pesada semântica esperada 1 vez dentro de processRideText, "
-            f"encontrada {len(heavy_matches)}"
+            f"{label}: declaração evaluationChecklist13 esperada 1 vez dentro de processRideText, "
+            f"encontrada {len(evaluation_matches)}"
+        )
+    if len(heavy_call_matches) != 1:
+        raise SystemExit(
+            f"{label}: chamada SimpleSavedAppFarolPolicy.evaluate esperada 1 vez dentro de processRideText, "
+            f"encontrada {len(heavy_call_matches)}"
         )
 
     snapshot_match = snapshot_matches[0]
-    heavy_match = heavy_matches[0]
-    if snapshot_match.start() >= heavy_match.start():
-        raise SystemExit(f"{label}: snapshot não precede a avaliação pesada")
+    evaluation_match = evaluation_matches[0]
+    heavy_call_match = heavy_call_matches[0]
+    if snapshot_match.start() >= evaluation_match.start():
+        raise SystemExit(f"{label}: snapshot não precede evaluationChecklist13")
 
-    # Insere no último ponto seguro: imediatamente antes da avaliação pesada real.
-    # Assim, qualquer guarda materializada pelas versões cumulativas anteriores continua
-    # executando antes do fast gate, sem depender da forma textual do RHS do snapshot.
-    absolute_anchor = function_start + heavy_match.start()
+    association_end = declaration_association_boundary(region, evaluation_match)
+    if not evaluation_match.end() <= heavy_call_match.start() < association_end:
+        raise SystemExit(
+            f"{label}: chamada pesada única não está associada ao RHS de evaluationChecklist13"
+        )
+
+    # Insere no último ponto seguro: imediatamente antes da declaração única
+    # evaluationChecklist13. Assim, qualquer guarda/telemetria materializada pelas versões
+    # cumulativas anteriores continua executando antes do fast gate, sem depender do RHS.
+    absolute_anchor = function_start + evaluation_match.start()
     path.write_text(text[:absolute_anchor] + addition + text[absolute_anchor:], encoding="utf-8")
 
 
@@ -80,10 +116,11 @@ function_marker = "    private suspend fun processRideText(\n"
 snapshot_pattern = re.compile(
     r"(?m)^[ \t]*val[ \t]+snapshotTextChecklist13[ \t]*=",
 )
-heavy_evaluation_pattern = re.compile(
-    r"(?ms)^[ \t]*val[ \t]+evaluationChecklist13[ \t]*=[ \t]*"
-    r"withContext\([ \t\r\n]*Dispatchers\.Default[ \t\r\n]*\)[ \t\r\n]*\{[ \t\r\n]*"
-    r"SimpleSavedAppFarolPolicy\.evaluate[ \t\r\n]*\(",
+evaluation_pattern = re.compile(
+    r"(?m)^(?P<indent>[ \t]*)val[ \t]+evaluationChecklist13[ \t]*=",
+)
+heavy_call_pattern = re.compile(
+    r"SimpleSavedAppFarolPolicy[ \t\r\n]*\.[ \t\r\n]*evaluate[ \t\r\n]*\(",
 )
 fast_gate_block = '''        val routeActive0195 = universalRouteJob?.isActive == true
         val stableDecision0195 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red
@@ -113,7 +150,8 @@ insert_before_in_function_once(
     service,
     function_marker,
     snapshot_pattern,
-    heavy_evaluation_pattern,
+    evaluation_pattern,
+    heavy_call_pattern,
     fast_gate_block,
     "fast gate após guardas materializados e antes da análise pesada 0.1.195",
 )
