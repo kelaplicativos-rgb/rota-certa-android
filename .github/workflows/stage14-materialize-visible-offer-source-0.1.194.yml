@@ -1,14 +1,18 @@
 name: Stage 14 materialize effective FAROL source 0.1.194
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/stage14-visible-offer-activation-0.1.194
+      - agent/stage12-manual-latency-export-0.1.194
+    paths:
+      - .github/workflows/stage14-materialize-visible-offer-source-0.1.194.yml
+      - scripts/apply_visible_offer_activation_stage14.py
   workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 
 jobs:
   materialize:
@@ -25,10 +29,10 @@ jobs:
           persist-credentials: false
           path: source
 
-      - name: Checkout exact Stage 14 branch
+      - name: Checkout exact Stage 14 head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
           path: patches
