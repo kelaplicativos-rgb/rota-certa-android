@@ -21,9 +21,7 @@ permissions:
 jobs:
   materialize-effective-source:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
-    env:
-      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    timeout-minutes: 60
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -51,27 +49,49 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Materialize exact 0.1.194 plus Stage 9, Stage 12 and Stage 14
+      - name: Materialize exact source and stop before first Gradle validation
         working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-materialize
         run: |
           set -euo pipefail
           mkdir -p stage16-materialized
+          cp gradlew gradlew.stage16-real
+          cat > gradlew <<'EOF'
+          #!/usr/bin/env bash
+          echo STAGE16_MATERIALIZATION_STOP_BEFORE_FIRST_GRADLE
+          exit 99
+          EOF
+          chmod +x gradlew
+          set +e
           bash ../patches/scripts/build_rota_certa_0194.sh ../patches > stage16-materialized/materialize.log 2>&1
-          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
-          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
-          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD"
+          rc=$?
+          set -e
+          mv gradlew.stage16-real gradlew
+          chmod +x gradlew
+          test "$rc" -eq 99
+          grep -Fq 'STAGE16_MATERIALIZATION_STOP_BEFORE_FIRST_GRADLE' stage16-materialized/materialize.log
           grep -Fq 'versionCode = 5478' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "d42ee18e69cc4bc98b0ac2d5a4faa1384ce1da3fcdf24632255c361e02a73749"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt | awk '{print $1}')" = "2aaa6263c450d6218aba722915a2ceeec900728c90001625ff1513f65a39236e"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt | awk '{print $1}')" = "19088d8b110a36b8ab75b7a46b5eab6b0fc79fd17d5f2dad6608e59b7a967d4d"
+          echo 'exact_0_1_194_materialization_before_gradle=passed' >> stage16-materialized/materialize.log
+
+      - name: Apply exact Stage 9, Stage 12 and Stage 14 source transforms
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" | tee stage16-materialized/stage9-apply.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "b4fd2ff429fd72125a5ae724129c625974be313bec700b5f09d2310795ccbab6"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt | awk '{print $1}')" = "a22cc939e147acbe019d2ead4616050419430ad7afd0e5c02aeb26e917b6c8cc"
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" | tee stage16-materialized/stage12-apply.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt | awk '{print $1}')" = "b26022c9c2fadc563376dd612baf55368e25cbdb3d6f08851d8e515097598cec"
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" | tee stage16-materialized/stage14-apply.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt | awk '{print $1}')" = "0f7428beeeb1476c0ec4d4560c291a4c7ed9f412ef87805b49c75976551f8cba"
+
+      - name: Capture exact Stage 16 investigation source
+        working-directory: source
+        run: |
+          set -euo pipefail
           cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage16-materialized/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt stage16-materialized/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage16-materialized/
@@ -80,6 +100,7 @@ jobs:
           cp app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt stage16-materialized/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt stage16-materialized/
           cp app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt stage16-materialized/
+          cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt stage16-materialized/
           cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt stage16-materialized/
           cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189Test.kt stage16-materialized/
           cp app/src/test/java/br/com/mapeiaia/rotacerta/VisibleOfferActivationStage14Test.kt stage16-materialized/
