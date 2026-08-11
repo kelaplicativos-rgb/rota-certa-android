@@ -21,7 +21,9 @@ permissions:
 jobs:
   materialize-effective-source:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout protected source
         uses: actions/checkout@v4
@@ -49,32 +51,27 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Materialize exact source and stop before first Gradle validation
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize canonical 0.1.194 and verify exact source
         working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-materialize
         run: |
           set -euo pipefail
           mkdir -p stage16-materialized
-          cp gradlew gradlew.stage16-real
-          cat > gradlew <<'EOF'
-          #!/usr/bin/env bash
-          echo STAGE16_MATERIALIZATION_STOP_BEFORE_FIRST_GRADLE
-          exit 99
-          EOF
-          chmod +x gradlew
-          set +e
-          bash ../patches/scripts/build_rota_certa_0194.sh ../patches > stage16-materialized/materialize.log 2>&1
-          rc=$?
-          set -e
-          mv gradlew.stage16-real gradlew
-          chmod +x gradlew
-          test "$rc" -eq 99
-          grep -Fq 'STAGE16_MATERIALIZATION_STOP_BEFORE_FIRST_GRADLE' stage16-materialized/materialize.log
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage16-materialized/materialize.log
           grep -Fq 'versionCode = 5478' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "d42ee18e69cc4bc98b0ac2d5a4faa1384ce1da3fcdf24632255c361e02a73749"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt | awk '{print $1}')" = "2aaa6263c450d6218aba722915a2ceeec900728c90001625ff1513f65a39236e"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt | awk '{print $1}')" = "19088d8b110a36b8ab75b7a46b5eab6b0fc79fd17d5f2dad6608e59b7a967d4d"
-          echo 'exact_0_1_194_materialization_before_gradle=passed' >> stage16-materialized/materialize.log
 
       - name: Apply exact Stage 9, Stage 12 and Stage 14 source transforms
         working-directory: source
