@@ -1,4 +1,4 @@
-name: Validate Stage 16 visible card priority and latency 0.1.194
+name: Validate Stage 16 visible card priority and latency 0.1.196
 
 on:
   pull_request:
@@ -19,13 +19,13 @@ permissions:
   pull-requests: read
 
 jobs:
-  materialize-effective-source:
+  validate-stage16-final:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
-      - name: Checkout protected source
+      - name: Checkout protected canonical source
         uses: actions/checkout@v4
         with:
           ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
@@ -41,11 +41,21 @@ jobs:
           persist-credentials: false
           path: patches
 
-      - name: Verify exact Stage 14 ancestry
+      - name: Verify exact Stage 14 ancestry and Stage 16 scope
         working-directory: patches
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor 77fefe2991f0e8926e9d429b979ec7d8d932d89a HEAD
+          BASE=77fefe2991f0e8926e9d429b979ec7d8d932d89a
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+          git merge-base --is-ancestor "$BASE" HEAD
+          git diff --name-only "$BASE"..HEAD | sort > /tmp/stage16-files.txt
+          printf '%s\n' \
+            '.github/workflows/stage16-visible-card-priority-latency-0.1.194.yml' \
+            'scripts/apply_visible_card_priority_latency_stage16.py' | sort > /tmp/stage16-expected-files.txt
+          diff -u /tmp/stage16-expected-files.txt /tmp/stage16-files.txt
 
       - uses: actions/setup-python@v5
         with:
@@ -57,56 +67,313 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Materialize canonical 0.1.194 and verify exact source
+      - name: Materialize exact canonical 0.1.194
         working-directory: source
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-materialize
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-base
         run: |
           set -euo pipefail
-          mkdir -p stage16-materialized
-          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage16-materialized/materialize.log
+          mkdir -p stage16-evidence
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage16-evidence/materialize-0.1.194.log
           grep -Fq 'versionCode = 5478' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "d42ee18e69cc4bc98b0ac2d5a4faa1384ce1da3fcdf24632255c361e02a73749"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt | awk '{print $1}')" = "2aaa6263c450d6218aba722915a2ceeec900728c90001625ff1513f65a39236e"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt | awk '{print $1}')" = "19088d8b110a36b8ab75b7a46b5eab6b0fc79fd17d5f2dad6608e59b7a967d4d"
 
-      - name: Apply exact Stage 9, Stage 12 and Stage 14 source transforms
+      - name: Apply and validate Stage 9 instrumentation
         working-directory: source
         run: |
           set -euo pipefail
-          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" | tee stage16-materialized/stage9-apply.txt
+          python3 -m py_compile ../patches/scripts/apply_farol_latency_instrumentation_stage9.py
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py --self-test | tee stage16-evidence/stage9-self-test.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" --check | tee stage16-evidence/stage9-check.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" | tee stage16-evidence/stage9-apply.txt
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "b4fd2ff429fd72125a5ae724129c625974be313bec700b5f09d2310795ccbab6"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt | awk '{print $1}')" = "a22cc939e147acbe019d2ead4616050419430ad7afd0e5c02aeb26e917b6c8cc"
-          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" | tee stage16-materialized/stage12-apply.txt
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt | awk '{print $1}')" = "b26022c9c2fadc563376dd612baf55368e25cbdb3d6f08851d8e515097598cec"
-          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" | tee stage16-materialized/stage14-apply.txt
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt | awk '{print $1}')" = "0f7428beeeb1476c0ec4d4560c291a4c7ed9f412ef87805b49c75976551f8cba"
+          grep -Fq 'private const val MAX_EVENTS = 512' app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt
 
-      - name: Capture exact Stage 16 investigation source
+      - name: Apply and validate Stage 12 manual export
         working-directory: source
         run: |
           set -euo pipefail
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt stage16-materialized/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt stage16-materialized/
-          cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt stage16-materialized/
-          cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt stage16-materialized/
-          cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189Test.kt stage16-materialized/
-          cp app/src/test/java/br/com/mapeiaia/rotacerta/VisibleOfferActivationStage14Test.kt stage16-materialized/
-          sha256sum stage16-materialized/*.kt > stage16-materialized/source.sha256
+          python3 -m py_compile ../patches/scripts/apply_farol_latency_manual_export_stage12.py
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py --self-test | tee stage16-evidence/stage12-self-test.txt
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" --check | tee stage16-evidence/stage12-check.txt
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" | tee stage16-evidence/stage12-apply.txt
+          REPORT=app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt
+          SERVICE=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test "$(sha256sum "$REPORT" | awk '{print $1}')" = "b26022c9c2fadc563376dd612baf55368e25cbdb3d6f08851d8e515097598cec"
+          test "$(grep -R -n --include='*.kt' -F 'FarolLatencyProbeStage9.dump()' app/src/main/java/br/com/mapeiaia/rotacerta | wc -l)" -eq 1
+          test "$(grep -Fc 'FarolLatencyProbeStage9.dump()' "$REPORT")" -eq 1
+          ! grep -Fq 'FarolLatencyProbeStage9.dump()' "$SERVICE"
+          ! grep -Fq 'FarolLatencyProbeStage9.clear()' "$REPORT"
 
-      - name: Upload materialized Stage 16 investigation source
+      - name: Apply and validate Stage 14 visible offer activation
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ../patches/scripts/apply_visible_offer_activation_stage14.py
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py --self-test | tee stage16-evidence/stage14-self-test.txt
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" --check | tee stage16-evidence/stage14-check.txt
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" | tee stage16-evidence/stage14-apply.txt
+          grep -Fxq 'visible_offer_activation_stage14_apply=passed' stage16-evidence/stage14-apply.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt | awk '{print $1}')" = "0f7428beeeb1476c0ec4d4560c291a4c7ed9f412ef87805b49c75976551f8cba"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt | awk '{print $1}')" = "78e46dee8bf1e55ea452356c598e580f040177eb65cb639a93ece796e6b61f21"
+          test "$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/VisibleOfferActivationStage14Test.kt)" -eq 8
+
+      - name: Verify exact effective Stage 16 input hashes
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "b4fd2ff429fd72125a5ae724129c625974be313bec700b5f09d2310795ccbab6"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt | awk '{print $1}')" = "0f7428beeeb1476c0ec4d4560c291a4c7ed9f412ef87805b49c75976551f8cba"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt | awk '{print $1}')" = "2aaa6263c450d6218aba722915a2ceeec900728c90001625ff1513f65a39236e"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt | awk '{print $1}')" = "78e46dee8bf1e55ea452356c598e580f040177eb65cb639a93ece796e6b61f21"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt | awk '{print $1}')" = "19088d8b110a36b8ab75b7a46b5eab6b0fc79fd17d5f2dad6608e59b7a967d4d"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt | awk '{print $1}')" = "c84d1e8bfa5f22ccbeb2f0e38615c9702bb763054c8c6a00c6021bd9320b29bf"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt | awk '{print $1}')" = "a22cc939e147acbe019d2ead4616050419430ad7afd0e5c02aeb26e917b6c8cc"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt | awk '{print $1}')" = "b26022c9c2fadc563376dd612baf55368e25cbdb3d6f08851d8e515097598cec"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt \
+            > stage16-evidence/protected-pre-stage16.sha256
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > stage16-evidence/service-pre-stage16.sha256
+
+      - name: Run Stage 16 fail-closed transform controls
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ../patches/scripts/apply_visible_card_priority_latency_stage16.py
+          echo 'py_compile=passed' | tee stage16-evidence/stage16-py-compile.txt
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py --self-test | tee stage16-evidence/stage16-self-test.txt
+          grep -Fxq 'visible_card_priority_stage16_self_test=passed' stage16-evidence/stage16-self-test.txt
+          grep -Fxq 'timer_as_absence_proof=false' stage16-evidence/stage16-self-test.txt
+          grep -Fxq 'real_route_authority_preserved=true' stage16-evidence/stage16-self-test.txt
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD" --check | tee stage16-evidence/stage16-check.txt
+          grep -Fxq 'visible_card_priority_stage16_check=passed' stage16-evidence/stage16-check.txt
+          grep -Fxq 'base_effective_source_hashes=passed' stage16-evidence/stage16-check.txt
+          grep -Fxq 'google_maps_service_unchanged=true' stage16-evidence/stage16-check.txt
+          grep -Fxq 'stage9_stage12_stage14_preserved=true' stage16-evidence/stage16-check.txt
+
+      - name: Apply Stage 16 visible-card priority and transient-empty hardening
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD" | tee stage16-evidence/stage16-apply.txt
+          grep -Fxq 'visible_card_priority_stage16_apply=passed' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'versionName=0.1.196' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'versionCode=5480' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'selected_app_role=read_authorization_only' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'transient_empty_generation_advance=false' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'stale_route_paint_blocked_while_empty_unresolved=true' stage16-evidence/stage16-apply.txt
+          grep -Fxq 'exact_visual_gate_cache=true' stage16-evidence/stage16-apply.txt
+          grep -Fq 'versionCode = 5480' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.196"' app/build.gradle.kts
+          SERVICE=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          HELPER=app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16.kt
+          grep -Fq 'BUBBLE_EMPTY_READ_TRANSIENT_STAGE16' "$SERVICE"
+          grep -Fq 'BUBBLE_EMPTY_READ_RECONFIRMED_STAGE16' "$SERVICE"
+          grep -Fq 'BUBBLE_ROUTE_GATE_CACHE_HIT_STAGE16' "$SERVICE"
+          grep -Fq 'STAGE16_ACCEPTED_GATE_CACHE_LOOKUP' "$SERVICE"
+          grep -Fq 'routeResultMayPaint' "$SERVICE"
+          grep -Fq 'VISIBLE_CARD_PRIORITY_AND_TRANSIENT_EMPTY_STAGE16' "$HELPER"
+          grep -Fq 'EXACT_ACCEPTED_VISUAL_GATE_CACHE_STAGE16' "$HELPER"
+          ! grep -Fq 'Thread.sleep(' "$SERVICE"
+          ! grep -Fq 'SystemClock.sleep(' "$SERVICE"
+          ! grep -Fq 'FarolLatencyProbeStage9.clear()' "$SERVICE"
+          ! grep -Fq 'FarolLatencyProbeStage9.dump()' "$SERVICE"
+          FUNCTIONAL=$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16Test.kt)
+          BENCH=$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage16LocalBenchmarkTest.kt)
+          TOTAL_NEW=$((FUNCTIONAL + BENCH))
+          printf 'stage16_functional_tests=%s\nstage16_benchmark_tests=%s\nstage16_new_tests=%s\n' "$FUNCTIONAL" "$BENCH" "$TOTAL_NEW" | tee stage16-evidence/stage16-source-test-count.txt
+          test "$FUNCTIONAL" -ge 47
+          test "$BENCH" -ge 6
+          test "$TOTAL_NEW" -ge 53
+
+      - name: Prove protected behavior, route authority and freshness remain intact
+        working-directory: source
+        run: |
+          set -euo pipefail
+          sha256sum -c stage16-evidence/protected-pre-stage16.sha256 | tee stage16-evidence/protected-post-stage16-check.txt
+          SERVICE=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          GATE=app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
+          SAFETY=app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt
+          grep -Fq 'SELECTED_APP_ACTIVATES_VISIBLE_ROOT_STAGE14' "$SAFETY"
+          grep -Fq 'val authorityIdentity = "$selected|${winner.block.windowId}|${winner.block.id}|$signature"' "$GATE"
+          grep -Fq 'screenHash = authorityIdentity.hashCode()' "$GATE"
+          grep -Fq 'createDecisionBinding0187Phase4(' "$SERVICE"
+          grep -Fq 'isDecisionBindingFresh0187Phase4(' "$SERVICE"
+          grep -Fq 'BUBBLE_ROUTE_RESULT_DISCARDED_0187_PHASE4' "$SERVICE"
+          grep -Fq 'universalScreenGeneration' "$SERVICE"
+          grep -Fq 'universalWindowGeneration' "$SERVICE"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt | awk '{print $1}')" = "c84d1e8bfa5f22ccbeb2f0e38615c9702bb763054c8c6a00c6021bd9320b29bf"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16Test.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage16LocalBenchmarkTest.kt \
+            app/build.gradle.kts \
+            > stage16-evidence/stage16-changed-materialized.sha256
+
+      - name: Run Stage 16 specific tests and local guardrails
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-final
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolVisibleCardPriorityStage16Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage16LocalBenchmarkTest' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage16-evidence/stage16-specific-tests.log
+          python3 - <<'PY' | tee stage16-evidence/stage16-specific-test-results.txt
+          import glob
+          import xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(report).getroot()
+              tests += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0))
+              errors += int(root.attrib.get('errors', 0))
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          print(f'errors={errors}')
+          if tests < 53: raise SystemExit(f'Esperados pelo menos 53 testes Stage16, encontrados {tests}')
+          if failures or errors: raise SystemExit('Falhas nos testes específicos Stage16')
+          PY
+          grep -Fq 'physical_claim=false' stage16-evidence/stage16-specific-tests.log
+
+      - name: Run complete unit suite with preserved historical minimum
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-final
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage16-evidence/full-unit-suite.log
+          python3 - <<'PY' | tee stage16-evidence/full-test-count.txt
+          import glob
+          import xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(report).getroot()
+              tests += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0))
+              errors += int(root.attrib.get('errors', 0))
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          print(f'errors={errors}')
+          if tests < 460: raise SystemExit(f'Mínimo Stage14+Stage16 preservado exige >=460 testes, encontrados {tests}')
+          if failures or errors: raise SystemExit('Falhas na suíte completa Stage16')
+          PY
+
+      - name: Run Android Lint
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-final
+        run: |
+          set -euo pipefail
+          ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage16-evidence/lint-debug.log
+          test -f app/build/reports/lint-results-debug.html
+          cp app/build/reports/lint-results-debug.html stage16-evidence/lint-results-debug.html
+          if test -f app/build/reports/lint-results-debug.txt; then cp app/build/reports/lint-results-debug.txt stage16-evidence/lint-results-debug.txt; fi
+
+      - name: Clean assembleDebug
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage16-final
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage16-evidence/clean-assemble-debug.log
+
+      - name: Validate technical APK, signature, DEX markers and evidence
+        working-directory: source
+        run: |
+          set -euo pipefail
+          OUT=stage16-evidence
+          APK_SRC=app/build/outputs/apk/debug/app-debug.apk
+          APK="$OUT/rota-certa-0.1.196-stage16-visible-card-priority-ci.apk"
+          test -s "$APK_SRC"
+          cp "$APK_SRC" "$APK"
+          unzip -tqq "$APK"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | tee "$OUT/badging.txt"
+          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5480' versionName='0.1.196'" "$OUT/badging.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$OUT/signature.txt"
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUT/signature.txt"
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUT/signature.txt"
+          sha256sum "$APK" | tee "$OUT/apk.sha256"
+          stat --printf='%s\n' "$APK" | tee "$OUT/apk-size-bytes.txt"
+          unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$' > "$OUT/dex-files.txt"
+          FOUND_CONTRACT=0
+          FOUND_CACHE=0
+          while IFS= read -r DEX; do
+            if unzip -p "$APK" "$DEX" | grep -aFq 'VISIBLE_CARD_PRIORITY_AND_TRANSIENT_EMPTY_STAGE16'; then FOUND_CONTRACT=1; fi
+            if unzip -p "$APK" "$DEX" | grep -aFq 'EXACT_ACCEPTED_VISUAL_GATE_CACHE_STAGE16'; then FOUND_CACHE=1; fi
+          done < "$OUT/dex-files.txt"
+          test "$FOUND_CONTRACT" -eq 1
+          test "$FOUND_CACHE" -eq 1
+          printf 'contract_marker_in_dex=%s\ncache_marker_in_dex=%s\n' "$FOUND_CONTRACT" "$FOUND_CACHE" | tee "$OUT/dex-marker-validation.txt"
+          cat > "$OUT/validation.txt" <<'VALIDATION'
+          package=br.com.mapeiaia.rotacerta
+          versionName=0.1.196
+          versionCode=5480
+          technical_test_apk_not_for_release=true
+          stage16_visible_card_priority=true
+          selected_app_role=read_authorization_only
+          transient_empty_does_not_advance_generation=true
+          transient_empty_requires_positive_visual_confirmation=true
+          confirmed_absence_clears=true
+          changed_card_or_destination_clears=true
+          changed_app_clears=true
+          exact_visual_gate_cache=true
+          route_result_stale_binding_preserved=true
+          route_real_authority_preserved=true
+          google_maps_service_unchanged=true
+          stage9_preserved=true
+          stage12_preserved=true
+          stage14_preserved=true
+          stage12_buffer_auto_clear=false
+          artificial_delay_added=false
+          physical_claim=false
+          latency_target_under_1s_physically_proven=false
+          physical_test_required=true
+          release_created=false
+          latest_changed=false
+          merged=false
+          VALIDATION
+          sed -i 's/^          //' "$OUT/validation.txt"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt \
+            > "$OUT/protected-final.sha256"
+          cat "$OUT/stage16-source-test-count.txt"
+          cat "$OUT/full-test-count.txt"
+          cat "$OUT/apk.sha256"
+          cat "$OUT/apk-size-bytes.txt"
+          cat "$OUT/validation.txt"
+
+      - name: Upload complete Stage 16 CI evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage16-materialized-investigation-source
-          path: source/stage16-materialized/
+          name: rota-certa-stage16-visible-card-priority-latency-ci-evidence
+          path: source/stage16-evidence/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
