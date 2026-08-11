@@ -1,0 +1,38 @@
+name: Stage 14 inspect reviewed runtime patches
+
+on:
+  pull_request:
+    branches:
+      - agent/stage12-manual-latency-export-0.1.194
+    paths:
+      - .github/workflows/stage14-inspect-runtime-patches.yml
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Decode reviewed patches
+        run: |
+          set -euo pipefail
+          mkdir -p stage14-reviewed-patches
+          base64 --decode patches/farol-runtime-0187.patch.gz.b64 | gzip --decompress > stage14-reviewed-patches/farol-runtime-0187.patch
+          base64 --decode patches/farol-runtime-0187-phase2.patch.gz.b64 | gzip --decompress > stage14-reviewed-patches/farol-runtime-0187-phase2.patch
+          cp patches/farol-runtime-0187-phase3.patch stage14-reviewed-patches/farol-runtime-0187-phase3.patch
+          base64 --decode patches/farol-runtime-0187-phase4.patch.gz.b64 | gzip --decompress > stage14-reviewed-patches/farol-runtime-0187-phase4.patch
+          base64 --decode patches/farol-real-device-0188.patch.gz.b64 | gzip --decompress > stage14-reviewed-patches/farol-real-device-0188.patch
+          sha256sum stage14-reviewed-patches/*.patch > stage14-reviewed-patches/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage14-reviewed-runtime-patches
+          path: stage14-reviewed-patches/
+          if-no-files-found: error
+          retention-days: 7
