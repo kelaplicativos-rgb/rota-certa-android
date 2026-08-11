@@ -1,0 +1,97 @@
+name: Stage 14 materialize effective FAROL source 0.1.194
+
+on:
+  push:
+    branches:
+      - agent/stage14-visible-offer-activation-0.1.194
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout exact Stage 14 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize exact validated 0.1.194
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage14-base
+        run: |
+          set -euo pipefail
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "d42ee18e69cc4bc98b0ac2d5a4faa1384ce1da3fcdf24632255c361e02a73749"
+
+      - name: Apply exact Stage 9 instrumentation
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" --check
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "b4fd2ff429fd72125a5ae724129c625974be313bec700b5f09d2310795ccbab6"
+
+      - name: Apply exact Stage 12 manual export
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" --check
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
+          test "$(grep -R -l --include='*.kt' -F 'FarolLatencyProbeStage9.dump()' app/src/main/java/br/com/mapeiaia/rotacerta | wc -l)" -eq 1
+          grep -Fq 'FarolLatencyProbeStage9.dump()' app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt
+          ! grep -Fq 'FarolLatencyProbeStage9.dump()' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Preserve effective source for Stage 14 inspection
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p stage14-source
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage14-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage14-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt stage14-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt stage14-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt stage14-source/
+          cp app/src/test/java/br/com/mapeiaia/rotacerta/FarolRealDevice0188Test.kt stage14-source/
+          cp app/src/test/java/br/com/mapeiaia/rotacerta/SelectedAppWaitingYellow127Test.kt stage14-source/ || true
+          sha256sum stage14-source/* > stage14-source/SHA256SUMS.txt
+
+      - name: Upload Stage 14 effective source
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage14-effective-farol-source-0.1.194
+          path: source/stage14-source/
+          if-no-files-found: error
+          retention-days: 7
