@@ -11,6 +11,7 @@ SERVICE = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilit
 GATE = Path('app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt')
 PARSER = Path('app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt')
 BUILD = Path('app/build.gradle.kts')
+LEGACY_TEST = Path('app/src/test/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187Test.kt')
 TEST = Path('app/src/test/java/br/com/mapeiaia/rotacerta/VisibleOfferActivationStage14Test.kt')
 MARKER = 'SELECTED_APP_ACTIVATES_VISIBLE_ROOT_STAGE14'
 
@@ -66,6 +67,14 @@ NEW = '''        if (transientOverlayEvent) {
                 },
             )
         }
+'''
+
+LEGACY_TEST_OLD = '''        assertFalse(admission(eventPackage = "com.android.systemui", transient = true, sessionPackage = "com.app99.driver").accepted)
+'''
+
+LEGACY_TEST_NEW = '''        // Stage 14: a previous selected-driver session must not prevent the currently
+        // visible selected root from bootstrapping a new transient popup session.
+        assertTrue(admission(eventPackage = "com.android.systemui", transient = true, sessionPackage = "com.app99.driver").accepted)
 '''
 
 TEST_SOURCE = r'''package br.com.mapeiaia.rotacerta
@@ -180,7 +189,7 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def require_base(root: Path) -> tuple[str, dict[str, str]]:
+def require_base(root: Path) -> tuple[str, str, dict[str, str]]:
     build = (root / BUILD).read_text(encoding='utf-8')
     if 'versionCode = 5478' not in build or 'versionName = "0.1.194"' not in build:
         fail('Stage14 exige fonte materializada 0.1.194/5478')
@@ -188,13 +197,17 @@ def require_base(root: Path) -> tuple[str, dict[str, str]]:
     service_path = root / SERVICE
     gate_path = root / GATE
     parser_path = root / PARSER
-    for p in (safety_path, service_path, gate_path, parser_path):
+    legacy_test_path = root / LEGACY_TEST
+    for p in (safety_path, service_path, gate_path, parser_path, legacy_test_path):
         if not p.is_file(): fail(f'arquivo obrigatório ausente: {p.relative_to(root)}')
     safety = safety_path.read_text(encoding='utf-8')
+    legacy_test = legacy_test_path.read_text(encoding='utf-8')
     if MARKER in safety:
         fail('Stage14 já aplicado')
     if safety.count(OLD) != 1:
         fail(f'âncora transient 0187 inesperada: {safety.count(OLD)}')
+    if legacy_test.count(LEGACY_TEST_OLD) != 1:
+        fail(f'âncora de teste legado 0187 inesperada: {legacy_test.count(LEGACY_TEST_OLD)}')
     for required in (
         'ATOMIC_ROOT_SNAPSHOT_GATE_0187',
         'transient_without_selected_session',
@@ -210,7 +223,7 @@ def require_base(root: Path) -> tuple[str, dict[str, str]]:
     ):
         if exact not in gate: fail(f'autoridade 0188 ausente: {exact}')
     protected = {str(p): sha(root / p) for p in (SERVICE, GATE, PARSER)}
-    return safety, protected
+    return safety, legacy_test, protected
 
 
 def transformed(safety: str) -> str:
@@ -223,6 +236,13 @@ def transformed(safety: str) -> str:
         marker_anchor + f'    const val STAGE14_CONTRACT_MARKER = "{MARKER}"\n',
         1,
     )
+    return updated
+
+
+def transformed_legacy_test(legacy_test: str) -> str:
+    updated = legacy_test.replace(LEGACY_TEST_OLD, LEGACY_TEST_NEW, 1)
+    if updated.count(LEGACY_TEST_NEW) != 1 or LEGACY_TEST_OLD in updated:
+        fail('transformação do teste legado 0187 falhou')
     return updated
 
 
@@ -251,9 +271,13 @@ def self_test() -> None:
     out = transformed(synthetic)
     if MARKER not in out or OLD in out or NEW not in out:
         fail('self-test de transformação falhou')
+    legacy_out = transformed_legacy_test('prefix\n' + LEGACY_TEST_OLD + 'suffix\n')
+    if LEGACY_TEST_NEW not in legacy_out or LEGACY_TEST_OLD in legacy_out:
+        fail('self-test do teste legado 0187 falhou')
     if TEST_SOURCE.count('@Test') != 8:
         fail('self-test esperava 8 testes Stage14')
     print('visible_offer_activation_stage14_self_test=passed')
+    print('legacy_0187_expectation_aligned=true')
 
 
 def main() -> None:
@@ -269,24 +293,30 @@ def main() -> None:
     if args.source_root is None:
         fail('source_root obrigatório fora de --self-test isolado')
     root = args.source_root.resolve()
-    safety, protected = require_base(root)
+    safety, legacy_test, protected = require_base(root)
     updated = transformed(safety)
+    updated_legacy_test = transformed_legacy_test(legacy_test)
     audit(root, protected, updated)
     if args.check:
         print('visible_offer_activation_stage14_check=passed')
         print('selected_app_role=activation_only')
         print('transient_selected_root_session_bootstrap=true')
+        print('legacy_0187_expectation_aligned=true')
         print('route_authority_0188=unchanged')
         return
     (root / SAFETY).write_text(updated, encoding='utf-8')
+    (root / LEGACY_TEST).write_text(updated_legacy_test, encoding='utf-8')
     test_path = root / TEST
     if test_path.exists():
         fail(f'teste Stage14 já existe: {TEST}')
     test_path.write_text(TEST_SOURCE, encoding='utf-8')
     audit(root, protected, (root / SAFETY).read_text(encoding='utf-8'))
+    if LEGACY_TEST_NEW not in (root / LEGACY_TEST).read_text(encoding='utf-8'):
+        fail('teste legado 0187 não foi atualizado')
     print('visible_offer_activation_stage14_apply=passed')
     print('selected_app_role=activation_only')
     print('transient_selected_root_session_bootstrap=true')
+    print('legacy_0187_expectation_aligned=true')
     print('route_authority_0188=unchanged')
     print('artificial_delay_added=false')
 
