@@ -251,7 +251,8 @@ jobs:
           if tests < 53: raise SystemExit(f'Esperados pelo menos 53 testes Stage16, encontrados {tests}')
           if failures or errors: raise SystemExit('Falhas nos testes específicos Stage16')
           PY
-          grep -Fq 'physical_claim=false' stage16-evidence/stage16-specific-tests.log
+          grep -Rah 'STAGE16_BENCHMARK_' app/build/test-results/testDebugUnitTest/*.xml | tee stage16-evidence/stage16-benchmark-results.txt
+          test "$(grep -Raho 'physical_claim=false' app/build/test-results/testDebugUnitTest/*.xml | wc -l)" -ge 6
 
       - name: Run complete unit suite with preserved historical minimum
         working-directory: source
