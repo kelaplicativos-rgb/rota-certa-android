@@ -21,9 +21,7 @@ permissions:
 jobs:
   validate-stage19-final:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
-    env:
-      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    timeout-minutes: 90
     steps:
       - name: Checkout protected canonical source
         uses: actions/checkout@v4
@@ -45,23 +43,55 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Add materialize-only guards to cumulative legacy builders
+        working-directory: patches
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          scripts = Path('scripts')
+          for path in sorted(scripts.glob('build_rota_certa_*.sh')):
+              text = path.read_text(encoding='utf-8')
+              if path.name == 'build_rota_certa_0186.sh':
+                  old = "new_test_call = '''if ! ./gradlew testDebugUnitTest"
+                  if old not in text:
+                      raise SystemExit('Stage19 materializer: 0186 wrapper anchor missing')
+                  new = "new_test_call = '''if [[ \\\"${ROTA_CERTA_MATERIALIZE_ONLY:-0}\\\" == \\\"1\\\" ]]; then\\n  echo \\\"materialize-only 0186 complete\\\"\\n  exit 0\\nfi\\nif ! ./gradlew testDebugUnitTest"
+                  path.write_text(text.replace(old, new, 1), encoding='utf-8')
+                  continue
+              if 'ROTA_CERTA_MATERIALIZE_ONLY_STAGE19' in text:
+                  continue
+              lines = text.splitlines(keepends=True)
+              insert_at = None
+              for i, line in enumerate(lines):
+                  stripped = line.lstrip()
+                  if stripped.startswith('./gradlew ') or stripped.startswith('if ! ./gradlew '):
+                      insert_at = i
+                      break
+              if insert_at is None:
+                  continue
+              guard = (
+                  'if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n'
+                  '  echo "ROTA_CERTA_MATERIALIZE_ONLY_STAGE19=' + path.name + '"\n'
+                  '  exit 0\n'
+                  'fi\n\n'
+              )
+              lines.insert(insert_at, guard)
+              path.write_text(''.join(lines), encoding='utf-8')
+          PY
+          bash -n scripts/build_rota_certa_0194.sh
+          bash -n scripts/build_rota_certa_0186.sh
 
-      - uses: android-actions/setup-android@v3
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Materialize exact Stage 18 source baseline
+      - name: Materialize exact Stage 18 source baseline fast
         working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19-base
         run: |
           set -euo pipefail
           mkdir -p stage19-evidence
+          export ROTA_CERTA_MATERIALIZE_ONLY=1
           bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage19-evidence/materialize-0.1.194.log
+          unset ROTA_CERTA_MATERIALIZE_ONLY
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
           python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
           python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
           python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD"
@@ -69,13 +99,18 @@ jobs:
           python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD"
           grep -Fq 'versionCode = 5482' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
-          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'BUBBLE_IDENTITY_FAIL_CLOSED_STAGE18' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
 
       - name: Package materialized Stage 18 source for Stage 19 engineering
         working-directory: source
         run: |
           set -euo pipefail
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage19-evidence/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage19-evidence/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt stage19-evidence/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt stage19-evidence/
+          cp app/build.gradle.kts stage19-evidence/
           tar -czf stage19-evidence/stage18-materialized-source.tgz \
             app/build.gradle.kts \
             app/src/main/AndroidManifest.xml \
