@@ -15,6 +15,30 @@ HELPER_TEMPLATE = PATCH_ROOT / "stage19/FarolUniversalVisualPipelineStage19.kt"
 TEST_TEMPLATE = PATCH_ROOT / "stage19/FarolUniversalVisualPipelineStage19Test.kt"
 SERVICE_FRAGMENT = PATCH_ROOT / "stage19/LiveRideAccessibilityServiceStage19.inc.kt"
 
+SCHEDULE_SOURCE = r'''    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {
+        @Suppress("UNUSED_VARIABLE") val ignoredDelayStage19 = delayMs
+        @Suppress("UNUSED_VARIABLE") val ignoredPopupStage19 = allowPopupCandidate
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return
+        analyzeJob?.cancel()
+        analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val blocksStage19 = collectUniversalAccessibilityBlocksStage19()
+            val evaluationStage19 = withContext(Dispatchers.Default) {
+                FarolUniversalVisualPipelineStage19.evaluate(blocksStage19)
+            }
+            if (evaluationStage19 != null) {
+                stage19VisualVerificationPending = false
+                stage19OcrSerial += 1L
+                stage19OcrRerunRequested = false
+                processUniversalVisualStage19(evaluationStage19, "AccessibilityScheduled")
+            } else {
+                stage19VisualVerificationPending = true
+                requestUniversalScreenshotStage19(null)
+            }
+        }
+    } // stage19_universal_scheduled_snapshot
+
+'''
+
 
 def fail(message: str) -> None:
     raise SystemExit(message)
@@ -50,8 +74,8 @@ def self_test() -> None:
     ):
         if forbidden in helper:
             fail(f"Package/model authority leaked into Stage19 helper: {forbidden}")
-    if tests.count("@Test") < 29:
-        fail(f"Expected >=29 Stage19 tests, found {tests.count('@Test')}")
+    if tests.count("@Test") != 29:
+        fail(f"Expected exactly 29 Stage19 tests, found {tests.count('@Test')}")
     for required in (
         "twoAddressesOverLauncherAnalyzes",
         "twoAddressesOverWhatsAppAnalyzes",
@@ -83,13 +107,20 @@ def self_test() -> None:
         if required not in fragment:
             fail(f"Stage19 service integration missing: {required}")
     for forbidden in ("delay(", "Thread.sleep(", "SystemClock.sleep("):
-        if forbidden in fragment:
+        if forbidden in fragment or forbidden in SCHEDULE_SOURCE:
             fail(f"Artificial critical-path delay found in Stage19: {forbidden}")
+    for forbidden in ("SelectedRideAppStore", "shouldScanPackage", "hasStrictSelectedRootChecklist1", "FarolAppIdentityIsolationStage18"):
+        if forbidden in SCHEDULE_SOURCE:
+            fail(f"Package authority leaked into Stage19 scheduled current-screen path: {forbidden}")
+    for required in ("collectUniversalAccessibilityBlocksStage19", "requestUniversalScreenshotStage19", "processUniversalVisualStage19"):
+        if required not in SCHEDULE_SOURCE:
+            fail(f"Stage19 scheduled current-screen path incomplete: {required}")
     print("stage19_self_test=passed")
     print(f"stage19_test_methods={tests.count('@Test')}")
     print("package_identity_is_authority=false")
     print("card_model_is_authority=false")
     print("visual_generation_is_authority=true")
+    print("scheduled_activation_package_gate=false")
 
 
 def apply(root: Path) -> None:
@@ -139,6 +170,16 @@ def apply(root: Path) -> None:
         "service integration",
     )
 
+    schedule_start = service.find("    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {")
+    schedule_end = service.find("    private fun scheduleScreenshotFallback127", schedule_start)
+    if schedule_start < 0 or schedule_end <= schedule_start:
+        fail("Stage19 could not isolate legacy scheduled current-screen analysis")
+    legacy_schedule = service[schedule_start:schedule_end]
+    for required_legacy in ("hasStrictSelectedRootChecklist1", "shouldScanPackage", "driverCardSessionGate0162"):
+        if required_legacy not in legacy_schedule:
+            fail(f"Unexpected Stage18 scheduled path before replacement: {required_legacy} missing")
+    service = service[:schedule_start] + SCHEDULE_SOURCE + service[schedule_end:]
+
     clear_anchor = (
         "        )\n"
         "        universalActiveAddressSignature = null\n"
@@ -172,9 +213,16 @@ def apply(root: Path) -> None:
     identity_index = transformed.index("FarolAppIdentityIsolationStage18.resolve")
     if not visual_index < selected_index < identity_index:
         fail("Stage19 visual fast path is not before package identity gates")
+    schedule_start = transformed.index("    private fun scheduleVisibleTextAnalysis(")
+    schedule_end = transformed.index("    private fun scheduleScreenshotFallback127", schedule_start)
+    scheduled_section = transformed[schedule_start:schedule_end]
+    for forbidden in ("SelectedRideAppStore", "shouldScanPackage", "hasStrictSelectedRootChecklist1", "driverCardSessionGate0162"):
+        if forbidden in scheduled_section:
+            fail(f"Scheduled current-screen path still depends on package/session authority: {forbidden}")
     for required in (
         "collectUniversalAccessibilityBlocksStage19",
         "requestUniversalScreenshotStage19",
+        "processUniversalVisualStage19",
         "cachedDrivingDistancesFromAddressKm",
         "drivingDistancesFromAddressKm",
         "isStage19BindingFresh",
@@ -188,6 +236,7 @@ def apply(root: Path) -> None:
     print("visual_fast_path_precedes_package_gates=true")
     print("accessibility_empty_uses_immediate_ocr=true")
     print("exact_cache_before_network=true")
+    print("scheduled_activation_package_gate=false")
 
 
 def main() -> None:
