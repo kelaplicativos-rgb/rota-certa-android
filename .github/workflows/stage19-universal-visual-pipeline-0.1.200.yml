@@ -69,7 +69,10 @@ jobs:
           set -euo pipefail
           mkdir -p source/stage19-evidence
           cd bootstrap
-          sha256sum -c stage18-materialized-source.sha256 | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
+          EXPECTED_STAGE18_SHA="$(awk 'NR==1 {print $1}' stage18-materialized-source.sha256)"
+          ACTUAL_STAGE18_SHA="$(sha256sum stage18-materialized-source.tgz | awk '{print $1}')"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_STAGE18_SHA" "$ACTUAL_STAGE18_SHA" | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
+          test "$EXPECTED_STAGE18_SHA" = "$ACTUAL_STAGE18_SHA"
           cd ../source
           rm -rf app
           tar -xzf ../bootstrap/stage18-materialized-source.tgz
