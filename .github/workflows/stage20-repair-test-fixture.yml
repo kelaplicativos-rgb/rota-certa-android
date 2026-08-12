@@ -1,0 +1,40 @@
+name: Repair Stage20 >50ms test fixture
+
+on:
+  push:
+    branches:
+      - agent/stage20-forensic-causality-0.1.201
+    paths:
+      - .github/workflows/stage20-repair-test-fixture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Make fixture exceed 50ms after microsecond quantization
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('stage20/FarolForensicTraceStage20Test.kt')
+          s = p.read_text(encoding='utf-8')
+          old = 'FarolForensicTraceStage20.overlayApplied(p, 52_000_001, "Green", 4.0, binding(), "applied")'
+          new = 'FarolForensicTraceStage20.overlayApplied(p, 52_001_000, "Green", 4.0, binding(), "applied")'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exact fixture once, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+          grep -Fq 'overlayApplied(p, 52_001_000' stage20/FarolForensicTraceStage20Test.kt
+          test "$(grep -Fc '@Test' stage20/FarolForensicTraceStage20Test.kt)" -eq 34
+          git rm .github/workflows/stage20-repair-test-fixture.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add stage20/FarolForensicTraceStage20Test.kt
+          git commit -m 'Fix Stage20 overlay latency threshold fixture'
+          git push origin HEAD:agent/stage20-forensic-causality-0.1.201
