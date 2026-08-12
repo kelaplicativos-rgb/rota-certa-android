@@ -1,0 +1,119 @@
+name: Stage19 fast materialized Stage18 source
+
+on:
+  push:
+    branches:
+      - agent/stage19-universal-visual-pipeline-0.1.200
+    paths:
+      - .github/workflows/stage19-fast-materialize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout exact Stage19 patch repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Add materialize-only guards to cumulative legacy builders
+        working-directory: patches
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          scripts = Path('scripts')
+          for path in sorted(scripts.glob('build_rota_certa_*.sh')):
+              text = path.read_text(encoding='utf-8')
+              if path.name == 'build_rota_certa_0186.sh':
+                  old = "new_test_call = '''if ! ./gradlew testDebugUnitTest"
+                  if old not in text:
+                      raise SystemExit('Stage19 fast materializer: 0186 wrapper anchor missing')
+                  new = "new_test_call = '''if [[ \\\"${ROTA_CERTA_MATERIALIZE_ONLY:-0}\\\" == \\\"1\\\" ]]; then\\n  echo \\\"materialize-only 0186 complete\\\"\\n  exit 0\\nfi\\nif ! ./gradlew testDebugUnitTest"
+                  path.write_text(text.replace(old, new, 1), encoding='utf-8')
+                  continue
+              if 'ROTA_CERTA_MATERIALIZE_ONLY_STAGE19' in text:
+                  continue
+              lines = text.splitlines(keepends=True)
+              insert_at = None
+              for i, line in enumerate(lines):
+                  stripped = line.lstrip()
+                  if stripped.startswith('./gradlew ') or stripped.startswith('if ! ./gradlew '):
+                      insert_at = i
+                      break
+              if insert_at is None:
+                  continue
+              guard = (
+                  'if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n'
+                  '  echo "ROTA_CERTA_MATERIALIZE_ONLY_STAGE19=' + path.name + '"\n'
+                  '  exit 0\n'
+                  'fi\n\n'
+              )
+              lines.insert(insert_at, guard)
+              path.write_text(''.join(lines), encoding='utf-8')
+          PY
+          bash -n scripts/build_rota_certa_0194.sh
+          bash -n scripts/build_rota_certa_0186.sh
+
+      - name: Materialize exact 0.1.198 Stage18 tree without repeated intermediate Gradle
+        working-directory: source
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_MATERIALIZE_ONLY=1
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches
+          unset ROTA_CERTA_MATERIALIZE_ONLY
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD"
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD"
+          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD"
+          grep -Fq 'versionCode = 5482' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
+          grep -Fq 'BUBBLE_IDENTITY_FAIL_CLOSED_STAGE18' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Capture Stage18 source snippets and archive
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p stage19-fast-source
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage19-fast-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage19-fast-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt stage19-fast-source/
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt stage19-fast-source/
+          cp app/build.gradle.kts stage19-fast-source/
+          tar -czf stage19-fast-source/stage18-materialized-source.tgz \
+            app/build.gradle.kts \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/br/com/mapeiaia/rotacerta \
+            app/src/test/java/br/com/mapeiaia/rotacerta
+          sha256sum stage19-fast-source/stage18-materialized-source.tgz > stage19-fast-source/stage18-materialized-source.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage19-fast-materialized-stage18-source
+          path: source/stage19-fast-source/
+          if-no-files-found: error
+          retention-days: 7
