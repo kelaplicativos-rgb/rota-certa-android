@@ -110,7 +110,7 @@ class FarolForensicTraceStage20Test {
     @Test fun overlayApplyOver50msIsCritical() {
         val t = bind(); val p = FarolForensicTraceStage20.preparePaint(t, "r", binding(), "Green", 4.0, 1)
         FarolForensicTraceStage20.overlayRequested(p, 2_000_000, "Green", 4.0, binding(), "req")
-        FarolForensicTraceStage20.overlayApplied(p, 52_000_001, "Green", 4.0, binding(), "applied")
+        FarolForensicTraceStage20.overlayApplied(p, 52_001_000, "Green", 4.0, binding(), "applied")
         assertTrue(FarolForensicTraceStage20.criticalForTest() > 0)
     }
     @Test fun bindingFreshEventIsRecorded() {
