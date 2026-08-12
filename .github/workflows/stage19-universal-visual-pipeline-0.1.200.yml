@@ -23,8 +23,6 @@ jobs:
   validate-stage19-final:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout protected canonical source
         uses: actions/checkout@v4
@@ -141,41 +139,84 @@ jobs:
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
         run: |
-          set -euo pipefail
+          set +e
           ./gradlew testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/stage19-specific-tests.log
+          GRADLE_STATUS=${PIPESTATUS[0]}
+          set -e
+          echo "gradle_status=$GRADLE_STATUS" | tee stage19-evidence/stage19-specific-gradle-status.txt
+          set +e
           python3 - <<'PY' | tee stage19-evidence/stage19-specific-test-count.txt
           import glob, xml.etree.ElementTree as ET
-          tests=failures=errors=0
+          tests=failures=errors=skipped=0
+          failed=[]
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0))
-          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}')
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+              for case in root.findall('.//testcase'):
+                  for tag in ('failure','error'):
+                      bad=case.find(tag)
+                      if bad is not None:
+                          failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
+          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}'); print(f'skipped={skipped}')
+          for item in failed: print('FAILED=' + item)
           if tests < 29 or failures or errors: raise SystemExit(1)
           PY
+          COUNT_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [[ "$GRADLE_STATUS" != "0" || "$COUNT_STATUS" != "0" ]]; then
+            echo "stage19_specific_validation=failed gradle=$GRADLE_STATUS count=$COUNT_STATUS" | tee stage19-evidence/stage19-specific-validation.txt
+            exit 1
+          fi
+          echo 'stage19_specific_validation=passed' | tee stage19-evidence/stage19-specific-validation.txt
 
       - name: Run complete unit suite
         working-directory: source
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
         run: |
-          set -euo pipefail
+          set +e
           ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/full-unit-suite.log
+          GRADLE_STATUS=${PIPESTATUS[0]}
+          set -e
+          echo "gradle_status=$GRADLE_STATUS" | tee stage19-evidence/full-suite-gradle-status.txt
+          set +e
           python3 - <<'PY' | tee stage19-evidence/full-test-count.txt
           import glob, xml.etree.ElementTree as ET
-          tests=failures=errors=0
+          tests=failures=errors=skipped=0
+          failed=[]
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0))
-          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}')
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+              for case in root.findall('.//testcase'):
+                  for tag in ('failure','error'):
+                      bad=case.find(tag)
+                      if bad is not None:
+                          failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
+          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}'); print(f'skipped={skipped}')
+          for item in failed: print('FAILED=' + item)
           if tests < 523 or failures or errors: raise SystemExit(1)
           PY
+          COUNT_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [[ "$GRADLE_STATUS" != "0" || "$COUNT_STATUS" != "0" ]]; then
+            echo "full_suite_validation=failed gradle=$GRADLE_STATUS count=$COUNT_STATUS" | tee stage19-evidence/full-suite-validation.txt
+            exit 1
+          fi
+          echo 'full_suite_validation=passed' | tee stage19-evidence/full-suite-validation.txt
 
       - name: Run Android Lint
         working-directory: source
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -euo pipefail
           ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/lint-debug.log
@@ -186,6 +227,7 @@ jobs:
         working-directory: source
         env:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -euo pipefail
           ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/clean-assemble-debug.log
@@ -217,6 +259,7 @@ jobs:
           echo 'dex_stage19_marker=true' | tee "$OUT/dex-validation.txt"
 
       - name: Upload Stage 19 final evidence and APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.200-stage19-universal-visual-final
