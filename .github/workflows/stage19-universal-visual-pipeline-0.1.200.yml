@@ -74,8 +74,14 @@ jobs:
           printf 'expected=%s\nactual=%s\n' "$EXPECTED_STAGE18_SHA" "$ACTUAL_STAGE18_SHA" | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
           test "$EXPECTED_STAGE18_SHA" = "$ACTUAL_STAGE18_SHA"
           cd ../source
-          rm -rf app
+          # The Stage18 artifact intentionally contains only the materialized Android
+          # sources/tests/manifest/build file. Keep canonical res/, assets and other
+          # static Android inputs, while replacing all generated Kotlin/JVM source.
+          rm -rf app/src/main/java app/src/test/java
           tar -xzf ../bootstrap/stage18-materialized-source.tgz
+          test -f app/src/main/res/values/strings.xml
+          test -f app/src/main/res/values/themes.xml
+          test -f app/src/main/res/xml/accessibility_service_config.xml
           grep -Fq 'versionCode = 5482' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
