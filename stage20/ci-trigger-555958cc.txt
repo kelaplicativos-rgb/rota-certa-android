@@ -1,0 +1,2 @@
+Stage20 full validation trigger after deterministic showOverlay anchor repair.
+Parent head: 555958cc506c0d1ef9e433fd462da4efbc60384c
