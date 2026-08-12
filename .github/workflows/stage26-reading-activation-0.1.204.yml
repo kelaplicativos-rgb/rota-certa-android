@@ -124,6 +124,25 @@ jobs:
             echo 'capture_restored=true'
           } | tee evidence/stage26-materialized-check.txt
 
+      - name: Verify complete test-source inventory (682)
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-source-inventory.txt
+          from pathlib import Path
+          root = Path('source/app/src/test/java')
+          counts = []
+          total = 0
+          for p in sorted(root.rglob('*.kt')):
+              count = p.read_text(encoding='utf-8').count('@Test')
+              if count:
+                  counts.append((str(p.relative_to(root)), count))
+                  total += count
+          for name, count in counts:
+              print(f'{count:3d} {name}')
+          print(f'total_at_test={total}')
+          assert total == 682, total
+          PY
+
       - name: Stage26 deterministic tests (45)
         working-directory: source
         run: |
@@ -167,24 +186,29 @@ jobs:
           ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/stage19-regression-tests.log
           grep -q 'tests="29"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test.xml
 
-      - name: Complete unit suite
+      - name: Complete unit suite (exact 682)
         working-directory: source
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon testDebugUnitTest | tee ../evidence/full-unit-suite.log
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-unit-suite.log
           python - <<'PY' | tee ../evidence/full-test-count.txt
           from pathlib import Path
           import xml.etree.ElementTree as ET
           tests=failures=errors=skipped=0
+          files=[]
           for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
               r=ET.parse(p).getroot()
-              tests += int(r.attrib.get('tests',0)); failures += int(r.attrib.get('failures',0)); errors += int(r.attrib.get('errors',0)); skipped += int(r.attrib.get('skipped',0))
+              count=int(r.attrib.get('tests',0))
+              files.append((p.name,count))
+              tests += count; failures += int(r.attrib.get('failures',0)); errors += int(r.attrib.get('errors',0)); skipped += int(r.attrib.get('skipped',0))
+          for name,count in sorted(files):
+              print(f'{count:3d} {name}')
           print(f'tests={tests}')
           print(f'failures={failures}')
           print(f'errors={errors}')
           print(f'skipped={skipped}')
-          assert tests >= 682, tests
-          assert failures == errors == 0
+          assert tests == 682, tests
+          assert failures == errors == skipped == 0
           PY
 
       - name: Android Lint
