@@ -80,8 +80,9 @@ jobs:
           rm -rf app/src/main/java app/src/test/java
           tar -xzf ../bootstrap/stage18-materialized-source.tgz
           test -f app/src/main/res/values/strings.xml
-          test -f app/src/main/res/values/themes.xml
-          test -f app/src/main/res/xml/accessibility_service_config.xml
+          test -f app/src/main/res/values/styles.xml
+          test -f app/src/main/res/xml/rota_certa_accessibility.xml
+          test -f app/src/main/res/xml/file_paths.xml
           grep -Fq 'versionCode = 5482' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
