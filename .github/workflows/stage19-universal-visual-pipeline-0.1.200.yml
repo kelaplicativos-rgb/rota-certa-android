@@ -60,22 +60,22 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup cached Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+          cache-read-only: false
 
       - name: Verify and restore Stage 18 baseline
         run: |
           set -euo pipefail
           mkdir -p source/stage19-evidence
           cd bootstrap
-          EXPECTED_STAGE18_SHA="$(awk 'NR==1 {print $1}' stage18-materialized-source.sha256)"
-          ACTUAL_STAGE18_SHA="$(sha256sum stage18-materialized-source.tgz | awk '{print $1}')"
-          printf 'expected=%s\nactual=%s\n' "$EXPECTED_STAGE18_SHA" "$ACTUAL_STAGE18_SHA" | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
-          test "$EXPECTED_STAGE18_SHA" = "$ACTUAL_STAGE18_SHA"
+          EXPECTED="$(awk 'NR==1 {print $1}' stage18-materialized-source.sha256)"
+          ACTUAL="$(sha256sum stage18-materialized-source.tgz | awk '{print $1}')"
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED" "$ACTUAL" | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
+          test "$EXPECTED" = "$ACTUAL"
           cd ../source
-          # The Stage18 bootstrap artifact intentionally contains materialized source,
-          # tests, manifest and build file. Preserve canonical Android static inputs,
-          # then restore the historical accessibility XML mutations from the Stage18
-          # materialization chain before Stage19 is applied.
           rm -rf app/src/main/java app/src/test/java
           tar -xzf ../bootstrap/stage18-materialized-source.tgz
           test -f app/src/main/res/values/strings.xml
@@ -87,20 +87,15 @@ jobs:
           import re
           path = Path('app/src/main/res/xml/rota_certa_accessibility.xml')
           text = path.read_text(encoding='utf-8')
-          text, event_count = re.subn(
+          text, a = re.subn(
               r'android:accessibilityEventTypes="[^"]+"',
               'android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeWindowsChanged|typeNotificationStateChanged"',
               text,
               count=1,
           )
-          text, timeout_count = re.subn(
-              r'android:notificationTimeout="\d+"',
-              'android:notificationTimeout="100"',
-              text,
-              count=1,
-          )
-          if event_count != 1 or timeout_count != 1:
-              raise SystemExit(f'accessibility resource restoration failed: events={event_count}, timeout={timeout_count}')
+          text, b = re.subn(r'android:notificationTimeout="\d+"', 'android:notificationTimeout="100"', text, count=1)
+          if a != 1 or b != 1:
+              raise SystemExit(f'accessibility resource restoration failed: events={a}, timeout={b}')
           path.write_text(text, encoding='utf-8')
           PY
           grep -Fq 'typeViewTextChanged' app/src/main/res/xml/rota_certa_accessibility.xml
@@ -131,16 +126,15 @@ jobs:
           grep -Fq 'versionName = "0.1.200"' app/build.gradle.kts
           grep -Fq 'UNIVERSAL_VISUAL_AUTHORITY_STAGE19' app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19.kt
           grep -Fq 'if (handleUniversalVisualEventStage19(eventPackage)) return' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          test "$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19Test.kt)" -ge 29
+          test "$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19Test.kt)" -eq 29
           sha256sum -c stage19-evidence/protected-pre-stage19.sha256 | tee stage19-evidence/protected-post-stage19-check.txt
+          gradle --version | tee stage19-evidence/gradle-version.txt
 
       - name: Run Stage 19 deterministic tests
         working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
         run: |
           set +e
-          ./gradlew testDebugUnitTest \
+          gradle testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/stage19-specific-tests.log
           GRADLE_STATUS=${PIPESTATUS[0]}
@@ -153,18 +147,14 @@ jobs:
           failed=[]
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              tests += int(root.attrib.get('tests',0))
-              failures += int(root.attrib.get('failures',0))
-              errors += int(root.attrib.get('errors',0))
-              skipped += int(root.attrib.get('skipped',0))
+              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0)); skipped += int(root.attrib.get('skipped',0))
               for case in root.findall('.//testcase'):
                   for tag in ('failure','error'):
                       bad=case.find(tag)
-                      if bad is not None:
-                          failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
+                      if bad is not None: failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
           print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}'); print(f'skipped={skipped}')
           for item in failed: print('FAILED=' + item)
-          if tests < 29 or failures or errors: raise SystemExit(1)
+          if tests != 29 or failures or errors or skipped: raise SystemExit(1)
           PY
           COUNT_STATUS=${PIPESTATUS[0]}
           set -e
@@ -176,11 +166,9 @@ jobs:
 
       - name: Run complete unit suite
         working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
         run: |
           set +e
-          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/full-unit-suite.log
+          gradle testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/full-unit-suite.log
           GRADLE_STATUS=${PIPESTATUS[0]}
           set -e
           echo "gradle_status=$GRADLE_STATUS" | tee stage19-evidence/full-suite-gradle-status.txt
@@ -191,18 +179,14 @@ jobs:
           failed=[]
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              tests += int(root.attrib.get('tests',0))
-              failures += int(root.attrib.get('failures',0))
-              errors += int(root.attrib.get('errors',0))
-              skipped += int(root.attrib.get('skipped',0))
+              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0)); skipped += int(root.attrib.get('skipped',0))
               for case in root.findall('.//testcase'):
                   for tag in ('failure','error'):
                       bad=case.find(tag)
-                      if bad is not None:
-                          failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
+                      if bad is not None: failed.append(f"{case.attrib.get('classname','')}.{case.attrib.get('name','')} :: {bad.attrib.get('message','')}")
           print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}'); print(f'skipped={skipped}')
           for item in failed: print('FAILED=' + item)
-          if tests < 523 or failures or errors: raise SystemExit(1)
+          if tests != 523 or failures or errors or skipped: raise SystemExit(1)
           PY
           COUNT_STATUS=${PIPESTATUS[0]}
           set -e
@@ -215,22 +199,20 @@ jobs:
       - name: Run Android Lint
         working-directory: source
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -euo pipefail
-          ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/lint-debug.log
+          gradle lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/lint-debug.log
           test -f app/build/reports/lint-results-debug.html
           cp app/build/reports/lint-results-debug.html stage19-evidence/lint-results-debug.html
 
       - name: Clean assembleDebug
         working-directory: source
         env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           set -euo pipefail
-          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/clean-assemble-debug.log
+          gradle clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/clean-assemble-debug.log
 
       - name: Validate APK package version signature and DEX
         working-directory: source
