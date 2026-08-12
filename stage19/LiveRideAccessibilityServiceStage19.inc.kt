@@ -67,6 +67,7 @@
         if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val serialStage19 = ++stage19OcrSerial
+        val visualWindowIdStage19 = stage19ActiveWindowId ?: runCatching { rootInActiveWindow?.windowId }.getOrNull() ?: 0
         if (!screenshotInProgress.compareAndSet(false, true)) {
             stage19OcrRerunRequested = true
             return
@@ -103,7 +104,7 @@
                                         FarolUniversalVisualPipelineStage19.VisualBlock(
                                             id = groupStage19.id,
                                             metadataPackageName = eventPackageStage19,
-                                            windowId = 0,
+                                            windowId = visualWindowIdStage19,
                                             windowLayer = Int.MAX_VALUE,
                                             depth = 1,
                                             text = groupStage19.text,
