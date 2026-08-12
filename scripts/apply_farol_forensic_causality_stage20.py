@@ -249,14 +249,15 @@ def apply(root: Path) -> None:
         '    private fun requestUniversalScreenshotStage19(',
         '    private suspend fun processUniversalVisualStage19(',
         '                                if (serialStage19 != stage19OcrSerial) return@launch\n                                stage19VisualVerificationPending = false\n                                if (evaluationStage19 != null) {\n                                    processUniversalVisualStage19(evaluationStage19, "Ocr")\n',
-        '                                FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "EVALUATE_END", cycleIdStage20, "candidate=${evaluationStage19 != null}")\n'
+        '                                val evaluationSnapshotStage20 = evaluationStage19\n'
+        '                                FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "EVALUATE_END", cycleIdStage20, "candidate=${evaluationSnapshotStage20 != null}")\n'
         '                                if (serialStage19 != stage19OcrSerial) {\n'
         '                                    FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "STALE_AFTER_EVALUATE", cycleIdStage20, "latestSerial=$stage19OcrSerial")\n'
         '                                    return@launch\n'
         '                                }\n'
         '                                stage19VisualVerificationPending = false\n'
-        '                                if (evaluationStage19 != null) {\n'
-        '                                    processUniversalVisualStage19(evaluationStage19, "Ocr", cycleIdStage20)\n',
+        '                                if (evaluationSnapshotStage20 != null) {\n'
+        '                                    processUniversalVisualStage19(evaluationSnapshotStage20, "Ocr", cycleIdStage20)\n',
         'ocr evaluate/process',
     )
     service = replace_in_section(
