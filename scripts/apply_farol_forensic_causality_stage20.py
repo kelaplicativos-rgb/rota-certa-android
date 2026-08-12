@@ -87,7 +87,7 @@ def apply(root: Path) -> None:
     service = replace_once(
         service,
         '        if (handleUniversalVisualEventStage19(eventPackage)) return\n',
-        '        val eventWindowIdStage20 = runCatching { event.windowId }.getOrDefault(0)\n'
+        '        val eventWindowIdStage20 = runCatching { event.windowId }.getOrNull() ?: 0\n'
         '        if (handleUniversalVisualEventStage19(eventPackage, eventType0187, eventWindowIdStage20)) return\n',
         'event cycle call',
     )
@@ -164,7 +164,7 @@ def apply(root: Path) -> None:
         '        analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {\n            val blocksStage19 = collectUniversalAccessibilityBlocksStage19()\n',
         '        analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {\n'
         '            val cycleIdStage20 = FarolForensicTraceStage20.beginCycle(\n'
-        '                SystemClock.elapsedRealtimeNanos(), null, -1, runCatching { rootInActiveWindow?.windowId }.getOrDefault(0),\n'
+        '                SystemClock.elapsedRealtimeNanos(), null, -1, runCatching { rootInActiveWindow?.windowId }.getOrNull() ?: 0,\n'
         '            )\n'
         '            stage20LastCycleId = cycleIdStage20\n'
         '            FarolForensicTraceStage20.accessibilityCollectStarted(cycleIdStage20, SystemClock.elapsedRealtimeNanos())\n'
