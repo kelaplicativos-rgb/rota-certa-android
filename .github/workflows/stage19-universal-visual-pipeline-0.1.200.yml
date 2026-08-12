@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/stage19-universal-visual-pipeline-0.1.200.yml
       - scripts/apply_universal_visual_pipeline_stage19.py
+      - stage19/**
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +22,7 @@ permissions:
 jobs:
   validate-stage19-final:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 90
     env:
       GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
     steps:
@@ -41,6 +42,15 @@ jobs:
           persist-credentials: false
           path: patches
 
+      - name: Restore exact materialized Stage 18 source
+        uses: actions/download-artifact@v4
+        with:
+          name: rota-certa-stage19-materialized-stage18-source
+          path: bootstrap
+          github-token: ${{ github.token }}
+          repository: kelaplicativos-rgb/rota-certa-android
+          run-id: 31612053591
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -54,44 +64,126 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Materialize exact Stage 18 source baseline
-        working-directory: source
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19-base
+      - name: Verify and restore Stage 18 baseline
         run: |
           set -euo pipefail
-          mkdir -p stage19-evidence
-          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage19-evidence/materialize-0.1.194.log
-          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
-          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
-          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD"
-          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD"
-          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD"
+          mkdir -p source/stage19-evidence
+          cd bootstrap
+          sha256sum -c stage18-materialized-source.sha256 | tee ../source/stage19-evidence/stage18-bootstrap-sha256-check.txt
+          cd ../source
+          rm -rf app
+          tar -xzf ../bootstrap/stage18-materialized-source.tgz
           grep -Fq 'versionCode = 5482' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
-          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/AndroidManifest.xml \
+            > stage19-evidence/protected-pre-stage19.sha256
 
-      - name: Package materialized Stage 18 source for Stage 19 engineering
+      - name: Apply Stage 19 universal visual pipeline
         working-directory: source
         run: |
           set -euo pipefail
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt stage19-evidence/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt stage19-evidence/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt stage19-evidence/
-          cp app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt stage19-evidence/
-          cp app/build.gradle.kts stage19-evidence/
-          tar -czf stage19-evidence/stage18-materialized-source.tgz \
-            app/build.gradle.kts \
-            app/src/main/AndroidManifest.xml \
-            app/src/main/java/br/com/mapeiaia/rotacerta \
-            app/src/test/java/br/com/mapeiaia/rotacerta
-          sha256sum stage19-evidence/stage18-materialized-source.tgz > stage19-evidence/stage18-materialized-source.sha256
+          python3 -m py_compile ../patches/scripts/apply_universal_visual_pipeline_stage19.py
+          python3 ../patches/scripts/apply_universal_visual_pipeline_stage19.py --self-test | tee stage19-evidence/stage19-self-test.txt
+          python3 ../patches/scripts/apply_universal_visual_pipeline_stage19.py "$PWD" | tee stage19-evidence/stage19-apply.txt
+          grep -Fxq 'stage19_apply=passed' stage19-evidence/stage19-apply.txt
+          grep -Fxq 'visual_fast_path_precedes_package_gates=true' stage19-evidence/stage19-apply.txt
+          grep -Fxq 'accessibility_empty_uses_immediate_ocr=true' stage19-evidence/stage19-apply.txt
+          grep -Fxq 'exact_cache_before_network=true' stage19-evidence/stage19-apply.txt
+          grep -Fq 'versionCode = 5484' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.200"' app/build.gradle.kts
+          grep -Fq 'UNIVERSAL_VISUAL_AUTHORITY_STAGE19' app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19.kt
+          grep -Fq 'if (handleUniversalVisualEventStage19(eventPackage)) return' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test "$(grep -Fc '@Test' app/src/test/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19Test.kt)" -ge 29
+          sha256sum -c stage19-evidence/protected-pre-stage19.sha256 | tee stage19-evidence/protected-post-stage19-check.txt
 
-      - name: Upload Stage 19 bootstrap evidence
+      - name: Run Stage 19 deterministic tests
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/stage19-specific-tests.log
+          python3 - <<'PY' | tee stage19-evidence/stage19-specific-test-count.txt
+          import glob, xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0))
+          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}')
+          if tests < 29 or failures or errors: raise SystemExit(1)
+          PY
+
+      - name: Run complete unit suite
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/full-unit-suite.log
+          python3 - <<'PY' | tee stage19-evidence/full-test-count.txt
+          import glob, xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0))
+          print(f'tests={tests}'); print(f'failures={failures}'); print(f'errors={errors}')
+          if tests < 523 or failures or errors: raise SystemExit(1)
+          PY
+
+      - name: Run Android Lint
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+        run: |
+          set -euo pipefail
+          ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/lint-debug.log
+          test -f app/build/reports/lint-results-debug.html
+          cp app/build/reports/lint-results-debug.html stage19-evidence/lint-results-debug.html
+
+      - name: Clean assembleDebug
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage19-evidence/clean-assemble-debug.log
+
+      - name: Validate APK package version signature and DEX
+        working-directory: source
+        run: |
+          set -euo pipefail
+          OUT=stage19-evidence
+          APK_SRC=app/build/outputs/apk/debug/app-debug.apk
+          APK="$OUT/rota-certa-0.1.200-stage19-universal-visual-ci.apk"
+          test -s "$APK_SRC"
+          cp "$APK_SRC" "$APK"
+          unzip -tqq "$APK"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          "$AAPT" dump badging "$APK" | tee "$OUT/badging.txt"
+          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5484' versionName='0.1.200'" "$OUT/badging.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$OUT/signature.txt"
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUT/signature.txt"
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUT/signature.txt"
+          sha256sum "$APK" | tee "$OUT/apk.sha256"
+          stat --printf='%s\n' "$APK" | tee "$OUT/apk-size-bytes.txt"
+          DEX_FOUND=0
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
+            if unzip -p "$APK" "$dex" | strings | grep -Fq 'UNIVERSAL_VISUAL_AUTHORITY_STAGE19'; then DEX_FOUND=1; break; fi
+          done
+          test "$DEX_FOUND" = 1
+          echo 'dex_stage19_marker=true' | tee "$OUT/dex-validation.txt"
+
+      - name: Upload Stage 19 final evidence and APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage19-materialized-stage18-source
+          name: rota-certa-0.1.200-stage19-universal-visual-final
           path: source/stage19-evidence/
           if-no-files-found: error
           retention-days: 30
