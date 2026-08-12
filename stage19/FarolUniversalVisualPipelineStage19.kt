@@ -107,18 +107,18 @@ object FarolUniversalVisualPipelineStage19 {
 
         val addressSignature = DestinationAddressIdentityPolicy.signature("visual", destination)
         if (addressSignature.isBlank()) return null
+
+        // A identidade corrente é baseada somente na evidência de endereço do bloco.
+        // Geometria, id de captura OCR, pacote Android e fonte Accessibility/OCR não
+        // podem transformar a mesma oferta visual em outra geração por acidente.
+        val canonicalAddresses = winner.addresses.joinToString("|") { canonical(it) }
         val stableBlockIdentity = listOf(
             winner.block.windowId.toString(),
-            winner.block.left.toString(),
-            winner.block.top.toString(),
-            winner.block.right.toString(),
-            winner.block.bottom.toString(),
-            canonical(destination),
+            canonicalAddresses,
         ).joinToString(":")
         val authorityIdentity = listOf(
             stableBlockIdentity,
             addressSignature,
-            canonical(winner.block.text),
         ).joinToString("|")
         return Evaluation(
             windowId = winner.block.windowId,
