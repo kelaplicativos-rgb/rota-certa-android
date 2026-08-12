@@ -158,7 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test | tee ../evidence/stage20-regression-tests.log
-          grep -q 'tests="34"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta/FarolForensicTraceStage20Test.xml
+          grep -q 'tests="34"' app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test.xml
 
       - name: Stage19 regression tests (29)
         working-directory: source
