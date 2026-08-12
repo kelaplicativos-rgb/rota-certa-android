@@ -2,16 +2,15 @@
 """Stage26 materialization entry point.
 
 Preserves the Stage23 OCR freshness helper while replacing only the Stage23
-accessibility admission/collector section. The original Stage26 transformer is
-kept as the implementation source; this entry point narrows that one section
-boundary before invoking it, so the compiled chain remains exactly:
+accessibility admission/collector section. It also bridges the retained Stage23
+scheduled fallback to the Stage26 compact collector and activation generation,
+without restoring the removed heavy Stage23 collector. The compiled chain stays:
 Stage18 -> Stage19 -> Stage20 -> Stage21 -> Stage23 -> Stage26.
 """
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-import sys
 
 MODULE_PATH = Path(__file__).with_name("apply_farol_reading_activation_stage26.py")
 spec = importlib.util.spec_from_file_location("stage26_impl", MODULE_PATH)
@@ -21,6 +20,7 @@ impl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(impl)
 
 _original_replace_section = impl.replace_section
+_original_apply = impl.apply
 
 
 def _replace_section_preserving_stage23_ocr(text: str, start: str, end: str, replacement: str, label: str) -> str:
@@ -34,7 +34,72 @@ def _replace_section_preserving_stage23_ocr(text: str, start: str, end: str, rep
     return _original_replace_section(text, start, end, replacement, label)
 
 
+def _replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"Stage26 materialized bridge {label}: expected 1, found {count}")
+    return text.replace(old, new, 1)
+
+
+def _apply_with_scheduled_compact_bridge(root: Path) -> None:
+    _original_apply(root)
+    service_path = root / impl.SERVICE
+    text = service_path.read_text(encoding="utf-8")
+
+    text = _replace_once(
+        text,
+        '''    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {\n        if (!stage26ReadingActivation.snapshot().enabled) {\n            FarolReadingActivationStage26.Metrics.increment("eventsRejectedReadingOff")\n            return\n        }\n''',
+        '''    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {\n        val scheduledActivationStage26 = stage26ReadingActivation.snapshot()\n        if (!scheduledActivationStage26.enabled || !scheduledActivationStage26.usageAccessGranted) {\n            FarolReadingActivationStage26.Metrics.increment("eventsRejectedReadingOff")\n            FarolReadingActivationStage26.Metrics.increment("heavyCollectionsAvoided")\n            return\n        }\n''',
+        "scheduled activation snapshot",
+    )
+    text = _replace_once(
+        text,
+        '''        analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {\n            if (!stage23ScheduleGate.shouldRun(\n''',
+        '''        analyzeJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {\n            if (!isReadingActivationGenerationFreshStage26(scheduledActivationStage26.generation)) {\n                FarolReadingActivationStage26.Metrics.increment("heavyCollectionsAvoided")\n                return@launch\n            }\n            if (!stage23ScheduleGate.shouldRun(\n''',
+        "scheduled activation before Stage23 demand gate",
+    )
+    text = _replace_once(
+        text,
+        '''                FarolVisualIdentityStage23.Metrics.increment("scheduledCancelled")\n                FarolForensicTraceStage20.note(\n''',
+        '''                FarolVisualIdentityStage23.Metrics.increment("scheduledCancelled")\n                FarolReadingActivationStage26.Metrics.increment("heavyCollectionsAvoided")\n                FarolForensicTraceStage20.note(\n''',
+        "scheduled avoided metric",
+    )
+    text = _replace_once(
+        text,
+        '''            FarolForensicTraceStage20.accessibilityCollectStarted(cycleIdStage20, collectStartedNsStage23)\n            val collectionStage23 = collectUniversalAccessibilitySnapshotStage23()\n            val collectEndedNsStage23 = SystemClock.elapsedRealtimeNanos()\n''',
+        '''            FarolForensicTraceStage20.accessibilityCollectStarted(cycleIdStage20, collectStartedNsStage23)\n            FarolReadingActivationStage26.Metrics.increment("heavyCollectionsStarted")\n            val collectionStage23 = collectUniversalAccessibilitySnapshotStage26()\n            val collectEndedNsStage23 = SystemClock.elapsedRealtimeNanos()\n            FarolReadingActivationStage26.Metrics.sample("collect", collectEndedNsStage23 - collectStartedNsStage23)\n            FarolReadingActivationStage26.Metrics.addTotal("nodesVisited", collectionStage23.stats.blocksVisited.toLong())\n            FarolReadingActivationStage26.Metrics.addTotal("blocksEmitted", collectionStage23.stats.blocksEmitted.toLong())\n            FarolReadingActivationStage26.Metrics.addTotal("addressParserInvocations", collectionStage23.addressParserInvocations.toLong())\n            FarolReadingActivationStage26.Metrics.addTotal("duplicateSubtreesAvoided", collectionStage23.duplicateSubtreesAvoided.toLong())\n            if (!isReadingActivationGenerationFreshStage26(scheduledActivationStage26.generation)) {\n                FarolReadingActivationStage26.Metrics.increment("workCancelledOnReadingOff")\n                return@launch\n            }\n''',
+        "scheduled compact collector bridge",
+    )
+    text = _replace_once(
+        text,
+        '''            if (evaluationStage19 != null) {\n                FarolVisualIdentityStage23.Metrics.recordEventToCandidate(\n                    "AccessibilityScheduled",\n                    SystemClock.elapsedRealtimeNanos() - eventStartedNsStage23,\n                )\n                stage19VisualVerificationPending = false\n''',
+        '''            if (evaluationStage19 != null) {\n                FarolVisualIdentityStage23.Metrics.recordEventToCandidate(\n                    "AccessibilityScheduled",\n                    SystemClock.elapsedRealtimeNanos() - eventStartedNsStage23,\n                )\n                FarolReadingActivationStage26.Metrics.sample("eventToCandidate", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage23)\n                stage26CandidateEventStartedNs = eventStartedNsStage23\n                stage26CandidateActivationGeneration = scheduledActivationStage26.generation\n                if (!isReadingActivationGenerationFreshStage26(stage26CandidateActivationGeneration)) {\n                    FarolReadingActivationStage26.Metrics.increment("workCancelledOnReadingOff")\n                    return@launch\n                }\n                stage19VisualVerificationPending = false\n''',
+        "scheduled candidate activation binding",
+    )
+
+    if "collectUniversalAccessibilitySnapshotStage23()" in text:
+        raise SystemExit("Stage26 materialization retained obsolete Stage23 heavy collector reference")
+    schedule_start = text.index("    private fun scheduleVisibleTextAnalysis(")
+    schedule_end = text.index("    private fun scheduleScreenshotFallback127", schedule_start)
+    schedule = text[schedule_start:schedule_end]
+    for required in (
+        "scheduledActivationStage26",
+        "isReadingActivationGenerationFreshStage26",
+        "collectUniversalAccessibilitySnapshotStage26()",
+        "heavyCollectionsAvoided",
+        "heavyCollectionsStarted",
+        "stage26CandidateActivationGeneration = scheduledActivationStage26.generation",
+    ):
+        if required not in schedule:
+            raise SystemExit(f"Stage26 scheduled bridge missing {required}")
+    service_path.write_text(text, encoding="utf-8")
+    print("stage26_scheduled_compact_bridge=passed")
+    print("scheduled_legacy_heavy_collector_reference=false")
+    print("scheduled_bound_to_activation_generation=true")
+
+
 impl.replace_section = _replace_section_preserving_stage23_ocr
+impl.apply = _apply_with_scheduled_compact_bridge
 
 if __name__ == "__main__":
     impl.main()
