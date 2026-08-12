@@ -1,2 +1,0 @@
-Stage20 full validation trigger after deterministic showOverlay anchor repair and immutable OCR evaluation snapshot fix.
-Parent head: 23b72d0462a680f0bfbe1a90e3f2616330f7099d
