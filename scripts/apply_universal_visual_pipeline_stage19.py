@@ -169,6 +169,15 @@ def apply(root: Path) -> None:
         fragment + "    private fun startContinuousScan() {\n",
         "service integration",
     )
+    service = replace_once(
+        service,
+        "    private fun handleUniversalVisualEventStage19(eventPackageStage19: String?): Boolean {\n"
+        "        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return false\n",
+        "    private fun handleUniversalVisualEventStage19(eventPackageStage19: String?): Boolean {\n"
+        "        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return false\n"
+        "        if (bubbleGestureActive) return true // bubble_drag_accessibility_pause_0_1_116\n",
+        "gesture pauses universal accessibility",
+    )
 
     schedule_start = service.find("    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {")
     schedule_end = service.find("    private fun scheduleScreenshotFallback127", schedule_start)
@@ -213,6 +222,8 @@ def apply(root: Path) -> None:
     identity_index = transformed.index("FarolAppIdentityIsolationStage18.resolve")
     if not visual_index < selected_index < identity_index:
         fail("Stage19 visual fast path is not before package identity gates")
+    if "bubbleGestureActive) return true // bubble_drag_accessibility_pause_0_1_116" not in transformed:
+        fail("Stage19 universal event path lost bubble gesture pause")
     schedule_start = transformed.index("    private fun scheduleVisibleTextAnalysis(")
     schedule_end = transformed.index("    private fun scheduleScreenshotFallback127", schedule_start)
     scheduled_section = transformed[schedule_start:schedule_end]
@@ -237,6 +248,7 @@ def apply(root: Path) -> None:
     print("accessibility_empty_uses_immediate_ocr=true")
     print("exact_cache_before_network=true")
     print("scheduled_activation_package_gate=false")
+    print("bubble_gesture_pause_preserved=true")
 
 
 def main() -> None:
