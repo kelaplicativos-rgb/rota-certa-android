@@ -107,15 +107,22 @@ object FarolUniversalVisualPipelineStage19 {
 
         val addressSignature = DestinationAddressIdentityPolicy.signature("visual", destination)
         if (addressSignature.isBlank()) return null
-        val authorityIdentity = listOf(
+        val stableBlockIdentity = listOf(
             winner.block.windowId.toString(),
-            winner.block.id,
+            winner.block.left.toString(),
+            winner.block.top.toString(),
+            winner.block.right.toString(),
+            winner.block.bottom.toString(),
+            canonical(destination),
+        ).joinToString(":")
+        val authorityIdentity = listOf(
+            stableBlockIdentity,
             addressSignature,
             canonical(winner.block.text),
         ).joinToString("|")
         return Evaluation(
             windowId = winner.block.windowId,
-            blockId = winner.block.id,
+            blockId = stableBlockIdentity,
             source = winner.block.source,
             analysisText = winner.block.text.trim(),
             addresses = winner.addresses,
