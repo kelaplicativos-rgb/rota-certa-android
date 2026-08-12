@@ -43,23 +43,19 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Add materialize-only guards to cumulative legacy builders
+      - name: Add materialize-only guards after validated 0.1.186 base
         working-directory: patches
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 - <<'PYGUARD'
           from pathlib import Path
-          scripts = Path('scripts')
-          for path in sorted(scripts.glob('build_rota_certa_*.sh')):
+          for version in range(187, 195):
+              path = Path('scripts') / f'build_rota_certa_0{version}.sh'
+              if not path.is_file():
+                  raise SystemExit(f'missing builder {path}')
               text = path.read_text(encoding='utf-8')
-              if path.name == 'build_rota_certa_0186.sh':
-                  old = "new_test_call = '''if ! ./gradlew testDebugUnitTest"
-                  if old not in text:
-                      raise SystemExit('Stage19 materializer: 0186 wrapper anchor missing')
-                  new = "new_test_call = '''if [[ \\\"${ROTA_CERTA_MATERIALIZE_ONLY:-0}\\\" == \\\"1\\\" ]]; then\\n  echo \\\"materialize-only 0186 complete\\\"\\n  exit 0\\nfi\\nif ! ./gradlew testDebugUnitTest"
-                  path.write_text(text.replace(old, new, 1), encoding='utf-8')
-                  continue
-              if 'ROTA_CERTA_MATERIALIZE_ONLY_STAGE19' in text:
+              marker = 'ROTA_CERTA_MATERIALIZE_ONLY_STAGE19'
+              if marker in text:
                   continue
               lines = text.splitlines(keepends=True)
               insert_at = None
@@ -69,18 +65,19 @@ jobs:
                       insert_at = i
                       break
               if insert_at is None:
-                  continue
+                  raise SystemExit(f'no final Gradle anchor in {path}')
               guard = (
                   'if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n'
-                  '  echo "ROTA_CERTA_MATERIALIZE_ONLY_STAGE19=' + path.name + '"\n'
+                  f'  echo "{marker}={path.name}"\n'
                   '  exit 0\n'
                   'fi\n\n'
               )
               lines.insert(insert_at, guard)
               path.write_text(''.join(lines), encoding='utf-8')
-          PY
-          bash -n scripts/build_rota_certa_0194.sh
-          bash -n scripts/build_rota_certa_0186.sh
+          PYGUARD
+          for version in 0187 0188 0189 0190 0191 0192 0193 0194; do
+            bash -n "scripts/build_rota_certa_${version}.sh"
+          done
 
       - name: Materialize exact Stage 18 source baseline fast
         working-directory: source
