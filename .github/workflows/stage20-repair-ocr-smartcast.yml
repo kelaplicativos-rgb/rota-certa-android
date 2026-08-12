@@ -1,0 +1,75 @@
+name: Repair Stage20 OCR smart cast
+
+on:
+  push:
+    branches:
+      - agent/stage20-forensic-causality-0.1.201
+    paths:
+      - .github/workflows/stage20-repair-ocr-smartcast.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Freeze OCR evaluation before forensic correlation
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_farol_forensic_causality_stage20.py')
+          s = p.read_text(encoding='utf-8')
+          label = "        'ocr evaluate/process',\n    )"
+          label_at = s.find(label)
+          if label_at < 0:
+              raise SystemExit('ocr evaluate/process label not found')
+          start = s.rfind('    service = replace_in_section(', 0, label_at)
+          if start < 0:
+              raise SystemExit('ocr evaluate/process transform start not found')
+          end = label_at + len(label)
+          block = s[start:end]
+          required = [
+              'FarolForensicTraceStage20.ocrStage',
+              '"EVALUATE_END"',
+              'candidate=${evaluationStage19 != null}',
+              'processUniversalVisualStage19(evaluationStage19, "Ocr", cycleIdStage20)',
+          ]
+          for item in required:
+              if item not in block:
+                  raise SystemExit(f'unsafe OCR transform block: missing {item}')
+          old_diag = "        '                                FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, \"EVALUATE_END\", cycleIdStage20, \"candidate=${evaluationStage19 != null}\")\\n'\n"
+          new_diag = (
+              "        '                                val evaluationSnapshotStage20 = evaluationStage19\\n'\n"
+              "        '                                FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, \"EVALUATE_END\", cycleIdStage20, \"candidate=${evaluationSnapshotStage20 != null}\")\\n'\n"
+          )
+          if block.count(old_diag) != 1:
+              raise SystemExit(f'expected diagnostic line once, found {block.count(old_diag)}')
+          block = block.replace(old_diag, new_diag, 1)
+          old_process = (
+              "        '                                if (evaluationStage19 != null) {\\n'\n"
+              "        '                                    processUniversalVisualStage19(evaluationStage19, \"Ocr\", cycleIdStage20)\\n',"
+          )
+          new_process = (
+              "        '                                if (evaluationSnapshotStage20 != null) {\\n'\n"
+              "        '                                    processUniversalVisualStage19(evaluationSnapshotStage20, \"Ocr\", cycleIdStage20)\\n',"
+          )
+          if block.count(old_process) != 1:
+              raise SystemExit(f'expected OCR process fragment once, found {block.count(old_process)}')
+          block = block.replace(old_process, new_process, 1)
+          out = s[:start] + block + s[end:]
+          p.write_text(out, encoding='utf-8')
+          PY
+          python3 -m py_compile scripts/apply_farol_forensic_causality_stage20.py
+          python3 scripts/apply_farol_forensic_causality_stage20.py --self-test
+          grep -Fq 'evaluationSnapshotStage20' scripts/apply_farol_forensic_causality_stage20.py
+          git rm .github/workflows/stage20-repair-ocr-smartcast.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/apply_farol_forensic_causality_stage20.py
+          git commit -m 'Fix Stage20 OCR forensic snapshot smart cast'
+          git push origin HEAD:agent/stage20-forensic-causality-0.1.201
