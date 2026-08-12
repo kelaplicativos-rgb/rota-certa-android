@@ -113,8 +113,9 @@ object FarolForensicTraceStage20 {
     fun accessibilityCollectFinished(cycleId: Long, nowNs: Long, windowCount: Int, blockCount: Int) = synchronized(lock) {
         val cycle = cycles[cycleId]
         cycle?.collectEndedNs = nowNs
-        val durationUs = cycle?.collectStartedNs?.let { us(it, nowNs) }
-        addEvent(nowNs, cycleId, stage = "S20_ACCESSIBILITY_COLLECT_END", details = "windows=$windowCount; blocks=$blockCount; duration_us=${durationUs ?: -1}", critical = durationUs != null && durationUs > ACCESSIBILITY_SEGMENT_WARN_US)
+        val durationNs = cycle?.collectStartedNs?.let { ns(it, nowNs) }
+        val durationUs = durationNs?.let { it / 1_000L }
+        addEvent(nowNs, cycleId, stage = "S20_ACCESSIBILITY_COLLECT_END", details = "windows=$windowCount; blocks=$blockCount; duration_ns=${durationNs ?: -1}; duration_us=${durationUs ?: -1}", critical = durationNs != null && durationNs > ACCESSIBILITY_SEGMENT_WARN_US * 1_000L)
     }
 
     fun accessibilityEvaluateStarted(cycleId: Long, nowNs: Long) = synchronized(lock) {
@@ -125,8 +126,9 @@ object FarolForensicTraceStage20 {
     fun accessibilityEvaluateFinished(cycleId: Long, nowNs: Long, candidateFound: Boolean) = synchronized(lock) {
         val cycle = cycles[cycleId]
         cycle?.evaluateEndedNs = nowNs
-        val durationUs = cycle?.evaluateStartedNs?.let { us(it, nowNs) }
-        addEvent(nowNs, cycleId, stage = "S20_ACCESSIBILITY_EVALUATE_END", details = "candidate=$candidateFound; duration_us=${durationUs ?: -1}", critical = durationUs != null && durationUs > ACCESSIBILITY_SEGMENT_WARN_US)
+        val durationNs = cycle?.evaluateStartedNs?.let { ns(it, nowNs) }
+        val durationUs = durationNs?.let { it / 1_000L }
+        addEvent(nowNs, cycleId, stage = "S20_ACCESSIBILITY_EVALUATE_END", details = "candidate=$candidateFound; duration_ns=${durationNs ?: -1}; duration_us=${durationUs ?: -1}", critical = durationNs != null && durationNs > ACCESSIBILITY_SEGMENT_WARN_US * 1_000L)
     }
 
     fun ocrStage(nowNs: Long, ocrSerial: Long, stage: String, cycleId: Long? = null, details: String = "") = synchronized(lock) {
@@ -147,10 +149,11 @@ object FarolForensicTraceStage20 {
             attempt.destination = destination
             attempt.cycleId = cycleId ?: attempt.cycleId
         }
-        val detectionUs = cycleId?.let { cycles[it]?.startedNs }?.let { us(it, nowNs) }
-        val critical = detectionUs != null && detectionUs > VISUAL_DETECTION_WARN_US
+        val detectionNs = cycleId?.let { cycles[it]?.startedNs }?.let { ns(it, nowNs) }
+        val detectionUs = detectionNs?.let { it / 1_000L }
+        val critical = detectionNs != null && detectionNs > VISUAL_DETECTION_WARN_US * 1_000L
         if (critical) attempts[traceId]?.anomalyCount = (attempts[traceId]?.anomalyCount ?: 0) + 1
-        addEvent(nowNs, cycleId, traceId, stage = "S20_VISUAL_CANDIDATE_BOUND", binding = binding, details = "source=${safe(source)}; destination=${safe(destination)}; block=${safe(blockId)}; event_to_candidate_us=${detectionUs ?: -1}", critical = critical)
+        addEvent(nowNs, cycleId, traceId, stage = "S20_VISUAL_CANDIDATE_BOUND", binding = binding, details = "source=${safe(source)}; destination=${safe(destination)}; block=${safe(blockId)}; event_to_candidate_ns=${detectionNs ?: -1}; event_to_candidate_us=${detectionUs ?: -1}", critical = critical)
         traceId
     }
 
@@ -176,8 +179,9 @@ object FarolForensicTraceStage20 {
         val attempt = traceId?.let(attempts::get)
         attempt?.cacheEndNs = nowNs
         attempt?.cacheHit = hit
-        val durationUs = attempt?.cacheStartNs?.let { us(it, nowNs) }
-        addEvent(nowNs, traceId = traceId, stage = if (hit) "S20_CACHE_HIT" else "S20_CACHE_MISS", binding = attempt?.binding, details = "duration_us=${durationUs ?: -1}")
+        val durationNs = attempt?.cacheStartNs?.let { ns(it, nowNs) }
+        val durationUs = durationNs?.let { it / 1_000L }
+        addEvent(nowNs, traceId = traceId, stage = if (hit) "S20_CACHE_HIT" else "S20_CACHE_MISS", binding = attempt?.binding, details = "duration_ns=${durationNs ?: -1}; duration_us=${durationUs ?: -1}")
     }
 
     fun routeJobStarted(traceId: String?, nowNs: Long): String = synchronized(lock) {
@@ -195,7 +199,8 @@ object FarolForensicTraceStage20 {
     fun routeCallFinished(traceId: String?, jobId: String?, nowNs: Long, distances: String) = synchronized(lock) {
         val attempt = traceId?.let(attempts::get)
         attempt?.routeEndNs = nowNs
-        addEvent(nowNs, traceId = traceId, operationId = jobId, stage = "S20_ROUTE_CALL_END", binding = attempt?.binding, details = "route_us=${attempt?.routeStartNs?.let { us(it, nowNs) } ?: -1}; distances=${safe(distances)}; invalidated=${attempt?.invalidatedNs != null}")
+        val routeNs = attempt?.routeStartNs?.let { ns(it, nowNs) }
+        addEvent(nowNs, traceId = traceId, operationId = jobId, stage = "S20_ROUTE_CALL_END", binding = attempt?.binding, details = "route_ns=${routeNs ?: -1}; route_us=${routeNs?.let { it / 1_000L } ?: -1}; distances=${safe(distances)}; invalidated=${attempt?.invalidatedNs != null}")
     }
 
     fun routeCancelled(traceId: String?, jobId: String?, nowNs: Long, reason: String) = synchronized(lock) {
@@ -215,7 +220,8 @@ object FarolForensicTraceStage20 {
     fun decisionFinished(traceId: String?, jobId: String?, nowNs: Long, recommendation: String, distanceKm: Double?) = synchronized(lock) {
         val attempt = traceId?.let(attempts::get)
         attempt?.decisionEndNs = nowNs
-        addEvent(nowNs, traceId = traceId, operationId = jobId, stage = "S20_DECISION_END", binding = attempt?.binding, details = "decision_us=${attempt?.decisionStartNs?.let { us(it, nowNs) } ?: -1}; recommendation=${safe(recommendation)}; distance=$distanceKm")
+        val decisionNs = attempt?.decisionStartNs?.let { ns(it, nowNs) }
+        addEvent(nowNs, traceId = traceId, operationId = jobId, stage = "S20_DECISION_END", binding = attempt?.binding, details = "decision_ns=${decisionNs ?: -1}; decision_us=${decisionNs?.let { it / 1_000L } ?: -1}; recommendation=${safe(recommendation)}; distance=$distanceKm")
     }
 
     fun preparePaint(traceId: String, operationId: String, binding: BindingSnapshot, expectedColor: String, expectedDistanceKm: Double?, nowNs: Long): PaintToken = synchronized(lock) {
@@ -239,12 +245,14 @@ object FarolForensicTraceStage20 {
         if (token != null && token.binding != currentBinding) { critical = true; reasons += "binding_mismatch" }
         if (token != null && !token.expectedColor.equals(color, ignoreCase = true)) { critical = true; reasons += "color_mismatch" }
         if (token != null && !distanceEquals(token.expectedDistanceKm, distanceKm)) { critical = true; reasons += "distance_mismatch" }
-        val routeToPaintUs = attempt?.routeEndNs?.let { us(it, nowNs) }
-        val cacheToPaintUs = if (attempt?.cacheHit == true) attempt.cacheEndNs?.let { us(it, nowNs) } else null
-        if (routeToPaintUs != null && routeToPaintUs > ROUTE_TO_PAINT_WARN_US) { critical = true; reasons += "route_to_paint_delay" }
-        if (cacheToPaintUs != null && cacheToPaintUs > CACHE_TO_PAINT_WARN_US) { critical = true; reasons += "cache_to_paint_delay" }
+        val routeToPaintNs = attempt?.routeEndNs?.let { ns(it, nowNs) }
+        val routeToPaintUs = routeToPaintNs?.let { it / 1_000L }
+        val cacheToPaintNs = if (attempt?.cacheHit == true) attempt.cacheEndNs?.let { ns(it, nowNs) } else null
+        val cacheToPaintUs = cacheToPaintNs?.let { it / 1_000L }
+        if (routeToPaintNs != null && routeToPaintNs > ROUTE_TO_PAINT_WARN_US * 1_000L) { critical = true; reasons += "route_to_paint_delay" }
+        if (cacheToPaintNs != null && cacheToPaintNs > CACHE_TO_PAINT_WARN_US * 1_000L) { critical = true; reasons += "cache_to_paint_delay" }
         if (critical) attempt?.anomalyCount = (attempt?.anomalyCount ?: 0) + 1
-        addEvent(nowNs, traceId = traceId, operationId = token?.operationId, stage = if (critical) "FORENSIC_STAGE20_FINAL_PAINT_REQUEST_ANOMALY" else "S20_OVERLAY_RENDER_REQUEST", binding = token?.binding, details = "color=${safe(color)}; distance=$distanceKm; route_to_paint_us=${routeToPaintUs ?: -1}; cache_to_paint_us=${cacheToPaintUs ?: -1}; reasons=${reasons.joinToString(",").ifBlank { "none" }}; current=${bindingText(currentBinding)}; origin=${safe(origin)}", critical = critical)
+        addEvent(nowNs, traceId = traceId, operationId = token?.operationId, stage = if (critical) "FORENSIC_STAGE20_FINAL_PAINT_REQUEST_ANOMALY" else "S20_OVERLAY_RENDER_REQUEST", binding = token?.binding, details = "color=${safe(color)}; distance=$distanceKm; route_to_paint_ns=${routeToPaintNs ?: -1}; route_to_paint_us=${routeToPaintUs ?: -1}; cache_to_paint_ns=${cacheToPaintNs ?: -1}; cache_to_paint_us=${cacheToPaintUs ?: -1}; reasons=${reasons.joinToString(",").ifBlank { "none" }}; current=${bindingText(currentBinding)}; origin=${safe(origin)}", critical = critical)
     }
 
     fun overlayApplied(token: PaintToken?, nowNs: Long, color: String, distanceKm: Double?, currentBinding: BindingSnapshot, origin: String) = synchronized(lock) {
@@ -254,11 +262,12 @@ object FarolForensicTraceStage20 {
         attempt?.actualColor = color
         attempt?.actualDistanceKm = distanceKm
         attempt?.paintOrigin = safe(origin)
-        val applyUs = attempt?.paintRequestedNs?.let { us(it, nowNs) }
-        var critical = applyUs != null && applyUs > PAINT_APPLY_WARN_US
+        val applyNs = attempt?.paintRequestedNs?.let { ns(it, nowNs) }
+        val applyUs = applyNs?.let { it / 1_000L }
+        var critical = applyNs != null && applyNs > PAINT_APPLY_WARN_US * 1_000L
         if (token != null && token.binding != currentBinding) critical = true
         if (critical) attempt?.anomalyCount = (attempt?.anomalyCount ?: 0) + 1
-        addEvent(nowNs, traceId = traceId, operationId = token?.operationId, stage = if (critical) "FORENSIC_STAGE20_OVERLAY_APPLY_ANOMALY" else "S20_OVERLAY_RENDER_APPLIED", binding = token?.binding, details = "color=${safe(color)}; distance=$distanceKm; request_to_apply_us=${applyUs ?: -1}; current=${bindingText(currentBinding)}; origin=${safe(origin)}", critical = critical)
+        addEvent(nowNs, traceId = traceId, operationId = token?.operationId, stage = if (critical) "FORENSIC_STAGE20_OVERLAY_APPLY_ANOMALY" else "S20_OVERLAY_RENDER_APPLIED", binding = token?.binding, details = "color=${safe(color)}; distance=$distanceKm; request_to_apply_ns=${applyNs ?: -1}; request_to_apply_us=${applyUs ?: -1}; current=${bindingText(currentBinding)}; origin=${safe(origin)}", critical = critical)
     }
 
     fun overlayIdempotentSkipped(token: PaintToken?, nowNs: Long, color: String, distanceKm: Double?, currentBinding: BindingSnapshot, origin: String) = synchronized(lock) {
@@ -280,7 +289,7 @@ object FarolForensicTraceStage20 {
             appendLine("--- FAROL FORENSIC CAUSALITY STAGE20 ---")
             appendLine("marker=$CONTRACT_MARKER")
             appendLine("clock=$CLOCK_MARKER")
-            appendLine("precision=monotonic nanoseconds; durations exported in microseconds")
+            appendLine("precision=monotonic nanoseconds; thresholds compared in raw nanoseconds; durations exported in nanoseconds and microseconds")
             appendLine("behavioral_authority=false; diagnostic_only=true; timers=false; network_added=false; ocr_added=false")
             appendLine("events=${eventSnapshot.size}; dropped=$droppedEvents; attempts=${attemptSnapshot.size}; critical=$criticalCount")
             appendLine("verdict=$verdict")
@@ -294,10 +303,15 @@ object FarolForensicTraceStage20 {
                 append(" | destination=").append(safe(attempt.destination))
                 append(" | cache=").append(attempt.cacheHit ?: "unknown")
                 append(" | routeJob=").append(attempt.routeJobId ?: "none")
+                append(" | route_ns=").append(durationNs(attempt.routeStartNs, attempt.routeEndNs))
                 append(" | route_us=").append(duration(attempt.routeStartNs, attempt.routeEndNs))
+                append(" | route_to_paint_ns=").append(durationNs(attempt.routeEndNs, attempt.paintRequestedNs))
                 append(" | route_to_paint_us=").append(duration(attempt.routeEndNs, attempt.paintRequestedNs))
+                append(" | cache_to_paint_ns=").append(if (attempt.cacheHit == true) durationNs(attempt.cacheEndNs, attempt.paintRequestedNs) else -1)
                 append(" | cache_to_paint_us=").append(if (attempt.cacheHit == true) duration(attempt.cacheEndNs, attempt.paintRequestedNs) else -1)
+                append(" | decision_ns=").append(durationNs(attempt.decisionStartNs, attempt.decisionEndNs))
                 append(" | decision_us=").append(duration(attempt.decisionStartNs, attempt.decisionEndNs))
+                append(" | paint_apply_ns=").append(durationNs(attempt.paintRequestedNs, attempt.paintAppliedNs))
                 append(" | paint_apply_us=").append(duration(attempt.paintRequestedNs, attempt.paintAppliedNs))
                 append(" | final=").append(attempt.actualColor ?: "none").append('/').append(attempt.actualDistanceKm ?: "none")
                 append(" | staleBlocked=").append(attempt.staleBlockedCount)
@@ -362,7 +376,9 @@ object FarolForensicTraceStage20 {
         }
     }
     private fun duration(start: Long?, end: Long?): Long = if (start == null || end == null) -1L else us(start, end)
-    private fun us(startNs: Long, endNs: Long): Long = ((endNs - startNs).coerceAtLeast(0L)) / 1_000L
+    private fun durationNs(start: Long?, end: Long?): Long = if (start == null || end == null) -1L else ns(start, end)
+    private fun ns(startNs: Long, endNs: Long): Long = (endNs - startNs).coerceAtLeast(0L)
+    private fun us(startNs: Long, endNs: Long): Long = ns(startNs, endNs) / 1_000L
     private fun distanceEquals(a: Double?, b: Double?): Boolean = when {
         a == null && b == null -> true
         a == null || b == null -> false
