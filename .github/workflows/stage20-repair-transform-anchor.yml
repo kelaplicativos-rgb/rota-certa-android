@@ -24,19 +24,24 @@ jobs:
           from pathlib import Path
           p = Path('scripts/apply_farol_forensic_causality_stage20.py')
           s = p.read_text(encoding='utf-8')
-          old = '''    service = replace_once(
-              service,
-              '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\\n        val manager = windowManager ?: return\\n        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
-              '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\\n'
-              '        val manager = windowManager ?: return\\n'
-              '        val stage20Origin = if (color == RadarColor.Green || color == RadarColor.Red) {\\n'
-              '            FarolForensicTraceStage20.callSite(Thread.currentThread().stackTrace)\\n'
-              '        } else "showOverlay"\\n'
-              '        val stage20Binding = currentStage20BindingSnapshot()\\n'
-              '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
-              'overlay origin',
-          )
-          '''
+          label = "        'overlay origin',\n    )"
+          label_at = s.find(label)
+          if label_at < 0:
+              raise SystemExit('overlay origin label not found')
+          start = s.rfind('    service = replace_once(', 0, label_at)
+          if start < 0:
+              raise SystemExit('overlay replace_once start not found')
+          end = label_at + len(label)
+          old = s[start:end]
+          required = [
+              'private fun showOverlay',
+              'val manager = windowManager ?: return',
+              'val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)',
+              'FarolForensicTraceStage20.callSite',
+          ]
+          for item in required:
+              if item not in old:
+                  raise SystemExit(f'unsafe overlay block: missing {item}')
           new = '''    service = replace_in_section(
               service,
               '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {',
@@ -48,14 +53,12 @@ jobs:
               '        val stage20Binding = currentStage20BindingSnapshot()\\n'
               '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
               'overlay origin',
-          )
-          '''
-          if s.count(old) != 1:
-              raise SystemExit(f'expected exact old anchor once, found {s.count(old)}')
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          )'''
+          p.write_text(s[:start] + new + s[end:], encoding='utf-8')
           PY
           python3 scripts/apply_farol_forensic_causality_stage20.py --self-test
-          grep -Fq "replace_in_section(" scripts/apply_farol_forensic_causality_stage20.py
+          python3 -m py_compile scripts/apply_farol_forensic_causality_stage20.py
+          grep -Fq "'    private fun formatBubbleDistanceKm('," scripts/apply_farol_forensic_causality_stage20.py
           git rm .github/workflows/stage20-repair-transform-anchor.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
