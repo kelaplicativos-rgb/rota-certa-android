@@ -60,11 +60,15 @@ class FarolForensicTraceStage20Test {
     }
     @Test fun routeDurationIsMeasuredInMicroseconds() {
         val t = bind(); val r = FarolForensicTraceStage20.routeJobStarted(t, 2_000_000); FarolForensicTraceStage20.routeCallStarted(t, r, 2_000_000, "x"); FarolForensicTraceStage20.routeCallFinished(t, r, 3_500_000, "[1]")
-        assertTrue(FarolForensicTraceStage20.exportReport().contains("route_us=1500"))
+        val report = FarolForensicTraceStage20.exportReport()
+        assertTrue(report.contains("route_ns=1500000"))
+        assertTrue(report.contains("route_us=1500"))
     }
     @Test fun decisionDurationIsMeasured() {
         val t = bind(); FarolForensicTraceStage20.decisionStarted(t, "r", 2_000_000); FarolForensicTraceStage20.decisionFinished(t, "r", 2_050_000, "GoodRide", 4.0)
-        assertTrue(FarolForensicTraceStage20.exportReport().contains("decision_us=50"))
+        val report = FarolForensicTraceStage20.exportReport()
+        assertTrue(report.contains("decision_ns=50000"))
+        assertTrue(report.contains("decision_us=50"))
     }
     @Test fun unscopedFinalPaintIsCritical() {
         FarolForensicTraceStage20.overlayRequested(null, 1, "Red", 8.0, binding(), "legacy")
@@ -99,7 +103,9 @@ class FarolForensicTraceStage20Test {
         val t = bind(); val r = FarolForensicTraceStage20.routeJobStarted(t, 1_000_000); FarolForensicTraceStage20.routeCallFinished(t, r, 2_000_000, "[4]")
         val p = FarolForensicTraceStage20.preparePaint(t, r, binding(), "Green", 4.0, 2_010_000)
         FarolForensicTraceStage20.overlayRequested(p, 102_100_001, "Green", 4.0, binding(), "apply")
-        assertTrue(FarolForensicTraceStage20.exportReport().contains("route_to_paint_delay"))
+        val report = FarolForensicTraceStage20.exportReport()
+        assertTrue(report.contains("route_to_paint_delay"))
+        assertTrue(report.contains("route_to_paint_ns=100100001"))
     }
     @Test fun routeToPaintAtThresholdIsNotCritical() {
         val t = bind(); val r = FarolForensicTraceStage20.routeJobStarted(t, 1_000_000); FarolForensicTraceStage20.routeCallFinished(t, r, 2_000_000, "[4]")
@@ -110,8 +116,9 @@ class FarolForensicTraceStage20Test {
     @Test fun overlayApplyOver50msIsCritical() {
         val t = bind(); val p = FarolForensicTraceStage20.preparePaint(t, "r", binding(), "Green", 4.0, 1)
         FarolForensicTraceStage20.overlayRequested(p, 2_000_000, "Green", 4.0, binding(), "req")
-        FarolForensicTraceStage20.overlayApplied(p, 52_001_000, "Green", 4.0, binding(), "applied")
+        FarolForensicTraceStage20.overlayApplied(p, 52_000_001, "Green", 4.0, binding(), "applied")
         assertTrue(FarolForensicTraceStage20.criticalForTest() > 0)
+        assertTrue(FarolForensicTraceStage20.exportReport().contains("request_to_apply_ns=50000001"))
     }
     @Test fun bindingFreshEventIsRecorded() {
         val t = bind(); FarolForensicTraceStage20.bindingCheck(t, "r", 2, "AFTER_ROUTE", binding(), binding(), true, false)
