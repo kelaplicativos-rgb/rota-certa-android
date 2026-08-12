@@ -1,0 +1,64 @@
+name: Repair Stage20 transform anchor
+
+on:
+  push:
+    branches:
+      - agent/stage20-forensic-causality-0.1.201
+    paths:
+      - .github/workflows/stage20-repair-transform-anchor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Replace brittle showOverlay anchor
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_farol_forensic_causality_stage20.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''    service = replace_once(
+              service,
+              '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\\n        val manager = windowManager ?: return\\n        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
+              '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\\n'
+              '        val manager = windowManager ?: return\\n'
+              '        val stage20Origin = if (color == RadarColor.Green || color == RadarColor.Red) {\\n'
+              '            FarolForensicTraceStage20.callSite(Thread.currentThread().stackTrace)\\n'
+              '        } else "showOverlay"\\n'
+              '        val stage20Binding = currentStage20BindingSnapshot()\\n'
+              '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
+              'overlay origin',
+          )
+          '''
+          new = '''    service = replace_in_section(
+              service,
+              '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {',
+              '    private fun formatBubbleDistanceKm(',
+              '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
+              '        val stage20Origin = if (color == RadarColor.Green || color == RadarColor.Red) {\\n'
+              '            FarolForensicTraceStage20.callSite(Thread.currentThread().stackTrace)\\n'
+              '        } else "showOverlay"\\n'
+              '        val stage20Binding = currentStage20BindingSnapshot()\\n'
+              '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\\n',
+              'overlay origin',
+          )
+          '''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exact old anchor once, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 scripts/apply_farol_forensic_causality_stage20.py --self-test
+          grep -Fq "replace_in_section(" scripts/apply_farol_forensic_causality_stage20.py
+          git rm .github/workflows/stage20-repair-transform-anchor.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/apply_farol_forensic_causality_stage20.py
+          git commit -m 'Fix Stage20 showOverlay transform anchor'
+          git push origin HEAD:agent/stage20-forensic-causality-0.1.201
