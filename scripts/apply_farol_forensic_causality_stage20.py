@@ -498,18 +498,18 @@ def apply(root: Path) -> None:
         'tokenized final paint',
     )
 
-    service = replace_once(
-        service,
-        '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\n        val manager = windowManager ?: return\n        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\n',
-        '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {\n'
-        '        val manager = windowManager ?: return\n'
-        '        val stage20Origin = if (color == RadarColor.Green || color == RadarColor.Red) {\n'
-        '            FarolForensicTraceStage20.callSite(Thread.currentThread().stackTrace)\n'
-        '        } else "showOverlay"\n'
-        '        val stage20Binding = currentStage20BindingSnapshot()\n'
-        '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\n',
-        'overlay origin',
-    )
+    service = replace_in_section(
+    service,
+    '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {',
+    '    private fun formatBubbleDistanceKm(',
+    '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\n',
+    '        val stage20Origin = if (color == RadarColor.Green || color == RadarColor.Red) {\n'
+    '            FarolForensicTraceStage20.callSite(Thread.currentThread().stackTrace)\n'
+    '        } else "showOverlay"\n'
+    '        val stage20Binding = currentStage20BindingSnapshot()\n'
+    '        val nextTextChecklist15 = formatBubbleDistanceKm(distanceKm)\n',
+    'overlay origin',
+)
     service = replace_in_section(
         service,
         '    private fun showOverlay(color: RadarColor, distanceKm: Double? = null) {',
