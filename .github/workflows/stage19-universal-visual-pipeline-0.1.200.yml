@@ -1,0 +1,92 @@
+name: Validate Stage 19 universal visual pipeline 0.1.200
+
+on:
+  pull_request:
+    branches:
+      - agent/stage18-app-identity-isolation-0.1.198
+    paths:
+      - .github/workflows/stage19-universal-visual-pipeline-0.1.200.yml
+      - scripts/apply_universal_visual_pipeline_stage19.py
+  workflow_dispatch:
+
+concurrency:
+  group: stage19-universal-visual-pipeline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  validate-stage19-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout exact Stage 19 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize exact Stage 18 source baseline
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage19-base
+        run: |
+          set -euo pipefail
+          mkdir -p stage19-evidence
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage19-evidence/materialize-0.1.194.log
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD"
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD"
+          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD"
+          grep -Fq 'versionCode = 5482' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
+
+      - name: Package materialized Stage 18 source for Stage 19 engineering
+        working-directory: source
+        run: |
+          set -euo pipefail
+          tar -czf stage19-evidence/stage18-materialized-source.tgz \
+            app/build.gradle.kts \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/br/com/mapeiaia/rotacerta \
+            app/src/test/java/br/com/mapeiaia/rotacerta
+          sha256sum stage19-evidence/stage18-materialized-source.tgz > stage19-evidence/stage18-materialized-source.sha256
+
+      - name: Upload Stage 19 bootstrap evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage19-materialized-stage18-source
+          path: source/stage19-evidence/
+          if-no-files-found: error
+          retention-days: 30
