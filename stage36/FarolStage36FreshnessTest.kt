@@ -12,7 +12,8 @@ class FarolStage36FreshnessTest {
     private val uber="com.ubercab.driver"
     private fun a()=FarolRuntimeAuthorityStage36.Authority(1000L).also{it.updateSelection(setOf(uber));it.setUsageAccess(true);it.observeAccessibility(uber);it.observeVisualEvidence()}
     private fun e(signal:FarolPresenceAuthorityStage30.UsageSignal)=FarolPresenceAuthorityStage30.UsageEvidence(uber,signal,2000L)
-    private fun src(name:String)=File(System.getProperty("user.dir"),"app/src/main/java/br/com/mapeiaia/rotacerta/$name").readText()
+    private fun root():File{val c=File(System.getProperty("user.dir"));return if(File(c,"app/src/main/java").isDirectory)c else if(c.name=="app"&&File(c,"src/main/java").isDirectory)c.parentFile else c}
+    private fun src(name:String)=File(root(),"app/src/main/java/br/com/mapeiaia/rotacerta/$name").readText()
 
     @Test fun firstDestinationSameLease(){val x=a();val p=x.snapshot().leaseId;assertEquals(p,x.bindDestination("Rua A|Rua B 20").leaseId)}
     @Test fun sameDestinationSameLease(){val x=a();val p=x.bindDestination("Rua A|Rua B 20");val q=x.bindDestination("Outra|Rua B 20");assertEquals(p.leaseId,q.leaseId)}
