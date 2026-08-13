@@ -144,13 +144,14 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
         "bubble_drag_process_pause_0_1_116",
         "bubble_drag_scan_pause_0_1_116",
         "bubble_drag_ocr_background_0_1_116",
-        "bubbleGestureActive = true",
         "analyzeJob?.cancel()",
         "withContext(Dispatchers.Default)",
         "ocrService.extractStructuredText",
     ):
         if required not in text:
             raise SystemExit(f"Stage26 drag regression contract missing {required}")
+    if "bubbleGestureActive = true" not in text and "bubbleGestureActive = (true)" not in text:
+        raise SystemExit("Stage26 drag regression contract missing ACTION_DOWN gesture ownership")
 
     # Notification wakeup must remain before the legacy strict package/root resolver.
     notification_handler = text.find("handleNotificationWakeup0169")
