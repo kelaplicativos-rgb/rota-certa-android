@@ -79,6 +79,48 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     if scoped_usage_permission not in manifest:
         raise SystemExit("Stage26 scoped PACKAGE_USAGE_STATS Lint suppression missing")
 
+    # Stage27 still needs the manual forensic report, but Stage26 must not keep the
+    # legacy flight recorder writing periodic snapshots to disk on the visual hot path.
+    # Keep its bounded in-memory ring and explicit forceCheckpoint() recovery path;
+    # disable only automatic event-driven disk checkpoints.
+    flight_recorder_path = root / "app/src/main/java/br/com/mapeiaia/rotacerta/FarolFlightRecorder0163.kt"
+    if not flight_recorder_path.is_file():
+        raise SystemExit("Stage26 flight recorder source missing")
+    flight_recorder = flight_recorder_path.read_text(encoding="utf-8")
+    auto_checkpoint_marker = "AUTO_DISK_CHECKPOINT_DISABLED_STAGE26"
+    if auto_checkpoint_marker not in flight_recorder:
+        constant_anchor = '    private const val TEMP_FILE = "farol-flight-recorder-current.tmp"\n'
+        if flight_recorder.count(constant_anchor) != 1:
+            raise SystemExit(
+                f"Stage26 flight recorder constant anchor expected 1, found {flight_recorder.count(constant_anchor)}"
+            )
+        flight_recorder = flight_recorder.replace(
+            constant_anchor,
+            constant_anchor +
+            '    private const val AUTO_DISK_CHECKPOINT_ENABLED_STAGE26 = false // AUTO_DISK_CHECKPOINT_DISABLED_STAGE26\n',
+            1,
+        )
+        checkpoint_anchor = '''            shouldCheckpoint = allowCheckpoint && (\n                nextSequence % CHECKPOINT_EVERY_EVENTS == 0L || isCriticalStage(event.stage)\n            )\n'''
+        checkpoint_new = '''            shouldCheckpoint = AUTO_DISK_CHECKPOINT_ENABLED_STAGE26 && allowCheckpoint && (\n                nextSequence % CHECKPOINT_EVERY_EVENTS == 0L || isCriticalStage(event.stage)\n            )\n'''
+        if flight_recorder.count(checkpoint_anchor) != 1:
+            raise SystemExit(
+                f"Stage26 flight recorder checkpoint anchor expected 1, found {flight_recorder.count(checkpoint_anchor)}"
+            )
+        flight_recorder = flight_recorder.replace(checkpoint_anchor, checkpoint_new, 1)
+        report_anchor = '            appendLine("Estado: ATIVO, circular, sem temporizador artificial")\n'
+        if flight_recorder.count(report_anchor) != 1:
+            raise SystemExit(
+                f"Stage26 flight recorder report anchor expected 1, found {flight_recorder.count(report_anchor)}"
+            )
+        flight_recorder = flight_recorder.replace(
+            report_anchor,
+            report_anchor + '            appendLine("Stage26: checkpoint automatico em disco=false; forceCheckpoint explicito preservado")\n',
+            1,
+        )
+        flight_recorder_path.write_text(flight_recorder, encoding="utf-8")
+    if auto_checkpoint_marker not in flight_recorder or "AUTO_DISK_CHECKPOINT_ENABLED_STAGE26 && allowCheckpoint" not in flight_recorder:
+        raise SystemExit("Stage26 automatic flight-recorder disk checkpoint was not disabled")
+
     # Stage18 subscribed to notification-state events so notification wakeup can run
     # before strict root/package resolution. The Stage26 workflow's reconstructed XML
     # omitted that event type; repair the compiled materialization itself, not the test.
@@ -198,6 +240,7 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     print("notification_event_subscribed=true")
     print("notification_wakeup_order_preserved=true")
     print("package_usage_stats_lint_scope=passed")
+    print("flight_recorder_auto_disk_checkpoint=false")
 
 
 impl.replace_section = _replace_section_preserving_stage23_ocr
