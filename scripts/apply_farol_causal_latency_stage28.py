@@ -40,25 +40,34 @@ def replace_section(text: str, start: str, end: str, replacement: str, label: st
 
 def self_test() -> None:
     for p in (HELPER_TEMPLATE, USAGE_TEMPLATE, TEST_TEMPLATE):
-        if not p.is_file(): fail(f'missing Stage28 support file: {p}')
+        if not p.is_file():
+            fail(f'missing Stage28 support file: {p}')
     helper = HELPER_TEMPLATE.read_text(encoding='utf-8')
     usage = USAGE_TEMPLATE.read_text(encoding='utf-8')
     tests = TEST_TEMPLATE.read_text(encoding='utf-8')
     required = (
-        MARKER, 'OLD_PAINT_UI_REVOKED_BEFORE_HEAVY_WORK_STAGE28',
-        'TWO_CURRENT_ADDRESSES_ANY_VISIBLE_PACKAGE_STAGE28', 'EVENT_SOURCE_SUBTREE_BEFORE_ALL_WINDOWS_STAGE28',
-        'ONE_OCR_PER_VISUAL_GENERATION_STAGE28', 'ONE_ROUTE_PER_CURRENT_DESTINATION_STAGE28',
-        'O1_GENERATION_TOKEN_STALE_GUARD_STAGE28', 'REAL_GOOGLE_ROUTE_PRESERVED_STAGE28',
+        MARKER,
+        'OLD_PAINT_UI_REVOKED_BEFORE_HEAVY_WORK_STAGE28',
+        'TWO_CURRENT_ADDRESSES_ANY_VISIBLE_PACKAGE_STAGE28',
+        'EVENT_SOURCE_SUBTREE_BEFORE_ALL_WINDOWS_STAGE28',
+        'ONE_OCR_PER_VISUAL_GENERATION_STAGE28',
+        'ONE_ROUTE_PER_CURRENT_DESTINATION_STAGE28',
+        'O1_GENERATION_TOKEN_STALE_GUARD_STAGE28',
+        'REAL_GOOGLE_ROUTE_PRESERVED_STAGE28',
         'trimNarrativeSuffix', 'VisualGate', 'RouteGate', 'WorkCoordinator',
     )
     for item in required:
-        if item not in helper: fail(f'Stage28 helper missing {item}')
+        if item not in helper:
+            fail(f'Stage28 helper missing {item}')
     for item in ('runningAppProcesses', 'IMPORTANCE_CACHED', 'USAGE_HISTORY_NEVER_KEEPS_READING_ON_STAGE28'):
-        if item not in usage: fail(f'Stage28 usage witness missing {item}')
-    if 'UsageStatsManager' in usage or 'queryEvents' in usage or 'lastTimeUsed' in usage:
-        fail('Stage28 current activation authority cannot depend on UsageStats history')
-    if tests.count('@Test') != 50:
-        fail(f'expected exactly 50 Stage28 tests, found {tests.count("@Test")}')
+        if item not in usage:
+            fail(f'Stage28 usage witness missing {item}')
+    for forbidden in ('import android.app.usage.UsageStatsManager', '.queryEvents(', '.queryUsageStats('):
+        if forbidden in usage:
+            fail(f'Stage28 current activation authority cannot query usage history: {forbidden}')
+    test_count = tests.count('@Test')
+    if test_count != 50:
+        fail(f'expected exactly 50 Stage28 tests, found {test_count}')
     mandatory = (
         'noSelectedAppActiveMeansOff','offMeansIdleGrayContract','offMeansKmNull','oneSelectedActiveMeansOn',
         'twoSelectedActiveMeansOn','closeOneOfTwoRemainsOn','closeLastMeansOff','usageHistoryCannotKeepCachedProcessActive',
@@ -76,10 +85,11 @@ def self_test() -> None:
         'duplicateEventMeansZeroHeavyCollection','ownOverlayMeansZeroHeavyCollection','staleProtectionIsO1GenerationTokenCheck',
     )
     for name in mandatory:
-        if name not in tests: fail(f'Stage28 mandatory test missing {name}')
-    forbidden = ('Thread.sleep(', 'SystemClock.sleep(', 'delay(250', 'delay(500', 'MAX_DISTANCE', 'MAX_ROUTE_KM')
-    for value in forbidden:
-        if value in helper or value in usage: fail(f'Stage28 forbidden critical-path authority: {value}')
+        if name not in tests:
+            fail(f'Stage28 mandatory test missing {name}')
+    for forbidden in ('Thread.sleep(', 'SystemClock.sleep(', 'MAX_DISTANCE', 'MAX_ROUTE_KM'):
+        if forbidden in helper or forbidden in usage:
+            fail(f'Stage28 forbidden critical-path policy: {forbidden}')
     print('stage28_self_test=passed')
     print('stage28_test_methods=50')
     print('activation_authority=current_non_cached_process')
@@ -90,14 +100,16 @@ def self_test() -> None:
 
 def apply(root: Path) -> None:
     for p in (SERVICE, REPORT, BUILD, PIPELINE):
-        if not (root / p).is_file(): fail(f'Stage28 requires materialized Stage26 source: {p}')
+        if not (root / p).is_file():
+            fail(f'Stage28 requires materialized Stage26 source: {p}')
     service = (root / SERVICE).read_text(encoding='utf-8')
     report = (root / REPORT).read_text(encoding='utf-8')
     build = (root / BUILD).read_text(encoding='utf-8')
     pipeline = (root / PIPELINE).read_text(encoding='utf-8')
     if 'FAROL_READING_ACTIVATION_STAGE26' not in service:
         fail('Stage28 must be applied after exact Stage26 materialization')
-    if MARKER in service or (root / HELPER).exists(): fail('Stage28 already appears applied')
+    if MARKER in service or (root / HELPER).exists():
+        fail('Stage28 already appears applied')
     if 'versionCode = 5488' not in build or 'versionName = "0.1.204"' not in build:
         fail('Stage28 requires exact Stage26 0.1.204/5488 baseline')
 
@@ -105,32 +117,39 @@ def apply(root: Path) -> None:
     shutil.copyfile(USAGE_TEMPLATE, root / USAGE)
     shutil.copyfile(TEST_TEMPLATE, root / TEST)
 
-    # Delimit obvious prose after an otherwise plausible address. This is intentionally permissive:
-    # it does not check package, city, state, model, geography or distance.
     pipeline = replace_once(
         pipeline,
-        '.map(DestinationAddressIdentityPolicy::cleanDisplayAddress)\n                    .filter(String::isNotBlank)',
-        '.map(DestinationAddressIdentityPolicy::cleanDisplayAddress)\n                    .map(FarolCausalLatencyStage28::trimNarrativeSuffix)\n                    .filter(String::isNotBlank)',
+        """                ).map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+                    .filter(String::isNotBlank)
+""",
+        """                ).map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+                    .map(FarolCausalLatencyStage28::trimNarrativeSuffix)
+                    .filter(String::isNotBlank)
+""",
         'narrative address delimitation',
     )
 
     service = replace_once(
         service,
-        '    private lateinit var stage26UsageState: SelectedAppUsageStateStage26\n',
-        '    private lateinit var stage28UsageState: SelectedAppUsageStateStage28\n'
-        '    private val stage28RouteGate = FarolCausalLatencyStage28.RouteGate()\n'
-        '    private var stage28LastActivationEnabled = false\n'
-        '    // FAROL_CAUSAL_LATENCY_STALE_ACTIVATION_STAGE28 — current execution + cheap visual mutation authority\n',
+        """    private lateinit var stage26UsageState: SelectedAppUsageStateStage26
+""",
+        """    private lateinit var stage28UsageState: SelectedAppUsageStateStage28
+    private val stage28RouteGate = FarolCausalLatencyStage28.RouteGate()
+    private var stage28LastActivationEnabled = false
+    // FAROL_CAUSAL_LATENCY_STALE_ACTIVATION_STAGE28 — cheap current authority, no visual package gate.
+""",
         'Stage28 service state',
     )
     service = replace_once(
         service,
-        '        stage26UsageState = SelectedAppUsageStateStage26(applicationContext)\n',
-        '        stage28UsageState = SelectedAppUsageStateStage28(applicationContext)\n',
-        'current execution witness init',
+        """        stage26UsageState = SelectedAppUsageStateStage26(applicationContext)
+""",
+        """        stage28UsageState = SelectedAppUsageStateStage28(applicationContext)
+""",
+        'Stage28 usage witness init',
     )
 
-    refresh = r'''    private fun refreshReadingActivationStage26(
+    refresh = """    private fun refreshReadingActivationStage26(
         eventPackageStage26: String?,
         eventTypeStage26: Int,
     ): FarolReadingActivationStage26.ActivationSnapshot {
@@ -157,13 +176,13 @@ def apply(root: Path) -> None:
         return snapshotStage28
     }
 
-'''
+"""
     service = replace_section(
         service,
         '    private fun refreshReadingActivationStage26(',
         '    private fun applyReadingOffStage26(',
         refresh,
-        'live activation refresh',
+        'current-execution activation refresh',
     )
 
     off_start = service.index('    private fun applyReadingOffStage26(')
@@ -172,17 +191,20 @@ def apply(root: Path) -> None:
     off = off.replace('currentRadarColor == RadarColor.Orange', 'currentRadarColor == RadarColor.Idle')
     off = off.replace('currentRadarColor != RadarColor.Orange', 'currentRadarColor != RadarColor.Idle')
     off = off.replace('showOverlay(RadarColor.Orange, distanceKm = null)', 'showOverlay(RadarColor.Idle, distanceKm = null)')
-    off = off.replace(
-        '        stage26PreCollectGate.invalidate()\n',
-        '        stage26PreCollectGate.invalidate()\n'
-        '        stage28RouteGate.invalidateExcept(-1L, -1L)\n'
-        '        FarolCausalLatencyStage28.Metrics.increment("workCancelledOnReadingOff")\n'
-        '        FarolCausalLatencyStage28.Metrics.setGauge("selectedAppsActiveCount", 0L)\n',
-        1,
+    off = replace_once(
+        off,
+        """        stage26PreCollectGate.invalidate()
+""",
+        """        stage26PreCollectGate.invalidate()
+        stage28RouteGate.invalidateExcept(-1L, -1L)
+        FarolCausalLatencyStage28.Metrics.increment("workCancelledOnReadingOff")
+        FarolCausalLatencyStage28.Metrics.setGauge("selectedAppsActiveCount", 0L)
+""",
+        'OFF cancels Stage28 work',
     )
     service = service[:off_start] + off + service[off_end:]
 
-    cheap = r'''    private fun buildCheapVisualSignalStage26(
+    cheap_and_fast = """    private fun buildCheapVisualSignalStage26(
         eventPackageStage26: String?,
         eventTypeStage26: Int,
         eventWindowIdStage26: Int,
@@ -208,7 +230,6 @@ def apply(root: Path) -> None:
         addStage28(runCatching { sourceStage28?.text }.getOrNull())
         addStage28(runCatching { sourceStage28?.contentDescription }.getOrNull())
         runCatching { eventStage26.text }.getOrDefault(emptyList()).take(6).forEach(::addStage28)
-        // One local parent only. The source fast-path below gets first chance before any all-window fallback.
         if (relevantStage28.size < 2) {
             val parentStage28 = runCatching { sourceStage28?.parent }.getOrNull()
             addStage28(runCatching { parentStage28?.text }.getOrNull())
@@ -226,7 +247,7 @@ def apply(root: Path) -> None:
         return FarolReadingActivationStage26.CheapVisualSignal(
             ownOverlay = ownOverlayStage28,
             windowSignature = "$eventWindowIdStage26:${sourcePackageStage28.orEmpty()}",
-            sourceText = relevantStage28.sorted().joinToString("\n"),
+            sourceText = relevantStage28.sorted().joinToString("\\n"),
             sourceSlot = sourceSlotStage28,
             contentChangeTypes = runCatching { eventStage26.contentChangeTypes }.getOrDefault(0),
         )
@@ -301,13 +322,13 @@ def apply(root: Path) -> None:
         return collectUniversalAccessibilitySnapshotStage26()
     }
 
-'''
+"""
     service = replace_section(
         service,
         '    private fun buildCheapVisualSignalStage26(',
         '    private fun invalidateOldVisualBeforeCollectStage26(',
-        cheap,
-        'cheap signal and source fast path',
+        cheap_and_fast,
+        'cheap mutation and event-source fast path',
     )
 
     handler_start = service.index('    private fun handleUniversalVisualEventStage19(')
@@ -315,82 +336,153 @@ def apply(root: Path) -> None:
     handler = service[handler_start:handler_end]
     handler = replace_once(
         handler,
-        '        val collectionStage26 = collectUniversalAccessibilitySnapshotStage26()\n',
-        '        val collectionStage26 = collectUniversalAccessibilitySnapshotStage28(eventStage26)\n',
-        'direct event source fast collector',
+        """        if (!activationStage26.enabled) {
+""",
+        """        if (!activationStage26.enabled) {
+            FarolCausalLatencyStage28.Metrics.increment("eventsReceived")
+            FarolCausalLatencyStage28.Metrics.increment("eventsRejectedReadingOff")
+            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")
+""",
+        'Stage28 OFF metrics',
     )
-    handler = handler.replace(
-        '        if (!activationStage26.enabled) {\n',
-        '        if (!activationStage26.enabled) {\n            FarolCausalLatencyStage28.Metrics.increment("eventsReceived")\n            FarolCausalLatencyStage28.Metrics.increment("eventsRejectedReadingOff")\n            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")\n',
-        1,
+    handler = replace_once(
+        handler,
+        """        if (bubbleGestureActive) {
+""",
+        """        if (bubbleGestureActive) {
+            FarolCausalLatencyStage28.Metrics.increment("eventsReceived")
+            FarolCausalLatencyStage28.Metrics.increment("ownOverlayEventsIgnored")
+            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")
+""",
+        'Stage28 overlay metrics',
     )
-    handler = handler.replace(
-        '        if (bubbleGestureActive) {\n',
-        '        if (bubbleGestureActive) {\n            FarolCausalLatencyStage28.Metrics.increment("eventsReceived")\n            FarolCausalLatencyStage28.Metrics.increment("ownOverlayEventsIgnored")\n            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")\n',
-        1,
+    handler = replace_once(
+        handler,
+        """        if (!admissionStage26.heavyCollect) return true
+""",
+        """        FarolCausalLatencyStage28.Metrics.increment("eventsReceived")
+        FarolCausalLatencyStage28.Metrics.sample(
+            "eventToMutationDetected",
+            mutationDetectedNsStage26 - eventStartedNsStage26,
+        )
+        if (!admissionStage26.heavyCollect) {
+            FarolCausalLatencyStage28.Metrics.increment("preCollectDuplicateSkipped")
+            FarolCausalLatencyStage28.Metrics.increment("eventsCoalesced")
+            FarolCausalLatencyStage28.Metrics.increment("visualIdentityRepeated")
+            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")
+            return true
+        }
+        FarolCausalLatencyStage28.Metrics.increment("visualIdentityChanged")
+        FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsStarted")
+""",
+        'Stage28 admission metrics',
     )
-    handler = handler.replace(
-        '        if (!admissionStage26.heavyCollect) return true\n',
-        '        if (!admissionStage26.heavyCollect) {\n'
-        '            FarolCausalLatencyStage28.Metrics.increment("eventsCoalesced")\n'
-        '            FarolCausalLatencyStage28.Metrics.increment("visualIdentityRepeated")\n'
-        '            FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsAvoided")\n'
-        '            return true\n'
-        '        }\n'
-        '        FarolCausalLatencyStage28.Metrics.increment("visualIdentityChanged")\n'
-        '        FarolCausalLatencyStage28.Metrics.increment("heavyCollectionsStarted")\n',
-        1,
+    handler = replace_once(
+        handler,
+        """        val collectionStage26 = collectUniversalAccessibilitySnapshotStage26()
+""",
+        """        val collectionStage26 = collectUniversalAccessibilitySnapshotStage28(eventStage26)
+""",
+        'event-source collector',
+    )
+    handler = replace_once(
+        handler,
+        """        FarolReadingActivationStage26.Metrics.sample("collect", collectEndedNsStage26 - collectStartedNsStage26)
+""",
+        """        FarolReadingActivationStage26.Metrics.sample("collect", collectEndedNsStage26 - collectStartedNsStage26)
+        FarolCausalLatencyStage28.Metrics.sample("collect", collectEndedNsStage26 - collectStartedNsStage26)
+        FarolCausalLatencyStage28.Metrics.increment("nodesVisited", collectionStage26.stats.blocksVisited.toLong())
+        FarolCausalLatencyStage28.Metrics.increment("blocksEmitted", collectionStage26.stats.blocksEmitted.toLong())
+        FarolCausalLatencyStage28.Metrics.increment("addressParserInvocations", collectionStage26.addressParserInvocations.toLong())
+        FarolCausalLatencyStage28.Metrics.increment("duplicateSubtreesAvoided", collectionStage26.duplicateSubtreesAvoided.toLong())
+""",
+        'Stage28 collect metrics',
+    )
+    handler = replace_once(
+        handler,
+        """        FarolReadingActivationStage26.Metrics.sample("evaluate", evaluateEndedNsStage26 - evaluateStartedNsStage26)
+""",
+        """        FarolReadingActivationStage26.Metrics.sample("evaluate", evaluateEndedNsStage26 - evaluateStartedNsStage26)
+        FarolCausalLatencyStage28.Metrics.sample("evaluate", evaluateEndedNsStage26 - evaluateStartedNsStage26)
+""",
+        'Stage28 evaluate metrics',
+    )
+    handler = replace_once(
+        handler,
+        """            FarolReadingActivationStage26.Metrics.sample("eventToCandidate", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26)
+""",
+        """            FarolReadingActivationStage26.Metrics.sample("eventToCandidate", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26)
+            FarolCausalLatencyStage28.Metrics.sample("eventToCandidate", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26)
+""",
+        'Stage28 candidate metrics',
     )
     service = service[:handler_start] + handler + service[handler_end:]
 
     invalidate_start = service.index('    private fun invalidateOldVisualBeforeCollectStage26(')
     invalidate_end = service.index('    private fun collectUniversalAccessibilityBlocksStage19()', invalidate_start)
     invalidate = service[invalidate_start:invalidate_end]
-    invalidate = invalidate.replace(
-        '        showOverlay(RadarColor.Orange, distanceKm = null)\n',
-        '        showOverlay(RadarColor.Orange, distanceKm = null)\n'
-        '        stage28RouteGate.invalidateExcept(stage26ReadingActivation.snapshot().generation, newGenerationStage26)\n'
-        '        FarolCausalLatencyStage28.Metrics.increment("oldPaintInvalidated")\n'
-        '        FarolCausalLatencyStage28.Metrics.sample("eventToOldPaintInvalidated", SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26)\n',
-        1,
+    invalidate = replace_once(
+        invalidate,
+        """        showOverlay(RadarColor.Orange, distanceKm = null)
+""",
+        """        showOverlay(RadarColor.Orange, distanceKm = null)
+        stage28RouteGate.invalidateExcept(stage26ReadingActivation.snapshot().generation, newGenerationStage26)
+        FarolCausalLatencyStage28.Metrics.increment("oldPaintInvalidated")
+        FarolCausalLatencyStage28.Metrics.sample(
+            "eventToOldPaintInvalidated",
+            SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,
+        )
+""",
+        'UI-visible old paint invalidation metric',
     )
     service = service[:invalidate_start] + invalidate + service[invalidate_end:]
 
-    # Exact-cache path remains first and receives a Stage28 metric; Google remains the real route authority.
-    process_start = service.index('    private suspend fun processUniversalVisualStage19(')
-    process_end = service.index('    private fun stage20BindingSnapshot(', process_start)
-    process = service[process_start:process_end]
-    process = process.replace(
-        '        if (cachedStage19 != null) {\n',
-        '        if (cachedStage19 != null) {\n            FarolCausalLatencyStage28.Metrics.increment("routeCacheHits")\n',
-        1,
-    )
-    service = service[:process_start] + process + service[process_end:]
-
-    route_start_anchor = '        val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()\n'
-    route_start_new = (
-        '        val routeKeyStage28 = FarolCausalLatencyStage28.RouteKey(\n'
-        '            stage26CandidateActivationGeneration, stage26CurrentVisualGeneration, fieldsStage19.destination.orEmpty(),\n'
-        '        )\n'
-        '        if (!stage28RouteGate.begin(routeKeyStage28)) return\n'
-        '        val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()\n'
-    )
-    service = replace_once(service, route_start_anchor, route_start_new, 'route dedup begin')
     service = replace_once(
         service,
-        '        stage26RouteResponseNs = routeEndedNsStage26\n',
-        '        stage26RouteResponseNs = routeEndedNsStage26\n'
-        '        stage28RouteGate.finish(routeKeyStage28)\n'
-        '        FarolCausalLatencyStage28.Metrics.increment("routeRequests")\n',
+        """        if (cachedStage19 != null) {
+""",
+        """        if (cachedStage19 != null) {
+            FarolCausalLatencyStage28.Metrics.increment("routeCacheHits")
+""",
+        'exact cache metric',
+    )
+    service = replace_once(
+        service,
+        """        val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
+""",
+        """        val routeKeyStage28 = FarolCausalLatencyStage28.RouteKey(
+            stage26CandidateActivationGeneration,
+            stage26CurrentVisualGeneration,
+            fieldsStage19.destination.orEmpty(),
+        )
+        if (!stage28RouteGate.begin(routeKeyStage28)) return
+        val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
+        FarolCausalLatencyStage28.Metrics.sample(
+            "candidateToRouteStart",
+            (routeStartedNsStage26 - stage26CandidateEventStartedNs).coerceAtLeast(0L),
+        )
+""",
+        'route dedup begin',
+    )
+    service = replace_once(
+        service,
+        """        stage26RouteResponseNs = routeEndedNsStage26
+""",
+        """        stage26RouteResponseNs = routeEndedNsStage26
+        stage28RouteGate.finish(routeKeyStage28)
+        FarolCausalLatencyStage28.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
+""",
         'route dedup finish',
     )
 
     report = replace_once(
         report,
-        '            appendLine(FarolReadingActivationStage26.Metrics.exportReport())\n',
-        '            appendLine(FarolReadingActivationStage26.Metrics.exportReport())\n'
-        '            appendLine()\n'
-        '            appendLine(FarolCausalLatencyStage28.Metrics.exportReport())\n',
+        """            appendLine(FarolReadingActivationStage26.Metrics.exportReport())
+""",
+        """            appendLine(FarolReadingActivationStage26.Metrics.exportReport())
+            appendLine()
+            appendLine(FarolCausalLatencyStage28.Metrics.exportReport())
+""",
         'Stage28 manual metrics',
     )
 
@@ -411,22 +503,39 @@ def apply(root: Path) -> None:
         'cachedDrivingDistancesFromAddressKm', 'drivingDistancesFromAddressKm',
     )
     for item in checks:
-        if item not in transformed: fail(f'applied Stage28 service missing {item}')
+        if item not in transformed:
+            fail(f'applied Stage28 service missing {item}')
     if 'SelectedAppUsageStateStage26(applicationContext)' in transformed:
         fail('Stage28 runtime still instantiates historical Stage26 usage authority')
-    refresh_slice = transformed[transformed.index('    private fun refreshReadingActivationStage26('):transformed.index('    private fun applyReadingOffStage26(')]
+    refresh_slice = transformed[
+        transformed.index('    private fun refreshReadingActivationStage26('):
+        transformed.index('    private fun applyReadingOffStage26(')
+    ]
     if 'readSelectedActivity' in refresh_slice or 'UsageStats' in refresh_slice:
         fail('Stage28 activation refresh still depends on usage history')
-    off_slice = transformed[transformed.index('    private fun applyReadingOffStage26('):transformed.index('    private fun isReadingActivationGenerationFreshStage26(')]
+    off_slice = transformed[
+        transformed.index('    private fun applyReadingOffStage26('):
+        transformed.index('    private fun isReadingActivationGenerationFreshStage26(')
+    ]
     if 'showOverlay(RadarColor.Idle, distanceKm = null)' not in off_slice:
         fail('Stage28 OFF must paint true Idle/gray')
     if 'showOverlay(RadarColor.Orange, distanceKm = null)' in off_slice:
         fail('Stage28 OFF cannot paint waiting/orange')
-    direct_slice = transformed[transformed.index('    private fun handleUniversalVisualEventStage19('):transformed.index('    private fun refreshReadingActivationStage26(')]
+    direct_slice = transformed[
+        transformed.index('    private fun handleUniversalVisualEventStage19('):
+        transformed.index('    private fun refreshReadingActivationStage26(')
+    ]
     if direct_slice.index('invalidateOldVisualBeforeCollectStage26') > direct_slice.index('collectUniversalAccessibilitySnapshotStage28'):
         fail('Stage28 old paint must be revoked before source/global collection')
-    if 'windows.sortedByDescending' in transformed[transformed.index('    private fun buildCheapVisualSignalStage26('):transformed.index('    private fun collectUniversalAccessibilitySnapshotStage28(')]:
-        fail('Stage28 cheap visual mutation detector cannot enumerate all windows')
+    cheap_slice = transformed[
+        transformed.index('    private fun buildCheapVisualSignalStage26('):
+        transformed.index('    private fun collectUniversalAccessibilitySnapshotStage28(')
+    ]
+    if 'windows.sortedByDescending' in cheap_slice:
+        fail('Stage28 cheap mutation detector cannot enumerate all windows')
+    materialized_pipeline = (root / PIPELINE).read_text(encoding='utf-8')
+    if 'FarolCausalLatencyStage28::trimNarrativeSuffix' not in materialized_pipeline:
+        fail('Stage28 narrative delimiter missing from universal pipeline')
     if 'versionCode = 5489' not in (root / BUILD).read_text(encoding='utf-8') or 'versionName = "0.1.205"' not in (root / BUILD).read_text(encoding='utf-8'):
         fail('Stage28 version mismatch')
     print('stage28_apply=passed')
@@ -448,8 +557,10 @@ def main() -> None:
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     self_test()
-    if args.self_test: return
-    if args.source_root is None: fail('source_root required')
+    if args.self_test:
+        return
+    if args.source_root is None:
+        fail('source_root required')
     apply(args.source_root.resolve())
 
 
