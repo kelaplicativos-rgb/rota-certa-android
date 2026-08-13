@@ -1,0 +1,13 @@
+        FarolReadingActivationStage26.Metrics.increment("ocrRequests")
+        FarolVisualIdentityStage23.Metrics.increment("ocrRequests")
+        if (!offerStage34.startNow) {
+            FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), false, offerStage34.reason)
+            return
+        }
+        val demandStage34 = offerStage34.demand
+        stage26OcrActivationGeneration = demandStage34.activationGeneration
+        val rateStage34 = stage34OcrScreenshotRateGate.request(SystemClock.uptimeMillis(), demandStage34.rawRevision)
+        if (!rateStage34.startNow) {
+            stage34OcrSingleFlight.defer(demandStage34, "platform_rate")
+            FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), false, rateStage34.reason)
+            FarolForensicTraceStage20.note(
