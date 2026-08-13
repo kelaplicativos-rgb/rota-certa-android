@@ -46,6 +46,39 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     service_path = root / impl.SERVICE
     text = service_path.read_text(encoding="utf-8")
 
+    # PACKAGE_USAGE_STATS is a required app-op declaration for the Stage26 fail-closed
+    # Usage Access gate. Keep Lint enabled globally and scope the exception to this one
+    # manifest declaration only; runtime permission semantics remain unchanged.
+    manifest_path = root / impl.MANIFEST
+    if not manifest_path.is_file():
+        raise SystemExit("Stage26 manifest missing")
+    manifest = manifest_path.read_text(encoding="utf-8")
+    usage_permission = '    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />'
+    scoped_usage_permission = (
+        '    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" '
+        'tools:ignore="ProtectedPermissions" />'
+    )
+    if scoped_usage_permission not in manifest:
+        if usage_permission not in manifest:
+            raise SystemExit("Stage26 PACKAGE_USAGE_STATS declaration missing")
+        tools_namespace = 'xmlns:tools="http://schemas.android.com/tools"'
+        if tools_namespace not in manifest:
+            manifest_anchor = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+            if manifest.count(manifest_anchor) != 1:
+                raise SystemExit(
+                    f"Stage26 manifest namespace anchor expected 1, found {manifest.count(manifest_anchor)}"
+                )
+            manifest = manifest.replace(
+                manifest_anchor,
+                '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
+                '    xmlns:tools="http://schemas.android.com/tools">',
+                1,
+            )
+        manifest = manifest.replace(usage_permission, scoped_usage_permission, 1)
+        manifest_path.write_text(manifest, encoding="utf-8")
+    if scoped_usage_permission not in manifest:
+        raise SystemExit("Stage26 scoped PACKAGE_USAGE_STATS Lint suppression missing")
+
     # Stage18 subscribed to notification-state events so notification wakeup can run
     # before strict root/package resolution. The Stage26 workflow's reconstructed XML
     # omitted that event type; repair the compiled materialization itself, not the test.
@@ -56,9 +89,7 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     if "typeNotificationStateChanged" not in accessibility_xml:
         xml_anchor = 'typeWindowsChanged"'
         if accessibility_xml.count(xml_anchor) != 1:
-            raise SystemExit(
-                f"Stage26 notification subscription anchor expected 1, found {accessibility_xml.count(xml_anchor)}"
-            )
+            raise SystemExit(f"Stage26 notification subscription anchor expected 1, found {accessibility_xml.count(xml_anchor)}")
         accessibility_xml = accessibility_xml.replace(
             xml_anchor,
             'typeWindowsChanged|typeNotificationStateChanged"',
@@ -166,6 +197,7 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     print("bubble_drag_contract_preserved=true")
     print("notification_event_subscribed=true")
     print("notification_wakeup_order_preserved=true")
+    print("package_usage_stats_lint_scope=passed")
 
 
 impl.replace_section = _replace_section_preserving_stage23_ocr
