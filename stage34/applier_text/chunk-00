@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import shutil, sys
+
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path('.').resolve()
+PKG = ROOT/'app/src/main/java/br/com/mapeiaia/rotacerta'
+TEST = ROOT/'app/src/test/java/br/com/mapeiaia/rotacerta'
+SERVICE = PKG/'LiveRideAccessibilityService.kt'
+REPORT = PKG/'ManualTechnicalReportBuilder.kt'
+BUILD = ROOT/'app/build.gradle.kts'
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent if (HERE.parent/'stage34').exists() else HERE
+STAGE34 = REPO/'stage34' if (REPO/'stage34').exists() else HERE
+HELPER = STAGE34/'FarolCardLeaseStage34.kt'
+TEST_SRC = STAGE34/'FarolStage34Test.kt'
+HELPER_PARTS = sorted((STAGE34/'helper_text').glob('chunk-*'))
+TEST_PARTS = sorted((STAGE34/'test_text').glob('chunk-*'))
+
+def read_stage34_source(full_path, parts, label):
+    if full_path.exists(): return full_path.read_text()
+    if parts: return ''.join(x.read_text() for x in parts)
+    raise SystemExit(f'Stage34 {label} source missing')
+
+def replace_once(text, old, new, label):
+    n=text.count(old)
+    if n != 1:
+        raise SystemExit(f'{label}: expected 1 occurrence, got {n}')
+    return text.replace(old,new,1)
+
+def replace_between(text, start, end, new, label):
+    a=text.find(start)
+    if a<0: raise SystemExit(f'{label}: start not found')
+    b=text.find(end,a)
+    if b<0: raise SystemExit(f'{label}: end not found')
+    return text[:a]+new+text[b:]
+
+if '--self-test' in sys.argv:
+    src=read_stage34_source(HELPER, HELPER_PARTS, 'helper')
+    for marker in (
+        'FAROL_SINGLE_CARD_LEASE_STAGE34','FAROL_SINGLE_FRESHNESS_AUTHORITY_STAGE34',
+        'PACKAGE_WINDOW_PROVENANCE_ONLY_STAGE34','ACCESSIBILITY_OCR_RACE_STAGE34',
+        'LATEST_FRAME_SINGLE_FLIGHT_STAGE34','GLOBAL_WINDOW_TRAVERSAL_REMOVED_FROM_CRITICAL_PATH_STAGE34',
+        'LEGACY_STAGE23_FRESHNESS_DIAGNOSTIC_ONLY_STAGE34','REAL_GOOGLE_ROUTE_PRESERVED_STAGE34',
+        'NO_POLLING_NO_SLEEP_NO_TIMER_STAGE34',
+    ): assert marker in src, marker
+    for forbidden in ('Thread.sleep(', 'SystemClock.sleep(', 'Timer(', 'scheduleAtFixedRate(', 'while ('):
+        assert forbidden not in src, forbidden
+    print('stage34_self_test=PASS')
+    raise SystemExit(0)
+
+if not SERVICE.exists(): raise SystemExit(f'missing {SERVICE}')
+(PKG/HELPER.name).write_text(read_stage34_source(HELPER, HELPER_PARTS, 'helper'))
+(TEST/TEST_SRC.name).write_text(read_stage34_source(TEST_SRC, TEST_PARTS, 'test'))
+
+s=SERVICE.read_text()
+
+# Fields: one lease authority, one logical OCR single-flight, dedicated screenshot rate gate.
+old='''    private val stage32SemanticGate = FarolSemanticCardStage32.SemanticGate()\n    private val stage32ScreenshotRateGate = FarolSemanticCardStage32.ScreenshotRateGate()\n    private val printInProgressStage32 = AtomicBoolean(false)\n    // FAROL_SEMANTIC_CARD_GENERATION_STAGE32 — raw Accessibility churn cannot cancel useful OCR without semantic proof.\n    // FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 — CASE provenance/outcome is diagnostic only, never visual authority.\n    // FAROL_REAL_PRINT_MEDIASTORE_STAGE32 — explicit user Print is separate from OCR and forensic CASE capture.\n'''
