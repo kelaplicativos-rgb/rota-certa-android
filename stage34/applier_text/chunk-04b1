@@ -1,0 +1,14 @@
+                SystemClock.elapsedRealtimeNanos(), "S34_OCR_SCREENSHOT_DEFERRED", cycleIdStage20,
+                details="reason=${rateStage34.reason}; lease=${demandStage34.leaseId}; rawRevision=${demandStage34.rawRevision}; eligible_at=${rateStage34.eligibleAtUptimeMs}",
+            )
+            return
+        }
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            stage34OcrScreenshotRateGate.complete(demandStage34.rawRevision, false)
+            stage34OcrSingleFlight.defer(demandStage34, "shared_screenshot_busy")
+            FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), false, "shared_screenshot_busy_latest_only")
+            return
+        }
+
+        FarolReadingActivationStage26.Metrics.increment("ocrStarts")
+        FarolVisualIdentityStage23.Metrics.increment("ocrStarts")
