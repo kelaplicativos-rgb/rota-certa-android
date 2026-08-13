@@ -92,7 +92,7 @@ s = once(
 s = once(
     s,
     '        FarolForensicCardBlackBoxStage32.recordCollection(\n            collectEndedNsStage26, collectionStage26.snapshot.hash, collectionStage26.stats.blocksEmitted,\n            collectionStage26.stats.windowsTraversed, collectionStage26.stats.blocksVisited, collectionStage26.stats.earlyExitReason,\n        )\n',
-    '        FarolForensicCardBlackBoxStage32.recordCollection(\n            collectEndedNsStage26, collectionStage26.snapshot.hash, collectionStage26.stats.blocksEmitted,\n            collectionStage26.stats.windowsTraversed, collectionStage26.stats.blocksVisited, collectionStage26.stats.earlyExitReason\n        )\n',
+    '        FarolForensicCardBlackBoxStage32.recordCollection(\n            collectEndedNsStage26, collectionStage26.snapshot.hash, collectionStage26.stats.blocksEmitted,\n            collectionStage26.stats.windowsTraversed, collectionStage26.stats.blocksVisited, collectionStage26.stats.earlyExitReason,\n        )\n'
     '        FarolMaximumForensicsStage38.record(\n'
     '            collectEndedNsStage26, System.currentTimeMillis(), "S38_ACCESSIBILITY_COLLECTION_RESULT", eventPackageStage19, cycleId = cycleIdStage20,\n'
     '            details = "duration_ns=${(collectEndedNsStage26 - collectStartedNsStage26).coerceAtLeast(0L)}; snapshotHash=${collectionStage26.snapshot.hash}; blocks=${collectionStage26.stats.blocksEmitted}; windowsTotal=${collectionStage26.stats.visibleWindowsTotal}; windowsTraversed=${collectionStage26.stats.windowsTraversed}; nodesVisited=${collectionStage26.stats.blocksVisited}; parserInvocations=${collectionStage26.addressParserInvocations}; duplicatesAvoided=${collectionStage26.duplicateSubtreesAvoided}; reason=${collectionStage26.stats.earlyExitReason}",\n'
