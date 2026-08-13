@@ -1,0 +1,125 @@
+name: Validate Stage 32 semantic OCR blackbox Print 0.1.207
+on:
+  pull_request:
+    branches: [agent/stage30-presence-authority-shadow-replay-0.1.206]
+    paths: ['.github/workflows/stage32-semantic-ocr-blackbox-print-0.1.207.yml','scripts/apply_farol_semantic_ocr_blackbox_print_stage32.py','stage32/**']
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  validate-stage32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env: {GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42, path: source, fetch-depth: 1}
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.event.pull_request.head.sha || github.sha }}', path: patches, fetch-depth: 1}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore exact Stage18 and materialize Stage30
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail; mkdir -p bootstrap evidence
+          gh run download 31612053591 --repo kelaplicativos-rgb/rota-certa-android --name rota-certa-stage19-materialized-stage18-source --dir bootstrap
+          TGZ=$(find bootstrap -name stage18-materialized-source.tgz -print -quit); test -f "$TGZ"
+          test "$(sha256sum "$TGZ"|awk '{print $1}')" = b6a81198842bdba9aa38fc6ec8643e4ec24bce4449e01ecc28f16940c4c977a7
+          rm -rf source/app/src/main/java source/app/src/test/java; tar -xzf "$TGZ" -C source
+          cat > source/app/src/main/res/xml/rota_certa_accessibility.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeWindowsChanged" android:accessibilityFeedbackType="feedbackGeneric" android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows" android:canRetrieveWindowContent="true" android:canTakeScreenshot="true" android:description="@string/accessibility_service_description" android:notificationTimeout="100" />
+          XML
+          for x in \
+            apply_universal_visual_pipeline_stage19.py \
+            apply_farol_forensic_causality_stage20.py \
+            apply_farol_causal_corrections_stage21.py \
+            apply_farol_visual_identity_stage23.py \
+            apply_farol_reading_activation_stage26_materialized.py \
+            apply_farol_causal_latency_stage28_v2.py \
+            apply_farol_presence_authority_stage30.py; do python patches/scripts/$x source; done
+          grep -q 'versionCode = 5490' source/app/build.gradle.kts
+          grep -q 'FAROL_PRESENCE_AUTHORITY_STAGE30' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+      - name: Apply Stage32 and static causal audit
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_farol_semantic_ocr_blackbox_print_stage32.py --self-test | tee evidence/stage32-self-test.txt
+          python patches/scripts/apply_farol_semantic_ocr_blackbox_print_stage32.py source | tee evidence/stage32-apply.txt
+          S=source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'versionCode = 5491' source/app/build.gradle.kts; grep -q 'versionName = "0.1.207"' source/app/build.gradle.kts
+          for m in FAROL_SEMANTIC_CARD_GENERATION_STAGE32 FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 FAROL_REAL_PRINT_MEDIASTORE_STAGE32 USER_MARKED_CASE_STAGE32 drivingDistancesFromAddressKm; do grep -q "$m" "$S"; done
+          python - <<'PY' | tee evidence/stage32-static.txt
+          from pathlib import Path
+          s=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text()
+          sem=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolSemanticCardStage32.kt').read_text()
+          a=s.index('    private fun invalidateOldVisualBeforeCollectStage26('); b=s.index('    private fun collectUniversalAccessibilityBlocksStage19()',a); inv=s[a:b]
+          for x in ('stage19OcrSerial +=','stage21OcrGate.cancelBecauseAccessibilityWon','stage23VisualGate.invalidateForExplicitRecovery','stage23OcrGate.cancelBecauseAccessibilityWon'): assert x not in inv,x
+          oa=s.index('    private fun isStage23OcrDemandFresh('); ob=s.index('    private suspend fun processUniversalVisualStage19(',oa); o=s[oa:ob]
+          assert 'semanticStage32.generation == demandStage23.visualGeneration' in o
+          assert 'ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT' in o
+          assert 'Queue exactly one demand and let the next qualifying Accessibility event drain it' in o
+          assert 'collectUniversalAccessibilitySnapshotStage26()' in s and 'sourceFastPath' in s and 'globalFallback' in s
+          for x in ('Thread.sleep(','SystemClock.sleep(','Timer(','scheduleAtFixedRate('): assert x not in sem,x
+          print('stage32_static=PASS')
+          PY
+      - name: Verify exact 824 tests
+        run: |
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n)); assert n==824,n
+          PY
+      - name: Stage32 deterministic 44
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage32Test | tee ../evidence/stage32-tests.log
+          python - <<'PY' | tee ../evidence/stage32-count.txt
+          import xml.etree.ElementTree as E
+          r=E.parse('app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolStage32Test.xml').getroot(); v={k:int(r.attrib.get(k,0)) for k in ('tests','failures','errors','skipped')}; print(v); assert v=={'tests':44,'failures':0,'errors':0,'skipped':0}
+          PY
+      - name: Regression Stage30 to Stage19
+        working-directory: source
+        run: |
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolPresenceAuthorityStage30Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalLatencyStage28Test \
+            --tests br.com.mapeiaia.rotacerta.FarolReadingActivationStage26Test \
+            --tests br.com.mapeiaia.rotacerta.FarolVisualIdentityStage23Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test \
+            --tests br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test \
+            --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/regression.log
+      - name: Complete suite exact 824
+        working-directory: source
+        run: |
+          set -euo pipefail; ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+            r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s); assert (t,f,e,s)==(824,0,0,0),(t,f,e,s)
+          PY
+      - name: Lint and clean assemble
+        working-directory: source
+        run: |
+          set -euo pipefail; ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log; ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
+      - name: Validate APK
+        run: |
+          set -euo pipefail
+          A=source/app/build/outputs/apk/debug/app-debug.apk; O=evidence/rota-certa-0.1.207-stage32-semantic-ocr-blackbox-print-ci.apk; cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f|sort -V|tail -1); SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f|sort -V|tail -1)
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt; grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5491' versionName='0.1.207'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt; grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$O" | tee evidence/zip.txt; unzip -p "$O" classes.dex > evidence/classes.dex
+          for m in FAROL_SEMANTIC_CARD_GENERATION_STAGE32 FAROL_OCR_IDENTITY_PRESERVATION_STAGE32 FAROL_GLOBAL_COLLECTION_LAST_RESORT_STAGE32 FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 FAROL_CASE_PROVENANCE_STAGE32 FAROL_USER_MARKED_CASE_STAGE32 FAROL_REAL_PRINT_MEDIASTORE_STAGE32; do grep -a -q "$m" evidence/classes.dex; done
+          sha256sum "$O" | tee evidence/apk-sha256.txt
+      - name: Upload final artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.207-stage32-semantic-ocr-blackbox-print-final
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
