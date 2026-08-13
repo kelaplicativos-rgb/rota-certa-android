@@ -1,0 +1,17 @@
+old='''            stage26CandidateEventStartedNs = eventStartedNsStage26\n            stage26CandidateActivationGeneration = activationStage26.generation\n            stage32SemanticGate.observeCandidate(evaluationStage19.addressSignature)\n            FarolForensicCardBlackBoxStage32.recordCandidate(\n                SystemClock.elapsedRealtimeNanos(), "Accessibility", evaluationStage19.pickup, evaluationStage19.destination, evaluationStage19.addressSignature,\n            )\n            stage19VisualVerificationPending = false\n            stage19OcrSerial += 1L\n            FarolReadingActivationStage26.Metrics.increment("ocrCancelled")\n            stage23OcrGate.cancelBecauseAccessibilityWon(visualDecisionStage23.generation, collectionStage26.snapshot.hash)\n            stage21OcrGate.cancelBecauseAccessibilityWon()\n            stage19OcrRerunRequested = false\n            scope.launch(start = CoroutineStart.UNDISPATCHED) {\n                processUniversalVisualStage19(evaluationStage19, "Accessibility", cycleIdStage20)\n            }\n'''
+new='''            stage26CandidateEventStartedNs = eventStartedNsStage26\n            stage26CandidateActivationGeneration = activationStage26.generation\n            val leaseDecisionStage34 = stage34CardLease.bindCandidate(\n                activationStage26.generation, evaluationStage19.destination, evaluationStage19.addressSignature, "Accessibility",\n            )\n            stage19VisualVerificationPending = false\n            scope.launch(start = CoroutineStart.UNDISPATCHED) {\n                processUniversalVisualStage19(evaluationStage19, "Accessibility", cycleIdStage20, leaseDecisionStage34)\n            }\n'''
+s=replace_once(s,old,new,'accessibility_winner')
+
+old='''        } else {\n            stage19VisualVerificationPending = true\n            requestUniversalScreenshotStage19(eventPackageStage19, cycleIdStage20)\n        }\n        return true\n    }\n\n    private fun refreshReadingActivationStage26('''
+new='''        } else {\n            stage19VisualVerificationPending = true\n            requestUniversalScreenshotStage19(eventPackageStage19, cycleIdStage20)\n        }\n        return true\n    }\n\n    private fun refreshReadingActivationStage26('''
+s=replace_once(s,old,new,'accessibility_miss_stage34_absence_verification')
+
+old='''        stage32SemanticGate.markReadingOff()\n        stage32ScreenshotRateGate.reset()\n        FarolForensicCardBlackBoxStage32.markReadingOff(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())\n'''
+new='''        stage32SemanticGate.markReadingOff()\n        stage32ScreenshotRateGate.reset()\n        stage34CardLease.markReadingOff()\n        stage34BindingLeaseTokens.clear()\n        FarolForensicCardBlackBoxStage32.markReadingOff(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())\n'''
+s=replace_once(s,old,new,'reading_off')
+
+collector_start='    private fun collectUniversalAccessibilitySnapshotStage28(eventStage28: AccessibilityEvent): Stage26AccessibilitySnapshot {'
+collector_end='    private fun invalidateOldVisualBeforeCollectStage26('
+new_collector=r'''    private fun collectUniversalAccessibilitySnapshotStage28(eventStage28: AccessibilityEvent): Stage26AccessibilitySnapshot {
+        val collectStartedStage34 = SystemClock.elapsedRealtimeNanos()
+        val sourceStage34 = runCatching { eventStage28.source }.getOrNull()
