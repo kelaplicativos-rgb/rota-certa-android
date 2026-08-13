@@ -1,0 +1,64 @@
+old='''            stage26CandidateEventStartedNs = eventStartedNsStage26\n            stage26CandidateActivationGeneration = activationStage26.generation\n            stage32SemanticGate.observeCandidate(evaluationStage19.addressSignature)\n            FarolForensicCardBlackBoxStage32.recordCandidate(\n                SystemClock.elapsedRealtimeNanos(), "Accessibility", evaluationStage19.pickup, evaluationStage19.destination, evaluationStage19.addressSignature,\n            )\n            stage19VisualVerificationPending = false\n            stage19OcrSerial += 1L\n            FarolReadingActivationStage26.Metrics.increment("ocrCancelled")\n            stage23OcrGate.cancelBecauseAccessibilityWon(visualDecisionStage23.generation, collectionStage26.snapshot.hash)\n            stage21OcrGate.cancelBecauseAccessibilityWon()\n            stage19OcrRerunRequested = false\n            scope.launch(start = CoroutineStart.UNDISPATCHED) {\n                processUniversalVisualStage19(evaluationStage19, "Accessibility", cycleIdStage20)\n            }\n'''
+new='''            stage26CandidateEventStartedNs = eventStartedNsStage26\n            stage26CandidateActivationGeneration = activationStage26.generation\n            val leaseDecisionStage34 = stage34CardLease.bindCandidate(\n                activationStage26.generation, evaluationStage19.destination, evaluationStage19.addressSignature, "Accessibility",\n            )\n            stage19VisualVerificationPending = false\n            scope.launch(start = CoroutineStart.UNDISPATCHED) {\n                processUniversalVisualStage19(evaluationStage19, "Accessibility", cycleIdStage20, leaseDecisionStage34)\n            }\n'''
+s=replace_once(s,old,new,'accessibility_winner')
+
+# Bound lease verification: Accessibility gets first chance; OCR negative proof is authoritative only after Accessibility misses.
+old='''        } else {\n            stage19VisualVerificationPending = true\n            requestUniversalScreenshotStage19(eventPackageStage19, cycleIdStage20)\n        }\n        return true\n    }\n\n    private fun refreshReadingActivationStage26('''
+new='''        } else {\n            stage19VisualVerificationPending = true\n            requestUniversalScreenshotStage19(eventPackageStage19, cycleIdStage20, absenceVerificationStage34 = absenceVerificationStage34)\n        }\n        return true\n    }\n\n    private fun refreshReadingActivationStage26('''
+s=replace_once(s,old,new,'accessibility_miss_stage34_absence_verification')
+
+# Reading OFF is the only unconditional lease invalidation besides a different confirmed destination.
+old='''        stage32SemanticGate.markReadingOff()\n        stage32ScreenshotRateGate.reset()\n        FarolForensicCardBlackBoxStage32.markReadingOff(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())\n'''
+new='''        stage32SemanticGate.markReadingOff()\n        stage32ScreenshotRateGate.reset()\n        stage34CardLease.markReadingOff()\n        stage34OcrSingleFlight.reset()\n        stage34OcrScreenshotRateGate.reset()\n        stage34BindingLeaseTokens.clear()\n        FarolForensicCardBlackBoxStage32.markReadingOff(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())\n'''
+s=replace_once(s,old,new,'reading_off')
+
+# Replace collector with bounded progressive source/ancestor search. No all-window scan in critical path.
+collector_start='    private fun collectUniversalAccessibilitySnapshotStage28(eventStage28: AccessibilityEvent): Stage26AccessibilitySnapshot {'
+collector_end='    private fun invalidateOldVisualBeforeCollectStage26('
+new_collector=r'''    private fun collectUniversalAccessibilitySnapshotStage28(eventStage28: AccessibilityEvent): Stage26AccessibilitySnapshot {
+        val collectStartedStage34 = SystemClock.elapsedRealtimeNanos()
+        val sourceStage34 = runCatching { eventStage28.source }.getOrNull()
+        val candidatesStage34 = ArrayList<AccessibilityNodeInfo>(4)
+        var cursorStage34 = sourceStage34
+        repeat(3) {
+            val currentStage34 = cursorStage34 ?: return@repeat
+            if (candidatesStage34.none { it === currentStage34 }) candidatesStage34 += currentStage34
+            cursorStage34 = runCatching { currentStage34.parent }.getOrNull()
+        }
+        val activeRootStage34 = runCatching { rootInActiveWindow }.getOrNull()
+        if (activeRootStage34 != null && candidatesStage34.none { it === activeRootStage34 }) candidatesStage34 += activeRootStage34
+
+        val totalBudgetStage34 = intArrayOf(0)
+        var bestPartialStage34: Stage26AccessibilitySnapshot? = null
+        var bestLeadsStage34 = -1
+        for ((indexStage34, rootStage34) in candidatesStage34.withIndex()) {
+            if (totalBudgetStage34[0] >= 64) break
+            val packageStage34 = safeNodePackageName0185(rootStage34) ?: "visual.unknown"
+            if (normalizePackageName(packageStage34) == normalizePackageName(packageName)) continue
+            val windowStage34 = runCatching { rootStage34.windowId }.getOrDefault(runCatching { eventStage28.windowId }.getOrDefault(-1))
+            val beforeStage34 = totalBudgetStage34[0]
+            val treeStage34 = collectCompactSubtreeStage34(
+                rootStage34, "stage34-source:$windowStage34:$indexStage34", null, 1,
+                packageStage34, windowStage34, Int.MAX_VALUE - 1, totalBudgetStage34, 64,
+            )
+            val completeStage34 = treeStage34.completeBlock
+            val textStage34 = completeStage34?.text ?: treeStage34.lines.joinToString("\n").take(MAX_ACCESSIBILITY_TEXT_CHARS_0167)
+            if (textStage34.isBlank()) continue
+            val boundsStage34 = Rect(); runCatching { rootStage34.getBoundsInScreen(boundsStage34) }
+            val blockStage34 = FarolUniversalVisualPipelineStage19.VisualBlock(
+                id = completeStage34?.id ?: "stage34-partial:$windowStage34:$indexStage34",
+                parentId = completeStage34?.parentId,
+                metadataPackageName = packageStage34,
+                windowId = windowStage34,
+                windowLayer = completeStage34?.windowLayer ?: Int.MAX_VALUE - 1,
+                depth = completeStage34?.depth ?: 1,
+                text = textStage34,
+                source = FarolUniversalVisualPipelineStage19.Source.Accessibility,
+                left = completeStage34?.left ?: boundsStage34.left,
+                top = completeStage34?.top ?: boundsStage34.top,
+                right = completeStage34?.right ?: boundsStage34.right,
+                bottom = completeStage34?.bottom ?: boundsStage34.bottom,
+                syntheticRoot = false,
+            )
+            val snapshotStage34 = FarolVisualIdentityStage23.snapshot(sequenceOf(FarolVisualIdentityStage23.VisualSeed(
+                windowId=blockStage34.windowId, windowLayer=blockStage34.windowLayer, text=blockStage34.text,
