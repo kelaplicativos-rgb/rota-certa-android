@@ -8,9 +8,9 @@ import android.os.Process
 /**
  * Stage28 current-execution witness.
  *
- * Usage history is deliberately NOT activation authority. A selected package is active only
- * while Android currently reports a non-cached process for it. This prevents an old
- * FOREGROUND_SERVICE_START/lastTimeUsed record from keeping the FAROL on indefinitely.
+ * Historical usage records are deliberately NOT activation authority. A selected package is
+ * active only while Android currently reports a non-cached process for it. Old usage-history
+ * records therefore cannot keep the FAROL on indefinitely.
  */
 class SelectedAppUsageStateStage28(private val context: Context) {
     data class ExecutionSnapshot(
