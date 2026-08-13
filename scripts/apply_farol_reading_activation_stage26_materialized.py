@@ -46,6 +46,26 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     service_path = root / impl.SERVICE
     text = service_path.read_text(encoding="utf-8")
 
+    # Restore the legacy drag pause contract on the new Stage26 direct-event path.
+    # This is executable behavior, not a test-only marker: heavy collection remains
+    # blocked while the bubble owns the gesture.
+    text = _replace_once(
+        text,
+        '''        if (bubbleGestureActive) {\n            FarolReadingActivationStage26.Metrics.increment("eventsReceived")\n            FarolReadingActivationStage26.Metrics.increment("ownOverlayEventsIgnored")\n            FarolReadingActivationStage26.Metrics.increment("heavyCollectionsAvoided")\n            return true\n        }\n\n        val cheapSignalStage26 = buildCheapVisualSignalStage26(\n''',
+        '''        if (bubbleGestureActive) {\n            FarolReadingActivationStage26.Metrics.increment("eventsReceived")\n            FarolReadingActivationStage26.Metrics.increment("ownOverlayEventsIgnored")\n            FarolReadingActivationStage26.Metrics.increment("heavyCollectionsAvoided")\n            return true\n        } // bubble_drag_accessibility_pause_0_1_116\n\n        val cheapSignalStage26 = buildCheapVisualSignalStage26(\n''',
+        "bubble drag accessibility pause",
+    )
+
+    # Stage23 already keeps the screenshot request gesture-gated and performs OCR
+    # extraction on Dispatchers.Default. Stage26 preserves those semantics while
+    # restoring the historical contract markers removed by Stage23 section replacement.
+    text = _replace_once(
+        text,
+        '''        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return\n        val activationStage26 = stage26ReadingActivation.snapshot()\n''',
+        '''        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return\n        if (bubbleGestureActive) return // bubble_drag_screenshot_pause_0_1_116\n        // bubble_drag_ocr_background_0_1_116 — OCR extraction remains on Dispatchers.Default below.\n        val activationStage26 = stage26ReadingActivation.snapshot()\n''',
+        "bubble drag screenshot and OCR contract",
+    )
+
     text = _replace_once(
         text,
         '''    private fun scheduleVisibleTextAnalysis(delayMs: Long, allowPopupCandidate: Boolean = false) {\n        if (!stage26ReadingActivation.snapshot().enabled) {\n            FarolReadingActivationStage26.Metrics.increment("eventsRejectedReadingOff")\n            return\n        }\n''',
@@ -92,10 +112,36 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     ):
         if required not in schedule:
             raise SystemExit(f"Stage26 scheduled bridge missing {required}")
+
+    # Preserve the Stage18 drag contract through Stage23/26 materialization and
+    # verify that the restored markers correspond to real guards/background OCR.
+    for required in (
+        "bubble_instant_drag_0_1_116",
+        "bubble_drag_accessibility_pause_0_1_116",
+        "bubble_drag_screenshot_pause_0_1_116",
+        "bubble_drag_process_pause_0_1_116",
+        "bubble_drag_scan_pause_0_1_116",
+        "bubble_drag_ocr_background_0_1_116",
+        "bubbleGestureActive = true",
+        "analyzeJob?.cancel()",
+        "withContext(Dispatchers.Default)",
+        "ocrService.extractStructuredText",
+    ):
+        if required not in text:
+            raise SystemExit(f"Stage26 drag regression contract missing {required}")
+
+    # Notification wakeup must remain before the legacy strict package/root resolver.
+    notification_handler = text.find("handleNotificationWakeup0169")
+    strict_resolver = text.find("DriverCardEventResolver0162.resolve")
+    if notification_handler < 0 or strict_resolver <= notification_handler:
+        raise SystemExit("Stage26 notification wakeup ordering regression")
+
     service_path.write_text(text, encoding="utf-8")
     print("stage26_scheduled_compact_bridge=passed")
     print("scheduled_legacy_heavy_collector_reference=false")
     print("scheduled_bound_to_activation_generation=true")
+    print("bubble_drag_contract_preserved=true")
+    print("notification_wakeup_order_preserved=true")
 
 
 impl.replace_section = _replace_section_preserving_stage23_ocr
