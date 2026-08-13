@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/stage28-causal-latency-stale-activation-0.1.205.yml'
       - 'scripts/apply_farol_causal_latency_stage28.py'
+      - 'scripts/apply_farol_causal_latency_stage28_v2.py'
       - 'stage28/**'
   workflow_dispatch:
 
@@ -114,21 +115,23 @@ jobs:
       - name: Stage28 self-test and materialization
         run: |
           set -euo pipefail
-          python patches/scripts/apply_farol_causal_latency_stage28.py --self-test | tee evidence/stage28-self-test.txt
-          python patches/scripts/apply_farol_causal_latency_stage28.py source | tee evidence/stage28-apply.txt
+          python patches/scripts/apply_farol_causal_latency_stage28_v2.py --self-test | tee evidence/stage28-self-test.txt
+          python patches/scripts/apply_farol_causal_latency_stage28_v2.py source | tee evidence/stage28-apply.txt
           grep -q 'versionCode = 5489' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.205"' source/app/build.gradle.kts
           grep -q 'FAROL_CAUSAL_LATENCY_STALE_ACTIVATION_STAGE28' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'CURRENT_NON_CACHED_PROCESS_AUTHORITY_STAGE28' source/app/src/main/java/br/com/mapeiaia/rotacerta/SelectedAppUsageStateStage28.kt
           grep -q 'RadarColor.Idle, distanceKm = null' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'collectUniversalAccessibilitySnapshotStage28(eventStage26)' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -q 'FarolCausalLatencyStage28::trimNarrativeSuffix' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19.kt
+          grep -q 'FarolCausalLatencyStage28::trimNarrativeSuffix' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolCausalCorrectionStage21.kt
+          grep -q 'FarolCausalCorrectionStage21.evaluate(blocks)' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolUniversalVisualPipelineStage19.kt
           grep -q 'drivingDistancesFromAddressKm' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'S21_SEMANTIC_REJECT_BEFORE_CACHE_ROUTE' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           grep -q 'FarolForensicTraceStage20.preparePaint' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           {
             echo 'stage28_materialized_checks=passed'
             echo 'stage26_exact_predecessor=true'
+            echo 'effective_evaluator=FarolCausalCorrectionStage21.evaluate'
             echo 'current_execution_authority=true'
             echo 'usage_history_authority=false'
             echo 'off_idle_gray=true'
