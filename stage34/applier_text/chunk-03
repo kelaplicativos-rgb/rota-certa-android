@@ -1,0 +1,90 @@
+                left=blockStage34.left, top=blockStage34.top, right=blockStage34.right, bottom=blockStage34.bottom, syntheticRoot=false,
+            )))
+            val statsStage34 = FarolVisualIdentityStage23.CollectionStats(
+                visibleWindowsTotal=1, windowsTraversed=1, windowsSkippedSelf=0, windowsSkippedLowerLayer=0,
+                blocksVisited=totalBudgetStage34[0] - beforeStage34, blocksEmitted=1, earlyExitWindow=windowStage34,
+                earlyExitReason=if (completeStage34 != null) "stage34_bounded_complete" else "stage34_bounded_partial_continue_ancestors",
+                visualSnapshotHash=snapshotStage34.hash,
+            )
+            val candidateStage34 = Stage26AccessibilitySnapshot(listOf(blockStage34), snapshotStage34, statsStage34, 1, treeStage34.duplicateSubtreesAvoided)
+            FarolCardLeaseStage34.Metrics.increment("boundedSourceCollections")
+            FarolCardLeaseStage34.Metrics.increment("boundedSourceNodes", (totalBudgetStage34[0]-beforeStage34).toLong())
+            val leadsStage34 = FarolVisualIdentityStage23.countAddressLeads(textStage34)
+            if (completeStage34 != null || leadsStage34 >= 2) return candidateStage34
+            if (leadsStage34 > bestLeadsStage34) { bestLeadsStage34 = leadsStage34; bestPartialStage34 = candidateStage34 }
+        }
+        if (bestPartialStage34 != null) return bestPartialStage34
+
+        FarolCardLeaseStage34.Metrics.increment("globalCollectionsSuppressed")
+        val emptySnapshotStage34 = FarolVisualIdentityStage23.snapshot(sequenceOf(
+            FarolVisualIdentityStage23.VisualSeed(-1, Int.MAX_VALUE, "stage34-bounded-empty", syntheticRoot=false),
+        ))
+        val emptyStatsStage34 = FarolVisualIdentityStage23.CollectionStats(
+            visibleWindowsTotal=0, windowsTraversed=0, windowsSkippedSelf=0, windowsSkippedLowerLayer=0,
+            blocksVisited=totalBudgetStage34[0], blocksEmitted=0, earlyExitWindow=null,
+            earlyExitReason="stage34_global_traversal_suppressed_to_ocr", visualSnapshotHash=emptySnapshotStage34.hash,
+        )
+        FarolSemanticCardStage32.Metrics.sample("sourceCollect", SystemClock.elapsedRealtimeNanos()-collectStartedStage34)
+        return Stage26AccessibilitySnapshot(emptyList(), emptySnapshotStage34, emptyStatsStage34, 0, 0)
+    }
+
+    private fun collectCompactSubtreeStage34(
+        nodeStage34: AccessibilityNodeInfo,
+        idStage34: String,
+        parentIdStage34: String?,
+        depthStage34: Int,
+        packageNameStage34: String,
+        windowIdStage34: Int,
+        windowLayerStage34: Int,
+        budgetStage34: IntArray,
+        maxNodesStage34: Int,
+    ): Stage26TreeResult {
+        if (budgetStage34[0] >= maxNodesStage34 || depthStage34 > 7) return Stage26TreeResult(linkedSetOf(), null, 0, 0)
+        budgetStage34[0] += 1
+        val linesStage34 = LinkedHashSet<String>(12)
+        var parserStage34 = 0
+        var duplicatesStage34 = 0
+        fun addStage34(valueStage34: CharSequence?) {
+            val lineStage34 = valueStage34?.toString()?.trim()?.takeIf(String::isNotBlank) ?: return
+            if (!linesStage34.add(lineStage34)) duplicatesStage34 += 1
+        }
+        addStage34(runCatching { nodeStage34.text }.getOrNull())
+        addStage34(runCatching { nodeStage34.contentDescription }.getOrNull())
+        parserStage34 += 1
+        if (FarolVisualIdentityStage23.hasTwoAddressLeads(linesStage34.asSequence())) {
+            val boundsStage34 = Rect(); runCatching { nodeStage34.getBoundsInScreen(boundsStage34) }
+            return Stage26TreeResult(linesStage34, FarolCardBlock0188(
+                id=idStage34,parentId=parentIdStage34,packageName=packageNameStage34,windowId=windowIdStage34,windowLayer=windowLayerStage34,
+                depth=depthStage34,text=linesStage34.joinToString("\n").take(MAX_ACCESSIBILITY_TEXT_CHARS_0167),source=FarolEvidenceSource0188.Accessibility,
+                left=boundsStage34.left,top=boundsStage34.top,right=boundsStage34.right,bottom=boundsStage34.bottom,syntheticRoot=false,
+            ), parserStage34, duplicatesStage34)
+        }
+        val childCountStage34 = runCatching { nodeStage34.childCount }.getOrDefault(0).coerceIn(0, 24)
+        for (indexStage34 in 0 until childCountStage34) {
+            if (budgetStage34[0] >= maxNodesStage34) break
+            val childStage34 = runCatching { nodeStage34.getChild(indexStage34) }.getOrNull() ?: continue
+            val childResultStage34 = collectCompactSubtreeStage34(
+                childStage34, "$idStage34/$indexStage34", idStage34, depthStage34+1, packageNameStage34, windowIdStage34, windowLayerStage34, budgetStage34, maxNodesStage34,
+            )
+            parserStage34 += childResultStage34.addressParserInvocations
+            duplicatesStage34 += childResultStage34.duplicateSubtreesAvoided
+            if (childResultStage34.completeBlock != null) return Stage26TreeResult(linesStage34, childResultStage34.completeBlock, parserStage34, duplicatesStage34)
+            childResultStage34.lines.forEach { if (!linesStage34.add(it)) duplicatesStage34 += 1 }
+            if (linesStage34.size >= 16) break
+        }
+        parserStage34 += 1
+        if (!FarolVisualIdentityStage23.hasTwoAddressLeads(linesStage34.asSequence())) return Stage26TreeResult(linesStage34, null, parserStage34, duplicatesStage34)
+        val boundsStage34 = Rect(); runCatching { nodeStage34.getBoundsInScreen(boundsStage34) }
+        return Stage26TreeResult(linesStage34, FarolCardBlock0188(
+            id=idStage34,parentId=parentIdStage34,packageName=packageNameStage34,windowId=windowIdStage34,windowLayer=windowLayerStage34,
+            depth=depthStage34,text=linesStage34.joinToString("\n").take(MAX_ACCESSIBILITY_TEXT_CHARS_0167),source=FarolEvidenceSource0188.Accessibility,
+            left=boundsStage34.left,top=boundsStage34.top,right=boundsStage34.right,bottom=boundsStage34.bottom,syntheticRoot=false,
+        ), parserStage34, duplicatesStage34)
+    }
+
+'''
+s=replace_between(s,collector_start,collector_end,new_collector,'collector')
+
+# Raw mutation no longer tears down route/paint; candidate lease is the authority.
+inv_start='    private fun invalidateOldVisualBeforeCollectStage26('
+inv_end='    private fun collectUniversalAccessibilityBlocksStage19()'
