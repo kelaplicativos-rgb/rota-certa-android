@@ -11,14 +11,24 @@ new=r'''    class PreCollectGate {
             Metrics.increment("eventsReceived")
             if(!readingEnabled){ Metrics.increment("eventsRejectedReadingOff"); Metrics.increment("heavyCollectionsAvoided"); return Admission(false,false,"reading_off",generation,null) }
             if(signal.ownOverlay){ Metrics.increment("ownOverlayEventsIgnored"); Metrics.increment("heavyCollectionsAvoided"); return Admission(false,false,"own_overlay",generation,null) }
-            val window=canonical(signal.windowSignature); val value=canonicalStage34Visual(signal.sourceText).take(1024)
-            val windowChanged=lastWindowSignature!=window; lastWindowSignature=window
+            val previousWindow=lastWindowSignature
+            val window=canonical(signal.windowSignature)
+            val value=canonicalStage34Visual(signal.sourceText).take(1024)
+            val windowChanged=previousWindow!=null && previousWindow!=window
+            val previous=lastRelevantValue
+            lastWindowSignature=window
             if(value.isBlank()){
+                if(previous!=null && !windowChanged){
+                    lastRelevantValue=null
+                    generation+=1L
+                    Metrics.increment("heavyCollectionsStarted")
+                    Metrics.increment("stage34SameContextClearVerification")
+                    return Admission(true,true,"stage34_same_context_content_cleared_verify",generation,stableHash64("clear:$window"))
+                }
                 Metrics.increment("preCollectDuplicateSkipped"); Metrics.increment("heavyCollectionsAvoided")
                 Metrics.increment(if(windowChanged)"stage34BlankWindowChurnPreserved" else "stage34BlankEventPreserved")
                 return Admission(false,false,"stage34_blank_or_window_provenance_only",generation,stableHash64("lease"))
             }
-            val previous=lastRelevantValue
             if(previous==value){ Metrics.increment("preCollectDuplicateSkipped"); Metrics.increment("heavyCollectionsAvoided"); Metrics.increment("stage34SameAddressEvidencePreserved"); return Admission(false,false,"stage34_same_address_evidence",generation,stableHash64(value)) }
             lastRelevantValue=value; generation+=1L; Metrics.increment("heavyCollectionsStarted"); Metrics.increment("stage34RelevantAddressEvidenceChanged")
             return Admission(true,true,if(previous==null)"stage34_first_address_evidence" else "stage34_address_evidence_changed",generation,stableHash64(value))
