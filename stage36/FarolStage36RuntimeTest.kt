@@ -6,7 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FarolStage36RuntimeTest {
-    private fun src(name:String)=File(System.getProperty("user.dir"),"app/src/main/java/br/com/mapeiaia/rotacerta/$name").readText()
+    private fun root():File{val c=File(System.getProperty("user.dir"));return if(File(c,"app/src/main/java").isDirectory)c else if(c.name=="app"&&File(c,"src/main/java").isDirectory)c.parentFile else c}
+    private fun src(name:String)=File(root(),"app/src/main/java/br/com/mapeiaia/rotacerta/$name").readText()
     private fun service()=src("LiveRideAccessibilityService.kt")
 
     @Test fun serviceUsesStage36Authority(){val s=service();assertTrue(s.contains("stage36RuntimeAuthority"));assertTrue(s.contains("stage36RuntimeAuthority.observeVisualEvidence()"));assertTrue(s.contains("stage36RuntimeAuthority.observeWindowBoundary"))}
@@ -18,5 +19,5 @@ class FarolStage36RuntimeTest {
     @Test fun googleRoutePreserved(){assertTrue(service().contains("drivingDistancesFromAddressKm("))}
     @Test fun processShadowStillDiagnostic(){assertTrue(service().contains("updateProcessShadow"));assertTrue(src("FarolPresenceAuthorityStage30.kt").contains("RUNNING_APP_PROCESSES_SHADOW_ONLY_STAGE30"))}
     @Test fun reportExportsStage36(){assertTrue(src("ManualTechnicalReportBuilder.kt").contains("FarolRuntimeAuthorityStage36.Metrics.exportReport(null)"))}
-    @Test fun versionStage36(){val b=File(System.getProperty("user.dir"),"app/build.gradle.kts").readText();assertTrue(b.contains("versionCode = 5493"));assertTrue(b.contains("versionName = \"0.1.209\""))}
+    @Test fun versionStage36(){val b=File(root(),"app/build.gradle.kts").readText();assertTrue(b.contains("versionCode = 5493"));assertTrue(b.contains("versionName = \"0.1.209\""))}
 }
