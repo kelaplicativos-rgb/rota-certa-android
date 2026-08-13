@@ -1,0 +1,89 @@
+package br.com.mapeiaia.rotacerta
+
+import java.text.Normalizer
+import java.util.Locale
+
+/**
+ * Stage34: one logical card lease is the freshness authority for OCR, route and paint.
+ * Android package/window/event churn is provenance only. It cannot replace a live card by itself.
+ */
+object FarolCardLeaseStage34 {
+    const val CONTRACT_MARKER = "FAROL_SINGLE_CARD_LEASE_STAGE34"
+    const val FRESHNESS_MARKER = "FAROL_SINGLE_FRESHNESS_AUTHORITY_STAGE34"
+    const val PROVENANCE_ONLY_MARKER = "PACKAGE_WINDOW_PROVENANCE_ONLY_STAGE34"
+    const val ACQUISITION_RACE_MARKER = "ACCESSIBILITY_OCR_RACE_STAGE34"
+    const val LATEST_FRAME_MARKER = "LATEST_FRAME_SINGLE_FLIGHT_STAGE34"
+    const val LEGACY_DIAGNOSTIC_MARKER = "LEGACY_STAGE23_FRESHNESS_DIAGNOSTIC_ONLY_STAGE34"
+    const val GOOGLE_MARKER = "REAL_GOOGLE_ROUTE_PRESERVED_STAGE34"
+    const val NO_TIMER_MARKER = "NO_POLLING_NO_SLEEP_NO_TIMER_STAGE34"
+
+    data class Snapshot(
+        val leaseId: Long,
+        val activationGeneration: Long,
+        val rawRevision: Long,
+        val destinationKey: String?,
+        val addressSignatureKey: String?,
+        val candidateSource: String?,
+        val lastCandidateRawRevision: Long,
+    ) {
+        val candidateBound: Boolean get() = !destinationKey.isNullOrBlank()
+        val identityHash: Long get() = stableHash64("lease=$leaseId|act=$activationGeneration|dest=${destinationKey.orEmpty()}")
+    }
+
+    data class Token(
+        val leaseId: Long,
+        val activationGeneration: Long,
+        val destinationKey: String,
+    )
+
+    data class RawObservation(
+        val snapshot: Snapshot,
+        val leaseOpened: Boolean,
+        val reason: String,
+    )
+
+    data class CandidateDecision(
+        val snapshot: Snapshot,
+        val token: Token,
+        val firstBind: Boolean,
+        val leaseTransition: Boolean,
+        val sameDestination: Boolean,
+        val reason: String,
+    )
+
+    private data class MutableLease(
+        val leaseId: Long,
+        val activationGeneration: Long,
+        var rawRevision: Long = 0L,
+        var destinationKey: String? = null,
+        var addressSignatureKey: String? = null,
+        var candidateSource: String? = null,
+        var lastCandidateRawRevision: Long = -1L,
+    )
+
+    class Authority {
+        private var serial = 0L
+        private var current: MutableLease? = null
+
+        @Synchronized
+        fun observeRawEvent(activationGeneration: Long): RawObservation {
+            val existing = current
+            val opened = existing == null || existing.activationGeneration != activationGeneration
+            val lease = if (opened) newLeaseLocked(activationGeneration) else existing!!
+            lease.rawRevision += 1L
+            Metrics.increment("rawEvents")
+            if (opened) Metrics.increment("leasesOpened")
+            val snapshot = snapshotLocked(lease)
+            Metrics.updateLease(snapshot)
+            return RawObservation(
+                snapshot,
+                leaseOpened = opened,
+                reason = if (opened) "activation_session_lease_opened" else "raw_event_provenance_only",
+            )
+        }
+
+        @Synchronized
+        fun bindCandidate(
+            activationGeneration: Long,
+            destination: String,
+            addressSignature: String,
