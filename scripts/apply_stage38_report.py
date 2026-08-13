@@ -20,14 +20,7 @@ def insert_before(text: str, anchor: str, addition: str, label: str) -> str:
 
 report = PKG / 'ManualTechnicalReportBuilder.kt'
 r = report.read_text()
-r = once(
-    r,
-    '            appendLine(FarolForensicTraceStage20.exportReport())\n',
-    '            appendLine(FarolMaximumForensicsStage38.exportReport())\n'
-    '            appendLine()\n'
-    '            appendLine(FarolForensicTraceStage20.exportReport())\n',
-    'report Stage38',
-)
+r = once(r, '            appendLine(FarolForensicTraceStage20.exportReport())\n', '            appendLine(FarolMaximumForensicsStage38.exportReport())\n            appendLine()\n            appendLine(FarolForensicTraceStage20.exportReport())\n', 'report Stage38')
 report.write_text(r)
 
 build = ROOT / 'app/build.gradle.kts'
@@ -36,12 +29,11 @@ b = once(b, 'versionCode = 5493', 'versionCode = 5494', 'Stage38 versionCode')
 b = once(b, 'versionName = "0.1.209"', 'versionName = "0.1.210"', 'Stage38 versionName')
 build.write_text(b)
 
-# Inherited functional tests remain intact; only exact successor build-version assertions move.
 tests = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta'
 stage34_test = tests / 'FarolStage34Test.kt'
 if stage34_test.exists():
     t = stage34_test.read_text()
-    old34 = 'assertTrue(s.contains("versionCode = 5492")); assertTrue(s.contains("versionName = \\"0.1.208\\""))'
+    old34 = 'assertTrue(s.contains("versionCode = 5493")); assertTrue(s.contains("versionName = \\"0.1.209\\""))'
     new34 = 'assertTrue(s.contains("versionCode = 5494")); assertTrue(s.contains("versionName = \\"0.1.210\\""))'
     t = once(t, old34, new34, 'Stage38 inherited Stage34 version assertion')
     stage34_test.write_text(t)
