@@ -1,0 +1,22 @@
+new_inv='''    private fun invalidateOldVisualBeforeCollectStage26(newGenerationStage26: Long, eventStartedNsStage26: Long) {\n        stage26CurrentVisualGeneration = newGenerationStage26\n        stage19VisualVerificationPending = true // legacy diagnostic only; Stage34 lease decides freshness.\n        FarolCardLeaseStage34.Metrics.increment("rawMutationPreservedCurrentLease")\n        if (screenshotInProgress.get()) FarolSemanticCardStage32.Metrics.increment("ocrPreservedAcrossRawMutation")\n        FarolCausalLatencyStage28.Metrics.sample(\n            "eventToOldPaintInvalidated",\n            SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,\n        )\n        FarolReadingActivationStage26.Metrics.sample(\n            "eventToOldPaintInvalidated",\n            SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,\n        )\n        // No route cancel, no km clear, no orange paint and no address-signature clear here.\n        // Package/window/raw generation churn cannot revoke a Card Lease.\n    }\n\n'''
+s=replace_between(s,inv_start,inv_end,new_inv,'raw_invalidation')
+
+# Replace Stage23 freshness/OCR implementation with Stage34 lease freshness + latest-frame single-flight.
+fresh_start='    private fun isStage23OcrDemandFresh('
+fresh_end='    private suspend fun processUniversalVisualStage19('
+new_ocr=r'''    private fun isStage34OcrDemandFresh(demandStage34: FarolCardLeaseStage34.OcrDemand): Boolean =
+        stage34CardLease.isLeaseCurrent(demandStage34.leaseId, demandStage34.activationGeneration) &&
+            WorkModePolicy0162.isEnabled(currentSettings) &&
+            isReadingActivationGenerationFreshStage26(demandStage34.activationGeneration)
+
+    private fun requestUniversalScreenshotStage19(
+        eventPackageStage19: String?,
+        cycleIdStage20: Long? = null,
+        @Suppress("UNUSED_PARAMETER") rerunDemandStage23: FarolVisualIdentityStage23.OcrDemand? = null,
+        absenceVerificationStage34: Boolean = false,
+    ) {
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return
+        val activationStage26 = stage26ReadingActivation.snapshot()
+        if (!activationStage26.enabled || !activationStage26.usageAccessGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val leaseStage34 = stage34CardLease.snapshot() ?: stage34CardLease.observeRawEvent(activationStage26.generation).snapshot
+        val offerStage34 = stage34OcrSingleFlight.offer(leaseStage34, eventPackageStage19, cycleIdStage20, absenceVerificationStage34)
