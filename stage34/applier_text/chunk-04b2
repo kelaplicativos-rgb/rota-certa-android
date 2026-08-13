@@ -1,0 +1,10 @@
+        FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), true, "stage34_single_card_lease_start")
+        val serialStage19 = ++stage19OcrSerial
+        FarolForensicTraceStage20.ocrStage(
+            SystemClock.elapsedRealtimeNanos(), serialStage19, "REQUEST", cycleIdStage20,
+            "package=${eventPackageStage19.orEmpty()}; lease=${demandStage34.leaseId}; activation=${demandStage34.activationGeneration}; rawRevision=${demandStage34.rawRevision}; identityHash=${demandStage34.identityHash}; reason=stage34_single_card_lease_start",
+        )
+        val visualWindowIdStage19 = stage19ActiveWindowId ?: runCatching { rootInActiveWindow?.windowId }.getOrNull() ?: 0
+
+        fun finishLogicalStage34(candidateFoundStage34: Boolean) {
+            screenshotInProgress.set(false)
