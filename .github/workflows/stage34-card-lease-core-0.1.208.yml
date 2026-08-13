@@ -58,6 +58,7 @@ jobs:
           python patches/scripts/apply_stage34_test_candidate_contract.py source
           python patches/scripts/apply_stage34_test_frame_contract.py source
           cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
           grep -q 'versionCode = 5492' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.208"' source/app/build.gradle.kts
           grep -q 'FAROL_SINGLE_CARD_LEASE_STAGE34' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolCardLeaseStage34.kt
