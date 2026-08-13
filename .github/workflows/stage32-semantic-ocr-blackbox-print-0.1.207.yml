@@ -109,13 +109,32 @@ jobs:
       - name: Validate APK
         run: |
           set -euo pipefail
-          A=source/app/build/outputs/apk/debug/app-debug.apk; O=evidence/rota-certa-0.1.207-stage32-semantic-ocr-blackbox-print-ci.apk; cp "$A" "$O"
-          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f|sort -V|tail -1); SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f|sort -V|tail -1)
-          "$AAPT" dump badging "$O" | tee evidence/badging.txt; grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5491' versionName='0.1.207'" evidence/badging.txt
-          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt; grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
-          unzip -t "$O" | tee evidence/zip.txt; unzip -p "$O" classes.dex > evidence/classes.dex
-          for m in FAROL_SEMANTIC_CARD_GENERATION_STAGE32 FAROL_OCR_IDENTITY_PRESERVATION_STAGE32 FAROL_GLOBAL_COLLECTION_LAST_RESORT_STAGE32 FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 FAROL_CASE_PROVENANCE_STAGE32 FAROL_USER_MARKED_CASE_STAGE32 FAROL_REAL_PRINT_MEDIASTORE_STAGE32; do grep -a -q "$m" evidence/classes.dex; done
+          A=source/app/build/outputs/apk/debug/app-debug.apk
+          O=evidence/rota-certa-0.1.207-stage32-semantic-ocr-blackbox-print-ci.apk
+          cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f|sort -V|tail -1)
+          SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f|sort -V|tail -1)
+          echo 'apk_validation=package_version'
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5491' versionName='0.1.207'" evidence/badging.txt
+          echo 'apk_validation=signature_v2'
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          echo 'apk_validation=zip_integrity'
+          unzip -t "$O" | tee evidence/zip.txt
+          echo 'apk_validation=multidex_inventory'
+          unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          test -s evidence/dex-inventory.txt
+          mkdir -p evidence/dex
+          while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for m in FAROL_SEMANTIC_CARD_GENERATION_STAGE32 FAROL_OCR_IDENTITY_PRESERVATION_STAGE32 FAROL_GLOBAL_COLLECTION_LAST_RESORT_STAGE32 FAROL_FORENSIC_CARD_BLACK_BOX_STAGE32 FAROL_CASE_PROVENANCE_STAGE32 FAROL_USER_MARKED_CASE_STAGE32 FAROL_REAL_PRINT_MEDIASTORE_STAGE32; do
+            echo "apk_marker_check=$m"
+            grep -a -q "$m" evidence/all-classes.dex
+          done
+          echo 'apk_validation=sha256'
           sha256sum "$O" | tee evidence/apk-sha256.txt
+          echo 'apk_validation=PASS'
       - name: Upload final artifact
         uses: actions/upload-artifact@v4
         with:
