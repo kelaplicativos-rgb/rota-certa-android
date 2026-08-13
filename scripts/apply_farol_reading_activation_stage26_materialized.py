@@ -46,6 +46,28 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     service_path = root / impl.SERVICE
     text = service_path.read_text(encoding="utf-8")
 
+    # Stage18 subscribed to notification-state events so notification wakeup can run
+    # before strict root/package resolution. The Stage26 workflow's reconstructed XML
+    # omitted that event type; repair the compiled materialization itself, not the test.
+    accessibility_xml_path = root / "app/src/main/res/xml/rota_certa_accessibility.xml"
+    if not accessibility_xml_path.is_file():
+        raise SystemExit("Stage26 accessibility service XML missing")
+    accessibility_xml = accessibility_xml_path.read_text(encoding="utf-8")
+    if "typeNotificationStateChanged" not in accessibility_xml:
+        xml_anchor = 'typeWindowsChanged"'
+        if accessibility_xml.count(xml_anchor) != 1:
+            raise SystemExit(
+                f"Stage26 notification subscription anchor expected 1, found {accessibility_xml.count(xml_anchor)}"
+            )
+        accessibility_xml = accessibility_xml.replace(
+            xml_anchor,
+            'typeWindowsChanged|typeNotificationStateChanged"',
+            1,
+        )
+        accessibility_xml_path.write_text(accessibility_xml, encoding="utf-8")
+    if "typeNotificationStateChanged" not in accessibility_xml:
+        raise SystemExit("Stage26 notification state event is not subscribed")
+
     # Restore the legacy drag pause contract on the new Stage26 direct-event path.
     # This is executable behavior, not a test-only marker: heavy collection remains
     # blocked while the bubble owns the gesture.
@@ -141,6 +163,7 @@ def _apply_with_scheduled_compact_bridge(root: Path) -> None:
     print("scheduled_legacy_heavy_collector_reference=false")
     print("scheduled_bound_to_activation_generation=true")
     print("bubble_drag_contract_preserved=true")
+    print("notification_event_subscribed=true")
     print("notification_wakeup_order_preserved=true")
 
 
