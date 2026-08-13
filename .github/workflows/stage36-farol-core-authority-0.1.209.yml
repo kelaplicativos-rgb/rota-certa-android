@@ -70,6 +70,7 @@ jobs:
           cp patches/stage36/FarolStage36Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36Test.kt
           cp patches/stage36/FarolStage36FreshnessTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36FreshnessTest.kt
           cp patches/stage36/FarolStage36RuntimeTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36RuntimeTest.kt
+          python patches/scripts/apply_stage36_test_runtime_fix.py source
           grep -q 'versionCode = 5493' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.209"' source/app/build.gradle.kts
           grep -q 'FAROL_SINGLE_RUNTIME_AUTHORITY_STAGE36' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeAuthorityStage36.kt
