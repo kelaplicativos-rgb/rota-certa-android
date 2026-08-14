@@ -154,7 +154,7 @@ Aceitar por R$ 14"""
     @Test
     fun integration_runs_after_spatial_cluster_and_before_visual_block_evaluation() {
         val s = source("LiveRideAccessibilityService.kt")
-        val cluster = s.indexOf("FarolVisualPriority0189.cluster(\"stage19-ocr:$serialStage19\", fragmentsStage19)")
+        val cluster = s.indexOf("FarolVisualPriority0189.cluster(\"stage19-ocr:\$serialStage19\", fragmentsStage19)")
         val reconstruct = s.indexOf("FarolOcrMultilineAddressStage45.reconstruct(groupStage19.text)", cluster)
         val visualBlock = s.indexOf("FarolUniversalVisualPipelineStage19.VisualBlock(", reconstruct)
         val evaluate = s.indexOf("FarolUniversalVisualPipelineStage19.evaluate(blocksStage19)", visualBlock)
