@@ -1,16 +1,18 @@
-name: Stage40 RED authority contract
+name: Stage40 authority GREEN checkpoint
 on:
   pull_request:
     branches: [agent/stage38-maximum-forensics-0.1.210]
     paths:
       - '.github/workflows/stage40-authority-red-contract.yml'
+      - 'scripts/apply_stage40_*.py'
       - 'stage40/**'
 permissions:
   contents: read
+  actions: read
 jobs:
-  stage40-red-contract:
+  stage40-authority-green:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +30,6 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-
       - name: Restore exact Stage32 materialized runtime
         env:
           GH_TOKEN: '${{ github.token }}'
@@ -41,7 +42,6 @@ jobs:
           test "$(sha256sum "$TGZ" | awk '{print $1}')" = aa251a173e425b075f5f0508d6f042b4881949ed76e3f638f10ccab63417c5e3
           rm -rf source/app/src/main/java source/app/src/test/java
           tar -xzf "$TGZ" -C source
-
       - name: Materialize exact Stage34 Stage36 Stage38 base
         run: |
           set -euo pipefail
@@ -70,15 +70,28 @@ jobs:
           cp patches/stage38/FarolStage38Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage38Test.kt
           grep -q 'versionCode = 5494' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.210"' source/app/build.gradle.kts
-
-      - name: Install Stage40 RED contract tests only
+      - name: Materialize Stage40 authority only
         run: |
           set -euo pipefail
+          python patches/scripts/apply_stage40_presence.py source
+          python patches/scripts/apply_stage40_visual.py source
           cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
-          test "$(grep -c '@Test' patches/stage40/FarolStage40AuthorityRedContractTest.kt)" -eq 8
-
-      - name: Run Stage40 RED contract
+          test "$(grep -c '@Test' patches/stage40/FarolStage40AuthorityRedContractTest.kt)" -eq 18
+          grep -q 'FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualStateAuthorityStage40.kt
+          grep -q 'CURRENT_WINDOW_OR_RESUMED_ACTIVITY_PRESENCE_STAGE40' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeAuthorityStage36.kt
+          ! grep -q 'showOverlay(RadarColor.Orange' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+      - name: Stage40 authority deterministic 18
         working-directory: source
         run: |
-          set -o pipefail
+          set -euo pipefail
           ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage40AuthorityRedContractTest
+      - name: Regression Stage36 and Stage30 authority
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage36Test --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest --tests br.com.mapeiaia.rotacerta.FarolStage36RuntimeTest --tests br.com.mapeiaia.rotacerta.FarolPresenceAuthorityStage30Test
+      - name: Prove no APK build in this checkpoint
+        run: |
+          set -euo pipefail
+          test ! -d source/app/build/outputs/apk || test -z "$(find source/app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          echo 'stage40_authority_checkpoint_no_apk=PASS'
