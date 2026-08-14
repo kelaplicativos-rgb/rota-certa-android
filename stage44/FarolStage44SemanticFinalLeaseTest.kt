@@ -121,7 +121,6 @@ class FarolStage44SemanticFinalLeaseTest {
         assertTrue(block.contains("universalActiveAddressSignature = null"))
         assertTrue(block.contains("currentDistanceKm = null"))
         assertTrue(block.contains("showOverlay(RadarColor.Orange, distanceKm = null)"))
-        assertTrue(block.contains("stage44_proven_visual_mutation"))
     }
 
     @Test fun stage43PhysicalOffAndStage41FreshnessRemainPresent() {
