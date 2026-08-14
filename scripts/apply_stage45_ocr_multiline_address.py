@@ -190,7 +190,7 @@ object FarolOcrMultilineAddressStage45 {
         if (beforeIndex > 0 && value[beforeIndex] in charArrayOf('.', ',') && value[beforeIndex - 1].isDigit()) return false
         val suffix = value.substring(numberRange.last + 1).trimStart()
         if (suffix.isEmpty()) return true
-        if (suffix.firstOrNull() in charArrayOf('(', ',', '-', '–', '—')) return true
+        if (suffix.first() in charArrayOf('(', ',', '-', '–', '—')) return true
         return Regex("^(?:bloco|casa|loja|sala|ap(?:to)?\\.?|apartamento|fundos|andar|lote|quadra)\\b", RegexOption.IGNORE_CASE)
             .containsMatchIn(suffix)
     }
