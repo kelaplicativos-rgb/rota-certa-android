@@ -148,17 +148,8 @@ new = '''    // Stage44: historical name retained for patch compatibility; calle
 '''
 service = once(service, old, new, 'document post-proof invalidation')
 
-old = '''        // Stage32: raw mutation revokes paint immediately; active OCR survives until semantic identity proves staleness.
-'''
-new = '''        // Stage44: proven visual/semantic change revokes paint; raw event admission alone never reaches here.
-'''
-service = once(service, old, new, 'update invalidation semantics comment')
-
-old = '''        rememberBubbleReason("stage26_visual_mutation", "Mudança visual externa detectada; resultado anterior invalidado antes da nova coleta.")
-'''
-new = '''        rememberBubbleReason("stage44_proven_visual_mutation", "Mudança real do card comprovada após coleta; resultado anterior invalidado.")
-'''
-service = once(service, old, new, 'bubble reason after proof')
+# Do not couple the functional patch to inherited comments or user-facing diagnostic wording.
+# Those strings have changed across Stage32..43 and are not part of the Stage44 causal contract.
 
 SERVICE.write_text(service, encoding='utf-8')
-print('stage44_semantic_final_lease=PASS')
+print('stage44_semantic_final_lease=PASS functional_anchors_only=true')
