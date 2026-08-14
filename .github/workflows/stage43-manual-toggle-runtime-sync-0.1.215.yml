@@ -137,14 +137,24 @@ jobs:
           ):
               assert marker in helper, marker
           assert 'repository.settings.collect { updatedStage43 ->' in service
+          assert 'if (!workModeSettingsReady0162) return@collect' in service
           assert 'applyPersistedManualReadingStage43(updatedStage43, "settings_flow")' in service
-          assert 'repository.settings.collect { currentSettings = it }' not in service
-          assert 'applyPersistedManualReadingStage43(repository.settings.first(), "service_bootstrap", forceStage43 = true)' in service
+          assert 'val previousEnabled0162 = WorkModePolicy0162.isEnabled(currentSettings)' not in service
+          assert 'currentSettings = repository.settings.first()' in service
+          ready=service.index('workModeSettingsReady0162 = true')
+          bootstrap=service.index('applyPersistedManualReadingStage43(currentSettings, "service_bootstrap", forceStage43 = true)', ready)
+          assert bootstrap > ready
           assert 'applyManualReadingCommandStage43(enabled0162, "grid_shortcut")' in service
           a=service.index('    private fun applyManualReadingCommandStage43(')
           b=service.index('    private fun applyWorkModeRuntime0162(',a)
           command=service[a:b]
           assert command.index('applyPersistedManualReadingStage43') < command.index('repository.saveSettings(updatedStage43)')
+          g0=service.index('    private fun toggleLiveReadingFromBubble()')
+          g1=service.index('    private fun stopApplicationFromBubble()',g0)
+          grid=service[g0:g1]
+          assert grid.count('applyManualReadingCommandStage43(enabled0162, "grid_shortcut")') == 1
+          assert 'applyWorkModeRuntime0162(enabled0162)' not in grid
+          assert 'repository.saveSettings(updated0162)' not in grid
           w0=service.index('    private fun applyWorkModeRuntime0162(')
           w1=service.index('    private fun ensureDriverCardSession0162(',w0)
           work=service[w0:w1]
