@@ -170,8 +170,8 @@ object FarolOcrMultilineAddressStage45 {
             if (!safeNumberContext(value, tailStart, range)) continue
             val before = value.substring(0, range.first).trimEnd()
             if (before.endsWith(',')) return value to false
-            val number = value.substring(range)
-            val normalized = "$before, $number".replace(Regex("\\s+"), " ").trim()
+            val numberAndSuffix = value.substring(range.first)
+            val normalized = "$before, $numberAndSuffix".replace(Regex("\\s+"), " ").trim()
             return normalized to true
         }
         return value to false
