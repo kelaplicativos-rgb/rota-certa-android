@@ -4,9 +4,12 @@ import sys
 
 ROOT = Path(sys.argv[1]).resolve()
 PKG = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta'
+TESTS = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta'
 PIPELINE = PKG / 'FarolUniversalVisualPipelineStage19.kt'
 HELPER = PKG / 'FarolFinalPaintFreshnessStage41.kt'
-TEST34 = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt'
+TEST34 = TESTS / 'FarolStage34Test.kt'
+TEST21 = TESTS / 'FarolCausalCorrectionStage21Test.kt'
+TEST19 = TESTS / 'FarolUniversalVisualPipelineStage19Test.kt'
 
 helper = r'''package br.com.mapeiaia.rotacerta
 
@@ -83,16 +86,36 @@ if s.count(old) != 1:
     raise SystemExit(f'Stage41 binding block mismatch: {s.count(old)}')
 PIPELINE.write_text(s.replace(old, new, 1))
 
-# Stage34's original blanket pending-verification rejection was correct before physical evidence.
-# Refine that single historical assertion without changing the test inventory: same frame is safe;
-# a changed frame remains fail-closed.
-t = TEST34.read_text()
-old_test = '''    @Test fun bindingPendingVerificationRejected(){ val b=FarolUniversalVisualPipelineStage19.Binding(1,1,10,"sig"); assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,1,1,10,"sig",true)) }
-'''
-new_test = '''    @Test fun bindingPendingVerificationRequiresSameFrame(){ val b=FarolUniversalVisualPipelineStage19.Binding(1,1,10,"sig"); assertTrue(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,9,8,10,"sig",true)); assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,9,8,11,"sig",true)) }
-'''
-if t.count(old_test) != 1:
-    raise SystemExit(f'Stage41 Stage34 regression assertion mismatch: {t.count(old_test)}')
-TEST34.write_text(t.replace(old_test, new_test, 1))
+# Stage34/21/19 historically treated verificationPending as an unconditional veto.
+# Physical Stage40 evidence proved that generation churn can set pending while the physical
+# frame hash and final destination remain exactly unchanged. Refine those inherited contracts
+# without reducing the stale barrier: same frame may paint; changed frame must still fail closed.
+replacements = [
+    (
+        TEST34,
+        '''    @Test fun bindingPendingVerificationRejected(){ val b=FarolUniversalVisualPipelineStage19.Binding(1,1,10,"sig"); assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,1,1,10,"sig",true)) }\n''',
+        '''    @Test fun bindingPendingVerificationRequiresSameFrame(){ val b=FarolUniversalVisualPipelineStage19.Binding(1,1,10,"sig"); assertTrue(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,9,8,10,"sig",true)); assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(b,9,8,11,"sig",true)) }\n''',
+        'Stage34 pending contract',
+    ),
+    (
+        TEST21,
+        '''    @Test fun verificationPendingStillBlocksPainting() {\n        val binding = FarolUniversalVisualPipelineStage19.Binding(3, 4, 10, "visual|x")\n        assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 3, 4, 10, "visual|x", true))\n    }\n''',
+        '''    @Test fun verificationPendingRequiresSamePhysicalFrame() {\n        val binding = FarolUniversalVisualPipelineStage19.Binding(3, 4, 10, "visual|x")\n        assertTrue(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 30, 40, 10, "visual|x", true))\n        assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 30, 40, 11, "visual|x", true))\n    }\n''',
+        'Stage21 pending contract',
+    ),
+    (
+        TEST19,
+        '''    @Test fun pendingVisualVerificationBlocksOldRoutePainting() {\n        val binding = FarolUniversalVisualPipelineStage19.Binding(3, 4, 10, "visual|rua b 20")\n        assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 3, 4, 10, "visual|rua b 20", true))\n    }\n''',
+        '''    @Test fun pendingVisualVerificationAllowsSameFrameButBlocksChangedFrame() {\n        val binding = FarolUniversalVisualPipelineStage19.Binding(3, 4, 10, "visual|rua b 20")\n        assertTrue(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 30, 40, 10, "visual|rua b 20", true))\n        assertFalse(FarolUniversalVisualPipelineStage19.bindingMatchesCurrent(binding, 30, 40, 11, "visual|rua b 20", true))\n    }\n''',
+        'Stage19 pending contract',
+    ),
+]
 
-print('stage41_subsecond_final_paint=PASS')
+for path, inherited, refined, label in replacements:
+    text = path.read_text()
+    count = text.count(inherited)
+    if count != 1:
+        raise SystemExit(f'{label}: expected inherited block once, got {count}')
+    path.write_text(text.replace(inherited, refined, 1))
+
+print('stage41_subsecond_final_paint=PASS inherited_pending_contracts=3')
