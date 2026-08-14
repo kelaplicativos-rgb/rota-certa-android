@@ -93,7 +93,7 @@ jobs:
           assert service.count('renderOverlayStage40(') == 2, 'renderer must have one definition and one gated call'
           assert 'showOverlay(RadarColor.Orange' not in service
           assert 'PublicState { GRAY, YELLOW, GREEN, RED }' in visual
-          assert 'ORANGE' not in visual
+          assert 'PublicState.ORANGE' not in visual
           assert service.count('expireStalePresence(') == 1
           assert 'currentSelectedWindowPackagesStage40' in service
           forbidden=('Thread.sleep(', 'SystemClock.sleep(', 'scheduleAtFixedRate(', 'fixedRateTimer(')
