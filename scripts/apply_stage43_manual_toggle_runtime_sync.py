@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 import sys
 
 ROOT = Path(sys.argv[1]).resolve()
@@ -50,36 +49,40 @@ field_block = '''    private var stage43LastAppliedManualReading: Boolean? = nul
 '''
 service = once(service, field_anchor, field_block + field_anchor, 'Stage43 runtime state fields')
 
-# The inherited collector only copied settings into currentSettings. That allowed Compose/DataStore
-# to show OFF while the already-running AccessibilityService stayed ON. Every emission must now
-# execute the runtime transition.
-collector_exact = '        scope.launch { repository.settings.collect { currentSettings = it } }\n'
+# Stage32+ already had a settings collector, but it kept a second runtime state and only called the
+# inherited transition on a boolean delta. Stage43 makes every ready DataStore emission enter the
+# single Stage43 transition; identical emissions are deduplicated inside that transition.
+collector_old = '''        scope.launch {
+            repository.settings.collect { updated0162 ->
+                if (!workModeSettingsReady0162) return@collect
+                val previousEnabled0162 = WorkModePolicy0162.isEnabled(currentSettings)
+                currentSettings = updated0162
+                val currentEnabled0162 = WorkModePolicy0162.isEnabled(updated0162)
+                if (previousEnabled0162 != currentEnabled0162) {
+                    applyWorkModeRuntime0162(currentEnabled0162)
+                }
+            }
+        }
+'''
 collector_new = '''        scope.launch {
             repository.settings.collect { updatedStage43 ->
+                if (!workModeSettingsReady0162) return@collect
                 applyPersistedManualReadingStage43(updatedStage43, "settings_flow")
             }
         }
 '''
-if collector_exact in service:
-    service = once(service, collector_exact, collector_new, 'settings collector runtime sync')
-else:
-    pattern = re.compile(
-        r'        scope\.launch\s*\{\s*repository\.settings\.collect\s*\{\s*currentSettings\s*=\s*it\s*\}\s*\}\s*\n',
-        re.MULTILINE,
-    )
-    service, n = pattern.subn(collector_new, service, count=1)
-    if n != 1:
-        raise SystemExit(f'settings collector runtime sync: expected 1 collector, got {n}')
+service = once(service, collector_old, collector_new, 'settings collector runtime sync')
 
-# Bootstrap must use the exact same path and force the actual runtime state even if the collector
-# emitted the same value milliseconds earlier.
-bootstrap_old = '            currentSettings = repository.settings.first()\n'
-bootstrap_new = '            applyPersistedManualReadingStage43(repository.settings.first(), "service_bootstrap", forceStage43 = true)\n'
+# Bootstrap remains after migrations/default-off handling. Do not arm the live service from the raw
+# first() value before those migrations finish; once workModeSettingsReady0162 becomes true, apply
+# the exact same Stage43 transition used by Home and grid.
+bootstrap_old = '            applyWorkModeRuntime0162(WorkModePolicy0162.isEnabled(currentSettings), force0162 = true)\n'
+bootstrap_new = '            applyPersistedManualReadingStage43(currentSettings, "service_bootstrap", forceStage43 = true)\n'
 service = once(service, bootstrap_old, bootstrap_new, 'service bootstrap runtime sync')
 
 # One central service transition. currentSettings is assigned BEFORE runtime side effects so every
 # subsequent event/tap sees the new authority. applyWorkModeRuntime0162 already owns cancellation,
-# freshness invalidation and Stage42 gray/yellow behavior; force makes the user command immediate.
+# freshness invalidation and Stage42 gray/yellow behavior; force makes a user command immediate.
 work_anchor = '    private fun applyWorkModeRuntime0162(enabled0162: Boolean, force0162: Boolean = false) {\n'
 helper_block = r'''    private fun applyPersistedManualReadingStage43(
         updatedStage43: AppSettings,
@@ -99,19 +102,28 @@ helper_block = r'''    private fun applyPersistedManualReadingStage43(
 
     private fun applyManualReadingCommandStage43(enabledStage43: Boolean, sourceStage43: String) {
         val updatedStage43 = FarolManualToggleRuntimeSyncStage43.withEnabled(currentSettings, enabledStage43)
-        // Apply synchronously before the persistence coroutine: one tap must change the live Farol now.
+        // The live Farol changes synchronously; DataStore persistence follows. Its returning emission
+        // is safely deduplicated by stage43LastAppliedManualReading.
         applyPersistedManualReadingStage43(updatedStage43, sourceStage43, forceStage43 = true)
-        scope.launch { repository.saveSettings(updatedStage43) }
+        scope.launch { runCatching { repository.saveSettings(updatedStage43) } }
     }
 
 '''
 service = once(service, work_anchor, helper_block + work_anchor, 'insert Stage43 central runtime transition')
 
-# The Stage42 grid handler already computes enabled0162 and owns the user-facing toast. Make that
-# tap synchronously execute the same runtime transition; persistence happens in the shared command.
-grid_toast = '            if (enabled0162) "Leitura do Farol ATIVADA" else "Leitura do Farol DESLIGADA",\n'
-grid_with_command = '            applyManualReadingCommandStage43(enabled0162, "grid_shortcut")\n' + grid_toast
-service = once(service, grid_toast, grid_with_command, 'grid shortcut immediate runtime command')
+# Replace the inherited grid core rather than adding a second command after it. This guarantees one
+# runtime transition and one persistence request per tap, while currentSettings is changed before a
+# possible second tap can calculate the next state.
+grid_old = '''        val enabled0162 = !WorkModePolicy0162.isEnabled(currentSettings)
+        val updated0162 = WorkModePolicy0162.setEnabled(currentSettings, enabled0162)
+        currentSettings = updated0162
+        applyWorkModeRuntime0162(enabled0162)
+        scope.launch { runCatching { repository.saveSettings(updated0162) } }
+'''
+grid_new = '''        val enabled0162 = !FarolManualToggleRuntimeSyncStage43.enabled(currentSettings)
+        applyManualReadingCommandStage43(enabled0162, "grid_shortcut")
+'''
+service = once(service, grid_old, grid_new, 'grid shortcut single immediate command')
 
 SERVICE.write_text(service, encoding='utf-8')
 print('stage43_manual_toggle_runtime_sync=PASS')
