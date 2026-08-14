@@ -7,10 +7,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FarolStage41SubsecondFinalPaintTest {
-    private fun source(name: String): String = File(
-        System.getProperty("user.dir"),
-        "app/src/main/java/br/com/mapeiaia/rotacerta/$name",
-    ).readText()
+    private fun source(name: String): String {
+        val cwd = File(System.getProperty("user.dir"))
+        val candidates = listOf(
+            File(cwd, "src/main/java/br/com/mapeiaia/rotacerta/$name"),
+            File(cwd, "app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
+            File(cwd.parentFile ?: cwd, "app/src/main/java/br/com/mapeiaia/rotacerta/$name"),
+        )
+        return candidates.firstOrNull { it.isFile }?.readText()
+            ?: error("Stage41 source not found: $name; cwd=${cwd.absolutePath}")
+    }
 
     private val physicalSignature = "visual|rua vitorio ramalho 80 tatuape sao paulo sp"
 
