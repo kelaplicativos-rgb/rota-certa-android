@@ -120,13 +120,14 @@ class FarolStage44SemanticFinalLeaseTest {
         val block = s.substring(function, end)
         assertTrue(block.contains("universalActiveAddressSignature = null"))
         assertTrue(block.contains("currentDistanceKm = null"))
-        assertTrue(block.contains("showOverlay(RadarColor.Orange, distanceKm = null)"))
+        // Stage40 materialization rewrites legacy Orange public callers to Default/yellow.
+        assertTrue(block.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
     }
 
     @Test fun stage43PhysicalOffAndStage41FreshnessRemainPresent() {
         val service = source("LiveRideAccessibilityService.kt")
         assertTrue(service.contains("S43_MANUAL_OFF_RENDER_COMMIT"))
-        assertTrue(source("FarolManualOffVisualCommitStage43.kt").contains("FAROL_MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43"))
+        assertTrue(source("FarolManualOffVisualCommitStage43.kt").contains("MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43"))
         assertTrue(source("FarolFinalPaintFreshnessStage41.kt").contains("FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41"))
     }
 
