@@ -1,4 +1,4 @@
-name: Stage40 authority GREEN checkpoint
+name: Stage40 authority AUDIT checkpoint
 on:
   pull_request:
     branches: [agent/stage38-maximum-forensics-0.1.210]
@@ -10,9 +10,9 @@ permissions:
   contents: read
   actions: read
 jobs:
-  stage40-authority-green:
+  stage40-authority-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,9 +77,30 @@ jobs:
           python patches/scripts/apply_stage40_visual.py source
           cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
           test "$(grep -c '@Test' patches/stage40/FarolStage40AuthorityRedContractTest.kt)" -eq 18
-          grep -q 'FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualStateAuthorityStage40.kt
-          grep -q 'CURRENT_WINDOW_OR_RESUMED_ACTIVITY_PRESENCE_STAGE40' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeAuthorityStage36.kt
-          ! grep -q 'showOverlay(RadarColor.Orange' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+      - name: Static final-authority audit
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          service=(p/'LiveRideAccessibilityService.kt').read_text()
+          runtime=(p/'FarolRuntimeAuthorityStage36.kt').read_text()
+          visual=(p/'FarolVisualStateAuthorityStage40.kt').read_text()
+          assert 'FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40' in visual
+          assert 'CURRENT_WINDOW_OR_RESUMED_ACTIVITY_PRESENCE_STAGE40' in runtime
+          assert service.count('FarolVisualStateAuthorityStage40.decide(') == 1
+          assert service.count('private fun renderOverlayStage40(') == 1
+          assert service.count('renderOverlayStage40(') == 2, 'renderer must have one definition and one gated call'
+          assert 'showOverlay(RadarColor.Orange' not in service
+          assert 'PublicState { GRAY, YELLOW, GREEN, RED }' in visual
+          assert 'ORANGE' not in visual
+          assert service.count('expireStalePresence(') == 1
+          assert 'currentSelectedWindowPackagesStage40' in service
+          forbidden=('Thread.sleep(', 'SystemClock.sleep(', 'scheduleAtFixedRate(', 'fixedRateTimer(')
+          assert not any(x in visual for x in forbidden)
+          assert not any(x in runtime for x in forbidden)
+          print('stage40_static_authority_audit=PASS')
+          PY
       - name: Stage40 authority deterministic 18
         working-directory: source
         run: |
@@ -90,8 +111,30 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage36Test --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest --tests br.com.mapeiaia.rotacerta.FarolStage36RuntimeTest --tests br.com.mapeiaia.rotacerta.FarolPresenceAuthorityStage30Test
-      - name: Prove no APK build in this checkpoint
+      - name: Full unit suite
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          total=failed=errors=skipped=0
+          for f in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=ET.parse(f).getroot()
+              total += int(r.attrib.get('tests',0)); failed += int(r.attrib.get('failures',0)); errors += int(r.attrib.get('errors',0)); skipped += int(r.attrib.get('skipped',0))
+          print(f'stage40_full_suite tests={total} failures={failed} errors={errors} skipped={skipped}')
+          assert total >= 954, f'expected Stage38 baseline 936 + Stage40 18, got {total}'
+          assert failed == 0 and errors == 0
+          PY
+      - name: Android lint debug
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug
+      - name: Prove no APK or package artifact built
         run: |
           set -euo pipefail
           test ! -d source/app/build/outputs/apk || test -z "$(find source/app/build/outputs/apk -type f -name '*.apk' -print -quit)"
-          echo 'stage40_authority_checkpoint_no_apk=PASS'
+          test ! -d source/app/build/outputs/bundle || test -z "$(find source/app/build/outputs/bundle -type f -print -quit)"
+          echo 'stage40_authority_audit_no_apk_no_bundle=PASS'
