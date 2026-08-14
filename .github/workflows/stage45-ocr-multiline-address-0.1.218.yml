@@ -153,7 +153,7 @@ jobs:
           assert 'FarolOcrMultilineAddressStage45' not in (p/'FarolCausalCorrectionStage21.kt').read_text()
           assert 'Thread.sleep' not in h and 'delay(' not in h and 'Timer(' not in h
           assert 'FAROL_SEMANTIC_FINAL_LEASE_STAGE44' in (p/'FarolSemanticFinalLeaseStage44.kt').read_text()
-          assert 'MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43' in (p/'FarolManualToggleRuntimeSyncStage43.kt').read_text()
+          assert 'MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43' in (p/'FarolManualOffVisualCommitStage43.kt').read_text()
           assert 'FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41' in (p/'FarolFinalPaintFreshnessStage41.kt').read_text()
           print('stage45_static_causal_spatial_audit=PASS')
           PY
