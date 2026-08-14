@@ -1,4 +1,4 @@
-name: Validate Stage43 manual toggle runtime sync 0.1.215
+name: Validate Stage43 physical OFF commit 0.1.216
 on:
   pull_request:
     branches: [agent/stage42-manual-universal-reading-0.1.214]
@@ -12,7 +12,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  validate-stage43-manual-toggle-runtime-sync:
+  validate-stage43-physical-off-commit:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -79,7 +79,7 @@ jobs:
           grep -q 'versionCode = 5494' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.210"' source/app/build.gradle.kts
 
-      - name: Materialize exact Stage40 physical 0.1.212
+      - name: Materialize Stage40 Stage41 Stage42
         run: |
           set -euo pipefail
           python patches/scripts/apply_stage40_presence.py source
@@ -91,36 +91,28 @@ jobs:
           python patches/scripts/apply_stage40_precollect_physical_version.py source
           grep -q 'versionCode = 5496' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.212"' source/app/build.gradle.kts
-
-      - name: Materialize exact Stage41 subsecond final paint 0.1.213
-        run: |
-          set -euo pipefail
           python patches/scripts/apply_stage41_subsecond_final_paint.py source
           cp patches/stage41/FarolStage41SubsecondFinalPaintTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage41SubsecondFinalPaintTest.kt
           python patches/scripts/apply_stage41_version.py source
           grep -q 'versionCode = 5497' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.213"' source/app/build.gradle.kts
-
-      - name: Materialize exact Stage42 manual universal reading 0.1.214
-        run: |
-          set -euo pipefail
           python patches/scripts/apply_stage42_manual_universal_reading.py source | tee evidence/materialize-stage42.txt
           cp patches/stage42/FarolStage42ManualUniversalReadingTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage42ManualUniversalReadingTest.kt
           python patches/scripts/apply_stage42_version.py source | tee evidence/materialize-stage42-version.txt
           grep -q 'versionCode = 5498' source/app/build.gradle.kts
           grep -q 'versionName = "0.1.214"' source/app/build.gradle.kts
 
-      - name: Materialize Stage43 manual toggle runtime sync 0.1.215
+      - name: Materialize corrected Stage43 0.1.216
         run: |
           set -euo pipefail
           python patches/scripts/apply_stage43_manual_toggle_runtime_sync.py source | tee evidence/materialize-stage43.txt
           cp patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt
           python patches/scripts/apply_stage43_version.py source | tee evidence/materialize-stage43-version.txt
-          grep -q 'versionCode = 5499' source/app/build.gradle.kts
-          grep -q 'versionName = "0.1.215"' source/app/build.gradle.kts
-          test "$(grep -c '@Test' patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt)" -eq 12
+          grep -q 'versionCode = 5500' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.216"' source/app/build.gradle.kts
+          test "$(grep -c '@Test' patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt)" -eq 18
 
-      - name: Static Stage43 runtime synchronization audit
+      - name: Static Stage43 physical OFF audit
         run: |
           set -euo pipefail
           python - <<'PY' | tee evidence/static-stage43.txt
@@ -128,58 +120,68 @@ jobs:
           p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
           service=(p/'LiveRideAccessibilityService.kt').read_text()
           helper=(p/'FarolManualToggleRuntimeSyncStage43.kt').read_text()
+          diag=(p/'FarolManualOffVisualCommitStage43.kt').read_text()
+          report=(p/'ManualTechnicalReportBuilder.kt').read_text()
           for marker in (
               'FAROL_MANUAL_TOGGLE_RUNTIME_SYNC_STAGE43',
               'DATASTORE_EMISSION_APPLIES_LIVE_RUNTIME_STAGE43',
               'GRID_TAP_APPLIES_RUNTIME_BEFORE_PERSIST_STAGE43',
               'MANUAL_OFF_IMMEDIATELY_INVALIDATES_AND_PAINTS_GRAY_STAGE43',
               'HOME_GRID_SERVICE_ONE_MANUAL_READING_STATE_STAGE43',
+              'FORCED_OFF_BYPASSES_IDEMPOTENT_RENDER_SKIP_STAGE43',
+              'OFF_RENDER_APPLIED_REQUIRED_STAGE43',
+              'OFF_RENDER_MISMATCH_IS_REPORT_FAIL_STAGE43',
           ):
               assert marker in helper, marker
+          assert 'MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43' in diag
           assert 'repository.settings.collect { updatedStage43 ->' in service
           assert 'if (!workModeSettingsReady0162) return@collect' in service
           assert 'applyPersistedManualReadingStage43(updatedStage43, "settings_flow")' in service
-          assert 'val previousEnabled0162 = WorkModePolicy0162.isEnabled(currentSettings)' not in service
-          assert 'currentSettings = repository.settings.first()' in service
           ready=service.index('workModeSettingsReady0162 = true')
           bootstrap=service.index('applyPersistedManualReadingStage43(currentSettings, "service_bootstrap", forceStage43 = true)', ready)
           assert bootstrap > ready
-          assert 'applyManualReadingCommandStage43(enabled0162, "grid_shortcut")' in service
-          a=service.index('    private fun applyManualReadingCommandStage43(')
-          b=service.index('    private fun applyWorkModeRuntime0162(',a)
-          command=service[a:b]
-          assert command.index('applyPersistedManualReadingStage43') < command.index('repository.saveSettings(updatedStage43)')
           g0=service.index('    private fun toggleLiveReadingFromBubble()')
           g1=service.index('    private fun stopApplicationFromBubble()',g0)
           grid=service[g0:g1]
           assert grid.count('applyManualReadingCommandStage43(enabled0162, "grid_shortcut")') == 1
-          assert 'applyWorkModeRuntime0162(enabled0162)' not in grid
           assert 'repository.saveSettings(updated0162)' not in grid
           w0=service.index('    private fun applyWorkModeRuntime0162(')
           w1=service.index('    private fun ensureDriverCardSession0162(',w0)
           work=service[w0:w1]
-          assert 'showOverlay(RadarColor.Idle, null)' in work
           assert 'stage36RuntimeAuthority.setManualAuthority(enabled0162)' in work
           assert 'stage26ReadingActivation.setManualAuthority(enabled0162)' in work
+          assert 'showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)' in work
+          assert 'currentRadarColor = RadarColor.Idle' not in work
+          assert 'currentDistanceKm = null' not in work
+          assert 'S43_MANUAL_OFF_RENDER_COMMIT' in work
+          assert 'S43_MANUAL_OFF_RENDER_ANOMALY' in work
+          assert 'removeOverlay()' not in work
+          assert 'renderOverlayStage40(effectiveColorStage40, decisionStage40.distanceKm, forcePhysicalCommitStage43)' in service
+          assert 'if (!forcePhysicalCommitStage43 && existingViewChecklist15 != null && currentRadarColor == color' in service
+          applied=service.index('FarolForensicTraceStage20.overlayApplied(')
+          serial=service.index('stage43OffRenderAppliedSerial += 1L', applied)
+          assert serial > applied
+          assert 'FarolManualOffVisualCommitStage43.exportReport()' in report
+          assert 'anomalies > 0L || applied != attempts -> "FAIL"' in diag
           r0=service.index('    private fun refreshReadingActivationStage26(')
           r1=service.index('    private fun applyReadingOffStage26(',r0)
           refresh=service[r0:r1]
           for forbidden in ('SelectedRideAppStore.read','hasUsageAccess','readIncrementalUsage','currentSelectedWindowPackagesStage40','readProcessShadow','selectedEventStage36'):
               assert forbidden not in refresh, forbidden
-          print('stage43_static_runtime_sync_audit=PASS')
+          print('stage43_static_physical_off_audit=PASS')
           PY
 
-      - name: Verify exact 1012 tests
+      - name: Verify exact 1018 tests
         run: |
           set -euo pipefail
           python - <<'PY' | tee evidence/test-inventory.txt
           from pathlib import Path
           n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
           print('total_at_test='+str(n))
-          assert n==1012,n
+          assert n==1018,n
           PY
 
-      - name: Stage43 regression 12
+      - name: Stage43 regression 18
         working-directory: source
         run: |
           set -euo pipefail
@@ -189,10 +191,10 @@ jobs:
           r=E.parse('app/build/test-results/testDebugUnitTest/TEST-br.com.mapeiaia.rotacerta.FarolStage43ManualToggleRuntimeSyncTest.xml').getroot()
           v={k:int(r.attrib.get(k,0)) for k in ('tests','failures','errors','skipped')}
           print(v)
-          assert v=={'tests':12,'failures':0,'errors':0,'skipped':0},v
+          assert v=={'tests':18,'failures':0,'errors':0,'skipped':0},v
           PY
 
-      - name: Stage42 plus Stage41 freshness regression
+      - name: Stage42 Stage41 freshness regressions
         working-directory: source
         run: |
           set -euo pipefail
@@ -208,7 +210,7 @@ jobs:
             --tests br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test \
             --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/freshness-regression.log
 
-      - name: Complete suite exact 1012
+      - name: Complete suite exact 1018
         working-directory: source
         run: |
           set -euo pipefail
@@ -220,27 +222,27 @@ jobs:
           for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
               r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
           print(t,f,e,s)
-          assert (t,f,e,s)==(1012,0,0,0),(t,f,e,s)
+          assert (t,f,e,s)==(1018,0,0,0),(t,f,e,s)
           PY
 
-      - name: Lint and assemble physical APK
+      - name: Lint and assemble corrected physical APK
         working-directory: source
         run: |
           set -euo pipefail
           ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
           ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
 
-      - name: Validate Stage43 physical APK
+      - name: Validate corrected Stage43 physical APK
         run: |
           set -euo pipefail
           A=source/app/build/outputs/apk/debug/app-debug.apk
-          O=evidence/Rota-Certa-Stage43-Toggle-Sync-0.1.215.apk
+          O=evidence/Rota-Certa-Stage43-Physical-Off-Commit-0.1.216.apk
           test -f "$A"
           cp "$A" "$O"
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           "$AAPT" dump badging "$O" | tee evidence/badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5499' versionName='0.1.215'" evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5500' versionName='0.1.216'" evidence/badging.txt
           "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
           unzip -t "$O" | tee evidence/zip.txt
@@ -248,19 +250,19 @@ jobs:
           unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
           while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
           cat evidence/dex/classes*.dex > evidence/all-classes.dex
-          for m in FAROL_MANUAL_TOGGLE_RUNTIME_SYNC_STAGE43 DATASTORE_EMISSION_APPLIES_LIVE_RUNTIME_STAGE43 GRID_TAP_APPLIES_RUNTIME_BEFORE_PERSIST_STAGE43 MANUAL_OFF_IMMEDIATELY_INVALIDATES_AND_PAINTS_GRAY_STAGE43 HOME_GRID_SERVICE_ONE_MANUAL_READING_STATE_STAGE43 FAROL_MANUAL_READING_AUTHORITY_STAGE42 FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41 FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40 FAROL_MAXIMUM_FORENSICS_STAGE38 FAROL_SINGLE_RUNTIME_AUTHORITY_STAGE36 FAROL_SINGLE_CARD_LEASE_STAGE34 FAROL_FORENSIC_CAUSALITY_STAGE20; do
+          for m in FAROL_MANUAL_TOGGLE_RUNTIME_SYNC_STAGE43 FORCED_OFF_BYPASSES_IDEMPOTENT_RENDER_SKIP_STAGE43 OFF_RENDER_APPLIED_REQUIRED_STAGE43 OFF_RENDER_MISMATCH_IS_REPORT_FAIL_STAGE43 MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 FAROL_MANUAL_READING_AUTHORITY_STAGE42 FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41 FAROL_FINAL_VISUAL_STATE_AUTHORITY_STAGE40 FAROL_MAXIMUM_FORENSICS_STAGE38 FAROL_SINGLE_RUNTIME_AUTHORITY_STAGE36 FAROL_SINGLE_CARD_LEASE_STAGE34 FAROL_FORENSIC_CAUSALITY_STAGE20; do
             grep -a -q "$m" evidence/all-classes.dex
           done
           sha256sum "$O" | tee evidence/apk-sha256.txt
           sha512sum "$O" | tee evidence/apk-sha512.txt
           stat -c 'apk_bytes=%s' "$O" | tee evidence/apk-size.txt
-          printf 'versionName=0.1.215\nversionCode=5499\npackage=br.com.mapeiaia.rotacerta\nhead=%s\n' '${{ github.event.pull_request.head.sha || github.sha }}' | tee evidence/build-identity.txt
-          echo 'stage43_manual_toggle_sync_apk_validation=PASS' | tee evidence/apk-validation.txt
+          printf 'versionName=0.1.216\nversionCode=5500\npackage=br.com.mapeiaia.rotacerta\nhead=%s\n' '${{ github.event.pull_request.head.sha || github.sha }}' | tee evidence/build-identity.txt
+          echo 'stage43_physical_off_commit_apk_validation=PASS' | tee evidence/apk-validation.txt
 
-      - name: Upload Stage43 physical artifact
+      - name: Upload corrected Stage43 physical artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.215-stage43-manual-toggle-runtime-sync
+          name: rota-certa-0.1.216-stage43-physical-off-commit
           path: evidence/
           if-no-files-found: error
           retention-days: 30
