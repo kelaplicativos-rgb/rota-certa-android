@@ -182,7 +182,7 @@ Aceitar por R$ 14"""
     fun stage43_physical_off_commit_remains_materialized() {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("S43_MANUAL_OFF_RENDER_COMMIT"))
-        assertTrue(source("FarolManualToggleRuntimeSyncStage43.kt").contains("MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43"))
+        assertTrue(source("FarolManualOffVisualCommitStage43.kt").contains("MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43"))
     }
 
     @Test
