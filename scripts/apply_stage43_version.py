@@ -17,26 +17,26 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
 
 s = BUILD.read_text(encoding='utf-8')
 if s.count('versionCode = 5498') != 1:
-    raise SystemExit('Stage43 expected versionCode 5498 exactly once')
+    raise SystemExit('Stage43 correction expected versionCode 5498 exactly once')
 if s.count('versionName = "0.1.214"') != 1:
-    raise SystemExit('Stage43 expected versionName 0.1.214 exactly once')
+    raise SystemExit('Stage43 correction expected versionName 0.1.214 exactly once')
 BUILD.write_text(
-    s.replace('versionCode = 5498', 'versionCode = 5499', 1)
-     .replace('versionName = "0.1.214"', 'versionName = "0.1.215"', 1),
+    s.replace('versionCode = 5498', 'versionCode = 5500', 1)
+     .replace('versionName = "0.1.214"', 'versionName = "0.1.216"', 1),
     encoding='utf-8',
 )
 
 replace_once(
     TESTS / 'FarolStage34Test.kt',
     'assertTrue(s.contains("versionCode = 5498")); assertTrue(s.contains("versionName = \\"0.1.214\\""))',
-    'assertTrue(s.contains("versionCode = 5499")); assertTrue(s.contains("versionName = \\"0.1.215\\""))',
+    'assertTrue(s.contains("versionCode = 5500")); assertTrue(s.contains("versionName = \\"0.1.216\\""))',
     'Stage34 inherited version assertion',
 )
 replace_once(
     TESTS / 'FarolStage36RuntimeTest.kt',
     'assertTrue(b.contains("versionCode = 5498"));assertTrue(b.contains("versionName = \\"0.1.214\\""))',
-    'assertTrue(b.contains("versionCode = 5499"));assertTrue(b.contains("versionName = \\"0.1.215\\""))',
+    'assertTrue(b.contains("versionCode = 5500"));assertTrue(b.contains("versionName = \\"0.1.216\\""))',
     'Stage36 inherited version assertion',
 )
 
-print('stage43_version=PASS versionName=0.1.215 versionCode=5499 inherited_version_assertions=2')
+print('stage43_version=PASS versionName=0.1.216 versionCode=5500 inherited_version_assertions=2 physical_off_correction=true')
