@@ -18,12 +18,16 @@ class FarolStage43ManualToggleRuntimeSyncTest {
             ?: error("Stage43 source not found: $name; cwd=${cwd.absolutePath}")
     }
 
-    @Test fun contractMarkersDescribeOneSynchronizedManualState() {
+    @Test fun contractMarkersDescribeOneSynchronizedManualStateAndPhysicalOffProof() {
         assertEquals("FAROL_MANUAL_TOGGLE_RUNTIME_SYNC_STAGE43", FarolManualToggleRuntimeSyncStage43.CONTRACT_MARKER)
         assertEquals("DATASTORE_EMISSION_APPLIES_LIVE_RUNTIME_STAGE43", FarolManualToggleRuntimeSyncStage43.FLOW_MARKER)
         assertEquals("GRID_TAP_APPLIES_RUNTIME_BEFORE_PERSIST_STAGE43", FarolManualToggleRuntimeSyncStage43.GRID_MARKER)
         assertEquals("MANUAL_OFF_IMMEDIATELY_INVALIDATES_AND_PAINTS_GRAY_STAGE43", FarolManualToggleRuntimeSyncStage43.OFF_MARKER)
         assertEquals("HOME_GRID_SERVICE_ONE_MANUAL_READING_STATE_STAGE43", FarolManualToggleRuntimeSyncStage43.SINGLE_STATE_MARKER)
+        assertEquals("FORCED_OFF_BYPASSES_IDEMPOTENT_RENDER_SKIP_STAGE43", FarolManualToggleRuntimeSyncStage43.FORCE_RENDER_MARKER)
+        assertEquals("OFF_RENDER_APPLIED_REQUIRED_STAGE43", FarolManualToggleRuntimeSyncStage43.APPLIED_REQUIRED_MARKER)
+        assertEquals("OFF_RENDER_MISMATCH_IS_REPORT_FAIL_STAGE43", FarolManualToggleRuntimeSyncStage43.REPORT_FAIL_MARKER)
+        assertEquals("MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43", FarolManualOffVisualCommitStage43.CONTRACT_MARKER)
     }
 
     @Test fun stage43StateAdapterUsesTheStage42ManualAuthority() {
@@ -101,7 +105,7 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         assertFalse(block.contains("repository.saveSettings(updated0162)"))
     }
 
-    @Test fun stage42ManualOffStillOwnsImmediateGrayBubble() {
+    @Test fun manualOffForcesRealGrayCommitWithoutPremutatingLogicalColor() {
         val s = source("LiveRideAccessibilityService.kt")
         val a = s.indexOf("    private fun applyWorkModeRuntime0162(")
         val b = s.indexOf("    private fun ensureDriverCardSession0162(", a)
@@ -109,8 +113,66 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         val block = s.substring(a, b)
         assertTrue(block.contains("stage36RuntimeAuthority.setManualAuthority(enabled0162)"))
         assertTrue(block.contains("stage26ReadingActivation.setManualAuthority(enabled0162)"))
-        assertTrue(block.contains("showOverlay(RadarColor.Idle, null)"))
+        assertTrue(block.contains("showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)"))
+        assertTrue(block.contains("S43_MANUAL_OFF_RENDER_COMMIT"))
+        assertTrue(block.contains("S43_MANUAL_OFF_RENDER_ANOMALY"))
+        assertFalse(block.contains("currentRadarColor = RadarColor.Idle"))
+        assertFalse(block.contains("currentDistanceKm = null"))
         assertFalse(block.contains("removeOverlay()"))
+    }
+
+    @Test fun forcedOffBypassesOnlyTheLegacyIdempotentSameValueSkip() {
+        val s = source("LiveRideAccessibilityService.kt")
+        assertTrue(s.contains("private fun renderOverlayStage40(color: RadarColor, distanceKm: Double? = null, forcePhysicalCommitStage43: Boolean = false)"))
+        assertTrue(s.contains("if (!forcePhysicalCommitStage43 && existingViewChecklist15 != null && currentRadarColor == color"))
+        assertTrue(s.contains("overlayIdempotentSkipped"))
+    }
+
+    @Test fun stage40VisualAuthorityStillDecidesColorAndForwardsTheForceFlag() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val a = s.indexOf("    private fun showOverlay(color: RadarColor")
+        val b = s.indexOf("    private fun renderOverlayStage40(", a)
+        val block = s.substring(a, b)
+        assertTrue(block.contains("FarolVisualStateAuthorityStage40.decide("))
+        assertTrue(block.contains("renderOverlayStage40(effectiveColorStage40, decisionStage40.distanceKm, forcePhysicalCommitStage43)"))
+        assertTrue(block.contains("S40_VISUAL_AUTHORITY_DECISION"))
+    }
+
+    @Test fun physicalOffProofSerialAdvancesOnlyAfterOverlayApplied() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val applied = s.indexOf("FarolForensicTraceStage20.overlayApplied(")
+        val serial = s.indexOf("stage43OffRenderAppliedSerial += 1L", applied)
+        assertTrue(applied >= 0)
+        assertTrue(serial > applied)
+        val before = s.lastIndexOf("stage43OffRenderAppliedSerial", applied)
+        assertTrue(before >= 0)
+    }
+
+    @Test fun diagnosticVerdictCannotCallMissingOffCommitPass() {
+        FarolManualOffVisualCommitStage43.resetForTests()
+        assertEquals("NOT_TESTED", FarolManualOffVisualCommitStage43.snapshot().status)
+        assertTrue(FarolManualOffVisualCommitStage43.exportReport().contains("status=NOT_TESTED"))
+        FarolManualOffVisualCommitStage43.recordAttempt(true)
+        assertEquals("PASS", FarolManualOffVisualCommitStage43.snapshot().status)
+        assertTrue(FarolManualOffVisualCommitStage43.exportReport().contains("status=PASS"))
+        FarolManualOffVisualCommitStage43.recordAttempt(false)
+        assertEquals("FAIL", FarolManualOffVisualCommitStage43.snapshot().status)
+        assertTrue(FarolManualOffVisualCommitStage43.exportReport().contains("anomalies=1"))
+        FarolManualOffVisualCommitStage43.resetForTests()
+    }
+
+    @Test fun manualTechnicalReportExportsStage43PhysicalVerdict() {
+        val r = source("ManualTechnicalReportBuilder.kt")
+        assertTrue(r.contains("FarolManualOffVisualCommitStage43.exportReport()"))
+    }
+
+    @Test fun manualOnKeepsTheNormalNonForcedYellowAuthorityPath() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val a = s.indexOf("    private fun applyWorkModeRuntime0162(")
+        val b = s.indexOf("        driverCardSessionGate0162.invalidate()", a)
+        val onBlock = s.substring(a, b)
+        assertTrue(onBlock.contains("showOverlay(RadarColor.Idle, null)"))
+        assertFalse(onBlock.contains("forcePhysicalCommitStage43 = true"))
     }
 
     @Test fun noRideAppPresenceGateWasReintroduced() {
@@ -129,7 +191,7 @@ class FarolStage43ManualToggleRuntimeSyncTest {
     }
 
     @Test fun stage43IntroducesNoPollingTimerSleepOrContinuousOcr() {
-        val h = source("FarolManualToggleRuntimeSyncStage43.kt")
+        val h = source("FarolManualToggleRuntimeSyncStage43.kt") + source("FarolManualOffVisualCommitStage43.kt")
         listOf("Thread.sleep(", "SystemClock.sleep(", "Timer(", "scheduleAtFixedRate(", "fixedRateTimer(", "while (true)", "requestUniversalScreenshotStage19(").forEach {
             assertFalse("forbidden Stage43 primitive: $it", h.contains(it))
         }
