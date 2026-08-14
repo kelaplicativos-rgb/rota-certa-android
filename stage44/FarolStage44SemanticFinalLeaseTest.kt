@@ -118,8 +118,10 @@ class FarolStage44SemanticFinalLeaseTest {
         val function = s.indexOf("private fun invalidateOldVisualBeforeCollectStage26(")
         val end = s.indexOf("private fun collectUniversalAccessibilityBlocksStage19", function)
         val block = s.substring(function, end)
-        assertTrue(block.contains("universalActiveAddressSignature = null"))
+        // Stage36 deliberately retains the old address signature as a freshness lease; Stage44 must not undo it.
+        assertFalse(block.contains("universalActiveAddressSignature = null"))
         assertTrue(block.contains("currentDistanceKm = null"))
+        assertTrue(block.contains("stage19VisualVerificationPending = true"))
         // Stage40 materialization rewrites legacy Orange public callers to Default/yellow.
         assertTrue(block.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
     }
