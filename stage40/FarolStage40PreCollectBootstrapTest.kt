@@ -152,7 +152,7 @@ class FarolStage40PreCollectBootstrapTest {
         val a = s.indexOf("val structuralSignatureStage40 = when")
         val b = s.indexOf("val ownEventStage40", a)
         val block = s.substring(a,b)
-        assertTrue(block.contains("window-transition:$eventWindowIdStage26"))
+        assertTrue(block.contains("window-transition:${'$'}eventWindowIdStage26"))
         assertFalse(block.contains("append(eventWindowIdStage26)"))
     }
 
