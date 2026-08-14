@@ -41,13 +41,14 @@ object FarolManualToggleRuntimeSyncStage43 {
 
 service = SERVICE.read_text(encoding='utf-8')
 
-# Runtime bookkeeping is intentionally service-local. It prevents duplicate DataStore emissions
-# from repeatedly tearing down/restarting the same state, while force is used on service bootstrap.
-settings_anchor = '    private var currentSettings = AppSettings()\n'
-settings_new = settings_anchor + '''    private var stage43LastAppliedManualReading: Boolean? = null
+# Runtime bookkeeping is intentionally service-local. Stage42 guarantees the refresh function,
+# so anchor fields there rather than relying on an old declaration layout that prior stages can move.
+field_anchor = '    private fun refreshReadingActivationStage26(\n'
+field_block = '''    private var stage43LastAppliedManualReading: Boolean? = null
     private var stage43ManualTransitionSerial: Long = 0L
+
 '''
-service = once(service, settings_anchor, settings_new, 'Stage43 runtime state fields')
+service = once(service, field_anchor, field_block + field_anchor, 'Stage43 runtime state fields')
 
 # The inherited collector only copied settings into currentSettings. That allowed Compose/DataStore
 # to show OFF while the already-running AccessibilityService stayed ON. Every emission must now
