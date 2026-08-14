@@ -48,17 +48,21 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         assertTrue(FarolManualToggleRuntimeSyncStage43.enabled(s))
     }
 
-    @Test fun settingsFlowNoLongerOnlyCopiesCurrentSettings() {
+    @Test fun settingsFlowAlwaysEntersTheSingleRuntimeTransitionWhenReady() {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("repository.settings.collect { updatedStage43 ->"))
+        assertTrue(s.contains("if (!workModeSettingsReady0162) return@collect"))
         assertTrue(s.contains("applyPersistedManualReadingStage43(updatedStage43, \"settings_flow\")"))
-        assertFalse(s.contains("repository.settings.collect { currentSettings = it }"))
+        assertFalse(s.contains("val previousEnabled0162 = WorkModePolicy0162.isEnabled(currentSettings)"))
     }
 
-    @Test fun serviceBootstrapUsesTheSameRuntimeTransition() {
+    @Test fun serviceBootstrapUsesSameTransitionAfterMigrationsAreReady() {
         val s = source("LiveRideAccessibilityService.kt")
-        assertTrue(s.contains("applyPersistedManualReadingStage43(repository.settings.first(), \"service_bootstrap\", forceStage43 = true)"))
-        assertFalse(s.contains("currentSettings = repository.settings.first()"))
+        val ready = s.indexOf("workModeSettingsReady0162 = true")
+        val apply = s.indexOf("applyPersistedManualReadingStage43(currentSettings, \"service_bootstrap\", forceStage43 = true)", ready)
+        assertTrue(ready >= 0)
+        assertTrue(apply > ready)
+        assertTrue(s.contains("currentSettings = repository.settings.first()"))
     }
 
     @Test fun persistedTransitionWritesCurrentSettingsBeforeApplyingRuntime() {
@@ -86,12 +90,15 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         assertTrue(persist > apply)
     }
 
-    @Test fun readingGridShortcutInvokesTheStage43Command() {
+    @Test fun readingGridShortcutInvokesExactlyOneStage43Command() {
         val s = source("LiveRideAccessibilityService.kt")
-        val toast = s.indexOf("if (enabled0162) \"Leitura do Farol ATIVADA\" else \"Leitura do Farol DESLIGADA\"")
-        val command = s.lastIndexOf("applyManualReadingCommandStage43(enabled0162, \"grid_shortcut\")", toast)
-        assertTrue(toast >= 0)
-        assertTrue(command >= 0 && command < toast)
+        val a = s.indexOf("    private fun toggleLiveReadingFromBubble()")
+        val b = s.indexOf("    private fun stopApplicationFromBubble()", a)
+        assertTrue(a >= 0 && b > a)
+        val block = s.substring(a, b)
+        assertEquals(1, Regex("applyManualReadingCommandStage43\\(enabled0162, \\\"grid_shortcut\\\"\\)").findAll(block).count())
+        assertFalse(block.contains("applyWorkModeRuntime0162(enabled0162)"))
+        assertFalse(block.contains("repository.saveSettings(updated0162)"))
     }
 
     @Test fun stage42ManualOffStillOwnsImmediateGrayBubble() {
