@@ -26,6 +26,10 @@ class FarolStage46VisualEpochNoResultTest {
             "OCR_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46",
             "ROUTE_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46",
             "RAW_EVENT_SAME_SURFACE_DOES_NOT_CANCEL_STAGE46",
+            "HARD_WINDOW_BOUNDARY_REVOKES_FINAL_STAGE46",
+            "DUPLICATE_CANNOT_CROSS_VISUAL_EPOCH_STAGE46",
+            "NEW_UBER_OVERLAY_CANNOT_INHERIT_OLD_FINAL_STAGE46",
+            "ORDINARY_CONTENT_CHURN_PRESERVES_STAGE44_STAGE46",
             "SELF_OVERLAY_DECIMAL_EXCLUDED_BEFORE_CLUSTER_STAGE46",
             "OPEN_ADDRESS_PARENTHESIS_CANNOT_CONSUME_DECIMAL_NOISE_STAGE46",
             "NO_RESULT_RECOVERY_USES_LOCAL_NON_OVERLAPPING_ADDRESS_PAIRS_STAGE46",
@@ -35,23 +39,92 @@ class FarolStage46VisualEpochNoResultTest {
     }
 
     @Test fun physical_indrive_to_launcher_surface_change_is_stale() {
-        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6306)
-        assertFalse(FarolVisualEpochNoResultStage46.surfaceFresh(token, "com.sec.android.app.launcher"))
+        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6306, 7L)
+        assertFalse(FarolVisualEpochNoResultStage46.surfaceFresh(token, "com.sec.android.app.launcher", 7L))
     }
 
     @Test fun same_surface_raw_recyclerview_churn_remains_fresh() {
-        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6277)
-        assertTrue(FarolVisualEpochNoResultStage46.surfaceFresh(token, "sinet.startup.indriver"))
+        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6277, 7L)
+        assertTrue(FarolVisualEpochNoResultStage46.surfaceFresh(token, "sinet.startup.indriver", 7L))
     }
 
     @Test fun missing_current_surface_fails_closed() {
-        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6277)
-        assertFalse(FarolVisualEpochNoResultStage46.surfaceFresh(token, null))
+        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", null, 6277, 7L)
+        assertFalse(FarolVisualEpochNoResultStage46.surfaceFresh(token, null, 7L))
     }
 
     @Test fun root_package_has_precedence_over_event_package() {
-        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", "com.samsung.android.app.smartcapture", 6277)
+        val token = FarolVisualEpochNoResultStage46.captureSurface("sinet.startup.indriver", "com.samsung.android.app.smartcapture", 6277, 7L)
         assertEquals("sinet.startup.indriver", token.packageName)
+    }
+
+    @Test fun physical_uber_22_611_same_launcher_cannot_cross_visual_epoch() {
+        val oldFinal = FarolVisualEpochNoResultStage46.captureSurface("com.sec.android.app.launcher", "com.ubercab.driver", 6314, 84L)
+        assertTrue(FarolVisualEpochNoResultStage46.surfaceFresh(oldFinal, "com.sec.android.app.launcher", 84L))
+        assertFalse(FarolVisualEpochNoResultStage46.surfaceFresh(oldFinal, "com.sec.android.app.launcher", 85L))
+    }
+
+    @Test fun same_launcher_same_epoch_remains_fresh() {
+        val token = FarolVisualEpochNoResultStage46.captureSurface("com.sec.android.app.launcher", "com.ubercab.driver", 6314, 84L)
+        assertTrue(FarolVisualEpochNoResultStage46.surfaceFresh(token, "com.sec.android.app.launcher", 84L))
+    }
+
+    @Test fun physical_window_transition_6415_is_hard_boundary() {
+        assertTrue(
+            FarolVisualEpochNoResultStage46.isHardWindowBoundary(
+                eventType = 4_194_304,
+                structuralSignature = "window-transition:6415",
+                ownOverlay = false,
+                heavyCollect = true,
+            ),
+        )
+    }
+
+    @Test fun coalesced_duplicate_window_transition_does_not_revoke_again() {
+        assertFalse(
+            FarolVisualEpochNoResultStage46.isHardWindowBoundary(
+                eventType = 4_194_304,
+                structuralSignature = "window-transition:6415",
+                ownOverlay = false,
+                heavyCollect = false,
+            ),
+        )
+    }
+
+    @Test fun ordinary_recyclerview_content_change_is_not_hard_boundary() {
+        assertFalse(
+            FarolVisualEpochNoResultStage46.isHardWindowBoundary(
+                eventType = 2_048,
+                structuralSignature = "com.ubercab.driver:2048:0:0:22:42:recyclerview",
+                ownOverlay = false,
+                heavyCollect = true,
+            ),
+        )
+    }
+
+    @Test fun hard_boundary_executes_before_stage44_final_lease_capture() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val boundaryCall = s.indexOf("advanceHardVisualEpochStage46(")
+        val stage44Lease = s.indexOf("S44_FINAL_LEASE_HELD_PRECOLLECT")
+        assertTrue(boundaryCall >= 0)
+        assertTrue(stage44Lease > boundaryCall)
+    }
+
+    @Test fun hard_boundary_cancels_old_work_clears_signature_and_commits_yellow() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val start = s.indexOf("private fun advanceHardVisualEpochStage46(")
+        val end = s.indexOf("private fun isStage46OcrWorkFresh(", start)
+        assertTrue(start >= 0 && end > start)
+        val body = s.substring(start, end)
+        assertTrue(body.contains("stage46VisualEpoch += 1L"))
+        assertTrue(body.contains("stage36RuntimeAuthority.clearVisualLease"))
+        assertTrue(body.contains("universalRouteJob?.cancel()"))
+        assertTrue(body.contains("stage36BindingWorkToken.clear()"))
+        assertTrue(body.contains("stage46BindingSurfaceToken.clear()"))
+        assertTrue(body.contains("universalActiveAddressSignature = null"))
+        assertTrue(body.contains("currentDistanceKm = null"))
+        assertTrue(body.contains("showOverlay(RadarColor.Default, distanceKm = null)"))
+        assertTrue(body.contains("S46_HARD_VISUAL_BOUNDARY"))
     }
 
     @Test fun physical_top_right_farol_decimal_2_4_is_removed_before_cluster() {
@@ -131,19 +204,20 @@ Estação Capuava (Avenida Manoel da Nobrega - Capuava, Mauá - SP)"""
         assertTrue(FarolVisualEpochNoResultStage46.buildLocalAddressPairBands(f).isEmpty())
     }
 
-    @Test fun service_ocr_freshness_uses_physical_surface_at_all_stage36_checkpoints() {
+    @Test fun service_ocr_freshness_uses_physical_surface_and_epoch_at_all_stage36_checkpoints() {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("val surfaceTokenStage46 = FarolVisualEpochNoResultStage46.captureSurface"))
         assertTrue(s.contains("private fun isStage46OcrWorkFresh("))
         assertFalse(s.contains("if (!isStage36WorkFresh(workTokenStage36))"))
+        assertTrue(s.contains("surfaceStage46, currentRootPackageName(), stage46VisualEpoch"))
         assertTrue(s.contains("S46_STALE_OCR_SURFACE_DROPPED"))
     }
 
-    @Test fun route_and_final_paint_binding_require_same_physical_surface() {
+    @Test fun route_and_final_paint_binding_require_same_physical_surface_and_epoch() {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("stage46BindingSurfaceToken"))
         assertTrue(s.contains("S46_STALE_ROUTE_SURFACE_DROPPED"))
-        assertTrue(s.contains("FarolVisualEpochNoResultStage46.surfaceFresh(surfaceStage46, currentRootPackageName())"))
+        assertTrue(s.contains("capturedEpoch=${surfaceStage46.visualEpoch}; currentEpoch=$stage46VisualEpoch"))
     }
 
     @Test fun no_result_recovery_runs_only_after_normal_evaluation_is_null() {
