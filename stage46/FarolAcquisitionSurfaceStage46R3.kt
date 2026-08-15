@@ -11,6 +11,7 @@ object FarolAcquisitionSurfaceStage46R3 {
     const val RELEASE_MARKER = "CONFIRMED_TARGET_RELEASED_WHEN_FINAL_REVOKED_STAGE46_R3"
     const val FOREGROUND_MARKER = "FOREGROUND_SURFACE_CAN_ACQUIRE_AFTER_OLD_TARGET_STAGE46_R3"
     const val OCR_MARKER = "OCR_ACQUISITION_NOT_PINNED_TO_STALE_CONFIRMED_TARGET_STAGE46_R3"
+    const val FRESHNESS_MARKER = "OCR_ACQUISITION_REQUIRES_CURRENT_OR_INTERACTIVE_SURFACE_STAGE46_R3"
     const val PROMOTION_MARKER = "TARGET_PROMOTED_ONLY_AFTER_SEMANTIC_VALIDATION_STAGE46_R3"
     const val FOREIGN_MARKER = "FOREIGN_OVERLAY_CANNOT_STEAL_INTERACTIVE_TARGET_STAGE46_R3"
     const val HANDOFF_MARKER = "PROVEN_FOREGROUND_HANDOFF_CLEARS_OLD_FINAL_STAGE46_R3"
@@ -97,6 +98,27 @@ object FarolAcquisitionSurfaceStage46R3 {
         }
 
         return AcquisitionDecision(null, "no_acquisition_surface")
+    }
+
+    /**
+     * OCR acquisition freshness is stricter than mere window-list presence. A full-screen source is
+     * fresh while it is the current root; an overlay source is fresh while its concrete window is
+     * still active/focused. A background-listed old activity cannot keep an OCR alive after handoff.
+     */
+    fun acquisitionSurfaceFresh(
+        token: FarolVisualEpochNoResultStage46.SurfaceToken,
+        currentRootPackage: String?,
+        observedPresence: SurfacePresence,
+        currentVisualEpoch: Long,
+    ): Boolean {
+        if (token.visualEpoch != currentVisualEpoch) return false
+        val expected = normalizePackage(token.packageName) ?: return false
+        val root = normalizePackage(currentRootPackage)
+        val windowMatches = token.windowId <= 0 || observedPresence.windowId <= 0 ||
+            token.windowId == observedPresence.windowId
+        if (!windowMatches) return false
+        if (expected == root) return true
+        return observedPresence.interactive && observedPresence.windowId > 0
     }
 
     /**
