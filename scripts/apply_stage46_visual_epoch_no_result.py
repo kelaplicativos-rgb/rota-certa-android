@@ -26,8 +26,36 @@ s = once(
     s,
     '    private val stage36BindingWorkToken = LinkedHashMap<String, FarolRuntimeAuthorityStage36.WorkToken>()\n',
     '    private val stage36BindingWorkToken = LinkedHashMap<String, FarolRuntimeAuthorityStage36.WorkToken>()\n'
-    '    private val stage46BindingSurfaceToken = LinkedHashMap<String, FarolVisualEpochNoResultStage46.SurfaceToken>()\n',
-    'Stage46 binding surface map',
+    '    private val stage46BindingSurfaceToken = LinkedHashMap<String, FarolVisualEpochNoResultStage46.SurfaceToken>()\n'
+    '    private var stage46VisualEpoch = 0L\n'
+    '    private var stage46LastHardBoundaryGeneration = Long.MIN_VALUE\n',
+    'Stage46 binding surface map and epoch',
+)
+
+# Physical 0.1.218 proof: Uber final 22.611 survived a source-less TYPE_WINDOWS_CHANGED
+# window-transition:6415 because Stage44 later classified the accessibility snapshot as a raw duplicate.
+# Stage46 makes that admitted window-list transition a stronger boundary than Stage44 duplicate preservation.
+s = once(
+    s,
+    '        val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)\n',
+    '''        val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)
+        val hardBoundaryStage46 = FarolVisualEpochNoResultStage46.isHardWindowBoundary(
+            eventTypeStage20,
+            cheapSignalStage26.structuralSignature,
+            cheapSignalStage26.ownOverlay,
+            admissionStage26.heavyCollect,
+        )
+        if (hardBoundaryStage46 && admissionStage26.visualGeneration != stage46LastHardBoundaryGeneration) {
+            advanceHardVisualEpochStage46(
+                admissionStage26.visualGeneration,
+                eventStartedNsStage26,
+                eventPackageStage19,
+                eventWindowIdStage20,
+                cheapSignalStage26.structuralSignature,
+            )
+        }
+''',
+    'Stage46 hard window boundary before Stage44 lease capture',
 )
 
 s = once(
@@ -35,11 +63,11 @@ s = once(
     '        val visualWindowIdStage19 = stage19ActiveWindowId ?: runCatching { rootInActiveWindow?.windowId }.getOrNull() ?: 0\n',
     '        val visualWindowIdStage19 = stage19ActiveWindowId ?: runCatching { rootInActiveWindow?.windowId }.getOrNull() ?: 0\n'
     '        val surfaceTokenStage46 = FarolVisualEpochNoResultStage46.captureSurface(\n'
-    '            currentRootPackageName(), eventPackageStage19, visualWindowIdStage19,\n'
+    '            currentRootPackageName(), eventPackageStage19, visualWindowIdStage19, stage46VisualEpoch,\n'
     '        )\n'
     '        FarolMaximumForensicsStage38.record(\n'
     '            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_OCR_SURFACE_CAPTURED", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",\n'
-    '            details = "surfacePackage=${surfaceTokenStage46.packageName.orEmpty()}; surfaceWindow=${surfaceTokenStage46.windowId}; root=${currentRootPackageName().orEmpty()}",\n'
+    '            details = "surfacePackage=${surfaceTokenStage46.packageName.orEmpty()}; surfaceWindow=${surfaceTokenStage46.windowId}; visualEpoch=${surfaceTokenStage46.visualEpoch}; root=${currentRootPackageName().orEmpty()}",\n'
     '        )\n',
     'Stage46 OCR surface capture',
 )
@@ -53,16 +81,60 @@ s = s.replace(ocr_call, 'isStage46OcrWorkFresh(workTokenStage36, surfaceTokenSta
 s = once(
     s,
     '    private fun requestUniversalScreenshotStage19(\n',
-    '''    private fun isStage46OcrWorkFresh(
+    '''    private fun advanceHardVisualEpochStage46(
+        admissionGenerationStage46: Long,
+        eventStartedNsStage46: Long,
+        eventPackageStage46: String?,
+        eventWindowStage46: Int,
+        structuralStage46: String,
+    ) {
+        val previousEpochStage46 = stage46VisualEpoch
+        stage46VisualEpoch += 1L
+        stage46LastHardBoundaryGeneration = admissionGenerationStage46
+
+        // A true Android window-list transition is explicit visual disappearance/replacement evidence.
+        // Unlike Stage36 raw churn, old OCR/route/final work is not allowed to survive this boundary.
+        if (::stage36RuntimeAuthority.isInitialized) {
+            stage36RuntimeAuthority.clearVisualLease("stage46_hard_window_boundary")
+        }
+        analyzeJob?.cancel(); analyzeJob = null
+        screenshotFallbackJob127?.cancel(); screenshotFallbackJob127 = null
+        universalRouteJob?.cancel(); universalRouteJob = null
+        stage19OcrSerial += 1L
+        stage19OcrRerunRequested = false
+        stage36BindingWorkToken.clear()
+        stage46BindingSurfaceToken.clear()
+        universalScreenGeneration += 1L
+        universalWindowGeneration += 1L
+        universalActiveAddressSignature = null
+        lastAnalyzedHash = null
+        currentDistanceKm = null
+        stage19VisualVerificationPending = true
+        showOverlay(RadarColor.Default, distanceKm = null)
+
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_HARD_VISUAL_BOUNDARY", eventPackageStage46,
+            details = "fromEpoch=$previousEpochStage46; toEpoch=$stage46VisualEpoch; admissionGeneration=$admissionGenerationStage46; eventWindow=$eventWindowStage46; structural=${structuralStage46.take(300)}; oldWorkCancelled=true; oldSignatureCleared=true; yellowCommitted=true",
+        )
+        FarolCausalLatencyStage28.Metrics.increment("stage46HardVisualBoundary")
+        FarolCausalLatencyStage28.Metrics.sample(
+            "eventToStage46HardBoundary",
+            SystemClock.elapsedRealtimeNanos() - eventStartedNsStage46,
+        )
+    }
+
+    private fun isStage46OcrWorkFresh(
         tokenStage36: FarolRuntimeAuthorityStage36.WorkToken,
         surfaceStage46: FarolVisualEpochNoResultStage46.SurfaceToken,
     ): Boolean {
         val runtimeFreshStage46 = isStage36WorkFresh(tokenStage36)
-        val surfaceFreshStage46 = FarolVisualEpochNoResultStage46.surfaceFresh(surfaceStage46, currentRootPackageName())
+        val surfaceFreshStage46 = FarolVisualEpochNoResultStage46.surfaceFresh(
+            surfaceStage46, currentRootPackageName(), stage46VisualEpoch,
+        )
         if (runtimeFreshStage46 && !surfaceFreshStage46) {
             FarolMaximumForensicsStage38.record(
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_STALE_OCR_SURFACE_DROPPED", currentRootPackageName(),
-                details = "captured=${surfaceStage46.packageName.orEmpty()}; current=${currentRootPackageName().orEmpty()}; window=${surfaceStage46.windowId}",
+                details = "captured=${surfaceStage46.packageName.orEmpty()}; current=${currentRootPackageName().orEmpty()}; window=${surfaceStage46.windowId}; capturedEpoch=${surfaceStage46.visualEpoch}; currentEpoch=$stage46VisualEpoch",
             )
         }
         return runtimeFreshStage46 && surfaceFreshStage46
@@ -70,7 +142,7 @@ s = once(
 
     private fun requestUniversalScreenshotStage19(
 ''',
-    'Stage46 OCR fresh helper',
+    'Stage46 epoch boundary and OCR fresh helper',
 )
 
 old_fragments = '''                                val fragmentsStage19 = structuredStage19.blocks.take(120).mapIndexedNotNull { indexStage19, blockStage19 ->
@@ -211,7 +283,7 @@ s = once(
     '            if (firstSurfaceStage46 != null) stage46BindingSurfaceToken.remove(firstSurfaceStage46)\n'
     '        }\n'
     '        stage46BindingSurfaceToken[keyStage46] = FarolVisualEpochNoResultStage46.captureSurface(\n'
-    '            currentRootPackageName(), null, stage19ActiveWindowId ?: 0,\n'
+    '            currentRootPackageName(), null, stage19ActiveWindowId ?: 0, stage46VisualEpoch,\n'
     '        )\n',
     'Stage46 route surface binding',
 )
@@ -224,11 +296,13 @@ s = once(
     '        val tokenStage36 = stage36BindingWorkToken[keyStage46] ?: return false\n'
     '        val surfaceStage46 = stage46BindingSurfaceToken[keyStage46] ?: return false\n'
     '        val runtimeFreshStage46 = stage36RuntimeAuthority.isFresh(tokenStage36)\n'
-    '        val surfaceFreshStage46 = FarolVisualEpochNoResultStage46.surfaceFresh(surfaceStage46, currentRootPackageName())\n'
+    '        val surfaceFreshStage46 = FarolVisualEpochNoResultStage46.surfaceFresh(\n'
+    '            surfaceStage46, currentRootPackageName(), stage46VisualEpoch,\n'
+    '        )\n'
     '        if (runtimeFreshStage46 && !surfaceFreshStage46) {\n'
     '            FarolMaximumForensicsStage38.record(\n'
     '                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_STALE_ROUTE_SURFACE_DROPPED", currentRootPackageName(),\n'
-    '                details = "captured=${surfaceStage46.packageName.orEmpty()}; current=${currentRootPackageName().orEmpty()}; binding=${bindingStage26.addressSignature}",\n'
+    '                details = "captured=${surfaceStage46.packageName.orEmpty()}; current=${currentRootPackageName().orEmpty()}; capturedEpoch=${surfaceStage46.visualEpoch}; currentEpoch=$stage46VisualEpoch; binding=${bindingStage26.addressSignature}",\n'
     '            )\n'
     '        }\n'
     '        return runtimeFreshStage46 && surfaceFreshStage46\n',
@@ -236,4 +310,4 @@ s = once(
 )
 
 SERVICE.write_text(s, encoding='utf-8')
-print(f'stage46_visual_epoch_no_result=PASS ocr_freshness_checkpoints={ocr_count}')
+print(f'stage46_visual_epoch_no_result=PASS ocr_freshness_checkpoints={ocr_count} hard_window_epoch=true')
