@@ -217,7 +217,7 @@ Estação Capuava (Avenida Manoel da Nobrega - Capuava, Mauá - SP)"""
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("stage46BindingSurfaceToken"))
         assertTrue(s.contains("S46_STALE_ROUTE_SURFACE_DROPPED"))
-        assertTrue(s.contains("capturedEpoch=${surfaceStage46.visualEpoch}; currentEpoch=$stage46VisualEpoch"))
+        assertTrue(s.contains("capturedEpoch=\${surfaceStage46.visualEpoch}; currentEpoch=\$stage46VisualEpoch"))
     }
 
     @Test fun no_result_recovery_runs_only_after_normal_evaluation_is_null() {
