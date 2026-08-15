@@ -27,8 +27,8 @@ object FarolTargetSurfaceStage46R2 {
     }
 
     /**
-     * A meaningful event package may identify a popup/overlay even when the root remains Launcher.
-     * Own/SystemUI events never replace a previously known target.
+     * Once a valid card owns a target surface, unrelated Accessibility events cannot steal it.
+     * With no target yet, a meaningful event package may identify a popup even when root=Launcher.
      */
     fun chooseTargetPackage(
         existingTargetPackage: String?,
@@ -36,10 +36,22 @@ object FarolTargetSurfaceStage46R2 {
         eventPackage: String?,
         ownPackageName: String,
     ): String? {
-        val event = normalizePackage(eventPackage)
-        if (event != null && !isOwnOrSystemPackage(event, ownPackageName)) return event
         val existing = normalizePackage(existingTargetPackage)
         if (existing != null && !isOwnOrSystemPackage(existing, ownPackageName)) return existing
+        val event = normalizePackage(eventPackage)
+        if (event != null && !isOwnOrSystemPackage(event, ownPackageName)) return event
+        val root = normalizePackage(currentRootPackage)
+        return root?.takeUnless { isOwnOrSystemPackage(it, ownPackageName) }
+    }
+
+    /** Candidate confirmation is allowed to move target ownership to the newly proven surface. */
+    fun chooseCandidateTargetPackage(
+        currentRootPackage: String?,
+        candidatePackage: String?,
+        ownPackageName: String,
+    ): String? {
+        val candidate = normalizePackage(candidatePackage)
+        if (candidate != null && !isOwnOrSystemPackage(candidate, ownPackageName)) return candidate
         val root = normalizePackage(currentRootPackage)
         return root?.takeUnless { isOwnOrSystemPackage(it, ownPackageName) }
     }
