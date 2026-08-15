@@ -2,21 +2,29 @@ package br.com.mapeiaia.rotacerta
 
 /**
  * Stage46: immutable visible-surface authority for async OCR/route work plus bounded
- * OCR decontamination/recovery. Raw RecyclerView churn in the same surface is not a
- * cancellation boundary; a real visible package boundary is.
+ * OCR decontamination/recovery. Ordinary RecyclerView churn in the same visual epoch is
+ * not a cancellation boundary; a proven Android window-list transition is.
  */
 object FarolVisualEpochNoResultStage46 {
     const val CONTRACT_MARKER = "FAROL_VISUAL_SURFACE_EPOCH_STAGE46"
     const val OCR_SURFACE_MARKER = "OCR_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46"
     const val ROUTE_SURFACE_MARKER = "ROUTE_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46"
     const val SAME_SURFACE_MARKER = "RAW_EVENT_SAME_SURFACE_DOES_NOT_CANCEL_STAGE46"
+    const val HARD_BOUNDARY_MARKER = "HARD_WINDOW_BOUNDARY_REVOKES_FINAL_STAGE46"
+    const val DUPLICATE_EPOCH_MARKER = "DUPLICATE_CANNOT_CROSS_VISUAL_EPOCH_STAGE46"
+    const val UBER_REPLACEMENT_MARKER = "NEW_UBER_OVERLAY_CANNOT_INHERIT_OLD_FINAL_STAGE46"
+    const val ORDINARY_CHURN_MARKER = "ORDINARY_CONTENT_CHURN_PRESERVES_STAGE44_STAGE46"
     const val SELF_OVERLAY_MARKER = "SELF_OVERLAY_DECIMAL_EXCLUDED_BEFORE_CLUSTER_STAGE46"
     const val RECONSTRUCTION_MARKER = "OPEN_ADDRESS_PARENTHESIS_CANNOT_CONSUME_DECIMAL_NOISE_STAGE46"
     const val NO_RESULT_MARKER = "NO_RESULT_RECOVERY_USES_LOCAL_NON_OVERLAPPING_ADDRESS_PAIRS_STAGE46"
     const val STAGE21_MARKER = "STAGE21_REVALIDATES_EVERY_RECOVERED_PAIR_STAGE46"
     const val NO_POLLING_MARKER = "NO_POLLING_NO_CONTINUOUS_OCR_STAGE46"
 
-    data class SurfaceToken(val packageName: String?, val windowId: Int)
+    data class SurfaceToken(
+        val packageName: String?,
+        val windowId: Int,
+        val visualEpoch: Long,
+    )
     data class Fragment(val id: String, val text: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
     data class PairBand(
         val index: Int,
@@ -45,15 +53,29 @@ object FarolVisualEpochNoResultStage46 {
 
     fun normalizePackage(value: String?): String? = value?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 
-    fun captureSurface(rootPackage: String?, eventPackage: String?, windowId: Int): SurfaceToken =
-        SurfaceToken(normalizePackage(rootPackage) ?: normalizePackage(eventPackage), windowId)
+    fun captureSurface(rootPackage: String?, eventPackage: String?, windowId: Int, visualEpoch: Long): SurfaceToken =
+        SurfaceToken(normalizePackage(rootPackage) ?: normalizePackage(eventPackage), windowId, visualEpoch)
 
-    fun surfaceFresh(token: SurfaceToken, currentRootPackage: String?): Boolean {
+    fun surfaceFresh(token: SurfaceToken, currentRootPackage: String?, currentVisualEpoch: Long): Boolean {
         val expected = normalizePackage(token.packageName) ?: return false
         val current = normalizePackage(currentRootPackage) ?: return false
-        // Window id is provenance only: Android may recreate a window inside the same live surface.
-        return expected == current
+        // Window id remains provenance. The monotonic visual epoch is the hard freshness boundary.
+        return expected == current && token.visualEpoch == currentVisualEpoch
     }
+
+    /**
+     * Android TYPE_WINDOWS_CHANGED with a source-less `window-transition:*` signal is stronger than
+     * ordinary CONTENT_CHANGED churn. Stage40 must also have admitted a heavy verification cycle;
+     * duplicate/coalesced window-list notifications therefore do not repeatedly revoke the same card.
+     */
+    fun isHardWindowBoundary(
+        eventType: Int,
+        structuralSignature: String,
+        ownOverlay: Boolean,
+        heavyCollect: Boolean,
+    ): Boolean =
+        eventType == 4_194_304 && !ownOverlay && heavyCollect &&
+            structuralSignature.trim().startsWith("window-transition:")
 
     fun shouldDropSelfOverlayDecimal(
         text: String,
