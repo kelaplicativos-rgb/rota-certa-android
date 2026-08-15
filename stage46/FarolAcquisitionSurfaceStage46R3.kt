@@ -54,10 +54,11 @@ object FarolAcquisitionSurfaceStage46R3 {
 
     /**
      * Acquisition policy:
-     * 1) a real foreground application wins acquisition immediately, even if an old target window
-     *    is still listed by Android in the background (physical com.comuto -> com.app99.driver case);
-     * 2) on passive hosts such as Launcher/SystemUI, an interactive confirmed popup keeps ownership;
-     * 3) without an interactive confirmed popup, a meaningful event popup can acquire;
+     * 1) a confirmed popup that is still active/focused remains the acquisition surface, even when
+     *    it overlays another foreground application;
+     * 2) if the old target is merely listed in the background, the real foreground application wins
+     *    acquisition immediately (physical com.comuto -> com.app99.driver case);
+     * 3) on passive hosts without an interactive confirmed popup, a meaningful popup event can acquire;
      * 4) final authority is NOT granted here; Stage21 still decides promotion later.
      */
     fun chooseAcquisitionPackage(
@@ -73,15 +74,18 @@ object FarolAcquisitionSurfaceStage46R3 {
         val targetInteractive = target != null &&
             (confirmedPresence.interactive || (root == target && confirmedPresence.windowId > 0))
 
+        if (targetInteractive) {
+            return AcquisitionDecision(
+                target,
+                if (root == target) "same_foreground_target" else "interactive_confirmed_popup",
+            )
+        }
+
         if (root != null && !isPassiveHost(root, ownPackageName)) {
             return AcquisitionDecision(
                 packageName = root,
                 reason = if (root == target) "same_foreground_target" else "foreground_root_acquisition",
             )
-        }
-
-        if (targetInteractive) {
-            return AcquisitionDecision(target, "interactive_confirmed_target_on_passive_host")
         }
 
         if (event != null && !isSystemOrOwn(event, ownPackageName) && !isPassiveHost(event, ownPackageName)) {
