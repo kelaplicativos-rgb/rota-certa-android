@@ -44,4 +44,14 @@ for name, old, new in legacy_exact:
         raise SystemExit(f'{name}: exact R5 inherited version assertion not found exactly once; count={count}')
     path.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-print('stage46_r6_test_compat=PASS inherited_stage46_files=5 r5_materialized_legacy_files=2 version=0.1.224/5508')
+# Keep the R6 source-contract regression aligned with the exact R4 helper marker. This changes only
+# the assertion text copied into the materialized test tree, never production behavior.
+r6_test = TESTS / 'FarolStage46SingleDestinationFastPathR6Test.kt'
+s = r6_test.read_text(encoding='utf-8')
+old_marker = 'FAROL_STABLE_FINAL_DECISION_LATCH_STAGE46_R4'
+new_marker = 'FAROL_STABLE_FINAL_LATCH_STAGE46_R4'
+if s.count(old_marker) != 1:
+    raise SystemExit(f'R6 inherited R4 marker assertion expected exactly once; got {s.count(old_marker)}')
+r6_test.write_text(s.replace(old_marker, new_marker, 1), encoding='utf-8')
+
+print('stage46_r6_test_compat=PASS inherited_stage46_files=5 r5_materialized_legacy_files=2 r4_marker_assertion_fixed=true version=0.1.224/5508')
