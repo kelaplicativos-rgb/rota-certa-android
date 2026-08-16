@@ -40,4 +40,19 @@ for name, old, new in legacy_exact:
         raise SystemExit(f'{name}: exact R4 inherited version assertion not found exactly once; count={s.count(old)}')
     path.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-print('stage46_r5_test_compat=PASS inherited_stage46_files=4 r4_materialized_legacy_files=2 version=0.1.223/5507')
+# The R5 source-contract test must search for the Kotlin interpolation text literally. The source
+# template intentionally contains `${stage46TargetSourcePackage == null}` inside a runtime details
+# string; leaving that sequence unescaped inside the TEST string makes the test compiler try to
+# resolve a private service field. Replace only the assertion representation, not production code.
+r5_test = TESTS / 'FarolStage46AtomicTransitionR5Test.kt'
+s = r5_test.read_text(encoding='utf-8')
+old_assert = '        assertTrue(block.contains("oldTargetReleased=${stage46TargetSourcePackage == null}"))\n'
+new_assert = (
+    '        assertTrue(block.contains("oldTargetReleased="))\n'
+    '        assertTrue(block.contains("stage46TargetSourcePackage == null"))\n'
+)
+if s.count(old_assert) != 1:
+    raise SystemExit(f'R5 literal source assertion expected exactly once, got {s.count(old_assert)}')
+r5_test.write_text(s.replace(old_assert, new_assert, 1), encoding='utf-8')
+
+print('stage46_r5_test_compat=PASS inherited_stage46_files=4 r4_materialized_legacy_files=2 literal_source_assertion_fixed=true version=0.1.223/5507')
