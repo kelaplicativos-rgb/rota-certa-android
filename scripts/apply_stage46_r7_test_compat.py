@@ -22,7 +22,7 @@ replacements = (
     ('fun semantic_acceptance_still_precedes_r3_target_promotion_and_route()', 'fun r7_semantic_acceptance_still_precedes_r3_target_promotion_and_route()'),
     ('fun version_is_stage46_r6_0_1_224_5508()', 'fun inherited_r6_test_tracks_stage46_r7_0_1_225_5509()'),
     ('versionCode = 5508', 'versionCode = 5509'),
-    ('versionName = \\"0.1.224\\"'.replace('\\\\"', '\\"'), 'versionName = \\"0.1.225\\"'.replace('\\\\"', '\\"')),
+    (r'versionName = \"0.1.224\"', r'versionName = \"0.1.225\"'),
 )
 for old, new in replacements:
     if old in s:
@@ -33,7 +33,7 @@ required = (
     'FarolImmediateAddressRouteStage46R7.validateEvaluation(evaluationStage19)',
     'S46_R7_IMMEDIATE_SINGLE_ADDRESS',
     'versionCode = 5509',
-    'versionName = \\"0.1.225\\"'.replace('\\\\"', '\\"'),
+    r'versionName = \"0.1.225\"',
 )
 for value in required:
     if value not in s:
