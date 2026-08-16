@@ -7,10 +7,9 @@ HIST34="$(cd "${4:?historical34}" && pwd)"
 mkdir -p "${5:?evidence}"
 EVIDENCE="$(cd "$5" && pwd)"
 
-# R6 v4 is already independently green. For R7 we still reconstruct/materialize R6 from the exact
-# reproducible recipe, but deliberately stop its orchestrator before the expensive R6 Gradle/lint/APK
-# pass. The final R7 state below runs Stage46 + full-suite + lint + assemble once. This removes duplicate
-# validation work without weakening the R7 proof and leaves the canonical R6 workflow unchanged.
+# R6 v4 is independently green. R7 still reconstructs/materializes the exact R6 predecessor, but
+# stops the R6 orchestrator immediately before its expensive Gradle/lint/APK pass. The final R7 state
+# then receives one authoritative Gradle pass with the complete unit suite + lint + assemble together.
 mkdir -p "$EVIDENCE/r6-bootstrap"
 R6_MATERIALIZER="$EVIDENCE/run-stage46-r6-materialize-only.sh"
 python3 - "$PATCHES/scripts/run_stage46_r6_reproducible_ci.sh" "$R6_MATERIALIZER" <<'PY'
@@ -70,40 +69,63 @@ python3 - "$SOURCE" <<'PY' | tee "$EVIDENCE/test-inventory.txt"
 from pathlib import Path
 import sys
 n=sum(p.read_text().count('@Test') for p in (Path(sys.argv[1])/'app/src/test/java').rglob('*.kt'))
-print(n); assert n==1233,n
+print('total_at_test='+str(n)); assert n==1233,n
 PY
 
 cd "$SOURCE"
-./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.FarolStage46*' | tee "$EVIDENCE/stage46-r7-tests.log"
-python3 - <<'PY' | tee "$EVIDENCE/stage46-r7-count.txt"
+# One authoritative pass. --rerun-tasks guarantees execution even though historical reconstruction may
+# have touched Gradle outputs. The same materialized source produces tests, lint result and physical APK.
+./gradlew --no-daemon --rerun-tasks testDebugUnitTest lintDebug assembleDebug | tee "$EVIDENCE/final-gradle-validation.log"
+python3 - <<'PY' | tee "$EVIDENCE/test-counts.txt"
 from pathlib import Path
 import xml.etree.ElementTree as E
-t=f=e=s=0
-for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-br.com.mapeiaia.rotacerta.FarolStage46*.xml'):
- r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
-print(t,f,e,s); assert (t,f,e,s)==(185,0,0,0),(t,f,e,s)
-PY
-./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee "$EVIDENCE/full-tests.log"
-python3 - <<'PY' | tee "$EVIDENCE/full-count.txt"
-from pathlib import Path
-import xml.etree.ElementTree as E
-t=f=e=s=0
+all_t=all_f=all_e=all_s=0
+s46_t=s46_f=s46_e=s46_s=0
 for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
- r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
-print(t,f,e,s); assert (t,f,e,s)==(1233,0,0,0),(t,f,e,s)
+    r=E.parse(p).getroot()
+    vals=(int(r.attrib.get('tests',0)),int(r.attrib.get('failures',0)),int(r.attrib.get('errors',0)),int(r.attrib.get('skipped',0)))
+    all_t+=vals[0]; all_f+=vals[1]; all_e+=vals[2]; all_s+=vals[3]
+    if p.name.startswith('TEST-br.com.mapeiaia.rotacerta.FarolStage46'):
+        s46_t+=vals[0]; s46_f+=vals[1]; s46_e+=vals[2]; s46_s+=vals[3]
+print('stage46',s46_t,s46_f,s46_e,s46_s)
+print('full',all_t,all_f,all_e,all_s)
+assert (s46_t,s46_f,s46_e,s46_s)==(185,0,0,0),(s46_t,s46_f,s46_e,s46_s)
+assert (all_t,all_f,all_e,all_s)==(1233,0,0,0),(all_t,all_f,all_e,all_s)
 PY
-./gradlew --no-daemon lintDebug | tee "$EVIDENCE/lint.log"
-./gradlew --no-daemon clean assembleDebug | tee "$EVIDENCE/assemble.log"
+printf 'stage46_r7_gradle_validation=PASS stage46=185/185 full=1233/1233 lint=PASS assemble=PASS single_gradle_pass=true\n' | tee "$EVIDENCE/gradle-validation.txt"
 
 APK="$EVIDENCE/Rota-Certa-Stage46-Immediate-Address-Route-R7-0.1.225.apk"
 cp app/build/outputs/apk/debug/app-debug.apk "$APK"
 AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
 SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
 "$AAPT" dump badging "$APK" | tee "$EVIDENCE/badging.txt"
-grep -q "versionCode='5509' versionName='0.1.225'" "$EVIDENCE/badging.txt"
+grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5509' versionName='0.1.225'" "$EVIDENCE/badging.txt"
 "$SIGN" verify --verbose --print-certs "$APK" | tee "$EVIDENCE/signature.txt"
 grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$EVIDENCE/signature.txt"
+unzip -t "$APK" | tee "$EVIDENCE/zip.txt"
+mkdir -p "$EVIDENCE/dex"
+unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$' | tee "$EVIDENCE/dex-inventory.txt"
+while IFS= read -r dex; do unzip -p "$APK" "$dex" > "$EVIDENCE/dex/$dex"; done < "$EVIDENCE/dex-inventory.txt"
+cat "$EVIDENCE"/dex/classes*.dex > "$EVIDENCE/all-classes.dex"
+for marker in \
+  FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7 \
+  FIRST_VALID_ADDRESS_STARTS_ROUTE_IMMEDIATELY_STAGE46_R7 \
+  LAST_VISIBLE_ADDRESS_REPLACES_DESTINATION_STAGE46_R7 \
+  SINGLE_ADDRESS_EVENT_TEXT_AVOIDS_OCR_WAIT_STAGE46_R7 \
+  FAROL_SINGLE_DESTINATION_FAST_PATH_STAGE46_R6 \
+  FAROL_ATOMIC_TRANSITION_STAGE46_R5 \
+  FAROL_STABLE_FINAL_LATCH_STAGE46_R4 \
+  FAROL_ACQUISITION_SURFACE_STAGE46_R3 \
+  FAROL_TARGET_SURFACE_AUTHORITY_STAGE46_R2 \
+  FAROL_VISUAL_SURFACE_EPOCH_STAGE46 \
+  FAROL_OCR_MULTILINE_ADDRESS_STAGE45 \
+  FAROL_SEMANTIC_FINAL_LEASE_STAGE44 \
+  MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 \
+  FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41; do
+  grep -a -q "$marker" "$EVIDENCE/all-classes.dex"
+done
 sha256sum "$APK" | tee "$EVIDENCE/apk-sha256.txt"
 sha512sum "$APK" | tee "$EVIDENCE/apk-sha512.txt"
 stat -c '%s' "$APK" | tee "$EVIDENCE/apk-size.txt"
-printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1233 stage46=185 first_address_immediate=true last_address_authority=true bootstrap_exact=true duplicate_r6_runtime_tests=false\n' | tee "$EVIDENCE/final-status.txt"
+printf 'stage46_r7_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.225/5509 signature_v2=true dex_markers=true\n' | tee "$EVIDENCE/apk-validation.txt"
+printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1233 stage46=185 first_address_immediate=true last_address_authority=true bootstrap_exact=true single_gradle_pass=true\n' | tee "$EVIDENCE/final-status.txt"
