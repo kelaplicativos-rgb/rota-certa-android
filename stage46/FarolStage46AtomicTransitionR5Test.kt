@@ -136,18 +136,23 @@ class FarolStage46AtomicTransitionR5Test {
 
     @Test fun foreground_handoff_is_explicitly_same_cycle() {
         val s = source("LiveRideAccessibilityService.kt")
-        val handoff = s.indexOf("revokeForegroundSurfaceHandoffStage46R3(")
-        val marker = s.indexOf("S46_R5_HANDOFF_CONTINUES_SAME_CYCLE", handoff)
-        assertTrue(handoff >= 0 && marker > handoff)
-        assertTrue(s.substring(handoff, marker + 500).contains("noSecondEventRequired=true"))
+        val site = s.indexOf("if (FarolAcquisitionSurfaceStage46R3.provesForegroundSurfaceHandoff(")
+        val finalLease = s.indexOf("val finalLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(", site)
+        val block = s.substring(site, finalLease)
+        assertTrue(site >= 0 && finalLease > site)
+        assertTrue(block.contains("revokeForegroundSurfaceHandoffStage46R3("))
+        assertTrue(block.contains("S46_R5_HANDOFF_CONTINUES_SAME_CYCLE"))
+        assertTrue(block.contains("noSecondEventRequired=true"))
+        assertFalse(block.contains("return true"))
     }
 
-    @Test fun foreground_handoff_uses_existing_candidate_when_accessibility_already_has_it() {
+    @Test fun foreground_handoff_reaches_normal_candidate_or_ocr_pipeline_without_second_event() {
         val s = source("LiveRideAccessibilityService.kt")
-        val marker = s.indexOf("S46_R5_HANDOFF_CONTINUES_SAME_CYCLE")
-        val before = s.lastIndexOf("actionAfterProvenClear(", marker)
-        val block = s.substring(before, marker + 500)
-        assertTrue(block.contains("candidatePresent = evaluationStage19 != null"))
+        val site = s.indexOf("if (FarolAcquisitionSurfaceStage46R3.provesForegroundSurfaceHandoff(")
+        val finalLease = s.indexOf("val finalLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(", site)
+        val laterOcr = s.indexOf("requestUniversalScreenshotStage19(eventPackageStage19)", finalLease)
+        assertTrue(site >= 0 && finalLease > site && laterOcr > finalLease)
+        assertFalse(s.substring(site, finalLease).contains("return"))
     }
 
     @Test fun proven_new_candidate_continues_same_cycle_without_redundant_ocr() {
