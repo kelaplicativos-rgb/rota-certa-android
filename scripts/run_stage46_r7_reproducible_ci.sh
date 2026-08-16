@@ -7,9 +7,34 @@ HIST34="$(cd "${4:?historical34}" && pwd)"
 mkdir -p "${5:?evidence}"
 EVIDENCE="$(cd "$5" && pwd)"
 
+# R6 v4 is already independently green. For R7 we still reconstruct/materialize R6 from the exact
+# reproducible recipe, but deliberately stop its orchestrator before the expensive R6 Gradle/lint/APK
+# pass. The final R7 state below runs Stage46 + full-suite + lint + assemble once. This removes duplicate
+# validation work without weakening the R7 proof and leaves the canonical R6 workflow unchanged.
 mkdir -p "$EVIDENCE/r6-bootstrap"
-bash "$PATCHES/scripts/run_stage46_r6_reproducible_ci.sh" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r6-bootstrap"
-grep -Fq 'stage46_r6_end_to_end=PASS version=0.1.224/5508 tests=1208 stage46=160' "$EVIDENCE/r6-bootstrap/final-status.txt"
+R6_MATERIALIZER="$EVIDENCE/run-stage46-r6-materialize-only.sh"
+python3 - "$PATCHES/scripts/run_stage46_r6_reproducible_ci.sh" "$R6_MATERIALIZER" <<'PY'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text(encoding='utf-8')
+out = Path(sys.argv[2])
+anchor = '''# -----------------------------------------------------------------------------
+# Execute Stage46 regressions, critical inherited regressions and complete suite.
+# -----------------------------------------------------------------------------
+'''
+if source.count(anchor) != 1:
+    raise SystemExit(f'R7 materialize-only anchor expected once, got {source.count(anchor)}')
+early = '''if [[ "${STAGE46_R6_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+  printf 'stage46_r6_materialized=PASS version=0.1.224/5508 tests_inventory=1208 stage46_inventory=160 runtime_tests_skipped_for_r7_final_validation=true\\n' | tee "$EVIDENCE/final-status.txt"
+  exit 0
+fi
+
+'''
+out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
+PY
+STAGE46_R6_MATERIALIZE_ONLY=1 bash "$R6_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r6-bootstrap"
+grep -Fq 'stage46_r6_materialized=PASS version=0.1.224/5508 tests_inventory=1208 stage46_inventory=160 runtime_tests_skipped_for_r7_final_validation=true' "$EVIDENCE/r6-bootstrap/final-status.txt"
+printf 'r7_bootstrap_strategy=PASS exact_r6_materialization=true duplicate_r6_runtime_tests=false final_r7_runtime_tests=true\n' | tee "$EVIDENCE/r7-bootstrap-strategy.txt"
 
 P="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta"
 sha256sum "$P/FarolCausalCorrectionStage21.kt" "$P/FarolFinalPaintFreshnessStage41.kt" "$P/FarolAtomicTransitionStage46R5.kt" "$P/FarolSingleDestinationFastPathStage46R6.kt" > "$EVIDENCE/protected-before.sha256"
@@ -81,4 +106,4 @@ grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$EVIDENCE/si
 sha256sum "$APK" | tee "$EVIDENCE/apk-sha256.txt"
 sha512sum "$APK" | tee "$EVIDENCE/apk-sha512.txt"
 stat -c '%s' "$APK" | tee "$EVIDENCE/apk-size.txt"
-printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1233 stage46=185 first_address_immediate=true last_address_authority=true\n' | tee "$EVIDENCE/final-status.txt"
+printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1233 stage46=185 first_address_immediate=true last_address_authority=true bootstrap_exact=true duplicate_r6_runtime_tests=false\n' | tee "$EVIDENCE/final-status.txt"
