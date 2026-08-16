@@ -76,9 +76,9 @@ new_target_empty = '''        if (targetEmptyProofStage46) {
 '''
 s = once(s, old_target_empty, new_target_empty, 'R5 target-empty clear plus same-event rearm')
 
-# R3 foreground handoff already continues the same heavy-collection handler. Anchor the R5
-# telemetry to the full EVENT-HANDLER site inserted by R3, not to the helper's own internal call.
-# This keeps evaluationStage19/cycleIdStage20 in lexical scope and proves no second event is needed.
+# R3 foreground handoff already continues this same heavy-collection handler. The handoff site is
+# deliberately before evaluationStage19/cycleIdStage20 are created, so R5 telemetry here must not
+# depend on later locals. The absence of return between this point and Stage44 is regression-tested.
 old_handoff_site = '''        if (FarolAcquisitionSurfaceStage46R3.provesForegroundSurfaceHandoff(
                 eventTypeStage20,
                 admissionStage26.heavyCollect,
@@ -118,15 +118,9 @@ new_handoff_site = '''        if (FarolAcquisitionSurfaceStage46R3.provesForegro
                 admissionStage26.visualGeneration,
                 currentRootPackageName(),
             )
-            val handoffRearmActionStage46R5 = FarolAtomicTransitionStage46R5.actionAfterProvenClear(
-                readingEnabled = WorkModePolicy0162.isEnabled(currentSettings),
-                serviceReady = serviceReady,
-                bubbleGestureActive = bubbleGestureActive,
-                candidatePresent = evaluationStage19 != null,
-            )
             FarolMaximumForensicsStage38.record(
-                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_R5_HANDOFF_CONTINUES_SAME_CYCLE", eventPackageStage19, cycleId = cycleIdStage20,
-                details = "action=$handoffRearmActionStage46R5; candidate=${evaluationStage19 != null}; root=${currentRootPackageName().orEmpty()}; epoch=$stage46VisualEpoch; yellowCommitted=true; noSecondEventRequired=true",
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_R5_HANDOFF_CONTINUES_SAME_CYCLE", eventPackageStage19,
+                details = "root=${currentRootPackageName().orEmpty()}; epoch=$stage46VisualEpoch; yellowCommitted=true; inheritedR3SameCycle=true; noSecondEventRequired=true",
             )
         }
 
