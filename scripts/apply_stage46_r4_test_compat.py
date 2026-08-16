@@ -21,20 +21,25 @@ for name in stage46_files:
     s = s.replace('version_is_stage46_r3_0_1_221_5505', 'version_is_stage46_r4_0_1_222_5506', 1)
     path.write_text(s, encoding='utf-8')
 
-# Stage34/Stage36 runtime tests are progressively rebased by every later version patch. At the R4
-# materialization point Stage45 has already moved both expectations to 0.1.218/5502. Update only
-# those final build-identity assertions; their runtime/causal assertions remain untouched.
-legacy_versions = (
-    ('FarolStage34Test.kt', 'versionCode = 5502', 'versionName = \\"0.1.218\\"'),
-    ('FarolStage36RuntimeTest.kt', 'versionCode = 5502', 'versionName = \\"0.1.218\\"'),
+# Stage34/Stage36 build-identity assertions are progressively rebased by every later version patch.
+# Stage46 R3 explicitly leaves both at 0.1.221/5505 immediately before R4 is materialized.
+legacy_exact = (
+    (
+        'FarolStage34Test.kt',
+        'assertTrue(s.contains("versionCode = 5505")); assertTrue(s.contains("versionName = \\"0.1.221\\""))',
+        'assertTrue(s.contains("versionCode = 5506")); assertTrue(s.contains("versionName = \\"0.1.222\\""))',
+    ),
+    (
+        'FarolStage36RuntimeTest.kt',
+        'assertTrue(b.contains("versionCode = 5505"));assertTrue(b.contains("versionName = \\"0.1.221\\""))',
+        'assertTrue(b.contains("versionCode = 5506"));assertTrue(b.contains("versionName = \\"0.1.222\\""))',
+    ),
 )
-for name, old_code, old_name in legacy_versions:
+for name, old, new in legacy_exact:
     path = TESTS / name
     s = path.read_text(encoding='utf-8')
-    if s.count(old_code) != 1 or s.count(old_name) != 1:
-        raise SystemExit(f'{name}: Stage45-materialized version assertion not found exactly once; code={s.count(old_code)} name={s.count(old_name)}')
-    s = s.replace(old_code, 'versionCode = 5506', 1)
-    s = s.replace(old_name, 'versionName = \\"0.1.222\\"', 1)
-    path.write_text(s, encoding='utf-8')
+    if s.count(old) != 1:
+        raise SystemExit(f'{name}: exact R3 inherited version assertion not found exactly once; count={s.count(old)}')
+    path.write_text(s.replace(old, new, 1), encoding='utf-8')
 
-print('stage46_r4_test_compat=PASS inherited_stage46_files=3 stage45_materialized_legacy_files=2 version=0.1.222/5506')
+print('stage46_r4_test_compat=PASS inherited_stage46_files=3 r3_materialized_legacy_files=2 version=0.1.222/5506')
