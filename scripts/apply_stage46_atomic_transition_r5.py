@@ -76,20 +76,49 @@ new_target_empty = '''        if (targetEmptyProofStage46) {
 '''
 s = once(s, old_target_empty, new_target_empty, 'R5 target-empty clear plus same-event rearm')
 
-# R3 foreground handoff already continues the same heavy-collection cycle. Freeze that behavior with
-# explicit R5 forensics so physical reports can distinguish "cleared and continued" from a path that
-# would wait for another event. No extra OCR request is injected here, avoiding duplicate acquisition:
-# if Accessibility already produced a candidate it continues directly; otherwise the inherited
-# no-candidate path requests OCR later in this SAME handler invocation.
-old_handoff_call = '''            revokeForegroundSurfaceHandoffStage46R3(
+# R3 foreground handoff already continues the same heavy-collection handler. Anchor the R5
+# telemetry to the full EVENT-HANDLER site inserted by R3, not to the helper's own internal call.
+# This keeps evaluationStage19/cycleIdStage20 in lexical scope and proves no second event is needed.
+old_handoff_site = '''        if (FarolAcquisitionSurfaceStage46R3.provesForegroundSurfaceHandoff(
+                eventTypeStage20,
+                admissionStage26.heavyCollect,
+                cheapSignalStage26.ownOverlay,
+                handoffLeaseStage46R3.activeFinal,
+                stage46TargetSourcePackage,
+                currentRootPackageName(),
+                packageName,
+                handoffPresenceStage46R3,
+            )
+        ) {
+            revokeForegroundSurfaceHandoffStage46R3(
                 eventStartedNsStage26,
                 eventPackageStage19,
                 eventWindowIdStage20,
                 admissionStage26.visualGeneration,
                 currentRootPackageName(),
             )
+        }
+
 '''
-new_handoff_call = old_handoff_call + '''            val handoffRearmActionStage46R5 = FarolAtomicTransitionStage46R5.actionAfterProvenClear(
+new_handoff_site = '''        if (FarolAcquisitionSurfaceStage46R3.provesForegroundSurfaceHandoff(
+                eventTypeStage20,
+                admissionStage26.heavyCollect,
+                cheapSignalStage26.ownOverlay,
+                handoffLeaseStage46R3.activeFinal,
+                stage46TargetSourcePackage,
+                currentRootPackageName(),
+                packageName,
+                handoffPresenceStage46R3,
+            )
+        ) {
+            revokeForegroundSurfaceHandoffStage46R3(
+                eventStartedNsStage26,
+                eventPackageStage19,
+                eventWindowIdStage20,
+                admissionStage26.visualGeneration,
+                currentRootPackageName(),
+            )
+            val handoffRearmActionStage46R5 = FarolAtomicTransitionStage46R5.actionAfterProvenClear(
                 readingEnabled = WorkModePolicy0162.isEnabled(currentSettings),
                 serviceReady = serviceReady,
                 bubbleGestureActive = bubbleGestureActive,
@@ -99,8 +128,10 @@ new_handoff_call = old_handoff_call + '''            val handoffRearmActionStage
                 SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_R5_HANDOFF_CONTINUES_SAME_CYCLE", eventPackageStage19, cycleId = cycleIdStage20,
                 details = "action=$handoffRearmActionStage46R5; candidate=${evaluationStage19 != null}; root=${currentRootPackageName().orEmpty()}; epoch=$stage46VisualEpoch; yellowCommitted=true; noSecondEventRequired=true",
             )
+        }
+
 '''
-s = once(s, old_handoff_call, new_handoff_call, 'R5 foreground handoff same-cycle proof')
+s = once(s, old_handoff_site, new_handoff_site, 'R5 foreground handoff event-handler same-cycle proof')
 
 # A proven replacement candidate in the ordinary R4 branch is already processed later in the same
 # handler. Record the guarantee at the point R4 clears the old paint; do not start a redundant OCR.
