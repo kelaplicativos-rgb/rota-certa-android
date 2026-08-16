@@ -53,6 +53,35 @@ new_assert = (
 )
 if s.count(old_assert) != 1:
     raise SystemExit(f'R5 literal source assertion expected exactly once, got {s.count(old_assert)}')
-r5_test.write_text(s.replace(old_assert, new_assert, 1), encoding='utf-8')
+s = s.replace(old_assert, new_assert, 1)
 
-print('stage46_r5_test_compat=PASS inherited_stage46_files=4 r4_materialized_legacy_files=2 literal_source_assertion_fixed=true version=0.1.223/5507')
+# The busy flag is intentionally captured immediately BEFORE the REQUESTED forensic marker. The
+# original test started its substring at that marker and therefore excluded the very assignment it
+# wanted to verify. Start at the proven target-empty branch instead; keep all three assertions.
+old_busy = '''    @Test fun busy_screenshot_is_coalesced_not_dropped() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val a = s.indexOf("S46_R5_ATOMIC_CLEAR_REARM_REQUESTED")
+        val b = s.indexOf("return true", a)
+        val block = s.substring(a, b)
+        assertTrue(block.contains("screenshotAlreadyRunningStage46R5 = screenshotInProgress.get()"))
+        assertTrue(block.contains("coalesced_rerun"))
+        assertTrue(block.contains("immediate_screenshot"))
+    }
+'''
+new_busy = '''    @Test fun busy_screenshot_is_coalesced_not_dropped() {
+        val s = source("LiveRideAccessibilityService.kt")
+        val a = s.indexOf("if (targetEmptyProofStage46)")
+        val b = s.indexOf("return true", a)
+        val block = s.substring(a, b)
+        assertTrue(block.contains("screenshotAlreadyRunningStage46R5 = screenshotInProgress.get()"))
+        assertTrue(block.contains("coalesced_rerun"))
+        assertTrue(block.contains("immediate_screenshot"))
+        assertTrue(block.contains("requestUniversalScreenshotStage19(eventPackageStage19)"))
+    }
+'''
+if s.count(old_busy) != 1:
+    raise SystemExit(f'R5 busy coalescer test window expected exactly once, got {s.count(old_busy)}')
+s = s.replace(old_busy, new_busy, 1)
+r5_test.write_text(s, encoding='utf-8')
+
+print('stage46_r5_test_compat=PASS inherited_stage46_files=4 r4_materialized_legacy_files=2 literal_source_assertion_fixed=true busy_coalescer_window_fixed=true version=0.1.223/5507')
