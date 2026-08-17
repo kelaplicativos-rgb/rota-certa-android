@@ -10,10 +10,11 @@ permissions:
 jobs:
   focused-r8:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
       GH_TOKEN: '${{ github.token }}'
+      STAGE46_DIAG_SKIP_HISTORICAL_GRADLE: '1'
     steps:
       - name: Checkout protected canonical source
         uses: actions/checkout@v4
@@ -49,6 +50,35 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Remove historical validation-only Gradle loops
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('historical19/scripts')
+          patched = []
+          for path in sorted(root.glob('build_rota_certa_*.sh')):
+              text = path.read_text(encoding='utf-8')
+              needle = './gradlew '
+              idx = text.find(needle)
+              if idx < 0:
+                  continue
+              line_start = text.rfind('\n', 0, idx) + 1
+              guard = (
+                  'if [[ "${STAGE46_DIAG_SKIP_HISTORICAL_GRADLE:-0}" == "1" ]]; then\n'
+                  '  printf "historical_source_materialized_without_validation_gradle=%s\\n" "' + path.name + '"\n'
+                  '  exit 0\n'
+                  'fi\n'
+              )
+              text = text[:line_start] + guard + text[line_start:]
+              path.write_text(text, encoding='utf-8')
+              patched.append(path.name)
+          if len(patched) < 2:
+              raise SystemExit(f'expected multiple historical bootstrap scripts with Gradle, patched={patched}')
+          print('historical_validation_gradle_guards=PASS count=' + str(len(patched)))
+          print('\n'.join(patched))
+          PY
+
       - name: Materialize R8 and run pre-Gradle audits only
         run: |
           set -euo pipefail
@@ -80,4 +110,4 @@ jobs:
       - name: Focused diagnostic summary
         if: success()
         run: |
-          printf 'stage46_r8_focused_diagnostic=PASS materialize=true compile=true r8_tests=17/17\n'
+          printf 'stage46_r8_focused_diagnostic=PASS materialize=true compile=true r8_tests=17/17 historical_validation_gradles_skipped=true\n'
