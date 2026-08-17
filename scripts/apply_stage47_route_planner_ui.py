@@ -75,5 +75,52 @@ replace_once(
     "route plan persistence",
 )
 
+replace_once(
+    '''    val bookings = store.bookingsFor(trip.id)
+    val available = SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookings)
+''',
+    '''    val bookings = store.bookingsFor(trip.id)
+    val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
+    val availabilityText = if (seatRange.variesBySegment) {
+        "vagas por trecho ${seatRange.minimum}–${seatRange.maximum}/${trip.capacity}"
+    } else {
+        "${seatRange.maximum}/${trip.capacity} vagas livres"
+    }
+''',
+    "truthful trip availability range",
+)
+
+replace_once(
+    '''            Text("${formatter.format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault()))} • ${trip.status} • $available/${trip.capacity} vagas livres")
+''',
+    '''            Text("${formatter.format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault()))} • ${trip.status} • $availabilityText")
+''',
+    "trip availability text",
+)
+
+replace_once(
+    '''                    }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
+''',
+    '''                    }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
+                    if (trip.remoteId != null) {
+                        OutlinedButton(onClick = {
+                            scope.launch {
+                                runCatching {
+                                    TripRemoteApi(settings).listBookings(trip.remoteId).bookings
+                                }.onSuccess { remoteBookings ->
+                                    remoteBookings.forEach { remote ->
+                                        store.saveBooking(remote.toLocalBooking(trip.id))
+                                    }
+                                    onChanged("Reservas online atualizadas: ${remoteBookings.size}.")
+                                }.onFailure {
+                                    onChanged("Falha ao atualizar reservas: ${it.message}")
+                                }
+                            }
+                        }) { Text("Atualizar reservas online") }
+                    }
+''',
+    "remote booking synchronization action",
+)
+
 ACTIVITY.write_text(text, encoding="utf-8")
-print("stage47_route_planner_ui=PASS")
+print("stage47_route_planner_ui=PASS route_eta=true truthful_segment_availability=true remote_booking_sync=true")
