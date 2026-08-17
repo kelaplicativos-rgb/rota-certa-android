@@ -5,6 +5,7 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -20,6 +21,25 @@ data class RemoteBookingResponse(
     val bookingId: String,
     val cancellationToken: String? = null,
     val availableSeats: Int? = null,
+)
+
+@Serializable
+data class RemoteBooking(
+    val id: String,
+    val tripId: String = "",
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String = "CONFIRMED",
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
+)
+
+@Serializable
+data class DriverBookingsResponse(
+    val bookings: List<RemoteBooking> = emptyList(),
 )
 
 @Serializable
@@ -47,6 +67,12 @@ class TripRemoteApi(
         method = "PUT",
         path = "/v1/driver/trips/${trip.remoteId ?: trip.id}",
         body = json.encodeToString(trip),
+        requireDriverToken = true,
+    )
+
+    suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
+        method = "GET",
+        path = "/v1/driver/trips/$remoteTripId/bookings",
         requireDriverToken = true,
     )
 
@@ -96,3 +122,16 @@ class TripRemoteApi(
         }
     }
 }
+
+fun RemoteBooking.toLocalBooking(localTripId: String): Booking = Booking(
+    id = id,
+    tripId = localTripId,
+    passengerName = passengerName,
+    passengerContact = passengerContact,
+    boardingStopId = boardingStopId,
+    dropoffStopId = dropoffStopId,
+    seats = seats,
+    status = runCatching { BookingStatus.valueOf(status) }.getOrDefault(BookingStatus.CONFIRMED),
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis,
+)
