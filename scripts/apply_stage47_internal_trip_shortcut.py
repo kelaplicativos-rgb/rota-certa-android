@@ -143,6 +143,23 @@ replace_once(
 grid = BASE / "ShortcutGridCustomization0179.kt"
 replace_once(
     grid,
+    '''        if (!prefs.contains(KEY_GRID)) {
+            val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgradeInstallation())
+            persist(initial)
+            return initial
+        }
+''',
+    '''        if (!prefs.contains(KEY_GRID)) {
+            val isUpgrade = isUpgradeInstallation()
+            val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade)
+            persist(initial)
+            return if (isUpgrade) applyStage47TripShortcutMigration(initial) else initial
+        }
+''',
+    "Stage47 no-grid upgrade migration",
+)
+replace_once(
+    grid,
     '''            ShortcutGridCustomizationPolicy0179.normalize(entries)
         }.getOrElse { emptyList() }
     }
@@ -190,4 +207,4 @@ replace_once(
     "Stage47 shortcut migration flag",
 )
 
-print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenTrips migration=one_time_append inherited_ids_preserved=true")
+print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenTrips migration=one_time_append upgrade_only=true inherited_ids_preserved=true")
