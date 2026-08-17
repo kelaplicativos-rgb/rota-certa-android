@@ -5,10 +5,13 @@ on:
     paths:
       - '.github/workflows/stage47-trip-calendar-booking-0.1.227.yml'
       - 'scripts/run_stage47_trip_calendar_booking_ci.sh'
-      - 'scripts/apply_stage47_trip_calendar_booking.py'
+      - 'scripts/apply_stage47_*.py'
       - 'stage47/**'
       - 'trip-platform/**'
   workflow_dispatch:
+concurrency:
+  group: 'stage47-trip-calendar-${{ github.event.pull_request.number || github.ref }}'
+  cancel-in-progress: true
 permissions:
   contents: read
   actions: read
@@ -70,6 +73,10 @@ jobs:
           if [[ -d "$BASE" ]]; then
             find "$BASE" -maxdepth 1 -type f \( -name '*Shortcut*.kt' -o -name 'BubbleShortcut*.kt' \) -exec cp '{}' evidence/materialized-shortcut-surface/ \;
             test -f "$BASE/MainActivity.kt" && cp "$BASE/MainActivity.kt" evidence/materialized-shortcut-surface/ || true
+            {
+              echo '=== SHORTCUT REGISTRY CONTEXT ==='
+              grep -R -n -C 5 -E 'BubbleShortcutSpec|trip\.copy_confirmation|executeShortcut|ShortcutAction|open_module' "$BASE" --include='*.kt' | head -n 500 || true
+            } | tee evidence/shortcut-context.txt
           fi
       - name: Upload Stage47 APK, trip platform and evidence
         if: always()
