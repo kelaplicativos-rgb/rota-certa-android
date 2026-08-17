@@ -19,6 +19,13 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.copy2(path, target)
 
 
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if text.count(old) != 1:
+        raise SystemExit(f"{label}: expected one marker, got {text.count(old)}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
 copy_tree(STAGE / "main", APP / "src/main/java")
 copy_tree(STAGE / "test", APP / "src/test/java")
 copy_tree(STAGE / "res", APP / "src/main/res")
@@ -27,35 +34,72 @@ copy_tree(STAGE / "res", APP / "src/main/res")
 # segment has zero availability. A single full segment must not block a
 # disjoint segment that still has a seat.
 domain = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt"
-s = domain.read_text(encoding="utf-8")
-old = '''        return if (remainingSeatsForWholeTrip(trip, bookings, nowMillis) == 0) {
+replace_once(
+    domain,
+    '''        return if (remainingSeatsForWholeTrip(trip, bookings, nowMillis) == 0) {
             TripStatus.FULL
         } else {
             TripStatus.PUBLISHED
         }
-'''
-new = '''        val loads = segmentLoads(trip, bookings, nowMillis)
+''',
+    '''        val loads = segmentLoads(trip, bookings, nowMillis)
         return if (loads.isNotEmpty() && loads.all { it.availableSeats == 0 }) {
             TripStatus.FULL
         } else {
             TripStatus.PUBLISHED
         }
-'''
-if s.count(old) != 1:
-    raise SystemExit("Stage47 TripDomain global FULL marker not found exactly once")
-domain.write_text(s.replace(old, new, 1), encoding="utf-8")
+''',
+    "Stage47 global FULL semantics",
+)
+
+# kotlinx.serialization generic decode extension is intentionally explicit so
+# this remains compiler-stable across serialization library versions.
+for relative in ("TripStore.kt", "TripRemoteApi.kt"):
+    path = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips" / relative
+    text = path.read_text(encoding="utf-8")
+    if "import kotlinx.serialization.decodeFromString" not in text:
+        anchor = "import kotlinx.serialization.encodeToString\n"
+        if text.count(anchor) != 1:
+            raise SystemExit(f"{relative}: serialization import anchor missing")
+        path.write_text(text.replace(anchor, "import kotlinx.serialization.decodeFromString\n" + anchor, 1), encoding="utf-8")
 
 # Public URL must point at Hosting, not at the raw Cloud Functions host.
 remote = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt"
-s = remote.read_text(encoding="utf-8")
-old = '            setRequestProperty("Content-Type", "application/json; charset=utf-8")\n'
-new = old + '''            if (settings.publicBaseUrl.startsWith("https://")) {
+replace_once(
+    remote,
+    '            setRequestProperty("Content-Type", "application/json; charset=utf-8")\n',
+    '''            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (settings.publicBaseUrl.startsWith("https://")) {
                 setRequestProperty("X-Rota-Certa-Public-Base-Url", settings.publicBaseUrl)
             }
-'''
-if s.count(old) != 1:
-    raise SystemExit("Stage47 TripRemoteApi header marker not found exactly once")
-remote.write_text(s.replace(old, new, 1), encoding="utf-8")
+''',
+    "Stage47 public hosting header",
+)
+
+# Avoid shadowing kotlin.error inside the Compose editor.
+activity = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt"
+replace_once(
+    activity,
+    '                val seats = capacity.toIntOrNull()?.coerceIn(1, 8) ?: error("Informe uma quantidade de vagas válida.")\n',
+    '                val seats = capacity.toIntOrNull()?.coerceIn(1, 8) ?: throw IllegalArgumentException("Informe uma quantidade de vagas válida.")\n',
+    "Stage47 editor capacity validation",
+)
+
+# Tile.subtitle arrived after the module minimum SDK; guard the call even
+# though the physical test device is Android 16.
+entry = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips/TripAndroidEntryPoints.kt"
+replace_once(
+    entry,
+    '''            subtitle = next?.title?.take(28) ?: "Rota Certa"
+            updateTile()
+''',
+    '''            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                subtitle = next?.title?.take(28) ?: "Rota Certa"
+            }
+            updateTile()
+''',
+    "Stage47 Quick Settings API guard",
+)
 
 manifest = APP / "src/main/AndroidManifest.xml"
 s = manifest.read_text(encoding="utf-8")
