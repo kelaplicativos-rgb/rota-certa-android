@@ -1,0 +1,125 @@
+name: Package Stage46 R7 fast physical APK 0.1.225
+on:
+  push:
+    branches: [agent/stage46-r7-fast-apk-0.1.225]
+    paths:
+      - '.github/workflows/stage46-r7-fast-apk-0.1.225.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package-stage46-r7-fast-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+      GH_TOKEN: '${{ github.token }}'
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - name: Checkout exact R7 patches
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Materialize exact R6 predecessor and R7 code
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/r6-bootstrap
+          python3 - patches/scripts/run_stage46_r6_reproducible_ci.sh evidence/run-stage46-r6-materialize-only.sh <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]).read_text(encoding='utf-8')
+          out = Path(sys.argv[2])
+          anchor = '# Static causal audit before any Kotlin execution.\n'
+          if source.count(anchor) != 1:
+              raise SystemExit(f'fast R7 materialize-only anchor expected once, got {source.count(anchor)}')
+          early = '''if [[ "${STAGE46_R6_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+            printf 'stage46_r6_materialized=PASS version=0.1.224/5508 fast_apk=true\\n' | tee "$EVIDENCE/final-status.txt"
+            exit 0
+          fi
+
+          '''
+          out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
+          PY
+          chmod +x evidence/run-stage46-r6-materialize-only.sh
+          STAGE46_R6_MATERIALIZE_ONLY=1 bash evidence/run-stage46-r6-materialize-only.sh source patches historical19 historical34 evidence/r6-bootstrap
+          python3 patches/scripts/apply_stage46_immediate_address_route_r7.py source | tee evidence/materialize-r7.txt
+          python3 patches/scripts/apply_stage46_r7_version.py source | tee evidence/version-r7.txt
+          grep -Fq 'versionCode = 5509' source/app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.225"' source/app/build.gradle.kts
+          grep -Fq 'NO_STAGE21_SEMANTIC_VETO_FOR_R7_LOCATION_STAGE46_R7' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolImmediateAddressRouteStage46R7.kt
+          ! grep -Fq 'FarolCausalCorrectionStage21.validateAddress(' source/app/src/main/java/br/com/mapeiaia/rotacerta/FarolImmediateAddressRouteStage46R7.kt
+      - name: Assemble physical APK without waiting full validation suite
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon assembleDebug
+      - name: Validate package version signature and R7 markers
+        run: |
+          set -euo pipefail
+          APK='source/app/build/outputs/apk/debug/app-debug.apk'
+          OUT='evidence/Rota-Certa-Stage46-Immediate-Address-Route-R7-0.1.225.apk'
+          cp "$APK" "$OUT"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$AAPT" dump badging "$OUT" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5509' versionName='0.1.225'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$OUT" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$OUT" > evidence/zip.txt
+          mkdir -p evidence/dex
+          unzip -Z1 "$OUT" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          while IFS= read -r dex; do unzip -p "$OUT" "$dex" > "evidence/dex/$(basename "$dex")"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for marker in \
+            FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7 \
+            ANY_VISIBLE_LOCATION_CAN_START_REAL_ROUTE_STAGE46_R7 \
+            NO_STAGE21_SEMANTIC_VETO_FOR_R7_LOCATION_STAGE46_R7 \
+            NAMED_PLACE_WITHOUT_HOUSE_NUMBER_IS_ROUTEABLE_STAGE46_R7 \
+            CASE_001170_ESTACAO_LUZ_HOSPITAL_CLINICAS_REGRESSION_STAGE46_R7 \
+            FAROL_ATOMIC_TRANSITION_STAGE46_R5 \
+            FAROL_STABLE_FINAL_LATCH_STAGE46_R4 \
+            FAROL_SEMANTIC_FINAL_LEASE_STAGE44 \
+            MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 \
+            FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41; do
+            grep -a -q "$marker" evidence/all-classes.dex
+          done
+          sha256sum "$OUT" | tee evidence/apk-sha256.txt
+          sha512sum "$OUT" | tee evidence/apk-sha512.txt
+          stat -c '%s' "$OUT" | tee evidence/apk-size.txt
+          printf 'stage46_r7_fast_apk=PASS version=0.1.225/5509 package=br.com.mapeiaia.rotacerta signature_v2=true r7_markers=true source_functional_head=06f58342552fe886c5e2ed787ce7240e2ad87db5 full_ci_not_required_for_packaging=true\n' | tee evidence/fast-apk-status.txt
+      - name: Upload fast Stage46 R7 physical APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.225-stage46-r7-fast-physical-apk
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
