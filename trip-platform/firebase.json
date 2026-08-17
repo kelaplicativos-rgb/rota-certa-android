@@ -1,0 +1,27 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {"key": "X-Content-Type-Options", "value": "nosniff"},
+          {"key": "Referrer-Policy", "value": "no-referrer"},
+          {"key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()"}
+        ]
+      }
+    ],
+    "rewrites": [
+      {"source": "/v1/**", "function": {"functionId": "tripApi", "region": "southamerica-east1"}},
+      {"source": "**", "destination": "/index.html"}
+    ]
+  }
+}
