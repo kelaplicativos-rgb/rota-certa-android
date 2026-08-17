@@ -44,14 +44,14 @@ sha256sum "$P/FarolCausalCorrectionStage21.kt" "$P/FarolFinalPaintFreshnessStage
 cmp "$EVIDENCE/protected-before.sha256" "$EVIDENCE/protected-after.sha256"
 grep -Fq 'versionCode = 5509' "$SOURCE/app/build.gradle.kts"
 grep -Fq 'versionName = "0.1.225"' "$SOURCE/app/build.gradle.kts"
-test "$(grep -c '@Test' "$PATCHES/stage46/FarolStage46ImmediateAddressRouteR7Test.kt")" -eq 25
+test "$(grep -c '@Test' "$PATCHES/stage46/FarolStage46ImmediateAddressRouteR7Test.kt")" -eq 27
 
 python3 - "$SOURCE" <<'PY' | tee "$EVIDENCE/static-r7.txt"
 from pathlib import Path
 import sys
 root=Path(sys.argv[1]); p=root/'app/src/main/java/br/com/mapeiaia/rotacerta'
 s=(p/'LiveRideAccessibilityService.kt').read_text(); r7=(p/'FarolImmediateAddressRouteStage46R7.kt').read_text(); stage21=(p/'FarolCausalCorrectionStage21.kt').read_text()
-for m in ('FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7','FIRST_VALID_ADDRESS_STARTS_ROUTE_IMMEDIATELY_STAGE46_R7','LAST_VISIBLE_ADDRESS_REPLACES_DESTINATION_STAGE46_R7','SINGLE_ADDRESS_EVENT_TEXT_AVOIDS_OCR_WAIT_STAGE46_R7','EVENT_DRIVEN_IMMEDIATE_ADDRESS_NO_POLLING_STAGE46_R7'): assert m in r7,m
+for m in ('FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7','FIRST_VALID_ADDRESS_STARTS_ROUTE_IMMEDIATELY_STAGE46_R7','LAST_VISIBLE_ADDRESS_REPLACES_DESTINATION_STAGE46_R7','SINGLE_ADDRESS_EVENT_TEXT_AVOIDS_OCR_WAIT_STAGE46_R7','EVENT_DRIVEN_IMMEDIATE_ADDRESS_NO_POLLING_STAGE46_R7','OCR_TRAILING_FARE_CANNOT_ENTER_ROUTE_IDENTITY_STAGE46_R7'): assert m in r7,m
 assert s.count('FarolImmediateAddressRouteStage46R7.evaluate(')>=2
 assert 'FarolImmediateAddressRouteStage46R7.evaluateImmediateText(' in s
 assert 'cheapSignalStage26.sourceText' in s
@@ -61,14 +61,14 @@ assert 'S46_R7_IMMEDIATE_SINGLE_ADDRESS' in s and 'S46_R7_LAST_VISUAL_DESTINATIO
 assert 'S46_R5_ATOMIC_CLEAR_REARM_REQUESTED' in s and 'S46_R4_FINAL_LATCH' in s
 assert 'less_than_two_addresses' in stage21
 for x in ('Thread.sleep','delay(','Timer(','scheduleAtFixedRate','scheduleWithFixedDelay'): assert x not in r7,x
-print('stage46_r7_static_causal_audit=PASS first_address_immediate=true last_address_authority=true event_single_no_ocr_wait=true freshness_preserved=true no_polling=true')
+print('stage46_r7_static_causal_audit=PASS first_address_immediate=true last_address_authority=true event_single_no_ocr_wait=true ocr_trailing_fare_decontamination=true freshness_preserved=true no_polling=true')
 PY
 
 python3 - "$SOURCE" <<'PY' | tee "$EVIDENCE/test-inventory.txt"
 from pathlib import Path
 import sys
 n=sum(p.read_text().count('@Test') for p in (Path(sys.argv[1])/'app/src/test/java').rglob('*.kt'))
-print('total_at_test='+str(n)); assert n==1233,n
+print('total_at_test='+str(n)); assert n==1235,n
 PY
 
 cd "$SOURCE"
@@ -88,10 +88,10 @@ for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
         s46_t+=vals[0]; s46_f+=vals[1]; s46_e+=vals[2]; s46_s+=vals[3]
 print('stage46',s46_t,s46_f,s46_e,s46_s)
 print('full',all_t,all_f,all_e,all_s)
-assert (s46_t,s46_f,s46_e,s46_s)==(185,0,0,0),(s46_t,s46_f,s46_e,s46_s)
-assert (all_t,all_f,all_e,all_s)==(1233,0,0,0),(all_t,all_f,all_e,all_s)
+assert (s46_t,s46_f,s46_e,s46_s)==(187,0,0,0),(s46_t,s46_f,s46_e,s46_s)
+assert (all_t,all_f,all_e,all_s)==(1235,0,0,0),(all_t,all_f,all_e,all_s)
 PY
-printf 'stage46_r7_gradle_validation=PASS stage46=185/185 full=1233/1233 lint=PASS assemble=PASS single_gradle_pass=true\n' | tee "$EVIDENCE/gradle-validation.txt"
+printf 'stage46_r7_gradle_validation=PASS stage46=187/187 full=1235/1235 lint=PASS assemble=PASS single_gradle_pass=true\n' | tee "$EVIDENCE/gradle-validation.txt"
 
 APK="$EVIDENCE/Rota-Certa-Stage46-Immediate-Address-Route-R7-0.1.225.apk"
 cp app/build/outputs/apk/debug/app-debug.apk "$APK"
@@ -111,6 +111,7 @@ for marker in \
   FIRST_VALID_ADDRESS_STARTS_ROUTE_IMMEDIATELY_STAGE46_R7 \
   LAST_VISIBLE_ADDRESS_REPLACES_DESTINATION_STAGE46_R7 \
   SINGLE_ADDRESS_EVENT_TEXT_AVOIDS_OCR_WAIT_STAGE46_R7 \
+  OCR_TRAILING_FARE_CANNOT_ENTER_ROUTE_IDENTITY_STAGE46_R7 \
   FAROL_SINGLE_DESTINATION_FAST_PATH_STAGE46_R6 \
   FAROL_ATOMIC_TRANSITION_STAGE46_R5 \
   FAROL_STABLE_FINAL_LATCH_STAGE46_R4 \
@@ -126,5 +127,5 @@ done
 sha256sum "$APK" | tee "$EVIDENCE/apk-sha256.txt"
 sha512sum "$APK" | tee "$EVIDENCE/apk-sha512.txt"
 stat -c '%s' "$APK" | tee "$EVIDENCE/apk-size.txt"
-printf 'stage46_r7_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.225/5509 signature_v2=true dex_markers=true\n' | tee "$EVIDENCE/apk-validation.txt"
-printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1233 stage46=185 first_address_immediate=true last_address_authority=true bootstrap_exact=true single_gradle_pass=true\n' | tee "$EVIDENCE/final-status.txt"
+printf 'stage46_r7_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.225/5509 signature_v2=true dex_markers=true ocr_trailing_fare_decontamination=true\n' | tee "$EVIDENCE/apk-validation.txt"
+printf 'stage46_r7_end_to_end=PASS version=0.1.225/5509 tests=1235 stage46=187 first_address_immediate=true last_address_authority=true ocr_trailing_fare_decontamination=true bootstrap_exact=true single_gradle_pass=true\n' | tee "$EVIDENCE/final-status.txt"
