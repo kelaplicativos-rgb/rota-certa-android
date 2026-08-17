@@ -76,13 +76,66 @@ replace_once(
     "Stage47 public hosting header",
 )
 
-# Avoid shadowing kotlin.error inside the Compose editor.
+# Compose editor hardening and the one-tap public calendar share surface.
 activity = APP / "src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt"
 replace_once(
     activity,
     '                val seats = capacity.toIntOrNull()?.coerceIn(1, 8) ?: error("Informe uma quantidade de vagas válida.")\n',
     '                val seats = capacity.toIntOrNull()?.coerceIn(1, 8) ?: throw IllegalArgumentException("Informe uma quantidade de vagas válida.")\n',
     "Stage47 editor capacity validation",
+)
+replace_once(
+    activity,
+    '                    OutlinedButton(onClick = { screen = TripScreen.SETTINGS }) { Text("Integração online") }\n',
+    '''                    OutlinedButton(onClick = { screen = TripScreen.SETTINGS }) { Text("Integração online") }
+                    val onlineSettings = store.onlineSettings()
+                    if (onlineSettings.publicCalendarUrl != null) {
+                        OutlinedButton(onClick = {
+                            if (TripCalendarBridge.sharePublicAgenda(activity, onlineSettings)) {
+                                message = "Link da Agenda Pública pronto para compartilhar."
+                            }
+                        }) { Text("Compartilhar agenda pública") }
+                    }
+''',
+    "Stage47 public calendar list action",
+)
+replace_once(
+    activity,
+    '    var token by remember { mutableStateOf(initial.driverToken) }\n',
+    '''    var token by remember { mutableStateOf(initial.driverToken) }
+    var calendarToken by remember { mutableStateOf(initial.publicCalendarToken) }
+''',
+    "Stage47 public calendar settings state",
+)
+replace_once(
+    activity,
+    '    Spacer(Modifier.height(4.dp))\n',
+    '''    OutlinedTextField(
+        calendarToken,
+        { calendarToken = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' } },
+        label = { Text("Token público da agenda de viagens") },
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(4.dp))
+''',
+    "Stage47 public calendar settings field",
+)
+replace_once(
+    activity,
+    '        Button(onClick = { onSave(TripOnlineSettings(api.trimEnd(\'/\'), publicBase.trimEnd(\'/\'), token.trim())) }) { Text("Salvar") }\n',
+    '''        Button(onClick = {
+            onSave(
+                TripOnlineSettings(
+                    apiBaseUrl = api.trimEnd('/'),
+                    publicBaseUrl = publicBase.trimEnd('/'),
+                    driverToken = token.trim(),
+                    publicCalendarToken = calendarToken.trim(),
+                ),
+            )
+        }) { Text("Salvar") }
+''',
+    "Stage47 public calendar settings save",
 )
 
 # Tile.subtitle arrived after the module minimum SDK; guard the call even
@@ -138,7 +191,7 @@ block = '''
                 android:resource="@xml/trip_widget_info_stage47" />
         </receiver>
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name=".trips.TripIcsFileProvider"
             android:authorities="${applicationId}.tripfiles"
             android:exported="false"
             android:grantUriPermissions="true">
