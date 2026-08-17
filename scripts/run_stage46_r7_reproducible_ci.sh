@@ -8,8 +8,9 @@ mkdir -p "${5:?evidence}"
 EVIDENCE="$(cd "$5" && pwd)"
 
 # R6 v4 is independently green. R7 still reconstructs/materializes the exact R6 predecessor, but
-# stops the R6 orchestrator immediately before its expensive Gradle/lint/APK pass. The final R7 state
-# then receives one authoritative Gradle pass with the complete unit suite + lint + assemble together.
+# stops the R6 orchestrator before its superseded static runtime-integration audit and before the
+# expensive Gradle/lint/APK pass. R7 then replaces that integration and receives one authoritative
+# static + Gradle pass over the final materialized state.
 mkdir -p "$EVIDENCE/r6-bootstrap"
 R6_MATERIALIZER="$EVIDENCE/run-stage46-r6-materialize-only.sh"
 python3 - "$PATCHES/scripts/run_stage46_r6_reproducible_ci.sh" "$R6_MATERIALIZER" <<'PY'
@@ -17,14 +18,12 @@ from pathlib import Path
 import sys
 source = Path(sys.argv[1]).read_text(encoding='utf-8')
 out = Path(sys.argv[2])
-anchor = '''# -----------------------------------------------------------------------------
-# Execute Stage46 regressions, critical inherited regressions and complete suite.
-# -----------------------------------------------------------------------------
+anchor = '''# Static causal audit before any Kotlin execution.
 '''
 if source.count(anchor) != 1:
     raise SystemExit(f'R7 materialize-only anchor expected once, got {source.count(anchor)}')
 early = '''if [[ "${STAGE46_R6_MATERIALIZE_ONLY:-0}" == "1" ]]; then
-  printf 'stage46_r6_materialized=PASS version=0.1.224/5508 tests_inventory=1208 stage46_inventory=160 runtime_tests_skipped_for_r7_final_validation=true\\n' | tee "$EVIDENCE/final-status.txt"
+  printf 'stage46_r6_materialized=PASS version=0.1.224/5508 stage46_inventory=160 superseded_r6_runtime_audit_skipped=true runtime_tests_skipped_for_r7_final_validation=true\\n' | tee "$EVIDENCE/final-status.txt"
   exit 0
 fi
 
@@ -32,8 +31,8 @@ fi
 out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
 PY
 STAGE46_R6_MATERIALIZE_ONLY=1 bash "$R6_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r6-bootstrap"
-grep -Fq 'stage46_r6_materialized=PASS version=0.1.224/5508 tests_inventory=1208 stage46_inventory=160 runtime_tests_skipped_for_r7_final_validation=true' "$EVIDENCE/r6-bootstrap/final-status.txt"
-printf 'r7_bootstrap_strategy=PASS exact_r6_materialization=true duplicate_r6_runtime_tests=false final_r7_runtime_tests=true\n' | tee "$EVIDENCE/r7-bootstrap-strategy.txt"
+grep -Fq 'stage46_r6_materialized=PASS version=0.1.224/5508 stage46_inventory=160 superseded_r6_runtime_audit_skipped=true runtime_tests_skipped_for_r7_final_validation=true' "$EVIDENCE/r6-bootstrap/final-status.txt"
+printf 'r7_bootstrap_strategy=PASS exact_r6_materialization=true superseded_r6_runtime_audit_skipped=true duplicate_r6_runtime_tests=false final_r7_static_and_runtime_tests=true\n' | tee "$EVIDENCE/r7-bootstrap-strategy.txt"
 
 P="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta"
 sha256sum "$P/FarolCausalCorrectionStage21.kt" "$P/FarolFinalPaintFreshnessStage41.kt" "$P/FarolAtomicTransitionStage46R5.kt" "$P/FarolSingleDestinationFastPathStage46R6.kt" > "$EVIDENCE/protected-before.sha256"
