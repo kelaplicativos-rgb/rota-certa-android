@@ -56,10 +56,16 @@ object TripShortcutInstaller {
 class TripQuickTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
-        val next = TripStore(this).nextPublishedTrip()
+        val store = TripStore(this)
+        val next = store.nextPublishedTrip()
         qsTile?.apply {
             state = Tile.STATE_ACTIVE
-            label = if (next == null) "Nova viagem" else "Viagem ${next.capacity - SeatAvailabilityEngine.remainingSeatsForWholeTrip(next, TripStore(this@TripQuickTileService).bookingsFor(next.id))}/${next.capacity}"
+            label = if (next == null) {
+                "Nova viagem"
+            } else {
+                val range = SeatAvailabilityEngine.availableSeatRange(next, store.bookingsFor(next.id))
+                if (range.variesBySegment) "Vagas ${range.minimum}–${range.maximum}" else "${range.maximum}/${next.capacity} vagas"
+            }
             subtitle = next?.title?.take(28) ?: "Rota Certa"
             updateTile()
         }
@@ -106,9 +112,13 @@ class TripWidgetProvider : AppWidgetProvider() {
             val detail = if (next == null) {
                 "Toque para criar a próxima"
             } else {
-                val available = SeatAvailabilityEngine.remainingSeatsForWholeTrip(next, store.bookingsFor(next.id))
+                val range = SeatAvailabilityEngine.availableSeatRange(next, store.bookingsFor(next.id))
                 val whenText = formatter.format(Instant.ofEpochMilli(next.departureAtMillis).atZone(ZoneId.systemDefault()))
-                "$whenText • $available/${next.capacity} vagas livres"
+                if (range.variesBySegment) {
+                    "$whenText • vagas por trecho ${range.minimum}–${range.maximum}/${next.capacity}"
+                } else {
+                    "$whenText • ${range.maximum}/${next.capacity} vagas livres"
+                }
             }
             views.setTextViewText(R.id.trip_widget_title, title)
             views.setTextViewText(R.id.trip_widget_detail, detail)
