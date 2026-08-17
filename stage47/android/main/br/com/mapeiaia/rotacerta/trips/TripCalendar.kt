@@ -54,6 +54,8 @@ object TripIcs {
         .replace("\n", "\\n")
 }
 
+class TripIcsFileProvider : FileProvider()
+
 object TripCalendarBridge {
     fun addToDeviceCalendar(context: Context, trip: Trip, booking: Booking? = null) {
         val ordered = trip.stops.sortedBy(TripStop::order)
@@ -80,10 +82,17 @@ object TripCalendarBridge {
             append("Rota Certa — ${trip.title}\n$route")
             trip.publicUrl?.let { append("\n\nReserve/consulte: $it") }
         }
-        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-        }, "Compartilhar viagem").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        shareText(context, "Compartilhar viagem", text)
+    }
+
+    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
+        val url = settings.publicCalendarUrl ?: return false
+        shareText(
+            context,
+            "Compartilhar Agenda de Viagens",
+            "Rota Certa — Agenda pública de viagens\n$url\n\nEste calendário mostra somente viagens publicadas.",
+        )
+        return true
     }
 
     fun shareIcs(context: Context, trip: Trip, booking: Booking? = null) {
@@ -96,5 +105,12 @@ object TripCalendarBridge {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }, "Compartilhar calendário").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private fun shareText(context: Context, title: String, text: String) {
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
