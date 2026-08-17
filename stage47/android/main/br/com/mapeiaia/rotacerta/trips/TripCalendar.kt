@@ -86,11 +86,19 @@ object TripCalendarBridge {
     }
 
     fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
-        val url = settings.publicCalendarUrl ?: return false
+        val calendarUrl = settings.publicCalendarUrl ?: return false
+        val publicBase = settings.publicBaseUrl.takeIf { it.startsWith("https://") }?.trimEnd('/') ?: return false
+        val publicToken = settings.publicCalendarToken.takeIf { it.length >= 16 } ?: return false
+        val agendaUrl = "$publicBase/?agenda=$publicToken"
         shareText(
             context,
             "Compartilhar Agenda de Viagens",
-            "Rota Certa — Agenda pública de viagens\n$url\n\nEste calendário mostra somente viagens publicadas.",
+            buildString {
+                append("Rota Certa — Agenda pública de viagens\n")
+                append("Ver e reservar próximas viagens:\n$agendaUrl\n\n")
+                append("Assinar calendário de viagens (.ics):\n$calendarUrl\n\n")
+                append("Nenhum compromisso pessoal ou dado de passageiro é publicado.")
+            },
         )
         return true
     }
