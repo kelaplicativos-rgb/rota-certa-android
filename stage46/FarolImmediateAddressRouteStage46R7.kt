@@ -15,6 +15,7 @@ import java.util.Locale
  * - a cheap event-local text fallback is allowed only when it contains exactly one valid address;
  *   if it contains multiple addresses it yields to the full visual collector so ordering is not guessed;
  * - package identity never authorizes an address;
+ * - OCR monetary noise attached to the end of an extracted address cannot enter route identity;
  * - this helper performs no cache lookup, Google request, painting, timer or polling. Existing visual
  *   epoch, route freshness and paint-token barriers remain downstream authority.
  */
@@ -27,10 +28,16 @@ object FarolImmediateAddressRouteStage46R7 {
     const val PACKAGE_NEUTRAL_MARKER = "PACKAGE_IDENTITY_NEVER_AUTHORIZES_ROUTE_STAGE46_R7"
     const val FRESHNESS_MARKER = "EXISTING_VISUAL_EPOCH_ROUTE_AND_PAINT_FRESHNESS_RETAINED_STAGE46_R7"
     const val NO_POLLING_MARKER = "EVENT_DRIVEN_IMMEDIATE_ADDRESS_NO_POLLING_STAGE46_R7"
+    const val OCR_TRAILING_FARE_MARKER = "OCR_TRAILING_FARE_CANNOT_ENTER_ROUTE_IDENTITY_STAGE46_R7"
 
     const val SINGLE_BLOCK_PREFIX = "r7-single:"
     const val AGGREGATE_BLOCK_PREFIX = "r7-aggregate:"
     const val EVENT_TEXT_BLOCK_PREFIX = "r7-event-single:"
+
+    private val trailingFareLikeToken = Regex(
+        pattern = """,\s*(?:R\$\s*)?\d{1,3},\d{2}\s*$""",
+        option = RegexOption.IGNORE_CASE,
+    )
 
     data class Decision(
         val evaluation: FarolUniversalVisualPipelineStage19.Evaluation?,
@@ -201,9 +208,22 @@ object FarolImmediateAddressRouteStage46R7 {
 
     private fun parsedAddresses(text: String): List<String> =
         UniversalScreenAddressParser.findAddresses(WrappedAddressTextNormalizer.normalize(text))
-            .map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+            .map(::cleanParsedAddress)
             .filter(String::isNotBlank)
             .distinctBy(::canonical)
+
+    private fun cleanParsedAddress(value: String): String {
+        val cleaned = DestinationAddressIdentityPolicy.cleanDisplayAddress(value)
+        if (cleaned.isBlank()) return cleaned
+        // Physical Stage46 R6 evidence showed OCR joining an offer value to the destination as
+        // "..., São Paulo, 9,70". Only a terminal decimal-money-shaped token is removed here.
+        // Integer house numbers (for example 970) are deliberately untouched.
+        return cleaned
+            .replace(trailingFareLikeToken, "")
+            .trim()
+            .trimEnd(',')
+            .trim()
+    }
 
     private fun chooseRepresentative(occurrences: List<Occurrence>): Occurrence? = occurrences
         .sortedWith(
