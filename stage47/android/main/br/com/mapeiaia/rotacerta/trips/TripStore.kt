@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -81,7 +82,16 @@ data class TripOnlineSettings(
     val apiBaseUrl: String = "",
     val publicBaseUrl: String = "",
     val driverToken: String = "",
+    val publicCalendarToken: String = "",
 ) {
     val configured: Boolean
         get() = apiBaseUrl.startsWith("https://") && driverToken.isNotBlank()
+
+    val publicCalendarUrl: String?
+        get() = publicBaseUrl.takeIf { it.startsWith("https://") }
+            ?.trimEnd('/')
+            ?.let { base ->
+                publicCalendarToken.takeIf { it.length >= 16 }
+                    ?.let { token -> "$base/calendar/$token.ics" }
+            }
 }
