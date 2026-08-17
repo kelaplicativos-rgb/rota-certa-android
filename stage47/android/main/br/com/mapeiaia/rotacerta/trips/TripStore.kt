@@ -6,7 +6,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class TripStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val secretStore = TripSecretStore(appContext)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(KEY_TRIPS, null)).orEmpty()
@@ -46,11 +48,21 @@ class TripStore(context: Context) {
         booking?.let { refreshTripStatus(it.tripId) }
     }
 
-    fun onlineSettings(): TripOnlineSettings = decode<TripOnlineSettings>(prefs.getString(KEY_ONLINE, null))
-        ?: TripOnlineSettings()
+    fun onlineSettings(): TripOnlineSettings {
+        val publicSettings = decode<TripOnlineSettings>(prefs.getString(KEY_ONLINE, null)) ?: TripOnlineSettings()
+        return publicSettings.copy(driverToken = secretStore.driverToken())
+    }
 
     fun saveOnlineSettings(settings: TripOnlineSettings) {
-        prefs.edit().putString(KEY_ONLINE, json.encodeToString(settings)).apply()
+        secretStore.saveDriverToken(settings.driverToken)
+        val withoutAdministrativeSecret = settings.copy(driverToken = "")
+        prefs.edit().putString(KEY_ONLINE, json.encodeToString(withoutAdministrativeSecret)).apply()
+    }
+
+    fun clearOnlineCredentials() {
+        secretStore.clear()
+        val current = decode<TripOnlineSettings>(prefs.getString(KEY_ONLINE, null)) ?: TripOnlineSettings()
+        prefs.edit().putString(KEY_ONLINE, json.encodeToString(current.copy(driverToken = ""))).apply()
     }
 
     fun nextPublishedTrip(nowMillis: Long = System.currentTimeMillis()): Trip? = trips()
