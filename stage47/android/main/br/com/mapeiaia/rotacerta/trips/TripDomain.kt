@@ -83,6 +83,14 @@ data class SeatAvailability(
     val segmentLoads: List<SegmentLoad>,
 )
 
+data class SeatAvailabilityRange(
+    val minimum: Int,
+    val maximum: Int,
+) {
+    val variesBySegment: Boolean
+        get() = minimum != maximum
+}
+
 object SeatAvailabilityEngine {
     fun availability(
         trip: Trip,
@@ -174,6 +182,18 @@ object SeatAvailabilityEngine {
     ): Int = segmentLoads(trip, bookings, nowMillis)
         .minOfOrNull(SegmentLoad::availableSeats)
         ?: trip.capacity
+
+    fun availableSeatRange(
+        trip: Trip,
+        bookings: List<Booking>,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): SeatAvailabilityRange {
+        val available = segmentLoads(trip, bookings, nowMillis).map(SegmentLoad::availableSeats)
+        return SeatAvailabilityRange(
+            minimum = available.minOrNull() ?: trip.capacity,
+            maximum = available.maxOrNull() ?: trip.capacity,
+        )
+    }
 
     fun suggestedStatus(
         trip: Trip,
