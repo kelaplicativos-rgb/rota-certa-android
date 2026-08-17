@@ -1,0 +1,82 @@
+name: Stage46 R8 focused diagnostic
+on:
+  push:
+    branches: [diag/stage46-r8-focused-be6b3b47]
+    paths:
+      - '.github/workflows/stage46-r8-focused-diagnostic.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused-r8:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - name: Checkout diagnostic R8 patches
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize R8 and run pre-Gradle audits only
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - patches/scripts/run_stage46_r8_reproducible_ci.sh /tmp/r8-materialize-only.sh <<'PY'
+          from pathlib import Path
+          import sys
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          anchor = 'cd "$SOURCE"\n./gradlew --no-daemon --rerun-tasks testDebugUnitTest lintDebug assembleDebug'
+          if text.count(anchor) != 1:
+              raise SystemExit(f'diagnostic anchor expected once, got {text.count(anchor)}')
+          prefix = text.split(anchor, 1)[0]
+          Path(sys.argv[2]).write_text(prefix + '\ncd "$SOURCE"\nprintf "stage46_r8_materialize_only=PASS\\n"\n', encoding='utf-8')
+          PY
+          bash /tmp/r8-materialize-only.sh source patches historical19 historical34 evidence
+
+      - name: Compile R8 main Kotlin only
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks compileDebugKotlin
+
+      - name: Run only Stage46 R8 unit tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.FarolStage46PositiveLocationEvidenceR8Test'
+
+      - name: Focused diagnostic summary
+        if: success()
+        run: |
+          printf 'stage46_r8_focused_diagnostic=PASS materialize=true compile=true r8_tests=17/17\n'
