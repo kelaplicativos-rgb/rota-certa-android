@@ -32,10 +32,11 @@ grep -Fq 'versionName = "0.1.226"' "$SOURCE/app/build.gradle.kts"
 
 BASE="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta"
 
-# Stage47 is additive. Only three pre-existing navigation/shortcut files are
-# allowed to change so the new internal trip shortcut can be registered. Every
-# other inherited Kotlin runtime source — including the entire FAROL pipeline —
-# must stay byte-for-byte identical to the Stage46 R8 materialization.
+# Stage47 is additive. Only four pre-existing navigation/shortcut files are
+# allowed to change so the new internal trip shortcut can be registered and
+# appended once to an existing user's persisted grid. Every other inherited
+# Kotlin runtime source — including the entire FAROL pipeline — must remain
+# byte-for-byte identical to the Stage46 R8 materialization.
 python3 - "$BASE" > "$EVIDENCE/protected-runtime-before.sha256" <<'PY'
 from pathlib import Path
 import hashlib, sys
@@ -44,6 +45,7 @@ allowed = {
     'BubbleShortcutModule.kt',
     'MainActivity.kt',
     'ShortcutModuleFocusPolicy0177.kt',
+    'ShortcutGridCustomization0179.kt',
 }
 for path in sorted(base.rglob('*.kt')):
     rel = path.relative_to(base).as_posix()
@@ -53,7 +55,7 @@ for path in sorted(base.rglob('*.kt')):
     print(digest, rel)
 PY
 sha256sum "$BASE/LiveRideAccessibilityService.kt" > "$EVIDENCE/farol-before.sha256"
-sha256sum "$BASE/BubbleShortcutModule.kt" "$BASE/MainActivity.kt" "$BASE/ShortcutModuleFocusPolicy0177.kt" > "$EVIDENCE/allowed-shortcut-surface-before.sha256"
+sha256sum "$BASE/BubbleShortcutModule.kt" "$BASE/MainActivity.kt" "$BASE/ShortcutModuleFocusPolicy0177.kt" "$BASE/ShortcutGridCustomization0179.kt" > "$EVIDENCE/allowed-shortcut-surface-before.sha256"
 
 python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" | tee "$EVIDENCE/materialize-stage47.txt"
 python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE" | tee "$EVIDENCE/materialize-route-planner-ui.txt"
@@ -67,6 +69,7 @@ allowed = {
     'BubbleShortcutModule.kt',
     'MainActivity.kt',
     'ShortcutModuleFocusPolicy0177.kt',
+    'ShortcutGridCustomization0179.kt',
 }
 for path in sorted(base.rglob('*.kt')):
     rel = path.relative_to(base).as_posix()
@@ -78,12 +81,12 @@ PY
 cmp "$EVIDENCE/protected-runtime-before.sha256" "$EVIDENCE/protected-runtime-after.sha256"
 sha256sum "$BASE/LiveRideAccessibilityService.kt" > "$EVIDENCE/farol-after.sha256"
 cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
-sha256sum "$BASE/BubbleShortcutModule.kt" "$BASE/MainActivity.kt" "$BASE/ShortcutModuleFocusPolicy0177.kt" > "$EVIDENCE/allowed-shortcut-surface-after.sha256"
+sha256sum "$BASE/BubbleShortcutModule.kt" "$BASE/MainActivity.kt" "$BASE/ShortcutModuleFocusPolicy0177.kt" "$BASE/ShortcutGridCustomization0179.kt" > "$EVIDENCE/allowed-shortcut-surface-after.sha256"
 if cmp -s "$EVIDENCE/allowed-shortcut-surface-before.sha256" "$EVIDENCE/allowed-shortcut-surface-after.sha256"; then
   echo 'Stage47 expected the audited shortcut surface to change.' >&2
   exit 1
 fi
-printf 'stage47_protected_runtime_byte_for_byte_preserved=PASS farol_untouched=true allowed_shortcut_files=3\n' | tee "$EVIDENCE/farol-isolation.txt"
+printf 'stage47_protected_runtime_byte_for_byte_preserved=PASS farol_untouched=true allowed_shortcut_files=4\n' | tee "$EVIDENCE/farol-isolation.txt"
 
 grep -Fq 'versionCode = 5520' "$SOURCE/app/build.gradle.kts"
 grep -Fq 'versionName = "0.1.227"' "$SOURCE/app/build.gradle.kts"
@@ -94,6 +97,7 @@ grep -Fq '.trips.TripWidgetProvider' "$SOURCE/app/src/main/AndroidManifest.xml"
 grep -Fq 'TRIP_AGENDA_SHORTCUT_STAGE47' "$BASE/BubbleShortcutModule.kt"
 grep -Fq 'id = "trip_agenda"' "$BASE/BubbleShortcutModule.kt"
 grep -Fq 'BubbleShortcutAction.OpenTrips' "$BASE/MainActivity.kt"
+grep -Fq 'stage47_trip_agenda_shortcut_migrated' "$BASE/ShortcutGridCustomization0179.kt"
 
 python3 - "$SOURCE" "$PATCHES" <<'PY' | tee "$EVIDENCE/static-stage47.txt"
 from pathlib import Path
@@ -129,6 +133,9 @@ for marker in ('BubbleShortcutAction.OpenTrips','br.com.mapeiaia.rotacerta.trips
     assert marker in main, marker
 focus=(base/'ShortcutModuleFocusPolicy0177.kt').read_text()
 assert 'BubbleShortcutAction.OpenTrips' in focus
+grid=(base/'ShortcutGridCustomization0179.kt').read_text()
+for marker in ('applyStage47TripShortcutMigration','stage47_trip_agenda_shortcut_migrated','shortcutId = "trip_agenda"'):
+    assert marker in grid, marker
 service=(base/'LiveRideAccessibilityService.kt').read_text()
 assert 'br.com.mapeiaia.rotacerta.trips' not in service
 api=(patches/'trip-platform/functions/index.js').read_text()
@@ -144,7 +151,7 @@ for marker in ('agendaToken','loadAgenda','/calendar/','seatRange','/v1/public/t
 feed=(patches/'trip-platform/calendar-functions/index.js').read_text()
 for marker in ('ROTA_CERTA_PUBLIC_CALENDAR_TOKEN','text/calendar','application/json','publicTrip'):
     assert marker in feed, marker
-print('stage47_static_architecture=PASS segment_capacity=true calendar=true android_shortcuts=true internal_shortcut=true tile=true widget=true route_eta=true remote_booking_sync=true public_schedule=true public_booking=true private_firestore=true public_calendar_feed=true farol_reference=false')
+print('stage47_static_architecture=PASS segment_capacity=true calendar=true android_shortcuts=true internal_shortcut=true shortcut_migration=true tile=true widget=true route_eta=true remote_booking_sync=true public_schedule=true public_booking=true private_firestore=true public_calendar_feed=true farol_reference=false')
 PY
 
 python3 - "$SOURCE" <<'PY' | tee "$EVIDENCE/test-inventory.txt"
@@ -211,6 +218,7 @@ for marker in \
   'TripQuickTileService' \
   'TripWidgetProvider' \
   'TRIP_AGENDA_SHORTCUT_STAGE47' \
+  'stage47_trip_agenda_shortcut_migrated' \
   'FAROL_POSITIVE_LOCATION_EVIDENCE_STAGE46_R8' \
   'FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7' \
   'FAROL_ATOMIC_TRANSITION_STAGE46_R5' \
@@ -222,5 +230,5 @@ sha512sum "$APK" | tee "$EVIDENCE/apk-sha512.txt"
 stat -c '%s' "$APK" | tee "$EVIDENCE/apk-size.txt"
 tar -czf "$EVIDENCE/rota-certa-trip-platform-stage47.tar.gz" -C "$PATCHES" trip-platform
 sha256sum "$EVIDENCE/rota-certa-trip-platform-stage47.tar.gz" | tee "$EVIDENCE/platform-sha256.txt"
-printf 'stage47_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.227/5520 signature_v2=true trip_markers=true internal_shortcut=true inherited_farol_markers=true\n' | tee "$EVIDENCE/apk-validation.txt"
-printf 'stage47_end_to_end=PASS version=0.1.227/5520 tests=1273 trip_tests=11 backend_contract=true segment_booking=true route_eta=true remote_booking_sync=true public_schedule=true public_calendar=true internal_shortcut=true farol_byte_for_byte_preserved=true allowed_shortcut_surface_files=3 online_activation_requires_external_firebase_secrets=true\n' | tee "$EVIDENCE/final-status.txt"
+printf 'stage47_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.227/5520 signature_v2=true trip_markers=true internal_shortcut=true shortcut_migration=true inherited_farol_markers=true\n' | tee "$EVIDENCE/apk-validation.txt"
+printf 'stage47_end_to_end=PASS version=0.1.227/5520 tests=1273 trip_tests=11 backend_contract=true segment_booking=true route_eta=true remote_booking_sync=true public_schedule=true public_calendar=true internal_shortcut=true shortcut_migration=true farol_byte_for_byte_preserved=true allowed_shortcut_surface_files=4 online_activation_requires_external_firebase_secrets=true\n' | tee "$EVIDENCE/final-status.txt"
