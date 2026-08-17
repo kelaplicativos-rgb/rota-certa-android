@@ -61,7 +61,18 @@ jobs:
           set -euo pipefail
           mkdir -p evidence
           bash patches/scripts/run_stage47_trip_calendar_booking_ci.sh source patches historical19 historical34 evidence
+      - name: Capture materialized shortcut surface for Stage47 integration audit
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/materialized-shortcut-surface
+          BASE="source/app/src/main/java/br/com/mapeiaia/rotacerta"
+          if [[ -d "$BASE" ]]; then
+            find "$BASE" -maxdepth 1 -type f \( -name '*Shortcut*.kt' -o -name 'BubbleShortcut*.kt' \) -exec cp '{}' evidence/materialized-shortcut-surface/ \;
+            test -f "$BASE/MainActivity.kt" && cp "$BASE/MainActivity.kt" evidence/materialized-shortcut-surface/ || true
+          fi
       - name: Upload Stage47 APK, trip platform and evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.227-stage47-trip-calendar-booking
