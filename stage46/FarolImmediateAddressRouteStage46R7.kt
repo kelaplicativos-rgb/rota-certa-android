@@ -4,19 +4,18 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Stage46 R7: a structurally valid address is itself the immediate route trigger.
+ * Stage46 R7 universal visible-location route.
  *
- * Contract:
- * - the legacy Stage21 pair evaluator is still attempted first by the service;
- * - one valid address must not wait for a destination label, bottom-screen proof, a second address,
- *   OCR, timer, debounce or another AccessibilityEvent before becoming a route candidate;
- * - when the current visual surface exposes multiple valid addresses, the visually last address is
- *   the destination; physical Y geometry wins, with deterministic visual encounter order as fallback;
- * - a cheap event-local text fallback is allowed only when it contains exactly one valid address;
- *   if it contains multiple addresses it yields to the full visual collector so ordering is not guessed;
- * - package identity never authorizes an address;
- * - OCR monetary noise attached to the end of an extracted address cannot enter route identity;
- * - this helper performs no cache lookup, Google request, painting, timer or polling. Existing visual
+ * Runtime contract:
+ * - visual package/app identity never authorizes a location;
+ * - card/template/ride semantics never authorize a location;
+ * - one current visible location is enough to start the real-route pipeline immediately;
+ * - multiple current visible locations use physical Y order; deterministic encounter order is fallback;
+ * - a POI/named place does not need house number, street type, bairro, city/state or destination cue;
+ * - Stage21 may remain as a legacy extractor/fallback for already-proven pairs, but it is never a veto
+ *   for an evaluation constructed by R7;
+ * - only negative technical hygiene removes obvious non-location UI/fare/time/distance/percentage noise;
+ * - this helper performs no Google request, cache lookup, painting, timer or polling. Existing visual
  *   epoch, route freshness and paint-token barriers remain downstream authority.
  */
 object FarolImmediateAddressRouteStage46R7 {
@@ -24,11 +23,17 @@ object FarolImmediateAddressRouteStage46R7 {
     const val FIRST_VALID_ADDRESS_MARKER = "FIRST_VALID_ADDRESS_STARTS_ROUTE_IMMEDIATELY_STAGE46_R7"
     const val LAST_ADDRESS_MARKER = "LAST_VISIBLE_ADDRESS_REPLACES_DESTINATION_STAGE46_R7"
     const val CHEAP_SINGLE_MARKER = "SINGLE_ADDRESS_EVENT_TEXT_AVOIDS_OCR_WAIT_STAGE46_R7"
+    // Historical compatibility marker retained so older R7 inventory remains readable. It is NOT a veto.
     const val STAGE21_STRUCTURE_MARKER = "STAGE21_ADDRESS_STRUCTURE_RETAINED_STAGE46_R7"
     const val PACKAGE_NEUTRAL_MARKER = "PACKAGE_IDENTITY_NEVER_AUTHORIZES_ROUTE_STAGE46_R7"
     const val FRESHNESS_MARKER = "EXISTING_VISUAL_EPOCH_ROUTE_AND_PAINT_FRESHNESS_RETAINED_STAGE46_R7"
     const val NO_POLLING_MARKER = "EVENT_DRIVEN_IMMEDIATE_ADDRESS_NO_POLLING_STAGE46_R7"
     const val OCR_TRAILING_FARE_MARKER = "OCR_TRAILING_FARE_CANNOT_ENTER_ROUTE_IDENTITY_STAGE46_R7"
+    const val UNIVERSAL_VISIBLE_LOCATION_MARKER = "ANY_VISIBLE_LOCATION_CAN_START_REAL_ROUTE_STAGE46_R7"
+    const val NO_STAGE21_VETO_MARKER = "NO_STAGE21_SEMANTIC_VETO_FOR_R7_LOCATION_STAGE46_R7"
+    const val NAMED_PLACE_MARKER = "NAMED_PLACE_WITHOUT_HOUSE_NUMBER_IS_ROUTEABLE_STAGE46_R7"
+    const val NEGATIVE_HYGIENE_ONLY_MARKER = "ONLY_NEGATIVE_TECHNICAL_HYGIENE_BEFORE_ROUTE_STAGE46_R7"
+    const val CASE_001170_MARKER = "CASE_001170_ESTACAO_LUZ_HOSPITAL_CLINICAS_REGRESSION_STAGE46_R7"
 
     const val SINGLE_BLOCK_PREFIX = "r7-single:"
     const val AGGREGATE_BLOCK_PREFIX = "r7-aggregate:"
@@ -38,6 +43,22 @@ object FarolImmediateAddressRouteStage46R7 {
         pattern = """,\s*(?:R\$\s*)?\d{1,3},\d{2}\s*$""",
         option = RegexOption.IGNORE_CASE,
     )
+    private val pureFare = Regex("""^\s*(?:R\$\s*)?\d{1,4}(?:[.,]\d{2})\s*$""", RegexOption.IGNORE_CASE)
+    private val pureTime = Regex("""^\s*\d{1,3}\s*(?:min|minuto|minutos|h|hora|horas)\s*$""", RegexOption.IGNORE_CASE)
+    private val pureDistance = Regex("""^\s*\d+(?:[.,]\d+)?\s*(?:m|km)\s*$""", RegexOption.IGNORE_CASE)
+    private val purePercent = Regex("""^\s*\d{1,3}\s*%\s*$""")
+    private val pureRating = Regex("""^\s*\d(?:[.,]\d)?\s*(?:★|estrelas?)?\s*$""", RegexOption.IGNORE_CASE)
+    private val whitespace = Regex("""\s+""")
+    private val trailingBrokenConnector = Regex("""\b(?:e|de|da|do|das|dos|para|em|na|no)\s*$""", RegexOption.IGNORE_CASE)
+
+    private val exactTechnicalNoise = setOf(
+        "origem", "destino", "destino final", "embarque", "partida", "chegada", "desembarque",
+        "pickup", "dropoff", "aceitar", "aceitar corrida", "recusar", "rejeitar", "cancelar",
+        "fechar", "continuar", "confirmar", "ok", "voltar", "oferta recebida", "pedido de viagem",
+        "sua tarifa", "ofereça sua tarifa", "ofereca sua tarifa", "pix", "dinheiro",
+        "rota certa", "calculando rota", "aguardando", "carregando",
+    )
+    private val canonicalTechnicalNoise by lazy { exactTechnicalNoise.map(::canonical).toSet() }
 
     data class Decision(
         val evaluation: FarolUniversalVisualPipelineStage19.Evaluation?,
@@ -70,15 +91,15 @@ object FarolImmediateAddressRouteStage46R7 {
         if (usable.isEmpty()) return Decision(null, "no_usable_blocks", 0, false)
 
         val parsed = usable.flatMapIndexed { blockIndex, block ->
-            parsedAddresses(block.text).mapIndexed { index, address ->
+            locationQueries(block.text).mapIndexed { index, address ->
                 Occurrence(block, address, canonical(address), blockIndex, index)
             }
         }.filter { occurrence ->
-            occurrence.canonical.isNotBlank() && FarolCausalCorrectionStage21.validateAddress(occurrence.address).accepted
+            occurrence.canonical.isNotBlank() && isUsableLocationQuery(occurrence.address)
         }
-        if (parsed.isEmpty()) return Decision(null, "no_valid_address", 0, false)
+        if (parsed.isEmpty()) return Decision(null, "no_current_visible_location", 0, false)
 
-        // The highest layer that actually contains valid address evidence owns this evaluation.
+        // Window/layer ownership is technical freshness/integrity, not semantic authorization.
         val topLayer = parsed.maxOf { it.block.windowLayer }
         val layerOccurrences = parsed.filter { it.block.windowLayer == topLayer }
         val windows = layerOccurrences.groupBy { it.block.windowId }.filterValues { it.isNotEmpty() }
@@ -128,10 +149,6 @@ object FarolImmediateAddressRouteStage46R7 {
             blockIdPrefix = AGGREGATE_BLOCK_PREFIX,
         ) ?: return Decision(null, "aggregate_blank_signature", uniqueCount, false)
 
-        val validation = FarolCausalCorrectionStage21.validateEvaluation(evaluation)
-        if (!validation.accepted) {
-            return Decision(null, "aggregate_${validation.reason}", uniqueCount, false)
-        }
         return Decision(
             evaluation,
             if (ordered.all { hasConcreteGeometry(it.block) }) "aggregate_last_visual_address_geometry"
@@ -142,9 +159,9 @@ object FarolImmediateAddressRouteStage46R7 {
     }
 
     /**
-     * Event-local shortcut used only to avoid an unnecessary screenshot/OCR round-trip when the
-     * Accessibility event already exposes exactly one structurally valid address. Multiple addresses
-     * deliberately return null here so the complete visual blocks determine their real last order.
+     * Cheap event-local shortcut. The full current visual collector is called first by the service.
+     * This path only avoids an OCR round-trip when that event already exposes exactly one usable
+     * location. Multi-location event text yields to the full collector so physical order is not guessed.
      */
     fun evaluateImmediateText(
         text: String,
@@ -152,47 +169,60 @@ object FarolImmediateAddressRouteStage46R7 {
         source: FarolUniversalVisualPipelineStage19.Source,
     ): FarolUniversalVisualPipelineStage19.Evaluation? {
         if (text.isBlank()) return null
-        val valid = parsedAddresses(text)
-            .filter { FarolCausalCorrectionStage21.validateAddress(it).accepted }
-            .distinctBy(::canonical)
-        if (valid.size != 1) return null
-        val address = valid.single()
+        val locations = locationQueries(text).distinctBy(::canonical)
+        if (locations.size != 1) return null
+        val location = locations.single()
         return buildEvaluation(
             windowId = windowId,
             source = source,
             analysisText = text.take(2400),
-            orderedAddresses = listOf(address),
-            pickup = address,
-            destination = address,
+            orderedAddresses = listOf(location),
+            pickup = location,
+            destination = location,
             blockIdPrefix = EVENT_TEXT_BLOCK_PREFIX,
         )
     }
 
     /**
-     * Pair candidates keep Stage21 unchanged. Single candidates are accepted only when they were
-     * constructed by R7 and their destination still passes Stage21 structural address validation.
-     * Labels such as origem/embarque/destino are intentionally not decision authority in R7.
+     * Stage21 is allowed only as validation for foreign legacy pair evaluations that were not built
+     * by R7. Any R7 single/aggregate evaluation is authorized by current visual ownership + negative
+     * technical hygiene; Stage21 address semantics cannot veto it.
      */
     fun validateEvaluation(
         evaluation: FarolUniversalVisualPipelineStage19.Evaluation,
     ): FarolCausalCorrectionStage21.Validation {
-        if (evaluation.addresses.size >= 2) {
-            return FarolCausalCorrectionStage21.validateEvaluation(evaluation)
+        val r7Single = evaluation.addresses.size == 1 && (
+            evaluation.blockId.startsWith(SINGLE_BLOCK_PREFIX) ||
+                evaluation.blockId.startsWith(EVENT_TEXT_BLOCK_PREFIX)
+            )
+        val r7Aggregate = evaluation.addresses.size >= 2 &&
+            evaluation.blockId.startsWith(AGGREGATE_BLOCK_PREFIX)
+
+        if (!r7Single && !r7Aggregate) {
+            return if (evaluation.addresses.size >= 2) {
+                FarolCausalCorrectionStage21.validateEvaluation(evaluation)
+            } else {
+                FarolCausalCorrectionStage21.Validation(false, "single_not_r7_authorized")
+            }
         }
-        val authorizedPrefix = evaluation.blockId.startsWith(SINGLE_BLOCK_PREFIX) ||
-            evaluation.blockId.startsWith(EVENT_TEXT_BLOCK_PREFIX)
-        if (evaluation.addresses.size != 1 || !authorizedPrefix) {
-            return FarolCausalCorrectionStage21.Validation(false, "single_not_r7_authorized")
+
+        if (evaluation.addresses.isEmpty()) {
+            return FarolCausalCorrectionStage21.Validation(false, "r7_empty_location")
         }
-        val only = evaluation.addresses.single()
-        if (canonical(only) != canonical(evaluation.destination)) {
-            return FarolCausalCorrectionStage21.Validation(false, "single_destination_identity_mismatch")
+        if (!isUsableLocationQuery(evaluation.destination)) {
+            return FarolCausalCorrectionStage21.Validation(false, "r7_destination_technical_noise_or_truncated")
         }
-        val address = FarolCausalCorrectionStage21.validateAddress(evaluation.destination)
-        if (!address.accepted) {
-            return FarolCausalCorrectionStage21.Validation(false, "single_destination_${address.reason}")
+        val expectedDestination = evaluation.addresses.last()
+        if (canonical(expectedDestination) != canonical(evaluation.destination)) {
+            return FarolCausalCorrectionStage21.Validation(false, "r7_destination_identity_mismatch")
         }
-        return FarolCausalCorrectionStage21.Validation(true, "single_valid_address_immediate")
+        if (routeSignature(evaluation.destination).isBlank()) {
+            return FarolCausalCorrectionStage21.Validation(false, "r7_blank_signature")
+        }
+        return FarolCausalCorrectionStage21.Validation(
+            true,
+            if (r7Single) "single_valid_address_immediate" else "aggregate_last_visual_location_immediate",
+        )
     }
 
     fun isSingleImmediateEvaluation(
@@ -206,23 +236,80 @@ object FarolImmediateAddressRouteStage46R7 {
         evaluation: FarolUniversalVisualPipelineStage19.Evaluation,
     ): Boolean = evaluation.addresses.size >= 2 && evaluation.blockId.startsWith(AGGREGATE_BLOCK_PREFIX)
 
-    private fun parsedAddresses(text: String): List<String> =
-        UniversalScreenAddressParser.findAddresses(WrappedAddressTextNormalizer.normalize(text))
+    /** Structured parsing is an extractor, never an authorization barrier. */
+    private fun locationQueries(text: String): List<String> {
+        val normalized = WrappedAddressTextNormalizer.normalize(text)
+        val structured = UniversalScreenAddressParser.findAddresses(normalized)
             .map(::cleanParsedAddress)
-            .filter(String::isNotBlank)
+            .filter(::isUsableLocationQuery)
+        val raw = rawLocationQueries(text)
+        return (structured + raw)
+            .map(::cleanParsedAddress)
+            .filter(::isUsableLocationQuery)
             .distinctBy(::canonical)
+    }
+
+    private fun rawLocationQueries(text: String): List<String> {
+        val lines = text.lines()
+            .map(::cleanParsedAddress)
+            .map { whitespace.replace(it, " ").trim() }
+            .filter(String::isNotBlank)
+        if (lines.isEmpty()) return emptyList()
+
+        val groups = mutableListOf<String>()
+        lines.forEach { line ->
+            if (isTechnicalNonLocation(line)) return@forEach
+            val append = groups.isNotEmpty() && (
+                line.startsWith("(") ||
+                    parenthesisBalance(groups.last()) > 0 ||
+                    groups.last().trimEnd().endsWith("-") ||
+                    trailingBrokenConnector.containsMatchIn(groups.last())
+                )
+            if (append) {
+                groups[groups.lastIndex] = cleanParsedAddress(groups.last() + " " + line)
+            } else {
+                groups += line
+            }
+        }
+        return groups.filter(::isUsableLocationQuery)
+    }
+
+    private fun parenthesisBalance(value: String): Int =
+        value.count { it == '(' } - value.count { it == ')' }
 
     private fun cleanParsedAddress(value: String): String {
-        val cleaned = DestinationAddressIdentityPolicy.cleanDisplayAddress(value)
+        val policyCleaned = DestinationAddressIdentityPolicy.cleanDisplayAddress(value)
+        val cleaned = policyCleaned.ifBlank { value.trim() }
         if (cleaned.isBlank()) return cleaned
-        // Physical Stage46 R6 evidence showed OCR joining an offer value to the destination as
-        // "..., São Paulo, 9,70". Only a terminal decimal-money-shaped token is removed here.
-        // Integer house numbers (for example 970) are deliberately untouched.
         return cleaned
             .replace(trailingFareLikeToken, "")
             .trim()
             .trimEnd(',')
             .trim()
+    }
+
+    private fun isUsableLocationQuery(value: String): Boolean {
+        val cleaned = cleanParsedAddress(value)
+        if (cleaned.length < 3 || isTechnicalNonLocation(cleaned)) return false
+        return canonical(cleaned).any(Char::isLetter)
+    }
+
+    private fun isTechnicalNonLocation(value: String): Boolean {
+        val cleaned = whitespace.replace(value, " ").trim().trim('(', ')')
+        if (cleaned.isBlank()) return true
+        val lower = canonical(cleaned)
+        if (lower in canonicalTechnicalNoise) return true
+        if (pureFare.matches(cleaned) || pureTime.matches(cleaned) || pureDistance.matches(cleaned) ||
+            purePercent.matches(cleaned) || pureRating.matches(cleaned)
+        ) return true
+        if (trailingBrokenConnector.containsMatchIn(cleaned)) return true
+
+        val c = canonical(cleaned)
+        if (c.startsWith("aceitar ") || c.startsWith("recusar ") || c.startsWith("rejeitar ") ||
+            c.startsWith("cancelar ") || c.startsWith("ofereca ") || c.startsWith("selecionar ")
+        ) return true
+        if (!c.any(Char::isLetter)) return true
+        return false
     }
 
     private fun chooseRepresentative(occurrences: List<Occurrence>): Occurrence? = occurrences
@@ -245,8 +332,6 @@ object FarolImmediateAddressRouteStage46R7 {
                     .thenBy { it.indexInBlock },
             )
         }
-        // Accessibility/OCR block encounter order is the deterministic fallback when concrete
-        // geometry is unavailable. This avoids waiting for another event while still choosing last.
         return occurrences.sortedWith(compareBy<Occurrence> { it.blockIndex }.thenBy { it.indexInBlock })
     }
 
@@ -268,7 +353,7 @@ object FarolImmediateAddressRouteStage46R7 {
         destination: String,
         blockIdPrefix: String,
     ): FarolUniversalVisualPipelineStage19.Evaluation? {
-        val signature = DestinationAddressIdentityPolicy.signature("visual", destination)
+        val signature = routeSignature(destination)
         if (signature.isBlank()) return null
         val identityAddresses = orderedAddresses.joinToString("|") { canonical(it) }
         val stableIdentity = "$blockIdPrefix$windowId:$identityAddresses"
@@ -283,6 +368,13 @@ object FarolImmediateAddressRouteStage46R7 {
             addressSignature = signature,
             screenHash = "$stableIdentity|$signature".hashCode(),
         )
+    }
+
+    private fun routeSignature(destination: String): String {
+        val policy = DestinationAddressIdentityPolicy.signature("visual", destination)
+        if (policy.isNotBlank()) return policy
+        val c = canonical(destination)
+        return if (c.isBlank()) "" else "visual:$c"
     }
 
     private fun canonical(value: String): String = Normalizer
