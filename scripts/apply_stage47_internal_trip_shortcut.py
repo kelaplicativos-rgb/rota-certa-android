@@ -136,4 +136,58 @@ replace_once(
     "Stage47 Home trip module surface",
 )
 
-print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenTrips inherited_ids_preserved=true")
+# Existing users already have a persisted shortcut grid, so merely adding the
+# catalog entry would leave the new module invisible. Add it once, at the end,
+# without reordering or replacing any existing shortcut. The migration flag is
+# persisted separately so a user who later removes the shortcut is respected.
+grid = BASE / "ShortcutGridCustomization0179.kt"
+replace_once(
+    grid,
+    '''            ShortcutGridCustomizationPolicy0179.normalize(entries)
+        }.getOrElse { emptyList() }
+    }
+
+    fun readResolved(): List<ResolvedShortcutGridEntry0179> =
+        ShortcutGridCustomizationPolicy0179.resolve(read())
+''',
+    '''            ShortcutGridCustomizationPolicy0179.normalize(entries)
+        }.getOrElse { emptyList() }.let(::applyStage47TripShortcutMigration)
+    }
+
+    private fun applyStage47TripShortcutMigration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
+        if (prefs.getBoolean(KEY_STAGE47_TRIP_SHORTCUT_MIGRATED, false)) return entries
+        val migrated = if (
+            !ShortcutGridCustomizationPolicy0179.contains(entries, "trip_agenda") &&
+            entries.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS
+        ) {
+            ShortcutGridCustomizationPolicy0179.add(
+                entries = entries,
+                shortcutId = "trip_agenda",
+                nowMillis = System.currentTimeMillis(),
+            )
+        } else {
+            entries
+        }
+        if (migrated != entries) persist(migrated)
+        prefs.edit().putBoolean(KEY_STAGE47_TRIP_SHORTCUT_MIGRATED, true).apply()
+        return migrated
+    }
+
+    fun readResolved(): List<ResolvedShortcutGridEntry0179> =
+        ShortcutGridCustomizationPolicy0179.resolve(read())
+''',
+    "Stage47 persisted shortcut migration",
+)
+replace_once(
+    grid,
+    '''        const val KEY_INITIALIZED_0184 = "initialized_action_grid_0184"
+    }
+}''',
+    '''        const val KEY_INITIALIZED_0184 = "initialized_action_grid_0184"
+        const val KEY_STAGE47_TRIP_SHORTCUT_MIGRATED = "stage47_trip_agenda_shortcut_migrated"
+    }
+}''',
+    "Stage47 shortcut migration flag",
+)
+
+print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenTrips migration=one_time_append inherited_ids_preserved=true")
