@@ -57,13 +57,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Reproduce R7, materialize R8, test and build
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           mkdir -p evidence
-          bash patches/scripts/run_stage46_r8_reproducible_ci.sh source patches historical19 historical34 evidence
+          export PS4='+R8_TRACE ${BASH_SOURCE}:${LINENO}: '
+          set +e
+          bash -x patches/scripts/run_stage46_r8_reproducible_ci.sh source patches historical19 historical34 evidence 2> >(tee evidence/r8-shell-trace.log >&2)
+          rc=$?
+          set -e
+          printf 'r8_orchestrator_exit=%s\n' "$rc" | tee evidence/r8-orchestrator-exit.txt
+          exit "$rc"
       - name: Upload Stage46 R8 physical artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.226-stage46-positive-location-evidence-r8
           path: evidence/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
