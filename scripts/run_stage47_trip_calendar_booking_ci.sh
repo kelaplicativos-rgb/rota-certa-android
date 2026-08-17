@@ -37,6 +37,7 @@ find "$BASE" -type f -name '*.kt' ! -path '*/trips/*' -print0 | sort -z | xargs 
 sha256sum "$BASE/LiveRideAccessibilityService.kt" > "$EVIDENCE/farol-before.sha256"
 
 python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" | tee "$EVIDENCE/materialize-stage47.txt"
+python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE" | tee "$EVIDENCE/materialize-route-planner-ui.txt"
 
 find "$BASE" -type f -name '*.kt' ! -path '*/trips/*' -print0 | sort -z | xargs -0 sha256sum > "$EVIDENCE/runtime-kotlin-after.sha256"
 cmp "$EVIDENCE/runtime-kotlin-before.sha256" "$EVIDENCE/runtime-kotlin-after.sha256"
@@ -57,7 +58,8 @@ import sys
 source=Path(sys.argv[1]); patches=Path(sys.argv[2])
 trip=source/'app/src/main/java/br/com/mapeiaia/rotacerta/trips'
 required={
- 'TripDomain.kt','TripCalendar.kt','TripStore.kt','TripRemoteApi.kt','TripAndroidEntryPoints.kt','TripsActivity.kt'
+ 'TripDomain.kt','TripCalendar.kt','TripStore.kt','TripRemoteApi.kt','TripAndroidEntryPoints.kt','TripsActivity.kt',
+ 'TripRoutePlanner.kt','TripRoutePlannerUi.kt'
 }
 assert required == {p.name for p in trip.glob('*.kt')}, {p.name for p in trip.glob('*.kt')}
 domain=(trip/'TripDomain.kt').read_text()
@@ -69,8 +71,11 @@ for marker in ('BEGIN:VCALENDAR','CalendarContract.Events.CONTENT_URI','text/cal
 entry=(trip/'TripAndroidEntryPoints.kt').read_text()
 for marker in ('ShortcutManager','requestPinShortcut','TileService','AppWidgetProvider','ACTION_NEW_TRIP'):
     assert marker in entry, marker
+route=(trip/'TripRoutePlanner.kt').read_text()
+for marker in ('directions/v2:computeRoutes','routes.legs.distanceMeters','routes.legs.duration','TRAFFIC_AWARE','plannedArrivalMillis'):
+    assert marker in route, marker
 ui=(trip/'TripsActivity.kt').read_text()
-for marker in ('Agenda de Viagens','Publicar online','Google/Agenda','Confirmar reserva','Integração online'):
+for marker in ('Agenda de Viagens','Publicar online','Google/Agenda','Confirmar reserva','Integração online','TripRoutePlannerControl','routePlan'):
     assert marker in ui, marker
 service=(source/'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt').read_text()
 assert 'br.com.mapeiaia.rotacerta.trips' not in service
@@ -83,14 +88,14 @@ page=(patches/'trip-platform/public/index.html').read_text()
 assert 'Agenda de Viagens' in page and 'Content-Security-Policy' in page
 feed=(patches/'trip-platform/calendar-functions/index.js').read_text()
 assert 'ROTA_CERTA_PUBLIC_CALENDAR_TOKEN' in feed and 'text/calendar' in feed
-print('stage47_static_architecture=PASS segment_capacity=true calendar=true shortcut=true tile=true widget=true remote_api=true public_booking=true private_firestore=true public_calendar_feed=true farol_reference=false')
+print('stage47_static_architecture=PASS segment_capacity=true calendar=true shortcut=true tile=true widget=true route_eta=true remote_api=true public_booking=true private_firestore=true public_calendar_feed=true farol_reference=false')
 PY
 
 python3 - "$SOURCE" <<'PY' | tee "$EVIDENCE/test-inventory.txt"
 from pathlib import Path
 import sys
 n=sum(p.read_text().count('@Test') for p in (Path(sys.argv[1])/'app/src/test/java').rglob('*.kt'))
-print('total_at_test='+str(n)); assert n==1271,n
+print('total_at_test='+str(n)); assert n==1272,n
 PY
 
 node --check "$PATCHES/trip-platform/functions/index.js"
@@ -124,10 +129,10 @@ for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
         trip_t+=vals[0]; trip_f+=vals[1]; trip_e+=vals[2]; trip_s+=vals[3]
 print('trip',trip_t,trip_f,trip_e,trip_s)
 print('full',all_t,all_f,all_e,all_s)
-assert (trip_t,trip_f,trip_e,trip_s)==(9,0,0,0),(trip_t,trip_f,trip_e,trip_s)
-assert (all_t,all_f,all_e,all_s)==(1271,0,0,0),(all_t,all_f,all_e,all_s)
+assert (trip_t,trip_f,trip_e,trip_s)==(10,0,0,0),(trip_t,trip_f,trip_e,trip_s)
+assert (all_t,all_f,all_e,all_s)==(1272,0,0,0),(all_t,all_f,all_e,all_s)
 PY
-printf 'stage47_gradle_validation=PASS trip=9/9 full=1271/1271 lint=PASS assemble=PASS\n' | tee "$EVIDENCE/gradle-validation.txt"
+printf 'stage47_gradle_validation=PASS trip=10/10 full=1272/1272 lint=PASS assemble=PASS\n' | tee "$EVIDENCE/gradle-validation.txt"
 
 APK="$EVIDENCE/Rota-Certa-Agenda-Viagens-Stage47-0.1.227.apk"
 cp app/build/outputs/apk/debug/app-debug.apk "$APK"
@@ -146,6 +151,7 @@ for marker in \
   'Agenda de Viagens' \
   'rota_certa_trips_stage47' \
   'SeatAvailabilityEngine' \
+  'TripRoutePlanner' \
   'TripQuickTileService' \
   'TripWidgetProvider' \
   'FAROL_POSITIVE_LOCATION_EVIDENCE_STAGE46_R8' \
@@ -160,4 +166,4 @@ stat -c '%s' "$APK" | tee "$EVIDENCE/apk-size.txt"
 tar -czf "$EVIDENCE/rota-certa-trip-platform-stage47.tar.gz" -C "$PATCHES" trip-platform
 sha256sum "$EVIDENCE/rota-certa-trip-platform-stage47.tar.gz" | tee "$EVIDENCE/platform-sha256.txt"
 printf 'stage47_apk_validation=PASS package=br.com.mapeiaia.rotacerta version=0.1.227/5520 signature_v2=true trip_markers=true inherited_farol_markers=true\n' | tee "$EVIDENCE/apk-validation.txt"
-printf 'stage47_end_to_end=PASS version=0.1.227/5520 tests=1271 trip_tests=9 backend_contract=true segment_booking=true public_calendar=true farol_byte_for_byte_preserved=true online_activation_requires_external_firebase_secrets=true\n' | tee "$EVIDENCE/final-status.txt"
+printf 'stage47_end_to_end=PASS version=0.1.227/5520 tests=1272 trip_tests=10 backend_contract=true segment_booking=true route_eta=true public_calendar=true farol_byte_for_byte_preserved=true online_activation_requires_external_firebase_secrets=true\n' | tee "$EVIDENCE/final-status.txt"
