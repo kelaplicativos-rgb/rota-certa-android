@@ -2,7 +2,8 @@
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const token = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
 let trip = null;
 let confirmedBooking = null;
 
@@ -11,6 +12,13 @@ function setError(message) { $("error").textContent = message; show("error", tru
 function formatDate(ms) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(ms)); }
 function orderedStops() { return [...(trip?.stops || [])].sort((a, b) => a.order - b.order); }
 
+function seatRange(item) {
+  const loads = Array.isArray(item.segmentLoads) ? item.segmentLoads.map(Number) : [];
+  if (!loads.length) return { minimum: item.capacity, maximum: item.capacity };
+  const available = loads.map((load) => Math.max(0, Number(item.capacity) - load));
+  return { minimum: Math.min(...available), maximum: Math.max(...available) };
+}
+
 function availableFor(fromIndex, toIndex) {
   if (!trip || fromIndex < 0 || toIndex <= fromIndex) return 0;
   let available = trip.capacity;
@@ -18,6 +26,69 @@ function availableFor(fromIndex, toIndex) {
     available = Math.min(available, trip.capacity - Number((trip.segmentLoads || [])[i] || 0));
   }
   return Math.max(0, available);
+}
+
+async function loadAgenda() {
+  if (agendaToken.length < 16) return setError("Link de agenda inválido.");
+  try {
+    const response = await fetch(`/calendar/${encodeURIComponent(agendaToken)}.json`, { headers: { Accept: "application/json" } });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
+    renderAgenda(Array.isArray(body.trips) ? body.trips : []);
+  } catch (error) {
+    setError(error.message || "Não foi possível carregar a agenda.");
+  }
+}
+
+function renderAgenda(trips) {
+  show("loading", false);
+  show("agenda", true);
+  const container = $("agendaTrips");
+  container.innerHTML = "";
+  if (!trips.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nenhuma próxima viagem publicada no momento.";
+    container.appendChild(empty);
+    return;
+  }
+  trips.forEach((item) => {
+    const link = document.createElement("a");
+    link.className = "agendaTrip";
+    link.href = `/?trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+    const route = document.createElement("div");
+    route.className = "agendaRoute";
+    route.textContent = item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ");
+    const meta = document.createElement("div");
+    meta.className = "agendaMeta";
+    const range = seatRange(item);
+    const seats = range.minimum === range.maximum
+      ? `${range.maximum}/${item.capacity} vagas livres`
+      : `vagas por trecho: ${range.minimum}–${range.maximum}/${item.capacity}`;
+    meta.textContent = `${formatDate(item.departureAtMillis)} • ${seats}`;
+    link.append(route, meta);
+    container.appendChild(link);
+  });
+}
+
+async function shareCalendarFeed() {
+  if (agendaToken.length < 16) return;
+  const url = `${location.origin}/calendar/${encodeURIComponent(agendaToken)}.ics`;
+  const payload = { title: "Rota Certa — Agenda de Viagens", text: "Calendário público somente com viagens publicadas.", url };
+  try {
+    if (navigator.share) {
+      await navigator.share(payload);
+      return;
+    }
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+      $("subscribeCalendar").textContent = "Link .ics copiado";
+      return;
+    }
+  } catch (_) {
+    // Fall through to opening the standard iCalendar feed.
+  }
+  location.href = url;
 }
 
 function refreshSelectors() {
@@ -47,9 +118,9 @@ function refreshAvailability() {
 }
 
 async function loadTrip() {
-  if (token.length < 16) return setError("Link de viagem inválido.");
+  if (tripToken.length < 16) return setError("Link de viagem inválido.");
   try {
-    const response = await fetch(`/v1/public/trips/${encodeURIComponent(token)}`, { headers: { Accept: "application/json" } });
+    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}`, { headers: { Accept: "application/json" } });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Viagem indisponível.");
     trip = body;
@@ -107,7 +178,7 @@ async function reserve() {
   $("reserve").disabled = true;
   $("bookingMessage").textContent = "Confirmando sem ultrapassar a capacidade do trecho…";
   try {
-    const response = await fetch(`/v1/public/trips/${encodeURIComponent(token)}/bookings`, {
+    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
@@ -127,7 +198,7 @@ async function reserve() {
       dropoffStopId: $("dropoff").value,
       seats,
     };
-    try { localStorage.setItem(`rotacerta-booking-${body.bookingId}`, JSON.stringify({ trip: token, cancellationToken: body.cancellationToken })); } catch (_) {}
+    try { localStorage.setItem(`rotacerta-booking-${body.bookingId}`, JSON.stringify({ trip: tripToken, cancellationToken: body.cancellationToken })); } catch (_) {}
     $("bookingMessage").textContent = "";
     $("confirmationText").textContent = `Reserva ${body.bookingId} confirmada para ${seats} lugar(es).`;
     $("cancelCode").textContent = body.cancellationToken;
@@ -207,8 +278,9 @@ function downloadIcs() {
   link.download = `rota-certa-${confirmedBooking.bookingId}.ics`;
   document.body.appendChild(link);
   link.click();
+  const objectUrl = link.href;
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 $("boarding").addEventListener("change", refreshSelectors);
@@ -217,4 +289,12 @@ $("seats").addEventListener("change", refreshAvailability);
 $("reserve").addEventListener("click", reserve);
 $("googleCalendar").addEventListener("click", openGoogleCalendar);
 $("downloadIcs").addEventListener("click", downloadIcs);
-loadTrip();
+$("subscribeCalendar").addEventListener("click", shareCalendarFeed);
+
+if (tripToken) {
+  loadTrip();
+} else if (agendaToken) {
+  loadAgenda();
+} else {
+  setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+}
