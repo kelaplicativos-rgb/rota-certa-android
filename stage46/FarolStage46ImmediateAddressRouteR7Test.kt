@@ -65,6 +65,7 @@ class FarolStage46ImmediateAddressRouteR7Test {
             "PACKAGE_IDENTITY_NEVER_AUTHORIZES_ROUTE_STAGE46_R7",
             "EXISTING_VISUAL_EPOCH_ROUTE_AND_PAINT_FRESHNESS_RETAINED_STAGE46_R7",
             "EVENT_DRIVEN_IMMEDIATE_ADDRESS_NO_POLLING_STAGE46_R7",
+            "OCR_TRAILING_FARE_CANNOT_ENTER_ROUTE_IDENTITY_STAGE46_R7",
         ).forEach { assertTrue(it, h.contains(it)) }
     }
 
@@ -236,6 +237,25 @@ class FarolStage46ImmediateAddressRouteR7Test {
         )!!
         assertEquals(FarolUniversalVisualPipelineStage19.Source.Ocr, result.source)
         assertEquals(first, result.destination)
+    }
+
+    @Test fun physical_ocr_trailing_fare_cannot_enter_destination_identity() {
+        val contaminated = "Av. Sapopemba, 15125, Vila Ester, São Paulo, 9,70"
+        val expected = "Av. Sapopemba, 15125, Vila Ester, São Paulo"
+        val result = FarolImmediateAddressRouteStage46R7.evaluate(
+            listOf(block(contaminated, source = FarolUniversalVisualPipelineStage19.Source.Ocr)),
+        )!!
+        assertEquals(expected, result.destination)
+        assertEquals(expected, result.addresses.single())
+        assertFalse(result.addressSignature.contains("9 70"))
+    }
+
+    @Test fun integer_house_number_is_never_mistaken_for_terminal_fare() {
+        val address = "Rua Carolina Machado, 970, Madureira, Rio de Janeiro"
+        val result = FarolImmediateAddressRouteStage46R7.evaluate(
+            listOf(block(address, source = FarolUniversalVisualPipelineStage19.Source.Ocr)),
+        )!!
+        assertEquals(address, result.destination)
     }
 
     @Test fun arbitrary_foreign_single_evaluation_cannot_bypass_r7_authorization() {
