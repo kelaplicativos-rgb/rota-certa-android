@@ -87,6 +87,10 @@ class TripDomainStage47Test {
         val trip = trip(capacity = 1)
         val firstSegmentOnly = listOf(booking("first", "a", "b"))
         assertEquals(TripStatus.PUBLISHED, SeatAvailabilityEngine.suggestedStatus(trip, firstSegmentOnly))
+        val range = SeatAvailabilityEngine.availableSeatRange(trip, firstSegmentOnly)
+        assertTrue(range.variesBySegment)
+        assertEquals(0, range.minimum)
+        assertEquals(1, range.maximum)
         val all = listOf(booking("all", "a", "d"))
         assertEquals(TripStatus.FULL, SeatAvailabilityEngine.suggestedStatus(trip, all))
     }
