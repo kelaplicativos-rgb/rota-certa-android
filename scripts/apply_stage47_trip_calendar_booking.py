@@ -4,7 +4,8 @@ import shutil
 import sys
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
-STAGE = ROOT / "stage47/android"
+PATCHES = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else ROOT.parent / "patches"
+STAGE = PATCHES / "stage47/android"
 APP = ROOT / "app"
 
 
