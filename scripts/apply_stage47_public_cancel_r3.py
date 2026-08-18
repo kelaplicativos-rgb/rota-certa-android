@@ -93,6 +93,7 @@ once(APP,
   show("loading", false);
   show("trip", true);
   show("booking", true);
+  show("cancelBooking", true);
   driverDisplayName = trip.driverDisplayName || driverDisplayName || driverUsername;
   $("driverName").textContent = driverDisplayName ? `Motorista: ${driverDisplayName}` : "";
 ''', "trip driver heading")
