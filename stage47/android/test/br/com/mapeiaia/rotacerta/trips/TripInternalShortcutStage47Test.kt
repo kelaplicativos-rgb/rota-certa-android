@@ -10,12 +10,12 @@ import org.junit.Test
 
 class TripInternalShortcutStage47Test {
     @Test
-    fun agendaHasDedicatedExecutableShortcutWithoutChangingLegacyIds() {
+    fun agendaHasExecutableIdentityRoutedShortcutWithoutChangingLegacyIdsOrFarolEnum() {
         BubbleShortcutCatalog.requireValid()
         val spec = BubbleShortcutCatalog.findSpec("trip_agenda")
         requireNotNull(spec)
         assertEquals(TripAgendaBubbleShortcutModuleStage47.spec, spec)
-        assertEquals(BubbleShortcutAction.OpenTrips, spec.action)
+        assertEquals(BubbleShortcutAction.OpenSettings, spec.action)
         assertTrue(ShortcutModuleFocusPolicy0177.routesByModuleIdentity(spec.action))
         assertTrue(
             listOf(
