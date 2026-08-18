@@ -33,6 +33,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: patches
           fetch-depth: 1
+      - name: Checkout validated Error1 0.1.228 runtime recipe
+        uses: actions/checkout@v4
+        with:
+          ref: 12200b1f845007d8e9a8e44ec5f9e4fc6decfebd
+          path: error1base
+          fetch-depth: 1
       - name: Checkout pinned Stage18 recipe
         uses: actions/checkout@v4
         with:
@@ -54,7 +60,7 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build isolated Stage47 physical-test APK
+      - name: Build isolated Stage47 update-compatible physical-test APK
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -63,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.227-stage47-r1-physical-test-apk
+          name: rota-certa-stage47-r2-update-compatible-physical-test-apk
           path: evidence/
           if-no-files-found: error
           retention-days: 30
