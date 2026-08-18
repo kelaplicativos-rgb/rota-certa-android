@@ -37,6 +37,14 @@ sha256sum "$FAROL" > "$EVIDENCE/farol-before.sha256"
 
 python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" "$PATCHES" | tee "$EVIDENCE/materialize-stage47.txt"
 python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE" | tee "$EVIDENCE/materialize-route-planner-ui.txt"
+
+PRE_SHORTCUT="$EVIDENCE/pre-stage47-shortcut"
+mkdir -p "$PRE_SHORTCUT"
+for file in BubbleShortcutModule.kt ShortcutModuleFocusPolicy0177.kt MainActivity.kt ShortcutGridCustomization0179.kt; do
+  cp "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/$file" "$PRE_SHORTCUT/$file"
+done
+printf 'stage47_pre_shortcut_sources=CAPTURED\n' > "$PRE_SHORTCUT/status.txt"
+
 python3 "$PATCHES/scripts/apply_stage47_internal_trip_shortcut.py" "$SOURCE" | tee "$EVIDENCE/materialize-internal-trip-shortcut.txt"
 python3 "$PATCHES/scripts/apply_stage47_flexible_capacity_r2.py" "$SOURCE" "$PATCHES" | tee "$EVIDENCE/materialize-flexible-capacity-r2.txt"
 
