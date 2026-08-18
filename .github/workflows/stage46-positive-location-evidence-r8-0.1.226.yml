@@ -1,4 +1,5 @@
 name: Validate Stage46 positive-location evidence R8 0.1.226
+# Authoritative exact-head CI trigger after the Stage46 R8 post-R2 materializer reanchor.
 on:
   pull_request:
     branches: [agent/stage45-ocr-multiline-address-reconstruction-0.1.218]
