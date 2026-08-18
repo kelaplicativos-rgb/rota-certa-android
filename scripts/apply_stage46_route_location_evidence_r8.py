@@ -39,7 +39,11 @@ s = once(s, 'FarolImmediateAddressRouteStage46R7.isAggregateLastAddressEvaluatio
 s = s.replace('"S46_R7_IMMEDIATE_SINGLE_ADDRESS"', '"S46_R8_POSITIVE_SINGLE_LOCATION"')
 s = s.replace('"S46_R7_LAST_VISUAL_DESTINATION"', '"S46_R8_LAST_VALID_LOCATION"')
 
-anchor = '''        val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)\n        val hardBoundaryStage46 = FarolVisualEpochNoResultStage46.isHardWindowBoundary(\n'''
+anchor = '''        val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)
+        // Stage46 R2: WINDOWS_CHANGED is only a trigger to re-observe the concrete target window.
+        // A foreign overlay (e.g. inDrive while a 99 card is still visible) cannot revoke that target.
+        val previousTargetWindowStage46 = stage46TargetWindowId
+'''
 replacement = '''        val admissionStage26 = stage26PreCollectGate.admit(true, cheapSignalStage26)
         val replacementProofStage46R8 = if (
             admissionStage26.reason == "stage40_address_evidence_changed" &&
@@ -70,7 +74,9 @@ replacement = '''        val admissionStage26 = stage26PreCollectGate.admit(true
                 SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,
             )
         }
-        val hardBoundaryStage46 = FarolVisualEpochNoResultStage46.isHardWindowBoundary(
+        // Stage46 R2: WINDOWS_CHANGED is only a trigger to re-observe the concrete target window.
+        // A foreign overlay (e.g. inDrive while a 99 card is still visible) cannot revoke that target.
+        val previousTargetWindowStage46 = stage46TargetWindowId
 '''
 s = once(s, anchor, replacement, 'R8 immediate proven destination clear')
 
