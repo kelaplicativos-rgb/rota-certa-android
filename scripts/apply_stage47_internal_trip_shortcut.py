@@ -19,12 +19,10 @@ bubble = BASE / "BubbleShortcutModule.kt"
 replace_once(
     bubble,
     '''    OpenAuthorizedAppsAndCards,
-    OpenTextCorrection,
-}''',
+    OpenTextCorrection,''',
     '''    OpenAuthorizedAppsAndCards,
     OpenTrips,
-    OpenTextCorrection,
-}''',
+    OpenTextCorrection,''',
     "Stage47 shortcut enum",
 )
 replace_once(
