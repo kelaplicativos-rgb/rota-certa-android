@@ -1,0 +1,145 @@
+name: Stage46 R8 exact one-shot dispatch bridge
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: stage46-r8-exact-one-shot-dispatch
+  cancel-in-progress: false
+
+env:
+  TARGET_PR: '98'
+  TARGET_BRANCH: 'agent/stage46-visual-epoch-no-result-ocr-decontamination-0.1.219'
+  TARGET_SHA: '2406b539721d71fa051bb9697c16a8c461232ef9'
+  R8_PATH: '.github/workflows/stage46-positive-location-evidence-r8-0.1.226.yml'
+  SELF_PATH: '.github/workflows/stage46-r8-one-shot-dispatch-bridge.yml'
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: '${{ github.token }}'
+    steps:
+      - name: Remove one-shot scheduler immediately
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          self_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH" \
+            -f message='ci: remove one-shot Stage46 R8 dispatch bridge [skip ci]' \
+            -f sha="$self_sha" \
+            -f branch='main' >/dev/null
+          printf 'bridge_self_removed=true\n' | tee bridge-self-remove.txt
+
+      - name: Verify exact PR head and temporary R8 registration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$TARGET_PR")"
+          actual_ref="$(jq -r '.head.ref' <<<"$pr_json")"
+          actual_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+          draft="$(jq -r '.draft' <<<"$pr_json")"
+          merged="$(jq -r '.merged' <<<"$pr_json")"
+          printf 'pr=%s state=%s draft=%s merged=%s ref=%s sha=%s\n' "$TARGET_PR" "$state" "$draft" "$merged" "$actual_ref" "$actual_sha" | tee bridge-preflight.txt
+          test "$state" = 'open'
+          test "$draft" = 'true'
+          test "$merged" = 'false'
+          test "$actual_ref" = "$TARGET_BRANCH"
+          test "$actual_sha" = "$TARGET_SHA"
+
+          main_blob="$(gh api "repos/$GITHUB_REPOSITORY/contents/$R8_PATH?ref=main" --jq .sha)"
+          target_blob="$(gh api "repos/$GITHUB_REPOSITORY/contents/$R8_PATH?ref=$TARGET_SHA" --jq .sha)"
+          printf 'r8_main_blob=%s r8_target_blob=%s\n' "$main_blob" "$target_blob" | tee bridge-r8-blobs.txt
+          test "$main_blob" = "$target_blob"
+
+      - name: Dispatch official R8 workflow on exact branch head
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh workflow run "$R8_PATH" --ref "$TARGET_BRANCH"
+
+          run_id=''
+          run_url=''
+          run_status=''
+          for attempt in $(seq 1 30); do
+            row="$(gh run list \
+              --workflow "$R8_PATH" \
+              --branch "$TARGET_BRANCH" \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,headSha,status,url,createdAt \
+              --jq ".[] | select(.headSha == \"$TARGET_SHA\") | [.databaseId,.status,.url] | @tsv" \
+              | head -n1 || true)"
+            if [ -n "$row" ]; then
+              IFS=$'\t' read -r run_id run_status run_url <<<"$row"
+              break
+            fi
+            sleep 2
+          done
+
+          test -n "$run_id"
+          printf '%s\n' "$run_id" | tee dispatched-run-id.txt
+          printf 'run_id=%s status=%s url=%s head=%s branch=%s\n' "$run_id" "$run_status" "$run_url" "$TARGET_SHA" "$TARGET_BRANCH" | tee bridge-dispatch.txt
+
+      - name: Cleanup registration and report result
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          cleanup_r8='already_absent'
+          r8_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$R8_PATH?ref=main" --jq .sha 2>/dev/null)"
+          if [ -n "$r8_sha" ]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$R8_PATH" \
+              -f message='ci: remove temporary Stage46 R8 dispatch registration [skip ci]' \
+              -f sha="$r8_sha" \
+              -f branch='main' >/dev/null
+            if [ $? -eq 0 ]; then cleanup_r8='removed'; else cleanup_r8='remove_failed'; fi
+          fi
+
+          cleanup_self='already_absent'
+          self_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH?ref=main" --jq .sha 2>/dev/null)"
+          if [ -n "$self_sha" ]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH" \
+              -f message='ci: cleanup Stage46 R8 dispatch bridge [skip ci]' \
+              -f sha="$self_sha" \
+              -f branch='main' >/dev/null
+            if [ $? -eq 0 ]; then cleanup_self='removed'; else cleanup_self='remove_failed'; fi
+          fi
+
+          run_id="$(cat dispatched-run-id.txt 2>/dev/null)"
+          dispatch_line="$(cat bridge-dispatch.txt 2>/dev/null)"
+          preflight_line="$(cat bridge-preflight.txt 2>/dev/null)"
+          blob_line="$(cat bridge-r8-blobs.txt 2>/dev/null)"
+
+          cat > bridge-comment.md <<EOF
+          STAGE46_R8_EXACT_DISPATCH_BRIDGE
+
+          target_pr=$TARGET_PR
+          target_branch=$TARGET_BRANCH
+          target_sha=$TARGET_SHA
+          dispatched_run_id=${run_id:-NONE}
+          cleanup_r8=$cleanup_r8
+          cleanup_bridge=$cleanup_self
+          preflight=${preflight_line:-NOT_COMPLETED}
+          blobs=${blob_line:-NOT_COMPLETED}
+          dispatch=${dispatch_line:-NOT_COMPLETED}
+          EOF
+
+          gh issue comment "$TARGET_PR" --body-file bridge-comment.md
+          comment_rc=$?
+
+          if [ "$cleanup_r8" = 'remove_failed' ] || [ "$cleanup_self" = 'remove_failed' ] || [ $comment_rc -ne 0 ]; then
+            exit 1
+          fi
+          exit 0
