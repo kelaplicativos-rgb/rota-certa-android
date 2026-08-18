@@ -70,7 +70,11 @@ once(activity,
 ''', "fare editor")
 once(activity,
 '''                require(names.size >= 2) { "A viagem precisa de origem e destino." }
-                val stops = names.mapIndexed { index, name ->
+                val planned = routePlan?.takeIf { plan ->
+                    plan.stops.map(TripStop::name) == names &&
+                        plan.stops.firstOrNull()?.plannedDepartureMillis == departureMillis
+                }
+                val stops = planned?.stops ?: names.mapIndexed { index, name ->
                     TripStop(
                         order = index,
                         name = name,
@@ -86,17 +90,22 @@ once(activity,
                     require(rawPrices.size == names.size - 1) { "Informe exatamente ${names.size - 1} valor(es), um para cada trecho." }
                     rawPrices.map { raw -> parseFareCents(raw) ?: throw IllegalArgumentException("Valor inválido: $raw") }
                 }
-                val stops = names.mapIndexed { index, name ->
+                val planned = routePlan?.takeIf { plan ->
+                    plan.stops.map(TripStop::name) == names &&
+                        plan.stops.firstOrNull()?.plannedDepartureMillis == departureMillis
+                }
+                val stops = (planned?.stops ?: names.mapIndexed { index, name ->
                     TripStop(
                         order = index,
                         name = name,
                         address = name,
                         plannedDepartureMillis = if (index == 0) departureMillis else null,
                         plannedArrivalMillis = if (index == 0) departureMillis else null,
-                        priceToNextCents = prices.getOrElse(index) { 0L },
                     )
+                }).mapIndexed { index, stop ->
+                    stop.copy(priceToNextCents = prices.getOrElse(index) { 0L })
                 }
-''', "fare parse")
+''', "fare parse preserving route planner")
 once(activity,
 '''                        Text("${load.from.name} → ${load.to.name}: ${load.occupiedSeats}/${trip.capacity} ocupadas")
 ''',
@@ -204,4 +213,4 @@ once(page,
 html = PATCHES / "trip-platform/public/index.html"
 once(html, '    <div id="availability" class="availability"></div>\n', '    <div id="availability" class="availability"></div>\n    <div id="fare" class="availability"></div>\n', "public fare block")
 
-print("stage47_fares_r3=PASS segment_prices=true selected_route_total=true backend_authoritative_fare=true")
+print("stage47_fares_r3=PASS segment_prices=true selected_route_total=true backend_authoritative_fare=true route_planner_preserved=true")
