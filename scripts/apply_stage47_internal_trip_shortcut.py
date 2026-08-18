@@ -18,15 +18,6 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
 bubble = BASE / "BubbleShortcutModule.kt"
 replace_once(
     bubble,
-    '''    OpenAuthorizedAppsAndCards,
-    OpenTextCorrection,''',
-    '''    OpenAuthorizedAppsAndCards,
-    OpenTrips,
-    OpenTextCorrection,''',
-    "Stage47 shortcut enum",
-)
-replace_once(
-    bubble,
     '''object WorkTrackingBubbleShortcutModule0184 : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
         id = "work_tracking",
@@ -56,7 +47,7 @@ object TripAgendaBubbleShortcutModuleStage47 : BubbleShortcutModule {
         emoji = "🗓️",
         label = "Agenda de viagens",
         displayLabel = "Viagens",
-        action = BubbleShortcutAction.OpenTrips,
+        action = BubbleShortcutAction.OpenSettings,
         targetGroup = "general",
         targetTab = "config",
     )
@@ -78,60 +69,113 @@ replace_once(
 ''',
     "Stage47 catalog insertion",
 )
-
-focus = BASE / "ShortcutModuleFocusPolicy0177.kt"
 replace_once(
-    focus,
-    '''        BubbleShortcutAction.OpenSettings,
-        BubbleShortcutAction.OpenTextCorrection,
+    bubble,
+    '''        require(modules.map { it.spec.action }.distinct().size == modules.size) {
+            "Cada recurso precisa executar uma acao propria."
+        }
 ''',
-    '''        BubbleShortcutAction.OpenSettings,
-        BubbleShortcutAction.OpenTrips,
-        BubbleShortcutAction.OpenTextCorrection,
+    '''        val inheritedActionModules = modules.filterNot { it.spec.id == "trip_agenda" }
+        require(inheritedActionModules.map { it.spec.action }.distinct().size == inheritedActionModules.size) {
+            "Cada recurso herdado precisa executar uma acao propria."
+        }
+        val tripSpec = modules.singleOrNull { it.spec.id == "trip_agenda" }?.spec
+        require(tripSpec?.action == BubbleShortcutAction.OpenSettings) {
+            "Agenda deve usar a rota por identidade sem expandir o enum do FAROL."
+        }
 ''',
-    "Stage47 focus policy",
+    "Stage47 identity-routed action validation",
 )
 
 main = BASE / "MainActivity.kt"
 replace_once(
     main,
-    '''            BubbleShortcutAction.OpenQuickLinks -> context.startActivity(Intent(context, QuickLinksActivity::class.java))
-            BubbleShortcutAction.OpenMessageTemplates,
+    '''    fun openShortcutModuleFromHome0171(spec: BubbleShortcutSpec) {
+        highlightedShortcutModule0171 = spec.id
+        moduleNavigationActive0172 = true
+        when (spec.action) {
 ''',
-    '''            BubbleShortcutAction.OpenQuickLinks -> context.startActivity(Intent(context, QuickLinksActivity::class.java))
-            BubbleShortcutAction.OpenTrips -> context.startActivity(
+    '''    fun openShortcutModuleFromHome0171(spec: BubbleShortcutSpec) {
+        highlightedShortcutModule0171 = spec.id
+        moduleNavigationActive0172 = true
+        if (spec.id == "trip_agenda") {
+            context.startActivity(
                 Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
                     .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
             )
-            BubbleShortcutAction.OpenMessageTemplates,
+            return
+        }
+        when (spec.action) {
 ''',
     "Stage47 Home trip activity dispatch",
 )
 replace_once(
     main,
-    '''                                BubbleShortcutAction.OpenFinance -> InlineModuleAction0174(
-                                    title = "Controle financeiro",
-                                    description = "Receitas, despesas e resumo financeiro continuam em uma tela dedicada para evitar uma lista pesada dentro da Home.",
-                                    buttonLabel = "Abrir controle financeiro",
-                                    onClick = { openShortcutModuleFromHome0171(spec) },
-                                )
-
-                                BubbleShortcutAction.OpenTextCorrection -> TextCorrectionModule0186(''',
-    '''                                BubbleShortcutAction.OpenFinance -> InlineModuleAction0174(
-                                    title = "Controle financeiro",
-                                    description = "Receitas, despesas e resumo financeiro continuam em uma tela dedicada para evitar uma lista pesada dentro da Home.",
-                                    buttonLabel = "Abrir controle financeiro",
-                                    onClick = { openShortcutModuleFromHome0171(spec) },
-                                )
-
-                                BubbleShortcutAction.OpenTrips -> InlineModuleAction0174(
-                                    title = "Agenda de Viagens",
-                                    description = "Crie, publique, compartilhe e acompanhe viagens e vagas por trecho sem interferir no FAROL.",
-                                    buttonLabel = "Abrir Agenda de Viagens",
-                                    onClick = { openShortcutModuleFromHome0171(spec) },
-                                )
-
-                                BubbleShortcutAction.OpenTextCorrection -> TextCorrectionModule0186(''',
+    '''        highlightedShortcutModule0171 = HomeLaunchPolicy0186.requestedModule(
+            homeLaunchMode0186,
+            launchIntent?.getStringExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171),
+        )
+        if (homeLaunchMode0186 == HomeLaunchPolicy0186.MODE_COLLAPSED) {
+''',
+    '''        highlightedShortcutModule0171 = HomeLaunchPolicy0186.requestedModule(
+            homeLaunchMode0186,
+            launchIntent?.getStringExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171),
+        )
+        if (highlightedShortcutModule0171 == "trip_agenda") {
+            launchIntent?.removeExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171)
+            highlightedShortcutModule0171 = null
+            context.startActivity(
+                Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
+                    .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
+            )
+        }
+        if (homeLaunchMode0186 == HomeLaunchPolicy0186.MODE_COLLAPSED) {
+''',
+    "Stage47 floating-grid identity route",
+)
+replace_once(
+    main,
+    '''                                BubbleShortcutAction.OpenSettings -> if (spec.id == "work_tracking") {
+                                    InlineModuleAction0174(
+                                        title = "Rastreamento de trabalho",
+                                        description = "Inicie, pare ou consulte o percurso GPS registrado localmente neste aparelho.",
+                                        buttonLabel = "Abrir rastreamento",
+                                        onClick = {
+                                            context.startActivity(Intent(context, WorkTrackingActivity::class.java))
+                                        },
+                                    )
+                                } else {
+                                    InlineModuleAction0174(
+                                        title = spec.displayLabel,
+                                        description = ShortcutGridPolicy0173.description(spec),
+                                        buttonLabel = "Abrir ${spec.displayLabel}",
+                                        onClick = { openShortcutModuleFromHome0171(spec) },
+                                    )
+                                }
+''',
+    '''                                BubbleShortcutAction.OpenSettings -> when (spec.id) {
+                                    "trip_agenda" -> InlineModuleAction0174(
+                                        title = "Agenda de Viagens",
+                                        description = "Crie, publique, compartilhe e acompanhe viagens e vagas por trecho sem interferir no FAROL.",
+                                        buttonLabel = "Abrir Agenda de Viagens",
+                                        onClick = { openShortcutModuleFromHome0171(spec) },
+                                    )
+                                    "work_tracking" -> InlineModuleAction0174(
+                                        title = "Rastreamento de trabalho",
+                                        description = "Inicie, pare ou consulte o percurso GPS registrado localmente neste aparelho.",
+                                        buttonLabel = "Abrir rastreamento",
+                                        onClick = {
+                                            context.startActivity(Intent(context, WorkTrackingActivity::class.java))
+                                        },
+                                    )
+                                    else -> InlineModuleAction0174(
+                                        title = spec.displayLabel,
+                                        description = ShortcutGridPolicy0173.description(spec),
+                                        buttonLabel = "Abrir ${spec.displayLabel}",
+                                        onClick = { openShortcutModuleFromHome0171(spec) },
+                                    )
+                                }
+''',
     "Stage47 Home trip module surface",
 )
 
@@ -202,4 +246,4 @@ replace_once(
     "Stage47 shortcut migration flag",
 )
 
-print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenTrips migration=one_time_append upgrade_only=true inherited_ids_preserved=true")
+print("stage47_internal_trip_shortcut=PASS id=trip_agenda action=OpenSettings routing=module_identity_0177 migration=one_time_append upgrade_only=true inherited_ids_preserved=true farol_enum_unchanged=true")
