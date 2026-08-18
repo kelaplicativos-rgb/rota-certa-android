@@ -1,5 +1,4 @@
 name: Validate Stage46 positive-location evidence R8 0.1.226
-# Authoritative exact-head CI trigger after the Stage46 R8 post-R2 materializer reanchor.
 on:
   pull_request:
     branches: [agent/stage45-ocr-multiline-address-reconstruction-0.1.218]
@@ -58,20 +57,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Reproduce R7, materialize R8, test and build
         run: |
-          set -Eeuo pipefail
+          set -euo pipefail
           mkdir -p evidence
-          export PS4='+R8_TRACE ${BASH_SOURCE}:${LINENO}: '
-          set +e
-          bash -x patches/scripts/run_stage46_r8_reproducible_ci.sh source patches historical19 historical34 evidence 2> >(tee evidence/r8-shell-trace.log >&2)
-          rc=$?
-          set -e
-          printf 'r8_orchestrator_exit=%s\n' "$rc" | tee evidence/r8-orchestrator-exit.txt
-          exit "$rc"
+          bash patches/scripts/run_stage46_r8_reproducible_ci.sh source patches historical19 historical34 evidence
       - name: Upload Stage46 R8 physical artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rota-certa-0.1.226-stage46-positive-location-evidence-r8
           path: evidence/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
