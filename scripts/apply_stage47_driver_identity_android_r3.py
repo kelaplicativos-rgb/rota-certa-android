@@ -13,6 +13,20 @@ def once(path: Path, old: str, new: str, label: str) -> None:
         raise SystemExit(f"{label}: expected one marker, got {count}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+
+def replace_between(path: Path, start: str, end: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    start_count = text.count(start)
+    end_count = text.count(end)
+    print(f"stage47_driver_identity_anchor label={label!r} start_count={start_count} end_count={end_count} file={path.name}", flush=True)
+    if start_count != 1 or end_count != 1:
+        raise SystemExit(f"{label}: expected one start/end marker, got start={start_count} end={end_count}")
+    begin = text.index(start)
+    finish = text.index(end, begin)
+    if finish <= begin:
+        raise SystemExit(f"{label}: invalid function boundary order")
+    path.write_text(text[:begin] + new + text[finish:], encoding="utf-8")
+
 pkg = SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips"
 domain = pkg / "TripDomain.kt"
 once(domain,
@@ -119,27 +133,13 @@ once(remote,
 ''', "driver username auth header")
 
 calendar = pkg / "TripCalendar.kt"
-once(calendar,
-'''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
-        val calendarUrl = settings.publicCalendarUrl ?: return false
-        val publicBase = settings.publicBaseUrl.takeIf { it.startsWith("https://") }?.trimEnd('/') ?: return false
-        val publicToken = settings.publicCalendarToken.takeIf { it.length >= 16 } ?: return false
-        val agendaUrl = "$publicBase/?agenda=$publicToken"
-        shareText(
-            context,
-            "Compartilhar Agenda de Viagens",
-            buildString {
-                append("Rota Certa — Agenda pública de viagens\n")
-                append("Ver e reservar próximas viagens:\n$agendaUrl\n\n")
-                append("Assinar calendário de viagens (.ics):\n$calendarUrl\n\n")
-                append("Nenhum compromisso pessoal ou dado de passageiro é publicado.")
-            },
-        )
-        return true
-    }
-
+replace_between(
+    calendar,
+    '''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
 ''',
-'''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
+    '''    fun shareIcs(context: Context, trip: Trip, booking: Booking? = null) {
+''',
+    '''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
         val agendaUrl = settings.publicAgendaUrl ?: return false
         val calendarUrl = settings.publicCalendarUrl ?: return false
         val driver = settings.driverDisplayName.ifBlank { settings.driverUsername }
@@ -158,7 +158,9 @@ once(calendar,
         return true
     }
 
-''', "named agenda share")
+''',
+    "named agenda share boundaries",
+)
 
 activity = pkg / "TripsActivity.kt"
 once(activity,
