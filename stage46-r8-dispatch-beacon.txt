@@ -1,5 +1,0 @@
-target_sha=2406b539721d71fa051bb9697c16a8c461232ef9
-target_branch=agent/stage46-visual-epoch-no-result-ocr-decontamination-0.1.219
-target_workflow=Validate Stage46 positive-location evidence R8 0.1.226
-target_run=NONE
-bridge_run=NONE
