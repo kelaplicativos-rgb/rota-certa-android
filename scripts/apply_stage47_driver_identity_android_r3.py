@@ -79,7 +79,8 @@ once(store,
 
 remote = pkg / "TripRemoteApi.kt"
 once(remote,
-'''data class RemoteBookingResponse(
+'''@Serializable
+data class RemoteBookingResponse(
 ''',
 '''@Serializable
 data class DriverRegistrationRequest(val displayName: String, val username: String)
@@ -94,6 +95,7 @@ data class DriverRegistrationResponse(
     val calendarUrl: String,
 )
 
+@Serializable
 data class RemoteBookingResponse(
 ''', "driver registration DTOs")
 once(remote,
