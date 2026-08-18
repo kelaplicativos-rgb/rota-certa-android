@@ -9,6 +9,60 @@ mkdir -p "${5:?evidence}"
 EVIDENCE="$(cd "$5" && pwd)"
 mkdir -p "$EVIDENCE/r8-bootstrap"
 
+# The physical-test path only needs the exact historical source materialized.
+# Keep every cumulative patch and contract transformation, but skip the repeated
+# Gradle validation tails from 0.1.187 through 0.1.194. The final Stage47 trip
+# tests + assemble below remain authoritative for this quick APK cycle.
+python3 - "$HIST19" "$EVIDENCE" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+hist = Path(sys.argv[1])
+evidence = Path(sys.argv[2])
+
+injector = hist / "scripts/inject_build_rota_certa_0187.py"
+text = injector.read_text(encoding="utf-8")
+old = "replacement = apply_block + match.group('indent') + match.group('command')"
+new = r'''materialize_guard = r\'''if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+  echo "historical_0187_materialized_only=PASS"
+  exit 0
+fi
+
+\'''
+replacement = apply_block + materialize_guard + match.group('indent') + match.group('command')'''
+if text.count(old) != 1:
+    raise SystemExit(f"Stage187 injector materialize anchor expected once, got {text.count(old)}")
+injector.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+patched = []
+for version in range(188, 195):
+    path = hist / f"scripts/build_rota_certa_0{version}.sh"
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"(?m)^(?P<indent>[ \t]*)\./gradlew\b", text)
+    if match is None:
+        raise SystemExit(f"Historical {version} final Gradle anchor not found")
+    guard = (
+        'if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n'
+        f'  echo "historical_0{version}_materialized_only=PASS"\n'
+        '  exit 0\n'
+        'fi\n\n'
+    )
+    path.write_text(text[:match.start()] + guard + text[match.start():], encoding="utf-8")
+    patched.append(path.name)
+
+(evidence / "historical-materialize-only.txt").write_text(
+    "stage47_quick_historical_gradle_skips=PASS\n"
+    + "stage187_guard=after_runtime_patch_before_gradle\n"
+    + "direct_guards=" + ",".join(patched) + "\n",
+    encoding="utf-8",
+)
+PY
+python3 -m py_compile "$HIST19/scripts/inject_build_rota_certa_0187.py"
+for version in 0188 0189 0190 0191 0192 0193 0194; do
+  bash -n "$HIST19/scripts/build_rota_certa_${version}.sh"
+done
+
 R8_MATERIALIZER="$EVIDENCE/run-stage46-r8-materialize-only.sh"
 python3 - "$PATCHES/scripts/run_stage46_r8_reproducible_ci.sh" "$R8_MATERIALIZER" <<'PY'
 from pathlib import Path
@@ -27,7 +81,7 @@ fi
 out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
 PY
 
-STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap"
+ROTA_CERTA_MATERIALIZE_ONLY=1 STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap"
 grep -Fq 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510' "$EVIDENCE/r8-bootstrap/final-status.txt"
 grep -Fq 'versionCode = 5510' "$SOURCE/app/build.gradle.kts"
 grep -Fq 'versionName = "0.1.226"' "$SOURCE/app/build.gradle.kts"
