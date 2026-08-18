@@ -97,8 +97,8 @@ if eval_count < 8:
 universal = universal.replace(eval_old, 'FarolRouteLocationEvidenceStage46R8.evaluate(')
 validator_old = 'FarolImmediateAddressRouteStage46R7.validateEvaluation('
 validator_count = universal.count(validator_old)
-if validator_count != 2:
-    raise SystemExit(f'R7 universal validator inventory expected 2, got {validator_count}')
+if validator_count != 3:
+    raise SystemExit(f'R7 universal validator inventory expected 3, got {validator_count}')
 universal = universal.replace(validator_old, 'FarolRouteLocationEvidenceStage46R8.validateEvaluation(')
 for preserved_expectation in (
     'assertEquals("Hospital das Clínicas", result!!.destination)',
