@@ -7,6 +7,7 @@ on:
       - 'scripts/apply_error1_card_visual_episode_reentry.py'
       - 'scripts/apply_error1_version.py'
       - 'scripts/run_error1_card_visual_episode_reentry_ci.sh'
+      - 'scripts/run_error1_fast_ci.sh'
       - 'error1/FarolCardVisualEpisodeReentryError1Test.kt'
   workflow_dispatch:
 permissions:
@@ -53,13 +54,13 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Reproduce exact R8 then apply only Error1 correction
+      - name: Materialize exact R8 then apply only Error1 correction
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
           export PS4='+ERROR1_TRACE ${BASH_SOURCE}:${LINENO}: '
           set +e
-          bash -x patches/scripts/run_error1_card_visual_episode_reentry_ci.sh source patches historical19 historical34 evidence 2> >(tee evidence/error1-shell-trace.log >&2)
+          bash -x patches/scripts/run_error1_fast_ci.sh source patches historical19 historical34 evidence 2> >(tee evidence/error1-shell-trace.log >&2)
           rc=$?
           set -e
           printf 'error1_orchestrator_exit=%s\n' "$rc" | tee evidence/error1-orchestrator-exit.txt
