@@ -24,13 +24,14 @@ evidence = Path(sys.argv[2])
 injector = hist / "scripts/inject_build_rota_certa_0187.py"
 text = injector.read_text(encoding="utf-8")
 old = "replacement = apply_block + match.group('indent') + match.group('command')"
-new = r'''materialize_guard = r\'''if [[ "${ROTA_CERTA_MATERIALIZE_ONLY:-0}" == "1" ]]; then
-  echo "historical_0187_materialized_only=PASS"
-  exit 0
-fi
-
-\'''
-replacement = apply_block + materialize_guard + match.group('indent') + match.group('command')'''
+new = (
+    "materialize_guard = r'''if [[ \"${ROTA_CERTA_MATERIALIZE_ONLY:-0}\" == \"1\" ]]; then\n"
+    "  echo \"historical_0187_materialized_only=PASS\"\n"
+    "  exit 0\n"
+    "fi\n\n"
+    "'''\n"
+    "replacement = apply_block + materialize_guard + match.group('indent') + match.group('command')"
+)
 if text.count(old) != 1:
     raise SystemExit(f"Stage187 injector materialize anchor expected once, got {text.count(old)}")
 injector.write_text(text.replace(old, new, 1), encoding="utf-8")
