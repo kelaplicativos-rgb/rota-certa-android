@@ -10,6 +10,7 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
     text = path.read_text(encoding="utf-8")
     count = text.count(old)
     if count != 1:
+        print(f"{label}: expected one marker, got {count}")
         raise SystemExit(f"{label}: expected one marker, got {count}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
@@ -136,10 +137,6 @@ replace_once(
     "Stage47 Home trip module surface",
 )
 
-# Existing users already have a persisted shortcut grid, so merely adding the
-# catalog entry would leave the new module invisible. Add it once, at the end,
-# without reordering or replacing any existing shortcut. The migration flag is
-# persisted separately so a user who later removes the shortcut is respected.
 grid = BASE / "ShortcutGridCustomization0179.kt"
 replace_once(
     grid,
