@@ -157,7 +157,7 @@ printf 'stage47_quick_materialization=PASS inherited_error1_runtime_preserved=tr
 node --test "$PATCHES"/trip-platform/functions/test/*.test.js | tee "$EVIDENCE/node-contracts.log"
 
 cd "$SOURCE"
-./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' assembleDebug | tee "$EVIDENCE/gradle-quick.log"
+./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' assembleDebug 2>&1 | tee "$EVIDENCE/gradle-quick.log"
 
 APK="$EVIDENCE/Rota-Certa-Agenda-Viagens-Link-Motorista-R3-0.1.230.apk"
 cp app/build/outputs/apk/debug/app-debug.apk "$APK"
