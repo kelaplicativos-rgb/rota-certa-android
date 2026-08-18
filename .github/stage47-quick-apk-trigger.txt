@@ -1,0 +1,3 @@
+Stage47 quick APK trigger for physical-test artifact.
+Base: agent/stage47-trip-calendar-booking-0.1.227-r1-materializer-root
+Purpose: trigger the isolated pull_request quick APK workflow only.
