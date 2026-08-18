@@ -1,9 +1,0 @@
-target_sha=2406b539721d71fa051bb9697c16a8c461232ef9
---- target_head_runs ---
-NONE
---- bridge_path_runs ---
-{"id":32090020149,"name":"Stage46 R8 exact one-shot dispatch bridge","path":".github/workflows/stage46-r8-one-shot-dispatch-bridge.yml","event":"issue_comment","status":"completed","conclusion":"failure","head_branch":"main","head_sha":"7d30e6471bc4c62911b7fa5263ab7b98463dadab","created_at":"2026-08-18T01:56:32Z","html_url":"https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/32090020149"}
---- recent_issue_comment_runs ---
-{"id":32090313937,"name":"Stage46 R8 REST run beacon","path":".github/workflows/stage46-r8-rest-run-beacon.yml","event":"issue_comment","status":"in_progress","conclusion":null,"head_branch":"main","head_sha":"fcb88954e7327da41257b695de5abfa59c81249c","created_at":"2026-08-18T02:01:25Z","html_url":"https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/32090313937"}
-{"id":32090226725,"name":"Stage46 R8 run beacon","path":".github/workflows/stage46-r8-run-beacon.yml","event":"issue_comment","status":"completed","conclusion":"success","head_branch":"main","head_sha":"5607f803c029549f641b7aff62b8eaf0187bd1ce","created_at":"2026-08-18T02:00:05Z","html_url":"https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/32090226725"}
-{"id":32090020149,"name":"Stage46 R8 exact one-shot dispatch bridge","path":".github/workflows/stage46-r8-one-shot-dispatch-bridge.yml","event":"issue_comment","status":"completed","conclusion":"failure","head_branch":"main","head_sha":"7d30e6471bc4c62911b7fa5263ab7b98463dadab","created_at":"2026-08-18T01:56:32Z","html_url":"https://github.com/kelaplicativos-rgb/rota-certa-android/actions/runs/32090020149"}
