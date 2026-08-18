@@ -20,7 +20,8 @@ r6 = R6.read_text(encoding='utf-8')
 for old, new, label in (
     ('FAROL_IMMEDIATE_ADDRESS_ROUTE_STAGE46_R7 service integration', 'FAROL_POSITIVE_LOCATION_EVIDENCE_STAGE46_R8 service integration', 'R6 service marker'),
     ('s.split("FarolImmediateAddressRouteStage46R7.evaluate(")', 's.split("FarolRouteLocationEvidenceStage46R8.evaluate(")', 'R6 evaluator count'),
-    ('FarolImmediateAddressRouteStage46R7.validateEvaluation(evaluationStage19)', 'FarolRouteLocationEvidenceStage46R8.validateEvaluation(evaluationStage19)', 'R6 runtime validator'),
+    ('assertTrue(s.contains("FarolImmediateAddressRouteStage46R7.validateEvaluation(evaluationStage19)"))', 'assertTrue(s.contains("FarolRouteLocationEvidenceStage46R8.validateEvaluation(evaluationStage19)"))', 'R6 runtime validator assertion'),
+    ('process.indexOf("FarolImmediateAddressRouteStage46R7.validateEvaluation(evaluationStage19)")', 'process.indexOf("FarolRouteLocationEvidenceStage46R8.validateEvaluation(evaluationStage19)")', 'R6 semantic-order validator string'),
     ('S46_R7_IMMEDIATE_SINGLE_ADDRESS', 'S46_R8_POSITIVE_SINGLE_LOCATION', 'R6 runtime marker'),
     ('Regex("FarolImmediateAddressRouteStage46R7\\\\.evaluate\\\\(")', 'Regex("FarolRouteLocationEvidenceStage46R8\\\\.evaluate\\\\(")', 'R6 runtime regex'),
     ('versionCode = 5509', 'versionCode = 5510', 'R6 version code'),
