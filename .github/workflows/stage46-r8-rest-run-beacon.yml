@@ -1,0 +1,81 @@
+name: Stage46 R8 REST run beacon
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  beacon:
+    if: >-
+      github.event.issue.number == 98 &&
+      github.event.comment.body == 'QUERY_STAGE46_R8_REST_2406B539'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: '${{ github.token }}'
+      TARGET_SHA: '2406b539721d71fa051bb9697c16a8c461232ef9'
+      SELF_PATH: '.github/workflows/stage46-r8-rest-run-beacon.yml'
+      BEACON_PATH: 'stage46-r8-rest-dispatch-beacon.txt'
+    steps:
+      - name: Remove beacon workflow immediately
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          self_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$SELF_PATH" \
+            -f message='ci: remove one-shot Stage46 R8 REST run beacon [skip ci]' \
+            -f sha="$self_sha" \
+            -f branch='main' >/dev/null
+
+      - name: Query raw Actions REST history and publish beacon
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          all="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100")"
+
+          target="$(jq -r --arg sha "$TARGET_SHA" '
+            [.workflow_runs[]
+              | select(.head_sha == $sha)
+              | {id,name,path,event,status,conclusion,head_branch,head_sha,created_at,html_url}]
+            | if length == 0 then "NONE" else .[] | @json end
+          ' <<<"$all")"
+
+          bridge="$(jq -r '
+            [.workflow_runs[]
+              | select((.path // "") | contains("stage46-r8-one-shot-dispatch-bridge.yml"))
+              | {id,name,path,event,status,conclusion,head_branch,head_sha,created_at,html_url}]
+            | if length == 0 then "NONE" else .[] | @json end
+          ' <<<"$all")"
+
+          recent_issue="$(jq -r '
+            [.workflow_runs[]
+              | select(.event == "issue_comment")
+              | {id,name,path,event,status,conclusion,head_branch,head_sha,created_at,html_url}]
+              | .[0:20][]? | @json
+          ' <<<"$all")"
+
+          {
+            printf 'target_sha=%s\n' "$TARGET_SHA"
+            printf '%s\n' '--- target_head_runs ---'
+            printf '%s\n' "$target"
+            printf '%s\n' '--- bridge_path_runs ---'
+            printf '%s\n' "$bridge"
+            printf '%s\n' '--- recent_issue_comment_runs ---'
+            printf '%s\n' "$recent_issue"
+          } > beacon.txt
+
+          encoded="$(base64 -w0 beacon.txt)"
+          old_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$BEACON_PATH?ref=main" --jq .sha 2>/dev/null || true)"
+          if [ -n "$old_sha" ]; then
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$BEACON_PATH" \
+              -f message='ci: refresh Stage46 R8 REST dispatch beacon [skip ci]' \
+              -f content="$encoded" -f sha="$old_sha" -f branch='main' >/dev/null
+          else
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$BEACON_PATH" \
+              -f message='ci: write Stage46 R8 REST dispatch beacon [skip ci]' \
+              -f content="$encoded" -f branch='main' >/dev/null
+          fi
