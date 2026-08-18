@@ -4,12 +4,19 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..", "..");
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const calendar = fs.readFileSync(path.join(root, "calendar-functions", "index.js"), "utf8");
 const page = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
+
+test("materialized API calendar and passenger scripts are valid JavaScript", () => {
+  assert.doesNotThrow(() => new vm.Script(api, { filename: "trip-api.js" }));
+  assert.doesNotThrow(() => new vm.Script(calendar, { filename: "trip-calendar.js" }));
+  assert.doesNotThrow(() => new vm.Script(page, { filename: "public-app.js" }));
+});
 
 test("each driver can claim a unique username with separate admin and public tokens", () => {
   assert.match(api, /\/v1\/drivers\/register/);
