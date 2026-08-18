@@ -1,0 +1,68 @@
+name: One-shot Stage47 quick APK
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: one-shot-stage47-quick-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  stage47-quick-apk:
+    if: startsWith(github.event.pull_request.head.ref, 'agent/stage47-trip-calendar-booking-0.1.227-r1-materializer-root')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - name: Checkout Stage47 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build isolated Stage47 physical-test APK
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          bash patches/scripts/run_stage47_quick_apk_ci.sh source patches historical19 historical34 evidence
+      - name: Upload Stage47 quick APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.227-stage47-r1-physical-test-apk
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
