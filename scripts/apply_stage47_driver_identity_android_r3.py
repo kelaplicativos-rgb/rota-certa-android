@@ -8,6 +8,7 @@ SOURCE = Path(sys.argv[1]).resolve()
 def once(path: Path, old: str, new: str, label: str) -> None:
     text = path.read_text(encoding="utf-8")
     count = text.count(old)
+    print(f"stage47_driver_identity_anchor label={label!r} count={count} file={path.name}", flush=True)
     if count != 1:
         raise SystemExit(f"{label}: expected one marker, got {count}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
