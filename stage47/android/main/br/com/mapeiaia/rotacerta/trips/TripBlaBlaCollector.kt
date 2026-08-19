@@ -56,6 +56,8 @@ data class BlaBlaCollectorTrip(
     val date: String,
     val departure_time: String? = null,
     val arrival_time: String? = null,
+    val search_from: String? = null,
+    val search_to: String? = null,
     val actual_departure: String? = null,
     val actual_arrival: String? = null,
     val price: String? = null,
@@ -265,6 +267,8 @@ private class BlaBlaCollectorSecretStore(context: Context) {
 }
 
 object BlaBlaTimelineAdapter {
+    private data class PublicEntry(val entry: TripTimelineEntry, val searchFrom: String?, val searchTo: String?)
+
     fun merge(
         localEntries: List<TripTimelineEntry>,
         response: BlaBlaCollectorMonthResponse?,
@@ -272,15 +276,18 @@ object BlaBlaTimelineAdapter {
     ): List<TripTimelineEntry> {
         if (response == null) return localEntries
         val remainingLocal = localEntries.toMutableList()
-        val public = response.trips.mapNotNull { trip -> toEntry(trip, zoneId) }
-            .distinctBy { entry -> "${entry.profileId}|${entry.departureAtMillis}|${placeKey(entry.origin)}|${placeKey(entry.destination)}" }
+        val public = response.trips.mapNotNull { trip -> toEntry(trip, zoneId)?.let { PublicEntry(it, trip.search_from, trip.search_to) } }
+            .distinctBy { item -> "${item.entry.profileId}|${item.entry.departureAtMillis}|${placeKey(item.entry.origin)}|${placeKey(item.entry.destination)}" }
         val merged = mutableListOf<TripTimelineEntry>()
-        public.forEach { external ->
-            val localIndex = remainingLocal.indexOfFirst { local -> samePhysicalTrip(local, external) }
+        public.forEach { item ->
+            val external = item.entry
+            val localIndex = remainingLocal.indexOfFirst { local -> samePhysicalTrip(local, external, item.searchFrom, item.searchTo) }
             if (localIndex >= 0) {
                 val local = remainingLocal.removeAt(localIndex)
                 merged += external.copy(
                     tripId = local.tripId,
+                    origin = local.origin,
+                    destination = local.destination,
                     status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,
                     capacity = local.capacity,
                     minimumOccupiedSeats = local.minimumOccupiedSeats,
@@ -307,8 +314,8 @@ object BlaBlaTimelineAdapter {
             profileLabel = trip.profile_name.ifBlank { "BlaBlaCar" },
             departureAtMillis = departure,
             arrivalAtMillis = arrival,
-            origin = trip.actual_departure?.takeIf(String::isNotBlank) ?: "Origem não exposta",
-            destination = trip.actual_arrival?.takeIf(String::isNotBlank) ?: "Destino não exposto",
+            origin = trip.actual_departure?.takeIf(String::isNotBlank) ?: trip.search_from?.takeIf(String::isNotBlank) ?: "Origem não exposta",
+            destination = trip.actual_arrival?.takeIf(String::isNotBlank) ?: trip.search_to?.takeIf(String::isNotBlank) ?: "Destino não exposto",
             status = if (trip.availability == "full" || trip.flags.any { it.equals("Cheio", true) }) TripStatus.FULL else TripStatus.PUBLISHED,
             capacity = 0,
             minimumOccupiedSeats = 0,
@@ -323,9 +330,18 @@ object BlaBlaTimelineAdapter {
         LocalDate.parse(date).atTime(LocalTime.parse(time.trim())).atZone(zoneId).toInstant().toEpochMilli()
     }.getOrNull()
 
-    private fun samePhysicalTrip(left: TripTimelineEntry, right: TripTimelineEntry): Boolean =
-        kotlin.math.abs(left.departureAtMillis - right.departureAtMillis) <= 10L * 60L * 1000L &&
-            placeKey(left.origin) == placeKey(right.origin) && placeKey(left.destination) == placeKey(right.destination)
+    private fun samePhysicalTrip(
+        local: TripTimelineEntry,
+        external: TripTimelineEntry,
+        searchFrom: String?,
+        searchTo: String?,
+    ): Boolean {
+        if (kotlin.math.abs(local.departureAtMillis - external.departureAtMillis) > 10L * 60L * 1000L) return false
+        val actualMatches = placeKey(local.origin) == placeKey(external.origin) && placeKey(local.destination) == placeKey(external.destination)
+        val searchMatches = !searchFrom.isNullOrBlank() && !searchTo.isNullOrBlank() &&
+            placeKey(local.origin) == placeKey(searchFrom) && placeKey(local.destination) == placeKey(searchTo)
+        return actualMatches || searchMatches
+    }
 
     private fun placeKey(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
