@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TripUnifiedOccupancyStage47R4Test {
@@ -135,6 +136,6 @@ class TripUnifiedOccupancyStage47R4Test {
 
         assertEquals(BookingSource.OTHER, booking.source)
         assertEquals(CapacityClaimType.PASSENGER, booking.capacityClaimType)
-        assertEquals(null, booking.occupancyGroupId)
+        assertNull(booking.occupancyGroupId)
     }
 }
