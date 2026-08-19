@@ -10,7 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.time.Instant
@@ -21,6 +24,8 @@ import java.time.format.DateTimeFormatter
 fun TripTimelineScreen(
     trips: List<Trip>,
     bookings: List<Booking>,
+    store: TripStore,
+    onChanged: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val entries = remember(trips, bookings) {
@@ -39,15 +44,20 @@ fun TripTimelineScreen(
     }
 
     entries.forEach { entry ->
-        TimelineEntryCard(entry, formatter)
+        val trip = trips.firstOrNull { it.id == entry.tripId }
+        TimelineEntryCard(entry, trip, store, formatter, onChanged)
     }
 }
 
 @Composable
 private fun TimelineEntryCard(
     entry: TripTimelineEntry,
+    trip: Trip?,
+    store: TripStore,
     formatter: DateTimeFormatter,
+    onChanged: (String) -> Unit,
 ) {
+    var quickOpen by remember(entry.tripId) { mutableStateOf(false) }
     val status = timelineStatus(entry)
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -71,6 +81,12 @@ private fun TimelineEntryCard(
             if (sources.isNotBlank()) Text(sources, style = MaterialTheme.typography.bodySmall)
 
             timelineIssueText(entry)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (trip != null && trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) {
+                OutlinedButton(onClick = { quickOpen = !quickOpen }) {
+                    Text(if (quickOpen) "Fechar passageiros" else "+ Passageiro")
+                }
+                if (quickOpen) QuickPassengerPanel(trip, store, onChanged)
+            }
         }
     }
 }
