@@ -3,9 +3,8 @@ package br.com.mapeiaia.rotacerta.trips
 import java.text.Normalizer
 
 /**
- * Source-neutral timeline model. Local Agenda trips are adapted here today;
- * BlaBlaCar/public collector snapshots can be adapted to the same model later
- * without changing the timeline/conflict engine.
+ * Source-neutral timeline model. Local Agenda trips and collector snapshots
+ * share this model so conflict/continuity rules remain centralized.
  */
 data class TripTimelineEntry(
     val tripId: String,
@@ -34,6 +33,7 @@ enum class TripTimelineIssue {
     PHYSICAL_CONFLICT,
     PROFILE_CONTINUITY,
     OVERBOOKING,
+    VALIDATION_PENDING,
 }
 
 object TripTimelineEngine {
@@ -71,13 +71,12 @@ object TripTimelineEngine {
         return annotate(base)
     }
 
-    /** Annotates snapshots from any source after they have been normalized. */
     fun annotate(entries: List<TripTimelineEntry>): List<TripTimelineEntry> {
         if (entries.isEmpty()) return emptyList()
         val issues = entries.associate { it.tripId to it.issues.toMutableSet() }.toMutableMap()
 
         entries.forEach { entry ->
-            if (entry.maximumOccupiedSeats > entry.capacity) {
+            if (entry.capacity > 0 && entry.maximumOccupiedSeats > entry.capacity) {
                 issues.getValue(entry.tripId) += TripTimelineIssue.OVERBOOKING
             }
         }
@@ -106,8 +105,6 @@ object TripTimelineEngine {
                     issues.getValue(left.tripId) += TripTimelineIssue.PHYSICAL_CONFLICT
                     issues.getValue(right.tripId) += TripTimelineIssue.PHYSICAL_CONFLICT
                 } else if (left.departureAtMillis == right.departureAtMillis && left.tripId != right.tripId) {
-                    // With no arrival time, only an exact simultaneous departure is
-                    // strong enough evidence to declare a physical conflict.
                     issues.getValue(left.tripId) += TripTimelineIssue.PHYSICAL_CONFLICT
                     issues.getValue(right.tripId) += TripTimelineIssue.PHYSICAL_CONFLICT
                 }
@@ -130,9 +127,6 @@ object TripTimelineEngine {
                 -> false
             }
         }
-
-        // A shared occupancyGroupId means records can mirror the same physical
-        // passenger. Count that group once, preferring the largest passenger claim.
         val grouped = activePassengers.groupBy { it.occupancyGroupId?.trim()?.takeIf(String::isNotEmpty) }
         val result = mutableMapOf<BookingSource, Int>()
         grouped[null].orEmpty().forEach { booking ->
