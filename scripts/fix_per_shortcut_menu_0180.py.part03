@@ -1,0 +1,170 @@
+replace_once(
+    main,
+    """        Text("Central de atalhos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Personalize somente a grade flutuante. A Home continua com todos os módulos disponíveis.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "Toque curto executa a ação escolhida. Segure um atalho por dois segundos para abrir o módulo correspondente. Segure a bolinha principal por cinco segundos para voltar a esta Central.",
+            style = MaterialTheme.typography.bodySmall,
+        )""",
+    """        Text(
+            if (selectedEntryId0180 == null) "Central de atalhos" else "Configurar bolinha",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            if (selectedEntryId0180 == null) {
+                "Personalize nome, ícone e os dois gestos de cada bolinha."
+            } else {
+                "Esta configuração pertence somente à bolinha pressionada por cinco segundos."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "Toque rápido e segurar por 1,5 segundo podem executar a ação, abrir o módulo ou não fazer nada. Segurar por 5 segundos sempre abre esta configuração.",
+            style = MaterialTheme.typography.bodySmall,
+        )""",
+)
+
+# Hide the global add card when editing one exact entry.
+text = read(main)
+anchor = '        Text(\n            "Ativos: ${entries0179.count { it.enabled }} de ${entries0179.size}. Limite: ${ShortcutGesturePolicy0179.MAX_GRID_ITEMS}.",\n            fontWeight = FontWeight.Bold,\n        )\n\n'
+anchor_index = text.find(anchor)
+if anchor_index < 0:
+    raise RuntimeError("MainActivity.kt: active-count anchor not found")
+card_start = text.find("        Card(modifier = Modifier.fillMaxWidth()) {", anchor_index + len(anchor))
+loop_start = text.find("        entries0179.forEachIndexed { index0179, entry0179 ->", card_start)
+if card_start < 0 or loop_start < 0:
+    raise RuntimeError("MainActivity.kt: add-card or editor-loop anchor not found")
+card_block = text[card_start:loop_start]
+indented_card = "".join(("    " + line if line.strip() else line) for line in card_block.splitlines(keepends=True))
+wrapped_card = "        if (selectedEntryId0180 == null) {\n" + indented_card + "        }\n\n"
+text = text[:card_start] + wrapped_card + text[loop_start:]
+write(main, text)
+
+replace_once(
+    main,
+    """        entries0179.forEachIndexed { index0179, entry0179 ->
+            ShortcutGridEditorCard0179(""",
+    """        val editorEntries0180 = selectedEntryId0180
+            ?.let { selected0180 -> entries0179.filter { it.entryId == selected0180 } }
+            ?: entries0179.toList()
+        editorEntries0180.forEach { entry0179 ->
+            val index0179 = entries0179.indexOfFirst { it.entryId == entry0179.entryId }
+            ShortcutGridEditorCard0179(""",
+)
+replace_once(
+    main,
+    """        TextButton(onClick = { confirmReset0179 = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Restaurar grade original")
+        }""",
+    """        if (selectedEntryId0180 == null) {
+            TextButton(onClick = { confirmReset0179 = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Restaurar grade original")
+            }
+        }""",
+)
+replace_once(
+    main,
+    """    var dragAccumulator0179 by remember(entry.entryId) { mutableStateOf(0f) }
+    val actionSpec0179 = BubbleShortcutCatalog.findSpec(entry.shortcutId)
+    Card(modifier = Modifier.fillMaxWidth()) {""",
+    """    var dragAccumulator0179 by remember(entry.entryId) { mutableStateOf(0f) }
+    var editingGesture0180 by remember(entry.entryId) { mutableStateOf<ShortcutGestureSlot0180?>(null) }
+    val actionSpec0179 = BubbleShortcutCatalog.findSpec(entry.shortcutId)
+
+    editingGesture0180?.let { slot0180 ->
+        AlertDialog(
+            onDismissRequest = { editingGesture0180 = null },
+            title = { Text(slot0180.displayLabel) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ShortcutGestureAction0180.values().forEach { action0180 ->
+                        OutlinedButton(
+                            onClick = {
+                                onUpdate(
+                                    when (slot0180) {
+                                        ShortcutGestureSlot0180.QUICK_TAP -> entry.copy(quickAction0180 = action0180)
+                                        ShortcutGestureSlot0180.HOLD_1500 -> entry.copy(holdAction0180 = action0180)
+                                    },
+                                )
+                                editingGesture0180 = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(action0180.displayLabel)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { editingGesture0180 = null }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {""",
+)
+replace_once(
+    main,
+    """            OutlinedButton(
+                onClick = {
+                    onUpdate(entry.copy(emoji = ShortcutGridCustomizationPolicy0179.nextEmoji(entry.emoji)))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Ícone: ${entry.emoji}")
+            }
+            TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                Text("Excluir da grade")
+            }""",
+    """            OutlinedButton(
+                onClick = {
+                    onUpdate(entry.copy(emoji = ShortcutGridCustomizationPolicy0179.nextEmoji(entry.emoji)))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Ícone: ${entry.emoji}")
+            }
+            OutlinedButton(
+                onClick = { editingGesture0180 = ShortcutGestureSlot0180.QUICK_TAP },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Toque rápido: ${entry.quickAction0180.displayLabel}")
+            }
+            OutlinedButton(
+                onClick = { editingGesture0180 = ShortcutGestureSlot0180.HOLD_1500 },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Segurar 1,5 s: ${entry.holdAction0180.displayLabel}")
+            }
+            TextButton(
+                onClick = {
+                    onUpdate(
+                        entry.copy(
+                            quickAction0180 = ShortcutGestureAction0180.NONE,
+                            holdAction0180 = ShortcutGestureAction0180.NONE,
+                        ),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Não fazer nada")
+            }
+            TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                Text("Excluir da grade")
+            }""",
+)
+
+# Inherited tests now reflect the corrected three-gesture contract.
+replace_once(
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt",
+    "assertEquals(2_000L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)",
+    "assertEquals(1_500L, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)",
+)
+replace_once(
+    "app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt",
+    """        assertTrue(defaults.all { it.enabled })""",

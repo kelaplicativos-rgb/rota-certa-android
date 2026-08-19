@@ -1,0 +1,195 @@
+hortcutSpec(
+        id = id,
+        emoji = "⚡",
+        label = "Rota",
+        action = BubbleShortcutAction.OpenRoute,
+        doubleTapAction = secondary,
+    )
+
+    @Test
+    fun defaultPreservesExistingSecondaryBehavior() {
+        val withSecondary = spec(BubbleShortcutQuickAction.DefineDestinationAtCurrentLocation)
+        assertEquals(
+            ShortcutLongPressResolved0171.Secondary,
+            ShortcutLongPressPolicy0171.resolve(withSecondary, ShortcutLongPressChoice0171.PreserveExisting),
+        )
+    }
+
+    @Test
+    fun defaultPreservesExistingPrimaryFallback() {
+        assertEquals(
+            ShortcutLongPressResolved0171.Primary,
+            ShortcutLongPressPolicy0171.resolve(spec(), ShortcutLongPressChoice0171.PreserveExisting),
+        )
+    }
+
+    @Test
+    fun secondaryChoiceIsUnavailableWithoutSecondaryAction() {
+        val plain = spec()
+        assertFalse(ShortcutLongPressPolicy0171.availableChoices(plain).contains(ShortcutLongPressChoice0171.RunSecondary))
+        assertEquals(
+            ShortcutLongPressResolved0171.None,
+            ShortcutLongPressPolicy0171.resolve(plain, ShortcutLongPressChoice0171.RunSecondary),
+        )
+    }
+
+    @Test
+    fun sensitiveAndSecondaryActionsRequireConfirmation() {
+        assertTrue(
+            ShortcutLongPressPolicy0171.requiresConfirmation(
+                spec(id = "stop_app"),
+                ShortcutLongPressChoice0171.RunPrimary,
+                ShortcutLongPressResolved0171.Primary,
+            ),
+        )
+        assertTrue(
+            ShortcutLongPressPolicy0171.requiresConfirmation(
+                spec(BubbleShortcutQuickAction.CreateQuickReply),
+                ShortcutLongPressChoice0171.RunSecondary,
+                ShortcutLongPressResolved0171.Secondary,
+            ),
+        )
+        assertFalse(
+            ShortcutLongPressPolicy0171.requiresConfirmation(
+                spec(),
+                ShortcutLongPressChoice0171.OpenModule,
+                ShortcutLongPressResolved0171.OpenModule,
+            ),
+        )
+        assertFalse(
+            ShortcutLongPressPolicy0171.requiresConfirmation(
+                spec(id = "stop_app"),
+                ShortcutLongPressChoice0171.PreserveExisting,
+                ShortcutLongPressResolved0171.Primary,
+            ),
+        )
+    }
+}
+'''
+
+CONTRACT_TEST_KOTLIN = r'''package br.com.mapeiaia.rotacerta
+
+import java.io.File
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ShortcutLongPressContract0171Test {
+    private val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
+    private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+    private val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt").readText()
+
+    @Test
+    fun allModulesAreAvailableFromHome() {
+        assertTrue(main.contains("ShortcutModulesHome0171"))
+        assertTrue(main.contains("BubbleShortcutCatalog.modules.forEach"))
+        assertTrue(main.contains("Ação ao manter pressionado o atalho"))
+    }
+
+    @Test
+    fun overlayDelegatesLongPressWithoutImplicitFallback() {
+        assertTrue(overlay.contains("onShortcutLongPress"))
+        assertFalse(overlay.contains("(doubleAction ?: singleAction).invoke()"))
+        assertTrue(service.contains("executeShortcutLongPress0171"))
+        assertTrue(service.contains("ShortcutLongPressPreferenceStore0171"))
+    }
+
+    @Test
+    fun sensitiveLongPressHasConfirmationPath() {
+        assertTrue(overlay.contains("showShortcutConfirmation0171"))
+        assertTrue(service.contains("requiresConfirmation"))
+        assertTrue(service.contains("openShortcutModule0171"))
+    }
+}
+'''
+
+if SERVICE.exists() and MARKER in SERVICE.read_text(encoding='utf-8'):
+    if 'versionName = "0.1.171"' not in GRADLE.read_text(encoding='utf-8'):
+        fail('marcador 0.1.171 existe, mas versão diverge')
+    print('Rota Certa 0.1.171 já aplicada')
+    raise SystemExit(0)
+
+for required in (GRADLE, CATALOG, OVERLAY, SERVICE, MAIN_ACTIVITY):
+    if not required.exists():
+        fail(f'arquivo obrigatório ausente: {required}')
+
+MAIN_DIR.mkdir(parents=True, exist_ok=True)
+TEST_DIR.mkdir(parents=True, exist_ok=True)
+POLICY.write_text(POLICY_KOTLIN, encoding='utf-8')
+POLICY_TEST.write_text(POLICY_TEST_KOTLIN, encoding='utf-8')
+CONTRACT_TEST.write_text(CONTRACT_TEST_KOTLIN, encoding='utf-8')
+
+gradle = GRADLE.read_text(encoding='utf-8')
+gradle = replace_once(gradle, 'versionCode = 5310', 'versionCode = 5320', 'versionCode')
+gradle = replace_once(gradle, 'versionName = "0.1.170"', 'versionName = "0.1.171"', 'versionName')
+GRADLE.write_text(gradle, encoding='utf-8')
+
+catalog = CATALOG.read_text(encoding='utf-8')
+catalog = replace_once(
+    catalog,
+    '''    fun requireValid() {
+''',
+    '''    fun findSpec(id: String?): BubbleShortcutSpec? = modules
+        .firstOrNull { it.spec.id == id }
+        ?.spec
+
+    fun requireValid() {
+''',
+    'busca de módulo por id',
+)
+CATALOG.write_text(catalog, encoding='utf-8')
+
+overlay = OVERLAY.read_text(encoding='utf-8')
+overlay = overlay.replace('onShortcutDoubleTap: (BubbleShortcutSpec) -> Unit', 'onShortcutLongPress: (BubbleShortcutSpec) -> Unit')
+overlay = overlay.replace('showShortcuts(anchor, onShortcut, onShortcutDoubleTap)', 'showShortcuts(anchor, onShortcut, onShortcutLongPress)')
+overlay = replace_once(
+    overlay,
+    '''                        doubleAction = module.spec.doubleTapAction?.let {
+                            {
+                                hideShortcuts()
+                                trace("bubble.shortcut.long_press id=${module.spec.id} action=$it")
+                                onShortcutDoubleTap(module.spec)
+                            }
+                        },
+''',
+    '''                        longAction = {
+                            hideShortcuts()
+                            trace("bubble.shortcut.long_press id=${module.spec.id}")
+                            onShortcutLongPress(module.spec)
+                        },
+''',
+    'delegação do toque longo',
+)
+overlay = replace_once(
+    overlay,
+    '''        doubleAction: (() -> Unit)?,
+''',
+    '''        longAction: () -> Unit,
+''',
+    'parâmetro do toque longo',
+)
+overlay = replace_once(
+    overlay,
+    '''        contentDescription = "${spec.label}. Toque para abrir; mantenha pressionado por um segundo e meio para executar."
+''',
+    '''        contentDescription = "${spec.label}. Toque para a ação principal; mantenha pressionado para a ação personalizada."
+''',
+    'descrição acessível',
+)
+overlay = replace_once(
+    overlay,
+    '''            (doubleAction ?: singleAction).invoke()
+''',
+    '''            longAction.invoke()
+''',
+    'remoção do fallback implícito',
+)
+overlay = replace_once(
+    overlay,
+    '''    fun hideAll() {
+        hideShortcuts()
+        hideProximityAlert()
+        hideSilentStatus159()
+    }
+
+'''

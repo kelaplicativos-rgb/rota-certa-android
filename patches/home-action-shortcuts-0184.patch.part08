@@ -1,0 +1,124 @@
+@@ -15,7 +15,8 @@ class DirectionalProximityAlertEngineChecklist5Test {
+         val radar = eastboundRadar()
+         var visual: DirectionalAlertVisual? = null
+ 
+-        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0015, heading = 90.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0018, heading = 90.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0014, heading = 90.0), settings(), { visual = it })
+         engine.check(emptyList(), listOf(radar), fix(longitude = -0.0010, heading = 90.0), settings(), { visual = it })
+ 
+         assertNotNull(visual)
+@@ -31,7 +32,8 @@ class DirectionalProximityAlertEngineChecklist5Test {
+         val radar = eastboundRadar()
+         var visual: DirectionalAlertVisual? = null
+ 
+-        engine.check(emptyList(), listOf(radar), fix(longitude = 0.0015, heading = 270.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = 0.0018, heading = 270.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = 0.0014, heading = 270.0), settings(), { visual = it })
+         engine.check(emptyList(), listOf(radar), fix(longitude = 0.0010, heading = 270.0), settings(), { visual = it })
+ 
+         assertNull(visual)
+@@ -45,7 +47,8 @@ class DirectionalProximityAlertEngineChecklist5Test {
+         val radar = eastboundRadar()
+         var visual: DirectionalAlertVisual? = null
+ 
+-        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0015, heading = 90.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0018, heading = 90.0), settings(), { visual = it })
++        engine.check(emptyList(), listOf(radar), fix(longitude = -0.0014, heading = 90.0), settings(), { visual = it })
+         engine.check(emptyList(), listOf(radar), fix(longitude = -0.0010, heading = 90.0), settings(), { visual = it })
+         assertNotNull(visual)
+ 
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/HomeActionShortcutsContract0184Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/HomeActionShortcutsContract0184Test.kt
+new file mode 100644
+index 0000000..6452efe
+--- /dev/null
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/HomeActionShortcutsContract0184Test.kt
+@@ -0,0 +1,36 @@
++package br.com.mapeiaia.rotacerta
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class HomeActionShortcutsContract0184Test {
++    private val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
++    private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
++    private val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt").readText()
++
++    @Test
++    fun homeAddsSpecificActionsAndGridExecutesThemDirectly() {
++        assertTrue(main.contains("ShortcutActionCatalog0184.actionsForModule"))
++        assertTrue(main.contains("Adicionar à grade"))
++        assertTrue(main.contains("Remover da grade"))
++        assertTrue(service.contains("executeShortcutModule(entry0180.spec)"))
++        assertFalse(overlay.contains("shortcut_add_0179"))
++    }
++
++    @Test
++    fun backupCreateAndRestoreRemainSeparate() {
++        assertTrue(main.contains("EXTRA_CREATE_BACKUP_0184"))
++        assertTrue(main.contains("EXTRA_RESTORE_BACKUP_0184"))
++        assertTrue(service.contains("openBackupFileAction0184(create = true)"))
++        assertTrue(service.contains("openBackupFileAction0184(create = false)"))
++    }
++
++    @Test
++    fun manualRadarStoresHeadingWhenAvailable() {
++        assertTrue(service.contains("capturedHeading0184"))
++        assertTrue(service.contains("directionType = capturedHeading0184?.let { 1 }"))
++        assertTrue(service.contains("direction = capturedHeading0184"))
++    }
++}
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184Test.kt
+new file mode 100644
+index 0000000..c370214
+--- /dev/null
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActionCatalog0184Test.kt
+@@ -0,0 +1,33 @@
++package br.com.mapeiaia.rotacerta
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShortcutActionCatalog0184Test {
++    @Test
++    fun sameModuleCanExposeIndependentActions() {
++        val backup = ShortcutActionCatalog0184.actionsForModule("backup").map { it.id }
++        assertTrue("backup" in backup)
++        assertTrue("action_create_backup" in backup)
++        assertTrue("action_restore_backup" in backup)
++
++        val clear = ShortcutActionCatalog0184.actionsForModule("clear_clipboard").map { it.id }
++        assertTrue("clear_clipboard" in clear)
++        assertTrue("action_clear_cache" in clear)
++    }
++
++    @Test
++    fun noArbitraryActionIsAccepted() {
++        val entry = ShortcutGridEntry0179("x", "intent:https://example.com", "x", "x")
++        assertTrue(ShortcutGridCustomizationPolicy0179.normalize(listOf(entry)).isEmpty())
++        assertFalse(ShortcutActionCatalog0184.allSpecs().any { it.id.startsWith("intent:") })
++    }
++
++    @Test
++    fun legacyMigrationIsExact() {
++        assertEquals(17, ShortcutActionCatalog0184.legacyDefaultSpecs().size)
++        assertEquals(ShortcutActionCatalog0184.legacyModuleIds, ShortcutActionCatalog0184.legacyDefaultSpecs().map { it.id })
++    }
++}
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
+index d388033..e6982d8 100644
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179Test.kt
+@@ -7,27 +7,25 @@ import org.junit.Test
+ 
+ class ShortcutGridCustomization0179Test {
+     @Test
+-    fun defaultsPreserveCurrentCatalogOrderAndActions() {
+-        val defaults = ShortcutGridCustomizationPolicy0179.defaults()
+-        assertEquals(BubbleShortcutCatalog.modules.size, defaults.size)
+-        assertEquals(BubbleShortcutCatalog.modules.map { it.spec.id }, defaults.map { it.shortcutId })
+-        assertTrue(defaults.all { it.enabled })
