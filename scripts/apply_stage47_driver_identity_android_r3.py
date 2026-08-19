@@ -32,7 +32,7 @@ domain = pkg / "TripDomain.kt"
 once(domain,
 '''object TripFareEngine {
 ''',
-'''object DriverIdentityRules {
+r'''object DriverIdentityRules {
     fun normalizeUsername(value: String): String {
         val ascii = java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
@@ -139,7 +139,7 @@ replace_between(
 ''',
     '''    fun shareIcs(context: Context, trip: Trip, booking: Booking? = null) {
 ''',
-    '''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
+    r'''    fun sharePublicAgenda(context: Context, settings: TripOnlineSettings): Boolean {
         val agendaUrl = settings.publicAgendaUrl ?: return false
         val calendarUrl = settings.publicCalendarUrl ?: return false
         val driver = settings.driverDisplayName.ifBlank { settings.driverUsername }
