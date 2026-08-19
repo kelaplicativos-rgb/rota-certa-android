@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 @Composable
@@ -59,7 +60,7 @@ fun QuickPassengerPanel(
     Text("Passageiro rápido")
     OutlinedTextField(name, { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(contact, { contact = it }, label = { Text("Contato opcional") }, modifier = Modifier.fillMaxWidth())
-    Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(8f))) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = {
             sourceIndex = (sourceIndex + 1) % sources.size
             if (mirrorSource == sources[sourceIndex]) mirrorSource = null
@@ -85,7 +86,7 @@ fun QuickPassengerPanel(
             Text(if (linked == null) "Vincular vaga existente: não" else "Vincular: ${quickSourceLabel(linked.source)} ${linked.seats} vaga(s)")
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(8f))) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = {
             fromIndex = (fromIndex + 1).coerceAtMost(stops.lastIndex - 1)
             if (toIndex <= fromIndex) toIndex = fromIndex + 1
