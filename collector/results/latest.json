@@ -1,19 +1,19 @@
 {
   "schema_version": 4,
-  "request_id": "agenda-final-2026-08-23-tc-sa",
-  "collected_at": "2026-08-19T17:10:04.129Z",
+  "request_id": "agenda-final-2026-08-25-sa-stl",
+  "collected_at": "2026-08-19T17:10:55.904Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
   "request": {
-    "from": "Três Corações, MG, Brasil",
-    "to": "Santo André, SP, Brasil",
-    "date": "2026-08-23",
+    "from": "Santo André, SP, Brasil",
+    "to": "São Thomé das Letras, MG, Brasil",
+    "date": "2026-08-25",
     "seats": 1
   },
   "resolved_place_ids": {
-    "from_place_id": "eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-    "to_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
   },
   "validation": {
     "http_status": 200,
@@ -22,138 +22,72 @@
     "exact_destination_match": true,
     "route_visible_in_page": true,
     "content_confirmed": true,
-    "final_url": "https://www.blablacar.com.br/search?fn=Tr%C3%AAs+Cora%C3%A7%C3%B5es%2C+MG%2C+Brasil&tn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&db=2026-08-23&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
-    "page_title": "Caronas e viagens para Santo André, SP, Brasil"
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-08-25&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
   },
   "zero_results_confirmed": false,
-  "driver_cards_count": 10,
+  "driver_cards_count": 5,
   "ezequiel_s_visible": false,
   "barbosa_visible": false,
   "trips": [
     {
-      "driver_name": "Eliézer",
-      "departure_time": "06:00",
-      "arrival_time": "10:00",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 92,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=Ep-XDWBvQk--xwwidGhWoglyfBdCZHRsqa2cCF66SZjg&requested_seats=1&search_origin=SEARCH&search_uuid=129f970d-606f-424f-bec7-0c22746856a2"
-    },
-    {
-      "driver_name": "Marcos",
+      "driver_name": "Reir",
       "departure_time": "08:00",
       "arrival_time": "12:00",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 92,00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 70,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=Ep-XDWBvQk--xwwidGhWogQRth0J8NQtqjF3rSaEvdjw&requested_seats=1&search_origin=SEARCH&search_uuid=129f970d-606f-424f-bec7-0c22746856a2"
+      "trip_href": "/trip?source=CARPOOLING&id=lgFb493JSHKgCwoILwufuQfBJ0oRS5RLqcEAcVz151ug&requested_seats=1&search_origin=SEARCH&search_uuid=96015be3-ddc9-4872-a00b-0a082f0b9fb9"
     },
     {
-      "driver_name": "Alessandra",
-      "departure_time": "08:30",
+      "driver_name": "Wilson",
+      "departure_time": "09:30",
       "arrival_time": "14:10",
-      "actual_departure": "São Tomé das Letras",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 110,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=Ep-XDWBvQk--xwwidGhWogYHU9A49UTfiOdK0Ltj1OlA&requested_seats=1&search_origin=SEARCH&search_uuid=129f970d-606f-424f-bec7-0c22746856a2"
-    },
-    {
-      "driver_name": "Paulo",
-      "departure_time": "09:00",
-      "arrival_time": "13:00",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 77,00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Lourenço",
+      "price": "R$ 89,00",
       "flags": [
         "Esgotará em breve"
       ],
       "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=Ep-XDWBvQk--xwwidGhWogXzt2hBuETpS_lO-l3iU9cA&requested_seats=1&search_origin=SEARCH&search_uuid=129f970d-606f-424f-bec7-0c22746856a2"
+      "trip_href": "/trip?source=CARPOOLING&id=lgFb493JSHKgCwoILwufuQEUNk51U1TWG2RbJNmTjsHw&requested_seats=1&search_origin=SEARCH&search_uuid=96015be3-ddc9-4872-a00b-0a082f0b9fb9"
     },
     {
-      "driver_name": "Saulo",
-      "departure_time": "09:50",
-      "arrival_time": "13:40",
-      "actual_departure": "Três Corações",
-      "actual_arrival": "São Paulo",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null
+      "driver_name": "Cristian",
+      "departure_time": "13:00",
+      "arrival_time": "17:00",
+      "actual_departure": "Santa Isabel",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 76,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=lgFb493JSHKgCwoILwufuQyG2cju1LQ32fk-S2EH7g8A&requested_seats=1&search_origin=SEARCH&search_uuid=96015be3-ddc9-4872-a00b-0a082f0b9fb9"
     },
     {
-      "driver_name": "Thalys",
-      "departure_time": "14:00",
-      "arrival_time": "19:10",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "São Paulo",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null
-    },
-    {
-      "driver_name": "Fernanda",
-      "departure_time": "15:00",
-      "arrival_time": "19:30",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": null,
-      "flags": [
-        "Cheio",
-        "Super Driver"
-      ],
-      "availability": "full",
-      "trip_href": null
-    },
-    {
-      "driver_name": "Junior",
-      "departure_time": "17:00",
-      "arrival_time": "22:00",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "São Paulo",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null
-    },
-    {
-      "driver_name": "Rafael",
+      "driver_name": "Daniel",
       "departure_time": "18:10",
       "arrival_time": "22:10",
-      "actual_departure": "Campanha",
-      "actual_arrival": "São Bernardo do Campo",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 104,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=lgFb493JSHKgCwoILwufuQLzuCX-sfRAOj80lprBXR_Q&requested_seats=1&search_origin=SEARCH&search_uuid=96015be3-ddc9-4872-a00b-0a082f0b9fb9"
     },
     {
-      "driver_name": "Edipo",
-      "departure_time": "19:00",
-      "arrival_time": "23:40",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "Guarulhos",
-      "price": null,
+      "driver_name": "Gabriel",
+      "departure_time": "20:30",
+      "arrival_time": "00:20+1",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 82,00",
       "flags": [
-        "Cheio"
+        "Super Driver"
       ],
-      "availability": "full",
-      "trip_href": null
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=lgFb493JSHKgCwoILwufuQFA-ZqwHgTBu4vHSVBav5Fw&requested_seats=1&search_origin=SEARCH&search_uuid=96015be3-ddc9-4872-a00b-0a082f0b9fb9"
     }
   ]
 }
