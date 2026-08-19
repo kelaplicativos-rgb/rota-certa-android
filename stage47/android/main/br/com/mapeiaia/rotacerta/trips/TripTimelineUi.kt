@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 import java.time.ZoneId
@@ -28,8 +29,14 @@ fun TripTimelineScreen(
     onChanged: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val entries = remember(trips, bookings) {
+    val context = LocalContext.current
+    val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
+    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }
+    val localEntries = remember(trips, bookings) {
         TripTimelineEngine.fromLocalAgenda(trips, bookings)
+    }
+    val entries = remember(localEntries, collectorResponse) {
+        BlaBlaTimelineAdapter.merge(localEntries, collectorResponse)
     }
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM HH:mm") }
 
@@ -37,6 +44,14 @@ fun TripTimelineScreen(
         Text("Linha do tempo", style = MaterialTheme.typography.titleLarge)
         OutlinedButton(onClick = onBack) { Text("Voltar") }
     }
+
+    BlaBlaCollectorPanel(
+        trips = trips,
+        stateStore = collectorStore,
+        currentResponse = collectorResponse,
+        onResult = { collectorResponse = it },
+        onChanged = onChanged,
+    )
 
     if (entries.isEmpty()) {
         Text("Nenhuma viagem para organizar.")
@@ -66,12 +81,16 @@ private fun TimelineEntryCard(
         ) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
             Text("$date — ${entry.origin} → ${entry.destination} $status", style = MaterialTheme.typography.titleSmall)
-            val occupancy = if (entry.minimumOccupiedSeats == entry.maximumOccupiedSeats) {
-                "${entry.maximumOccupiedSeats}/${entry.capacity}"
+            if (entry.capacity > 0) {
+                val occupancy = if (entry.minimumOccupiedSeats == entry.maximumOccupiedSeats) {
+                    "${entry.maximumOccupiedSeats}/${entry.capacity}"
+                } else {
+                    "${entry.minimumOccupiedSeats}–${entry.maximumOccupiedSeats}/${entry.capacity}"
+                }
+                Text("${entry.profileLabel} • ocupação $occupancy")
             } else {
-                "${entry.minimumOccupiedSeats}–${entry.maximumOccupiedSeats}/${entry.capacity}"
+                Text("${entry.profileLabel} • BlaBlaCar")
             }
-            Text("${entry.profileLabel} • ocupação $occupancy")
 
             val sources = entry.sourcePassengerSeats
                 .filterValues { it > 0 }
@@ -96,6 +115,7 @@ private fun timelineStatus(entry: TripTimelineEntry): String = when {
     TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> "❌"
     TripTimelineIssue.DUPLICATE in entry.issues -> "🔁"
     TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> "⚠️"
+    TripTimelineIssue.VALIDATION_PENDING in entry.issues -> "⏳"
     else -> "✅"
 }
 
@@ -105,6 +125,7 @@ private fun timelineIssueText(entry: TripTimelineEntry): String? {
         if (TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues) add("conflito físico")
         if (TripTimelineIssue.DUPLICATE in entry.issues) add("possível duplicidade")
         if (TripTimelineIssue.PROFILE_CONTINUITY in entry.issues) add("continuidade do perfil")
+        if (TripTimelineIssue.VALIDATION_PENDING in entry.issues) add("UUID ainda não confirmado no detalhe")
     }
     return labels.takeIf { it.isNotEmpty() }?.joinToString(" • ")
 }
