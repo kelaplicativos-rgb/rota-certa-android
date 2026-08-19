@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import re
+import runpy
+import sys
+import tempfile
+from pathlib import Path
+
+SCRIPT = Path(__file__).with_name("fix_farol_unified_visual_0168.py")
+
+TEXT_PARAM_OLD = 'params = list(re.finditer(r"\\b([A-Za-z_][A-Za-z0-9_]*text[A-Za-z0-9_]*)\\s*:\\s*String\\b", signature, re.I))'
+TEXT_PARAM_NEW = '''string_params = list(
+    re.finditer(r"\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*String\\b", signature, re.I)
+)
+params = [match for match in string_params if "text" in match.group(1).lower()]'''
+
+SEMANTIC_HASH_OLD = '''service, semantic_replacements = re.subn(
+    r"\\b([A-Za-z_][A-Za-z0-9_]*(?:text|Text))\\.hashCode\\(\\)",
+    r"FarolUnifiedVisual0168.semanticHash(\\1)",
+    service,
+)'''
+SEMANTIC_HASH_NEW = '''service, semantic_replacements = re.subn(
+    r"(?m)(\\bval\\s+analysisHash[A-Za-z0-9_]*\\s*=\\s*)([A-Za-z_][A-Za-z0-9_]*)\\.hashCode\\(\\)",
+    r"\\1FarolUnifiedVisual0168.semanticHash(\\2)",
+    service,
+)'''
+
+CARD_START_OLD = r"(?i)\\s+(Pedido de viagem|Nova solicitação|Nova solicitacao|Solicitação de viagem|Solicitacao de viagem|Corrida disponível|Corrida disponivel)\\s+"
+CARD_START_NEW = r"(?i)[ \\t]+(Pedido de viagem|Nova solicitação|Nova solicitacao|Solicitação de viagem|Solicitacao de viagem|Corrida disponível|Corrida disponivel)[ \\t]+"
+CARD_ACTION_OLD = r"(?i)\\s+(Aceitar por|Aceitar|Pular|Recusar|Ofereça sua tarifa|Ofereca sua tarifa)\\s+"
+CARD_ACTION_NEW = r"(?i)[ \\t]+(Aceitar por|Aceitar|Pular|Recusar|Ofereça sua tarifa|Ofereca sua tarifa)[ \\t]+"
+
+OCR_DELAY_OLD = '''post_at = ocr_body.find(".postDelayed(")
+if post_at < 0:
+    fail("postDelayed do fallback OCR não encontrado")
+absolute_post = ocr_open + post_at
+paren_open = service.find("(", absolute_post)
+paren_close = find_matching(service, paren_open, "(", ")")
+args = service[paren_open + 1 : paren_close]
+depth_round = depth_curly = depth_square = 0
+quote = None
+escaped = False
+comma_at = -1
+for index, char in enumerate(args):
+    if quote is not None:
+        if escaped:
+            escaped = False
+        elif char == "\\\\":
+            escaped = True
+        elif char == quote:
+            quote = None
+        continue
+    if char in ('"', "'"):
+        quote = char
+    elif char == "(": depth_round += 1
+    elif char == ")": depth_round -= 1
+    elif char == "{": depth_curly += 1
+    elif char == "}": depth_curly -= 1
+    elif char == "[": depth_square += 1
+    elif char == "]": depth_square -= 1
+    elif char == "," and depth_round == depth_curly == depth_square == 0:
+        comma_at = index
+if comma_at < 0:
+    fail("argumento de atraso do postDelayed OCR não encontrado")
+first_argument = args[:comma_at].rstrip()
+method_start = service.rfind(".postDelayed", absolute_post, paren_open)
+service = service[:method_start] + ".post(" + first_argument + ")" + service[paren_close + 1 :]'''
+
+OCR_DELAY_NEW = '''post_at = ocr_body.find(".postDelayed(")
+if post_at >= 0:
+    absolute_post = ocr_open + post_at
+    paren_open = service.find("(", absolute_post)
+    paren_close = find_matching(service, paren_open, "(", ")")
+    args = service[paren_open + 1 : paren_close]
+    depth_round = depth_curly = depth_square = 0
+    quote = None
+    escaped = False
+    comma_at = -1
+    for index, char in enumerate(args):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char == "(": depth_round += 1
+        elif char == ")": depth_round -= 1
+        elif char == "{": depth_curly += 1
+        elif char == "}": depth_curly -= 1
+        elif char == "[": depth_square += 1
+        elif char == "]": depth_square -= 1
+        elif char == "," and depth_round == depth_curly == depth_square == 0:
+            comma_at = index
+    if comma_at < 0:
+        fail("argumento de atraso do postDelayed OCR não encontrado")
+    first_argument = args[:comma_at].rstrip()
+    method_start = service.rfind(".postDelayed", absolute_post, paren_open)
+    service = service[:method_start] + ".post(" + first_argument + ")" + service[paren_close + 1 :]
+else:
+    coroutine_delay = re.search(
+        r"(?m)^[ \\t]*delay\\s*\\(\\s*FarolCriticalPathPolicy\\.OCR_FALLBACK_DELAY_MILLIS\\s*\\)"
+        r"[ \\t]*(?://[^\\n]*)?\\n?",
+        ocr_body,
+    )
+    if coroutine_delay is None:
+        fail("atraso do fallback OCR não encontrado")
+    absolute_delay_start = ocr_open + coroutine_delay.start()
+    absolute_delay_end = ocr_open + coroutine_delay.end()
+    service = service[:absolute_delay_start] + service[absolute_delay_end:]'''
+
+
+def replace_required(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
+    if count == 1:
+        return source.replace(old, new, 1)
+    if new in source:
+        return source
+    raise SystemExit(
+        f"aplicador 0.1.168 mudou: {label} não foi localizado com segurança; ocorrências={count}"
+    )
+
+
+def corrected_source() -> str:
+    source = SCRIPT.read_text(encoding="utf-8")
+    source = replace_required(source, TEXT_PARAM_OLD, TEXT_PARAM_NEW, "parâmetro textual")
+    source = replace_required(source, SEMANTIC_HASH_OLD, SEMANTIC_HASH_NEW, "hash semântico da análise")
+    source = replace_required(source, CARD_START_OLD, CARD_START_NEW, "limite inicial de card")
+    source = replace_required(source, CARD_ACTION_OLD, CARD_ACTION_NEW, "limite de ação do card")
+    source = replace_required(source, OCR_DELAY_OLD, OCR_DELAY_NEW, "fallback OCR por corrotina")
+    return source
+
+
+def validate_runtime_patch(source: str) -> None:
+    sample_signature = '''private suspend fun processRideText(
+        text: String,
+        source: UniversalRideSource,
+        packageHint152: String? = null,
+    )'''
+    string_params = list(
+        re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*String\b", sample_signature, re.I)
+    )
+    textual = [match.group(1) for match in string_params if "text" in match.group(1).lower()]
+    if textual != ["text"]:
+        raise SystemExit(f"regressão do parâmetro textual: {textual}")
+
+    sample_service = '''
+        val analysisHash143 = immediateTextChecklist13.hashCode()
+        val diagnosticHash = immediateTextChecklist13.hashCode()
+        lastFailedCardAccessibilityHash0161 = snapshotTextChecklist13.hashCode()
+    '''
+    stabilized, count = re.subn(
+        r"(?m)(\bval\s+analysisHash[A-Za-z0-9_]*\s*=\s*)([A-Za-z_][A-Za-z0-9_]*)\.hashCode\(\)",
+        r"\1FarolUnifiedVisual0168.semanticHash(\2)",
+        sample_service,
+    )
+    if count != 1:
+        raise SystemExit(f"regressão do hash semântico: substituições={count}")
+    if "val analysisHash143 = FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)" not in stabilized:
+        raise SystemExit("hash de análise não foi estabilizado")
+    if "val diagnosticHash = immediateTextChecklist13.hashCode()" not in stabilized:
+        raise SystemExit("hash de diagnóstico foi alterado indevidamente")
+    if "snapshotTextChecklist13.hashCode()" not in stabilized:
+        raise SystemExit("hash de recuperação foi alterado indevidamente")
+
+    if CARD_START_NEW not in source or CARD_ACTION_NEW not in source:
+        raise SystemExit("limites horizontais dos cards não foram estabilizados")
+    if CARD_START_OLD in source or CARD_ACTION_OLD in source:
+        raise SystemExit("limites antigos ainda podem consumir quebras entre cards")
+
+    sample_ocr_body = '''
+        screenshotFallbackJob127 = scope.launch {
+            delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS) // ocr_delay_final_checklist_6
+            if (!serviceReady) return@launch
+            requestScreenshotAnalysis(allowPopupCandidate = true)
+        }
+    '''
+    coroutine_delay = re.search(
+        r"(?m)^[ \t]*delay\s*\(\s*FarolCriticalPathPolicy\.OCR_FALLBACK_DELAY_MILLIS\s*\)"
+        r"[ \t]*(?://[^\n]*)?\n?",
+        sample_ocr_body,
+    )
+    if coroutine_delay is None:
+        raise SystemExit("regressão da âncora do atraso OCR")
+    without_delay = sample_ocr_body[:coroutine_delay.start()] + sample_ocr_body[coroutine_delay.end():]
+    if "delay(FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS)" in without_delay:
+        raise SystemExit("atraso OCR não foi removido no teste")
+    if "requestScreenshotAnalysis(allowPopupCandidate = true)" not in without_delay:
+        raise SystemExit("solicitação OCR foi removida indevidamente")
+
+    for expected in (TEXT_PARAM_NEW, SEMANTIC_HASH_NEW, CARD_START_NEW, CARD_ACTION_NEW, OCR_DELAY_NEW):
+        if expected not in source:
+            raise SystemExit("correções esperadas não estão no script materializado em memória")
+
+
+def main() -> None:
+    source_root = sys.argv[1] if len(sys.argv) > 1 else "."
+    runtime_path: Path | None = None
+    source = corrected_source()
+    validate_runtime_patch(source)
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix="_fix_farol_unified_visual_0168.py",
+            prefix="rota_certa_",
+            delete=False,
+        ) as runtime:
+            runtime.write(source)
+            runtime_path = Path(runtime.name)
+        previous_argv = sys.argv[:]
+        sys.argv = [str(runtime_path), source_root]
+        try:
+            runpy.run_path(str(runtime_path), run_name="__main__")
+        finally:
+            sys.argv = previous_argv
+    finally:
+        if runtime_path is not None:
+            runtime_path.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

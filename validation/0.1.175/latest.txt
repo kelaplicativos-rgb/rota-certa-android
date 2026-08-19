@@ -1,0 +1,8 @@
+head=d669449552be47c1468b8c8a2ff32d56c7ba5b0c
+run=30714654053
+job=91408081542
+conclusion=success
+artifact_id=8823015602
+artifact_name=rota-certa-0.1.175-home-bubble-grid-validated
+apk_sha256=33c8f8eb41c61eb4cb69fd0a5aba8eefd4f09474c027a9648a050ebc47170816
+apk_bytes=55993299

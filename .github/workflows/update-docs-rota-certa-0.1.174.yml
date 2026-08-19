@@ -1,0 +1,41 @@
+name: Update Rota Certa 0.1.174 Docs
+
+on:
+  push:
+    branches: [agent/home-module-launcher-0.1.174]
+    paths:
+      - scripts/update_docs_home_inline_0174.py
+      - .github/workflows/update-docs-rota-certa-0.1.174.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/home-module-launcher-0.1.174
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepend 0.1.174 records
+        run: python scripts/update_docs_home_inline_0174.py
+
+      - name: Commit documentation
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/PROJECT_STATUS.md docs/DECISIONS.md; then
+            echo "Documentação já atualizada."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          git commit -m "docs: record inline Home modules 0.1.174"
+          git push origin HEAD:agent/home-module-launcher-0.1.174
