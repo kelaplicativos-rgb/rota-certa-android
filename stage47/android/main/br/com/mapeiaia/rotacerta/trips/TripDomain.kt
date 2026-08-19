@@ -76,12 +76,12 @@ data class Booking(
     val status: BookingStatus = BookingStatus.REQUESTED,
     val holdExpiresAtMillis: Long? = null,
     val cancellationToken: String? = null,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = System.currentTimeMillis(),
     val source: BookingSource = BookingSource.OTHER,
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
-    val createdAtMillis: Long = System.currentTimeMillis(),
-    val updatedAtMillis: Long = System.currentTimeMillis(),
 )
 
 data class SegmentLoad(
