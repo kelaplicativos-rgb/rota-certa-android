@@ -127,7 +127,9 @@ async function collectProfileMonth(input) {
   if (!dates.length) throw new Error('o mês informado não possui datas públicas pesquisáveis');
   if (queryCount > MAX_QUERIES) throw new Error(`escopo muito grande: ${queryCount} consultas; limite ${MAX_QUERIES}`);
 
-  const browser = await chromium.launch({ headless: true });
+  // Preserve PR105's validated browser mode: normal Chromium rendered inside Xvfb,
+  // rather than silently changing to headless behavior.
+  const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext({ locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   const detailPage = await context.newPage();
