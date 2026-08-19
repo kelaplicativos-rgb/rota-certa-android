@@ -25,6 +25,7 @@ enum class BookingStatus {
 
 @Serializable
 enum class BookingSource {
+    ROTA_CERTA,
     BLABLACAR,
     PRIVATE,
     OTHER,

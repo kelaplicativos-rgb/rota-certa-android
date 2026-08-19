@@ -35,6 +35,11 @@ data class RemoteBooking(
     val status: String = "CONFIRMED",
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
+    val source: BookingSource = BookingSource.OTHER,
+    val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+    val holdExpiresAtMillis: Long? = null,
 )
 
 @Serializable
@@ -49,6 +54,29 @@ data class PublicBookingRequest(
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
+)
+
+@Serializable
+data class DriverBookingUpsertRequest(
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String = BookingStatus.CONFIRMED.name,
+    val holdExpiresAtMillis: Long? = null,
+    val source: BookingSource = BookingSource.OTHER,
+    val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+)
+
+@Serializable
+data class DriverBookingUpsertResponse(
+    val booking: RemoteBooking,
+    val segmentLoads: List<Int> = emptyList(),
+    val availableSeatsMinimum: Int = 0,
+    val availableSeatsMaximum: Int = 0,
 )
 
 class TripRemoteApi(
@@ -73,6 +101,27 @@ class TripRemoteApi(
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
         method = "GET",
         path = "/v1/driver/trips/$remoteTripId/bookings",
+        requireDriverToken = true,
+    )
+
+    suspend fun upsertDriverBooking(remoteTripId: String, booking: Booking): DriverBookingUpsertResponse = request(
+        method = "PUT",
+        path = "/v1/driver/trips/$remoteTripId/bookings/${booking.id}",
+        body = json.encodeToString(
+            DriverBookingUpsertRequest(
+                passengerName = booking.passengerName,
+                passengerContact = booking.passengerContact,
+                boardingStopId = booking.boardingStopId,
+                dropoffStopId = booking.dropoffStopId,
+                seats = booking.seats,
+                status = booking.status.name,
+                holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                source = booking.source,
+                capacityClaimType = booking.capacityClaimType,
+                sourceReference = booking.sourceReference,
+                occupancyGroupId = booking.occupancyGroupId,
+            ),
+        ),
         requireDriverToken = true,
     )
 
@@ -132,6 +181,11 @@ fun RemoteBooking.toLocalBooking(localTripId: String): Booking = Booking(
     dropoffStopId = dropoffStopId,
     seats = seats,
     status = runCatching { BookingStatus.valueOf(status) }.getOrDefault(BookingStatus.CONFIRMED),
+    holdExpiresAtMillis = holdExpiresAtMillis,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
+    source = source,
+    capacityClaimType = capacityClaimType,
+    sourceReference = sourceReference,
+    occupancyGroupId = occupancyGroupId,
 )
