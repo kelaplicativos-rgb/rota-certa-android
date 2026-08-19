@@ -120,15 +120,13 @@ async function collectProfileMonth(input) {
       coverage: { complete_for_scope: false, global_profile_month_complete: false, reason: 'Nenhuma rota dinâmica foi fornecida pela Agenda.' },
     };
   }
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })
-    .format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const dates = monthDates(input.month, input.include_past ? null : today);
   const queryCount = routes.length * dates.length;
   if (!dates.length) throw new Error('o mês informado não possui datas públicas pesquisáveis');
   if (queryCount > MAX_QUERIES) throw new Error(`escopo muito grande: ${queryCount} consultas; limite ${MAX_QUERIES}`);
 
-  // Preserve PR105's validated browser mode: normal Chromium rendered inside Xvfb,
-  // rather than silently changing to headless behavior.
+  // PR105 was proven with a normal rendered Chromium inside Xvfb. Keep the same mode.
   const browser = await chromium.launch({ headless: false });
   const context = await browser.newContext({ locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -170,17 +168,20 @@ async function collectProfileMonth(input) {
             if (!target) continue;
             if (!card.href) {
               unresolvedTargetCards++;
+              const flags = detectFlags(card.text);
               trips.push({
                 profile_uuid: target.uuid,
                 profile_name: target.name,
                 date,
                 departure_time: card.departure_time,
                 arrival_time: card.arrival_time,
+                search_from: route.from,
+                search_to: route.to,
                 actual_departure: card.actual_departure,
                 actual_arrival: card.actual_arrival,
                 price: cleanPrice(card.price_text),
-                flags: detectFlags(card.text),
-                availability: detectFlags(card.text).includes('Cheio') ? 'full' : 'unknown',
+                flags,
+                availability: flags.includes('Cheio') ? 'full' : 'unknown',
                 trip_href: null,
                 trip_id: null,
                 uuid_validation: 'unresolved_no_trip_link',
@@ -199,6 +200,8 @@ async function collectProfileMonth(input) {
               date,
               departure_time: card.departure_time,
               arrival_time: card.arrival_time,
+              search_from: route.from,
+              search_to: route.to,
               actual_departure: card.actual_departure,
               actual_arrival: card.actual_arrival,
               price: cleanPrice(card.price_text),
@@ -220,7 +223,7 @@ async function collectProfileMonth(input) {
 
     const deduped = new Map();
     for (const trip of trips) {
-      const key = trip.trip_id ? `${trip.profile_uuid}|${trip.trip_id}` : `${trip.profile_uuid}|${trip.date}|${trip.departure_time}|${fold(trip.actual_departure)}|${fold(trip.actual_arrival)}`;
+      const key = trip.trip_id ? `${trip.profile_uuid}|${trip.trip_id}` : `${trip.profile_uuid}|${trip.date}|${trip.departure_time}|${fold(trip.search_from)}|${fold(trip.search_to)}`;
       const current = deduped.get(key);
       if (!current || current.uuid_validation !== 'verified_from_trip_detail_profile_link') deduped.set(key, trip);
     }
