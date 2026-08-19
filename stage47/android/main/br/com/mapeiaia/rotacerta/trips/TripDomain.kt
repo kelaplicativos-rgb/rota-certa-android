@@ -24,6 +24,19 @@ enum class BookingStatus {
 }
 
 @Serializable
+enum class BookingSource {
+    BLABLACAR,
+    PRIVATE,
+    OTHER,
+}
+
+@Serializable
+enum class CapacityClaimType {
+    PASSENGER,
+    RESERVED_SEAT,
+}
+
+@Serializable
 data class TripStop(
     val id: String = UUID.randomUUID().toString(),
     val order: Int,
@@ -65,6 +78,10 @@ data class Booking(
     val cancellationToken: String? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
+    val source: BookingSource = BookingSource.OTHER,
+    val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
 )
 
 data class SegmentLoad(
@@ -113,21 +130,7 @@ object SeatAvailabilityEngine {
         require(dropoffIndex >= 0) { "Unknown dropoff stop" }
         require(boardingIndex < dropoffIndex) { "Dropoff must be after boarding" }
 
-        val occupancy = IntArray(orderedStops.size - 1)
-        bookings.asSequence()
-            .filter { it.tripId == trip.id }
-            .filter { it.seats > 0 }
-            .filter { occupiesCapacity(it, nowMillis) }
-            .forEach { booking ->
-                val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
-                val toIndex = orderedStops.indexOfFirst { it.id == booking.dropoffStopId }
-                if (fromIndex >= 0 && toIndex > fromIndex) {
-                    for (segment in fromIndex until toIndex) {
-                        occupancy[segment] += booking.seats
-                    }
-                }
-            }
-
+        val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         val loads = (boardingIndex until dropoffIndex).map { index ->
             SegmentLoad(
                 from = orderedStops[index],
@@ -155,16 +158,7 @@ object SeatAvailabilityEngine {
     ): List<SegmentLoad> {
         val orderedStops = trip.stops.sortedBy(TripStop::order)
         if (orderedStops.size < 2) return emptyList()
-        val occupancy = IntArray(orderedStops.size - 1)
-        bookings.asSequence()
-            .filter { it.tripId == trip.id && it.seats > 0 && occupiesCapacity(it, nowMillis) }
-            .forEach { booking ->
-                val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
-                val toIndex = orderedStops.indexOfFirst { it.id == booking.dropoffStopId }
-                if (fromIndex >= 0 && toIndex > fromIndex) {
-                    for (segment in fromIndex until toIndex) occupancy[segment] += booking.seats
-                }
-            }
+        val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         return occupancy.indices.map { index ->
             SegmentLoad(
                 from = orderedStops[index],
@@ -208,6 +202,34 @@ object SeatAvailabilityEngine {
         } else {
             TripStatus.PUBLISHED
         }
+    }
+
+    private fun reconciledOccupancy(
+        trip: Trip,
+        bookings: List<Booking>,
+        orderedStops: List<TripStop>,
+        nowMillis: Long,
+    ): IntArray {
+        val claimsBySegment = Array(orderedStops.size - 1) { mutableMapOf<String, Int>() }
+        bookings.asSequence()
+            .filter { it.tripId == trip.id }
+            .filter { it.seats > 0 }
+            .filter { occupiesCapacity(it, nowMillis) }
+            .forEach { booking ->
+                val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
+                val toIndex = orderedStops.indexOfFirst { it.id == booking.dropoffStopId }
+                if (fromIndex >= 0 && toIndex > fromIndex) {
+                    val explicitGroup = booking.occupancyGroupId?.trim()?.takeIf { it.isNotEmpty() }
+                    val claimKey = explicitGroup?.let { "group:$it" } ?: "booking:${booking.id}"
+                    for (segment in fromIndex until toIndex) {
+                        val previous = claimsBySegment[segment][claimKey] ?: 0
+                        if (booking.seats > previous) {
+                            claimsBySegment[segment][claimKey] = booking.seats
+                        }
+                    }
+                }
+            }
+        return IntArray(claimsBySegment.size) { index -> claimsBySegment[index].values.sum() }
     }
 
     private fun occupiesCapacity(booking: Booking, nowMillis: Long): Boolean = when (booking.status) {
