@@ -46,18 +46,6 @@ object QuickPassengerEngine {
             "Escolha uma vaga espelho nova ou uma vaga existente, não as duas."
         }
 
-        val availability = SeatAvailabilityEngine.availability(
-            trip = trip,
-            bookings = existingBookings,
-            boardingStopId = request.boardingStopId,
-            dropoffStopId = request.dropoffStopId,
-            requestedSeats = request.seats,
-            nowMillis = nowMillis,
-        )
-        require(availability.canBook) {
-            "Somente ${availability.availableSeats} vaga(s) disponível(is) nesse trecho."
-        }
-
         val linked = request.linkReservedSeatBookingId?.let { id ->
             existingBookings.firstOrNull { it.id == id }
                 ?: throw IllegalArgumentException("Vaga reservada para vínculo não encontrada.")
@@ -75,6 +63,22 @@ object QuickPassengerEngine {
                 "A vaga vinculada precisa usar o mesmo trecho."
             }
             require(linked.seats == request.seats) { "A vaga vinculada precisa ter a mesma quantidade de lugares." }
+        }
+
+        // If the passenger is naming an already blocked RESERVED_SEAT, that seat is
+        // temporarily removed from the availability check because the plan will link
+        // both records into the same physical occupancy group instead of adding a seat.
+        val availabilityBase = if (linked == null) existingBookings else existingBookings.filterNot { it.id == linked.id }
+        val availability = SeatAvailabilityEngine.availability(
+            trip = trip,
+            bookings = availabilityBase,
+            boardingStopId = request.boardingStopId,
+            dropoffStopId = request.dropoffStopId,
+            requestedSeats = request.seats,
+            nowMillis = nowMillis,
+        )
+        require(availability.canBook) {
+            "Somente ${availability.availableSeats} vaga(s) disponível(is) nesse trecho."
         }
 
         val groupId = when {
