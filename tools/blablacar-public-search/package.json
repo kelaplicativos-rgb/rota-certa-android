@@ -1,0 +1,12 @@
+{
+  "name": "rota-certa-blablacar-public-search",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test profile-month-core.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.54.2"
+  }
+}
