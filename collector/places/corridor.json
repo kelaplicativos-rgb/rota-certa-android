@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-08-19T16:34:47.997Z",
+  "places": [
+    {
+      "address": "Santo André, SP, Brasil",
+      "google_place_id": "ChIJ734dh3hCzpQR3k7bKobKqp4",
+      "blablacar_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Santo André, SP, Brasil"
+    },
+    {
+      "address": "São Paulo, SP, Brasil",
+      "google_place_id": "ChIJ0WGkg4FEzpQRrlsz_whLqZs",
+      "blablacar_place_id": "eyJpIjoiQ2hJSjBXR2tnNEZFenBRUnJsc3pfd2hMcVpzIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "São Paulo, SP, Brasil"
+    },
+    {
+      "address": "Extrema, MG, Brasil",
+      "google_place_id": "ChIJG9CZ_XmrzpQRH97LRz4PVEw",
+      "blablacar_place_id": "eyJpIjoiQ2hJSkc5Q1pfWG1yenBRUkg5N0xSejRQVkV3IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Extrema - MG, 37640-000, Brasil"
+    },
+    {
+      "address": "Camanducaia, MG, Brasil",
+      "google_place_id": "ChIJmdHZrb8AzJQRf0JzXakzO_8",
+      "blablacar_place_id": "eyJpIjoiQ2hJSm1kSFpyYjhBekpRUmYwSnpYYWt6T184IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Camanducaia, MG, 37650-000, Brasil"
+    },
+    {
+      "address": "Pouso Alegre, MG, Brasil",
+      "google_place_id": "ChIJV24Pax7Hy5QRUteNDX8V7L0",
+      "blablacar_place_id": "eyJpIjoiQ2hJSlYyNFBheDdIeTVRUlV0ZU5EWDhWN0wwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Pouso Alegre - MG, 37550-000, Brasil"
+    },
+    {
+      "address": "Três Corações, MG, Brasil",
+      "google_place_id": "ChIJm4Vq--DcypQRpUavWMNPxkc",
+      "blablacar_place_id": "eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Três Corações, MG, 37410-000, Brasil"
+    },
+    {
+      "address": "Varginha, MG, Brasil",
+      "google_place_id": "ChIJPT3hD0ONypQR_ZwxXxQ0NeM",
+      "blablacar_place_id": "eyJpIjoiQ2hJSlBUM2hEME9OeXBRUl9ad3hYeFEwTmVNIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Varginha, MG, Brasil"
+    },
+    {
+      "address": "Campanha, MG, Brasil",
+      "google_place_id": "ChIJHZrW5LLjypQROjUkzdAdDUc",
+      "blablacar_place_id": "eyJpIjoiQ2hJSkhaclc1TExqeXBRUk9qVWt6ZEFkRFVjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Campanha, MG, 37400-000, Brasil"
+    },
+    {
+      "address": "Cambuquira, MG, Brasil",
+      "google_place_id": "ChIJR_93Khggy5QRbzBE7zbz_no",
+      "blablacar_place_id": "eyJpIjoiQ2hJSlJfOTNLaGdneTVRUmJ6QkU3emJ6X25vIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "Cambuquira, MG, 37420-000, Brasil"
+    },
+    {
+      "address": "São Thomé das Letras, MG, Brasil",
+      "google_place_id": "ChIJA-zWk0HVnwARC4LhD_gT770",
+      "blablacar_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+      "formatted_address": "São Thomé das Letras, São Tomé das Letras - MG, 37418-000, Brasil"
+    }
+  ]
+}
