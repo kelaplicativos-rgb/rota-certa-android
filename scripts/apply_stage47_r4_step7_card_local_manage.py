@@ -6,6 +6,7 @@ SOURCE = Path(sys.argv[1]).resolve()
 TRIPS = SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips"
 TIMELINE_UI = TRIPS / "TripTimelineUi.kt"
 ACTIVITY = TRIPS / "TripsActivity.kt"
+COLLECTOR = TRIPS / "TripBlaBlaCollector.kt"
 
 
 def once(path: Path, old: str, new: str, label: str) -> None:
@@ -16,9 +17,24 @@ def once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-for path in (TIMELINE_UI, ACTIVITY):
+for path in (TIMELINE_UI, ACTIVITY, COLLECTOR):
     if not path.is_file():
         raise SystemExit(f"missing materialized local-manage source: {path}")
+
+# The navigation materializer writes a raw Kotlin helper. Make the regex escape
+# explicit here so the materialized Kotlin contains the two backslashes required
+# by a Kotlin string literal (Regex("\\p{M}+")), while leaving the pre-existing
+# placeKey helper untouched.
+once(
+    COLLECTOR,
+    r'''    private fun normalizeWholePlace(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+''',
+    r'''    private fun normalizeWholePlace(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+''',
+    "normalized place kotlin regex escape",
+)
 
 once(
     TIMELINE_UI,
@@ -91,10 +107,13 @@ once(
 
 ui = TIMELINE_UI.read_text(encoding="utf-8")
 activity = ACTIVITY.read_text(encoding="utf-8")
+collector = COLLECTOR.read_text(encoding="utf-8")
 for marker in ("onManageLocal", "O link exato desta publicação ainda não foi exposto"):
     if marker not in ui:
         raise SystemExit(f"missing local-manage UI marker {marker!r}")
 if "selectedId = tripId" not in activity:
     raise SystemExit("missing local-manage Agenda selectedId routing")
+if r'Regex("\\p{M}+")' not in collector:
+    raise SystemExit("merged-card place normalization regex was not materialized safely")
 
-print("stage47_r4_step7_card_local_manage=PASS local_manage_opens_agenda=true blablacar_manage_remains_exact=true")
+print("stage47_r4_step7_card_local_manage=PASS local_manage_opens_agenda=true blablacar_manage_remains_exact=true normalize_escape_valid=true")
