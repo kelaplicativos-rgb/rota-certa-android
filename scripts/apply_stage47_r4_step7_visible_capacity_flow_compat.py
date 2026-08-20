@@ -20,23 +20,27 @@ old = '''once(
 )
 '''
 new = '''timeline_source = TIMELINE.read_text(encoding="utf-8")
-title_lines = [
+route_lines = [
     line for line in timeline_source.splitlines(keepends=True)
-    if 'Text("$date — ${entry.origin} → ${entry.destination}' in line
+    if 'Text("${entry.origin} → ${entry.destination}"' in line
 ]
-if len(title_lines) != 1:
-    raise SystemExit(f"visible saved-base direction: expected one title line, got {len(title_lines)}")
-title_line = title_lines[0]
-indent = title_line[: len(title_line) - len(title_line.lstrip())]
-if 'Text("$directionPrefix$date —' in title_line:
+if len(route_lines) != 1:
+    raise SystemExit(f"visible saved-base direction: expected one route title line, got {len(route_lines)}")
+route_line = route_lines[0]
+indent = route_line[: len(route_line) - len(route_line.lstrip())]
+if 'Text("$directionPrefix${entry.origin} → ${entry.destination}"' in route_line:
     raise SystemExit("visible saved-base direction already materialized")
-new_title_line = title_line.replace('Text("$date —', 'Text("$directionPrefix$date —', 1)
+new_route_line = route_line.replace(
+    'Text("${entry.origin} → ${entry.destination}"',
+    'Text("$directionPrefix${entry.origin} → ${entry.destination}"',
+    1,
+)
 direction_block = (
     indent + 'val baseDirection = timelineBaseDirection(trip, homeCoordinate, homeRadiusKm)\\n'
     + indent + 'val directionPrefix = baseDirection?.let { "$it " }.orEmpty()\\n'
-    + new_title_line
+    + new_route_line
 )
-TIMELINE.write_text(timeline_source.replace(title_line, direction_block, 1), encoding="utf-8")
+TIMELINE.write_text(timeline_source.replace(route_line, direction_block, 1), encoding="utf-8")
 '''
 if text.count(old) != 1:
     raise SystemExit(f"compat direction materializer block count={text.count(old)}")
@@ -49,4 +53,4 @@ try:
 finally:
     sys.argv = previous_argv
 
-print("stage47_r4_step7_visible_capacity_flow_compat=PASS title_anchor=semantic_single_line")
+print("stage47_r4_step7_visible_capacity_flow_compat=PASS title_anchor=semantic_route_line")
