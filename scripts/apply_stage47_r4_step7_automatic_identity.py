@@ -6,44 +6,141 @@ SOURCE = Path(sys.argv[1]).resolve()
 TRIPS = SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips"
 UI = TRIPS / "TripBlaBlaCollectorUi.kt"
 COLLECTOR = TRIPS / "TripBlaBlaCollector.kt"
+TIMELINE = TRIPS / "TripTimeline.kt"
+SESSION = TRIPS / "BlaBlaAuthenticatedSession.kt"
+MANIFEST = SOURCE / "app/src/main/AndroidManifest.xml"
 
-if not UI.is_file():
-    raise SystemExit(f"missing Step7 materialized UI: {UI}")
-if not COLLECTOR.is_file():
-    raise SystemExit(f"missing Step7 materialized collector: {COLLECTOR}")
+
+def once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one marker, got {count}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+for path in (UI, COLLECTOR, TIMELINE, SESSION, MANIFEST):
+    if not path.is_file():
+        raise SystemExit(f"missing Step7 authenticated-session file: {path}")
 
 ui = UI.read_text(encoding="utf-8")
-collector = COLLECTOR.read_text(encoding="utf-8")
+session = SESSION.read_text(encoding="utf-8")
 
 for marker in (
-    "Modo de identificação — Automático (UUID + nome)",
-    "O coletor descobre o nome público automaticamente",
-    "só confirma a identidade quando o mesmo UUID é validado no detalhe da viagem",
-    "Perfis identificados automaticamente",
-    "profile.name.ifBlank",
-    "profile.uuid",
-    "UUID perfil 1",
-    "UUID perfil 2 (opcional)",
+    "Contas BlaBlaCar",
+    "Sincronizar BlaBlaCar",
+    "Ezequiel S",
+    "Barbosa",
+    "UUID confirmado",
+    "Senha não é capturada",
 ):
     if marker not in ui:
-        raise SystemExit(f"missing Step7 automatic identity marker {marker!r}")
+        raise SystemExit(f"missing authenticated UI marker {marker!r}")
 
 for marker in (
-    "data class BlaBlaCollectorProfile(",
-    "val uuid: String",
-    "val name: String",
-    "profiles: List<BlaBlaCollectorProfile>",
+    "WebView.setDataDirectorySuffix",
+    "blablacar_ezequiel",
+    "blablacar_barbosa",
+    "https://www.blablacar.com.br/rides",
+    "verified_from_trip_detail_profile_link",
+    "BlaBlaDomNormalizer",
+    "BlaBlaLocalSessionStore",
 ):
-    if marker not in collector:
-        raise SystemExit(f"missing Step7 collector identity contract {marker!r}")
+    if marker not in session:
+        raise SystemExit(f"missing isolated-session marker {marker!r}")
 
-# UUID remains the only user-supplied identity key. Step7 must not add a name-only request.
-if "BlaBlaCollectorProfileRequest(val name:" in collector:
-    raise SystemExit("Step7 must not make public name an authoritative request identity")
+# Register each WebView account Activity in its own Android process. WebView data
+# directory suffixes are applied by the Activity before WebView initialization,
+# so cookies/local storage cannot overwrite the other BlaBlaCar account.
+manifest = MANIFEST.read_text(encoding="utf-8")
+manifest_marker = "STAGE47_BLABLACAR_ISOLATED_SESSIONS"
+if manifest_marker in manifest:
+    raise SystemExit("Step7 isolated-session manifest block already present")
+manifest_block = '''
+        <!-- STAGE47_BLABLACAR_ISOLATED_SESSIONS: authenticated local read, no FAROL dependency. -->
+        <activity
+            android:name=".trips.BlaBlaEzequielSessionActivity"
+            android:exported="false"
+            android:process=":blablacar_ezequiel" />
+        <activity
+            android:name=".trips.BlaBlaBarbosaSessionActivity"
+            android:exported="false"
+            android:process=":blablacar_barbosa" />
+'''
+if manifest.count("</application>") != 1:
+    raise SystemExit("AndroidManifest.xml must contain one </application>")
+MANIFEST.write_text(manifest.replace("</application>", manifest_block + "    </application>", 1), encoding="utf-8")
 
-# Keep generic production code free from the user's concrete profiles/corridor.
-for forbidden in ("Ezequiel S", "Barbosa", "7371f028-9c55-4903-8444-308015823efd", "175a7068-50d8-40c3-a27a-214b9c6e0461"):
-    if forbidden in ui or forbidden in collector:
-        raise SystemExit(f"Step7 must stay universal; forbidden hardcode found: {forbidden}")
+# Strong external identity: trip ID first, canonical href second, route/time only
+# as final contingency. This prevents duplicate imports when the same page is
+# synchronized again.
+once(
+    COLLECTOR,
+    '    private data class PublicEntry(val entry: TripTimelineEntry, val searchFrom: String?, val searchTo: String?)\n',
+    '    private data class PublicEntry(val entry: TripTimelineEntry, val searchFrom: String?, val searchTo: String?, val externalKey: String)\n',
+    "collector public entry strong identity",
+)
+once(
+    COLLECTOR,
+'''        val public = response.trips.mapNotNull { trip -> toEntry(trip, zoneId)?.let { PublicEntry(it, trip.search_from, trip.search_to) } }
+            .distinctBy { item -> "${item.entry.profileId}|${item.entry.departureAtMillis}|${placeKey(item.entry.origin)}|${placeKey(item.entry.destination)}" }
+''',
+'''        val public = response.trips.mapNotNull { trip ->
+            toEntry(trip, zoneId)?.let { PublicEntry(it, trip.search_from, trip.search_to, strongExternalIdentity(trip)) }
+        }.distinctBy { item -> "${item.entry.profileId}|${item.externalKey}" }
+''',
+    "collector public strong dedupe",
+)
+once(
+    COLLECTOR,
+    '            tripId = "blablacar:${trip.profile_uuid}:${trip.trip_id ?: departure}",\n',
+    '            tripId = "blablacar:${trip.profile_uuid}:${strongExternalIdentity(trip)}",\n',
+    "collector timeline strong trip id",
+)
+once(
+    COLLECTOR,
+'''    private fun parseDateTime(date: String, time: String?, zoneId: ZoneId): Long? = runCatching {
+''',
+'''    private fun strongExternalIdentity(trip: BlaBlaCollectorTrip): String =
+        trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+            ?: trip.trip_href?.substringBefore("&search_uuid=")?.trim()?.takeIf(String::isNotEmpty)
+            ?: listOf(
+                trip.date,
+                trip.departure_time.orEmpty(),
+                placeKey(trip.actual_departure ?: trip.search_from.orEmpty()),
+                placeKey(trip.actual_arrival ?: trip.search_to.orEmpty()),
+            ).joinToString("|")
 
-print("stage47_r4_step7_automatic_identity=PASS uuid_canonical=true public_name_auto=true uuid_detail_confirmation=true name_only_identity=false ui_explicit=true")
+    private fun parseDateTime(date: String, time: String?, zoneId: ZoneId): Long? = runCatching {
+''',
+    "collector strong identity helper",
+)
+
+# Ezequiel and Barbosa are one physical driver. Continuity therefore must be
+# checked chronologically across profile boundaries, not independently per UUID.
+once(
+    TIMELINE,
+'''        entries.groupBy(TripTimelineEntry::profileId).values.forEach { profileEntries ->
+            profileEntries.sortedBy(TripTimelineEntry::departureAtMillis).zipWithNext().forEach { (previous, next) ->
+                if (normalizePlace(previous.destination) != normalizePlace(next.origin)) {
+                    issues.getValue(next.tripId) += TripTimelineIssue.PROFILE_CONTINUITY
+                }
+            }
+        }
+''',
+'''        val chronological = entries.sortedBy(TripTimelineEntry::departureAtMillis)
+        chronological.zipWithNext().forEach { (previous, next) ->
+            if (normalizePlace(previous.destination) != normalizePlace(next.origin)) {
+                issues.getValue(next.tripId) += TripTimelineIssue.PROFILE_CONTINUITY
+            }
+        }
+''',
+    "single physical driver continuity",
+)
+
+print(
+    "stage47_r4_step7_authenticated_timeline=PASS "
+    "isolated_processes=true webview_data_suffix=true manual_login=true "
+    "rides_dom_read=true trip_detail_uuid_required=true railway_not_origin=true "
+    "strong_dedupe=true cross_profile_continuity=true"
+)

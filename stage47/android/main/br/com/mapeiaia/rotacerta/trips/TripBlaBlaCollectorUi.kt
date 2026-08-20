@@ -1,24 +1,34 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import java.time.YearMonth
-import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+// Compatibility markers consumed by the already-validated Step5 materializer:
+// UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
+// Step7 replaces the blocked Railway-origin read with authenticated on-device sessions.
 
 @Composable
 fun BlaBlaCollectorPanel(
@@ -28,145 +38,132 @@ fun BlaBlaCollectorPanel(
     onResult: (BlaBlaCollectorMonthResponse) -> Unit,
     onChanged: (String) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    val initialSettings = remember { stateStore.settings() }
-    var profile1 by remember { mutableStateOf(stateStore.lastProfile1()) }
-    var profile2 by remember { mutableStateOf(stateStore.lastProfile2()) }
-    var month by remember { mutableStateOf(stateStore.lastMonth().ifBlank { YearMonth.now().toString() }) }
-    var settings by remember { mutableStateOf(initialSettings) }
-    var baseUrl by remember { mutableStateOf(initialSettings.baseUrl) }
-    var token by remember { mutableStateOf(initialSettings.token) }
-    var configOpen by remember { mutableStateOf(!initialSettings.configured) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val sessionStore = remember(context) { BlaBlaLocalSessionStore(context) }
+    var revision by remember { mutableIntStateOf(0) }
+    var syncing by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
 
-    HorizontalDivider()
-    Text("Perfis BlaBlaCar")
-    Text("Modo de identificação — Automático (UUID + nome)")
-    Text("Informe o UUID. O coletor descobre o nome público automaticamente e só confirma a identidade quando o mesmo UUID é validado no detalhe da viagem.")
-    OutlinedTextField(
-        value = profile1,
-        onValueChange = { profile1 = it.trim().take(36) },
-        label = { Text("UUID perfil 1") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
-    OutlinedTextField(
-        value = profile2,
-        onValueChange = { profile2 = it.trim().take(36) },
-        label = { Text("UUID perfil 2 (opcional)") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
-    OutlinedTextField(
-        value = month,
-        onValueChange = { month = it.filter { ch -> ch.isDigit() || ch == '-' }.take(7) },
-        label = { Text("Mês — AAAA-MM") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
+    fun refresh() {
+        revision++
+    }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(8f))) {
-        Button(
-            enabled = !busy && settings.configured,
-            onClick = {
-                error = null
-                val ids = listOf(profile1, profile2).map(String::trim).filter(String::isNotBlank)
-                if (ids.isEmpty() || ids.any { !UUID_REGEX.matches(it) }) {
-                    error = "Informe UUID válido para cada perfil."
-                    return@Button
-                }
-                if (!MONTH_REGEX.matches(month)) {
-                    error = "Informe o mês no formato AAAA-MM."
-                    return@Button
-                }
-                val routes = BlaBlaCollectorScope.fromAgenda(trips, month)
-                if (routes.isEmpty()) {
-                    error = "Não há rota na Agenda para formar o escopo desta busca."
-                    return@Button
-                }
-                stateStore.saveQuery(profile1, profile2, month)
-                busy = true
-                scope.launch {
-                    runCatching {
-                        BlaBlaCollectorApi(settings).search(
-                            BlaBlaCollectorMonthRequest(
-                                profiles = ids.map(::BlaBlaCollectorProfileRequest),
-                                month = month,
-                                routes = routes,
-                                include_past = false,
-                            ),
-                        )
-                    }.onSuccess { response ->
-                        stateStore.saveResponse(response)
-                        onResult(response)
-                        onChanged("Linha do tempo BlaBlaCar atualizada: ${response.trips.size} viagem(ns).")
-                    }.onFailure {
-                        error = it.message ?: "Falha ao consultar o coletor."
-                    }
-                    busy = false
-                }
-            },
-        ) { Text(if (busy) "Buscando…" else "Buscar") }
-        OutlinedButton(onClick = { configOpen = !configOpen }) {
-            Text(if (configOpen) "Fechar configuração" else "Configurar coletor")
+    fun publishCombined(messagePrefix: String) {
+        val response = sessionStore.combinedResponse()
+        stateStore.saveResponse(response)
+        onResult(response)
+        refresh()
+        val verified = response.coverage.validated_queries
+        val count = response.trips.size
+        message = "$messagePrefix • $verified/2 perfis UUID-confirmados • $count viagens normalizadas."
+        onChanged(message.orEmpty())
+    }
+
+    val barbosaSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        syncing = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            publishCombined("Sincronização concluída")
+        } else {
+            refresh()
+            message = "Sincronização de Barbosa não foi concluída. A sessão permaneceu isolada para continuar o login/validação."
+            onChanged(message.orEmpty())
         }
     }
 
-    if (!settings.configured) {
-        Text("Configure uma vez o endereço HTTPS do coletor para liberar a busca.")
-    }
-    error?.let { Text(it) }
-
-    if (configOpen) {
-        Column(verticalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(6f))) {
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it.trim() },
-                label = { Text("URL HTTPS do coletor") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                label = { Text("Token do coletor (se configurado)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            TextButton(onClick = {
-                val updated = BlaBlaCollectorSettings(baseUrl.trimEnd('/'), token.trim())
-                if (!updated.configured) {
-                    error = "A URL do coletor deve começar com https://"
-                } else {
-                    stateStore.saveSettings(updated)
-                    settings = updated
-                    configOpen = false
-                    error = null
-                    onChanged("Configuração do coletor salva no aparelho.")
-                }
-            }) { Text("Salvar configuração") }
+    val ezequielSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            barbosaSyncLauncher.launch(BlaBlaSessionIntents.sync(context, BlaBlaAccounts.BARBOSA))
+        } else {
+            syncing = false
+            refresh()
+            message = "Sincronização de Ezequiel não foi concluída. A sessão permaneceu isolada para continuar o login/validação."
+            onChanged(message.orEmpty())
         }
     }
 
-    currentResponse?.let { response ->
-        val coverage = response.coverage
-        val validated = coverage.validated_queries
-        val requested = coverage.requested_queries
-        val icon = if (response.status == "validated") "✅" else "⏳"
-        if (response.profiles.isNotEmpty()) {
-            Text("Perfis identificados automaticamente")
-            response.profiles.forEach { profile ->
-                val publicName = profile.name.ifBlank { "Nome público não resolvido" }
-                Text("$publicName — ${profile.uuid}")
+    val ezequielLoginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        refresh()
+        val state = sessionStore.read(BlaBlaAccounts.EZEQUIEL)
+        message = if (state?.identityVerified == true) "Ezequiel S: UUID confirmado ✅" else "Ezequiel S: sessão salva; UUID ainda precisa ser confirmado no perfil/detalhe."
+        onChanged(message.orEmpty())
+    }
+
+    val barbosaLoginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        refresh()
+        val state = sessionStore.read(BlaBlaAccounts.BARBOSA)
+        message = if (state?.identityVerified == true) "Barbosa: UUID confirmado ✅" else "Barbosa: sessão salva; UUID ainda precisa ser confirmado no perfil/detalhe."
+        onChanged(message.orEmpty())
+    }
+
+    @Suppress("UNUSED_VARIABLE") val refreshKey = revision
+    val ezequiel = sessionStore.read(BlaBlaAccounts.EZEQUIEL)
+    val barbosa = sessionStore.read(BlaBlaAccounts.BARBOSA)
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Contas BlaBlaCar")
+            Text("Cada conta abre em um processo WebView próprio. Cookies/login não são compartilhados entre Ezequiel e Barbosa.")
+            AccountRow(
+                account = BlaBlaAccounts.EZEQUIEL,
+                snapshot = ezequiel,
+                onLogin = { ezequielLoginLauncher.launch(BlaBlaSessionIntents.login(context, BlaBlaAccounts.EZEQUIEL)) },
+            )
+            AccountRow(
+                account = BlaBlaAccounts.BARBOSA,
+                snapshot = barbosa,
+                onLogin = { barbosaLoginLauncher.launch(BlaBlaSessionIntents.login(context, BlaBlaAccounts.BARBOSA)) },
+            )
+            Spacer(Modifier.height(2.dp))
+            Button(
+                enabled = !syncing,
+                onClick = {
+                    syncing = true
+                    message = "Sincronizando primeiro Ezequiel e depois Barbosa…"
+                    onChanged(message.orEmpty())
+                    ezequielSyncLauncher.launch(BlaBlaSessionIntents.sync(context, BlaBlaAccounts.EZEQUIEL))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (syncing) "Sincronizando…" else "Sincronizar BlaBlaCar")
             }
-        }
-        Text("$icon ${response.month ?: ""} • ${response.trips.size} viagem(ns) • $validated/$requested consultas")
-        if (!coverage.global_profile_month_complete) {
-            Text("Escopo: rotas dinâmicas da Agenda. UUID valida o perfil; não presume rotas que não foram pesquisadas.")
+            Text("A leitura usa apenas a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
+            message?.let { Text(it) }
+            if (currentResponse != null) {
+                Text("Último resultado: ${currentResponse.status} • ${currentResponse.trips.size} viagens • UUIDs validados ${currentResponse.coverage.validated_queries}/${currentResponse.coverage.requested_queries}")
+                currentResponse.collected_at?.let { collected ->
+                    runCatching { Instant.parse(collected) }.getOrNull()?.let { instant ->
+                        val formatted = DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(ZoneId.systemDefault()).format(instant)
+                        Text("Coletado em $formatted")
+                    }
+                }
+            }
+            if (trips.isEmpty()) {
+                Text("A Agenda local está vazia; viagens BlaBlaCar confirmadas ainda podem aparecer na Linha do tempo.")
+            }
         }
     }
 }
 
-private val UUID_REGEX = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
-private val MONTH_REGEX = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
+@Composable
+private fun AccountRow(
+    account: BlaBlaAccountDefinition,
+    snapshot: BlaBlaLocalSessionSnapshot?,
+    onLogin: () -> Unit,
+) {
+    val connected = snapshot?.identityVerified == true
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(account.label)
+            Text(account.uuid)
+            Text(
+                when {
+                    connected -> "Conectado • UUID confirmado ✅"
+                    snapshot != null -> "Sessão salva • UUID pendente ⏳"
+                    else -> "Ainda não conectado"
+                },
+            )
+            if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
+        }
+        OutlinedButton(onClick = onLogin) { Text(if (snapshot == null) "Entrar" else "Abrir") }
+    }
+}

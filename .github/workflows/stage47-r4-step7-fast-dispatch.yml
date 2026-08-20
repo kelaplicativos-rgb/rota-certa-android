@@ -1,0 +1,25 @@
+name: Stage47 Step7 fast APK dispatcher
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch-fast-physical-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch existing fast physical APK workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run stage47-r4-step7-physical-apk-fast.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME"
+          echo "stage47_fast_physical_dispatch=PASS ref=$GITHUB_REF_NAME sha=$GITHUB_SHA"
