@@ -18,13 +18,9 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 if not TIMELINE_UI.is_file():
     raise SystemExit(f"missing materialized Timeline UI: {TIMELINE_UI}")
 
-# Full Brazilian date and balanced three-button actions on compact phones.
-once(
-    TIMELINE_UI,
-    '''import androidx.compose.foundation.layout.padding\n''',
-    '''import androidx.compose.foundation.layout.padding\nimport androidx.compose.foundation.layout.weight\n''',
-    "timeline weight import",
-)
+# Full Brazilian date. Modifier.weight is a RowScope member in the Compose
+# version materialized by Stage47, so it must not be imported as a top-level
+# extension (that symbol is internal in this dependency version).
 once(
     TIMELINE_UI,
     '''import java.time.Instant\nimport java.time.ZoneId\nimport java.time.format.DateTimeFormatter\n''',
@@ -62,7 +58,8 @@ once(
     "timeline archive card arguments",
 )
 
-# Keep all three requested actions on the same row while respecting compact width.
+# Keep all three requested actions on the same row. weight() is resolved from
+# RowScope without importing the internal top-level compatibility symbol.
 once(
     TIMELINE_UI,
     '''            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {\n                OutlinedButton(onClick = { manage() }) { Text("Gerenciar") }\n                OutlinedButton(onClick = {\n                    if (trip != null) {\n                        quickOpen = !quickOpen\n                        capacitySetupOpen = false\n                    } else {\n                        capacitySetupOpen = !capacitySetupOpen\n                        quickOpen = false\n                    }\n                }) { Text("+ Passageiro") }\n            }\n''',
@@ -70,7 +67,7 @@ once(
     "timeline archive action",
 )
 
-# Persist archive aliases locally.  Aliases survive a local-only card later being
+# Persist archive aliases locally. Aliases survive a local-only card later being
 # merged with the exact BlaBlaCar trip and do not mutate either source of truth.
 text = TIMELINE_UI.read_text(encoding="utf-8")
 anchor = '''private fun openExactBlaBlaTrip(context: Context, entry: TripTimelineEntry): Boolean {\n'''
@@ -119,8 +116,10 @@ for marker in (
 ):
     if marker not in ui:
         raise SystemExit(f"missing future/archive Timeline marker {marker!r}")
+if "import androidx.compose.foundation.layout.weight" in ui:
+    raise SystemExit("incompatible top-level weight import must not be materialized")
 
 print(
     "stage47_r4_step7_timeline_future_archive=PASS "
-    "today_future_only=true chronological_ascending=true full_ptbr_date=true archive_local_only=true restore=true"
+    "today_future_only=true chronological_ascending=true full_ptbr_date=true archive_local_only=true restore=true weight_rowscope=true"
 )
