@@ -1,0 +1,159 @@
+name: Stage47 R4 Step7 automatic identity APK
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+  pull_request:
+    branches:
+      - agent/stage47-r4-unified-occupancy-step6-validation-apk
+  workflow_dispatch:
+
+concurrency:
+  group: stage47-r4-step7-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - name: Checkout Step7 patches
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate collector core
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          node --check patches/tools/blablacar-public-search/profile-month-core.mjs
+          node --check patches/tools/blablacar-public-search/profile-month-service.mjs
+          node --test patches/tools/blablacar-public-search/profile-month-core.test.mjs | tee evidence/collector-core-tests.txt
+          printf 'collector_core_validation=PASS\n' | tee evidence/collector-core-status.txt
+
+      - name: Materialize Stage46 R8 plus Agenda R2/R3 plus R4 Steps1-7
+        run: |
+          set -euo pipefail
+          SOURCE="$(cd source && pwd)"
+          PATCHES="$(cd patches && pwd)"
+          HIST19="$(cd historical19 && pwd)"
+          HIST34="$(cd historical34 && pwd)"
+          EVIDENCE="$(cd evidence && pwd)"
+          mkdir -p "$EVIDENCE/r8-bootstrap"
+          R8_MATERIALIZER="$EVIDENCE/run-stage46-r8-materialize-only.sh"
+          python3 - "$PATCHES/scripts/run_stage46_r8_reproducible_ci.sh" "$R8_MATERIALIZER" <<'PY'
+          from pathlib import Path
+          import sys
+          source=Path(sys.argv[1]).read_text(encoding='utf-8'); out=Path(sys.argv[2])
+          anchor='''python3 - "$SOURCE" "$PATCHES" <<'PY' | tee "$EVIDENCE/static-r8.txt"'''
+          if source.count(anchor)!=1: raise SystemExit(f'R8 anchor count={source.count(anchor)}')
+          early='''if [[ "${STAGE46_R8_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n  printf 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510\\n' | tee "$EVIDENCE/final-status.txt"\n  exit 0\nfi\n\n'''
+          out.write_text(source.replace(anchor,early+anchor,1),encoding='utf-8')
+          PY
+          STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap"
+          FAROL="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          sha256sum "$FAROL" > "$EVIDENCE/farol-before.sha256"
+          python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_internal_trip_shortcut.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_flexible_capacity_r2.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_update_compat_version.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_driver_identity_android_r3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_driver_identity_backend_r3.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_fares_r3.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_public_cancel_r3.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_calendar_feed_r3.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_driver_agenda_version_r3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_unified_capacity_backend_r4_step2.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_timeline_r4_step3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_quick_passenger_r4_step4.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_blablacar_profile_month_r4_step5.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step6_version.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step7_automatic_identity.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step7_version.py" "$SOURCE"
+          sha256sum "$FAROL" > "$EVIDENCE/farol-after.sha256"
+          cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
+          grep -Fq 'versionCode = 5525' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.232"' "$SOURCE/app/build.gradle.kts"
+          printf 'stage47_r4_step7_materialization=PASS version=0.1.232/5525 farol_untouched=true automatic_identity=true\n' | tee "$EVIDENCE/materialization-status.txt"
+
+      - name: Validate backend contracts
+        run: |
+          set -euo pipefail
+          node --check patches/trip-platform/functions/index.js
+          node --check patches/trip-platform/public/app.js
+          node --check patches/trip-platform/calendar-functions/index.js
+          node --test patches/trip-platform/functions/test/*.test.js | tee evidence/backend-tests.txt
+
+      - name: Focused Android tests and APK
+        run: |
+          set -euo pipefail
+          cd source
+          ./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' lintDebug assembleDebug | tee ../evidence/gradle-step7.log
+          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.232.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$AAPT" dump badging "$APK" | tee ../evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5525' versionName='0.1.232'" ../evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$APK" | tee ../evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ../evidence/signature.txt
+          unzip -t "$APK" | tee ../evidence/zip.txt
+          sha256sum "$APK" | tee ../evidence/apk-sha256.txt
+          sha512sum "$APK" | tee ../evidence/apk-sha512.txt
+          printf 'stage47_r4_step7_apk=PASS version=0.1.232/5525 trip_tests=PASS lint=PASS assemble=PASS signature_v2=PASS automatic_identity=true\n' | tee ../evidence/final-status.txt
+
+      - name: Collector deployment readiness
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.GCP_PROJECT_ID }}" && -n "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}" ]]; then
+            echo 'collector_deploy_credentials=present deployment_not_automatic_in_validation_job' | tee evidence/collector-deploy-status.txt
+          else
+            echo 'collector_deploy_credentials=missing live_deploy=BLOCKED' | tee evidence/collector-deploy-status.txt
+          fi
+
+      - name: Upload APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage47-r4-step7-0.1.232
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
