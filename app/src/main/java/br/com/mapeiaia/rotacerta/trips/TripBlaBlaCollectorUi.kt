@@ -48,8 +48,11 @@ fun BlaBlaCollectorPanel(
     val context = LocalContext.current
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
+    val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var syncing by remember { mutableStateOf(false) }
+    var archiving by remember { mutableStateOf(false) }
+    var manualSeatSyncing by remember { mutableStateOf(false) }
     var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
@@ -71,19 +74,44 @@ fun BlaBlaCollectorPanel(
         onChanged(message.orEmpty())
     }
 
+    fun advanceSyncQueue() {
+        archiving = false
+        if (syncCursor + 1 < syncQueue.size) {
+            syncCursor++
+        } else {
+            syncing = false
+            publishCombined("Sincronização + MHTML concluídos")
+        }
+    }
+
+    val archiveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val accountId = result.data?.getStringExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID)
+        val count = result.data?.getIntExtra("archive_count", 0) ?: 0
+        UnifiedDebugEventStore.record(
+            "MHTML_HARVEST_RETURNED",
+            context.packageName,
+            "accountPresent=${accountId != null} result=${result.resultCode} archives=$count",
+        )
+        if (syncing) advanceSyncQueue() else archiving = false
+    }
+
     val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val accountId = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)
         refresh()
         if (syncing) {
             if (result.resultCode == Activity.RESULT_OK) {
-                if (syncCursor + 1 < syncQueue.size) {
-                    syncCursor++
+                val account = registry.get(accountId)
+                if (account != null) {
+                    archiving = true
+                    message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
+                    onChanged(message.orEmpty())
+                    archiveLauncher.launch(BlaBlaManualSeatAutomationIntents.harvest(context, account))
                 } else {
-                    syncing = false
-                    publishCombined("Sincronização concluída")
+                    advanceSyncQueue()
                 }
             } else {
                 syncing = false
+                archiving = false
                 val account = registry.get(accountId)
                 message = "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
                 onChanged(message.orEmpty())
@@ -100,6 +128,23 @@ fun BlaBlaCollectorPanel(
         }
     }
 
+    val seatSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        manualSeatSyncing = false
+        val accountId = result.data?.getStringExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID)
+        val seatMessage = result.data?.getStringExtra("seat_sync_message")
+            ?: if (result.resultCode == Activity.RESULT_OK) "Sincronizado externamente ✅" else "Sincronização externa pendente ⚠️"
+        message = seatMessage
+        onChanged(seatMessage)
+        if (result.resultCode == Activity.RESULT_OK && accountId != null) {
+            // Read-after-write: after the dedicated options page verified the new value,
+            // refresh the exact authenticated account and harvest its MHTML evidence.
+            syncQueue = listOf(accountId)
+            syncCursor = 0
+            syncing = true
+            archiving = false
+        }
+    }
+
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
     val accounts = registry.list()
 
@@ -113,8 +158,32 @@ fun BlaBlaCollectorPanel(
         }
     }
 
-    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, accounts.size) {
-        if (autoSyncToken <= handledAutoSyncToken || syncing) return@LaunchedEffect
+    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, archiving, manualSeatSyncing, accounts.size) {
+        if (autoSyncToken <= handledAutoSyncToken || syncing || archiving || manualSeatSyncing) return@LaunchedEffect
+
+        val pendingManualSeat = manualSeatStore.peek()
+        if (pendingManualSeat != null) {
+            val target = accounts.singleOrNull { account ->
+                account.profileUuid?.equals(pendingManualSeat.profileUuid, ignoreCase = true) == true
+            }
+            if (target == null) {
+                message = "Vaga interna atualizada • sincronização externa pendente ⚠️ • perfil UUID não resolvido."
+                onChanged(message.orEmpty())
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_SEAT_SYNC_PENDING",
+                    context.packageName,
+                    "reason=target_profile_unresolved request=${pendingManualSeat.id} manual=true",
+                )
+                return@LaunchedEffect
+            }
+            handledAutoSyncToken = autoSyncToken
+            manualSeatSyncing = true
+            message = "Passageiro manual salvo • abrindo Lugares da publicação correta…"
+            onChanged(message.orEmpty())
+            seatSyncLauncher.launch(BlaBlaManualSeatAutomationIntents.seatSync(context, target))
+            return@LaunchedEffect
+        }
+
         if (accounts.isEmpty()) {
             message = "Passageiro salvo • conecte uma conta BlaBlaCar para sincronizar."
             onChanged(message.orEmpty())
@@ -145,6 +214,7 @@ fun BlaBlaCollectorPanel(
         syncQueue = selectedAccounts.map { it.id }
         syncCursor = 0
         syncing = true
+        archiving = false
         message = "Vagas internas atualizadas • conferindo BlaBlaCar…"
         onChanged(message.orEmpty())
         UnifiedDebugEventStore.record(
@@ -154,8 +224,8 @@ fun BlaBlaCollectorPanel(
         )
     }
 
-    LaunchedEffect(syncing, syncCursor, syncQueue) {
-        if (!syncing) return@LaunchedEffect
+    LaunchedEffect(syncing, archiving, syncCursor, syncQueue) {
+        if (!syncing || archiving) return@LaunchedEffect
         val id = syncQueue.getOrNull(syncCursor)
         val account = registry.get(id)
         if (account == null) {
@@ -202,21 +272,29 @@ fun BlaBlaCollectorPanel(
 
             Spacer(Modifier.height(2.dp))
             Button(
-                enabled = !syncing && accounts.isNotEmpty(),
+                enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
                     syncQueue = accounts.map { it.id }
                     syncCursor = 0
                     syncing = true
+                    archiving = false
                     message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
                     onChanged(message.orEmpty())
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (syncing) "Sincronizando…" else "Sincronizar todas as contas")
+                Text(
+                    when {
+                        manualSeatSyncing -> "Sincronizando lugares…"
+                        archiving -> "Baixando MHTMLs…"
+                        syncing -> "Sincronizando…"
+                        else -> "Sincronizar todas as contas"
+                    },
+                )
             }
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
-            Text("Durante a sincronização o Rota Certa também guarda localmente um HTML sanitizado de diagnóstico de Suas viagens e dos detalhes, sem scripts nem valores de campos de login.")
+            Text("Após cada leitura, o Rota Certa guarda em área privada do app os MHTMLs necessários: /rides, resumo de cada viagem, passageiros individuais e opções de lugares. Esses arquivos podem conter dados pessoais e não são gravados em Downloads público.")
             message?.let { Text(it) }
 
             val displayResponse = currentResponse?.takeIf { it.strategy == DYNAMIC_STRATEGY }
@@ -293,4 +371,4 @@ private fun DynamicAccountRow(
     }
 }
 
-private const val DYNAMIC_STRATEGY = "authenticated_on_device_webview_dynamic_multi_profile"
+private const val DYNAMIC_STRATEGY = "authenticated_on_device_batch_first_dynamic_multi_profile"
