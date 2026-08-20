@@ -1,5 +1,6 @@
 name: Stage47 source snapshot run locator
 
+# Contents-API push trigger for persisted-source capture.
 on:
   push:
     branches:
