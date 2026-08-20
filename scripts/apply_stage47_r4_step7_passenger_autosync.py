@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 SOURCE = Path(sys.argv[1]).resolve()
@@ -18,27 +19,26 @@ def once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def regex_once(path: Path, pattern: str, repl, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    matches = list(re.finditer(pattern, text, flags=re.DOTALL))
+    if len(matches) != 1:
+        raise SystemExit(f"{label}: expected one structural marker, got {len(matches)}")
+    match = matches[0]
+    replacement = repl(match) if callable(repl) else match.expand(repl)
+    path.write_text(text[:match.start()] + replacement + text[match.end():], encoding="utf-8")
+
+
 for path in (TIMELINE_UI, QUICK_UI, COLLECTOR_UI, ACTIVITY):
     if not path.is_file():
         raise SystemExit(f"missing materialized Stage47 source: {path}")
 
 # Quick passenger: every successful physical occupancy change emits an explicit
 # request for the same authenticated multi-account sync used by the manual button.
-once(
+regex_once(
     QUICK_UI,
-'''fun QuickPassengerPanel(
-    trip: Trip,
-    store: TripStore,
-    onChanged: (String) -> Unit,
-) {
-''',
-'''fun QuickPassengerPanel(
-    trip: Trip,
-    store: TripStore,
-    onChanged: (String) -> Unit,
-    onBlaBlaSyncRequested: (() -> Unit)? = null,
-) {
-''',
+    r"(fun\s+QuickPassengerPanel\s*\([\s\S]*?)(\n\s*\)\s*\{)",
+    lambda m: m.group(1) + ("\n    onBlaBlaSyncRequested: (() -> Unit)? = null," if "onBlaBlaSyncRequested" not in m.group(1) else "") + m.group(2),
     "quick passenger autosync callback",
 )
 once(
