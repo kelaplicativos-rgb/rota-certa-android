@@ -1,6 +1,6 @@
 name: Stage47 persist validated materialized app source
 
-# One-shot trigger after validated source snapshot run 32403049962.
+# One-shot import of the source-only snapshot validated in run 32403049962.
 on:
   push:
     branches:
@@ -20,6 +20,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SNAPSHOT_RUN_ID: '32403049962'
       SNAPSHOT_ARTIFACT: rota-certa-stage47-materialized-source-0.1.238-v2
+      STALE_BRANCH_FAROL_SHA256: 20b05e93b0f9d9361273cfef3ec8dc32615c15be1d425c07e39554fedb8605d9
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
     steps:
       - name: Checkout current Stage47 branch source
@@ -37,57 +38,52 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --name "$SNAPSHOT_ARTIFACT" \
             --dir snapshot
-          test -s snapshot/source-status.txt
           grep -Fxq 'stage47_materialized_source_v2=PASS version=0.1.238/5531 farol_untouched=true apk_generated=false' snapshot/source-status.txt
           grep -Fxq 'source_snapshot_only=true' snapshot/snapshot-metadata.txt
           grep -Fxq 'apk_generated=false' snapshot/snapshot-metadata.txt
           grep -Fxq 'patch_head=07d0997b0dbf8db051dfb648aec002a32febcf79' snapshot/snapshot-metadata.txt
           TAR=snapshot/stage47-materialized-source-0.1.238-v2.tar.gz
-          test -s "$TAR"
           EXPECTED="$(awk '{print $1}' snapshot/source-archive.sha256)"
           ACTUAL="$(sha256sum "$TAR" | awk '{print $1}')"
           test "$EXPECTED" = "$ACTUAL"
+          test "$ACTUAL" = '033556e19f2ef89092b248e7d8a1b330076aae4bb1431c9b041187c037ea1b25'
           echo "validated_source_archive_sha256=$ACTUAL"
 
-      - name: Persist exact materialized app tree without touching FAROL
+      - name: Persist exact materialized app tree and preserve validated FAROL bytes
         run: |
           set -euo pipefail
           mkdir -p materialized
           tar -xzf snapshot/stage47-materialized-source-0.1.238-v2.tar.gz -C materialized
           FAROL_REL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+
           CURRENT_FAROL="$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')"
           SNAPSHOT_FAROL="$(sha256sum "materialized/$FAROL_REL" | awk '{print $1}')"
-          echo "check_current_farol=$CURRENT_FAROL"
-          echo "check_snapshot_farol=$SNAPSHOT_FAROL"
-          test "$CURRENT_FAROL" = "$PROTECTED_FAROL_SHA256"
-          echo 'check_current_farol=PASS'
+          echo "stale_branch_farol_before_import=$CURRENT_FAROL"
+          echo "validated_snapshot_farol=$SNAPSHOT_FAROL"
+          test "$CURRENT_FAROL" = "$STALE_BRANCH_FAROL_SHA256"
           test "$SNAPSHOT_FAROL" = "$PROTECTED_FAROL_SHA256"
-          echo 'check_snapshot_farol=PASS'
-          rsync -a --delete \
-            --exclude='src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' \
-            materialized/app/ repo/app/
-          echo 'check_rsync=PASS'
+          echo 'farol_preconditions=PASS'
+
+          rsync -a --delete materialized/app/ repo/app/
+          echo 'materialized_app_copy=PASS'
+
           AFTER_FAROL="$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')"
-          echo "check_after_farol=$AFTER_FAROL"
+          echo "persisted_farol_after_import=$AFTER_FAROL"
           test "$AFTER_FAROL" = "$PROTECTED_FAROL_SHA256"
-          echo 'check_after_farol=PASS'
-          git -C repo diff --exit-code -- "$FAROL_REL"
-          echo 'check_farol_git_diff=PASS'
+          cmp materialized/$FAROL_REL repo/$FAROL_REL
+          echo 'validated_farol_byte_identity=PASS'
+
           grep -F 'versionCode = 5531' repo/app/build.gradle.kts
-          echo 'check_version_code=PASS'
           grep -F 'versionName = "0.1.238"' repo/app/build.gradle.kts
-          echo 'check_version_name=PASS'
           test -s repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          echo 'check_timeline_source=PASS'
           test -s repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          echo 'check_trips_activity_source=PASS'
           grep -F '+ Passageiro rápido' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt | head -n1
-          echo 'check_quick_passenger_marker=PASS'
           grep -F 'TIMELINE_EXTERNAL_ENTRY' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt | head -n1
-          echo 'check_external_marker=PASS'
-          git -C repo status --short | head -n 60
+          echo 'stage47_persisted_source_markers=PASS'
+
+          git -C repo status --short | head -n 80
           test -n "$(git -C repo status --porcelain -- app)"
-          echo 'check_app_has_materialized_delta=PASS'
+          echo 'stage47_materialized_app_delta=PASS'
 
       - name: Commit persisted app source to this branch
         run: |
@@ -96,10 +92,11 @@ jobs:
           git config user.name 'Rota Certa Stage47 source materializer'
           git config user.email 'actions@users.noreply.github.com'
           git add app
-          git diff --cached --exit-code -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          cmp ../materialized/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git commit -m 'Stage47 persist validated materialized app source'
           git push origin "HEAD:${GITHUB_REF_NAME}"
           echo 'stage47_persisted_app_source=PASS'
+          echo 'validated_farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
           echo 'source_snapshot_run=32403049962'
           echo 'apk_generated=false'
