@@ -165,6 +165,18 @@ class BlaBlaDynamicSessionStore(context: Context) {
         skippedTrips: Int,
         identityVerified: Boolean,
     ) {
+        val previousByIdentity = read(account)?.trips
+            ?.associateBy { previous -> BlaBlaTripIdentity.evidence(previous).key }
+            .orEmpty()
+        var preservedIncompleteRosters = 0
+        val reconciledTrips = trips.map { current ->
+            val previous = previousByIdentity[BlaBlaTripIdentity.evidence(current).key]
+            val reconciled = BlaBlaPassengerRosterReconciler.reconcile(previous, current)
+            if (!current.passenger_roster_complete && previous != null && reconciled.booked_seats > current.booked_seats) {
+                preservedIncompleteRosters++
+            }
+            reconciled
+        }
         write(
             account,
             BlaBlaDynamicSessionSnapshot(
@@ -174,14 +186,14 @@ class BlaBlaDynamicSessionStore(context: Context) {
                 identityVerified = identityVerified,
                 lastUrl = lastUrl.take(1000),
                 updatedAtMillis = System.currentTimeMillis(),
-                trips = trips,
+                trips = reconciledTrips,
                 skippedTrips = skippedTrips,
             ),
         )
         UnifiedDebugEventStore.record(
             "SNAPSHOT_SAVED",
             appContext.packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${trips.size} skipped=$skippedTrips identityVerified=$identityVerified",
+            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${reconciledTrips.size} rosterComplete=${reconciledTrips.count { it.passenger_roster_complete }} rosterIncomplete=${reconciledTrips.count { !it.passenger_roster_complete }} preservedIncomplete=$preservedIncompleteRosters skipped=$skippedTrips identityVerified=$identityVerified",
         )
     }
 
@@ -211,7 +223,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
                 else -> "partial"
             },
             month = null,
-            strategy = "authenticated_on_device_webview_dynamic_multi_profile",
+            strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
             profiles = verified.map { (account, _) ->
                 BlaBlaCollectorProfile(
                     uuid = account.profileUuid.orEmpty(),
@@ -234,7 +246,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         UnifiedDebugEventStore.record(
             "COMBINED_RESPONSE",
             appContext.packageName,
-            "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${(beforeDistinct.size - trips.size).coerceAtLeast(0)} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",
+            "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${(beforeDistinct.size - trips.size).coerceAtLeast(0)} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",
         )
         return response
     }
@@ -262,8 +274,6 @@ class BlaBlaDynamicSessionStore(context: Context) {
 
     private fun file(id: String): File = File(appContext.filesDir, "blablacar-dynamic-session-$id.json")
     private fun diagnosticDir(id: String): File = File(appContext.filesDir, "blablacar-dom/$id")
-
-    private fun strongTripIdentity(trip: BlaBlaCollectorTrip): String = BlaBlaTripIdentity.evidence(trip).key
 
     companion object {
         private const val MAX_HTML_CHARS = 350_000
@@ -567,6 +577,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 packageName,
                 "account=${account.displayLabel} candidateCount=${candidates.size} attempt=$rideReadAttempts url=${sanitizedUrl(webView.url.orEmpty())}",
             )
+            UnifiedDebugEventStore.record(
+                "RIDES_BATCH_EVIDENCE",
+                packageName,
+                "account=${account.displayLabel} cards=${candidates.size} passengers=${candidates.sumOf { it.passengers.size }} bookingLinks=${candidates.sumOf { candidate -> candidate.passengers.count { !it.booking_href.isNullOrBlank() } }} phones=${candidates.sumOf { candidate -> candidate.passengers.count { !it.phone.isNullOrBlank() } }} completeRosters=${candidates.count { it.passengerRosterComplete }}",
+            )
             if (candidates.isEmpty() && rideReadAttempts < 2 && !looksLoggedOut(result.bodyText)) {
                 rideReadAttempts++
                 statusView.text = "${account.displayLabel} • aguardando os cartões de viagem…"
@@ -605,12 +620,58 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             saveFinalSnapshotOnce(verified)
             if (verified) completeSync(collected.size) else {
                 phase = Phase.IDLE
-                statusView.text = "As viagens foram abertas, mas não consegui confirmar o UUID desta conta com segurança."
+                statusView.text = "As viagens foram processadas, mas não consegui confirmar o UUID desta conta com segurança."
             }
             return
         }
+
         val candidate = candidates[candidateIndex]
-        statusView.text = "${account.displayLabel} • viagem ${candidateIndex + 1}/${candidates.size}…"
+        val definition = account.verifiedDefinition()
+        val missingContactLink = candidate.passengers.any { it.phone.isNullOrBlank() && it.booking_href.isNullOrBlank() }
+        val hasBatchRosterEvidence = candidate.passengerRosterComplete || candidate.passengers.isNotEmpty()
+        val synthetic = DynamicTripDetail(
+            detail = BlaBlaDomTripDetail(
+                url = candidate.href,
+                passengers = candidate.passengers,
+                passengerRosterComplete = candidate.passengerRosterComplete,
+            ),
+        )
+        val batchTrip = if (definition != null && identityConfirmedThisSync) {
+            BlaBlaDomNormalizer.toTrip(
+                account = definition,
+                candidate = candidate,
+                detail = synthetic.detail,
+                today = LocalDate.now(),
+                authenticatedProfileSessionVerified = true,
+            )
+        } else null
+
+        if (batchTrip != null && hasBatchRosterEvidence && !missingContactLink) {
+            pendingTripDetail = synthetic
+            pendingTripPassengers = candidate.passengers.toMutableList()
+            pendingTripSyncGeneration = syncGeneration
+            pendingTripCandidateIndex = candidateIndex
+            passengerContactIndex = 0
+            passengerContactReadAttempts = 0
+            UnifiedDebugEventStore.record(
+                "TRIP_BATCH_READY",
+                packageName,
+                "account=${account.displayLabel} index=${candidateIndex + 1}/${candidates.size} passengers=${candidate.passengers.size} bookingLinks=${candidate.passengers.count { !it.booking_href.isNullOrBlank() }} phones=${candidate.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${candidate.passengerRosterComplete}",
+            )
+            if (pendingTripPassengers.any { it.phone.isNullOrBlank() && !it.booking_href.isNullOrBlank() }) {
+                loadNextPassengerContact(syncGeneration, candidateIndex)
+            } else {
+                finalizeCurrentTrip(syncGeneration, candidateIndex)
+            }
+            return
+        }
+
+        statusView.text = "${account.displayLabel} • complementando viagem ${candidateIndex + 1}/${candidates.size}…"
+        UnifiedDebugEventStore.record(
+            "TRIP_DETAIL_FALLBACK",
+            packageName,
+            "account=${account.displayLabel} index=${candidateIndex + 1}/${candidates.size} batchCoreValid=${batchTrip != null} batchPassengers=${candidate.passengers.size} rosterComplete=${candidate.passengerRosterComplete} missingContactLink=$missingContactLink",
+        )
         loadTrackedUrl(candidate.href)
     }
 
@@ -664,7 +725,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "TRIP_DETAIL_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} url=${sanitizedUrl(webView.url.orEmpty())}",
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${result.detail.passengers.size} rosterComplete=${result.detail.passengerRosterComplete} url=${sanitizedUrl(webView.url.orEmpty())}",
             )
             if (expectedUuid != null && driverUuids.isNotEmpty() && expectedUuid !in driverUuids) {
                 skipped++
@@ -698,8 +759,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return@evaluate
             }
 
+            val definition = account.verifiedDefinition()
+            val preview = definition?.let {
+                BlaBlaDomNormalizer.toTrip(
+                    account = it,
+                    candidate = candidate,
+                    detail = result.detail,
+                    today = LocalDate.now(),
+                    authenticatedProfileSessionVerified = identityConfirmedThisSync,
+                )
+            }
             pendingTripDetail = result
-            pendingTripPassengers = result.detail.passengers.toMutableList()
+            pendingTripPassengers = (preview?.passengers ?: result.detail.passengers).toMutableList()
             pendingTripSyncGeneration = expectedSync
             pendingTripCandidateIndex = expectedCandidate
             passengerContactIndex = 0
@@ -841,7 +912,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "TRIP_ACCEPTED",
                 packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} validation=${trip.uuid_validation} date=${trip.date} departure=${trip.departure_time.orEmpty()} origin=${trip.actual_departure.orEmpty()} destination=${trip.actual_arrival.orEmpty()} passengers=${trip.passengers.size} phones=${trip.passengers.count { !it.phone.isNullOrBlank() }}",
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} validation=${trip.uuid_validation} date=${trip.date} departure=${trip.departure_time.orEmpty()} origin=${trip.actual_departure.orEmpty()} destination=${trip.actual_arrival.orEmpty()} passengers=${trip.passengers.size} phones=${trip.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${trip.passenger_roster_complete}",
             )
         } else {
             skipped++
@@ -1038,38 +1109,123 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 }
                 return '';
               };
+              const candidateHref = (root) => {
+                const anchors = Array.from(root.querySelectorAll('a[href]'))
+                  .map((anchor) => ({ anchor, href: anchor.href || '' }))
+                  .filter((item) => item.href && !item.href.includes('/rides/offer/passenger/'));
+                return (
+                  anchors.find((item) => /\/rides\/offer\/[^/?#]+/i.test(item.href) || /\/trip\/[^/?#]+/i.test(item.href)) ||
+                  anchors.find((item) => /\/rides\/offer\?[^#]*\bid=/i.test(item.href) || /\/trip\?[^#]*\bid=/i.test(item.href)) ||
+                  anchors.find((item) => item.href.includes('/rides/offer') || item.href.includes('/trip?') || item.href.includes('/trip/')) ||
+                  null
+                );
+              };
+              const normalizePassengerName = (value) => clean(value)
+                .replace(/\s*[•|].*$/, '')
+                .replace(/\s*\(\d+\)\s*$/, '');
+              const extractPassengers = (root) => {
+                const passengerMap = new Map();
+                const scoped = Array.from(root.querySelectorAll('a[href*="/rides/offer/passenger/"], [data-testid*="passenger"], [data-testid*="booking"]'));
+                const hintedRoot = /passageir|reserva/i.test(clean(root.innerText));
+                if (hintedRoot) {
+                  Array.from(root.querySelectorAll('img[alt]')).forEach((image) => {
+                    const scope = image.closest('a[href*="/rides/offer/passenger/"], [data-testid*="passenger"], [data-testid*="booking"]');
+                    if (scope) scoped.push(scope);
+                  });
+                }
+                scoped.forEach((node, index) => {
+                  const link = (node.matches && node.matches('a[href*="/rides/offer/passenger/"]'))
+                    ? node
+                    : (node.querySelector && node.querySelector('a[href*="/rides/offer/passenger/"]'));
+                  const href = link ? (link.href || '') : '';
+                  const container = node.closest && (node.closest('li, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]') || node);
+                  const raw = clean((container && container.innerText) || node.innerText || '');
+                  const lines = raw.split(/\n+/).map(clean).filter(Boolean);
+                  const explicitName = container && container.querySelector
+                    ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
+                    : null;
+                  const alt = explicitName && explicitName.getAttribute ? clean(explicitName.getAttribute('alt')) : '';
+                  let name = normalizePassengerName(alt || clean(explicitName && explicitName.innerText) || lines[0] || '');
+                  if (!name || /^(foto|avatar|perfil|blablacar|passageiro|passageira)$/i.test(name)) return;
+                  const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
+                  const suffix = suffixSource.match(/\((\d+)\)\s*$/);
+                  const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
+                  name = normalizePassengerName(name);
+                  const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                  const routeParts = route.split(/→|->/).map(clean);
+                  const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
+                  const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
+                  if (!passengerMap.has(key)) {
+                    passengerMap.set(key, {
+                      name: name,
+                      seats: seats,
+                      boarding: routeParts.length >= 2 ? routeParts[0] : null,
+                      dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
+                      phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
+                      booking_href: href || null
+                    });
+                  }
+                });
+                const passengers = Array.from(passengerMap.values()).filter((item) => item.name);
+                const rosterContainers = Array.from(root.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
+                  const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
+                  return marker.includes('passenger') || marker.includes('passageir') || marker.includes('booking') || marker.includes('reserva');
+                });
+                const hasMore = Array.from(root.querySelectorAll('button, a, [role="button"]')).some((node) => /mostrar mais|ver mais|mais passageir|mais reserva/i.test(clean(node.innerText)));
+                return {
+                  passengers: passengers,
+                  passengerRosterComplete: rosterContainers.length > 0 && !hasMore
+                };
+              };
+              const dateEvidence = (root) => {
+                const structured = Array.from(root.querySelectorAll('time[datetime]'))
+                  .map((node) => clean(node.getAttribute('datetime')))
+                  .filter(Boolean);
+                const visible = Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
+                  .map((node) => clean(node.innerText))
+                  .filter(Boolean);
+                return clean(structured.concat(visible).join(' | ')).slice(0, 1200);
+              };
               const roots = Array.from(document.querySelectorAll('[data-testid^="e2e-your-rides-trip-card-"], article[data-testid^="e2e-your-rides-trip-card-"], article'));
               const fromRoots = roots.map((root) => {
-                const anchor = root.querySelector('a[href*="/rides/offer"], a[href*="/trip?"] , a[href*="/trip/"]');
-                if (!anchor) return null;
+                const selected = candidateHref(root);
+                if (!selected) return null;
+                const roster = extractPassengers(root);
                 return {
-                  href: anchor.href || '',
-                  text: clean(root.innerText).slice(0, 2200),
+                  href: selected.href || '',
+                  text: clean(root.innerText).slice(0, 3200),
                   departureTime: first(root, ['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
                   arrivalTime: first(root, ['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
                   origin: first(root, ['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
                   destination: first(root, ['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
                   price: first(root, ['[data-testid="e2e-tripcard-price"]', '[data-testid="e2e-tripcard-price-price-value"]', '[data-testid*="price"]']),
-                  dateText: clean(Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3')).map((node) => node.innerText).join(' | ')).slice(0, 800)
+                  dateText: dateEvidence(root),
+                  passengers: roster.passengers,
+                  passengerRosterComplete: roster.passengerRosterComplete
                 };
               }).filter(Boolean);
-              const fallback = fromRoots.length ? [] : Array.from(document.querySelectorAll('a[href*="/rides/offer"], a[href*="/trip?"], a[href*="/trip/"]')).map((anchor) => {
-                const root = anchor.closest('article, li, section, div') || anchor.parentElement || document.body;
-                return {
-                  href: anchor.href || '',
-                  text: clean(root.innerText).slice(0, 2200),
-                  departureTime: first(root, ['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
-                  arrivalTime: first(root, ['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
-                  origin: first(root, ['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
-                  destination: first(root, ['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
-                  price: first(root, ['[data-testid*="price"]']),
-                  dateText: clean(root.innerText).slice(0, 800)
-                };
-              });
+              const fallback = fromRoots.length ? [] : Array.from(document.querySelectorAll('a[href*="/rides/offer"], a[href*="/trip?"], a[href*="/trip/"]'))
+                .filter((anchor) => !(anchor.href || '').includes('/rides/offer/passenger/'))
+                .map((anchor) => {
+                  const root = anchor.closest('article, li, section, div') || anchor.parentElement || document.body;
+                  const roster = extractPassengers(root);
+                  return {
+                    href: anchor.href || '',
+                    text: clean(root.innerText).slice(0, 3200),
+                    departureTime: first(root, ['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
+                    arrivalTime: first(root, ['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
+                    origin: first(root, ['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
+                    destination: first(root, ['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
+                    price: first(root, ['[data-testid*="price"]']),
+                    dateText: dateEvidence(root),
+                    passengers: roster.passengers,
+                    passengerRosterComplete: roster.passengerRosterComplete
+                  };
+                });
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 candidates: fromRoots.concat(fallback),
-                bodyText: clean(document.body && document.body.innerText).slice(0, 12000),
+                bodyText: clean(document.body && document.body.innerText).slice(0, 16000),
                 domHtml: html.slice(0, 350000)
               });
             })();
@@ -1124,7 +1280,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
               const allProfileLinks = Array.from(new Set(Array.from(document.querySelectorAll('a[href]'))
                 .map((a) => a.href || '')
                 .filter((href) => uuid.test(href) && /(profile|user|member)/i.test(href))));
-              const dateText = clean(Array.from(document.querySelectorAll('[data-testid*="date"], time, h1, h2, h3')).map((node) => node.innerText).join(' | ')).slice(0, 1400);
+              const structuredDates = Array.from(document.querySelectorAll('time[datetime]'))
+                .map((node) => clean(node.getAttribute('datetime')))
+                .filter(Boolean);
+              const visibleDates = Array.from(document.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
+                .map((node) => clean(node.innerText))
+                .filter(Boolean);
+              const dateText = clean(structuredDates.concat(visibleDates).join(' | ')).slice(0, 1600);
               const passengerAnchors = Array.from(document.querySelectorAll('a[href*="/rides/offer/passenger/"]'));
               const passengerMap = new Map();
               passengerAnchors.forEach((anchor) => {
@@ -1133,10 +1295,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 const root = anchor.closest('li, article, [data-testid*="passenger"], [role="listitem"]') || anchor;
                 const raw = (root.innerText || anchor.innerText || '').trim();
                 const lines = raw.split(/\n+/).map(clean).filter(Boolean);
-                let name = lines[0] || '';
-                const suffix = name.match(/\((\d+)\)\s*$/);
+                const named = root.querySelector && root.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]');
+                const alt = named && named.getAttribute ? clean(named.getAttribute('alt')) : '';
+                let name = clean(alt || (named && named.innerText) || lines[0] || '').replace(/\s*\(\d+\)\s*$/, '');
+                const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
+                const suffix = suffixSource.match(/\((\d+)\)\s*$/);
                 const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
-                if (suffix) name = clean(name.replace(/\((\d+)\)\s*$/, ''));
                 const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
                 const routeParts = route.split(/→|->/).map(clean);
                 const tel = root.querySelector && root.querySelector('a[href^="tel:"]');
@@ -1150,6 +1314,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 });
               });
               const passengers = Array.from(passengerMap.values()).filter((item) => item.name);
+              const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
+                const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
+                return marker.includes('passenger') || marker.includes('passageir') || marker.includes('booking') || marker.includes('reserva');
+              });
+              const hasMore = Array.from(document.querySelectorAll('button, a, [role="button"]')).some((node) => /mostrar mais|ver mais|mais passageir|mais reserva/i.test(clean(node.innerText)));
+              const passengerRosterComplete = rosterContainers.length > 0 && !hasMore;
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 detail: {
@@ -1163,7 +1333,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                   price: first(['[data-testid="e2e-tripcard-price"]', '[data-testid="e2e-tripcard-price-price-value"]', '[data-testid*="price"]']),
                   driverName: clean(driverNode && driverNode.innerText),
                   profileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
-                  passengers: passengers
+                  passengers: passengers,
+                  passengerRosterComplete: passengerRosterComplete
                 },
                 driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
                 domHtml: html.slice(0, 350000)
