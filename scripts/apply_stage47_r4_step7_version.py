@@ -18,8 +18,8 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
-new_code = "versionCode = 5526"
-new_name = 'versionName = "0.1.233"'
+new_code = "versionCode = 5527"
+new_name = 'versionName = "0.1.234"'
 
 if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
@@ -30,9 +30,7 @@ if not dynamic.is_file():
     raise SystemExit(f"missing materialized Stage47 dynamic account source: {dynamic}")
 
 # Physical-test UX: keep the real authenticated BlaBlaCar WebView visible while
-# synchronization is running. The small Stage47 status line stays above it, so
-# the user can see both the browser navigation and the current trip counter.
-# Do not use GONE and do not place an opaque cover over the WebView.
+# synchronization is running. The small Stage47 status line stays above it.
 once(
     dynamic,
 '''        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
@@ -67,8 +65,7 @@ once(
 # The authenticated profile page may not repeat the driver's UUID inside a
 # profile anchor. For an account that already has a canonical UUID, inspect the
 # rendered authenticated DOM plus same-page resource/navigation URLs and only
-# confirm when that exact expected UUID is present. This never uses the visible
-# name as identity and does not auto-bind an unknown account from broad DOM UUIDs.
+# confirm when that exact expected UUID is present.
 once(
     dynamic,
 '''private data class DynamicIdentityEvidence(
@@ -154,9 +151,8 @@ once(
     "identity DOM and resource UUID evidence",
 )
 
-# Keep Step7 as the same stage and layer consolidated card behavior only after
-# the identity/session materialization above. Version 0.1.233 adds Timeline
-# organization only; it does not restart Step6/Step7 or touch the FAROL.
+# Keep Step7 as the same stage. Every later patch is layered after the proven
+# identity/session materialization; none touches the FAROL.
 def run_sibling_patcher(filename: str) -> None:
     patcher = Path(__file__).with_name(filename)
     if not patcher.is_file():
@@ -173,10 +169,13 @@ def run_sibling_patcher(filename: str) -> None:
 run_sibling_patcher("apply_stage47_r4_step7_card_navigation.py")
 run_sibling_patcher("apply_stage47_r4_step7_card_local_manage.py")
 run_sibling_patcher("apply_stage47_r4_step7_timeline_future_archive.py")
+run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy.py")
 
 print(
-    "stage47_r4_step7_version=PASS version=0.1.233/5526 "
+    "stage47_r4_step7_version=PASS version=0.1.234/5527 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
-    "exact_trip_cards=true local_blablacar_merge=true local_manage_agenda=true "
-    "future_chronological_timeline=true full_date=true archive_local_only=true"
+    "exact_trip_card_click=true manage_button_removed=true clean_cards=true "
+    "visible_blablacar_passengers=true booked_seats=true private_passenger_simple=true "
+    "geo_corridor_merge=true overbooking_urgent=true future_chronological_timeline=true "
+    "archive_local_only=true"
 )
