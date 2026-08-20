@@ -11,6 +11,8 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.RemoteViews
+import androidx.core.service.quicksettings.PendingIntentActivityWrapper
+import androidx.core.service.quicksettings.TileServiceCompat
 import br.com.mapeiaia.rotacerta.R
 import java.time.Instant
 import java.time.ZoneId
@@ -75,18 +77,14 @@ class TripQuickTileService : TileService() {
         super.onClick()
         val action = if (TripStore(this).nextPublishedTrip() == null) TripActions.ACTION_NEW_TRIP else TripActions.ACTION_OPEN_TRIPS
         val intent = Intent(this, TripsActivity::class.java).setAction(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (Build.VERSION.SDK_INT >= 34) {
-            val pending = PendingIntent.getActivity(
-                this,
-                4701,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            startActivityAndCollapse(pending)
-        } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(intent)
-        }
+        val wrapper = PendingIntentActivityWrapper(
+            this,
+            4701,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT,
+            false,
+        )
+        TileServiceCompat.startActivityAndCollapse(this, wrapper)
     }
 }
 
