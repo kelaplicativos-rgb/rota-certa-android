@@ -169,7 +169,7 @@ def run_sibling_patcher(filename: str) -> None:
 run_sibling_patcher("apply_stage47_r4_step7_card_navigation.py")
 run_sibling_patcher("apply_stage47_r4_step7_card_local_manage.py")
 run_sibling_patcher("apply_stage47_r4_step7_timeline_future_archive.py")
-run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy.py")
+run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy_v2.py")
 
 print(
     "stage47_r4_step7_version=PASS version=0.1.234/5527 "
