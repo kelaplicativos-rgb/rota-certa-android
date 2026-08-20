@@ -198,7 +198,7 @@ jobs:
         run: |
           set -euo pipefail
           cd source
-          ./gradlew --no-daemon assembleDebug | tee ../evidence/gradle-assemble-step7-fast.log
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee ../evidence/gradle-assemble-step7-fast.log
           APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.235.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
