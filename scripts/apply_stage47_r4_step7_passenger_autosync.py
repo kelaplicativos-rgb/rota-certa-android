@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 import sys
 
 SOURCE = Path(sys.argv[1]).resolve()
@@ -19,26 +18,25 @@ def once(path: Path, old: str, new: str, label: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-def regex_once(path: Path, pattern: str, repl, label: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    matches = list(re.finditer(pattern, text, flags=re.DOTALL))
-    if len(matches) != 1:
-        raise SystemExit(f"{label}: expected one structural marker, got {len(matches)}")
-    match = matches[0]
-    replacement = repl(match) if callable(repl) else match.expand(repl)
-    path.write_text(text[:match.start()] + replacement + text[match.end():], encoding="utf-8")
-
-
 for path in (TIMELINE_UI, QUICK_UI, COLLECTOR_UI, ACTIVITY):
     if not path.is_file():
         raise SystemExit(f"missing materialized Stage47 source: {path}")
 
+# Diagnostics live in the root app package, while Timeline/collector are in .trips.
+for path in (TIMELINE_UI, COLLECTOR_UI):
+    once(
+        path,
+        "package br.com.mapeiaia.rotacerta.trips\n\n",
+        "package br.com.mapeiaia.rotacerta.trips\n\nimport br.com.mapeiaia.rotacerta.UnifiedDebugEventStore\n",
+        f"UnifiedDebugEventStore import in {path.name}",
+    )
+
 # Quick passenger: every successful physical occupancy change emits an explicit
 # request for the same authenticated multi-account sync used by the manual button.
-regex_once(
+once(
     QUICK_UI,
-    r"(fun\s+QuickPassengerPanel\s*\([\s\S]*?)(\n\s*\)\s*\{)",
-    lambda m: m.group(1) + ("\n    onBlaBlaSyncRequested: (() -> Unit)? = null," if "onBlaBlaSyncRequested" not in m.group(1) else "") + m.group(2),
+    '''fun QuickPassengerPanel(trip: Trip, store: TripStore, onChanged: (String) -> Unit) {\n''',
+    '''fun QuickPassengerPanel(\n    trip: Trip,\n    store: TripStore,\n    onChanged: (String) -> Unit,\n    onBlaBlaSyncRequested: (() -> Unit)? = null,\n) {\n''',
     "quick passenger autosync callback",
 )
 once(
@@ -344,9 +342,9 @@ once(
 # Static guards: no BlaBla seat +/- writer is claimed here. This patch only
 # triggers a fresh authenticated read sync after local physical occupancy changes.
 for path, markers in {
-    QUICK_UI: ["onBlaBlaSyncRequested?.invoke()"],
-    TIMELINE_UI: ["PASSENGER_WHATSAPP_OPEN", 'Text("💬 $label")', "autoSyncToken = autoSyncToken"],
-    COLLECTOR_UI: ["AUTO_SYNC_REQUESTED", "AUTO_SYNC_PENDING", "handledAutoSyncToken"],
+    QUICK_UI: ["onBlaBlaSyncRequested?.invoke()", "onBlaBlaSyncRequested: (() -> Unit)? = null"],
+    TIMELINE_UI: ["PASSENGER_WHATSAPP_OPEN", 'Text("💬 $label")', "autoSyncToken = autoSyncToken", "import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore"],
+    COLLECTOR_UI: ["AUTO_SYNC_REQUESTED", "AUTO_SYNC_PENDING", "handledAutoSyncToken", "import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore"],
     ACTIVITY: ["autoBlaBlaSyncToken++", "onRequestBlaBlaSync"],
 }.items():
     text = path.read_text(encoding="utf-8")
