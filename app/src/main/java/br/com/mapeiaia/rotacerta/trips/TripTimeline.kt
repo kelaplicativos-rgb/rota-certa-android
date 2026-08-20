@@ -1,6 +1,10 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import java.text.Normalizer
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Source-neutral timeline model. Local Agenda trips and collector snapshots
@@ -157,4 +161,107 @@ object TripTimelineEngine {
         .lowercase()
         .replace(Regex("[^a-z0-9]+"), " ")
         .trim()
+}
+
+/**
+ * Pure presentation filter for the Timeline. It must be called only after the
+ * physical agenda has already been merged/consolidated/validated.
+ */
+internal fun filterTimelineEntries(
+    entries: List<TripTimelineEntry>,
+    trips: List<Trip>,
+    bookings: List<Booking>,
+    query: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    locale: Locale = Locale.getDefault(),
+    nowMillis: Long = System.currentTimeMillis(),
+): List<TripTimelineEntry> {
+    val terms = timelineSearchTerms(query)
+    if (terms.isEmpty()) return entries
+
+    val tripsById = trips.associateBy(Trip::id)
+    val bookingsByTrip = bookings
+        .asSequence()
+        .filter { booking ->
+            booking.capacityClaimType == CapacityClaimType.PASSENGER && booking.seats > 0 && when (booking.status) {
+                BookingStatus.CONFIRMED -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REQUESTED,
+                BookingStatus.CANCELLED,
+                BookingStatus.EXPIRED,
+                -> false
+            }
+        }
+        .groupBy(Booking::tripId)
+
+    return entries.filter { entry ->
+        val localTrip = entry.localTripId?.let(tripsById::get) ?: tripsById[entry.tripId]
+        val stopsById = localTrip?.stops.orEmpty().associateBy(TripStop::id)
+        val localPassengerParts = localTrip?.let { trip ->
+            bookingsByTrip[trip.id].orEmpty().flatMap { booking ->
+                listOfNotNull(
+                    booking.passengerName,
+                    booking.passengerContact,
+                    stopsById[booking.boardingStopId]?.name,
+                    stopsById[booking.dropoffStopId]?.name,
+                    timelineSourceLabel(booking.source),
+                    booking.source.name,
+                )
+            }
+        }.orEmpty()
+        val externalPassengerParts = entry.blablaPassengers.flatMap { passenger ->
+            listOfNotNull(
+                passenger.name,
+                passenger.phone,
+                passenger.boarding,
+                passenger.dropoff,
+                "BlaBlaCar",
+            )
+        }
+        val dateParts = timelineDateSearchParts(entry.departureAtMillis, zoneId, locale)
+        val haystack = normalizeTimelineSearchText(
+            buildList {
+                add(entry.profileLabel)
+                add(entry.profileId)
+                entry.blablaProfileUuid?.let(::add)
+                add(entry.origin)
+                add(entry.destination)
+                addAll(dateParts)
+                addAll(externalPassengerParts)
+                addAll(localPassengerParts)
+            }.joinToString(" ")
+        )
+        terms.all(haystack::contains)
+    }
+}
+
+internal fun timelineSearchTerms(query: String): List<String> = normalizeTimelineSearchText(query)
+    .split(' ')
+    .filter(String::isNotBlank)
+    .distinct()
+
+internal fun normalizeTimelineSearchText(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+    .replace(Regex("\\p{M}+"), "")
+    .lowercase(Locale.ROOT)
+    .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+    .replace(Regex("\\s+"), " ")
+    .trim()
+
+private fun timelineDateSearchParts(epochMillis: Long, zoneId: ZoneId, locale: Locale): List<String> {
+    val dateTime = Instant.ofEpochMilli(epochMillis).atZone(zoneId)
+    return listOf(
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", locale).format(dateTime),
+        DateTimeFormatter.ofPattern("dd/MM/yyyy", locale).format(dateTime),
+        DateTimeFormatter.ofPattern("dd/MM", locale).format(dateTime),
+        DateTimeFormatter.ofPattern("HH:mm", locale).format(dateTime),
+        DateTimeFormatter.ofPattern("EEE dd MMM yyyy HH:mm", locale).format(dateTime),
+        DateTimeFormatter.ofPattern("EEEE dd MMMM yyyy HH:mm", locale).format(dateTime),
+    )
+}
+
+private fun timelineSourceLabel(source: BookingSource): String = when (source) {
+    BookingSource.BLABLACAR -> "BlaBlaCar"
+    BookingSource.PRIVATE -> "Particular"
+    BookingSource.ROTA_CERTA -> "Rota Certa"
+    BookingSource.OTHER -> "Outro"
 }
