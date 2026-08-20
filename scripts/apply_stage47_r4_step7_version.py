@@ -18,8 +18,8 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
-new_code = "versionCode = 5527"
-new_name = 'versionName = "0.1.234"'
+new_code = "versionCode = 5528"
+new_name = 'versionName = "0.1.235"'
 
 if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
@@ -171,13 +171,15 @@ run_sibling_patcher("apply_stage47_r4_step7_card_local_manage.py")
 run_sibling_patcher("apply_stage47_r4_step7_timeline_future_archive.py")
 run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy_v2.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_card_identity.py")
+run_sibling_patcher("apply_stage47_r4_step7_passenger_autosync.py")
 
 print(
-    "stage47_r4_step7_version=PASS version=0.1.234/5527 "
+    "stage47_r4_step7_version=PASS version=0.1.235/5528 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
     "exact_trip_card_click=true manage_button_removed=true clean_cards=true "
     "visible_blablacar_passengers=true booked_seats=true private_passenger_simple=true "
     "passenger_name_phone_card=true passenger_whatsapp_click=true phone_primary_identity=true "
+    "auto_account_sync_after_passenger_change=true seat_write_not_claimed=true "
     "geo_corridor_merge=true overbooking_urgent=true future_chronological_timeline=true "
     "archive_local_only=true"
 )
