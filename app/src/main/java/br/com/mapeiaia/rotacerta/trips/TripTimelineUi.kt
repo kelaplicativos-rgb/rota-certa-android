@@ -56,6 +56,7 @@ fun TripTimelineScreen(
     var showArchived by remember { mutableStateOf(false) }
     var showSync by remember { mutableStateOf(false) }
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     val settingsRepository = remember(context) { SettingsRepository(context) }
     val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
 
@@ -67,9 +68,13 @@ fun TripTimelineScreen(
     val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
     val merged = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
 
-    LaunchedEffect(merged.map { "${it.origin}|${it.destination}" }) {
+    LaunchedEffect(merged, trips) {
         geoReady = merged.size < 2
-        geo = TripTimelineGeoResolver.resolve(context, merged.flatMap { listOf(it.origin, it.destination) })
+        geo = TripTimelineGeoResolver.resolve(
+            context,
+            merged.flatMap { listOf(it.origin, it.destination) },
+            trips.flatMap(Trip::stops),
+        )
         geoReady = true
     }
     val physical = remember(merged, geo, geoReady) {
@@ -80,6 +85,9 @@ fun TripTimelineScreen(
         physical.filter { it.departureAtMillis >= today }
             .filter { archiveStore.isArchived(it) == showArchived }
             .sortedBy(TripTimelineEntry::departureAtMillis)
+    }
+    val visibleEntries = remember(entries, trips, bookings, searchQuery) {
+        filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
 
@@ -107,16 +115,13 @@ fun TripTimelineScreen(
         Text("Conferindo continuidade e rotas…")
         return
     }
-    GlobalQuickPassengerPanel(
-        entries = entries,
-        trips = trips,
-        store = store,
-        formatter = formatter,
-        onChanged = onChanged,
-        onTargetSync = { profileUuid ->
-            autoSyncProfileUuid = profileUuid
-            onRequestBlaBlaSync()
-        },
+
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = { searchQuery = it },
+        label = { Text("Buscar na Timeline") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
     )
 
     if (entries.isEmpty()) {
@@ -130,7 +135,24 @@ fun TripTimelineScreen(
         }
     }
 
-    entries.forEach { entry ->
+    GlobalQuickPassengerPanel(
+        entries = visibleEntries,
+        trips = trips,
+        store = store,
+        formatter = formatter,
+        onChanged = onChanged,
+        onTargetSync = { profileUuid ->
+            autoSyncProfileUuid = profileUuid
+            onRequestBlaBlaSync()
+        },
+    )
+
+    if (visibleEntries.isEmpty()) {
+        Text("Nenhuma viagem corresponde à busca.")
+        return
+    }
+
+    visibleEntries.forEach { entry ->
         val trip = entry.localTripId?.let { id -> trips.firstOrNull { it.id == id } }
         val archived = archiveStore.isArchived(entry)
         TimelineEntryCard(
@@ -569,7 +591,7 @@ private fun looksCanonicalProfileUuid(value: String): Boolean = Regex(
     "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
 ).matches(value.trim())
 
-private fun timelineBaseDirection(trip: Trip?, home: Coordinate?, radiusKm: Double): String? {
+internal fun timelineBaseDirection(trip: Trip?, home: Coordinate?, radiusKm: Double): String? {
     if (trip == null || home == null || radiusKm < 0.0) return null
     val stops = trip.stops.sortedBy(TripStop::order)
     val origin = stops.firstOrNull()?.asCoordinate() ?: return null
@@ -578,9 +600,9 @@ private fun timelineBaseDirection(trip: Trip?, home: Coordinate?, radiusKm: Doub
     val originInside = GeoDistance.meters(home, origin) <= radiusMeters
     val destinationInside = GeoDistance.meters(home, destination) <= radiusMeters
     return when {
-        originInside && !destinationInside -> "🟢⬆️"
-        !originInside && destinationInside -> "🔴⬇️"
-        else -> "↔️"
+        originInside && !destinationInside -> "↑"
+        !originInside && destinationInside -> "↓"
+        else -> "↔"
     }
 }
 
