@@ -1,0 +1,78 @@
+name: Stage47 direct persisted-source validation
+
+on:
+  pull_request:
+    branches:
+      - agent/stage47-r4-unified-occupancy-step6-validation-apk
+
+permissions:
+  contents: read
+
+jobs:
+  validate-direct-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
+      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+    steps:
+      - name: Checkout PR source directly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify persisted Stage47 source authority
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          ACTIVITY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+          TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq 'versionCode = 5531' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.238"' app/build.gradle.kts
+          test -s "$UI"
+          test -s "$ACTIVITY"
+          test -s "$TEST"
+          grep -Fq 'timelineQuickPassengerOptions(entries, trips)' "$UI"
+          grep -Fq 'ExternalTripCapacitySetup(entry, store, onChanged)' "$UI"
+          grep -Fq 'external_seat_write_claimed=false' "$UI"
+          grep -Fq 'canonicalTimelineProfileUuid(entry)' "$UI"
+          grep -Fq 'findExistingTimelineBackingTrip(entry, store.trips())' "$UI"
+          ! grep -Fq 'val options = entries.mapNotNull' "$UI"
+          test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
+          test ! -e .github/workflows/stage47-direct-source-external-quick-passenger-apply.yml
+          echo 'stage47_direct_source_authority=PASS'
+          echo 'fixed_historical_source_checkout=false'
+          echo 'stage47_materializer_used=false'
+          echo 'farol_untouched=true'
+          echo 'apk_generated=false'
+
+      - name: Compile and run direct-source unit tests
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          echo 'stage47_direct_source_tests=PASS'
+          echo 'apk_generated=false'
+
+      - name: Reconfirm FAROL after direct-source compile
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          echo 'stage47_direct_source_validation=PASS'
+          echo 'apk_generated=false'
