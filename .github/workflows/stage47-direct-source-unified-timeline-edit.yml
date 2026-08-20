@@ -1,0 +1,574 @@
+name: Stage47 direct-source unified Timeline editor
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+    paths:
+      - .github/workflows/stage47-direct-source-unified-timeline-edit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  persist-unified-timeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
+      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+    steps:
+      - name: Checkout current branch HEAD directly
+        uses: actions/checkout@v4
+        with:
+          ref: agent/stage47-r4-step7-automatic-identity
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify direct app source before edit
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq 'versionCode = 5532' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.239"' app/build.gradle.kts
+          grep -Fq 'else TripScreen.LIST' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'timelineBaseDirection(trip, homeCoordinate, homeRadiusKm)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          echo "edit_source_head=$(git rev-parse HEAD)"
+          echo 'direct_app_src_before_edit=PASS'
+
+      - name: Persist minimal unified Timeline correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          activity_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt')
+          activity = activity_path.read_text()
+          activity = replace_once(
+              activity,
+              '    var screen by remember { mutableStateOf(if (startCreating) TripScreen.CREATE else TripScreen.LIST) }',
+              '''    var screen by remember {
+              mutableStateOf(
+                  when {
+                      startCreating -> TripScreen.CREATE
+                      initialTripId != null -> TripScreen.LIST
+                      else -> TripScreen.TIMELINE
+                  },
+              )
+          }''',
+              'timeline default screen',
+          )
+          activity = activity.replace('onCancel = { screen = TripScreen.LIST },', 'onCancel = { screen = TripScreen.TIMELINE },')
+          if activity.count('onCancel = { screen = TripScreen.TIMELINE },') < 2:
+              raise SystemExit('expected CREATE and SETTINGS cancel paths to return to Timeline')
+          activity = replace_once(
+              activity,
+              '''                        selectedId = trip.id
+              screen = TripScreen.LIST
+              message = "Viagem criada. Publique quando estiver pronta."''',
+              '''                        selectedId = trip.id
+              screen = TripScreen.TIMELINE
+              message = "Viagem criada. Publique quando estiver pronta."''',
+              'create save returns timeline',
+          )
+          activity = replace_once(
+              activity,
+              '''                    onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
+              onManageLocal = { tripId ->
+                  selectedId = tripId
+                  screen = TripScreen.LIST
+              },
+              onBack = { screen = TripScreen.LIST },''',
+              '''                    onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
+              onCreateTrip = { screen = TripScreen.CREATE },
+              onPinShortcut = {
+                  val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
+                  message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
+              },
+              onOpenOnlineSettings = { screen = TripScreen.SETTINGS },
+              onManageLocal = { tripId ->
+                  selectedId = tripId
+                  screen = TripScreen.LIST
+              },
+              onBack = { activity.finish() },''',
+              'timeline callbacks',
+          )
+          activity = replace_once(
+              activity,
+              '''                        store.saveOnlineSettings(it)
+              screen = TripScreen.LIST
+              message = if (it.configured) "Integração online configurada." else "Configuração salva; modo online ainda desativado."''',
+              '''                        store.saveOnlineSettings(it)
+              screen = TripScreen.TIMELINE
+              message = if (it.configured) "Integração online configurada." else "Configuração salva; modo online ainda desativado."''',
+              'settings save returns timeline',
+          )
+          activity = replace_once(
+              activity,
+              '''                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              Button(onClick = { screen = TripScreen.CREATE }) { Text("Nova viagem") }
+              OutlinedButton(onClick = {
+                  val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
+                  message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
+              }) { Text("Fixar atalho") }
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              OutlinedButton(onClick = { screen = TripScreen.TIMELINE }) { Text("Linha do tempo") }
+              OutlinedButton(onClick = { screen = TripScreen.SETTINGS }) { Text("Integração online") }
+          }''',
+              '''                    OutlinedButton(onClick = { screen = TripScreen.TIMELINE }) {
+              Text("Voltar à Timeline")
+          }''',
+              'remove duplicate list menu',
+          )
+          activity = replace_once(
+              activity,
+              '                        Text("Nenhuma viagem cadastrada. Crie a primeira para começar.")',
+              '                        Text("Nenhuma viagem local neste aparelho. A Timeline continua exibindo publicações sincronizadas.")',
+              'local empty-state wording',
+          )
+          activity_path.write_text(activity)
+
+          ui_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
+          ui = ui_path.read_text()
+          ui = replace_once(
+              ui,
+              '''    autoSyncToken: Int,
+          onRequestBlaBlaSync: () -> Unit,
+          onBack: () -> Unit,
+          onManageLocal: (String) -> Unit,''',
+              '''    autoSyncToken: Int,
+          onRequestBlaBlaSync: () -> Unit,
+          onCreateTrip: () -> Unit,
+          onPinShortcut: () -> Unit,
+          onOpenOnlineSettings: () -> Unit,
+          onBack: () -> Unit,
+          onManageLocal: (String) -> Unit,''',
+              'timeline screen callbacks signature',
+          )
+          ui = replace_once(
+              ui,
+              '''    var geo by remember { mutableStateOf<Map<String, TimelineGeoPoint>>(emptyMap()) }
+          var geoReady by remember { mutableStateOf(false) }
+          val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
+          val merged = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
+      
+          LaunchedEffect(merged, trips) {
+              geoReady = merged.size < 2
+              geo = TripTimelineGeoResolver.resolve(
+                  context,
+                  merged.flatMap { listOf(it.origin, it.destination) },
+                  trips.flatMap(Trip::stops),
+              )
+              geoReady = true
+          }
+          val physical = remember(merged, geo, geoReady) {
+              if (geoReady) TripPhysicalRideConsolidator.consolidate(merged, geo) else emptyList()
+          }''',
+              '''    var physicalGeo by remember { mutableStateOf<Map<String, TimelineGeoPoint>>(emptyMap()) }
+          var directionGeo by remember { mutableStateOf<Map<String, TimelineGeoPoint>>(emptyMap()) }
+          var geoReady by remember { mutableStateOf(false) }
+          val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
+          val merged = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
+          val trustedDirectionStops = remember(trips, appSettings) {
+              timelineTrustedDirectionStops(trips, appSettings)
+          }
+      
+          LaunchedEffect(merged, trips, trustedDirectionStops) {
+              geoReady = false
+              val places = merged.flatMap { listOf(it.origin, it.destination) }
+              physicalGeo = TripTimelineGeoResolver.resolve(
+                  context,
+                  places,
+                  trips.flatMap(Trip::stops),
+              )
+              directionGeo = TripTimelineGeoResolver.resolve(
+                  context,
+                  places,
+                  trustedDirectionStops,
+              )
+              geoReady = true
+          }
+          val physical = remember(merged, physicalGeo, geoReady) {
+              if (geoReady) TripPhysicalRideConsolidator.consolidate(merged, physicalGeo) else emptyList()
+          }''',
+              'separate physical and direction geo',
+          )
+          ui = replace_once(
+              ui,
+              '''    ResponsiveTripActions(listOf(
+          ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
+          ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
+      ))''',
+              '''    ResponsiveTripActions(listOf(
+          ResponsiveTripAction("Nova viagem", onCreateTrip),
+          ResponsiveTripAction("Fixar atalho", onPinShortcut),
+          ResponsiveTripAction("Integração online", onOpenOnlineSettings),
+          ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
+          ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
+      ))''',
+              'unified timeline actions',
+          )
+          ui = replace_once(
+              ui,
+              '''            homeCoordinate = appSettings.homeCoordinate,
+              homeRadiusKm = appSettings.homeRadiusKm,
+          ) {''',
+              '''            homeCoordinate = appSettings.homeCoordinate,
+              homeRadiusKm = appSettings.homeRadiusKm,
+              directionGeo = directionGeo,
+          ) {''',
+              'pass direction geo to card',
+          )
+          ui = replace_once(
+              ui,
+              '''    homeCoordinate: Coordinate?,
+          homeRadiusKm: Double,
+          onArchive: () -> Unit,''',
+              '''    homeCoordinate: Coordinate?,
+          homeRadiusKm: Double,
+          directionGeo: Map<String, TimelineGeoPoint>,
+          onArchive: () -> Unit,''',
+              'card direction geo parameter',
+          )
+          ui = replace_once(
+              ui,
+              '''            val baseDirection = timelineBaseDirection(trip, homeCoordinate, homeRadiusKm)
+              val directionPrefix = baseDirection?.let { "$it " }.orEmpty()
+              Text("$directionPrefix${entry.origin} → ${entry.destination}", style = MaterialTheme.typography.titleMedium)''',
+              '''            val baseDirection = timelineBaseDirection(entry, trip, directionGeo, homeCoordinate, homeRadiusKm)
+              baseDirection?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+              Text("${entry.origin} → ${entry.destination}", style = MaterialTheme.typography.titleMedium)''',
+              'visible direction label',
+          )
+          old_direction = '''internal fun timelineBaseDirection(trip: Trip?, home: Coordinate?, radiusKm: Double): String? {
+          if (trip == null || home == null || radiusKm < 0.0) return null
+          val stops = trip.stops.sortedBy(TripStop::order)
+          val origin = stops.firstOrNull()?.asCoordinate() ?: return null
+          val destination = stops.lastOrNull()?.asCoordinate() ?: return null
+          val radiusMeters = radiusKm * 1_000.0
+          val originInside = GeoDistance.meters(home, origin) <= radiusMeters
+          val destinationInside = GeoDistance.meters(home, destination) <= radiusMeters
+          return when {
+              originInside && !destinationInside -> "↑"
+              !originInside && destinationInside -> "↓"
+              else -> "↔"
+          }
+      }
+      
+      private fun TripStop.asCoordinate(): Coordinate? {
+          val lat = latitude ?: return null
+          val lon = longitude ?: return null
+          if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+          return Coordinate(lat, lon)
+      }'''
+          new_direction = '''internal fun timelineTrustedDirectionStops(trips: List<Trip>, settings: AppSettings): List<TripStop> = buildList {
+          addAll(trips.flatMap(Trip::stops))
+      
+          fun addPersisted(id: String, order: Int, label: String, coordinate: Coordinate?) {
+              if (label.isBlank() || coordinate == null) return
+              val lat = coordinate.latitude
+              val lon = coordinate.longitude
+              if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return
+              add(
+                  TripStop(
+                      id = id,
+                      order = order,
+                      name = label.trim(),
+                      address = label.trim(),
+                      latitude = lat,
+                      longitude = lon,
+                  )
+              )
+          }
+      
+          addPersisted("timeline-settings-home", -1_000, settings.homeAddress, settings.homeCoordinate)
+          addPersisted("timeline-settings-alternative", -999, settings.alternativeAddress, settings.alternativeCoordinate)
+          settings.workRegionPins.filter { it.enabled }.forEachIndexed { index, pin ->
+              addPersisted("timeline-settings-pin:${pin.id}", -900 + index, pin.address, pin.coordinate)
+          }
+      }
+      
+      internal fun timelineBaseDirection(
+          entry: TripTimelineEntry,
+          trip: Trip?,
+          geo: Map<String, TimelineGeoPoint>,
+          home: Coordinate?,
+          radiusKm: Double,
+      ): String? {
+          if (home == null || !radiusKm.isFinite() || radiusKm < 0.0) return null
+          if (!home.latitude.isFinite() || !home.longitude.isFinite() || home.latitude !in -90.0..90.0 || home.longitude !in -180.0..180.0) return null
+          val stops = trip?.stops?.sortedBy(TripStop::order).orEmpty()
+          val localOrigin = stops.firstOrNull()
+              ?.takeIf { sameTimelinePlace(it.name, entry.origin) || sameTimelinePlace(it.address, entry.origin) }
+              ?.asCoordinate()
+          val localDestination = stops.lastOrNull()
+              ?.takeIf { sameTimelinePlace(it.name, entry.destination) || sameTimelinePlace(it.address, entry.destination) }
+              ?.asCoordinate()
+          val origin = localOrigin ?: geo[entry.origin]?.asCoordinate() ?: return null
+          val destination = localDestination ?: geo[entry.destination]?.asCoordinate() ?: return null
+          val radiusMeters = radiusKm * 1_000.0
+          val originInside = GeoDistance.meters(home, origin) <= radiusMeters
+          val destinationInside = GeoDistance.meters(home, destination) <= radiusMeters
+          return when {
+              originInside && !destinationInside -> "↑ Ida • saindo da base"
+              !originInside && destinationInside -> "↓ Volta • retornando à base"
+              else -> "↔ Neutra • não envolve a base"
+          }
+      }
+      
+      private fun TimelineGeoPoint.asCoordinate(): Coordinate? {
+          val lat = latitude
+          val lon = longitude
+          if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+          return Coordinate(lat, lon)
+      }
+      
+      private fun TripStop.asCoordinate(): Coordinate? {
+          val lat = latitude ?: return null
+          val lon = longitude ?: return null
+          if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return null
+          return Coordinate(lat, lon)
+      }'''
+          ui = replace_once(ui, old_direction, new_direction, 'trusted base direction bridge')
+          ui_path.write_text(ui)
+
+          test_path = Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt')
+          test = test_path.read_text()
+          test = replace_once(
+              test,
+              'import br.com.mapeiaia.rotacerta.Coordinate\n',
+              'import br.com.mapeiaia.rotacerta.AppSettings\nimport br.com.mapeiaia.rotacerta.Coordinate\n',
+              'AppSettings test import',
+          )
+          pattern = re.compile(
+              r'    @Test\n    fun baseDirectionUsesPlainArrowsAndRequiresTrustedCoordinates\(\) \{.*?\n    \}\n\n    @Test\n    fun geoResolverUsesOnlyPersistedTripStopEvidenceAndFailsClosedOnAmbiguity',
+              re.S,
+          )
+          replacement = '''    @Test
+          fun baseDirectionUsesTrustedLocalCoordinatesAndDescriptiveLabels() {
+              val home = Coordinate(0.0, 0.0)
+              val baseEntry = entry().copy(origin = "Base persistida", destination = "Ponto externo")
+              val leaving = localTrip("leaving").copy(
+                  stops = listOf(
+                      TripStop(id = "la", order = 0, name = "Base persistida", latitude = 0.0, longitude = 0.0),
+                      TripStop(id = "lb", order = 1, name = "Ponto externo", latitude = 0.1, longitude = 0.0),
+                  )
+              )
+              val returning = leaving.copy(
+                  id = "returning",
+                  stops = listOf(
+                      TripStop(id = "ra", order = 0, name = "Ponto externo", latitude = 0.1, longitude = 0.0),
+                      TripStop(id = "rb", order = 1, name = "Base persistida", latitude = 0.0, longitude = 0.0),
+                  )
+              )
+              val neutral = leaving.copy(
+                  id = "neutral",
+                  stops = listOf(
+                      TripStop(id = "na", order = 0, name = "Ponto externo A", latitude = 0.1, longitude = 0.0),
+                      TripStop(id = "nb", order = 1, name = "Ponto externo B", latitude = 0.2, longitude = 0.0),
+                  )
+              )
+      
+              assertEquals("↑ Ida • saindo da base", timelineBaseDirection(baseEntry, leaving, emptyMap(), home, 1.0))
+              assertEquals(
+                  "↓ Volta • retornando à base",
+                  timelineBaseDirection(baseEntry.copy(origin = "Ponto externo", destination = "Base persistida"), returning, emptyMap(), home, 1.0),
+              )
+              assertEquals(
+                  "↔ Neutra • não envolve a base",
+                  timelineBaseDirection(baseEntry.copy(origin = "Ponto externo A", destination = "Ponto externo B"), neutral, emptyMap(), home, 1.0),
+              )
+              assertNull(timelineBaseDirection(baseEntry, localTrip("missing"), emptyMap(), home, 1.0))
+          }
+      
+          @Test
+          fun externalEntryUsesOnlyTrustedResolvedGeoForBaseDirectionAndFailsClosed() {
+              val home = Coordinate(0.0, 0.0)
+              val leaving = entry().copy(origin = "Base persistida", destination = "Ponto externo")
+              val returning = leaving.copy(origin = "Ponto externo", destination = "Base persistida")
+              val neutral = leaving.copy(origin = "Ponto externo A", destination = "Ponto externo B")
+              val geo = mapOf(
+                  "Base persistida" to TimelineGeoPoint(0.0, 0.0),
+                  "Ponto externo" to TimelineGeoPoint(0.1, 0.0),
+                  "Ponto externo A" to TimelineGeoPoint(0.1, 0.0),
+                  "Ponto externo B" to TimelineGeoPoint(0.2, 0.0),
+              )
+      
+              assertEquals("↑ Ida • saindo da base", timelineBaseDirection(leaving, null, geo, home, 1.0))
+              assertEquals("↓ Volta • retornando à base", timelineBaseDirection(returning, null, geo, home, 1.0))
+              assertEquals("↔ Neutra • não envolve a base", timelineBaseDirection(neutral, null, geo, home, 1.0))
+              assertNull(timelineBaseDirection(leaving, null, mapOf("Base persistida" to TimelineGeoPoint(0.0, 0.0)), home, 1.0))
+          }
+      
+          @Test
+          fun directionBridgeIncludesOnlyPersistedSettingsCoordinates() {
+              val settings = AppSettings(
+                  homeAddress = "Base persistida",
+                  homeCoordinate = Coordinate(0.0, 0.0),
+                  alternativeAddress = "Alfinete persistido",
+                  alternativeCoordinate = Coordinate(0.2, 0.0),
+              )
+              val trusted = timelineTrustedDirectionStops(emptyList(), settings)
+      
+              assertEquals(setOf("Base persistida", "Alfinete persistido"), trusted.map(TripStop::name).toSet())
+              assertTrue(timelineTrustedDirectionStops(emptyList(), AppSettings(homeAddress = "Sem coordenada")).isEmpty())
+          }
+      
+          @Test
+          fun directionPresentationDoesNotChangePhysicalOverbookingCalculation() {
+              val home = Coordinate(0.0, 0.0)
+              val overloaded = entry().copy(
+                  origin = "Base persistida",
+                  destination = "Ponto externo",
+                  capacity = 1,
+                  minimumOccupiedSeats = 0,
+                  maximumOccupiedSeats = 0,
+                  sourcePassengerSeats = mapOf(BookingSource.BLABLACAR to 2),
+              )
+              val physical = TripPhysicalRideConsolidator.consolidate(listOf(overloaded), emptyMap()).single()
+              assertTrue(TripTimelineIssue.OVERBOOKING in physical.issues)
+      
+              val direction = timelineBaseDirection(
+                  physical,
+                  null,
+                  mapOf(
+                      "Base persistida" to TimelineGeoPoint(0.0, 0.0),
+                      "Ponto externo" to TimelineGeoPoint(0.1, 0.0),
+                  ),
+                  home,
+                  1.0,
+              )
+              assertEquals("↑ Ida • saindo da base", direction)
+              assertTrue(TripTimelineIssue.OVERBOOKING in physical.issues)
+          }
+      
+          @Test
+          fun searchKeepsExistingConflictAndOverbookingIssuesOnMatchedEntry() {
+              val risky = entry().copy(
+                  profileLabel = "Perfil pesquisável",
+                  issues = setOf(TripTimelineIssue.PHYSICAL_CONFLICT, TripTimelineIssue.OVERBOOKING),
+              )
+              val matched = filterTimelineEntries(
+                  entries = listOf(risky),
+                  trips = emptyList(),
+                  bookings = emptyList(),
+                  query = "pesquisavel",
+                  zoneId = ZoneId.of("UTC"),
+                  locale = Locale("pt", "BR"),
+                  nowMillis = 0L,
+              ).single()
+      
+              assertEquals(risky.issues, matched.issues)
+          }
+      
+          @Test
+          fun geoResolverUsesOnlyPersistedTripStopEvidenceAndFailsClosedOnAmbiguity'''
+          test, n = pattern.subn(replacement, test, count=1)
+          if n != 1:
+              raise SystemExit(f'direction tests replacement: expected 1 match, found {n}')
+          test_path.write_text(test)
+
+          build_path = Path('app/build.gradle.kts')
+          build = build_path.read_text()
+          build = replace_once(build, 'versionCode = 5532', 'versionCode = 5533', 'versionCode')
+          build = replace_once(build, 'versionName = "0.1.239"', 'versionName = "0.1.240"', 'versionName')
+          build_path.write_text(build)
+
+          physical_path = Path('.github/workflows/stage47-direct-source-physical-apk.yml')
+          physical = physical_path.read_text()
+          if physical.count('0.1.239') < 2:
+              raise SystemExit('physical workflow old version markers not found')
+          physical = physical.replace('0.1.239', '0.1.240').replace("EXPECTED_VERSION_CODE: '5532'", "EXPECTED_VERSION_CODE: '5533'")
+          marker = "          ! grep -Fq 'val options = entries.mapNotNull' \"$UI\"\n"
+          extra = marker + "          grep -Fq 'timelineTrustedDirectionStops(trips, appSettings)' \"$UI\"\n          grep -Fq 'Ida • saindo da base' \"$UI\"\n          grep -Fq 'else -> TripScreen.TIMELINE' \"$ACTIVITY\"\n"
+          physical = replace_once(physical, marker, extra, 'physical workflow direct-source markers')
+          physical_path.write_text(physical)
+
+          validation_path = Path('.github/workflows/stage47-direct-source-validation.yml')
+          validation = validation_path.read_text()
+          validation = validation.replace("grep -Fq 'versionCode = 5532'", "grep -Fq 'versionCode = 5533'")
+          validation = validation.replace('grep -Fq \'versionName = "0.1.239"\'', 'grep -Fq \'versionName = "0.1.240"\'')
+          validation = validation.replace('version=0.1.239/5532', 'version=0.1.240/5533')
+          marker_v = "          ! grep -Fq 'val options = entries.mapNotNull' \"$UI\"\n"
+          extra_v = marker_v + "          grep -Fq 'timelineTrustedDirectionStops(trips, appSettings)' \"$UI\"\n          grep -Fq 'Ida • saindo da base' \"$UI\"\n          grep -Fq 'else -> TripScreen.TIMELINE' \"$ACTIVITY\"\n"
+          validation = replace_once(validation, marker_v, extra_v, 'validation direct-source markers')
+          validation_path.write_text(validation)
+
+          helper = Path('.github/workflows/stage47-direct-source-unified-timeline-edit.yml')
+          helper.unlink()
+          PY
+
+          grep -Fq 'versionCode = 5533' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.240"' app/build.gradle.kts
+          grep -Fq 'timelineTrustedDirectionStops(trips, appSettings)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Ida • saindo da base' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Volta • retornando à base' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Neutra • não envolve a base' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'else -> TripScreen.TIMELINE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Nenhuma viagem local neste aparelho.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          test ! -e .github/workflows/stage47-direct-source-unified-timeline-edit.yml
+          git diff --check
+
+      - name: Run focused tests directly on edited app source
+        run: |
+          set -euo pipefail
+          passed=false
+          for attempt in 1 2 3; do
+            echo "direct_source_edit_test_attempt=$attempt"
+            if ./gradlew :app:testDebugUnitTest \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+              --no-daemon --max-workers=1 --no-parallel --stacktrace; then
+              passed=true
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then sleep $((attempt * 10)); fi
+          done
+          test "$passed" = true
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          echo 'edited_direct_source_tests=PASS'
+
+      - name: Commit only validated direct-source files
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          test -z "$(git diff --name-only -- "$FAROL")"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt \
+            app/build.gradle.kts \
+            .github/workflows/stage47-direct-source-physical-apk.yml \
+            .github/workflows/stage47-direct-source-validation.yml
+          git add -u -- .github/workflows/stage47-direct-source-unified-timeline-edit.yml
+          ! git diff --cached --name-only | grep -Fx "$FAROL"
+          git diff --cached --name-only
+          git commit -m 'Timeline: unify agenda and trusted base direction'
+          git push origin HEAD:agent/stage47-r4-step7-automatic-identity
+          echo "persisted_source_head=$(git rev-parse HEAD)"
+          echo 'direct_source=true'
+          echo 'fixed_historical_source_checkout=false'
+          echo 'stage47_materializer_used=false'
+          echo 'farol_untouched=true'
