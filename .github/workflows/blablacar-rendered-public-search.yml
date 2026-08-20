@@ -1,0 +1,72 @@
+name: BlaBlaCar rendered public search collector
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/agent/blablacar-public-search-collector'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install collector package
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+
+      - name: Execute rendered public search
+        id: collect
+        continue-on-error: true
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          mkdir -p collector/results
+          xvfb-run -a node tools/blablacar-public-search/collect-dom.mjs \
+            collector/requests/current.json \
+            collector/results/latest.json \
+            collector/results/latest.md \
+            collector/results/latest.png
+
+      - name: Publish normalized result
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f collector/results/latest.json
+          test -f collector/results/latest.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add collector/results/latest.json collector/results/latest.md
+          if ! git diff --cached --quiet; then
+            git commit -m "data(blablacar): update rendered public search result [skip ci]"
+            git push
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blablacar-rendered-search-${{ github.run_id }}
+          path: |
+            collector/requests/current.json
+            collector/results/latest.json
+            collector/results/latest.md
+            collector/results/latest.png
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail if collection was not validated
+        if: steps.collect.outcome != 'success'
+        run: exit 1
