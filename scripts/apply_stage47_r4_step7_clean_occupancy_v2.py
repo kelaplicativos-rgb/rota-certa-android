@@ -36,6 +36,22 @@ try:
 finally:
     sys.argv = previous_argv
 
+# Kotlin 1.x compatibility: a member extension used as prefs::getBooleanTrue is
+# prohibited (member + extension reference). Use the SharedPreferences API
+# directly and remove the helper. This is behavior-identical and compile-safe.
+timeline_ui = SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt"
+ui_text = timeline_ui.read_text(encoding="utf-8")
+old_archive_check = '''    fun isArchived(entry: TripTimelineEntry): Boolean = aliases(entry).any(prefs::getBooleanTrue)\n'''
+new_archive_check = '''    fun isArchived(entry: TripTimelineEntry): Boolean = aliases(entry).any { key -> prefs.getBoolean(key, false) }\n'''
+if ui_text.count(old_archive_check) != 1:
+    raise SystemExit(f"archive boolean compatibility anchor count={ui_text.count(old_archive_check)}")
+ui_text = ui_text.replace(old_archive_check, new_archive_check, 1)
+old_archive_helper = '''    private fun android.content.SharedPreferences.getBooleanTrue(key: String): Boolean = getBoolean(key, false)\n'''
+if ui_text.count(old_archive_helper) != 1:
+    raise SystemExit(f"archive boolean helper count={ui_text.count(old_archive_helper)}")
+ui_text = ui_text.replace(old_archive_helper, "", 1)
+timeline_ui.write_text(ui_text, encoding="utf-8")
+
 consolidator = SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPhysicalRideConsolidator.kt"
 text = consolidator.read_text(encoding="utf-8")
 
@@ -64,7 +80,7 @@ text = text.replace(anchor, helper, 1)
 text = text.replace("BookingSource.entries.mapNotNull", "BookingSource.values().mapNotNull")
 consolidator.write_text(text, encoding="utf-8")
 
-ui = (SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").read_text(encoding="utf-8")
+ui = timeline_ui.read_text(encoding="utf-8")
 quick = (SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt").read_text(encoding="utf-8")
 collector = (SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt").read_text(encoding="utf-8")
 dynamic = (SOURCE / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").read_text(encoding="utf-8")
@@ -74,6 +90,8 @@ for marker in ("Card(onClick = ::openCard", "Passageiros BlaBlaCar", "URGENTE", 
         raise SystemExit(f"clean timeline marker missing after v2: {marker}")
 if "Gerenciar" in ui:
     raise SystemExit("redundant Gerenciar action returned to Timeline")
+if "getBooleanTrue" in ui:
+    raise SystemExit("archive helper incompatible with Kotlin compiler returned")
 for marker in ("BookingSource.PRIVATE", "Sem vaga física neste trecho"):
     if marker not in quick:
         raise SystemExit(f"clean private passenger marker missing: {marker}")
@@ -84,4 +102,4 @@ for marker in ("/rides/offer/passenger/", "passengers: passengers", "const nameN
     if marker not in dynamic:
         raise SystemExit(f"authenticated passenger/identity marker missing: {marker}")
 
-print("stage47_r4_step7_clean_occupancy_v2=PASS occupancy_after_consolidation=true local_plus_blablacar_sum=true same_source_mirror_max=true clean_cards=true manage_removed=true responsive_actions=true visible_passenger_names=true geo_merge=true overbooking_urgent=true farol_touched=false")
+print("stage47_r4_step7_clean_occupancy_v2=PASS occupancy_after_consolidation=true local_plus_blablacar_sum=true same_source_mirror_max=true clean_cards=true manage_removed=true responsive_actions=true visible_passenger_names=true geo_merge=true overbooking_urgent=true archive_boolean_compat=true farol_touched=false")
