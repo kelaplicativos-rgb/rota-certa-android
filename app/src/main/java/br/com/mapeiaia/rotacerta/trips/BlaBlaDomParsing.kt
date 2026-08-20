@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import java.text.Normalizer
 import java.time.LocalDate
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** A verified external account identity used only after the real profile UUID is known. */
@@ -23,8 +24,12 @@ data class BlaBlaDomRideCandidate(
     val price: String = "",
     val dateText: String = "",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
-    val passengerRosterComplete: Boolean = false,
-)
+    @SerialName("passengerRosterComplete")
+    val passengerRosterReportedComplete: Boolean = false,
+) {
+    val passengerRosterComplete: Boolean
+        get() = false
+}
 
 @Serializable
 data class BlaBlaDomTripDetail(
@@ -120,15 +125,12 @@ object BlaBlaDomNormalizer {
             uuid_validation = uuidValidation,
             passengers = passengers,
             booked_seats = passengers.sumOf(BlaBlaCollectorPassenger::seats),
-            passenger_roster_complete = detail.passengerRosterComplete || candidate.passengerRosterComplete,
+            passenger_roster_complete = false,
         )
     }
 
     fun parseDate(textRaw: String, today: LocalDate = LocalDate.now()): LocalDate? {
         val text = normalize(textRaw)
-
-        // Highest authority: structured ISO values and any date that explicitly carries a year.
-        // An explicit year is never shifted by inference rules.
         isoDateRegex.find(text)?.let { match ->
             explicitDate(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].toInt())?.let { return it }
         }
@@ -151,7 +153,6 @@ object BlaBlaDomNormalizer {
         if (Regex("\\bhoje\\b").containsMatchIn(text)) return today
         if (Regex("\\bamanha\\b").containsMatchIn(text)) return today.plusDays(1)
 
-        // Only when the source genuinely omits the year do we infer the closest sensible year.
         numericDateRegex.findAll(text)
             .firstOrNull { it.groupValues[3].isBlank() }
             ?.let { match ->
