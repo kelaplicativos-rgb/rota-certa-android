@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
@@ -28,6 +29,7 @@ fun QuickPassengerPanel(
     onChanged: (String) -> Unit,
     onBlaBlaSyncRequested: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     val stops = trip.stops.sortedBy(TripStop::order)
     if (stops.size < 2) return
     val scope = rememberCoroutineScope()
@@ -88,8 +90,22 @@ fun QuickPassengerPanel(
                     if (syncOnline) TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
                     store.saveBooking(plan.passenger)
                 }.onSuccess {
+                    val external = if (onBlaBlaSyncRequested != null) {
+                        BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking(
+                            context = context,
+                            trip = trip,
+                            booking = plan.passenger,
+                            seatDelta = -plan.passenger.seats,
+                        )
+                    } else null
                     name = ""; contact = ""; seats = 1
-                    onChanged("Passageiro particular adicionado. Ocupação recalculada.")
+                    onChanged(
+                        if (external != null) {
+                            "Passageiro particular adicionado. Ocupação interna recalculada • sincronizando ${plan.passenger.seats} vaga(s) no BlaBlaCar…"
+                        } else {
+                            "Passageiro particular adicionado. Ocupação interna recalculada • sincronização externa pendente ⚠️"
+                        },
+                    )
                     onBlaBlaSyncRequested?.invoke()
                 }.onFailure { error = "Não foi possível salvar: ${it.message}" }
                 busy = false
@@ -110,7 +126,21 @@ fun QuickPassengerPanel(
                         scope.launch {
                             runCatching { store.saveBooking(booking.copy(status = BookingStatus.CANCELLED)) }
                                 .onSuccess {
-                                    onChanged("Passageiro removido e vaga liberada.")
+                                    val external = if (onBlaBlaSyncRequested != null) {
+                                        BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking(
+                                            context = context,
+                                            trip = trip,
+                                            booking = booking,
+                                            seatDelta = booking.seats,
+                                        )
+                                    } else null
+                                    onChanged(
+                                        if (external != null) {
+                                            "Passageiro manual removido. Vaga interna liberada • devolvendo ${booking.seats} vaga(s) ao BlaBlaCar…"
+                                        } else {
+                                            "Passageiro manual removido. Vaga interna liberada • sincronização externa pendente ⚠️"
+                                        },
+                                    )
                                     onBlaBlaSyncRequested?.invoke()
                                 }
                                 .onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
