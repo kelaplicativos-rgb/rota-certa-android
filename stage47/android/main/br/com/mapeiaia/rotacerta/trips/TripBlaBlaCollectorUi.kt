@@ -42,6 +42,8 @@ fun BlaBlaCollectorPanel(
 
     HorizontalDivider()
     Text("Perfis BlaBlaCar")
+    Text("Modo de identificação — Automático (UUID + nome)")
+    Text("Informe o UUID. O coletor descobre o nome público automaticamente e só confirma a identidade quando o mesmo UUID é validado no detalhe da viagem.")
     OutlinedTextField(
         value = profile1,
         onValueChange = { profile1 = it.trim().take(36) },
@@ -152,6 +154,13 @@ fun BlaBlaCollectorPanel(
         val validated = coverage.validated_queries
         val requested = coverage.requested_queries
         val icon = if (response.status == "validated") "✅" else "⏳"
+        if (response.profiles.isNotEmpty()) {
+            Text("Perfis identificados automaticamente")
+            response.profiles.forEach { profile ->
+                val publicName = profile.name.ifBlank { "Nome público não resolvido" }
+                Text("$publicName — ${profile.uuid}")
+            }
+        }
         Text("$icon ${response.month ?: ""} • ${response.trips.size} viagem(ns) • $validated/$requested consultas")
         if (!coverage.global_profile_month_complete) {
             Text("Escopo: rotas dinâmicas da Agenda. UUID valida o perfil; não presume rotas que não foram pesquisadas.")
