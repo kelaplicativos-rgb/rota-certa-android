@@ -18,8 +18,8 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
-new_code = "versionCode = 5525"
-new_name = 'versionName = "0.1.232"'
+new_code = "versionCode = 5526"
+new_name = 'versionName = "0.1.233"'
 
 if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
@@ -154,9 +154,9 @@ once(
     "identity DOM and resource UUID evidence",
 )
 
-# Keep Step7 as the same stage/version and layer the consolidated card behavior
-# only after the identity/session materialization above. This preserves the
-# validated Step6/Step7 chain and avoids duplicating the collector or FAROL.
+# Keep Step7 as the same stage and layer consolidated card behavior only after
+# the identity/session materialization above. Version 0.1.233 adds Timeline
+# organization only; it does not restart Step6/Step7 or touch the FAROL.
 def run_sibling_patcher(filename: str) -> None:
     patcher = Path(__file__).with_name(filename)
     if not patcher.is_file():
@@ -172,9 +172,11 @@ def run_sibling_patcher(filename: str) -> None:
 
 run_sibling_patcher("apply_stage47_r4_step7_card_navigation.py")
 run_sibling_patcher("apply_stage47_r4_step7_card_local_manage.py")
+run_sibling_patcher("apply_stage47_r4_step7_timeline_future_archive.py")
 
 print(
-    "stage47_r4_step7_version=PASS version=0.1.232/5525 "
+    "stage47_r4_step7_version=PASS version=0.1.233/5526 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
-    "exact_trip_cards=true local_blablacar_merge=true local_manage_agenda=true"
+    "exact_trip_cards=true local_blablacar_merge=true local_manage_agenda=true "
+    "future_chronological_timeline=true full_date=true archive_local_only=true"
 )
