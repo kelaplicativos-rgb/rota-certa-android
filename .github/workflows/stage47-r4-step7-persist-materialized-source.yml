@@ -55,21 +55,39 @@ jobs:
           mkdir -p materialized
           tar -xzf snapshot/stage47-materialized-source-0.1.238-v2.tar.gz -C materialized
           FAROL_REL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          test "$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          test "$(sha256sum "materialized/$FAROL_REL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          CURRENT_FAROL="$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')"
+          SNAPSHOT_FAROL="$(sha256sum "materialized/$FAROL_REL" | awk '{print $1}')"
+          echo "check_current_farol=$CURRENT_FAROL"
+          echo "check_snapshot_farol=$SNAPSHOT_FAROL"
+          test "$CURRENT_FAROL" = "$PROTECTED_FAROL_SHA256"
+          echo 'check_current_farol=PASS'
+          test "$SNAPSHOT_FAROL" = "$PROTECTED_FAROL_SHA256"
+          echo 'check_snapshot_farol=PASS'
           rsync -a --delete \
             --exclude='src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' \
             materialized/app/ repo/app/
-          test "$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          echo 'check_rsync=PASS'
+          AFTER_FAROL="$(sha256sum "repo/$FAROL_REL" | awk '{print $1}')"
+          echo "check_after_farol=$AFTER_FAROL"
+          test "$AFTER_FAROL" = "$PROTECTED_FAROL_SHA256"
+          echo 'check_after_farol=PASS'
           git -C repo diff --exit-code -- "$FAROL_REL"
-          grep -Fq 'versionCode = 5531' repo/app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.238"' repo/app/build.gradle.kts
+          echo 'check_farol_git_diff=PASS'
+          grep -F 'versionCode = 5531' repo/app/build.gradle.kts
+          echo 'check_version_code=PASS'
+          grep -F 'versionName = "0.1.238"' repo/app/build.gradle.kts
+          echo 'check_version_name=PASS'
           test -s repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          echo 'check_timeline_source=PASS'
           test -s repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          grep -Fq '+ Passageiro rápido' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_EXTERNAL_ENTRY' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
-          git -C repo status --short
+          echo 'check_trips_activity_source=PASS'
+          grep -F '+ Passageiro rápido' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt | head -n1
+          echo 'check_quick_passenger_marker=PASS'
+          grep -F 'TIMELINE_EXTERNAL_ENTRY' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt | head -n1
+          echo 'check_external_marker=PASS'
+          git -C repo status --short | head -n 60
           test -n "$(git -C repo status --porcelain -- app)"
+          echo 'check_app_has_materialized_delta=PASS'
 
       - name: Commit persisted app source to this branch
         run: |
