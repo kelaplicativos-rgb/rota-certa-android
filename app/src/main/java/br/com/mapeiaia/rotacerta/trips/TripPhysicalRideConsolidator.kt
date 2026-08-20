@@ -16,11 +16,51 @@ data class TimelineGeoPoint(val latitude: Double, val longitude: Double)
 
 object TripTimelineGeoResolver {
     /**
-     * Text-only geocoding is intentionally not a continuity authority. Trusted
-     * TripStop/device coordinates will feed this map in a later Base-aware step.
+     * Text-only geocoding is intentionally not a continuity authority. Only
+     * coordinates already persisted on trusted TripStop records may feed this
+     * map. A label with conflicting coordinates fails closed.
      */
-    suspend fun resolve(@Suppress("UNUSED_PARAMETER") context: Context, @Suppress("UNUSED_PARAMETER") places: Collection<String>): Map<String, TimelineGeoPoint> =
-        emptyMap()
+    suspend fun resolve(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        places: Collection<String>,
+        trustedStops: Collection<TripStop> = emptyList(),
+    ): Map<String, TimelineGeoPoint> = resolveTrustedStops(places, trustedStops)
+
+    internal fun resolveTrustedStops(
+        places: Collection<String>,
+        trustedStops: Collection<TripStop>,
+    ): Map<String, TimelineGeoPoint> {
+        val candidatesByKey = mutableMapOf<String, MutableList<TimelineGeoPoint>>()
+        trustedStops.forEach { stop ->
+            val lat = stop.latitude ?: return@forEach
+            val lon = stop.longitude ?: return@forEach
+            if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return@forEach
+            val point = TimelineGeoPoint(lat, lon)
+            listOf(stop.name, stop.address)
+                .asSequence()
+                .map(::geoPlaceKey)
+                .filter(String::isNotBlank)
+                .distinct()
+                .forEach { key -> candidatesByKey.getOrPut(key) { mutableListOf() } += point }
+        }
+
+        return buildMap {
+            places.distinct().forEach { place ->
+                val key = geoPlaceKey(place)
+                if (key.isBlank()) return@forEach
+                val distinct = candidatesByKey[key]
+                    .orEmpty()
+                    .distinctBy { point -> point.latitude to point.longitude }
+                if (distinct.size == 1) put(place, distinct.single())
+            }
+        }
+    }
+
+    private fun geoPlaceKey(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim()
 }
 
 /**
