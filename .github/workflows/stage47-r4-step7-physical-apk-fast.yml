@@ -98,11 +98,40 @@ jobs:
               raise SystemExit(f'0.1.186 final Gradle template anchor count={text.count(needle)}')
           wrapper.write_text(text.replace(needle, replacement_0186, 1), encoding='utf-8')
 
+          injector = scripts / 'inject_build_rota_certa_0187.py'
+          inject_text = injector.read_text(encoding='utf-8')
+          cleanup_anchor = 'text = path.read_text(encoding="utf-8")\n\napply_block = r'
+          cleanup_code = '''text = path.read_text(encoding="utf-8")
+          fast_guard_start = 'if [[ "${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}" == "1" ]]; then'
+          if text.count(fast_guard_start) != 1:
+              raise SystemExit(f"Fast 0.1.186 guard count was {text.count(fast_guard_start)}, expected exactly one")
+          fast_guard_start_index = text.index(fast_guard_start)
+          fast_gradle_marker = 'if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace'
+          fast_gradle_index = text.index(fast_gradle_marker, fast_guard_start_index)
+          text = text[:fast_guard_start_index] + text[fast_gradle_index:]
+
+          apply_block = r'''
+          if inject_text.count(cleanup_anchor) != 1:
+              raise SystemExit(f'0.1.187 cleanup anchor count={inject_text.count(cleanup_anchor)}')
+          inject_text = inject_text.replace(cleanup_anchor, cleanup_code, 1)
+
+          replacement_anchor = "replacement = apply_block + match.group('indent') + match.group('command')"
+          guard_0187 = '''if [[ "${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+            echo "Stage47 fast materialization: 0.1.187 source mutations complete; Gradle validation skipped"
+            exit 0
+          fi
+          '''
+          relocated = f"fast_guard_0187 = {guard_0187!r}\nreplacement = apply_block + fast_guard_0187 + match.group('indent') + match.group('command')"
+          if inject_text.count(replacement_anchor) != 1:
+              raise SystemExit(f'0.1.187 replacement anchor count={inject_text.count(replacement_anchor)}')
+          injector.write_text(inject_text.replace(replacement_anchor, relocated, 1), encoding='utf-8')
+
           print('stage47_fast_historical_scripts_patched=' + str(len(patched)) + ' scripts=' + ','.join(patched))
           if not patched:
               raise SystemExit('No historical build scripts received fast materialization guard')
           PY
           bash -n historical19/scripts/build_rota_certa_0186.sh
+          python3 -m py_compile historical19/scripts/inject_build_rota_certa_0187.py
           printf 'fast_historical_runtime_suppression=READY step6_stage18_manifest_sha256=58443c3580854bfe76aed1eb2bb97c0a6f5449df8805cbf84aa6ce2780721705 step6_stage32_manifest_sha256=066d1b496f97aeecb68a3e2f155b00e12b8ca46577ab327b9dbf78516a2d0018\n' | tee evidence/fast-materializer-ready.txt
 
       - name: Materialize Stage46 R8 plus Agenda R2/R3 plus R4 Steps1-7
