@@ -139,12 +139,13 @@ jobs:
             unzip -p "$APK" "$dex" | strings >> evidence/dex-strings.txt
           done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
+          # Keep APK/Dex inspection to ASCII-safe runtime markers. The Unicode
+          # direction labels are already verified in persisted app/src above
+          # and exercised by TripTimelineBaseDirectionStage47Test.
           grep -Fq 'TIMELINE_EXTERNAL_CAPACITY_CONFIGURED' evidence/dex-strings.txt
           grep -Fq 'external_seat_write_claimed=false' evidence/dex-strings.txt
           grep -Fq 'Perfil/viagem:' evidence/dex-strings.txt
           grep -Fq 'Salvar capacidade interna' evidence/dex-strings.txt
-          grep -Fq 'Ida • saindo da base' evidence/dex-strings.txt
-          grep -Fq 'Volta • retornando à base' evidence/dex-strings.txt
 
           sha256sum "$APK" | tee evidence/apk-sha256.txt
           APK_SHA="$(awk '{print $1}' evidence/apk-sha256.txt)"
@@ -161,6 +162,7 @@ jobs:
           stage47_materializer_used=false
           farol_sha256=$FAROL_SHA
           external_seat_write_claimed=false
+          direction_labels_verified_by_source_and_tests=true
           apk_sha256=$APK_SHA
           merge=false
           release=false
