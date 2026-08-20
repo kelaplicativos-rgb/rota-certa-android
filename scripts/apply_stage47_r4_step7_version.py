@@ -18,8 +18,8 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
-new_code = "versionCode = 5529"
-new_name = 'versionName = "0.1.236"'
+new_code = "versionCode = 5530"
+new_name = 'versionName = "0.1.237"'
 
 if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
@@ -29,8 +29,6 @@ build.write_text(text.replace(old_code, new_code, 1).replace(old_name, new_name,
 if not dynamic.is_file():
     raise SystemExit(f"missing materialized Stage47 dynamic account source: {dynamic}")
 
-# Physical-test UX: keep the real authenticated BlaBlaCar WebView visible while
-# synchronization is running. The small Stage47 status line stays above it.
 once(
     dynamic,
 '''        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
@@ -62,10 +60,6 @@ once(
     "visible sync WebView",
 )
 
-# The authenticated profile page may not repeat the driver's UUID inside a
-# profile anchor. For an account that already has a canonical UUID, inspect the
-# rendered authenticated DOM plus same-page resource/navigation URLs and only
-# confirm when that exact expected UUID is present.
 once(
     dynamic,
 '''private data class DynamicIdentityEvidence(
@@ -151,8 +145,6 @@ once(
     "identity DOM and resource UUID evidence",
 )
 
-# Keep Step7 as the same stage. Every later patch is layered after the proven
-# identity/session materialization; none touches the FAROL.
 def run_sibling_patcher(filename: str) -> None:
     patcher = Path(__file__).with_name(filename)
     if not patcher.is_file():
@@ -174,14 +166,17 @@ run_sibling_patcher("apply_stage47_r4_step7_passenger_contact_capture.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_card_identity.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_autosync.py")
 run_sibling_patcher("apply_stage47_r4_step7_autosync_scope_fix.py")
+run_sibling_patcher("apply_stage47_r4_step7_post_0236_stabilization.py")
 
 print(
-    "stage47_r4_step7_version=PASS version=0.1.236/5529 "
+    "stage47_r4_step7_version=PASS version=0.1.237/5530 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
     "exact_trip_card_click=true manage_button_removed=true clean_cards=true "
     "visible_blablacar_passengers=true booked_seats=true private_passenger_simple=true "
     "passenger_contact_capture=true passenger_name_phone_card=true passenger_whatsapp_click=true phone_primary_identity=true "
     "auto_account_sync_after_passenger_change=true autosync_scope_fix=true seat_write_not_claimed=true "
-    "geo_corridor_merge=true overbooking_urgent=true future_chronological_timeline=true "
-    "archive_local_only=true"
+    "stale_callback_guard=true index_bounded=true sync_end_idempotent=true snapshot_once=true "
+    "generic_href_not_identity=true safe_identity_diagnostics=true missing_geo_unknown=true "
+    "country_neutral_core=true phone_country_not_invented=true focused_regression_tests=true "
+    "future_chronological_timeline=true archive_local_only=true farol_touched=false base_touched=false"
 )
