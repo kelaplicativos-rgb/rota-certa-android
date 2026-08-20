@@ -67,22 +67,46 @@ jobs:
           echo 'farol_untouched=true'
           echo 'direct_source_authority=PASS'
 
-      - name: Run focused direct-source tests
+      - name: Run focused direct-source tests with transient repository retry
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          passed=false
+          for attempt in 1 2 3; do
+            echo "direct_source_test_attempt=$attempt"
+            if ./gradlew :app:testDebugUnitTest \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+              --no-daemon --max-workers=1 --no-parallel --stacktrace; then
+              passed=true
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Gradle dependency/test attempt failed; retrying transient repository access."
+              sleep $((attempt * 10))
+            fi
+          done
+          test "$passed" = true
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'direct_source_tests=PASS'
 
       - name: Assemble debug APK directly from branch source
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          passed=false
+          for attempt in 1 2 3; do
+            echo "direct_source_assemble_attempt=$attempt"
+            if ./gradlew :app:assembleDebug \
+              --no-daemon --max-workers=1 --no-parallel --stacktrace; then
+              passed=true
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Gradle assemble attempt failed; retrying transient repository access."
+              sleep $((attempt * 10))
+            fi
+          done
+          test "$passed" = true
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s app/build/outputs/apk/debug/app-debug.apk
           echo 'direct_source_assemble_debug=PASS'
