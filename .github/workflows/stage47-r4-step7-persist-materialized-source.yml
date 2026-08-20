@@ -81,7 +81,7 @@ jobs:
           grep -F 'TIMELINE_EXTERNAL_ENTRY' repo/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt | head -n1
           echo 'stage47_persisted_source_markers=PASS'
 
-          git -C repo status --short | head -n 80
+          git -C repo status --short | sed -n '1,80p'
           test -n "$(git -C repo status --porcelain -- app)"
           echo 'stage47_materialized_app_delta=PASS'
 
