@@ -1,0 +1,44 @@
+name: Stage47 source snapshot PR dispatcher
+
+on:
+  pull_request:
+    branches:
+      - agent/stage47-r4-unified-occupancy-step6-validation-apk
+    types: [synchronize, opened, reopened]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-source-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch source-only snapshot and expose run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run stage47-r4-step7-source-snapshot.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$HEAD_BRANCH"
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            RUN_ID="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow stage47-r4-step7-source-snapshot.yml \
+              --branch "$HEAD_BRANCH" \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,headSha \
+              --jq '.[] | select(.headSha == env.HEAD_SHA) | .databaseId' | head -n1)"
+            [[ -n "$RUN_ID" ]] && break
+            sleep 2
+          done
+          echo "stage47_source_snapshot_run_id=${RUN_ID:-not-found}"
+          echo "stage47_source_snapshot_head=$HEAD_SHA"
+          echo "apk_generated=false"
+          test -n "$RUN_ID"
