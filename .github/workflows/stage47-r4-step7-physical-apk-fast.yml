@@ -188,35 +188,36 @@ jobs:
           sha256sum "$FAROL" > "$EVIDENCE/farol-after.sha256"
           cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          grep -Fq 'versionCode = 5528' "$SOURCE/app/build.gradle.kts"
-          grep -Fq 'versionName = "0.1.235"' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionCode = 5529' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.236"' "$SOURCE/app/build.gradle.kts"
           grep -Fq 'AUTO_SYNC_REQUESTED' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt"
           grep -Fq 'PASSENGER_WHATSAPP_OPEN' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt"
-          printf 'stage47_r4_step7_fast_materialization=PASS version=0.1.235/5528 farol_untouched=true automatic_identity=true clean_cards=true manage_button_removed=true real_visible_occupancy=true passenger_whatsapp_explicit=true auto_account_sync_after_passenger_change=true seat_write_not_claimed=true geo_corridor_merge=true archive_local_only=true historical_runtime_skipped=true step6_manifests_byte_verified=true\n' | tee "$EVIDENCE/materialization-status.txt"
+          grep -Fq 'PASSENGER_CONTACT_CAPTURED' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt"
+          printf 'stage47_r4_step7_fast_materialization=PASS version=0.1.236/5529 farol_untouched=true automatic_identity=true clean_cards=true manage_button_removed=true real_visible_occupancy=true passenger_contact_capture=true passenger_whatsapp_explicit=true auto_account_sync_after_passenger_change=true seat_write_not_claimed=true geo_corridor_merge=true archive_local_only=true historical_runtime_skipped=true step6_manifests_byte_verified=true\n' | tee "$EVIDENCE/materialization-status.txt"
 
       - name: Assemble physical-test candidate
         run: |
           set -euo pipefail
           cd source
           ./gradlew --no-daemon assembleDebug 2>&1 | tee ../evidence/gradle-assemble-step7-fast.log
-          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.235.apk
+          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.236.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
           SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee ../evidence/badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5528' versionName='0.1.235'" ../evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5529' versionName='0.1.236'" ../evidence/badging.txt
           "$SIGN" verify --verbose --print-certs "$APK" | tee ../evidence/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ../evidence/signature.txt
           unzip -t "$APK" > ../evidence/zip.txt
           sha256sum "$APK" | tee ../evidence/apk-sha256.txt
           sha512sum "$APK" | tee ../evidence/apk-sha512.txt
-          printf 'stage47_r4_step7_physical_candidate=PASS version=0.1.235/5528 assemble=PASS signature_v2=PASS farol_untouched=true passenger_whatsapp_explicit=true auto_account_sync_after_passenger_change=true seat_write_not_claimed=true clean_cards=true manage_button_removed=true real_visible_occupancy=true geo_corridor_merge=true archive_local_only=true historical_materialization_byte_verified=true not_release=true\n' | tee ../evidence/final-status.txt
+          printf 'stage47_r4_step7_physical_candidate=PASS version=0.1.236/5529 assemble=PASS signature_v2=PASS farol_untouched=true passenger_contact_capture=true passenger_whatsapp_explicit=true auto_account_sync_after_passenger_change=true seat_write_not_claimed=true clean_cards=true manage_button_removed=true real_visible_occupancy=true geo_corridor_merge=true archive_local_only=true historical_materialization_byte_verified=true not_release=true\n' | tee ../evidence/final-status.txt
 
       - name: Upload physical-test APK and evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-r4-step7-0.1.235
+          name: rota-certa-stage47-r4-step7-0.1.236
           path: evidence/
           if-no-files-found: error
           retention-days: 30
