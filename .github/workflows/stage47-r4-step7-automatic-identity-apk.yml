@@ -114,10 +114,13 @@ jobs:
           python3 "$PATCHES/scripts/apply_stage47_r4_step7_version.py" "$SOURCE"
           sha256sum "$FAROL" > "$EVIDENCE/farol-after.sha256"
           cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
-          grep -Fq 'versionCode = 5529' "$SOURCE/app/build.gradle.kts"
-          grep -Fq 'versionName = "0.1.236"' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionCode = 5530' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.237"' "$SOURCE/app/build.gradle.kts"
           grep -Fq 'PASSENGER_CONTACT_CAPTURED' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt"
-          printf 'stage47_r4_step7_materialization=PASS version=0.1.236/5529 farol_untouched=true automatic_identity=true passenger_contact_capture=true future_chronological_timeline=true archive_local_only=true\n' | tee "$EVIDENCE/materialization-status.txt"
+          grep -Fq 'STALE_CALLBACK_IGNORED' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt"
+          grep -Fq 'TRIP_IDENTITY' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt"
+          grep -Fq 'TIMELINE_EXTERNAL_ENTRY' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt"
+          printf 'stage47_r4_step7_materialization=PASS version=0.1.237/5530 farol_untouched=true automatic_identity=true passenger_contact_capture=true stale_callback_guard=true stable_trip_identity=true passenger_timeline_diagnostic=true country_neutral_core=true future_chronological_timeline=true archive_local_only=true\n' | tee "$EVIDENCE/materialization-status.txt"
 
       - name: Validate backend contracts
         run: |
@@ -132,18 +135,18 @@ jobs:
           set -euo pipefail
           cd source
           ./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' lintDebug assembleDebug | tee ../evidence/gradle-step7.log
-          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.236.apk
+          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.237.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
           SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee ../evidence/badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5529' versionName='0.1.236'" ../evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5530' versionName='0.1.237'" ../evidence/badging.txt
           "$SIGN" verify --verbose --print-certs "$APK" | tee ../evidence/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ../evidence/signature.txt
           unzip -t "$APK" | tee ../evidence/zip.txt
           sha256sum "$APK" | tee ../evidence/apk-sha256.txt
           sha512sum "$APK" | tee ../evidence/apk-sha512.txt
-          printf 'stage47_r4_step7_apk=PASS version=0.1.236/5529 trip_tests=PASS lint=PASS assemble=PASS signature_v2=PASS automatic_identity=true passenger_contact_capture=true future_chronological_timeline=true archive_local_only=true\n' | tee ../evidence/final-status.txt
+          printf 'stage47_r4_step7_apk=PASS version=0.1.237/5530 trip_tests=PASS lint=PASS assemble=PASS signature_v2=PASS automatic_identity=true passenger_contact_capture=true stale_callback_guard=true stable_trip_identity=true country_neutral_core=true future_chronological_timeline=true archive_local_only=true\n' | tee ../evidence/final-status.txt
 
       - name: Collector deployment readiness
         run: |
@@ -158,7 +161,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-r4-step7-0.1.236
+          name: rota-certa-stage47-r4-step7-0.1.237
           path: evidence/
           if-no-files-found: error
           retention-days: 30
