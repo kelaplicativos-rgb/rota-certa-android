@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.240
+name: Stage47 direct-source physical APK 0.1.241
 
 on:
   pull_request:
@@ -18,8 +18,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5533'
-      EXPECTED_VERSION_NAME: '0.1.240'
+      EXPECTED_VERSION_CODE: '5534'
+      EXPECTED_VERSION_NAME: '0.1.241'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -43,6 +43,8 @@ jobs:
           UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
           ACTIVITY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
           DIRECTION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt'
+          COLLECTOR='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          PARSER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt'
           TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt'
           DIRECTION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirectionStage47Test.kt'
 
@@ -52,6 +54,8 @@ jobs:
           test -s "$UI"
           test -s "$ACTIVITY"
           test -s "$DIRECTION"
+          test -s "$COLLECTOR"
+          test -s "$PARSER"
           test -s "$TEST"
           test -s "$DIRECTION_TEST"
           grep -Fq 'timelineQuickPassengerOptions(entries, trips)' "$UI"
@@ -65,6 +69,11 @@ jobs:
           grep -Fq 'Ida • saindo da base' "$DIRECTION"
           grep -Fq 'Volta • retornando à base' "$DIRECTION"
           grep -Fq 'Neutra • não envolve a base' "$DIRECTION"
+          grep -Fq 'RIDES_BATCH_EVIDENCE' "$COLLECTOR"
+          grep -Fq 'TRIP_BATCH_READY' "$COLLECTOR"
+          grep -Fq 'TRIP_DETAIL_FALLBACK' "$COLLECTOR"
+          grep -Fq 'passengerRosterReportedComplete' "$PARSER"
+          grep -Fq 'passenger_roster_complete = false' "$PARSER"
           ! grep -Fq 'val options = entries.mapNotNull' "$UI"
 
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
@@ -139,13 +148,13 @@ jobs:
             unzip -p "$APK" "$dex" | strings >> evidence/dex-strings.txt
           done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
-          # Keep APK/Dex inspection to ASCII-safe runtime markers. The Unicode
-          # direction labels are already verified in persisted app/src above
-          # and exercised by TripTimelineBaseDirectionStage47Test.
           grep -Fq 'TIMELINE_EXTERNAL_CAPACITY_CONFIGURED' evidence/dex-strings.txt
           grep -Fq 'external_seat_write_claimed=false' evidence/dex-strings.txt
           grep -Fq 'Perfil/viagem:' evidence/dex-strings.txt
           grep -Fq 'Salvar capacidade interna' evidence/dex-strings.txt
+          grep -Fq 'RIDES_BATCH_EVIDENCE' evidence/dex-strings.txt
+          grep -Fq 'TRIP_BATCH_READY' evidence/dex-strings.txt
+          grep -Fq 'TRIP_DETAIL_FALLBACK' evidence/dex-strings.txt
 
           sha256sum "$APK" | tee evidence/apk-sha256.txt
           APK_SHA="$(awk '{print $1}' evidence/apk-sha256.txt)"
@@ -162,6 +171,8 @@ jobs:
           stage47_materializer_used=false
           farol_sha256=$FAROL_SHA
           external_seat_write_claimed=false
+          batch_first_collector=true
+          passenger_roster_fail_closed=true
           direction_labels_verified_by_source_and_tests=true
           apk_sha256=$APK_SHA
           merge=false
@@ -173,7 +184,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-direct-source-0.1.240
+          name: rota-certa-stage47-direct-source-0.1.241
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
