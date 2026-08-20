@@ -53,7 +53,7 @@ jobs:
           grep -Fq 'external_seat_write_claimed=false' "$UI"
           grep -Fq 'canonicalTimelineProfileUuid(entry)' "$UI"
           grep -Fq 'findExistingTimelineBackingTrip(entry, store.trips())' "$UI"
-          grep -Fq 'ResponsiveTripAction("Nova viagem", onCreateTrip)' "$UI"
+          grep -Fq 'ResponsiveTripAction("Nova viagem", onClick = onCreateTrip)' "$UI"
           grep -Fq 'timelineBaseDirectionLabel(entry, trip, directionGeo' "$UI"
           grep -Fq 'else -> TripScreen.TIMELINE' "$ACTIVITY"
           grep -Fq 'Ida • saindo da base' "$DIRECTION"
