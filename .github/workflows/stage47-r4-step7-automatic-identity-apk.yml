@@ -114,9 +114,9 @@ jobs:
           python3 "$PATCHES/scripts/apply_stage47_r4_step7_version.py" "$SOURCE"
           sha256sum "$FAROL" > "$EVIDENCE/farol-after.sha256"
           cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
-          grep -Fq 'versionCode = 5525' "$SOURCE/app/build.gradle.kts"
-          grep -Fq 'versionName = "0.1.232"' "$SOURCE/app/build.gradle.kts"
-          printf 'stage47_r4_step7_materialization=PASS version=0.1.232/5525 farol_untouched=true automatic_identity=true\n' | tee "$EVIDENCE/materialization-status.txt"
+          grep -Fq 'versionCode = 5526' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.233"' "$SOURCE/app/build.gradle.kts"
+          printf 'stage47_r4_step7_materialization=PASS version=0.1.233/5526 farol_untouched=true automatic_identity=true future_chronological_timeline=true archive_local_only=true\n' | tee "$EVIDENCE/materialization-status.txt"
 
       - name: Validate backend contracts
         run: |
@@ -131,18 +131,18 @@ jobs:
           set -euo pipefail
           cd source
           ./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' lintDebug assembleDebug | tee ../evidence/gradle-step7.log
-          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.232.apk
+          APK=../evidence/Rota-Certa-Agenda-Linha-do-Tempo-R4-Step7-0.1.233.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
           SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
           "$AAPT" dump badging "$APK" | tee ../evidence/badging.txt
-          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5525' versionName='0.1.232'" ../evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5526' versionName='0.1.233'" ../evidence/badging.txt
           "$SIGN" verify --verbose --print-certs "$APK" | tee ../evidence/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ../evidence/signature.txt
           unzip -t "$APK" | tee ../evidence/zip.txt
           sha256sum "$APK" | tee ../evidence/apk-sha256.txt
           sha512sum "$APK" | tee ../evidence/apk-sha512.txt
-          printf 'stage47_r4_step7_apk=PASS version=0.1.232/5525 trip_tests=PASS lint=PASS assemble=PASS signature_v2=PASS automatic_identity=true\n' | tee ../evidence/final-status.txt
+          printf 'stage47_r4_step7_apk=PASS version=0.1.233/5526 trip_tests=PASS lint=PASS assemble=PASS signature_v2=PASS automatic_identity=true future_chronological_timeline=true archive_local_only=true\n' | tee ../evidence/final-status.txt
 
       - name: Collector deployment readiness
         run: |
@@ -157,7 +157,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-r4-step7-0.1.232
+          name: rota-certa-stage47-r4-step7-0.1.233
           path: evidence/
           if-no-files-found: error
           retention-days: 30
