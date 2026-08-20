@@ -1,14 +1,62 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:restoreAnyVersion="false"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <activity
+            android:name=".InstalledRideAppPickerActivity"
+            android:exported="false"
+            android:label="Aplicativos que ativam a leitura" />
+        <activity
+            android:name=".QuickRepliesActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="Respostas rápidas" />
+        <activity
+            android:name=".QuickLinksActivity"
+            android:exported="false"
+            android:label="Links rápidos" />
+        <activity
+            android:name=".MessageTemplatesActivity"
+            android:exported="false"
+            android:label="Frases predefinidas" />
+        <activity
+            android:name=".WorkTrackingActivity"
+            android:exported="false"
+            android:label="Rastreamento de trabalho" />
+        <activity
+            android:name=".FinancialActivity"
+            android:exported="false"
+            android:label="Controle financeiro" />
+<activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
@@ -16,6 +64,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".WorkTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <service
             android:name=".LiveRideAccessibilityService"
             android:exported="true"
@@ -28,5 +80,50 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/rota_certa_accessibility" />
         </service>
+    
+        <!-- STAGE47_TRIP_CALENDAR_BOOKING: isolated from FAROL/accessibility pipeline. -->
+        <activity
+            android:name=".trips.TripsActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rotacerta" android:host="trips" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".trips.TripQuickTileService"
+            android:exported="true"
+            android:label="Agenda de Viagens"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".trips.TripWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/trip_widget_info_stage47" />
+        </receiver>
+        <provider
+            android:name=".trips.TripIcsFileProvider"
+            android:authorities="${applicationId}.tripfiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/trip_file_paths_stage47" />
+        </provider>
+    
+        <!-- STAGE47_BLABLACAR_DYNAMIC_MULTI_PROFILE: user-created isolated sessions; no pre-seeded accounts. -->
+        <activity
+            android:name=".trips.BlaBlaDynamicAccountSessionActivity"
+            android:exported="false" />
     </application>
 </manifest>

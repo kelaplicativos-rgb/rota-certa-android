@@ -10,6 +10,7 @@ class DecisionEngine {
         fullText: String,
         homeDistanceKm: Double? = null,
         alternativeDistanceKm: Double? = null,
+        alternativeLabel: String? = null,
     ): AnalysisResult {
         val destinationText = fields.destination.orEmpty()
         if (destinationText.isBlank()) {
@@ -20,36 +21,39 @@ class DecisionEngine {
             return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
         }
 
-        if (destinationCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada confiavel.")
+        val hasExactAddressRoute = homeDistanceKm != null || alternativeDistanceKm != null
+        if (destinationCoordinate == null && !hasExactAddressRoute) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Destino final identificado, mas sem coordenada ou rota exata confiavel.")
         }
 
         if (homeCoordinate == null && alternativeCoordinate == null) {
-            return result(fields, fullText, Recommendation.InsufficientData, "Configure a casa ou o alfinete com coordenada confiavel.")
+            return result(fields, fullText, Recommendation.InsufficientData, "Configure a Casa ou pelo menos um alfinete com coordenada confiavel.")
         }
 
-        val distanceToHome = homeCoordinate?.let { homeDistanceKm ?: haversineKm(destinationCoordinate, it) }
-        val distanceToAlternative = alternativeCoordinate?.let { alternativeDistanceKm ?: haversineKm(destinationCoordinate, it) }
-
-        if (distanceToHome == null && distanceToAlternative == null) {
+        val needsHomeDistance = homeCoordinate != null
+        val needsAlternativeDistance = alternativeCoordinate != null
+        if ((needsHomeDistance && homeDistanceKm == null) || (needsAlternativeDistance && alternativeDistanceKm == null)) {
             return result(
                 fields = fields,
                 fullText = fullText,
                 recommendation = Recommendation.InsufficientData,
-                reason = "Nao foi possivel calcular a distancia do destino final.",
+                reason = "Distancia real do Google Maps indisponivel; calculo em linha reta proibido.",
             )
         }
 
+        val distanceToHome = if (needsHomeDistance) homeDistanceKm else null
+        val distanceToAlternative = if (needsAlternativeDistance) alternativeDistanceKm else null
         val insideHome = distanceToHome != null && distanceToHome <= settings.homeRadiusKm
         val insideAlternative = distanceToAlternative != null && distanceToAlternative <= settings.alternativeRadiusKm
-        val usedApproximation = (homeCoordinate != null && homeDistanceKm == null) || (alternativeCoordinate != null && alternativeDistanceKm == null)
-        val distanceSource = if (usedApproximation) "aproximada" else "Google Maps"
+        val safeAlternativeLabel = alternativeLabel?.trim()?.takeIf { it.isNotBlank() } ?: "alfinete"
 
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
         val reason = when {
-            insideHome -> "Destino final dentro do raio da casa por distancia $distanceSource."
-            insideAlternative -> "Destino final dentro do raio do alfinete por distancia $distanceSource."
-            else -> "Destino final fora dos raios configurados por distancia $distanceSource."
+            insideHome && insideAlternative && distanceToHome!! <= distanceToAlternative!! ->
+                "Destino final dentro do raio da Casa por rota real do Google Maps."
+            insideAlternative -> "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
+            insideHome -> "Destino final dentro do raio da Casa por rota real do Google Maps."
+            else -> "Destino final fora dos raios configurados por rota real do Google Maps."
         }
 
         return result(
@@ -59,6 +63,82 @@ class DecisionEngine {
             reason = reason,
             pickupToHomeKm = distanceToHome,
             pickupToAlternativeKm = distanceToAlternative,
+        )
+    }
+
+    fun decideWorkRegion(
+        fields: RideFields,
+        settings: AppSettings,
+        fullText: String,
+        homeTargetActive: Boolean,
+        homeDistanceKm: Double?,
+        pinRoutes: List<WorkRegionPinRoute>,
+    ): AnalysisResult {
+        val destinationText = fields.destination.orEmpty()
+        if (destinationText.isBlank()) {
+            return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
+        }
+        if (hasAvoidedKeyword(destinationText, settings.avoidedKeywords)) {
+            return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
+        }
+
+        val activePins = if (settings.alternativeTargetEnabled) pinRoutes else emptyList()
+        if (!homeTargetActive && activePins.isEmpty()) {
+            return result(
+                fields,
+                fullText,
+                Recommendation.InsufficientData,
+                "Ligue Casa ou cadastre e ligue pelo menos um alfinete na regiao de trabalho.",
+            )
+        }
+
+        val insideCandidates = buildList {
+            if (homeTargetActive && homeDistanceKm != null && homeDistanceKm <= settings.homeRadiusKm) {
+                add(WorkRegionWinner("Casa", homeDistanceKm, isHome = true))
+            }
+            activePins.forEach { route ->
+                val distance = route.distanceKm ?: return@forEach
+                if (distance <= settings.alternativeRadiusKm) {
+                    add(WorkRegionWinner(route.pin.address, distance, isHome = false))
+                }
+            }
+        }
+        val nearestPinDistance = activePins.mapNotNull(WorkRegionPinRoute::distanceKm).minOrNull()
+        val winner = insideCandidates.minByOrNull(WorkRegionWinner::distanceKm)
+        if (winner != null) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.GoodRide,
+                reason = if (winner.isHome) {
+                    "Destino final dentro do raio da Casa por rota real do Google Maps."
+                } else {
+                    "Destino final dentro do raio do alfinete ${winner.label} por rota real do Google Maps."
+                },
+                pickupToHomeKm = homeDistanceKm,
+                pickupToAlternativeKm = nearestPinDistance,
+            )
+        }
+
+        val allExact = (!homeTargetActive || homeDistanceKm != null) && activePins.all { it.distanceKm != null }
+        if (!allExact) {
+            return result(
+                fields = fields,
+                fullText = fullText,
+                recommendation = Recommendation.InsufficientData,
+                reason = "Uma ou mais distancias exatas da regiao de trabalho ainda nao ficaram disponiveis.",
+                pickupToHomeKm = homeDistanceKm,
+                pickupToAlternativeKm = nearestPinDistance,
+            )
+        }
+
+        return result(
+            fields = fields,
+            fullText = fullText,
+            recommendation = Recommendation.OutsideRadius,
+            reason = "Destino final fora da Casa e de todos os alfinetes ligados por rota real do Google Maps.",
+            pickupToHomeKm = homeDistanceKm,
+            pickupToAlternativeKm = nearestPinDistance,
         )
     }
 
@@ -88,5 +168,9 @@ class DecisionEngine {
         pickupToAlternativeKm = pickupToAlternativeKm,
     )
 
-    private fun haversineKm(a: Coordinate, b: Coordinate): Double = GeoDistance.meters(a, b) / 1000.0
+    private data class WorkRegionWinner(
+        val label: String,
+        val distanceKm: Double,
+        val isHome: Boolean,
+    )
 }
