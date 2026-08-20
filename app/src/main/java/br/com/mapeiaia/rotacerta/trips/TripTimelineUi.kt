@@ -105,9 +105,9 @@ fun TripTimelineScreen(
         TextButton(onClick = onBack) { Text("Voltar") }
     }
     ResponsiveTripActions(listOf(
-        ResponsiveTripAction("Nova viagem", onCreateTrip),
-        ResponsiveTripAction("Fixar atalho", onPinShortcut),
-        ResponsiveTripAction("Integração online", onOpenOnlineSettings),
+        ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
+        ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
+        ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
         ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
         ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
     ))
