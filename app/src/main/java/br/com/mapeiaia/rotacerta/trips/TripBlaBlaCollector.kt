@@ -81,6 +81,7 @@ data class BlaBlaCollectorTrip(
     val uuid_validation: String = "unknown",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val booked_seats: Int = 0,
+    val passenger_roster_complete: Boolean = false,
 )
 
 internal data class BlaBlaTripIdentityEvidence(
@@ -137,6 +138,63 @@ internal object BlaBlaTripIdentity {
         .digest(value.toByteArray(Charsets.UTF_8))
         .take(16)
         .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
+internal object BlaBlaPassengerRosterReconciler {
+    fun reconcile(previous: BlaBlaCollectorTrip?, current: BlaBlaCollectorTrip): BlaBlaCollectorTrip {
+        val currentSeats = current.passengers.sumOf { it.seats.coerceAtLeast(1) }
+        if (current.passenger_roster_complete || previous == null) {
+            return current.copy(booked_seats = maxOf(current.booked_seats, currentSeats))
+        }
+
+        val merged = previous.passengers.toMutableList()
+        current.passengers.forEach { incoming ->
+            val matchIndex = merged.indexOfFirst { existing -> matches(existing, incoming) }
+            if (matchIndex < 0) {
+                merged += incoming
+            } else {
+                val existing = merged[matchIndex]
+                merged[matchIndex] = existing.copy(
+                    name = incoming.name.ifBlank { existing.name },
+                    seats = maxOf(existing.seats, incoming.seats),
+                    boarding = incoming.boarding?.takeIf(String::isNotBlank) ?: existing.boarding,
+                    dropoff = incoming.dropoff?.takeIf(String::isNotBlank) ?: existing.dropoff,
+                    phone = incoming.phone?.takeIf(String::isNotBlank) ?: existing.phone,
+                    booking_href = incoming.booking_href?.takeIf(String::isNotBlank) ?: existing.booking_href,
+                )
+            }
+        }
+        val mergedSeats = merged.sumOf { it.seats.coerceAtLeast(1) }
+        return current.copy(
+            passengers = merged,
+            booked_seats = maxOf(current.booked_seats, previous.booked_seats, mergedSeats),
+            passenger_roster_complete = false,
+        )
+    }
+
+    private fun matches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
+        val leftHref = left.booking_href?.trim().orEmpty()
+        val rightHref = right.booking_href?.trim().orEmpty()
+        if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
+
+        val leftPhone = left.phone?.filter(Char::isDigit).orEmpty()
+        val rightPhone = right.phone?.filter(Char::isDigit).orEmpty()
+        if (leftPhone.length >= 8 && rightPhone.length >= 8) return leftPhone == rightPhone
+
+        val leftName = normalizePassengerEvidence(left.name)
+        val rightName = normalizePassengerEvidence(right.name)
+        if (leftName.isBlank() || rightName.isBlank()) return false
+        return leftName == rightName &&
+            left.seats == right.seats &&
+            normalizePassengerEvidence(left.boarding.orEmpty()) == normalizePassengerEvidence(right.boarding.orEmpty()) &&
+            normalizePassengerEvidence(left.dropoff.orEmpty()) == normalizePassengerEvidence(right.dropoff.orEmpty())
+    }
+
+    private fun normalizePassengerEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
 }
 
 @Serializable
@@ -415,7 +473,7 @@ object BlaBlaTimelineAdapter {
         UnifiedDebugEventStore.record(
             "TIMELINE_EXTERNAL_ENTRY",
             "br.com.mapeiaia.rotacerta",
-            "identityHash=${identity.identityHash} bookedSeats=${trip.booked_seats} passengerCount=${trip.passengers.size} sourceBlaBlaSeats=${entry.sourcePassengerSeats[BookingSource.BLABLACAR] ?: 0} phonesPresent=${trip.passengers.count { !it.phone.isNullOrBlank() }}",
+            "identityHash=${identity.identityHash} bookedSeats=${trip.booked_seats} passengerCount=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} sourceBlaBlaSeats=${entry.sourcePassengerSeats[BookingSource.BLABLACAR] ?: 0} phonesPresent=${trip.passengers.count { !it.phone.isNullOrBlank() }}",
         )
         return entry
     }
