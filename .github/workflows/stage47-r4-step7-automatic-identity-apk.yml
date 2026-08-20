@@ -89,7 +89,7 @@ jobs:
           early='''if [[ "${STAGE46_R8_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n  printf 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510\\n' | tee "$EVIDENCE/final-status.txt"\n  exit 0\nfi\n\n'''
           out.write_text(source.replace(anchor,early+anchor,1),encoding='utf-8')
           PY
-          STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap"
+          STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap" 2>&1 | tee "$EVIDENCE/r8-materializer-full.log"
           FAROL="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
           sha256sum "$FAROL" > "$EVIDENCE/farol-before.sha256"
           python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" "$PATCHES"
