@@ -125,5 +125,11 @@
         <activity
             android:name=".trips.BlaBlaDynamicAccountSessionActivity"
             android:exported="false" />
+        <activity
+            android:name=".trips.BlaBlaMhtmlHarvestActivity"
+            android:exported="false" />
+        <activity
+            android:name=".trips.BlaBlaManualSeatSyncActivity"
+            android:exported="false" />
     </application>
 </manifest>
