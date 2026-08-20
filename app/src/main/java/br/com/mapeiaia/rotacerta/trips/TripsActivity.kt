@@ -67,7 +67,15 @@ private fun TripApp(
     var trips by remember { mutableStateOf(store.trips()) }
     var bookings by remember { mutableStateOf(store.bookings()) }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
-    var screen by remember { mutableStateOf(if (startCreating) TripScreen.CREATE else TripScreen.LIST) }
+    var screen by remember {
+        mutableStateOf(
+            when {
+                startCreating -> TripScreen.CREATE
+                initialTripId != null -> TripScreen.LIST
+                else -> TripScreen.TIMELINE
+            },
+        )
+    }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var message by remember { mutableStateOf<String?>(null) }
     val refresh = {
@@ -94,12 +102,12 @@ private fun TripApp(
             }
             when (screen) {
                 TripScreen.CREATE -> TripEditor(
-                    onCancel = { screen = TripScreen.LIST },
+                    onCancel = { screen = TripScreen.TIMELINE },
                     onSave = { trip ->
                         store.saveTrip(trip)
                         refresh()
                         selectedId = trip.id
-                        screen = TripScreen.LIST
+                        screen = TripScreen.TIMELINE
                         message = "Viagem criada. Publique quando estiver pronta."
                     },
                 )
@@ -110,32 +118,30 @@ private fun TripApp(
                     onChanged = { text -> refresh(); message = text },
                     autoSyncToken = autoBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
+                    onCreateTrip = { screen = TripScreen.CREATE },
+                    onPinShortcut = {
+                        val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
+                        message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
+                    },
+                    onOpenOnlineSettings = { screen = TripScreen.SETTINGS },
                     onManageLocal = { tripId ->
                         selectedId = tripId
                         screen = TripScreen.LIST
                     },
-                    onBack = { screen = TripScreen.LIST },
+                    onBack = { activity.finish() },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = {
                         store.saveOnlineSettings(it)
-                        screen = TripScreen.LIST
+                        screen = TripScreen.TIMELINE
                         message = if (it.configured) "Integração online configurada." else "Configuração salva; modo online ainda desativado."
                     },
-                    onCancel = { screen = TripScreen.LIST },
+                    onCancel = { screen = TripScreen.TIMELINE },
                 )
                 TripScreen.LIST -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { screen = TripScreen.CREATE }) { Text("Nova viagem") }
-                        OutlinedButton(onClick = {
-                            val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
-                            message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
-                        }) { Text("Fixar atalho") }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { screen = TripScreen.TIMELINE }) { Text("Linha do tempo") }
-                        OutlinedButton(onClick = { screen = TripScreen.SETTINGS }) { Text("Integração online") }
+                    OutlinedButton(onClick = { screen = TripScreen.TIMELINE }) {
+                        Text("Voltar à Timeline")
                     }
                     val onlineSettings = store.onlineSettings()
                     if (onlineSettings.publicAgendaUrl != null) {
@@ -149,7 +155,7 @@ private fun TripApp(
                         }) { Text("Compartilhar Google Agenda") }
                     }
                     if (trips.isEmpty()) {
-                        Text("Nenhuma viagem cadastrada. Crie a primeira para começar.")
+                        Text("Nenhuma viagem local neste aparelho. A Timeline continua exibindo publicações sincronizadas.")
                     } else {
                         trips.sortedBy { it.departureAtMillis }.forEach { trip ->
                             TripCard(
