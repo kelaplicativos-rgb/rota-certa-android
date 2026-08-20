@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -146,5 +147,74 @@ class TripBlaBlaCollectorStage47R4Step5Test {
         assertEquals(0, entry.capacity)
         assertEquals(0, entry.maximumOccupiedSeats)
         assertFalse(TripTimelineIssue.OVERBOOKING in entry.issues)
+    }
+
+    @Test
+    fun explicitYearWinsOverEarlierYearlessDateEvidence() {
+        val today = LocalDate.of(2026, 8, 20)
+        assertEquals(
+            LocalDate.of(2027, 6, 27),
+            BlaBlaDomNormalizer.parseDate("27 de junho | Domingo, 27 de junho de 2027", today),
+        )
+        assertEquals(LocalDate.of(2027, 6, 29), BlaBlaDomNormalizer.parseDate("29 de junho de 2027", today))
+        assertEquals(LocalDate.of(2027, 6, 30), BlaBlaDomNormalizer.parseDate("30 de junho de 2027", today))
+    }
+
+    @Test
+    fun explicitPastYearIsNeverShiftedByInference() {
+        assertEquals(
+            LocalDate.of(2026, 1, 10),
+            BlaBlaDomNormalizer.parseDate("10 de janeiro de 2026", LocalDate.of(2026, 8, 20)),
+        )
+    }
+
+    @Test
+    fun incompletePassengerRosterCannotReleasePreviouslyObservedSeats() {
+        val previous = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2026-08-21",
+            departure_time = "10:00",
+            actual_departure = "A",
+            actual_arrival = "B",
+            trip_id = "trip-1",
+            passengers = listOf(BlaBlaCollectorPassenger(name = "Passageiro A", seats = 2, booking_href = "https://example.invalid/booking/a")),
+            booked_seats = 2,
+            passenger_roster_complete = true,
+        )
+        val incomplete = previous.copy(
+            passengers = emptyList(),
+            booked_seats = 0,
+            passenger_roster_complete = false,
+        )
+
+        val reconciled = BlaBlaPassengerRosterReconciler.reconcile(previous, incomplete)
+
+        assertEquals(1, reconciled.passengers.size)
+        assertEquals(2, reconciled.booked_seats)
+        assertFalse(reconciled.passenger_roster_complete)
+    }
+
+    @Test
+    fun completeEmptyPassengerRosterCanConfirmCancellation() {
+        val previous = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2026-08-21",
+            departure_time = "10:00",
+            trip_id = "trip-1",
+            passengers = listOf(BlaBlaCollectorPassenger(name = "Passageiro A", seats = 1)),
+            booked_seats = 1,
+            passenger_roster_complete = true,
+        )
+        val completeEmpty = previous.copy(
+            passengers = emptyList(),
+            booked_seats = 0,
+            passenger_roster_complete = true,
+        )
+
+        val reconciled = BlaBlaPassengerRosterReconciler.reconcile(previous, completeEmpty)
+
+        assertTrue(reconciled.passengers.isEmpty())
+        assertEquals(0, reconciled.booked_seats)
+        assertTrue(reconciled.passenger_roster_complete)
     }
 }
