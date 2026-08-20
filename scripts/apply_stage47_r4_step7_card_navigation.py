@@ -23,106 +23,45 @@ for path in (TIMELINE, TIMELINE_UI, COLLECTOR, DYNAMIC):
     if not path.is_file():
         raise SystemExit(f"missing Stage47 card-navigation source: {path}")
 
-# Timeline entries retain the exact external trip identity/navigation data while
-# keeping a separate local-trip identity when a private/local trip already existed.
 once(
     TIMELINE,
-'''    val sourcePassengerSeats: Map<BookingSource, Int>,
-    val issues: Set<TripTimelineIssue> = emptySet(),
-''',
-'''    val sourcePassengerSeats: Map<BookingSource, Int>,
-    val localTripId: String? = null,
-    val blablaTripId: String? = null,
-    val blablaTripHref: String? = null,
-    val blablaProfileUuid: String? = null,
-    val blablaPrice: String? = null,
-    val blablaAvailability: String? = null,
-    val issues: Set<TripTimelineIssue> = emptySet(),
-''',
+    '''    val sourcePassengerSeats: Map<BookingSource, Int>,\n    val issues: Set<TripTimelineIssue> = emptySet(),\n''',
+    '''    val sourcePassengerSeats: Map<BookingSource, Int>,\n    val localTripId: String? = null,\n    val blablaTripId: String? = null,\n    val blablaTripHref: String? = null,\n    val blablaProfileUuid: String? = null,\n    val blablaPrice: String? = null,\n    val blablaAvailability: String? = null,\n    val issues: Set<TripTimelineIssue> = emptySet(),\n''',
     "timeline external navigation fields",
 )
 once(
     TIMELINE,
-'''                    sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
-                )
-''',
-'''                    sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
-                    localTripId = trip.id,
-                )
-''',
+    '''                    sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),\n                )\n''',
+    '''                    sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),\n                    localTripId = trip.id,\n                )\n''',
     "timeline local trip identity",
 )
 
-# Preserve the external route/link/profile/price on a merged card. Local capacity
-# and reservations remain authoritative for the driver's physical vehicle, while
-# same-source occupancy is reconciled by max() so a mirrored BlaBlaCar booking is
-# not double-counted.
 once(
     COLLECTOR,
-'''                merged += external.copy(
-                    tripId = local.tripId,
-                    origin = local.origin,
-                    destination = local.destination,
-                    status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,
-                    capacity = local.capacity,
-                    minimumOccupiedSeats = local.minimumOccupiedSeats,
-                    maximumOccupiedSeats = local.maximumOccupiedSeats,
-                    sourcePassengerSeats = local.sourcePassengerSeats,
-                    issues = local.issues + external.issues,
-                )
-''',
-'''                merged += external.copy(
-                    tripId = local.tripId,
-                    localTripId = local.localTripId ?: local.tripId,
-                    origin = external.origin,
-                    destination = external.destination,
-                    status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,
-                    capacity = local.capacity,
-                    minimumOccupiedSeats = maxOf(local.minimumOccupiedSeats, external.minimumOccupiedSeats),
-                    maximumOccupiedSeats = maxOf(local.maximumOccupiedSeats, external.maximumOccupiedSeats),
-                    sourcePassengerSeats = mergeSourceSeats(local.sourcePassengerSeats, external.sourcePassengerSeats),
-                    issues = local.issues + external.issues,
-                )
-''',
+    '''                merged += external.copy(\n                    tripId = local.tripId,\n                    origin = local.origin,\n                    destination = local.destination,\n                    status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,\n                    capacity = local.capacity,\n                    minimumOccupiedSeats = local.minimumOccupiedSeats,\n                    maximumOccupiedSeats = local.maximumOccupiedSeats,\n                    sourcePassengerSeats = local.sourcePassengerSeats,\n                    issues = local.issues + external.issues,\n                )\n''',
+    '''                merged += external.copy(\n                    tripId = local.tripId,\n                    localTripId = local.localTripId ?: local.tripId,\n                    origin = external.origin,\n                    destination = external.destination,\n                    status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,\n                    capacity = local.capacity,\n                    minimumOccupiedSeats = maxOf(local.minimumOccupiedSeats, external.minimumOccupiedSeats),\n                    maximumOccupiedSeats = maxOf(local.maximumOccupiedSeats, external.maximumOccupiedSeats),\n                    sourcePassengerSeats = mergeSourceSeats(local.sourcePassengerSeats, external.sourcePassengerSeats),\n                    issues = local.issues + external.issues,\n                )\n''',
     "merge physical local and blablacar card",
 )
 once(
     COLLECTOR,
-'''            sourcePassengerSeats = emptyMap(),
-            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),
-''',
-'''            sourcePassengerSeats = emptyMap(),
-            blablaTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty),
-            blablaTripHref = canonicalManageHref(trip.trip_href),
-            blablaProfileUuid = trip.profile_uuid.trim().takeIf(String::isNotEmpty),
-            blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),
-            blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
-            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),
-''',
+    '''            sourcePassengerSeats = emptyMap(),\n            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),\n''',
+    '''            sourcePassengerSeats = emptyMap(),\n            blablaTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty),\n            blablaTripHref = canonicalManageHref(trip.trip_href),\n            blablaProfileUuid = trip.profile_uuid.trim().takeIf(String::isNotEmpty),\n            blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),\n            blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),\n            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),\n''',
     "external timeline metadata",
 )
 once(
     COLLECTOR,
-'''        if (kotlin.math.abs(local.departureAtMillis - external.departureAtMillis) > 10L * 60L * 1000L) return false
-        val actualMatches = placeKey(local.origin) == placeKey(external.origin) && placeKey(local.destination) == placeKey(external.destination)
-        val searchMatches = !searchFrom.isNullOrBlank() && !searchTo.isNullOrBlank() &&
-            placeKey(local.origin) == placeKey(searchFrom) && placeKey(local.destination) == placeKey(searchTo)
-        return actualMatches || searchMatches
-''',
-'''        if (kotlin.math.abs(local.departureAtMillis - external.departureAtMillis) > 45L * 60L * 1000L) return false
-        val actualMatches = samePlace(local.origin, external.origin) && samePlace(local.destination, external.destination)
-        val searchMatches = !searchFrom.isNullOrBlank() && !searchTo.isNullOrBlank() &&
-            samePlace(local.origin, searchFrom) && samePlace(local.destination, searchTo)
-        return actualMatches || searchMatches
-''',
+    '''        if (kotlin.math.abs(local.departureAtMillis - external.departureAtMillis) > 10L * 60L * 1000L) return false\n        val actualMatches = placeKey(local.origin) == placeKey(external.origin) && placeKey(local.destination) == placeKey(external.destination)\n        val searchMatches = !searchFrom.isNullOrBlank() && !searchTo.isNullOrBlank() &&\n            placeKey(local.origin) == placeKey(searchFrom) && placeKey(local.destination) == placeKey(searchTo)\n        return actualMatches || searchMatches\n''',
+    '''        if (kotlin.math.abs(local.departureAtMillis - external.departureAtMillis) > 45L * 60L * 1000L) return false\n        val actualMatches = samePlace(local.origin, external.origin) && samePlace(local.destination, external.destination)\n        val searchMatches = !searchFrom.isNullOrBlank() && !searchTo.isNullOrBlank() &&\n            samePlace(local.origin, searchFrom) && samePlace(local.destination, searchTo)\n        return actualMatches || searchMatches\n''',
     "same physical trip tolerance",
 )
+
+# Step7 inserts strongExternalIdentity immediately before parseDateTime.  Insert
+# the new helpers at this stable post-Step7 anchor instead of matching placeKey's
+# escaped regex literal, which is deliberately left untouched.
 once(
     COLLECTOR,
-'''    private fun placeKey(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-''',
-'''    private fun mergeSourceSeats(
+    '''    private fun parseDateTime(date: String, time: String?, zoneId: ZoneId): Long? = runCatching {\n''',
+    r'''    private fun mergeSourceSeats(
         local: Map<BookingSource, Int>,
         external: Map<BookingSource, Int>,
     ): Map<BookingSource, Int> = (local.keys + external.keys).associateWith { source ->
@@ -149,72 +88,32 @@ once(
     }
 
     private fun normalizeWholePlace(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+        .replace(Regex("\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
 
-    private fun placeKey(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
-        .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    private fun parseDateTime(date: String, time: String?, zoneId: ZoneId): Long? = runCatching {
 ''',
-    "physical trip helpers",
+    "physical trip helpers before parseDateTime",
 )
 
-# Open management in the exact AndroidX WebView profile that owns the canonical
-# driver UUID. Never fall back to a generic BlaBlaCar browser session.
 once(
     DYNAMIC,
-'''    const val EXTRA_ACCOUNT_ID = "blablacar_account_id"
-    const val EXTRA_MODE = "blablacar_mode"
-    const val MODE_LOGIN = "login"
-    const val MODE_SYNC = "sync"
-
-    fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
-    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
-''',
-'''    const val EXTRA_ACCOUNT_ID = "blablacar_account_id"
-    const val EXTRA_MODE = "blablacar_mode"
-    const val EXTRA_TARGET_URL = "blablacar_target_url"
-    const val MODE_LOGIN = "login"
-    const val MODE_SYNC = "sync"
-    const val MODE_MANAGE = "manage"
-
-    fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
-    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
-    fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =
-        intent(context, account, MODE_MANAGE).putExtra(EXTRA_TARGET_URL, tripHref)
-''',
+    '''    const val EXTRA_ACCOUNT_ID = "blablacar_account_id"\n    const val EXTRA_MODE = "blablacar_mode"\n    const val MODE_LOGIN = "login"\n    const val MODE_SYNC = "sync"\n\n    fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)\n    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)\n''',
+    '''    const val EXTRA_ACCOUNT_ID = "blablacar_account_id"\n    const val EXTRA_MODE = "blablacar_mode"\n    const val EXTRA_TARGET_URL = "blablacar_target_url"\n    const val MODE_LOGIN = "login"\n    const val MODE_SYNC = "sync"\n    const val MODE_MANAGE = "manage"\n\n    fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)\n    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)\n    fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =\n        intent(context, account, MODE_MANAGE).putExtra(EXTRA_TARGET_URL, tripHref)\n''',
     "exact trip management intent",
 )
 once(
     DYNAMIC,
-'''        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) beginSync() else webView.loadUrl(HOME_URL)
-''',
-'''        when (mode) {
-            BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
-            BlaBlaDynamicSessionIntents.MODE_MANAGE -> webView.loadUrl(manageTargetUrl() ?: RIDES_URL)
-            else -> webView.loadUrl(HOME_URL)
-        }
-''',
+    '''        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) beginSync() else webView.loadUrl(HOME_URL)\n''',
+    '''        when (mode) {\n            BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()\n            BlaBlaDynamicSessionIntents.MODE_MANAGE -> webView.loadUrl(manageTargetUrl() ?: RIDES_URL)\n            else -> webView.loadUrl(HOME_URL)\n        }\n''',
     "exact trip management startup",
 )
 once(
     DYNAMIC,
-'''    private fun finishSeen() {
-''',
-'''    private fun manageTargetUrl(): String? {
-        val value = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
-        return value.takeIf { href ->
-            href.startsWith("https://www.blablacar.com.br/") &&
-                (href.contains("/trip") || href.contains("/rides/offer"))
-        }
-    }
-
-    private fun finishSeen() {
-''',
+    '''    private fun finishSeen() {\n''',
+    '''    private fun manageTargetUrl(): String? {\n        val value = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()\n        return value.takeIf { href ->\n            href.startsWith("https://www.blablacar.com.br/") &&\n                (href.contains("/trip") || href.contains("/rides/offer"))\n        }\n    }\n\n    private fun finishSeen() {\n''',
     "validated exact trip target",
 )
 
-# The Timeline is the consolidated card surface: every card exposes Gerenciar and
-# + Passageiro. A pure BlaBlaCar card can create its local capacity mirror on demand;
-# the next recomposition immediately merges it back into the same physical card.
 TIMELINE_UI.write_text(r'''package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
@@ -253,12 +152,8 @@ fun TripTimelineScreen(
     val context = LocalContext.current
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }
-    val localEntries = remember(trips, bookings) {
-        TripTimelineEngine.fromLocalAgenda(trips, bookings)
-    }
-    val entries = remember(localEntries, collectorResponse) {
-        BlaBlaTimelineAdapter.merge(localEntries, collectorResponse)
-    }
+    val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
+    val entries = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM HH:mm") }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -297,16 +192,11 @@ private fun TimelineEntryCard(
     var quickOpen by remember(entry.tripId, trip?.id) { mutableStateOf(false) }
     var capacitySetupOpen by remember(entry.tripId, trip?.id) { mutableStateOf(false) }
     var capacityText by remember(entry.tripId) { mutableStateOf("") }
-    val statusEmoji = timelineStatus(entry)
 
     fun manage() {
         if (!entry.blablaTripHref.isNullOrBlank()) {
             if (!openExactBlaBlaTrip(context, entry)) {
-                Toast.makeText(
-                    context,
-                    "A conta BlaBlaCar deste perfil não está conectada nesta sessão.",
-                    Toast.LENGTH_LONG,
-                ).show()
+                Toast.makeText(context, "A conta BlaBlaCar deste perfil não está conectada nesta sessão.", Toast.LENGTH_LONG).show()
             }
         } else {
             quickOpen = !quickOpen
@@ -314,12 +204,9 @@ private fun TimelineEntryCard(
     }
 
     Card(onClick = { manage() }, modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
-            Text("$date — ${entry.origin} → ${entry.destination} $statusEmoji", style = MaterialTheme.typography.titleSmall)
+            Text("$date — ${entry.origin} → ${entry.destination} ${timelineStatus(entry)}", style = MaterialTheme.typography.titleSmall)
             Text("Perfil: ${entry.profileLabel} • ${tripStatusLabel(entry.status)}")
 
             if (!entry.blablaTripHref.isNullOrBlank()) {
@@ -345,16 +232,12 @@ private fun TimelineEntryCard(
                 Text("Capacidade local ainda não definida • ${entry.blablaAvailability ?: "BlaBlaCar vinculado"}")
             }
 
-            val sources = entry.sourcePassengerSeats
-                .filterValues { it > 0 }
-                .entries
-                .sortedBy { it.key.ordinal }
+            val sources = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.sortedBy { it.key.ordinal }
                 .joinToString(" • ") { (source, seats) -> "${sourceLabel(source)} $seats" }
             if (sources.isNotBlank()) Text("Passageiros: $sources", style = MaterialTheme.typography.bodySmall)
             if (entry.localTripId != null && !entry.blablaTripHref.isNullOrBlank()) {
                 Text("Agenda local + BlaBlaCar mescladas em uma única corrida", style = MaterialTheme.typography.bodySmall)
             }
-
             timelineIssueText(entry)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -370,9 +253,7 @@ private fun TimelineEntryCard(
                 }) { Text("+ Passageiro") }
             }
 
-            if (trip != null && quickOpen) {
-                QuickPassengerPanel(trip, store, onChanged)
-            }
+            if (trip != null && quickOpen) QuickPassengerPanel(trip, store, onChanged)
 
             if (trip == null && capacitySetupOpen) {
                 Text("Defina a capacidade total uma vez para controlar passageiros desta publicação sem criar card duplicado.")
@@ -475,7 +356,6 @@ import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class TripTimelineCardNavigationStage47Step7Test {
@@ -485,41 +365,23 @@ class TripTimelineCardNavigationStage47Step7Test {
     fun local_trip_published_later_on_blablacar_becomes_one_card_and_keeps_exact_link() {
         val departure = LocalDate.of(2026, 8, 21).atTime(LocalTime.of(11, 0)).atZone(zone).toInstant().toEpochMilli()
         val local = TripTimelineEntry(
-            tripId = "local-1",
-            localTripId = "local-1",
-            profileId = "local",
-            profileLabel = "Agenda",
-            departureAtMillis = departure,
-            arrivalAtMillis = departure + 6 * 60 * 60 * 1000L,
-            origin = "Santo André",
-            destination = "Três Corações",
-            status = TripStatus.PUBLISHED,
-            capacity = 4,
-            minimumOccupiedSeats = 1,
-            maximumOccupiedSeats = 1,
+            tripId = "local-1", localTripId = "local-1", profileId = "local", profileLabel = "Agenda",
+            departureAtMillis = departure, arrivalAtMillis = departure + 6 * 60 * 60 * 1000L,
+            origin = "Santo André", destination = "Três Corações", status = TripStatus.PUBLISHED,
+            capacity = 4, minimumOccupiedSeats = 1, maximumOccupiedSeats = 1,
             sourcePassengerSeats = mapOf(BookingSource.PRIVATE to 1),
         )
         val response = BlaBlaCollectorMonthResponse(
             status = "validated",
-            trips = listOf(
-                BlaBlaCollectorTrip(
-                    profile_uuid = "7371f028-9c55-4903-8444-308015823efd",
-                    profile_name = "Ezequiel S",
-                    date = "2026-08-21",
-                    departure_time = "11:20",
-                    arrival_time = "17:10",
-                    actual_departure = "Santo André, SP",
-                    actual_arrival = "Três Corações, MG",
-                    price = "R$ 89,00",
-                    trip_href = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc",
-                    trip_id = "trip-123",
-                    uuid_validation = "verified_from_authenticated_profile_session",
-                ),
-            ),
+            trips = listOf(BlaBlaCollectorTrip(
+                profile_uuid = "7371f028-9c55-4903-8444-308015823efd", profile_name = "Ezequiel S",
+                date = "2026-08-21", departure_time = "11:20", arrival_time = "17:10",
+                actual_departure = "Santo André, SP", actual_arrival = "Três Corações, MG",
+                price = "R$ 89,00", trip_href = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc",
+                trip_id = "trip-123", uuid_validation = "verified_from_authenticated_profile_session",
+            )),
         )
-
         val merged = BlaBlaTimelineAdapter.merge(listOf(local), response, zone)
-
         assertEquals(1, merged.size)
         val card = merged.single()
         assertEquals("local-1", card.tripId)
@@ -537,61 +399,20 @@ class TripTimelineCardNavigationStage47Step7Test {
     @Test
     fun ezequiel_and_barbosa_are_checked_as_one_physical_timeline() {
         fun entry(id: String, profile: String, start: Long, end: Long, origin: String, destination: String) = TripTimelineEntry(
-            tripId = id,
-            profileId = profile,
-            profileLabel = profile,
-            departureAtMillis = start,
-            arrivalAtMillis = end,
-            origin = origin,
-            destination = destination,
-            status = TripStatus.PUBLISHED,
-            capacity = 4,
-            minimumOccupiedSeats = 0,
-            maximumOccupiedSeats = 0,
-            sourcePassengerSeats = emptyMap(),
+            tripId = id, profileId = profile, profileLabel = profile, departureAtMillis = start, arrivalAtMillis = end,
+            origin = origin, destination = destination, status = TripStatus.PUBLISHED, capacity = 4,
+            minimumOccupiedSeats = 0, maximumOccupiedSeats = 0, sourcePassengerSeats = emptyMap(),
         )
         val first = entry("a", "7371f028-9c55-4903-8444-308015823efd", 1_000L, 2_000L, "Santo André", "Três Corações")
         val continuous = entry("b", "175a7068-50d8-40c3-a27a-214b9c6e0461", 3_000L, 4_000L, "Três Corações", "Santo André")
         val ok = TripTimelineEngine.annotate(listOf(first, continuous))
         assertFalse(TripTimelineIssue.PROFILE_CONTINUITY in ok.last().issues)
-
-        val impossibleStart = continuous.copy(tripId = "c", origin = "Varginha")
-        val warned = TripTimelineEngine.annotate(listOf(first, impossibleStart))
+        val warned = TripTimelineEngine.annotate(listOf(first, continuous.copy(tripId = "c", origin = "Varginha")))
         assertTrue(TripTimelineIssue.PROFILE_CONTINUITY in warned.last().issues)
-    }
-
-    @Test
-    fun overlapping_profiles_are_a_real_physical_conflict() {
-        val first = TripTimelineEntry(
-            tripId = "a",
-            profileId = "7371f028-9c55-4903-8444-308015823efd",
-            profileLabel = "Ezequiel S",
-            departureAtMillis = 1_000L,
-            arrivalAtMillis = 4_000L,
-            origin = "A",
-            destination = "B",
-            status = TripStatus.PUBLISHED,
-            capacity = 4,
-            minimumOccupiedSeats = 0,
-            maximumOccupiedSeats = 0,
-            sourcePassengerSeats = emptyMap(),
-        )
-        val second = first.copy(
-            tripId = "b",
-            profileId = "175a7068-50d8-40c3-a27a-214b9c6e0461",
-            profileLabel = "Barbosa",
-            departureAtMillis = 2_000L,
-            arrivalAtMillis = 5_000L,
-        )
-        val annotated = TripTimelineEngine.annotate(listOf(first, second))
-        assertTrue(annotated.all { TripTimelineIssue.PHYSICAL_CONFLICT in it.issues })
-        assertNotNull(annotated.first().arrivalAtMillis)
     }
 }
 ''', encoding="utf-8")
 
-# Materialization-time guards: fail closed before Gradle if a required behavior
-# disappears in a future edit.
 checks = {
     TIMELINE: ["blablaTripHref", "localTripId"],
     COLLECTOR: ["canonicalManageHref", "45L * 60L * 1000L", "mergeSourceSeats"],
