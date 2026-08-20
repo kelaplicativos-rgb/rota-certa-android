@@ -22,6 +22,8 @@ data class BlaBlaDomRideCandidate(
     val destination: String = "",
     val price: String = "",
     val dateText: String = "",
+    val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    val passengerRosterComplete: Boolean = false,
 )
 
 @Serializable
@@ -37,6 +39,7 @@ data class BlaBlaDomTripDetail(
     val driverName: String = "",
     val profileLinks: List<String> = emptyList(),
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    val passengerRosterComplete: Boolean = false,
 )
 
 object BlaBlaDomNormalizer {
@@ -100,6 +103,7 @@ object BlaBlaDomNormalizer {
             normalize(allText).contains(token)
         }
         val href = detail.url.takeIf(String::isNotBlank) ?: candidate.href
+        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)
         return BlaBlaCollectorTrip(
             profile_uuid = account.uuid,
             profile_name = account.label,
@@ -114,46 +118,107 @@ object BlaBlaDomNormalizer {
             trip_href = href.takeIf(String::isNotBlank),
             trip_id = tripId(href),
             uuid_validation = uuidValidation,
-            passengers = detail.passengers,
-            booked_seats = detail.passengers.sumOf(BlaBlaCollectorPassenger::seats),
+            passengers = passengers,
+            booked_seats = passengers.sumOf(BlaBlaCollectorPassenger::seats),
+            passenger_roster_complete = detail.passengerRosterComplete || candidate.passengerRosterComplete,
         )
     }
 
     fun parseDate(textRaw: String, today: LocalDate = LocalDate.now()): LocalDate? {
         val text = normalize(textRaw)
+
+        // Highest authority: structured ISO values and any date that explicitly carries a year.
+        // An explicit year is never shifted by inference rules.
+        isoDateRegex.find(text)?.let { match ->
+            explicitDate(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].toInt())?.let { return it }
+        }
+        numericDateRegex.findAll(text)
+            .firstOrNull { it.groupValues[3].isNotBlank() }
+            ?.let { match ->
+                val yearText = match.groupValues[3]
+                val year = if (yearText.length == 2) 2000 + yearText.toInt() else yearText.toInt()
+                explicitDate(year, match.groupValues[2].toInt(), match.groupValues[1].toInt())?.let { return it }
+            }
+        monthDateRegex.findAll(text)
+            .firstOrNull { it.groupValues[3].isNotBlank() }
+            ?.let { match ->
+                val day = match.groupValues[1].toIntOrNull() ?: return@let
+                val month = monthNumber(match.groupValues[2]) ?: return@let
+                val year = match.groupValues[3].toIntOrNull() ?: return@let
+                explicitDate(year, month, day)?.let { return it }
+            }
+
         if (Regex("\\bhoje\\b").containsMatchIn(text)) return today
         if (Regex("\\bamanha\\b").containsMatchIn(text)) return today.plusDays(1)
-        isoDateRegex.find(text)?.let { match ->
-            return runCatching {
-                LocalDate.of(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].toInt())
-            }.getOrNull()
-        }
-        numericDateRegex.find(text)?.let { match ->
-            val day = match.groupValues[1].toInt()
-            val month = match.groupValues[2].toInt()
-            val yearText = match.groupValues[3]
-            val year = when (yearText.length) {
-                2 -> 2000 + yearText.toInt()
-                4 -> yearText.toInt()
-                else -> today.year
+
+        // Only when the source genuinely omits the year do we infer the closest sensible year.
+        numericDateRegex.findAll(text)
+            .firstOrNull { it.groupValues[3].isBlank() }
+            ?.let { match ->
+                inferredDate(today, match.groupValues[2].toInt(), match.groupValues[1].toInt())?.let { return it }
             }
-            return sensibleDate(year, month, day, today)
-        }
-        monthDateRegex.findAll(text).forEach { match ->
-            val day = match.groupValues[1].toIntOrNull() ?: return@forEach
-            val monthKey = normalize(match.groupValues[2]).takeWhile(Char::isLetter)
-            val month = months[monthKey] ?: months.entries.firstOrNull { monthKey.startsWith(it.key) }?.value ?: return@forEach
-            val year = match.groupValues[3].toIntOrNull() ?: today.year
-            sensibleDate(year, month, day, today)?.let { return it }
-        }
+        monthDateRegex.findAll(text)
+            .firstOrNull { it.groupValues[3].isBlank() }
+            ?.let { match ->
+                val day = match.groupValues[1].toIntOrNull() ?: return@let
+                val month = monthNumber(match.groupValues[2]) ?: return@let
+                inferredDate(today, month, day)?.let { return it }
+            }
         return null
     }
 
-    private fun sensibleDate(year: Int, month: Int, day: Int, today: LocalDate): LocalDate? = runCatching {
-        var value = LocalDate.of(year, month, day)
-        if (year == today.year && value.isBefore(today.minusMonths(3))) value = value.plusYears(1)
+    private fun explicitDate(year: Int, month: Int, day: Int): LocalDate? =
+        runCatching { LocalDate.of(year, month, day) }.getOrNull()
+
+    private fun inferredDate(today: LocalDate, month: Int, day: Int): LocalDate? = runCatching {
+        var value = LocalDate.of(today.year, month, day)
+        if (value.isBefore(today.minusMonths(3))) value = value.plusYears(1)
         value
     }.getOrNull()
+
+    private fun monthNumber(raw: String): Int? {
+        val key = normalize(raw).takeWhile(Char::isLetter)
+        return months[key] ?: months.entries.firstOrNull { key.startsWith(it.key) }?.value
+    }
+
+    private fun mergePassengerEvidence(
+        batch: List<BlaBlaCollectorPassenger>,
+        detail: List<BlaBlaCollectorPassenger>,
+    ): List<BlaBlaCollectorPassenger> {
+        if (batch.isEmpty()) return detail
+        if (detail.isEmpty()) return batch
+        val merged = batch.toMutableList()
+        detail.forEach { incoming ->
+            val index = merged.indexOfFirst { existing -> passengerEvidenceMatches(existing, incoming) }
+            if (index < 0) {
+                merged += incoming
+            } else {
+                val existing = merged[index]
+                merged[index] = existing.copy(
+                    name = incoming.name.ifBlank { existing.name },
+                    seats = maxOf(existing.seats, incoming.seats),
+                    boarding = incoming.boarding?.takeIf(String::isNotBlank) ?: existing.boarding,
+                    dropoff = incoming.dropoff?.takeIf(String::isNotBlank) ?: existing.dropoff,
+                    phone = incoming.phone?.takeIf(String::isNotBlank) ?: existing.phone,
+                    booking_href = incoming.booking_href?.takeIf(String::isNotBlank) ?: existing.booking_href,
+                )
+            }
+        }
+        return merged
+    }
+
+    private fun passengerEvidenceMatches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
+        val leftHref = left.booking_href?.trim().orEmpty()
+        val rightHref = right.booking_href?.trim().orEmpty()
+        if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
+        val leftPhone = left.phone?.filter(Char::isDigit).orEmpty()
+        val rightPhone = right.phone?.filter(Char::isDigit).orEmpty()
+        if (leftPhone.length >= 8 && rightPhone.length >= 8) return leftPhone == rightPhone
+        return normalize(left.name) == normalize(right.name) &&
+            left.seats == right.seats &&
+            normalize(left.boarding.orEmpty()) == normalize(right.boarding.orEmpty()) &&
+            normalize(left.dropoff.orEmpty()) == normalize(right.dropoff.orEmpty())
+    }
 
     private fun normalizeTime(value: String): String? {
         val match = timeRegex.find(value.trim()) ?: return null
