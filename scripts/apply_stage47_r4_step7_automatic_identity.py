@@ -176,7 +176,7 @@ once(
             )
             browserHost.addView(
                 TextView(this).apply {
-                    text = "Sincronizando ${account.displayLabel}\nO navegador está processando as viagens em segundo plano."
+                    text = "Sincronizando ${account.displayLabel}\\nO navegador está processando as viagens em segundo plano."
                     gravity = android.view.Gravity.CENTER
                     textSize = 18f
                     setTextColor(android.graphics.Color.WHITE)
