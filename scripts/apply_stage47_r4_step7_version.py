@@ -167,6 +167,7 @@ run_sibling_patcher("apply_stage47_r4_step7_passenger_card_identity.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_autosync.py")
 run_sibling_patcher("apply_stage47_r4_step7_autosync_scope_fix.py")
 run_sibling_patcher("apply_stage47_r4_step7_post_0236_stabilization.py")
+run_sibling_patcher("apply_stage47_r4_step7_post_0236_compile_fix.py")
 
 print(
     "stage47_r4_step7_version=PASS version=0.1.237/5530 "
@@ -178,5 +179,5 @@ print(
     "stale_callback_guard=true index_bounded=true sync_end_idempotent=true snapshot_once=true "
     "generic_href_not_identity=true safe_identity_diagnostics=true missing_geo_unknown=true "
     "country_neutral_core=true phone_country_not_invented=true focused_regression_tests=true "
-    "future_chronological_timeline=true archive_local_only=true farol_touched=false base_touched=false"
+    "collector_helpers_restored=true future_chronological_timeline=true archive_local_only=true farol_touched=false base_touched=false"
 )
