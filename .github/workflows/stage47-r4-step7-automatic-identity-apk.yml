@@ -16,6 +16,7 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  issues: write
 
 jobs:
   validate-build:
@@ -159,3 +160,8 @@ jobs:
           path: evidence/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Step7 run locator
+        if: always()
+        run: |
+          gh pr comment 112 --repo "$GITHUB_REPOSITORY" --body "Stage47 Step7 diagnostic run: ${GITHUB_RUN_ID} • head ${GITHUB_SHA} • conclusion ${JOB_STATUS:-see-run}"
