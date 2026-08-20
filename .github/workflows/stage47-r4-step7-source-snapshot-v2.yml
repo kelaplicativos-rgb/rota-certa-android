@@ -1,7 +1,9 @@
 name: Stage47 materialized source snapshot v2
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
 
 concurrency:
   group: stage47-source-snapshot-v2-${{ github.ref }}
