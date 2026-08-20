@@ -38,14 +38,18 @@ jobs:
           UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
           ACTIVITY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
           DIRECTION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt'
+          COLLECTOR='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          PARSER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt'
           TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt'
           DIRECTION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirectionStage47Test.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5533' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.240"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5534' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.241"' app/build.gradle.kts
           test -s "$UI"
           test -s "$ACTIVITY"
           test -s "$DIRECTION"
+          test -s "$COLLECTOR"
+          test -s "$PARSER"
           test -s "$TEST"
           test -s "$DIRECTION_TEST"
           grep -Fq 'timelineQuickPassengerOptions(entries, trips)' "$UI"
@@ -59,11 +63,16 @@ jobs:
           grep -Fq 'Ida • saindo da base' "$DIRECTION"
           grep -Fq 'Volta • retornando à base' "$DIRECTION"
           grep -Fq 'Neutra • não envolve a base' "$DIRECTION"
+          grep -Fq 'RIDES_BATCH_EVIDENCE' "$COLLECTOR"
+          grep -Fq 'TRIP_BATCH_READY' "$COLLECTOR"
+          grep -Fq 'TRIP_DETAIL_FALLBACK' "$COLLECTOR"
+          grep -Fq 'passengerRosterReportedComplete' "$PARSER"
+          grep -Fq 'passenger_roster_complete = false' "$PARSER"
           ! grep -Fq 'val options = entries.mapNotNull' "$UI"
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
           test ! -e .github/workflows/stage47-direct-source-external-quick-passenger-apply.yml
           test -z "$(find .github/workflows -maxdepth 1 -type f -name 'stage47-direct-source-unified-timeline*.yml' -print -quit)"
-          echo 'stage47_direct_source_authority=PASS version=0.1.240/5533'
+          echo 'stage47_direct_source_authority=PASS version=0.1.241/5534'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'farol_untouched=true'
@@ -86,5 +95,5 @@ jobs:
           set -euo pipefail
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.240/5533'
+          echo 'stage47_direct_source_validation=PASS version=0.1.241/5534'
           echo 'apk_generated=false'
