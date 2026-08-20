@@ -38,30 +38,10 @@ class BlaBlaAuthenticatedSessionStage47Test {
     }
 
     @Test
-    fun ridesOfferIsAcceptedOnlyWhenExpectedUuidAppearsInDriverProfileLink() {
-        val candidate = BlaBlaDomRideCandidate(
-            href = "https://www.blablacar.com.br/rides/offer?id=trip-123",
-            text = "21 de agosto 11:00 17:10 Santo André Três Corações",
-            departureTime = "11:00",
-            arrivalTime = "17:10",
-            origin = "Santo André",
-            destination = "Três Corações",
-            dateText = "21 de agosto",
-        )
-        val account = BlaBlaAccountDefinition(
-            slot = "dynamic-id",
-            label = "Conta validada",
-            uuid = "7371f028-9c55-4903-8444-308015823efd",
-            dataDirectorySuffix = "dynamic-profile",
-        )
-        val verifiedDetail = BlaBlaDomTripDetail(
-            url = candidate.href,
-            dateText = "21 de agosto de 2026",
-            departureTime = "11:00",
-            arrivalTime = "17:10",
-            origin = "Santo André",
-            destination = "Três Corações",
-            driverName = "Nome público",
+    fun ridesOfferUsesDetailUuidWhenItMatchesAndRejectsExplicitMismatch() {
+        val candidate = candidate()
+        val account = accountDefinition()
+        val verifiedDetail = detail(candidate).copy(
             profileLinks = listOf("https://www.blablacar.com.br/users/show/7371f028-9c55-4903-8444-308015823efd"),
         )
         val wrongDetail = verifiedDetail.copy(
@@ -75,7 +55,51 @@ class BlaBlaAuthenticatedSessionStage47Test {
         assertEquals("2026-08-21", verified.date)
         assertEquals(account.uuid, verified.profile_uuid)
 
-        assertNull(BlaBlaDomNormalizer.toTrip(account, candidate, wrongDetail, LocalDate.of(2026, 8, 20)))
+        assertNull(
+            BlaBlaDomNormalizer.toTrip(
+                account,
+                candidate,
+                wrongDetail,
+                LocalDate.of(2026, 8, 20),
+                authenticatedProfileSessionVerified = true,
+            ),
+        )
+    }
+
+    @Test
+    fun authenticatedProfileSessionAcceptsOwnRideWhenDetailDoesNotRepeatUuid() {
+        val candidate = candidate()
+        val account = accountDefinition()
+        val noUuidDetail = detail(candidate).copy(profileLinks = emptyList())
+
+        val trip = BlaBlaDomNormalizer.toTrip(
+            account,
+            candidate,
+            noUuidDetail,
+            LocalDate.of(2026, 8, 20),
+            authenticatedProfileSessionVerified = true,
+        )
+
+        assertNotNull(trip)
+        assertEquals("verified_from_authenticated_profile_session", trip.uuid_validation)
+        assertEquals(account.uuid, trip.profile_uuid)
+    }
+
+    @Test
+    fun missingDetailUuidWithoutAuthenticatedSessionProofRemainsBlocked() {
+        val candidate = candidate()
+        val account = accountDefinition()
+        val noUuidDetail = detail(candidate).copy(profileLinks = emptyList())
+
+        assertNull(
+            BlaBlaDomNormalizer.toTrip(
+                account,
+                candidate,
+                noUuidDetail,
+                LocalDate.of(2026, 8, 20),
+                authenticatedProfileSessionVerified = false,
+            ),
+        )
     }
 
     @Test
@@ -85,4 +109,31 @@ class BlaBlaAuthenticatedSessionStage47Test {
         assertEquals(LocalDate.of(2026, 8, 21), BlaBlaDomNormalizer.parseDate("Amanhã", LocalDate.of(2026, 8, 20)))
         assertTrue(BlaBlaDomNormalizer.parseDate("21/08/2026", LocalDate.of(2026, 8, 20)) != null)
     }
+
+    private fun candidate() = BlaBlaDomRideCandidate(
+        href = "https://www.blablacar.com.br/rides/offer?id=trip-123",
+        text = "21 de agosto 11:00 17:10 Santo André Três Corações",
+        departureTime = "11:00",
+        arrivalTime = "17:10",
+        origin = "Santo André",
+        destination = "Três Corações",
+        dateText = "21 de agosto",
+    )
+
+    private fun accountDefinition() = BlaBlaAccountDefinition(
+        slot = "dynamic-id",
+        label = "Conta validada",
+        uuid = "7371f028-9c55-4903-8444-308015823efd",
+        dataDirectorySuffix = "dynamic-profile",
+    )
+
+    private fun detail(candidate: BlaBlaDomRideCandidate) = BlaBlaDomTripDetail(
+        url = candidate.href,
+        dateText = "21 de agosto de 2026",
+        departureTime = "11:00",
+        arrivalTime = "17:10",
+        origin = "Santo André",
+        destination = "Três Corações",
+        driverName = "Nome público",
+    )
 }
