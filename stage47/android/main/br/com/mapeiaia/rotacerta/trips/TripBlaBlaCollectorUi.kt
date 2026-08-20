@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +32,7 @@ import java.time.format.DateTimeFormatter
 
 // Compatibility markers consumed by the already-validated Step5 materializer:
 // UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
-// Step7 replaces the blocked Railway-origin read with authenticated on-device sessions.
+// Step7 dynamic accounts: registry starts empty; user adds as many isolated WebView profiles as needed.
 
 @Composable
 fun BlaBlaCollectorPanel(
@@ -39,98 +43,141 @@ fun BlaBlaCollectorPanel(
     onChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val sessionStore = remember(context) { BlaBlaLocalSessionStore(context) }
+    val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
+    val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var syncing by remember { mutableStateOf(false) }
+    var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
+    var syncCursor by remember { mutableIntStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
+    var showAddAccount by remember { mutableStateOf(false) }
+    var newAccountLabel by remember { mutableStateOf("") }
 
     fun refresh() {
         revision++
     }
 
     fun publishCombined(messagePrefix: String) {
-        val response = sessionStore.combinedResponse()
+        val accounts = registry.list()
+        val response = sessionStore.combinedResponse(accounts)
         stateStore.saveResponse(response)
         onResult(response)
         refresh()
-        val verified = response.coverage.validated_queries
-        val count = response.trips.size
-        message = "$messagePrefix • $verified/2 perfis UUID-confirmados • $count viagens normalizadas."
+        message = "$messagePrefix • ${response.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${response.trips.size} viagens."
         onChanged(message.orEmpty())
     }
 
-    val barbosaSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        syncing = false
-        if (result.resultCode == Activity.RESULT_OK) {
-            publishCombined("Sincronização concluída")
-        } else {
-            refresh()
-            message = "Sincronização de Barbosa não foi concluída. A sessão permaneceu isolada para continuar o login/validação."
+    val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val accountId = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)
+        refresh()
+        if (syncing) {
+            if (result.resultCode == Activity.RESULT_OK) {
+                if (syncCursor + 1 < syncQueue.size) {
+                    syncCursor++
+                } else {
+                    syncing = false
+                    publishCombined("Sincronização concluída")
+                }
+            } else {
+                syncing = false
+                val account = registry.get(accountId)
+                message = "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
+                onChanged(message.orEmpty())
+            }
+        } else if (accountId != null) {
+            val account = registry.get(accountId)
+            val snapshot = account?.let(sessionStore::read)
+            message = when {
+                account == null -> "Conta não encontrada."
+                snapshot?.identityVerified == true -> "${account.displayLabel}: UUID confirmado ✅"
+                else -> "${account.displayLabel}: sessão salva; o UUID será confirmado pelo perfil ou por uma viagem."
+            }
             onChanged(message.orEmpty())
         }
-    }
-
-    val ezequielSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            barbosaSyncLauncher.launch(BlaBlaSessionIntents.sync(context, BlaBlaAccounts.BARBOSA))
-        } else {
-            syncing = false
-            refresh()
-            message = "Sincronização de Ezequiel não foi concluída. A sessão permaneceu isolada para continuar o login/validação."
-            onChanged(message.orEmpty())
-        }
-    }
-
-    val ezequielLoginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        refresh()
-        val state = sessionStore.read(BlaBlaAccounts.EZEQUIEL)
-        message = if (state?.identityVerified == true) "Ezequiel S: UUID confirmado ✅" else "Ezequiel S: sessão salva; UUID ainda precisa ser confirmado no perfil/detalhe."
-        onChanged(message.orEmpty())
-    }
-
-    val barbosaLoginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        refresh()
-        val state = sessionStore.read(BlaBlaAccounts.BARBOSA)
-        message = if (state?.identityVerified == true) "Barbosa: UUID confirmado ✅" else "Barbosa: sessão salva; UUID ainda precisa ser confirmado no perfil/detalhe."
-        onChanged(message.orEmpty())
     }
 
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
-    val ezequiel = sessionStore.read(BlaBlaAccounts.EZEQUIEL)
-    val barbosa = sessionStore.read(BlaBlaAccounts.BARBOSA)
+    val accounts = registry.list()
+
+    // Discard snapshots from the old hard-coded two-account candidate. The
+    // dynamic registry is authoritative from this version onward and starts empty.
+    LaunchedEffect(Unit) {
+        if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
+            val clean = sessionStore.combinedResponse(registry.list())
+            stateStore.saveResponse(clean)
+            onResult(clean)
+        }
+    }
+
+    LaunchedEffect(syncing, syncCursor, syncQueue) {
+        if (!syncing) return@LaunchedEffect
+        val id = syncQueue.getOrNull(syncCursor)
+        val account = registry.get(id)
+        if (account == null) {
+            if (syncCursor + 1 < syncQueue.size) syncCursor++ else {
+                syncing = false
+                publishCombined("Sincronização concluída")
+            }
+        } else {
+            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
+        }
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Contas BlaBlaCar")
-            Text("Cada conta abre em um processo WebView próprio. Cookies/login não são compartilhados entre Ezequiel e Barbosa.")
-            AccountRow(
-                account = BlaBlaAccounts.EZEQUIEL,
-                snapshot = ezequiel,
-                onLogin = { ezequielLoginLauncher.launch(BlaBlaSessionIntents.login(context, BlaBlaAccounts.EZEQUIEL)) },
-            )
-            AccountRow(
-                account = BlaBlaAccounts.BARBOSA,
-                snapshot = barbosa,
-                onLogin = { barbosaLoginLauncher.launch(BlaBlaSessionIntents.login(context, BlaBlaAccounts.BARBOSA)) },
-            )
-            Spacer(Modifier.height(2.dp))
+            Text("Nenhuma conta vem pré-cadastrada. Cada conta adicionada ganha um perfil WebView isolado próprio e todas alimentam a mesma Linha do tempo.")
+
+            if (accounts.isEmpty()) {
+                Text("Nenhuma conta adicionada.")
+            } else {
+                accounts.forEach { account ->
+                    DynamicAccountRow(
+                        account = account,
+                        snapshot = sessionStore.read(account),
+                        onOpen = { sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account)) },
+                        onRemove = {
+                            registry.remove(account.id)
+                            refresh()
+                            publishCombined("Conta removida")
+                        },
+                    )
+                }
+            }
+
             Button(
-                enabled = !syncing,
                 onClick = {
-                    syncing = true
-                    message = "Sincronizando primeiro Ezequiel e depois Barbosa…"
-                    onChanged(message.orEmpty())
-                    ezequielSyncLauncher.launch(BlaBlaSessionIntents.sync(context, BlaBlaAccounts.EZEQUIEL))
+                    newAccountLabel = ""
+                    showAddAccount = true
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (syncing) "Sincronizando…" else "Sincronizar BlaBlaCar")
+                Text("+ Adicionar conta")
             }
-            Text("A leitura usa apenas a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
+
+            Spacer(Modifier.height(2.dp))
+            Button(
+                enabled = !syncing && accounts.isNotEmpty(),
+                onClick = {
+                    syncQueue = accounts.map { it.id }
+                    syncCursor = 0
+                    syncing = true
+                    message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
+                    onChanged(message.orEmpty())
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (syncing) "Sincronizando…" else "Sincronizar todas as contas")
+            }
+
+            Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
+            Text("Durante a sincronização o Rota Certa também guarda localmente um HTML sanitizado de diagnóstico de Suas viagens e dos detalhes, sem scripts nem valores de campos de login.")
             message?.let { Text(it) }
-            if (currentResponse != null) {
-                Text("Último resultado: ${currentResponse.status} • ${currentResponse.trips.size} viagens • UUIDs validados ${currentResponse.coverage.validated_queries}/${currentResponse.coverage.requested_queries}")
-                currentResponse.collected_at?.let { collected ->
+
+            val displayResponse = currentResponse?.takeIf { it.strategy == DYNAMIC_STRATEGY }
+            if (displayResponse != null) {
+                Text("Último resultado: ${displayResponse.status} • ${displayResponse.trips.size} viagens • contas validadas ${displayResponse.coverage.validated_queries}/${displayResponse.coverage.requested_queries}")
+                displayResponse.collected_at?.let { collected ->
                     runCatching { Instant.parse(collected) }.getOrNull()?.let { instant ->
                         val formatted = DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(ZoneId.systemDefault()).format(instant)
                         Text("Coletado em $formatted")
@@ -142,19 +189,49 @@ fun BlaBlaCollectorPanel(
             }
         }
     }
+
+    if (showAddAccount) {
+        AlertDialog(
+            onDismissRequest = { showAddAccount = false },
+            title = { Text("Adicionar conta BlaBlaCar") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("O nome é apenas um apelido local. Depois do login, o Rota Certa tenta descobrir o nome público e o UUID real da conta.")
+                    OutlinedTextField(
+                        value = newAccountLabel,
+                        onValueChange = { newAccountLabel = it },
+                        label = { Text("Apelido opcional") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val account = registry.add(newAccountLabel)
+                    showAddAccount = false
+                    refresh()
+                    sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account))
+                }) { Text("Adicionar e entrar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddAccount = false }) { Text("Cancelar") }
+            },
+        )
+    }
 }
 
 @Composable
-private fun AccountRow(
-    account: BlaBlaAccountDefinition,
-    snapshot: BlaBlaLocalSessionSnapshot?,
-    onLogin: () -> Unit,
+private fun DynamicAccountRow(
+    account: BlaBlaDynamicAccount,
+    snapshot: BlaBlaDynamicSessionSnapshot?,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
 ) {
-    val connected = snapshot?.identityVerified == true
+    val connected = snapshot?.identityVerified == true && !account.profileUuid.isNullOrBlank()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(account.label)
-            Text(account.uuid)
+            Text(account.displayLabel)
+            Text(account.profileUuid ?: "UUID será descoberto após login/validação")
             Text(
                 when {
                     connected -> "Conectado • UUID confirmado ✅"
@@ -164,6 +241,11 @@ private fun AccountRow(
             )
             if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
         }
-        OutlinedButton(onClick = onLogin) { Text(if (snapshot == null) "Entrar" else "Abrir") }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            OutlinedButton(onClick = onOpen) { Text(if (snapshot == null) "Entrar" else "Abrir") }
+            TextButton(onClick = onRemove) { Text("Remover") }
+        }
     }
 }
+
+private const val DYNAMIC_STRATEGY = "authenticated_on_device_webview_dynamic_multi_profile"
