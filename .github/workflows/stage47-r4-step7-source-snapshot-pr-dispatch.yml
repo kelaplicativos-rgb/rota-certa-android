@@ -1,4 +1,4 @@
-name: Stage47 source snapshot PR dispatcher
+name: Stage47 source snapshot PR locator
 
 on:
   pull_request:
@@ -7,38 +7,35 @@ on:
     types: [synchronize, opened, reopened]
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 jobs:
-  dispatch-source-snapshot:
+  locate-source-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Dispatch source-only snapshot v2 and expose run id
+      - name: Locate source-only snapshot v2 push run
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_BRANCH: ${{ github.head_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          gh workflow run stage47-r4-step7-source-snapshot-v2.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$HEAD_BRANCH"
           RUN_ID=""
           for _ in $(seq 1 30); do
             RUN_ID="$(gh run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow stage47-r4-step7-source-snapshot-v2.yml \
               --branch "$HEAD_BRANCH" \
-              --event workflow_dispatch \
+              --event push \
               --limit 20 \
               --json databaseId,headSha \
               --jq '.[] | select(.headSha == env.HEAD_SHA) | .databaseId' | head -n1)"
             [[ -n "$RUN_ID" ]] && break
             sleep 2
           done
-          echo "stage47_source_snapshot_v2_run_id=${RUN_ID:-not-found}"
+          echo "stage47_source_snapshot_v2_push_run_id=${RUN_ID:-not-found}"
           echo "stage47_source_snapshot_head=$HEAD_SHA"
           echo "apk_generated=false"
           test -n "$RUN_ID"
