@@ -1,0 +1,206 @@
+name: Stage47 materialized source snapshot
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+  workflow_dispatch:
+
+concurrency:
+  group: stage47-source-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  snapshot-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY: '1'
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+
+      - name: Checkout current Stage47 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: patches
+          fetch-depth: 1
+
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare historical materializers without Gradle builds
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          scripts = Path('historical19/scripts')
+          guard = '''if [[ "${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+            echo "Stage47 source snapshot: superseded Gradle validation skipped in $(basename \"$0\")"
+            exit 0
+          fi
+
+          '''
+          patched = []
+          for path in sorted(scripts.glob('build_rota_certa_*.sh')):
+              if path.name == 'build_rota_certa_0186.sh':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              if 'STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY' in text:
+                  continue
+              match = re.search(r'(?m)^[ \t]*\./gradlew\b', text)
+              if match is None:
+                  continue
+              path.write_text(text[:match.start()] + guard + text[match.start():], encoding='utf-8')
+              patched.append(path.name)
+
+          wrapper = scripts / 'build_rota_certa_0186.sh'
+          text = wrapper.read_text(encoding='utf-8')
+          needle = "new_test_call = '''if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace"
+          replacement = """new_test_call = '''if [[ \"${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}\" == \"1\" ]]; then
+            echo \"Stage47 source snapshot: final 0.1.186 Gradle validation skipped\"
+            exit 0
+          fi
+
+          if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace"""
+          if text.count(needle) != 1:
+              raise SystemExit(f'0.1.186 final Gradle anchor count={text.count(needle)}')
+          wrapper.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+
+          injector = scripts / 'inject_build_rota_certa_0187.py'
+          inject_text = injector.read_text(encoding='utf-8')
+          cleanup_anchor = 'text = path.read_text(encoding="utf-8")\n\napply_block = r'
+          cleanup_code = '''text = path.read_text(encoding="utf-8")
+          fast_guard_start = 'if [[ "${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}" == "1" ]]; then'
+          if text.count(fast_guard_start) != 1:
+              raise SystemExit(f"Fast 0.1.186 guard count was {text.count(fast_guard_start)}, expected exactly one")
+          fast_guard_start_index = text.index(fast_guard_start)
+          fast_gradle_marker = 'if ! ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace'
+          fast_gradle_index = text.index(fast_gradle_marker, fast_guard_start_index)
+          text = text[:fast_guard_start_index] + text[fast_gradle_index:]
+
+          apply_block = r'''
+          if inject_text.count(cleanup_anchor) != 1:
+              raise SystemExit(f'0.1.187 cleanup anchor count={inject_text.count(cleanup_anchor)}')
+          inject_text = inject_text.replace(cleanup_anchor, cleanup_code, 1)
+          replacement_anchor = "replacement = apply_block + match.group('indent') + match.group('command')"
+          guard_0187 = '''if [[ "${STAGE47_FAST_HISTORICAL_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+            echo "Stage47 source snapshot: 0.1.187 source mutations complete; Gradle validation skipped"
+            exit 0
+          fi
+          '''
+          relocated = f"fast_guard_0187 = {guard_0187!r}\nreplacement = apply_block + fast_guard_0187 + match.group('indent') + match.group('command')"
+          if inject_text.count(replacement_anchor) != 1:
+              raise SystemExit(f'0.1.187 replacement anchor count={inject_text.count(replacement_anchor)}')
+          injector.write_text(inject_text.replace(replacement_anchor, relocated, 1), encoding='utf-8')
+          if not patched:
+              raise SystemExit('No historical build scripts received materialize-only guard')
+          print('historical_materialize_only_guards=PASS count=' + str(len(patched)))
+          PY
+
+      - name: Materialize exact Stage47 0.1.238 source
+        run: |
+          set -euo pipefail
+          SOURCE="$(cd source && pwd)"
+          PATCHES="$(cd patches && pwd)"
+          HIST19="$(cd historical19 && pwd)"
+          HIST34="$(cd historical34 && pwd)"
+          EVIDENCE="$(cd evidence && pwd)"
+          mkdir -p "$EVIDENCE/r8-bootstrap"
+          R8_MATERIALIZER="$EVIDENCE/run-stage46-r8-materialize-only.sh"
+          python3 - "$PATCHES/scripts/run_stage46_r8_reproducible_ci.sh" "$R8_MATERIALIZER" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]).read_text(encoding='utf-8')
+          out = Path(sys.argv[2])
+          anchor = '''python3 - "$SOURCE" "$PATCHES" <<'PY' | tee "$EVIDENCE/static-r8.txt"'''
+          if source.count(anchor) != 1:
+              raise SystemExit(f'R8 anchor count={source.count(anchor)}')
+          early = '''if [[ "${STAGE46_R8_MATERIALIZE_ONLY:-0}" == "1" ]]; then\n  printf 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510\\n' | tee "$EVIDENCE/final-status.txt"\n  exit 0\nfi\n\n'''
+          out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
+          PY
+          STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap" 2>&1 | tee "$EVIDENCE/r8-materializer-full.log"
+          grep -Fq 'stage46_r8_materialized_for_stage47=PASS' "$EVIDENCE/r8-bootstrap/final-status.txt"
+
+          FAROL="$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt"
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          sha256sum "$FAROL" > "$EVIDENCE/farol-before.sha256"
+
+          python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_internal_trip_shortcut.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_flexible_capacity_r2.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_update_compat_version.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_fares_r3.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_driver_identity_android_r3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_driver_identity_backend_r3.py" "$SOURCE" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_public_cancel_r3.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_calendar_feed_r3.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_driver_agenda_version_r3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_unified_capacity_backend_r4_step2.py" "$PATCHES"
+          python3 "$PATCHES/scripts/apply_stage47_timeline_r4_step3.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_quick_passenger_r4_step4.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_blablacar_profile_month_r4_step5.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step6_version.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step7_automatic_identity.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step7_version.py" "$SOURCE"
+          python3 "$PATCHES/scripts/apply_stage47_r4_step7_0238_version.py" "$SOURCE"
+
+          sha256sum "$FAROL" > "$EVIDENCE/farol-after.sha256"
+          cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          grep -Fq 'versionCode = 5531' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.238"' "$SOURCE/app/build.gradle.kts"
+          test -s "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt"
+          test -s "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt"
+          grep -Fq '+ Passageiro rápido' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt"
+          grep -Fq 'TIMELINE_EXTERNAL_ENTRY' "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt"
+          printf 'stage47_materialized_source=PASS version=0.1.238/5531 farol_untouched=true apk_generated=false\n' | tee "$EVIDENCE/source-status.txt"
+
+      - name: Package source snapshot only
+        run: |
+          set -euo pipefail
+          tar --exclude='.git' --exclude='.gradle' --exclude='app/build' --exclude='build' -czf evidence/stage47-materialized-source-0.1.238.tar.gz -C source .
+          sha256sum evidence/stage47-materialized-source-0.1.238.tar.gz | tee evidence/source-archive.sha256
+          printf 'source_snapshot_only=true\napk_generated=false\nsource_head=32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42\npatch_head=%s\n' "${GITHUB_SHA}" > evidence/snapshot-metadata.txt
+
+      - name: Upload materialized source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage47-materialized-source-0.1.238
+          path: |
+            evidence/stage47-materialized-source-0.1.238.tar.gz
+            evidence/source-archive.sha256
+            evidence/source-status.txt
+            evidence/snapshot-metadata.txt
+            evidence/farol-before.sha256
+            evidence/farol-after.sha256
+          if-no-files-found: error
+          retention-days: 7
