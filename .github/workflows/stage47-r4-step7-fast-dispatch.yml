@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   actions: write
+  issues: write
 
 jobs:
   dispatch-fast-physical-apk:
@@ -22,4 +23,25 @@ jobs:
           gh workflow run stage47-r4-step7-physical-apk-fast.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$GITHUB_REF_NAME"
-          echo "stage47_fast_physical_dispatch=PASS ref=$GITHUB_REF_NAME sha=$GITHUB_SHA"
+
+          RUN_ID=""
+          for _ in $(seq 1 15); do
+            RUN_ID="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow stage47-r4-step7-physical-apk-fast.yml \
+              --branch "$GITHUB_REF_NAME" \
+              --event workflow_dispatch \
+              --limit 10 \
+              --json databaseId,headSha \
+              --jq '.[] | select(.headSha == env.GITHUB_SHA) | .databaseId' | head -n1)"
+            [[ -n "$RUN_ID" ]] && break
+            sleep 2
+          done
+
+          if [[ -n "$RUN_ID" ]]; then
+            gh pr comment 112 --repo "$GITHUB_REPOSITORY" \
+              --body "Stage47 Step7 fast physical run: ${RUN_ID} • head ${GITHUB_SHA} • candidate 0.1.237/5530"
+            echo "stage47_fast_physical_dispatch=PASS run_id=$RUN_ID ref=$GITHUB_REF_NAME sha=$GITHUB_SHA"
+          else
+            echo "stage47_fast_physical_dispatch=PASS run_id=pending ref=$GITHUB_REF_NAME sha=$GITHUB_SHA"
+          fi
