@@ -1,12 +1,14 @@
 name: Stage47 R4 Step7 fast physical APK
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/stage47-r4-step7-automatic-identity
-    paths:
-      - '.github/workflows/stage47-r4-step7-physical-apk-fast.yml'
+      - agent/stage47-r4-unified-occupancy-step6-validation-apk
   workflow_dispatch:
+
+concurrency:
+  group: stage47-r4-step7-fast-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ jobs:
       - name: Checkout Step7 patches
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: patches
           fetch-depth: 1
       - name: Checkout pinned Stage18 recipe
