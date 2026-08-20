@@ -16,9 +16,9 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_SHA: 9b74ca0674f98f1e1ac50c0688ead96dbb78680b
+      TARGET_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - name: Locate one-shot persisted source import
+      - name: Locate persisted source import for this PR head
         run: |
           set -euo pipefail
           RUN_ID=""
@@ -42,5 +42,6 @@ jobs:
           echo "stage47_persist_run_id=${RUN_ID:-not-found}"
           echo "stage47_persist_status=${STATUS:-unknown}"
           echo "stage47_persist_conclusion=${CONCLUSION:-pending}"
+          echo "stage47_persist_head=$TARGET_SHA"
           echo 'apk_generated=false'
           test -n "$RUN_ID"
