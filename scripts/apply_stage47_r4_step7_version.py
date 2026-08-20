@@ -157,19 +157,24 @@ once(
 # Keep Step7 as the same stage/version and layer the consolidated card behavior
 # only after the identity/session materialization above. This preserves the
 # validated Step6/Step7 chain and avoids duplicating the collector or FAROL.
-card_patcher = Path(__file__).with_name("apply_stage47_r4_step7_card_navigation.py")
-if not card_patcher.is_file():
-    raise SystemExit(f"missing Step7 card-navigation materializer: {card_patcher}")
-previous_argv = sys.argv
-try:
-    sys.argv = [str(card_patcher), str(source)]
-    namespace = {"__name__": "__main__", "__file__": str(card_patcher)}
-    exec(compile(card_patcher.read_text(encoding="utf-8"), str(card_patcher), "exec"), namespace)
-finally:
-    sys.argv = previous_argv
+def run_sibling_patcher(filename: str) -> None:
+    patcher = Path(__file__).with_name(filename)
+    if not patcher.is_file():
+        raise SystemExit(f"missing Step7 materializer: {patcher}")
+    previous_argv = sys.argv
+    try:
+        sys.argv = [str(patcher), str(source)]
+        namespace = {"__name__": "__main__", "__file__": str(patcher)}
+        exec(compile(patcher.read_text(encoding="utf-8"), str(patcher), "exec"), namespace)
+    finally:
+        sys.argv = previous_argv
+
+
+run_sibling_patcher("apply_stage47_r4_step7_card_navigation.py")
+run_sibling_patcher("apply_stage47_r4_step7_card_local_manage.py")
 
 print(
     "stage47_r4_step7_version=PASS version=0.1.232/5525 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
-    "exact_trip_cards=true local_blablacar_merge=true"
+    "exact_trip_cards=true local_blablacar_merge=true local_manage_agenda=true"
 )
