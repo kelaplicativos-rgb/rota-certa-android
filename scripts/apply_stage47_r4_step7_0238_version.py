@@ -8,9 +8,9 @@ BUILD = SOURCE / "app/build.gradle.kts"
 if not BUILD.is_file():
     raise SystemExit(f"missing Android build file: {BUILD}")
 
-visible = Path(__file__).with_name("apply_stage47_r4_step7_visible_capacity_flow.py")
+visible = Path(__file__).with_name("apply_stage47_r4_step7_visible_capacity_flow_compat.py")
 if not visible.is_file():
-    raise SystemExit(f"missing visible capacity materializer: {visible}")
+    raise SystemExit(f"missing compatible visible capacity materializer: {visible}")
 
 previous_argv = sys.argv
 try:
