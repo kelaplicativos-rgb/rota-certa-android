@@ -4,8 +4,18 @@ import sys
 
 source = Path(sys.argv[1]).resolve()
 build = source / "app/build.gradle.kts"
-text = build.read_text(encoding="utf-8")
+dynamic = source / "app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt"
 
+
+def once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one marker, got {count}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
 new_code = "versionCode = 5525"
@@ -15,4 +25,136 @@ if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
 
 build.write_text(text.replace(old_code, new_code, 1).replace(old_name, new_name, 1), encoding="utf-8")
-print("stage47_r4_step7_version=PASS version=0.1.232/5525")
+
+if not dynamic.is_file():
+    raise SystemExit(f"missing materialized Stage47 dynamic account source: {dynamic}")
+
+# Physical-test UX: keep the real authenticated BlaBlaCar WebView visible while
+# synchronization is running. The small Stage47 status line stays above it, so
+# the user can see both the browser navigation and the current trip counter.
+# Do not use GONE and do not place an opaque cover over the WebView.
+once(
+    dynamic,
+'''        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            val browserHost = android.widget.FrameLayout(this)
+            browserHost.addView(
+                webView,
+                android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+            browserHost.addView(
+                TextView(this).apply {
+                    text = "Sincronizando ${account.displayLabel}\\nO navegador está processando as viagens em segundo plano."
+                    gravity = android.view.Gravity.CENTER
+                    textSize = 18f
+                    setTextColor(android.graphics.Color.WHITE)
+                    setBackgroundColor(android.graphics.Color.rgb(18, 18, 18))
+                    setPadding(40, 40, 40, 40)
+                },
+                android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            )
+            root.addView(browserHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        } else {
+            root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        setContentView(root)
+''',
+'''        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(root)
+''',
+    "visible sync WebView",
+)
+
+# The authenticated profile page may not repeat the driver's UUID inside a
+# profile anchor. For an account that already has a canonical UUID, inspect the
+# rendered authenticated DOM plus same-page resource/navigation URLs and only
+# confirm when that exact expected UUID is present. This never uses the visible
+# name as identity and does not auto-bind an unknown account from broad DOM UUIDs.
+once(
+    dynamic,
+'''private data class DynamicIdentityEvidence(
+    val profileLinks: List<String> = emptyList(),
+    val visibleName: String = "",
+    val domHtml: String = "",
+)
+''',
+'''private data class DynamicIdentityEvidence(
+    val profileLinks: List<String> = emptyList(),
+    val observedUuids: List<String> = emptyList(),
+    val visibleName: String = "",
+    val domHtml: String = "",
+)
+''',
+    "identity evidence observed UUIDs",
+)
+
+once(
+    dynamic,
+'''            evidence?.let {
+                store.saveDiagnosticHtml(account, "profile", it.domHtml)
+                bindIdentityFromLinks(it.profileLinks, it.visibleName)?.let { updated -> account = updated }
+            }
+            if (identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()) {
+''',
+'''            evidence?.let {
+                store.saveDiagnosticHtml(account, "profile", it.domHtml)
+                val expectedUuid = account.profileUuid?.lowercase()
+                val observedUuids = it.observedUuids.map(String::lowercase).toSet()
+                val expectedFoundInAuthenticatedPage = expectedUuid != null && expectedUuid in observedUuids
+                if (expectedFoundInAuthenticatedPage) {
+                    identityConfirmedThisSync = true
+                } else {
+                    bindIdentityFromLinks(it.profileLinks, it.visibleName)?.let { updated -> account = updated }
+                }
+                UnifiedDebugEventStore.record(
+                    "IDENTITY_EVIDENCE",
+                    packageName,
+                    "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${sanitizedUrl(webView.url.orEmpty())}",
+                )
+            }
+            if (identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()) {
+''',
+    "authenticated profile expected UUID evidence",
+)
+
+once(
+    dynamic,
+'''              const nameNode = document.querySelector('[data-testid*="profile-name"], [data-testid*="driver-name"], h1');
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                profileLinks: Array.from(new Set(links)),
+                visibleName: clean(nameNode && nameNode.innerText),
+                domHtml: html.slice(0, 350000)
+              });
+''',
+'''              const nameNode = document.querySelector('[data-testid*="profile-name"], [data-testid*="driver-name"], h1');
+              const resourceUrls = (performance && performance.getEntriesByType)
+                ? performance.getEntriesByType('resource').map((entry) => entry.name || '')
+                : [];
+              const navigationUrls = (performance && performance.getEntriesByType)
+                ? performance.getEntriesByType('navigation').map((entry) => entry.name || '')
+                : [];
+              const rawIdentityEvidence = [
+                location.href || '',
+                document.documentElement ? (document.documentElement.outerHTML || '') : '',
+                ...resourceUrls,
+                ...navigationUrls
+              ].join('\\n');
+              const observedUuids = Array.from(new Set(
+                (rawIdentityEvidence.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig) || [])
+                  .map((value) => value.toLowerCase())
+              ));
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                profileLinks: Array.from(new Set(links)),
+                observedUuids: observedUuids,
+                visibleName: clean(nameNode && nameNode.innerText),
+                domHtml: html.slice(0, 350000)
+              });
+''',
+    "identity DOM and resource UUID evidence",
+)
+
+print(
+    "stage47_r4_step7_version=PASS version=0.1.232/5525 "
+    "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true"
+)
