@@ -43,19 +43,21 @@ regex_once(
 )
 once(
     QUICK_UI,
-'''                    onChanged(if (syncOnline) "Passageiro e vagas conciliados com a agenda online." else "Passageiro adicionado e vagas conciliadas.")
+'''                    onChanged("Passageiro particular adicionado. Ocupação recalculada.")
 ''',
-'''                    onChanged(if (syncOnline) "Passageiro e vagas conciliados com a agenda online." else "Passageiro adicionado e vagas conciliadas.")
+'''                    onChanged("Passageiro particular adicionado. Ocupação recalculada.")
                     onBlaBlaSyncRequested?.invoke()
 ''',
     "autosync after passenger save",
 )
 once(
     QUICK_UI,
-'''                                onChanged("Vaga liberada e ocupação recalculada.")
+'''                                .onSuccess { onChanged("Passageiro removido e vaga liberada.") }
 ''',
-'''                                onChanged("Vaga liberada e ocupação recalculada.")
-                                onBlaBlaSyncRequested?.invoke()
+'''                                .onSuccess {
+                                    onChanged("Passageiro removido e vaga liberada.")
+                                    onBlaBlaSyncRequested?.invoke()
+                                }
 ''',
     "autosync after passenger cancellation",
 )
