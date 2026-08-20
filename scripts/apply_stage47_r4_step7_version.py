@@ -18,8 +18,8 @@ def once(path: Path, old: str, new: str, label: str) -> None:
 text = build.read_text(encoding="utf-8")
 old_code = "versionCode = 5524"
 old_name = 'versionName = "0.1.231"'
-new_code = "versionCode = 5528"
-new_name = 'versionName = "0.1.235"'
+new_code = "versionCode = 5527"
+new_name = 'versionName = "0.1.234"'
 
 if text.count(old_code) != 1 or text.count(old_name) != 1:
     raise SystemExit("Step7 version source is not the validated Step6 0.1.231/5524 state")
@@ -173,7 +173,7 @@ run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy_v2.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_card_identity.py")
 
 print(
-    "stage47_r4_step7_version=PASS version=0.1.235/5528 "
+    "stage47_r4_step7_version=PASS version=0.1.234/5527 "
     "visible_sync_browser=true authenticated_expected_uuid_dom_evidence=true "
     "exact_trip_card_click=true manage_button_removed=true clean_cards=true "
     "visible_blablacar_passengers=true booked_seats=true private_passenger_simple=true "
