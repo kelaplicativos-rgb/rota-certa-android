@@ -71,8 +71,16 @@ object BlaBlaDomNormalizer {
         candidate: BlaBlaDomRideCandidate,
         detail: BlaBlaDomTripDetail,
         today: LocalDate = LocalDate.now(),
+        authenticatedProfileSessionVerified: Boolean = false,
     ): BlaBlaCollectorTrip? {
-        if (!isExpectedProfile(account, detail)) return null
+        val detailUuids = profileUuids(detail)
+        val expectedUuid = account.uuid.lowercase()
+        val uuidValidation = when {
+            expectedUuid in detailUuids -> "verified_from_trip_detail_profile_link"
+            detailUuids.isNotEmpty() -> return null
+            authenticatedProfileSessionVerified -> "verified_from_authenticated_profile_session"
+            else -> return null
+        }
         val date = parseDate(
             listOf(detail.dateText, candidate.dateText, candidate.text, detail.bodyText.take(6000)).joinToString(" | "),
             today,
@@ -104,7 +112,7 @@ object BlaBlaDomNormalizer {
             availability = if (full) "full" else "unknown",
             trip_href = href.takeIf(String::isNotBlank),
             trip_id = tripId(href),
-            uuid_validation = "verified_from_trip_detail_profile_link",
+            uuid_validation = uuidValidation,
         )
     }
 
