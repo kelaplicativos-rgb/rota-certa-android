@@ -172,6 +172,7 @@ run_sibling_patcher("apply_stage47_r4_step7_timeline_future_archive.py")
 run_sibling_patcher("apply_stage47_r4_step7_clean_occupancy_v2.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_card_identity.py")
 run_sibling_patcher("apply_stage47_r4_step7_passenger_autosync.py")
+run_sibling_patcher("apply_stage47_r4_step7_autosync_scope_fix.py")
 
 print(
     "stage47_r4_step7_version=PASS version=0.1.235/5528 "
@@ -179,7 +180,7 @@ print(
     "exact_trip_card_click=true manage_button_removed=true clean_cards=true "
     "visible_blablacar_passengers=true booked_seats=true private_passenger_simple=true "
     "passenger_name_phone_card=true passenger_whatsapp_click=true phone_primary_identity=true "
-    "auto_account_sync_after_passenger_change=true seat_write_not_claimed=true "
+    "auto_account_sync_after_passenger_change=true autosync_scope_fix=true seat_write_not_claimed=true "
     "geo_corridor_merge=true overbooking_urgent=true future_chronological_timeline=true "
     "archive_local_only=true"
 )
