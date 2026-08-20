@@ -447,6 +447,7 @@ class BlaBlaManualSeatSyncActivity : Activity() {
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var requestStore: BlaBlaManualSeatSyncRequestStore
     private lateinit var request: BlaBlaManualSeatSyncRequest
+    private lateinit var ledger: BlaBlaManualSeatSyncLedger
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
     private lateinit var archive: BlaBlaMhtmlArchiveStore
@@ -458,6 +459,7 @@ class BlaBlaManualSeatSyncActivity : Activity() {
         super.onCreate(savedInstanceState)
         registry = BlaBlaDynamicAccountRegistry(this)
         requestStore = BlaBlaManualSeatSyncRequestStore(this)
+        ledger = BlaBlaManualSeatSyncLedger(this)
         account = registry.get(intent?.getStringExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finishPending("Conta BlaBlaCar não encontrada."); return
         }
@@ -529,10 +531,15 @@ class BlaBlaManualSeatSyncActivity : Activity() {
             Phase.VERIFY -> archive.save(webView, account, "options-after", request.tripId) {
                 evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { state ->
                     if (state?.seats == expectedSeats) {
+                        if (request.seatDelta < 0) {
+                            ledger.markVerifiedDecrease(request)
+                        } else if (request.seatDelta > 0) {
+                            ledger.clearAfterVerifiedReverse(request.localBookingId)
+                        }
                         UnifiedDebugEventStore.record(
                             "EXTERNAL_SEAT_SYNC_VERIFIED",
                             packageName,
-                            "request=${request.id} after=${state.seats} expected=$expectedSeats manual=true",
+                            "request=${request.id} after=${state.seats} expected=$expectedSeats manual=true ledger=true",
                         )
                         requestStore.remove(request.id)
                         setResult(
