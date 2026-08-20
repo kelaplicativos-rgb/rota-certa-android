@@ -1,5 +1,6 @@
 name: Stage47 persist validated materialized app source
 
+# One-shot trigger after validated source snapshot run 32403049962.
 on:
   push:
     branches:
