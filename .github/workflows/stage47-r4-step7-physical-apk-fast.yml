@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
+      GH_TOKEN: ${{ github.token }}
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
     steps:
       - name: Checkout protected canonical source
@@ -104,7 +105,7 @@ jobs:
           cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
           grep -Fq 'versionCode = 5525' "$SOURCE/app/build.gradle.kts"
           grep -Fq 'versionName = "0.1.232"' "$SOURCE/app/build.gradle.kts"
-          printf 'stage47_r4_step7_fast_materialization=PASS version=0.1.232/5525 farol_untouched=true automatic_identity=true google_maps_materialization_env=present\n' | tee "$EVIDENCE/materialization-status.txt"
+          printf 'stage47_r4_step7_fast_materialization=PASS version=0.1.232/5525 farol_untouched=true automatic_identity=true google_maps_materialization_env=present gh_token_materialization_env=present\n' | tee "$EVIDENCE/materialization-status.txt"
 
       - name: Assemble physical-test candidate
         run: |
