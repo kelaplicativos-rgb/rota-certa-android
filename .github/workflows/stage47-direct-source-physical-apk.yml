@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.249
+name: Stage47 direct-source physical APK 0.1.250
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ on:
       - app/build.gradle.kts
       - app/src/main/**
       - app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt
+      - app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt
   workflow_dispatch:
 
 permissions:
@@ -21,8 +22,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5542'
-      EXPECTED_VERSION_NAME: '0.1.249'
+      EXPECTED_VERSION_CODE: '5543'
+      EXPECTED_VERSION_NAME: '0.1.250'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -79,6 +80,8 @@ jobs:
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
           grep -Fq 'deterministicJoin=true' "$AUTOMATION"
           grep -Fq 'requiresSemanticProof' "$AUTOMATION"
+          grep -Fq 'passengerCanonicalIdentityProven' "$AUTOMATION"
+          grep -Fq 'TRIP_IDENTITY_CONFLICT' "$DYNAMIC"
           grep -Fq 'editHref: String = ""' "$AUTOMATION"
           grep -Fq 'tripIdFromEditHref(href) == target.tripId' "$AUTOMATION"
           grep -Fq 'tripIdFromOptionsHref(optionHref) == target.tripId' "$AUTOMATION"
@@ -239,7 +242,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-deterministic-association-0.1.249
+          name: rota-certa-stage47-physical-fixes-0.1.250
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

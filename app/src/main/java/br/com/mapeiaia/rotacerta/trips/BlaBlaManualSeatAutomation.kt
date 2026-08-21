@@ -884,23 +884,35 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun passengerEvidenceCompatible(target: PassengerTarget, evidence: MhtmlPassengerEvidence): Boolean {
-        var strongMatch = false
-        if (target.expectedName.isNotBlank()) {
-            if (evidence.visibleName.isNotBlank()) {
-                if (normalizeText(target.expectedName) != normalizeText(evidence.visibleName)) return false
-                strongMatch = true
-            }
-        }
-        if (target.expectedBoarding.isNotBlank() && evidence.boarding.isNotBlank()) {
-            if (!samePlaceEvidence(target.expectedBoarding, evidence.boarding)) return false
-            strongMatch = true
-        }
-        if (target.expectedDropoff.isNotBlank() && evidence.dropoff.isNotBlank()) {
-            if (!samePlaceEvidence(target.expectedDropoff, evidence.dropoff)) return false
-            strongMatch = true
-        }
-        return !target.requiresSemanticProof || strongMatch
-    }
+val canonicalIdentityProven = target.href.isNotBlank() &&
+  BlaBlaHarvestAssociation.passengerCanonicalIdentityProven(
+      target.externalPassengerKey,
+      target.href,
+      evidence.pageUrl,
+  )
+var semanticCompatible = true
+var semanticEvidencePresent = false
+if (target.expectedName.isNotBlank() && evidence.visibleName.isNotBlank()) {
+  semanticEvidencePresent = true
+  if (normalizeText(target.expectedName) != normalizeText(evidence.visibleName)) semanticCompatible = false
+}
+if (target.expectedBoarding.isNotBlank() && evidence.boarding.isNotBlank()) {
+  semanticEvidencePresent = true
+  if (!samePlaceEvidence(target.expectedBoarding, evidence.boarding)) semanticCompatible = false
+}
+if (target.expectedDropoff.isNotBlank() && evidence.dropoff.isNotBlank()) {
+  semanticEvidencePresent = true
+  if (!samePlaceEvidence(target.expectedDropoff, evidence.dropoff)) semanticCompatible = false
+}
+if (canonicalIdentityProven && semanticEvidencePresent && !semanticCompatible) {
+  UnifiedDebugEventStore.record(
+      "HARVEST_PASSENGER_SEMANTIC_DIFFERENCE",
+      packageName,
+      "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} canonicalIdentity=true action=accept_canonical_identity",
+  )
+}
+return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProven)
+}
 
     private fun persistPassengerEvidence(target: PassengerTarget, evidence: MhtmlPassengerEvidence) {
         if (!passengerPageMatchesTarget(target, evidence.pageUrl)) {
@@ -2120,6 +2132,15 @@ internal object BlaBlaHarvestAssociation {
 
     fun passengerPageMatches(expectedPassengerKey: String, url: String): Boolean =
         expectedPassengerKey.isNotBlank() && isPassengerHref(url) && passengerKey(url) == expectedPassengerKey
+
+    fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =
+        expectedUrl.isNotBlank() &&
+            capturedUrl.isNotBlank() &&
+            passengerPageMatches(expectedPassengerKey, expectedUrl) &&
+            passengerPageMatches(expectedPassengerKey, capturedUrl) &&
+            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)
+
+    fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven
 }
 
 private val SEAT_OPTIONS_READ_JS = """

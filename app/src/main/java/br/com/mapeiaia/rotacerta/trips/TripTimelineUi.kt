@@ -190,6 +190,20 @@ fun TripTimelineScreen(
     }
 }
 
+internal enum class TimelineOccupancyReadState {
+CAPACITY_CONFIGURED,
+RESERVED,
+COMPLETE_EMPTY,
+PENDING,
+}
+
+internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState = when {
+entry.capacity > 0 -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
+entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
+entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
+else -> TimelineOccupancyReadState.PENDING
+}
+
 @Composable
 private fun TimelineEntryCard(
     entry: TripTimelineEntry,
@@ -229,13 +243,17 @@ private fun TimelineEntryCard(
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
             val occupied = entry.maximumOccupiedSeats
-            if (entry.capacity > 0) {
-                val free = (entry.capacity - occupied).coerceAtLeast(0)
-                Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
-            } else if (occupied > 0) {
-                Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
-            } else {
-                Text("Ocupação aguardando leitura ${statusMark(entry)}")
+            when (timelineOccupancyReadState(entry)) {
+                TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
+                    val free = (entry.capacity - occupied).coerceAtLeast(0)
+                    Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
+                }
+                TimelineOccupancyReadState.RESERVED ->
+                    Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
+                TimelineOccupancyReadState.COMPLETE_EMPTY ->
+                    Text("BlaBlaCar: 0 lugares reservados ${statusMark(entry)}")
+                TimelineOccupancyReadState.PENDING ->
+                    Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
@@ -247,6 +265,7 @@ private fun TimelineEntryCard(
                 TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros acima da capacidade física.")
                 TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> Text("❌ Conflito real de horário/local.")
                 TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
+                TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
                 TripTimelineIssue.VALIDATION_PENDING in entry.issues -> Text("⏳ Falta confirmar a origem dos dados.")
             }
 

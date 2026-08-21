@@ -30,6 +30,7 @@ data class TripTimelineEntry(
     val blablaPrice: String? = null,
     val blablaAvailability: String? = null,
     val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    val blablaPassengerRosterComplete: Boolean? = null,
     val issues: Set<TripTimelineIssue> = emptySet(),
 ) {
     val minimumAvailableSeats: Int
@@ -45,6 +46,7 @@ enum class TripTimelineIssue {
     PROFILE_CONTINUITY,
     OVERBOOKING,
     VALIDATION_PENDING,
+    EXTERNAL_IDENTITY_CONFLICT,
 }
 
 object TripTimelineEngine {

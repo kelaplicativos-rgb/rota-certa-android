@@ -82,62 +82,148 @@ data class BlaBlaCollectorTrip(
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val booked_seats: Int = 0,
     val passenger_roster_complete: Boolean = false,
+    val identity_conflict: Boolean = false,
 )
 
 internal data class BlaBlaTripIdentityEvidence(
-    val key: String,
-    val identityHash: String,
-    val externalTripIdPresent: Boolean,
-    val specificHrefPresent: Boolean,
-    val fallbackIdentityUsed: Boolean,
+val key: String,
+val identityHash: String,
+val externalTripIdPresent: Boolean,
+val specificHrefPresent: Boolean,
+val fallbackIdentityUsed: Boolean,
+val identityConflict: Boolean,
+)
+
+internal data class BlaBlaTripIdentityConflict(
+val identityHash: String,
+val externalTripId: String?,
+val physicalCores: List<String>,
+)
+
+internal data class BlaBlaTripIdentityResolution(
+val trips: List<BlaBlaCollectorTrip>,
+val dedupedCount: Int,
+val conflicts: List<BlaBlaTripIdentityConflict>,
 )
 
 internal object BlaBlaTripIdentity {
-    fun evidence(trip: BlaBlaCollectorTrip): BlaBlaTripIdentityEvidence {
-        val externalId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
-        val specificHref = stableSpecificHref(trip.trip_href)
-        val key = when {
-            externalId != null -> "id|${trip.profile_uuid.trim()}|$externalId"
-            specificHref != null -> "href|${trip.profile_uuid.trim()}|$specificHref"
-            else -> listOf(
-                "fallback",
-                trip.profile_uuid.trim(),
-                trip.date.trim(),
-                trip.departure_time.orEmpty().trim(),
-                trip.arrival_time.orEmpty().trim(),
-                trip.actual_departure.orEmpty().trim(),
-                trip.actual_arrival.orEmpty().trim(),
-                trip.search_from.orEmpty().trim(),
-                trip.search_to.orEmpty().trim(),
-                trip.price.orEmpty().trim(),
-            ).joinToString("|")
-        }
-        return BlaBlaTripIdentityEvidence(
-            key = key,
-            identityHash = sha256Short(key),
-            externalTripIdPresent = externalId != null,
-            specificHrefPresent = specificHref != null,
-            fallbackIdentityUsed = externalId == null && specificHref == null,
-        )
-    }
+fun evidence(trip: BlaBlaCollectorTrip): BlaBlaTripIdentityEvidence {
+val externalId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+val specificHref = stableSpecificHref(trip.trip_href)
+val base = baseKey(trip)
+val key = if (trip.identity_conflict) "$base|identity-conflict|${physicalCoreKey(trip)}" else base
+return BlaBlaTripIdentityEvidence(
+  key = key,
+  identityHash = sha256Short(key),
+  externalTripIdPresent = externalId != null,
+  specificHrefPresent = specificHref != null,
+  fallbackIdentityUsed = externalId == null && specificHref == null,
+  identityConflict = trip.identity_conflict,
+)
+}
 
-    private fun stableSpecificHref(raw: String?): String? {
-        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val withoutQuery = value.substringBefore('?').substringBefore('#').trimEnd('/')
-        val path = runCatching {
-            if (withoutQuery.contains("://")) URI(withoutQuery).path else withoutQuery
-        }.getOrNull()?.trimEnd('/')?.takeIf(String::isNotEmpty) ?: return null
-        val normalized = if (path.startsWith('/')) path else "/$path"
-        if (normalized in setOf("/rides", "/rides/offer", "/trip")) return null
-        return normalized.takeIf { candidate ->
-            candidate.startsWith("/rides/offer/") || candidate.startsWith("/trip/")
-        }
-    }
+fun resolveDistinct(trips: List<BlaBlaCollectorTrip>): BlaBlaTripIdentityResolution {
+if (trips.isEmpty()) return BlaBlaTripIdentityResolution(emptyList(), 0, emptyList())
+val grouped = trips.groupBy(::baseKey)
+val conflictKeys = grouped.mapNotNull { (key, group) ->
+  val strong = group.any { trip ->
+      !trip.trip_id.isNullOrBlank() || stableSpecificHref(trip.trip_href) != null
+  }
+  key.takeIf { strong && group.map(::physicalCoreKey).distinct().size > 1 }
+}.toSet()
+val conflicts = conflictKeys.map { key ->
+  val group = grouped.getValue(key)
+  BlaBlaTripIdentityConflict(
+      identityHash = sha256Short(key),
+      externalTripId = group.firstNotNullOfOrNull { it.trip_id?.trim()?.takeIf(String::isNotEmpty) },
+      physicalCores = group.map(::physicalCoreKey).distinct(),
+  )
+}
+val seen = mutableSetOf<String>()
+var deduped = 0
+val resolved = buildList {
+  trips.forEach { trip ->
+      val base = baseKey(trip)
+      val conflict = base in conflictKeys
+      val dedupeKey = if (conflict) "$base|${physicalCoreKey(trip)}" else base
+      if (!seen.add(dedupeKey)) {
+          deduped++
+      } else {
+          add(if (conflict) trip.copy(identity_conflict = true) else trip.copy(identity_conflict = false))
+      }
+  }
+}
+return BlaBlaTripIdentityResolution(resolved, deduped, conflicts)
+}
 
-    private fun sha256Short(value: String): String = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray(Charsets.UTF_8))
-        .take(16)
-        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+fun physicalCoreKey(trip: BlaBlaCollectorTrip): String {
+val origin = trip.actual_departure?.takeIf(String::isNotBlank) ?: trip.search_from.orEmpty()
+val destination = trip.actual_arrival?.takeIf(String::isNotBlank) ?: trip.search_to.orEmpty()
+return listOf(
+  trip.date.trim(),
+  trip.departure_time.orEmpty().take(5).trim(),
+  normalizeCorePlace(origin),
+  normalizeCorePlace(destination),
+).joinToString("|")
+}
+
+fun externalTripIdFromHref(raw: String?): String? {
+val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+runCatching { URI(value) }.getOrNull()?.let { uri ->
+  uri.rawQuery.orEmpty().split('&').firstOrNull { it.substringBefore('=') == "id" }
+      ?.substringAfter('=', "")?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
+  Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
+      .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+  Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
+      .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+}
+return null
+}
+
+private fun baseKey(trip: BlaBlaCollectorTrip): String {
+val externalId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+val specificHref = stableSpecificHref(trip.trip_href)
+return when {
+  externalId != null -> "id|${trip.profile_uuid.trim()}|$externalId"
+  specificHref != null -> "href|${trip.profile_uuid.trim()}|$specificHref"
+  else -> listOf(
+      "fallback",
+      trip.profile_uuid.trim(),
+      trip.date.trim(),
+      trip.departure_time.orEmpty().trim(),
+      trip.arrival_time.orEmpty().trim(),
+      trip.actual_departure.orEmpty().trim(),
+      trip.actual_arrival.orEmpty().trim(),
+      trip.search_from.orEmpty().trim(),
+      trip.search_to.orEmpty().trim(),
+      trip.price.orEmpty().trim(),
+  ).joinToString("|")
+}
+}
+
+private fun stableSpecificHref(raw: String?): String? {
+val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+val withoutQuery = value.substringBefore('?').substringBefore('#').trimEnd('/')
+val path = runCatching {
+  if (withoutQuery.contains("://")) URI(withoutQuery).path else withoutQuery
+}.getOrNull()?.trimEnd('/')?.takeIf(String::isNotEmpty) ?: return null
+val normalized = if (path.startsWith('/')) path else "/$path"
+if (normalized in setOf("/rides", "/rides/offer", "/trip")) return null
+return normalized.takeIf { candidate ->
+  candidate.startsWith("/rides/offer/") || candidate.startsWith("/trip/")
+}
+}
+
+private fun normalizeCorePlace(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
+.replace(Regex("\\p{M}+"), "")
+.lowercase()
+.replace(Regex("[^a-z0-9]+"), " ")
+.trim()
+
+private fun sha256Short(value: String): String = MessageDigest.getInstance("SHA-256")
+.digest(value.toByteArray(Charsets.UTF_8))
+.take(16)
+.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }
 
 internal object BlaBlaPassengerRosterReconciler {
@@ -206,6 +292,7 @@ data class BlaBlaCollectorCoverage(
     val validated_queries: Int = 0,
     val failed_or_mismatched_queries: Int = 0,
     val unresolved_target_cards: Int = 0,
+    val identity_conflicts: Int = 0,
     val past_dates_skipped: Boolean = true,
 )
 
@@ -467,7 +554,11 @@ object BlaBlaTimelineAdapter {
             blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),
             blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
             blablaPassengers = trip.passengers,
-            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),
+            blablaPassengerRosterComplete = trip.passenger_roster_complete,
+            issues = buildSet {
+                if (!verified) add(TripTimelineIssue.VALIDATION_PENDING)
+                if (trip.identity_conflict) add(TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT)
+            },
         )
         val identity = BlaBlaTripIdentity.evidence(trip)
         UnifiedDebugEventStore.record(

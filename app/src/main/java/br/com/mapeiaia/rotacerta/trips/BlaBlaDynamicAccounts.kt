@@ -198,58 +198,72 @@ class BlaBlaDynamicSessionStore(context: Context) {
     }
 
     fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {
-        val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
-        val verified = snapshots.filter { (account, snapshot) ->
-            snapshot.identityVerified && !account.profileUuid.isNullOrBlank() && snapshot.profileUuid == account.profileUuid
-        }
-        val beforeDistinct = verified.flatMap { (_, snapshot) -> snapshot.trips }
-        beforeDistinct.forEachIndexed { index, trip ->
-            val identity = BlaBlaTripIdentity.evidence(trip)
-            UnifiedDebugEventStore.record(
-                "TRIP_IDENTITY",
-                appContext.packageName,
-                "index=${index + 1}/${beforeDistinct.size} externalTripIdPresent=${identity.externalTripIdPresent} specificHrefPresent=${identity.specificHrefPresent} fallbackIdentityUsed=${identity.fallbackIdentityUsed} identityHash=${identity.identityHash}",
-            )
-        }
-        val trips = beforeDistinct
-            .distinctBy { trip -> BlaBlaTripIdentity.evidence(trip).key }
-            .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
-        val response = BlaBlaCollectorMonthResponse(
-            collected_at = Instant.now().toString(),
-            status = when {
-                accounts.isEmpty() -> "empty"
-                verified.size == accounts.size -> "validated"
-                verified.isEmpty() -> "blocked"
-                else -> "partial"
-            },
-            month = null,
-            strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
-            profiles = verified.map { (account, _) ->
-                BlaBlaCollectorProfile(
-                    uuid = account.profileUuid.orEmpty(),
-                    name = account.displayLabel,
-                    title = "Sessão autenticada local • perfil WebView isolado • UUID confirmado",
-                )
-            },
-            trips = trips,
-            coverage = BlaBlaCollectorCoverage(
-                complete_for_scope = accounts.isNotEmpty() && verified.size == accounts.size,
-                global_profile_month_complete = false,
-                reason = "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado.",
-                requested_queries = accounts.size,
-                validated_queries = verified.size,
-                failed_or_mismatched_queries = (accounts.size - verified.size).coerceAtLeast(0),
-                unresolved_target_cards = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips },
-                past_dates_skipped = false,
-            ),
-        )
-        UnifiedDebugEventStore.record(
-            "COMBINED_RESPONSE",
-            appContext.packageName,
-            "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${(beforeDistinct.size - trips.size).coerceAtLeast(0)} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",
-        )
-        return response
-    }
+val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
+val verified = snapshots.filter { (account, snapshot) ->
+  snapshot.identityVerified && !account.profileUuid.isNullOrBlank() && snapshot.profileUuid == account.profileUuid
+}
+val beforeDistinct = verified.flatMap { (_, snapshot) -> snapshot.trips }
+val resolution = BlaBlaTripIdentity.resolveDistinct(beforeDistinct)
+beforeDistinct.forEachIndexed { index, trip ->
+  val identity = BlaBlaTripIdentity.evidence(trip)
+  UnifiedDebugEventStore.record(
+      "TRIP_IDENTITY",
+      appContext.packageName,
+      "index=${index + 1}/${beforeDistinct.size} tripId=${trip.trip_id.orEmpty()} core=${BlaBlaTripIdentity.physicalCoreKey(trip)} externalTripIdPresent=${identity.externalTripIdPresent} specificHrefPresent=${identity.specificHrefPresent} fallbackIdentityUsed=${identity.fallbackIdentityUsed} identityHash=${identity.identityHash} identityConflict=${identity.identityConflict}",
+  )
+}
+resolution.conflicts.forEach { conflict ->
+  UnifiedDebugEventStore.record(
+      "TRIP_IDENTITY_CONFLICT",
+      appContext.packageName,
+      "identityHash=${conflict.identityHash} tripId=${conflict.externalTripId.orEmpty()} physicalCoreCount=${conflict.physicalCores.size} cores=${conflict.physicalCores.joinToString(" || ")} action=preserve_and_flag",
+  )
+}
+val trips = resolution.trips
+  .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
+val hasIdentityConflict = resolution.conflicts.isNotEmpty()
+val response = BlaBlaCollectorMonthResponse(
+  collected_at = Instant.now().toString(),
+  status = when {
+      accounts.isEmpty() -> "empty"
+      hasIdentityConflict -> "partial"
+      verified.size == accounts.size -> "validated"
+      verified.isEmpty() -> "blocked"
+      else -> "partial"
+  },
+  month = null,
+  strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
+  profiles = verified.map { (account, _) ->
+      BlaBlaCollectorProfile(
+          uuid = account.profileUuid.orEmpty(),
+          name = account.displayLabel,
+          title = "Sessão autenticada local • perfil WebView isolado • UUID confirmado",
+      )
+  },
+  trips = trips,
+  coverage = BlaBlaCollectorCoverage(
+      complete_for_scope = accounts.isNotEmpty() && verified.size == accounts.size && !hasIdentityConflict,
+      global_profile_month_complete = false,
+      reason = if (hasIdentityConflict) {
+          "Conflito de identidade externa detectado; viagens preservadas para conferência sem descarte silencioso."
+      } else {
+          "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado."
+      },
+      requested_queries = accounts.size,
+      validated_queries = verified.size,
+      failed_or_mismatched_queries = (accounts.size - verified.size).coerceAtLeast(0),
+      unresolved_target_cards = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips },
+      identity_conflicts = resolution.conflicts.size,
+      past_dates_skipped = false,
+  ),
+)
+UnifiedDebugEventStore.record(
+  "COMBINED_RESPONSE",
+  appContext.packageName,
+  "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=${resolution.conflicts.size} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",
+)
+return response
+}
 
     fun delete(account: BlaBlaDynamicAccount) {
         file(account.id).delete()
@@ -881,49 +895,61 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             pendingTripDetail != null
 
     private fun finalizeCurrentTrip(expectedSync: Long, expectedCandidate: Int) {
-        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
-            recordStale("finalize_pending_mismatch", expectedSync, expectedCandidate)
-            return
-        }
-        val candidate = candidates.getOrNull(expectedCandidate)
-        val result = pendingTripDetail
-        val definition = account.verifiedDefinition()
-        if (candidate == null || result == null || definition == null) {
-            skipped++
-            UnifiedDebugEventStore.record(
-                "TRIP_REJECTED",
-                packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=pending_trip_state_missing",
-            )
-            advanceCandidate(expectedSync, expectedCandidate)
-            return
-        }
+if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+  recordStale("finalize_pending_mismatch", expectedSync, expectedCandidate)
+  return
+}
+val candidate = candidates.getOrNull(expectedCandidate)
+val result = pendingTripDetail
+val definition = account.verifiedDefinition()
+if (candidate == null || result == null || definition == null) {
+  skipped++
+  UnifiedDebugEventStore.record(
+      "TRIP_REJECTED",
+      packageName,
+      "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=pending_trip_state_missing",
+  )
+  advanceCandidate(expectedSync, expectedCandidate)
+  return
+}
 
-        val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())
-        val trip = BlaBlaDomNormalizer.toTrip(
-            account = definition,
-            candidate = candidate,
-            detail = enrichedDetail,
-            today = LocalDate.now(),
-            authenticatedProfileSessionVerified = identityConfirmedThisSync,
-        )
-        if (trip != null && identityConfirmedThisSync) {
-            collected += trip
-            UnifiedDebugEventStore.record(
-                "TRIP_ACCEPTED",
-                packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} validation=${trip.uuid_validation} date=${trip.date} departure=${trip.departure_time.orEmpty()} origin=${trip.actual_departure.orEmpty()} destination=${trip.actual_arrival.orEmpty()} passengers=${trip.passengers.size} phones=${trip.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${trip.passenger_roster_complete}",
-            )
-        } else {
-            skipped++
-            UnifiedDebugEventStore.record(
-                "TRIP_REJECTED",
-                packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=trip_fields_unparseable expectedUuid=${account.profileUuid.orEmpty()}",
-            )
-        }
-        advanceCandidate(expectedSync, expectedCandidate)
-    }
+val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())
+val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
+val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(enrichedDetail.url)
+if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) {
+  skipped++
+  UnifiedDebugEventStore.record(
+      "TRIP_REJECTED",
+      packageName,
+      "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_trip_id_mismatch candidateTripId=$candidateTripId detailTripId=$detailTripId action=reject_stale_detail",
+  )
+  advanceCandidate(expectedSync, expectedCandidate)
+  return
+}
+val trip = BlaBlaDomNormalizer.toTrip(
+  account = definition,
+  candidate = candidate,
+  detail = enrichedDetail,
+  today = LocalDate.now(),
+  authenticatedProfileSessionVerified = identityConfirmedThisSync,
+)
+if (trip != null && identityConfirmedThisSync) {
+  collected += trip
+  UnifiedDebugEventStore.record(
+      "TRIP_ACCEPTED",
+      packageName,
+      "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=${trip.trip_id.orEmpty()} candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} validation=${trip.uuid_validation} date=${trip.date} departure=${trip.departure_time.orEmpty()} origin=${trip.actual_departure.orEmpty()} destination=${trip.actual_arrival.orEmpty()} passengers=${trip.passengers.size} phones=${trip.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${trip.passenger_roster_complete} deterministicTripIdentity=true",
+  )
+} else {
+  skipped++
+  UnifiedDebugEventStore.record(
+      "TRIP_REJECTED",
+      packageName,
+      "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=trip_fields_unparseable candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} expectedUuid=${account.profileUuid.orEmpty()}",
+  )
+}
+advanceCandidate(expectedSync, expectedCandidate)
+}
 
     private fun advanceCandidate(expectedSync: Long, expectedCandidate: Int) {
         if (expectedSync != syncGeneration || expectedCandidate != candidateIndex) {

@@ -1,4 +1,4 @@
-name: Stage47 direct persisted-source validation 0.1.249
+name: Stage47 direct persisted-source validation 0.1.250
 
 on:
   pull_request:
@@ -42,7 +42,7 @@ jobs:
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           grep -Fq 'versionCode = 5542' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.249"' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.250"' app/build.gradle.kts
           test -s "$AUTOMATION"
           test -s "$DYNAMIC"
           test -s "$WATCHDOG"
@@ -71,6 +71,8 @@ jobs:
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
           grep -Fq 'deterministicJoin=true' "$AUTOMATION"
           grep -Fq 'requiresSemanticProof' "$AUTOMATION"
+          grep -Fq 'passengerCanonicalIdentityProven' "$AUTOMATION"
+          grep -Fq 'TRIP_IDENTITY_CONFLICT' "$DYNAMIC"
           grep -Fq 'editHref: String = ""' "$AUTOMATION"
           grep -Fq 'tripIdFromEditHref(href) == target.tripId' "$AUTOMATION"
           grep -Fq 'tripIdFromOptionsHref(optionHref) == target.tripId' "$AUTOMATION"
@@ -106,7 +108,7 @@ jobs:
           test ! -e .github/patches/stage47-roster-readiness-0.1.248.patch
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
 
-          echo 'stage47_direct_source_authority=PASS version=0.1.249/5542'
+          echo 'stage47_direct_source_authority=PASS version=0.1.250/5542'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'harvester_navigation_watchdog=true'
@@ -140,4 +142,4 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.249/5542'
+          echo 'stage47_direct_source_validation=PASS version=0.1.250/5542'

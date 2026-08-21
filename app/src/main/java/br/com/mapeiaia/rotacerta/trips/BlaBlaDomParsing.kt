@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.net.URI
 import java.text.Normalizer
 import java.time.LocalDate
 import kotlinx.serialization.SerialName
@@ -107,7 +108,17 @@ object BlaBlaDomNormalizer {
         val full = listOf("cheio", "esgotad", "sem vagas", "indisponível", "indisponivel").any { token ->
             normalize(allText).contains(token)
         }
-        val href = detail.url.takeIf(String::isNotBlank) ?: candidate.href
+        val candidateHref = candidate.href.trim()
+        val detailHref = detail.url.trim()
+        val candidateTripId = tripId(candidateHref)
+        val detailTripId = tripId(detailHref)
+        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) return null
+        val href = when {
+            candidateTripId != null -> candidateHref
+            detailTripId != null -> detailHref
+            detailHref.isNotBlank() -> detailHref
+            else -> candidateHref
+        }
         val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)
         return BlaBlaCollectorTrip(
             profile_uuid = account.uuid,
@@ -227,7 +238,16 @@ object BlaBlaDomNormalizer {
         return "%02d:%02d".format(parts[0].toInt(), parts[1].toInt())
     }
 
-    private fun tripId(href: String): String? = Regex("[?&]id=([^&#]+)").find(href)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
+    private fun tripId(href: String): String? {
+        val value = href.trim().takeIf(String::isNotEmpty) ?: return null
+        Regex("[?&]id=([^&#]+)").find(value)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        val path = runCatching { URI(value).path.orEmpty() }.getOrDefault("")
+        Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
+            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
+            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        return null
+    }
 
     private fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")
