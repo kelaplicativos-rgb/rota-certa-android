@@ -46,8 +46,8 @@ jobs:
           DIRECTION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirectionStage47Test.kt'
           AUTOMATION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomationStage47Test.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5536' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.243"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5537' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.244"' app/build.gradle.kts
           test -s "$UI"
           test -s "$QUICK"
           test -s "$ACTIVITY"
@@ -81,6 +81,7 @@ jobs:
           grep -Fq 'passenger_roster_complete = candidate.passengerRosterComplete || detail.passengerRosterComplete' "$PARSER"
           ! grep -Fq 'passenger_roster_complete = false' "$PARSER"
           grep -Fq 'MHTML_ARCHIVE_SAVED' "$AUTOMATION"
+          grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
           grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
           grep -Fq 'HARVEST_RIDES_CAPTURED' "$AUTOMATION"
           grep -Fq 'HARVEST_TRIP_CAPTURED' "$AUTOMATION"
@@ -89,6 +90,9 @@ jobs:
           grep -Fq 'SEAT_OPTIONS_CAPTURED' "$AUTOMATION"
           grep -Fq 'HARVEST_TRIP_ENRICHED' "$AUTOMATION"
           grep -Fq 'HARVEST_BLOCK_UNREADABLE' "$AUTOMATION"
+          grep -Fq 'reason=options_link_missing' "$AUTOMATION"
+          grep -Fq 'MAX_EDIT_LINK_READ_ATTEMPTS = 6' "$AUTOMATION"
+          ! grep -Fq 'optionUrlByTrip[it] = optionsUrlForTrip(it)' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' "$AUTOMATION"
           grep -Fq 'BookingSource.PRIVATE' "$AUTOMATION"
@@ -101,12 +105,14 @@ jobs:
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
           test ! -e .github/workflows/stage47-direct-source-external-quick-passenger-apply.yml
           test -z "$(find .github/workflows -maxdepth 1 -type f -name 'stage47-direct-source-unified-timeline*.yml' -print -quit)"
-          echo 'stage47_direct_source_authority=PASS version=0.1.243/5536'
+          echo 'stage47_direct_source_authority=PASS version=0.1.244/5537'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'manual_external_seat_ui_sync_experimental=true'
           echo 'official_blablacar_write_api_claimed=false'
           echo 'mhtml_private_archive=true'
+          echo 'harvester_real_options_link_only=true'
+          echo 'mhtml_archive_timeout_guard=true'
           echo 'harvester_blocks_verified_by_source=true'
           echo 'whatsapp_passenger_link_preserved=true'
           echo 'farol_untouched=true'
@@ -130,5 +136,5 @@ jobs:
           set -euo pipefail
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.243/5536'
+          echo 'stage47_direct_source_validation=PASS version=0.1.244/5537'
           echo 'apk_generated=false'
