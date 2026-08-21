@@ -17,6 +17,11 @@ import kotlinx.serialization.json.Json
  * existing setting/trip without copying or deleting data. When real authentication
  * exists, that provisional tenant can be claimed by the canonical server tenant;
  * additional tenants receive deterministic isolated storage namespaces.
+ *
+ * IMPORTANT: switching to an additional tenant is intentionally not exposed yet.
+ * Stage47 still has auxiliary stores being audited. Activating a second tenant before
+ * every persistent store is scoped would risk cross-tenant leakage, so this layer
+ * fails closed until that coverage is complete.
  */
 @Serializable
 data class RotaCertaTenantIdentity(
@@ -101,6 +106,10 @@ class RotaCertaTenantRegistry(context: Context) {
      * claimCurrentLegacyStorage=true is reserved for the first successful account
      * claim on an installation upgraded from the pre-tenant app. It reassigns the
      * existing legacy keys to that canonical identity without copying secrets.
+     *
+     * Additional tenants may be registered for future use but are NOT activated in
+     * this foundation build. Runtime tenant switching stays disabled until every
+     * persistent store, including Stage47 auxiliary stores, is tenant-scoped.
      */
     fun registerCanonicalTenant(
         tenantIdRaw: String,
@@ -109,7 +118,6 @@ class RotaCertaTenantRegistry(context: Context) {
         localeTagRaw: String = "",
         currencyCodeRaw: String = "",
         claimCurrentLegacyStorage: Boolean = false,
-        makeActive: Boolean = true,
     ): RotaCertaTenantIdentity = synchronized(LOCK) {
         val tenantId = tenantIdRaw.trim()
         require(tenantId.isNotEmpty()) { "tenantId must not be blank" }
@@ -147,15 +155,14 @@ class RotaCertaTenantRegistry(context: Context) {
         if (claimLegacy && active != null) current.removeAll { it.tenantId == active.tenantId }
         current.removeAll { it.tenantId == tenantId }
         current += canonical
-        saveInternal(current, if (makeActive) tenantId else activeId)
-        canonical
-    }
 
-    fun setActiveTenant(tenantIdRaw: String): Boolean = synchronized(LOCK) {
-        val tenantId = tenantIdRaw.trim()
-        if (listInternal().none { it.tenantId == tenantId }) return@synchronized false
-        prefs.edit().putString(KEY_ACTIVE_TENANT_ID, tenantId).apply()
-        true
+        val nextActiveId = when {
+            claimLegacy -> tenantId
+            activeId == tenantId -> tenantId
+            else -> activeId
+        }
+        saveInternal(current, nextActiveId)
+        canonical
     }
 
     private fun listInternal(): List<RotaCertaTenantIdentity> = runCatching {
