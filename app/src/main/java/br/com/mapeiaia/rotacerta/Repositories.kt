@@ -21,6 +21,8 @@ private const val MAX_WORK_REGION_PINS = 30
 class SettingsRepository(private val context: Context) {
     private val homeAddress = stringPreferencesKey("home_address")
     private val alternativeAddress = stringPreferencesKey("alternative_address")
+    private val tripDepartureAddress = stringPreferencesKey("trip_departure_address")
+    private val vehicleCapacity = intPreferencesKey("vehicle_capacity")
     private val homeRadiusKm = doublePreferencesKey("home_radius_km")
     private val alternativeRadiusKm = doublePreferencesKey("alternative_radius_km")
     private val desiredKeywords = stringPreferencesKey("desired_keywords")
@@ -53,6 +55,8 @@ class SettingsRepository(private val context: Context) {
         AppSettings(
             homeAddress = prefs[homeAddress].orEmpty(),
             alternativeAddress = prefs[alternativeAddress].orEmpty(),
+            tripDepartureAddress = prefs[tripDepartureAddress].orEmpty(),
+            vehicleCapacity = (prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
             homeRadiusKm = prefs[homeRadiusKm] ?: 10.0,
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
@@ -115,6 +119,12 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[homeAddress] = settings.homeAddress
             prefs[alternativeAddress] = settings.alternativeAddress
+            prefs[tripDepartureAddress] = settings.tripDepartureAddress.trim()
+            if (settings.vehicleCapacity in 1..999) {
+                prefs[vehicleCapacity] = settings.vehicleCapacity
+            } else {
+                prefs.remove(vehicleCapacity)
+            }
             prefs[homeRadiusKm] = settings.homeRadiusKm
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
