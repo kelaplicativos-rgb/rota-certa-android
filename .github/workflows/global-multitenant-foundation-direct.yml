@@ -43,13 +43,12 @@ jobs:
           TENANT='app/src/main/java/br/com/mapeiaia/rotacerta/TenantIdentity.kt'
           STORE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt'
           SETTINGS='app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt'
+          FINANCE='app/src/main/java/br/com/mapeiaia/rotacerta/FinancialRepository.kt'
+          TRACKING='app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingRepository.kt'
           TEST='app/src/test/java/br/com/mapeiaia/rotacerta/TenantStorageFoundation0252Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          test -s "$TENANT"
-          test -s "$STORE"
-          test -s "$SETTINGS"
-          test -s "$TEST"
+          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$TEST"; do test -s "$file"; done
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'provisionalLocal' "$TENANT"
@@ -59,6 +58,10 @@ jobs:
           grep -Fq 'tenantScope.keyAlias(KEY_ALIAS_BASE)' "$STORE"
           grep -Fq 'activeScope()' "$SETTINGS"
           grep -Fq 'tenantScope.key(base)' "$SETTINGS"
+          grep -Fq 'finance-entries-${tenantScope.namespace}.jsonl' "$FINANCE"
+          grep -Fq 'work-tracking-points-${tenantScope.namespace}.jsonl' "$TRACKING"
+          ! grep -Fq 'replace("R$"' "$FINANCE"
+          ! grep -Fq 'Locale("pt", "BR")' "$FINANCE"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
@@ -72,6 +75,8 @@ jobs:
           set -euo pipefail
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.TenantStorageFoundation0252Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FinanceSummaryCalculatorTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ValueFinanceRegression160Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.Stage47Reliability0251Test' \
@@ -106,6 +111,8 @@ jobs:
           tenant_identity_foundation=true
           trip_store_tenant_scoped=true
           settings_repository_tenant_scoped=true
+          finance_repository_tenant_scoped=true
+          work_tracking_repository_tenant_scoped=true
           existing_installation_legacy_keys_preserved=true
           subscription_backend_implemented=false
           full_tenant_storage_coverage=false
