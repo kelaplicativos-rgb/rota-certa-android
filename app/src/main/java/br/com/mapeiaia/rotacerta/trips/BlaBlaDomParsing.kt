@@ -28,7 +28,7 @@ data class BlaBlaDomRideCandidate(
     val passengerRosterReportedComplete: Boolean = false,
 ) {
     val passengerRosterComplete: Boolean
-        get() = false
+        get() = passengerRosterReportedComplete
 }
 
 @Serializable
@@ -125,7 +125,7 @@ object BlaBlaDomNormalizer {
             uuid_validation = uuidValidation,
             passengers = passengers,
             booked_seats = passengers.sumOf(BlaBlaCollectorPassenger::seats),
-            passenger_roster_complete = false,
+            passenger_roster_complete = candidate.passengerRosterComplete || detail.passengerRosterComplete,
         )
     }
 
