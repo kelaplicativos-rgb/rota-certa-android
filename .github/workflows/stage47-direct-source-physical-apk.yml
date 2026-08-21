@@ -73,7 +73,7 @@ jobs:
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
           grep -Fq 'navigationGeneration++' "$AUTOMATION"
           grep -Fq 'loadTrackedUrl(' "$AUTOMATION"
-          grep -Fq 'passengerEvidenceKey(accountId, tripId, passengerKey)' "$AUTOMATION"
+          grep -Fq 'fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String)' "$AUTOMATION"
           grep -Fq 'enrichPassenger(tripId, passenger)' "$AUTOMATION"
           grep -Fq 'preservedIncomplete=0' "$AUTOMATION"
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
