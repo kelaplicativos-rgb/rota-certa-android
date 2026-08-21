@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.242
+name: Stage47 direct-source physical APK 0.1.243
 
 on:
   pull_request:
@@ -18,8 +18,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5535'
-      EXPECTED_VERSION_NAME: '0.1.242'
+      EXPECTED_VERSION_CODE: '5536'
+      EXPECTED_VERSION_NAME: '0.1.243'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -89,6 +89,13 @@ jobs:
           ! grep -Fq 'passenger_roster_complete = false' "$PARSER"
           grep -Fq 'MHTML_ARCHIVE_SAVED' "$AUTOMATION"
           grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
+          grep -Fq 'HARVEST_RIDES_CAPTURED' "$AUTOMATION"
+          grep -Fq 'HARVEST_TRIP_CAPTURED' "$AUTOMATION"
+          grep -Fq 'HARVEST_PASSENGER_CAPTURED' "$AUTOMATION"
+          grep -Fq 'HARVEST_EDIT_CAPTURED' "$AUTOMATION"
+          grep -Fq 'SEAT_OPTIONS_CAPTURED' "$AUTOMATION"
+          grep -Fq 'HARVEST_TRIP_ENRICHED' "$AUTOMATION"
+          grep -Fq 'HARVEST_BLOCK_UNREADABLE' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' "$AUTOMATION"
           grep -Fq 'options-before' "$AUTOMATION"
@@ -108,6 +115,7 @@ jobs:
           echo 'manual_external_seat_ui_sync_experimental=true'
           echo 'official_blablacar_write_api_claimed=false'
           echo 'mhtml_private_archive=true'
+          echo 'harvester_blocks_verified_by_source=true'
           echo 'whatsapp_passenger_link_preserved=true'
           echo 'farol_untouched=true'
           echo 'direct_source_authority=PASS'
@@ -182,6 +190,13 @@ jobs:
           grep -Fq 'TRIP_DETAIL_FALLBACK' evidence/dex-strings.txt
           grep -Fq 'MHTML_ARCHIVE_SAVED' evidence/dex-strings.txt
           grep -Fq 'MHTML_HARVEST_COMPLETE' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_RIDES_CAPTURED' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_TRIP_CAPTURED' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_PASSENGER_CAPTURED' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_EDIT_CAPTURED' evidence/dex-strings.txt
+          grep -Fq 'SEAT_OPTIONS_CAPTURED' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_TRIP_ENRICHED' evidence/dex-strings.txt
+          grep -Fq 'HARVEST_BLOCK_UNREADABLE' evidence/dex-strings.txt
           grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' evidence/dex-strings.txt
           grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' evidence/dex-strings.txt
           grep -Fq 'PASSENGER_WHATSAPP_OPEN' evidence/dex-strings.txt
@@ -204,6 +219,7 @@ jobs:
           batch_first_collector=true
           passenger_roster_fail_closed=true
           mhtml_private_archive=true
+          harvester_blocks_verified_in_apk=true
           manual_external_seat_ui_sync_experimental=true
           official_blablacar_write_api_claimed=false
           external_seat_write_scope=manual_private_other_only
@@ -220,7 +236,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-direct-source-0.1.242
+          name: rota-certa-stage47-harvester-0.1.243
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
