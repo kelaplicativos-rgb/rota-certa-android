@@ -1,0 +1,35 @@
+name: Stage47 export authoritative source
+
+on:
+  pull_request:
+    branches:
+      - agent/stage47-r4-unified-occupancy-step6-validation-apk
+    paths:
+      - .github/workflows/stage47-export-authoritative-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR source directly
+        uses: actions/checkout@v4
+        with:
+          ref: agent/stage47-r4-step7-automatic-identity
+          fetch-depth: 1
+      - name: Record source head
+        run: |
+          mkdir -p export
+          git rev-parse HEAD > export/source-head.txt
+          cp app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt export/BlaBlaManualSeatAutomation.kt
+      - name: Upload authoritative source
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage47-authoritative-harvester-source
+          path: export/
+          if-no-files-found: error
+          retention-days: 1
