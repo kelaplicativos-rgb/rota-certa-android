@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.246
+name: Stage47 direct-source physical APK 0.1.247
 
 on:
   pull_request:
@@ -20,8 +20,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5539'
-      EXPECTED_VERSION_NAME: '0.1.246'
+      EXPECTED_VERSION_CODE: '5540'
+      EXPECTED_VERSION_NAME: '0.1.247'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -61,6 +61,11 @@ jobs:
           grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$AUTOMATION"
           grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
+          grep -Fq 'HARVEST_EVALUATION_TIMEOUT' "$AUTOMATION"
+          grep -Fq 'HARVEST_USER_BACK_RECOVERY' "$AUTOMATION"
+          grep -Fq 'EVALUATION_TIMEOUT_MS = 6_000L' "$AUTOMATION"
+          grep -Fq 'trip.passenger_roster_complete ||' "$AUTOMATION"
+          grep -Fq 'cancel=false partialEvidencePreserved=true' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
@@ -75,12 +80,20 @@ jobs:
           ! grep -Fq 'ACTION_DIAL' "$WATCHDOG"
           grep -Fq 'BlaBlaHarvestNavigationWatchdogProvider' "$MANIFEST"
 
+          test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
+          test ! -e .github/workflows/stage47-export-authoritative-source.yml
+          test ! -e .github/patches/stage47-harvester-recovery.patch
+          test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
+
           CURRENT_HEAD="$(git rev-parse HEAD)"
           echo "direct_source_head=$CURRENT_HEAD"
           echo 'direct_source=true'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'harvester_navigation_watchdog=true'
+          echo 'harvester_evaluation_timeout=true'
+          echo 'harvester_back_recovery=true'
+          echo 'passenger_roster_preserved=true'
           echo 'harvester_real_options_link_only=true'
           echo 'mhtml_archive_timeout_guard=true'
           echo 'passenger_card_traversal=true'
@@ -153,12 +166,15 @@ jobs:
             PASSENGER_CARD_OPENED \
             PASSENGER_CALL_ACTION_PRESENT \
             PASSENGER_TEL_INTERCEPTED \
+            HARVEST_EVALUATION_TIMEOUT \
+            HARVEST_USER_BACK_RECOVERY \
             HARVEST_NAVIGATION_WATCHDOG_ATTACHED \
             HARVEST_NAVIGATION_TIMEOUT \
             HARVEST_STALE_PAGE_FINISHED_IGNORED; do
             grep -Fq "$marker" evidence/dex-strings.txt
           done
           grep -Fq 'externalDialerOpened=false' evidence/dex-strings.txt
+          grep -Fq 'cancel=false partialEvidencePreserved=true' evidence/dex-strings.txt
           grep -Fq 'syntheticPageFinished=true' evidence/dex-strings.txt
           grep -Fq 'externalNavigation=false' evidence/dex-strings.txt
 
@@ -179,6 +195,12 @@ jobs:
           harvester_navigation_watchdog=true
           navigation_timeout_ms=12000
           synthetic_page_finished_on_timeout=true
+          harvester_evaluation_timeout=true
+          evaluation_timeout_ms=6000
+          harvester_back_recovery=true
+          back_recovery_cancels_harvest=false
+          partial_evidence_preserved=true
+          passenger_roster_preserved=true
           harvester_real_options_link_only=true
           mhtml_archive_timeout_guard=true
           passenger_card_traversal=true
@@ -195,7 +217,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-navigation-watchdog-0.1.246
+          name: rota-certa-stage47-harvester-recovery-0.1.247
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
