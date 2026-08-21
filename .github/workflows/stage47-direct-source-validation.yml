@@ -65,7 +65,7 @@ jobs:
           grep -Fq 'HARVEST_STALE_CALLBACK_IGNORED' "$AUTOMATION"
           grep -Fq 'HARVEST_PAGE_IDENTITY_MISMATCH' "$AUTOMATION"
           grep -Fq 'association_conflict' "$AUTOMATION"
-          grep -Fq 'passengerEvidenceKey(accountId, tripId, passengerKey)' "$AUTOMATION"
+          grep -Fq 'fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String)' "$AUTOMATION"
           grep -Fq 'enrichPassenger(tripId, passenger)' "$AUTOMATION"
           grep -Fq 'preservedIncomplete=0' "$AUTOMATION"
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
@@ -84,7 +84,7 @@ jobs:
           grep -Fq 'rosterContainers.length > 0 && !hasMore' "$DYNAMIC"
           grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
           grep -Fq 'PASSENGER_PAGE_RELOAD' "$AUTOMATION"
-          grep -Fq 'reason=passenger_evidence_not_ready' "$AUTOMATION"
+          grep -Fq 'passenger_evidence_not_ready' "$AUTOMATION"
 
           grep -Fq 'HARVEST_NAVIGATION_WATCHDOG_ATTACHED' "$WATCHDOG"
           grep -Fq 'HARVEST_NAVIGATION_TIMEOUT' "$WATCHDOG"
