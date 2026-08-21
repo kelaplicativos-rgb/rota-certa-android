@@ -238,12 +238,6 @@ object BlaBlaManualSeatAutomationIntents {
             .putExtra(EXTRA_ACCOUNT_ID, account.id)
 }
 
-/**
- * Persisted evidence from the authenticated collector pages. This is kept
- * separate from physical vehicle capacity: the number shown by BlaBlaCar in
- * "Opções de passageiros" is publication inventory evidence, not a hardcoded
- * global vehicle capacity.
- */
 @Serializable
 data class BlaBlaHarvestTripEvidence(
     val tripId: String,
@@ -346,14 +340,6 @@ private data class PassengerTarget(
         get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card-${cardIndex + 1}"
 }
 
-/**
- * Mirrors every authenticated block observed in the physical BlaBlaCar flow:
- * /rides -> trip summary -> each passenger -> Editar sua carona -> Lugares e opções.
- * Every persisted block is fail-closed behind navigation generation + page
- * identity proof. Passenger evidence is scoped to account + trip + passenger,
- * so no page can be reused by another publication merely because href/name/
- * phone happens to repeat.
- */
 class BlaBlaMhtmlHarvestActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
@@ -1310,7 +1296,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "HARVEST_TRIP_ENRICHED",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1} deterministicJoin=true",
+                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1} deterministicJoin=true phoneEvidenceScoped=true",
             )
             trip.copy(
                 passengers = mergedPassengers,
@@ -1323,11 +1309,6 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         return enrichedTrips to enrichedPassengers
     }
 
-    /**
-     * Harvest evidence must not be passed through the normal incomplete-roster
-     * preservation path: a contaminated roster from 0.1.248 could otherwise be
-     * revived when the new deterministic capture intentionally fails closed.
-     */
     private fun saveDeterministicSnapshot(
         previous: BlaBlaDynamicSessionSnapshot,
         trips: List<BlaBlaCollectorTrip>,
@@ -1354,19 +1335,21 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun enrichPassenger(tripId: String, passenger: BlaBlaCollectorPassenger): BlaBlaCollectorPassenger {
-        val href = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty) ?: return passenger
+        val href = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty)
+            ?: return passenger.copy(phone = null)
         val absoluteHref = absoluteBlaBlaHref(href)
         val key = BlaBlaHarvestAssociation.passengerEvidenceKey(account.id, tripId, passengerKey(absoluteHref))
-        val evidence = passengerEvidence[key] ?: return passenger.copy(booking_href = absoluteHref)
+        val evidence = passengerEvidence[key]
+            ?: return passenger.copy(phone = null, booking_href = absoluteHref)
         if (!BlaBlaHarvestAssociation.passengerPageMatches(passengerKey(absoluteHref), evidence.pageUrl)) {
             UnifiedDebugEventStore.record(
                 "association_conflict",
                 packageName,
                 "account=${account.displayLabel} tripId=$tripId passengerKey=${passengerKey(absoluteHref)} reason=evidence_page_mismatch action=reject",
             )
-            return passenger.copy(booking_href = absoluteHref)
+            return passenger.copy(phone = null, booking_href = absoluteHref)
         }
-        val phone = passenger.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone)
+        val phone = normalizeCapturedPhone(evidence.phone)
         return passenger.copy(
             name = passenger.name.ifBlank { evidence.visibleName.trim() },
             seats = maxOf(passenger.seats.coerceAtLeast(1), evidence.seats.coerceAtLeast(1)),
@@ -1612,7 +1595,6 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
                 name = name.replace(/\s*\(\d+\)\s*$/, '').trim();
                 const routeParts = route.split(/→|->/).map(clean);
-                const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
                 const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
                 if (seen.has(key)) return;
                 seen.add(key);
@@ -1623,7 +1605,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                   seats: seats,
                   boarding: routeParts.length >= 2 ? routeParts[0] : null,
                   dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
-                  phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
+                  phone: null,
                   booking_href: /passenger|booking/i.test(href) ? href : null
                 });
               });
@@ -1802,11 +1784,6 @@ private data class SeatOptionState(
     val domHtml: String = "",
 )
 
-/**
- * Experimental authenticated UI mirror for a MANUAL/PRIVATE passenger only.
- * This is not an official BlaBlaCar API. Internal Rota Certa capacity remains
- * authoritative even when this external mirror cannot be completed.
- */
 class BlaBlaManualSeatSyncActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
