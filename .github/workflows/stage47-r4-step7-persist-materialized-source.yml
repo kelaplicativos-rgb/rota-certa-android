@@ -1,0 +1,18 @@
+name: Stage47 persisted source import (completed)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  completed:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'stage47_persisted_source_import=COMPLETED'
+          echo 'validated_source_commit=9b022148da15f16e12835a8f43e9f163b5037544'
+          echo 'validated_snapshot_run=32403049962'
+          echo 'validated_farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          echo 'apk_generated=false'

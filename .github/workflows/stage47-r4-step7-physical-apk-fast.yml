@@ -1,0 +1,17 @@
+name: Stage47 Step7 legacy fast physical APK (disabled)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  legacy-physical-apk-disabled:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain disabled physical workflow
+        run: |
+          echo 'legacy_stage47_fast_physical_apk=DISABLED'
+          echo 'reason=Next APK must compile persisted branch source instead of fixed 32da54c plus materializers.'
+          echo 'apk_generated=false'

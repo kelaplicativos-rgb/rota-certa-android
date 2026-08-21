@@ -1,0 +1,29 @@
+name: Stage47 Step7 run locator
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  issues: write
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish current Step7 run IDs
+        run: |
+          set -euo pipefail
+          sleep 10
+          RUNS="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow stage47-r4-step7-automatic-identity-apk.yml --branch agent/stage47-r4-step7-automatic-identity --limit 5 --json databaseId,headSha,status,conclusion,event,createdAt --jq '.[] | "run=\(.databaseId) event=\(.event) status=\(.status) conclusion=\(.conclusion // "") head=\(.headSha) created=\(.createdAt)"')"
+          gh pr comment 112 --repo "$GITHUB_REPOSITORY" --body "Stage47 Step7 run locator (${GITHUB_RUN_ID}):
+\`\`\`
+${RUNS}
+\`\`\`"

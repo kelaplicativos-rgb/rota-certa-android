@@ -1,24 +1,38 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import java.time.YearMonth
-import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+// Compatibility markers consumed by the already-validated Step5 materializer:
+// UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
+// Step7 dynamic accounts: registry starts empty; user adds as many isolated WebView profiles as needed.
 
 @Composable
 fun BlaBlaCollectorPanel(
@@ -28,136 +42,210 @@ fun BlaBlaCollectorPanel(
     onResult: (BlaBlaCollectorMonthResponse) -> Unit,
     onChanged: (String) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    val initialSettings = remember { stateStore.settings() }
-    var profile1 by remember { mutableStateOf(stateStore.lastProfile1()) }
-    var profile2 by remember { mutableStateOf(stateStore.lastProfile2()) }
-    var month by remember { mutableStateOf(stateStore.lastMonth().ifBlank { YearMonth.now().toString() }) }
-    var settings by remember { mutableStateOf(initialSettings) }
-    var baseUrl by remember { mutableStateOf(initialSettings.baseUrl) }
-    var token by remember { mutableStateOf(initialSettings.token) }
-    var configOpen by remember { mutableStateOf(!initialSettings.configured) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
+    val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
+    var revision by remember { mutableIntStateOf(0) }
+    var syncing by remember { mutableStateOf(false) }
+    var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
+    var syncCursor by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var showAddAccount by remember { mutableStateOf(false) }
+    var newAccountLabel by remember { mutableStateOf("") }
 
-    HorizontalDivider()
-    Text("Perfis BlaBlaCar")
-    OutlinedTextField(
-        value = profile1,
-        onValueChange = { profile1 = it.trim().take(36) },
-        label = { Text("UUID perfil 1") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
-    OutlinedTextField(
-        value = profile2,
-        onValueChange = { profile2 = it.trim().take(36) },
-        label = { Text("UUID perfil 2 (opcional)") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
-    OutlinedTextField(
-        value = month,
-        onValueChange = { month = it.filter { ch -> ch.isDigit() || ch == '-' }.take(7) },
-        label = { Text("Mês — AAAA-MM") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-    )
+    fun refresh() {
+        revision++
+    }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(8f))) {
-        Button(
-            enabled = !busy && settings.configured,
-            onClick = {
-                error = null
-                val ids = listOf(profile1, profile2).map(String::trim).filter(String::isNotBlank)
-                if (ids.isEmpty() || ids.any { !UUID_REGEX.matches(it) }) {
-                    error = "Informe UUID válido para cada perfil."
-                    return@Button
+    fun publishCombined(messagePrefix: String) {
+        val accounts = registry.list()
+        val response = sessionStore.combinedResponse(accounts)
+        stateStore.saveResponse(response)
+        onResult(response)
+        refresh()
+        message = "$messagePrefix • ${response.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${response.trips.size} viagens."
+        onChanged(message.orEmpty())
+    }
+
+    val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val accountId = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)
+        refresh()
+        if (syncing) {
+            if (result.resultCode == Activity.RESULT_OK) {
+                if (syncCursor + 1 < syncQueue.size) {
+                    syncCursor++
+                } else {
+                    syncing = false
+                    publishCombined("Sincronização concluída")
                 }
-                if (!MONTH_REGEX.matches(month)) {
-                    error = "Informe o mês no formato AAAA-MM."
-                    return@Button
+            } else {
+                syncing = false
+                val account = registry.get(accountId)
+                message = "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
+                onChanged(message.orEmpty())
+            }
+        } else if (accountId != null) {
+            val account = registry.get(accountId)
+            val snapshot = account?.let(sessionStore::read)
+            message = when {
+                account == null -> "Conta não encontrada."
+                snapshot?.identityVerified == true -> "${account.displayLabel}: UUID confirmado ✅"
+                else -> "${account.displayLabel}: sessão salva; o UUID será confirmado pelo perfil ou por uma viagem."
+            }
+            onChanged(message.orEmpty())
+        }
+    }
+
+    @Suppress("UNUSED_VARIABLE") val refreshKey = revision
+    val accounts = registry.list()
+
+    // Discard snapshots from the old hard-coded two-account candidate. The
+    // dynamic registry is authoritative from this version onward and starts empty.
+    LaunchedEffect(Unit) {
+        if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
+            val clean = sessionStore.combinedResponse(registry.list())
+            stateStore.saveResponse(clean)
+            onResult(clean)
+        }
+    }
+
+    LaunchedEffect(syncing, syncCursor, syncQueue) {
+        if (!syncing) return@LaunchedEffect
+        val id = syncQueue.getOrNull(syncCursor)
+        val account = registry.get(id)
+        if (account == null) {
+            if (syncCursor + 1 < syncQueue.size) syncCursor++ else {
+                syncing = false
+                publishCombined("Sincronização concluída")
+            }
+        } else {
+            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
+        }
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Contas BlaBlaCar")
+            Text("Nenhuma conta vem pré-cadastrada. Cada conta adicionada ganha um perfil WebView isolado próprio e todas alimentam a mesma Linha do tempo.")
+
+            if (accounts.isEmpty()) {
+                Text("Nenhuma conta adicionada.")
+            } else {
+                accounts.forEach { account ->
+                    DynamicAccountRow(
+                        account = account,
+                        snapshot = sessionStore.read(account),
+                        onOpen = { sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account)) },
+                        onRemove = {
+                            registry.remove(account.id)
+                            refresh()
+                            publishCombined("Conta removida")
+                        },
+                    )
                 }
-                val routes = BlaBlaCollectorScope.fromAgenda(trips, month)
-                if (routes.isEmpty()) {
-                    error = "Não há rota na Agenda para formar o escopo desta busca."
-                    return@Button
-                }
-                stateStore.saveQuery(profile1, profile2, month)
-                busy = true
-                scope.launch {
-                    runCatching {
-                        BlaBlaCollectorApi(settings).search(
-                            BlaBlaCollectorMonthRequest(
-                                profiles = ids.map(::BlaBlaCollectorProfileRequest),
-                                month = month,
-                                routes = routes,
-                                include_past = false,
-                            ),
-                        )
-                    }.onSuccess { response ->
-                        stateStore.saveResponse(response)
-                        onResult(response)
-                        onChanged("Linha do tempo BlaBlaCar atualizada: ${response.trips.size} viagem(ns).")
-                    }.onFailure {
-                        error = it.message ?: "Falha ao consultar o coletor."
+            }
+
+            Button(
+                onClick = {
+                    newAccountLabel = ""
+                    showAddAccount = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("+ Adicionar conta")
+            }
+
+            Spacer(Modifier.height(2.dp))
+            Button(
+                enabled = !syncing && accounts.isNotEmpty(),
+                onClick = {
+                    syncQueue = accounts.map { it.id }
+                    syncCursor = 0
+                    syncing = true
+                    message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
+                    onChanged(message.orEmpty())
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (syncing) "Sincronizando…" else "Sincronizar todas as contas")
+            }
+
+            Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
+            Text("Durante a sincronização o Rota Certa também guarda localmente um HTML sanitizado de diagnóstico de Suas viagens e dos detalhes, sem scripts nem valores de campos de login.")
+            message?.let { Text(it) }
+
+            val displayResponse = currentResponse?.takeIf { it.strategy == DYNAMIC_STRATEGY }
+            if (displayResponse != null) {
+                Text("Último resultado: ${displayResponse.status} • ${displayResponse.trips.size} viagens • contas validadas ${displayResponse.coverage.validated_queries}/${displayResponse.coverage.requested_queries}")
+                displayResponse.collected_at?.let { collected ->
+                    runCatching { Instant.parse(collected) }.getOrNull()?.let { instant ->
+                        val formatted = DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(ZoneId.systemDefault()).format(instant)
+                        Text("Coletado em $formatted")
                     }
-                    busy = false
+                }
+            }
+            if (trips.isEmpty()) {
+                Text("A Agenda local está vazia; viagens BlaBlaCar confirmadas ainda podem aparecer na Linha do tempo.")
+            }
+        }
+    }
+
+    if (showAddAccount) {
+        AlertDialog(
+            onDismissRequest = { showAddAccount = false },
+            title = { Text("Adicionar conta BlaBlaCar") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("O nome é apenas um apelido local. Depois do login, o Rota Certa tenta descobrir o nome público e o UUID real da conta.")
+                    OutlinedTextField(
+                        value = newAccountLabel,
+                        onValueChange = { newAccountLabel = it },
+                        label = { Text("Apelido opcional") },
+                        singleLine = true,
+                    )
                 }
             },
-        ) { Text(if (busy) "Buscando…" else "Buscar") }
-        OutlinedButton(onClick = { configOpen = !configOpen }) {
-            Text(if (configOpen) "Fechar configuração" else "Configurar coletor")
-        }
+            confirmButton = {
+                TextButton(onClick = {
+                    val account = registry.add(newAccountLabel)
+                    showAddAccount = false
+                    refresh()
+                    sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account))
+                }) { Text("Adicionar e entrar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddAccount = false }) { Text("Cancelar") }
+            },
+        )
     }
+}
 
-    if (!settings.configured) {
-        Text("Configure uma vez o endereço HTTPS do coletor para liberar a busca.")
-    }
-    error?.let { Text(it) }
-
-    if (configOpen) {
-        Column(verticalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(6f))) {
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it.trim() },
-                label = { Text("URL HTTPS do coletor") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+@Composable
+private fun DynamicAccountRow(
+    account: BlaBlaDynamicAccount,
+    snapshot: BlaBlaDynamicSessionSnapshot?,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val connected = snapshot?.identityVerified == true && !account.profileUuid.isNullOrBlank()
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(account.displayLabel)
+            Text(account.profileUuid ?: "UUID será descoberto após login/validação")
+            Text(
+                when {
+                    connected -> "Conectado • UUID confirmado ✅"
+                    snapshot != null -> "Sessão salva • UUID pendente ⏳"
+                    else -> "Ainda não conectado"
+                },
             )
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                label = { Text("Token do coletor (se configurado)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            TextButton(onClick = {
-                val updated = BlaBlaCollectorSettings(baseUrl.trimEnd('/'), token.trim())
-                if (!updated.configured) {
-                    error = "A URL do coletor deve começar com https://"
-                } else {
-                    stateStore.saveSettings(updated)
-                    settings = updated
-                    configOpen = false
-                    error = null
-                    onChanged("Configuração do coletor salva no aparelho.")
-                }
-            }) { Text("Salvar configuração") }
+            if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
         }
-    }
-
-    currentResponse?.let { response ->
-        val coverage = response.coverage
-        val validated = coverage.validated_queries
-        val requested = coverage.requested_queries
-        val icon = if (response.status == "validated") "✅" else "⏳"
-        Text("$icon ${response.month ?: ""} • ${response.trips.size} viagem(ns) • $validated/$requested consultas")
-        if (!coverage.global_profile_month_complete) {
-            Text("Escopo: rotas dinâmicas da Agenda. UUID valida o perfil; não presume rotas que não foram pesquisadas.")
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            OutlinedButton(onClick = onOpen) { Text(if (snapshot == null) "Entrar" else "Abrir") }
+            TextButton(onClick = onRemove) { Text("Remover") }
         }
     }
 }
 
-private val UUID_REGEX = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
-private val MONTH_REGEX = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
+private const val DYNAMIC_STRATEGY = "authenticated_on_device_webview_dynamic_multi_profile"

@@ -16,38 +16,122 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
+import java.text.Normalizer
 import java.util.Locale
 
 const val MAPA_RADAR_URL = "https://maparadar.com/"
 
-fun parseMapaRadarCsv(content: String, importedAtMillis: Long = System.currentTimeMillis()): List<ImportedRadar> =
-    content
+private enum class RadarCoordinateOrder { LongitudeLatitude, LatitudeLongitude }
+
+fun parseMapaRadarFile(bytes: ByteArray, importedAtMillis: Long = System.currentTimeMillis()): List<ImportedRadar> =
+    parseMapaRadarCsv(decodeMapaRadarText(bytes), importedAtMillis)
+
+fun parseMapaRadarCsv(content: String, importedAtMillis: Long = System.currentTimeMillis()): List<ImportedRadar> {
+    val lines = content
+        .removePrefix("\uFEFF")
         .lineSequence()
-        .mapIndexedNotNull { index, rawLine -> parseMapaRadarLine(index, rawLine, importedAtMillis) }
-        .distinctBy { radar -> "${radar.coordinate.latitude}:${radar.coordinate.longitude}:${radar.type}:${radar.speedKmh}" }
+        .map(String::trim)
+        .filter(String::isNotBlank)
         .toList()
+    val coordinateOrder = detectRadarCoordinateOrder(lines)
+    return lines
+        .mapIndexedNotNull { index, rawLine ->
+            parseMapaRadarLine(index, rawLine, importedAtMillis, coordinateOrder)
+        }
+        .distinctBy { radar ->
+            "${radar.coordinate.latitude}:${radar.coordinate.longitude}:${radar.type}:${radar.speedKmh}"
+        }
+}
 
-private fun parseMapaRadarLine(index: Int, rawLine: String, importedAtMillis: Long): ImportedRadar? {
-    val line = rawLine.trim()
-    if (line.isBlank() || line.startsWith("X,Y", ignoreCase = true)) return null
+private fun decodeMapaRadarText(bytes: ByteArray): String {
+    if (bytes.isEmpty()) return ""
+    if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
+        return bytes.copyOfRange(2, bytes.size).toString(Charsets.UTF_16LE)
+    }
+    if (bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
+        return bytes.copyOfRange(2, bytes.size).toString(Charsets.UTF_16BE)
+    }
+    val utf8 = runCatching {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes))
+            .toString()
+    }.getOrNull()
+    return utf8 ?: bytes.toString(Charset.forName("windows-1252"))
+}
 
-    val columns = line.split(',', ';', '\t').map { it.trim() }
-    if (columns.size < 4) return null
+private fun detectRadarCoordinateOrder(lines: List<String>): RadarCoordinateOrder {
+    lines.take(12).forEach { line ->
+        val columns = splitRadarColumns(line)
+        if (columns.size < 2) return@forEach
+        val first = normalizeRadarText(columns[0])
+        val second = normalizeRadarText(columns[1])
+        if (first.contains("lat") && (second.contains("lon") || second == "x")) {
+            return RadarCoordinateOrder.LatitudeLongitude
+        }
+        if ((first.contains("lon") || first == "x") && (second.contains("lat") || second == "y")) {
+            return RadarCoordinateOrder.LongitudeLatitude
+        }
+    }
+    lines.take(100).forEach { line ->
+        val columns = splitRadarColumns(line)
+        val first = columns.getOrNull(0)?.toRadarDoubleOrNull() ?: return@forEach
+        val second = columns.getOrNull(1)?.toRadarDoubleOrNull() ?: return@forEach
+        if (kotlin.math.abs(first) > 90.0 && kotlin.math.abs(second) <= 90.0) {
+            return RadarCoordinateOrder.LongitudeLatitude
+        }
+        if (kotlin.math.abs(second) > 90.0 && kotlin.math.abs(first) <= 90.0) {
+            return RadarCoordinateOrder.LatitudeLongitude
+        }
+    }
+    // O formato oficial X,Y do MapaRadar usa longitude primeiro.
+    return RadarCoordinateOrder.LongitudeLatitude
+}
 
-    val longitude = columns.getOrNull(0)?.toDoubleOrNull() ?: return null
-    val latitude = columns.getOrNull(1)?.toDoubleOrNull() ?: return null
+private fun parseMapaRadarLine(
+    index: Int,
+    rawLine: String,
+    importedAtMillis: Long,
+    coordinateOrder: RadarCoordinateOrder,
+): ImportedRadar? {
+    val line = rawLine.trim().removePrefix("\uFEFF")
+    if (line.isBlank() || isRadarHeader(line)) return null
+
+    val columns = splitRadarColumns(line)
+    if (columns.size < 3) return null
+
+    val firstCoordinate = columns.getOrNull(0)?.toRadarDoubleOrNull() ?: return null
+    val secondCoordinate = columns.getOrNull(1)?.toRadarDoubleOrNull() ?: return null
+    val (longitude, latitude) = when (coordinateOrder) {
+        RadarCoordinateOrder.LongitudeLatitude -> firstCoordinate to secondCoordinate
+        RadarCoordinateOrder.LatitudeLongitude -> secondCoordinate to firstCoordinate
+    }
     if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
 
-    val type = columns.getOrNull(2)?.toIntOrNull() ?: 0
-    val speed = columns.getOrNull(3)?.toIntOrNull()?.takeIf { it > 0 }
-    val directionType = columns.getOrNull(4)?.toIntOrNull()
-    val direction = columns.getOrNull(5)?.toIntOrNull()
+    val numericType = columns.getOrNull(2)?.toIntOrNull()
+    val descriptor = if (numericType == null) columns.drop(2).joinToString(" ") else ""
+    val type = numericType ?: inferRadarType(descriptor)
+    val speed = if (numericType != null) {
+        columns.getOrNull(3)?.radarPositiveIntOrNull()
+    } else {
+        parseRadarSpeed(descriptor)
+    }
+    val directionType = if (numericType != null) columns.getOrNull(4)?.toIntOrNull() else null
+    val direction = if (numericType != null) columns.getOrNull(5)?.toIntOrNull() else null
 
     return ImportedRadar(
         id = "maparadar-$index-$latitude-$longitude-$type-${speed ?: 0}",
@@ -60,6 +144,63 @@ private fun parseMapaRadarLine(index: Int, rawLine: String, importedAtMillis: Lo
     )
 }
 
+private fun splitRadarColumns(line: String): List<String> {
+    val delimiter = when {
+        line.count { it == '\t' } >= 2 -> '\t'
+        line.count { it == ';' } >= 2 -> ';'
+        else -> ','
+    }
+    return line.split(delimiter).map { it.trim().trim('"') }
+}
+
+private fun isRadarHeader(line: String): Boolean {
+    val columns = splitRadarColumns(line)
+    if (columns.size < 2) return false
+    val first = normalizeRadarText(columns[0])
+    val second = normalizeRadarText(columns[1])
+    return (first == "x" && second == "y") ||
+        first.contains("longitude") || first.contains("latitude") ||
+        second.contains("longitude") || second.contains("latitude")
+}
+
+private fun String.toRadarDoubleOrNull(): Double? {
+    val safe = trim().trim('"')
+    return safe.toDoubleOrNull() ?: safe.replace(',', '.').toDoubleOrNull()
+}
+
+private fun String.radarPositiveIntOrNull(): Int? =
+    trim().filter { it.isDigit() || it == '-' }.toIntOrNull()?.takeIf { it > 0 }
+
+private fun parseRadarSpeed(descriptor: String): Int? {
+    val atSpeed = Regex("""@(\d{1,3})(?:\D|$)""").find(descriptor)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    if (atSpeed != null && atSpeed > 0) return atSpeed
+    return Regex("""(?i)(\d{1,3})\s*(?:km/?h|kmh|km\s+por\s+hora)""")
+        .find(descriptor)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.toIntOrNull()
+        ?.takeIf { it > 0 }
+}
+
+private fun inferRadarType(descriptor: String): Int {
+    val normalized = normalizeRadarText(descriptor)
+    return when {
+        "semaforo com radar" in normalized -> 2
+        "semaforo com camera" in normalized -> 3
+        "radar movel" in normalized -> 4
+        "policia" in normalized -> 5
+        "lombada" in normalized -> 6
+        "pedagio" in normalized -> 7
+        "radar fixo" in normalized -> 1
+        else -> 0
+    }
+}
+
+private fun normalizeRadarText(value: String): String = Normalizer
+    .normalize(value.lowercase(Locale("pt", "BR")), Normalizer.Form.NFD)
+    .replace(Regex("\\p{M}+"), "")
+    .trim()
+
 fun importedRadarTypeLabel(type: Int): String = when (type) {
     1 -> "Radar fixo"
     2 -> "Semaforo com radar"
@@ -71,10 +212,16 @@ fun importedRadarTypeLabel(type: Int): String = when (type) {
     else -> "Radar"
 }
 
+fun importedRadarDisplayName(radar: ImportedRadar): String {
+    val customName = radar.name.trim()
+    if (customName.isNotBlank()) return customName
+    val speed = radar.speedKmh?.let { " $it km/h" }.orEmpty()
+    return "${importedRadarTypeLabel(radar.type)}$speed"
+}
+
 fun importedRadarSpeech(radar: ImportedRadar, distanceMeters: Double): String {
     val distance = distanceMeters.toInt().coerceAtLeast(0)
-    val speed = radar.speedKmh?.let { " de $it km por hora" }.orEmpty()
-    return "Atenção: ${importedRadarTypeLabel(radar.type).lowercase(Locale("pt", "BR"))}$speed a $distance metros."
+    return "Atenção: ${importedRadarDisplayName(radar)} a $distance metros."
 }
 
 fun openMapaRadarSite(context: Context) {
@@ -123,33 +270,105 @@ fun AlwaysLocationPermissionCard(
 
 @Composable
 fun RadarImportCard(
+    radars: List<ImportedRadar>,
+    highlightedRadarId: String?,
     summary: RadarImportSummary,
     importStatus: String,
     onPickFile: () -> Unit,
     onOpenMapaRadar: () -> Unit,
+    onUpdateRadar: (ImportedRadar) -> Unit,
+    onDeleteRadar: (ImportedRadar) -> Unit,
     onClearRadars: () -> Unit,
 ) {
+    val highlightedRadar = radars.firstOrNull { it.id == highlightedRadarId }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Radares importados", fontWeight = FontWeight.Bold)
             Text(
-                "Importe o TXT do MapaRadar. O Rota Certa usa esses pontos como alertas de proximidade durante o trajeto.",
+                "Importe TXT, CSV ou arquivo CSV salvo com extensao .xls. O Rota Certa reconhece automaticamente os formatos do MapaRadar.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text("Radares carregados: ${summary.count}", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(onClick = onPickFile, modifier = Modifier.weight(1f)) {
-                    Text("Importar TXT")
+                    Text("Importar arquivo")
                 }
                 OutlinedButton(onClick = onOpenMapaRadar, modifier = Modifier.weight(1f)) {
                     Text("MapaRadar")
                 }
+            }
+            highlightedRadar?.let { radar ->
+                ImportedRadarEditor0178(
+                    radar = radar,
+                    onUpdateRadar = onUpdateRadar,
+                    onDeleteRadar = onDeleteRadar,
+                )
+            }
+            if (highlightedRadarId != null && highlightedRadar == null) {
+                Text("Este radar não está mais cadastrado.", style = MaterialTheme.typography.bodySmall)
+            }
+            if (highlightedRadarId == null) {
+                Text(
+                    "Para editar ou excluir um ponto sem carregar toda a base, use os botões do aviso quando o radar aparecer.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
             OutlinedButton(onClick = onClearRadars, modifier = Modifier.fillMaxWidth()) {
                 Text("Limpar radares importados")
             }
             if (importStatus.isNotBlank()) {
                 Text(importStatus, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportedRadarEditor0178(
+    radar: ImportedRadar,
+    onUpdateRadar: (ImportedRadar) -> Unit,
+    onDeleteRadar: (ImportedRadar) -> Unit,
+) {
+    var draftName by remember(radar.id, radar.name, radar.speedKmh) { mutableStateOf(importedRadarDisplayName(radar)) }
+    var draftSpeed by remember(radar.id, radar.speedKmh) { mutableStateOf(radar.speedKmh?.toString().orEmpty()) }
+    var validationMessage by remember(radar.id) { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Editar radar selecionado", fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = draftName,
+            onValueChange = { value: String -> draftName = value },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Nome do radar") },
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = draftSpeed,
+            onValueChange = { value: String -> draftSpeed = value.filter(Char::isDigit).take(3) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Velocidade em km/h") },
+            singleLine = true,
+        )
+        Text(
+            "Local: ${String.format(Locale("pt", "BR"), "%.5f, %.5f", radar.coordinate.latitude, radar.coordinate.longitude)}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (validationMessage.isNotBlank()) Text(validationMessage, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = {
+                    val updated = ImportedRadarEditPolicy0178.apply(radar, draftName, draftSpeed)
+                    if (updated == null) {
+                        validationMessage = "Informe uma velocidade entre 1 e 300 km/h ou deixe o campo vazio."
+                    } else {
+                        validationMessage = "Radar atualizado."
+                        onUpdateRadar(updated)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Salvar") }
+            OutlinedButton(onClick = { onDeleteRadar(radar) }, modifier = Modifier.weight(1f)) {
+                Text("Apagar")
             }
         }
     }

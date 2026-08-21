@@ -1,0 +1,17 @@
+name: Stage47 Step7 legacy automatic identity APK (disabled)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  legacy-synthetic-apk-disabled:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain disabled legacy workflow
+        run: |
+          echo 'legacy_stage47_synthetic_apk=DISABLED'
+          echo 'reason=Stage47 source is being persisted into the branch; do not rebuild from fixed 32da54c plus patch materializers.'
+          echo 'apk_generated=false'

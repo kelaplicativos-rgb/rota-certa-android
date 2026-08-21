@@ -1,0 +1,16 @@
+name: Stage47 source snapshot locator (disabled)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locator-disabled:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'stage47_source_snapshot_locator=DISABLED'
+          echo 'validated_source_run=32403049962'
+          echo 'apk_generated=false'

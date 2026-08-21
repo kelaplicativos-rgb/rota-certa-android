@@ -18,17 +18,54 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
+data class OcrTextBlock0188(
+    val id: String,
+    val text: String,
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+)
+
+data class OcrStructuredText0188(
+    val text: String,
+    val blocks: List<OcrTextBlock0188>,
+)
+
 class OcrService(private val context: Context) {
     suspend fun extractText(uri: Uri): String = withContext(Dispatchers.Default) {
-        val image = InputImage.fromFilePath(context, uri)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        recognizer.process(image).await().text
+        recognize0188(InputImage.fromFilePath(context, uri)).text
     }
 
-    suspend fun extractText(bitmap: Bitmap): String = withContext(Dispatchers.Default) {
-        val image = InputImage.fromBitmap(bitmap, 0)
+    suspend fun extractText(bitmap: Bitmap): String = extractStructuredText(bitmap).text
+
+    suspend fun extractStructuredText(bitmap: Bitmap): OcrStructuredText0188 = withContext(Dispatchers.Default) {
+        recognize0188(InputImage.fromBitmap(bitmap, 0))
+    }
+
+    private suspend fun recognize0188(image: InputImage): OcrStructuredText0188 {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        recognizer.process(image).await().text
+        return try {
+            val result = recognizer.process(image).await()
+            OcrStructuredText0188(
+                text = FarolUnifiedVisual0168.fromVisionText(result),
+                blocks = result.textBlocks.mapIndexedNotNull { index, block ->
+                    val value = block.text.trim()
+                    if (value.isBlank()) return@mapIndexedNotNull null
+                    val bounds = block.boundingBox
+                    OcrTextBlock0188(
+                        id = "ocr-block-$index",
+                        text = value,
+                        left = bounds?.left ?: 0,
+                        top = bounds?.top ?: 0,
+                        right = bounds?.right ?: 0,
+                        bottom = bounds?.bottom ?: 0,
+                    )
+                }.take(80),
+            )
+        } finally {
+            recognizer.close()
+        }
     }
 }
 
