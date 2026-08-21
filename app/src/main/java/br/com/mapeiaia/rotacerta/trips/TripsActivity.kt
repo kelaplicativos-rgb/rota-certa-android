@@ -23,6 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.SettingsRepository
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -64,6 +67,8 @@ private fun TripApp(
     initialTripId: String?,
 ) {
     val store = remember { TripStore(activity) }
+    val settingsRepository = remember(activity) { SettingsRepository(activity) }
+    val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
     var trips by remember { mutableStateOf(store.trips()) }
     var bookings by remember { mutableStateOf(store.bookings()) }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
@@ -102,6 +107,8 @@ private fun TripApp(
             }
             when (screen) {
                 TripScreen.CREATE -> TripEditor(
+                    defaultOrigin = appSettings.tripDepartureAddress,
+                    defaultCapacity = appSettings.vehicleCapacity,
                     onCancel = { screen = TripScreen.TIMELINE },
                     onSave = { trip ->
                         store.saveTrip(trip)
@@ -180,16 +187,20 @@ private fun TripApp(
 
 @Composable
 private fun TripEditor(
+    defaultOrigin: String,
+    defaultCapacity: Int,
     onCancel: () -> Unit,
     onSave: (Trip) -> Unit,
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
     val defaultTime = remember { LocalDateTime.now().plusDays(1).withMinute(0).withSecond(0).withNano(0).format(formatter) }
-    var origin by remember { mutableStateOf("") }
+    var origin by remember(defaultOrigin) { mutableStateOf(defaultOrigin.trim()) }
     var destination by remember { mutableStateOf("") }
     var intermediate by remember { mutableStateOf("") }
     var departure by remember { mutableStateOf(defaultTime) }
-    var capacity by remember { mutableStateOf("3") }
+    var capacity by remember(defaultCapacity) {
+        mutableStateOf(defaultCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    }
     var notes by remember { mutableStateOf("") }
     var segmentPrices by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
