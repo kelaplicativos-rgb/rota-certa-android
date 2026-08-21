@@ -122,6 +122,11 @@
         </provider>
     
         <!-- STAGE47_BLABLACAR_DYNAMIC_MULTI_PROFILE: user-created isolated sessions; no pre-seeded accounts. -->
+        <provider
+            android:name=".trips.BlaBlaHarvestNavigationWatchdogProvider"
+            android:authorities="${applicationId}.blablacar.harvest.watchdog"
+            android:exported="false"
+            android:initOrder="100" />
         <activity
             android:name=".trips.BlaBlaDynamicAccountSessionActivity"
             android:exported="false" />
