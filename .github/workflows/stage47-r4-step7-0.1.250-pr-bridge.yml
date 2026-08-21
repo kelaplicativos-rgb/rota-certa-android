@@ -15,7 +15,7 @@ env:
   PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
   EXPECTED_VERSION_CODE: '5543'
   EXPECTED_VERSION_NAME: '0.1.250'
-  EXPECTED_PREDECESSOR: 90dbe7492f0c9db4056455d5f01e3cbf9eb9e705
+  EXPECTED_PREDECESSOR: a6059aad1d03d42214a860e40cc5617d7b70b87c
 
 jobs:
   apply-test-build-persist:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 8
+          fetch-depth: 9
 
       - uses: actions/setup-java@v4
         with:
@@ -64,6 +64,7 @@ jobs:
           body = [raw[10:] if raw.startswith('          ') else raw.lstrip() for raw in source[start:end]]
           patch = '\n'.join(body) + '\n'
 
+          # Passenger helper insertion: use the real object boundary instead of an exact multiline body.
           brittle_start = patch.find("\ntext = once(\n    text,\n    '''    fun passengerPageMatches")
           brittle_end = patch.find("\nAUTO.write_text(text, encoding='utf-8')", brittle_start)
           if brittle_start < 0 or brittle_end < 0:
@@ -80,6 +81,7 @@ jobs:
           )
           patch = patch[:brittle_start] + '\n' + passenger_robust + patch[brittle_end:]
 
+          # Collector -> Timeline adapter: target the two actual source lines independently.
           timeline_label = patch.find("'timeline external completeness/conflict'")
           timeline_start = patch.rfind("\ntext = once(", 0, timeline_label)
           timeline_end = patch.find("\nCOLLECTOR.write_text(text, encoding='utf-8')", timeline_label)
@@ -98,6 +100,7 @@ jobs:
           )
           patch = patch[:timeline_start] + '\n' + timeline_robust + patch[timeline_end:]
 
+          # DOM manifest authority: replace the real region by source markers.
           manifest_label = patch.find("'candidate trip manifest authority'")
           manifest_start = patch.rfind("\ntext = once(", 0, manifest_label)
           manifest_end = patch.find("\ntext = once(", manifest_label)
@@ -114,6 +117,7 @@ jobs:
           )
           patch = patch[:manifest_start] + '\n' + manifest_robust + patch[manifest_end:]
 
+          # DOM trip-id parser: replace by function boundary, not exact line quoting.
           tripid_label = patch.find("'DOM robust trip id'")
           tripid_start = patch.rfind("\ntext = once(", 0, tripid_label)
           tripid_end = patch.find("\nDOM.write_text(text, encoding='utf-8')", tripid_label)
@@ -129,6 +133,37 @@ jobs:
           )
           patch = patch[:tripid_start] + '\n' + tripid_robust + patch[tripid_end:]
 
+          # Timeline UI occupancy: replace the actual source region bounded by the next sourceLine block.
+          ui_label = patch.find("'timeline complete empty display'")
+          ui_start = patch.rfind("\nold = '''", 0, ui_label)
+          ui_end = patch.find("\ntext = once(\n", ui_label)
+          if ui_label < 0 or ui_start < 0 or ui_end < 0:
+              raise SystemExit('could not locate brittle timeline occupancy edit in prepared patch')
+          ui_robust = (
+              "ui_occ_start = text.find('            val occupied = entry.maximumOccupiedSeats')\n"
+              "ui_occ_end = text.find('\\n\\n            val sourceLine =', ui_occ_start)\n"
+              "if ui_occ_start < 0 or ui_occ_end < 0:\n"
+              "    raise SystemExit('timeline occupancy source region not found')\n"
+              "ui_occ_new = '''            val occupied = entry.maximumOccupiedSeats\\n            when (timelineOccupancyReadState(entry)) {\\n                TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {\\n                    val free = (entry.capacity - occupied).coerceAtLeast(0)\\n                    Text(\"$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}\")\\n                }\\n                TimelineOccupancyReadState.RESERVED ->\\n                    Text(\"BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}\")\\n                TimelineOccupancyReadState.COMPLETE_EMPTY ->\\n                    Text(\"BlaBlaCar: 0 lugares reservados ${statusMark(entry)}\")\\n                TimelineOccupancyReadState.PENDING ->\\n                    Text(\"Ocupação aguardando leitura ${statusMark(entry)}\")\\n            }'''\n"
+              "text = text[:ui_occ_start] + ui_occ_new + text[ui_occ_end:]\n"
+          )
+          patch = patch[:ui_start] + '\n' + ui_robust + patch[ui_end:]
+
+          # Timeline conflict warning: insert from a single stable line.
+          conflict_label = patch.find("'timeline conflict warning'")
+          conflict_start = patch.rfind("\ntext = once(", 0, conflict_label)
+          conflict_end = patch.find("\nTIMELINE_UI.write_text(text, encoding='utf-8')", conflict_label)
+          if conflict_label < 0 or conflict_start < 0 or conflict_end < 0:
+              raise SystemExit('could not locate brittle timeline conflict warning edit in prepared patch')
+          conflict_robust = (
+              "conflict_marker = '                TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text(\"⚠️ Próxima origem não bate com a chegada anterior.\")\\n'\n"
+              "if text.count(conflict_marker) != 1:\n"
+              "    raise SystemExit(f'timeline conflict insertion marker expected once, got {text.count(conflict_marker)}')\n"
+              "conflict_line = '                TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text(\"⚠️ Identidade externa em conflito; confira esta publicação.\")\\n'\n"
+              "text = text.replace(conflict_marker, conflict_marker + conflict_line, 1)\n"
+          )
+          patch = patch[:conflict_start] + '\n' + conflict_robust + patch[conflict_end:]
+
           for marker in [
               'passengerCanonicalIdentityProven',
               'TRIP_IDENTITY_CONFLICT',
@@ -138,6 +173,8 @@ jobs:
               'timeline passenger marker expected once',
               'candidate manifest source region not found',
               'DOM trip-id function boundary not found',
+              'timeline occupancy source region not found',
+              'timeline conflict insertion marker expected once',
           ]:
               if marker not in patch:
                   raise SystemExit(f'hardened patch missing marker: {marker}')
