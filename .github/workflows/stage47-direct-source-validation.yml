@@ -1,4 +1,4 @@
-name: Stage47 direct persisted-source validation 0.1.246
+name: Stage47 direct persisted-source validation 0.1.247
 
 on:
   pull_request:
@@ -39,8 +39,8 @@ jobs:
           MANIFEST='app/src/main/AndroidManifest.xml'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5539' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.246"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5540' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.247"' app/build.gradle.kts
           test -s "$AUTOMATION"
           test -s "$WATCHDOG"
           grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
@@ -55,6 +55,11 @@ jobs:
           grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$AUTOMATION"
           grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
+          grep -Fq 'HARVEST_EVALUATION_TIMEOUT' "$AUTOMATION"
+          grep -Fq 'HARVEST_USER_BACK_RECOVERY' "$AUTOMATION"
+          grep -Fq 'EVALUATION_TIMEOUT_MS = 6_000L' "$AUTOMATION"
+          grep -Fq 'trip.passenger_roster_complete ||' "$AUTOMATION"
+          grep -Fq 'cancel=false partialEvidencePreserved=true' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
@@ -71,11 +76,17 @@ jobs:
           grep -Fq '${applicationId}.blablacar.harvest.watchdog' "$MANIFEST"
 
           test ! -e .github/workflows/stage47-persist-passenger-phone.yml
+          test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
+          test ! -e .github/workflows/stage47-export-authoritative-source.yml
+          test ! -e .github/patches/stage47-harvester-recovery.patch
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
-          echo 'stage47_direct_source_authority=PASS version=0.1.246/5539'
+          echo 'stage47_direct_source_authority=PASS version=0.1.247/5540'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'harvester_navigation_watchdog=true'
+          echo 'harvester_evaluation_timeout=true'
+          echo 'harvester_back_recovery=true'
+          echo 'passenger_roster_preserved=true'
           echo 'passenger_card_traversal=true'
           echo 'passenger_tel_intercept=true'
           echo 'external_dialer_opened=false'
@@ -99,4 +110,4 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.246/5539'
+          echo 'stage47_direct_source_validation=PASS version=0.1.247/5540'
