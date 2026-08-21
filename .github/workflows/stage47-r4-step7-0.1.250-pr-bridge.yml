@@ -15,7 +15,7 @@ env:
   PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
   EXPECTED_VERSION_CODE: '5543'
   EXPECTED_VERSION_NAME: '0.1.250'
-  EXPECTED_PREDECESSOR: 4bfaa845b4465bd50e3659ac6cbfdb500f57b54c
+  EXPECTED_PREDECESSOR: 90dbe7492f0c9db4056455d5f01e3cbf9eb9e705
 
 jobs:
   apply-test-build-persist:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 7
+          fetch-depth: 8
 
       - uses: actions/setup-java@v4
         with:
@@ -98,6 +98,37 @@ jobs:
           )
           patch = patch[:timeline_start] + '\n' + timeline_robust + patch[timeline_end:]
 
+          manifest_label = patch.find("'candidate trip manifest authority'")
+          manifest_start = patch.rfind("\ntext = once(", 0, manifest_label)
+          manifest_end = patch.find("\ntext = once(", manifest_label)
+          if manifest_label < 0 or manifest_start < 0 or manifest_end < 0:
+              raise SystemExit('could not locate brittle candidate manifest edit in prepared patch')
+          manifest_robust = (
+              "dom_href_start = text.find('        val href = detail.url.takeIf')\n"
+              "dom_passenger_start = text.find('        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)', dom_href_start)\n"
+              "dom_passenger_end = text.find('\\n', dom_passenger_start)\n"
+              "if dom_href_start < 0 or dom_passenger_start < 0 or dom_passenger_end < 0:\n"
+              "    raise SystemExit('candidate manifest source region not found')\n"
+              "manifest_block = '''        val candidateHref = candidate.href.trim()\\n        val detailHref = detail.url.trim()\\n        val candidateTripId = tripId(candidateHref)\\n        val detailTripId = tripId(detailHref)\\n        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) return null\\n        val href = when {\\n            candidateTripId != null -> candidateHref\\n            detailTripId != null -> detailHref\\n            detailHref.isNotBlank() -> detailHref\\n            else -> candidateHref\\n        }\\n        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)'''\n"
+              "text = text[:dom_href_start] + manifest_block + text[dom_passenger_end:]\n"
+          )
+          patch = patch[:manifest_start] + '\n' + manifest_robust + patch[manifest_end:]
+
+          tripid_label = patch.find("'DOM robust trip id'")
+          tripid_start = patch.rfind("\ntext = once(", 0, tripid_label)
+          tripid_end = patch.find("\nDOM.write_text(text, encoding='utf-8')", tripid_label)
+          if tripid_label < 0 or tripid_start < 0 or tripid_end < 0:
+              raise SystemExit('could not locate brittle DOM trip-id edit in prepared patch')
+          tripid_robust = (
+              "dom_trip_id_start = text.find('    private fun tripId(href: String): String?')\n"
+              "dom_trip_id_end = text.find('\\n\\n    private fun normalize(', dom_trip_id_start)\n"
+              "if dom_trip_id_start < 0 or dom_trip_id_end < 0:\n"
+              "    raise SystemExit('DOM trip-id function boundary not found')\n"
+              "dom_trip_id_function = '''    private fun tripId(href: String): String? {\\n        val value = href.trim().takeIf(String::isNotEmpty) ?: return null\\n        Regex(\"[?&]id=([^&#]+)\").find(value)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }\\n        val path = runCatching { URI(value).path.orEmpty() }.getOrDefault(\"\")\\n        Regex(\"/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)\", RegexOption.IGNORE_CASE)\\n            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }\\n        Regex(\"/trip/([^/?#]+)\", RegexOption.IGNORE_CASE)\\n            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }\\n        return null\\n    }'''\n"
+              "text = text[:dom_trip_id_start] + dom_trip_id_function + text[dom_trip_id_end:]\n"
+          )
+          patch = patch[:tripid_start] + '\n' + tripid_robust + patch[tripid_end:]
+
           for marker in [
               'passengerCanonicalIdentityProven',
               'TRIP_IDENTITY_CONFLICT',
@@ -105,6 +136,8 @@ jobs:
               'versionCode = 5543',
               'harvest association object boundary not found',
               'timeline passenger marker expected once',
+              'candidate manifest source region not found',
+              'DOM trip-id function boundary not found',
           ]:
               if marker not in patch:
                   raise SystemExit(f'hardened patch missing marker: {marker}')
