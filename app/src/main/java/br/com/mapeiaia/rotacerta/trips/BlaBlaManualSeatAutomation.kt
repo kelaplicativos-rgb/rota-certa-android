@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
@@ -296,7 +297,14 @@ private data class MhtmlPassengerEvidence(
     val boarding: String = "",
     val dropoff: String = "",
     val price: String = "",
+    val callActionPresent: Boolean = false,
     val domHtml: String = "",
+)
+
+@Serializable
+private data class MhtmlPassengerCardOpenState(
+    val found: Boolean = false,
+    val clicked: Boolean = false,
 )
 
 @Serializable
@@ -305,7 +313,17 @@ private data class MhtmlEditEvidence(
     val domHtml: String = "",
 )
 
-private data class PassengerTarget(val tripId: String, val href: String)
+private data class PassengerTarget(
+    val tripId: String,
+    val tripHref: String,
+    val href: String = "",
+    val cardIndex: Int = -1,
+) {
+    val identityKey: String
+        get() = href.takeIf(String::isNotBlank)?.let(::canonicalHref) ?: "$tripId|card:$cardIndex"
+    val archiveKey: String
+        get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card-${cardIndex + 1}"
+}
 
 /**
  * Mirrors every authenticated block observed in the physical BlaBlaCar flow:
@@ -339,6 +357,8 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     private var optionIndex = 0
     private val publishedSeatsByTrip = mutableMapOf<String, Int>()
     private var pageReadAttempts = 0
+    private var passengerCallActionTriggered = false
+    private var interceptedPassengerPhone: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -358,6 +378,16 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         webView = WebView(this)
         configureProfiledWebView(webView, account)
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString()
+                return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, request)
+            }
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, url)
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 if (!isBlaBla(url) || busy) return
@@ -369,12 +399,28 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         webView.loadUrl(RIDES_URL)
     }
 
+    private fun interceptPhoneNavigation(rawUrl: String?): Boolean {
+        val url = rawUrl?.trim().orEmpty()
+        if (!url.startsWith("tel:", ignoreCase = true)) return false
+        val phone = normalizeCapturedPhone(url.substringAfter(':').substringBefore('?'))
+        if (phase == Phase.PASSENGER) {
+            interceptedPassengerPhone = phone
+            UnifiedDebugEventStore.record(
+                "PASSENGER_TEL_INTERCEPTED",
+                packageName,
+                "account=${account.displayLabel} index=${passengerIndex + 1}/${passengerTargets.size} phonePresent=${phone != null} externalDialerOpened=false",
+            )
+        }
+        return true
+    }
+
     private fun handlePage() {
         if (busy) return
         busy = true
         when (phase) {
             Phase.RIDES -> captureRides()
             Phase.TRIP -> captureTrip()
+            Phase.PASSENGER_CARD -> openPassengerCard()
             Phase.PASSENGER -> capturePassenger()
             Phase.EDIT -> captureEdit()
             Phase.OPTIONS -> captureOptions()
@@ -444,14 +490,24 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             val targets = buildList {
                 result.passengerHrefs.forEach { add(it) }
                 result.passengers.mapNotNull(BlaBlaCollectorPassenger::booking_href).forEach { add(it) }
-            }
-                .map(::absoluteBlaBlaHref)
-                .filter(::isPassengerHref)
-                .distinctBy(::canonicalHref)
-                .map { PassengerTarget(tripId, it) }
+            }.mapNotNull { raw ->
+                when {
+                    raw.startsWith(CARD_TARGET_PREFIX) -> raw.removePrefix(CARD_TARGET_PREFIX).toIntOrNull()?.let { cardIndex ->
+                        PassengerTarget(tripId = tripId, tripHref = href, cardIndex = cardIndex)
+                    }
+                    else -> absoluteBlaBlaHref(raw).takeIf(::isPassengerHref)?.let { passengerHref ->
+                        PassengerTarget(tripId = tripId, tripHref = href, href = passengerHref)
+                    }
+                }
+            }.distinctBy(PassengerTarget::identityKey)
             targets.forEach { target ->
-                if (passengerTargets.none { it.tripId == target.tripId && canonicalHref(it.href) == canonicalHref(target.href) }) {
+                if (passengerTargets.none { it.tripId == target.tripId && it.identityKey == target.identityKey }) {
                     passengerTargets += target
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_CARD_DISCOVERED",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$tripId cardIndex=${target.cardIndex} hrefPresent=${target.href.isNotBlank()} clickable=true",
+                    )
                 }
             }
             archive.save(webView, account, "trip", tripId) { saved ->
@@ -486,6 +542,48 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         loadNextTrip()
     }
 
+    private fun openPassengerCard() {
+        val target = passengerTargets.getOrNull(passengerIndex)
+        if (target == null) {
+            phase = Phase.EDIT
+            busy = false
+            loadNextEdit()
+            return
+        }
+        val expectedIndex = passengerIndex
+        evaluate<MhtmlPassengerCardOpenState>(passengerCardOpenJs(target.cardIndex)) { state ->
+            if (state?.clicked == true) {
+                pageReadAttempts = 0
+                phase = Phase.PASSENGER
+                busy = false
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_CARD_OPENED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} hrefPresent=false cardIndex=${target.cardIndex} clicked=true",
+                )
+                webView.postDelayed({
+                    if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
+                }, PASSENGER_NAVIGATION_SETTLE_MS)
+                return@evaluate
+            }
+            if (pageReadAttempts < MAX_PASSENGER_CARD_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({ handlePage() }, RETRY_MS)
+                return@evaluate
+            }
+            pageReadAttempts = 0
+            UnifiedDebugEventStore.record(
+                "HARVEST_BLOCK_UNREADABLE",
+                packageName,
+                "account=${account.displayLabel} block=passenger_card tripId=${target.tripId} cardIndex=${target.cardIndex} reason=card_not_clickable",
+            )
+            passengerIndex++
+            busy = false
+            loadNextPassenger()
+        }
+    }
+
     private fun capturePassenger() {
         val target = passengerTargets.getOrNull(passengerIndex)
         if (target == null) {
@@ -494,35 +592,79 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             loadNextEdit()
             return
         }
+        val expectedIndex = passengerIndex
         evaluate<MhtmlPassengerEvidence>(PASSENGER_EVIDENCE_JS) { result ->
-            if (result == null || (result.phone.isBlank() && result.visibleName.isBlank())) {
-                if (pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
-                    pageReadAttempts++
+            val directPhone = normalizeCapturedPhone(result?.phone)
+            val capturedPhone = directPhone ?: interceptedPassengerPhone
+            if (capturedPhone == null && result?.callActionPresent == true && !passengerCallActionTriggered) {
+                passengerCallActionTriggered = true
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_CALL_ACTION_PRESENT",
+                    packageName,
+                    "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} actionPresent=true clickIntercepted=true",
+                )
+                webView.evaluateJavascript(CLICK_CALL_ACTION_JS) {
                     busy = false
-                    webView.postDelayed({ handlePage() }, RETRY_MS)
-                    return@evaluate
+                    webView.postDelayed({
+                        if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
+                    }, PASSENGER_CALL_SETTLE_MS)
                 }
+                return@evaluate
+            }
+            val pageLooksReady = result != null && (
+                result.visibleName.isNotBlank() ||
+                    result.callActionPresent ||
+                    result.boarding.isNotBlank() ||
+                    result.dropoff.isNotBlank()
+                )
+            if ((capturedPhone == null || !pageLooksReady) && pageReadAttempts < MAX_PASSENGER_PHONE_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({
+                    if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
+                }, RETRY_MS)
+                return@evaluate
             }
             pageReadAttempts = 0
-            val evidence = result ?: MhtmlPassengerEvidence()
-            passengerEvidence[canonicalHref(target.href)] = evidence
+            val baseEvidence = result ?: MhtmlPassengerEvidence()
+            val evidence = baseEvidence.copy(phone = capturedPhone ?: baseEvidence.phone)
+            persistPassengerEvidence(target, evidence)
             sessionStore.saveDiagnosticHtml(
                 account,
-                "passenger-${target.tripId}-${passengerKey(target.href)}",
+                "passenger-${target.tripId}-${target.archiveKey}",
                 evidence.domHtml,
             )
-            archive.save(webView, account, "passenger", "${target.tripId}-${passengerKey(target.href)}") { saved ->
+            archive.save(webView, account, "passenger", "${target.tripId}-${target.archiveKey}") { saved ->
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "HARVEST_PASSENGER_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=${target.tripId} index=${passengerIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()}",
+                    "account=${account.displayLabel} tripId=${target.tripId} index=${passengerIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()} callActionPresent=${evidence.callActionPresent}",
                 )
                 passengerIndex++
+                passengerCallActionTriggered = false
+                interceptedPassengerPhone = null
                 busy = false
                 loadNextPassenger()
             }
         }
+    }
+
+    private fun persistPassengerEvidence(target: PassengerTarget, evidence: MhtmlPassengerEvidence) {
+        passengerEvidence[target.identityKey] = evidence
+        if (target.href.isNotBlank()) passengerEvidence[canonicalHref(target.href)] = evidence
+        if (target.cardIndex < 0) return
+        val summary = tripEvidence[target.tripId] ?: return
+        val passengers = summary.passengers.toMutableList()
+        val current = passengers.getOrNull(target.cardIndex) ?: return
+        passengers[target.cardIndex] = current.copy(
+            name = current.name.ifBlank { evidence.visibleName.trim() },
+            seats = maxOf(current.seats.coerceAtLeast(1), evidence.seats.coerceAtLeast(1)),
+            boarding = current.boarding?.takeIf(String::isNotBlank) ?: evidence.boarding.takeIf(String::isNotBlank),
+            dropoff = current.dropoff?.takeIf(String::isNotBlank) ?: evidence.dropoff.takeIf(String::isNotBlank),
+            phone = current.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone),
+        )
+        tripEvidence[target.tripId] = summary.copy(passengers = passengers)
     }
 
     private fun captureEdit() {
@@ -624,8 +766,25 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             editIndex = 0
             loadNextEdit()
         } else {
+            pageReadAttempts = 0
+            passengerCallActionTriggered = false
+            interceptedPassengerPhone = null
             statusView.text = "${account.displayLabel} • passageiro ${passengerIndex + 1}/${passengerTargets.size}"
-            webView.loadUrl(target.href)
+            if (target.href.isNotBlank()) {
+                phase = Phase.PASSENGER
+                webView.loadUrl(target.href)
+            } else if (target.cardIndex >= 0) {
+                phase = Phase.PASSENGER_CARD
+                webView.loadUrl(target.tripHref)
+            } else {
+                UnifiedDebugEventStore.record(
+                    "HARVEST_BLOCK_UNREADABLE",
+                    packageName,
+                    "account=${account.displayLabel} block=passenger tripId=${target.tripId} reason=target_missing",
+                )
+                passengerIndex++
+                loadNextPassenger()
+            }
         }
     }
 
@@ -842,14 +1001,19 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         super.onDestroy()
     }
 
-    private enum class Phase { RIDES, TRIP, PASSENGER, EDIT, OPTIONS }
+    private enum class Phase { RIDES, TRIP, PASSENGER_CARD, PASSENGER, EDIT, OPTIONS }
 
     companion object {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private const val MAX_TRIPS = 80
         private const val MAX_PAGE_READ_ATTEMPTS = 2
         private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
+        private const val MAX_PASSENGER_CARD_READ_ATTEMPTS = 4
+        private const val MAX_PASSENGER_PHONE_READ_ATTEMPTS = 5
         private const val RETRY_MS = 800L
+        private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
+        private const val PASSENGER_CALL_SETTLE_MS = 900L
+        private const val CARD_TARGET_PREFIX = "rotacerta-card:"
 
         private val SANITIZED_HTML_JS = """
             const clone = document.documentElement.cloneNode(true);
@@ -884,6 +1048,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
               const pageText = clean(document.body && document.body.innerText);
               const rows = [];
               const seen = new Set();
+              const passengerTargets = [];
               const candidateNodes = Array.from(document.querySelectorAll(
                 'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
               ));
@@ -913,6 +1078,8 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
                 if (seen.has(key)) return;
                 seen.add(key);
+                const rowIndex = rows.length;
+                passengerTargets.push(/passenger|booking/i.test(href) ? href : 'rotacerta-card:' + rowIndex);
                 rows.push({
                   name: name,
                   seats: seats,
@@ -922,9 +1089,10 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                   booking_href: /passenger|booking/i.test(href) ? href : null
                 });
               });
-              const passengerHrefs = Array.from(document.querySelectorAll('a[href]'))
+              const explicitPassengerHrefs = Array.from(document.querySelectorAll('a[href]'))
                 .map((a) => absolute(a.getAttribute('href') || ''))
                 .filter((href) => /\/passenger\/|\/booking\//i.test(href));
+              explicitPassengerHrefs.forEach((href) => passengerTargets.push(href));
               const stopSelectors = [
                 '[data-testid*="itinerary-departure-station"]',
                 '[data-testid*="itinerary-arrival-station"]',
@@ -947,7 +1115,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 passengers: rows,
-                passengerHrefs: Array.from(new Set(passengerHrefs)),
+                passengerHrefs: Array.from(new Set(passengerTargets)),
                 itineraryStops: itineraryStops,
                 rosterComplete: rosterComplete,
                 explicitEmptyRoster: explicitEmptyRoster,
@@ -963,6 +1131,13 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
               const body = clean(document.body && document.body.innerText);
               const nameNode = document.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], h1');
               const visibleName = clean(nameNode && nameNode.innerText);
+              const actionNodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
+              const callAction = actionNodes.find((node) => {
+                const text = clean(node.innerText || node.textContent);
+                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
+                const href = (node.getAttribute && node.getAttribute('href')) || '';
+                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
+              });
               const telCandidates = [];
               Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"]')).forEach((node) => {
                 const href = (node.getAttribute && node.getAttribute('href')) || '';
@@ -985,8 +1160,66 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 boarding: routeMatch ? clean(routeMatch[1]) : '',
                 dropoff: routeMatch ? clean(routeMatch[2]) : '',
                 price: priceMatch ? clean(priceMatch[0]) : '',
+                callActionPresent: !!callAction,
                 domHtml: html.slice(0, 350000)
               });
+            })();
+        """.trimIndent()
+
+        private fun passengerCardOpenJs(cardIndex: Int): String = """
+            (function() {
+              const wantedIndex = $cardIndex;
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const linesOf = (node) => ((node && node.innerText) || '').split(/\n+/).map(clean).filter(Boolean);
+              const candidates = Array.from(document.querySelectorAll(
+                'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
+              ));
+              Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
+                const value = clean(node.innerText);
+                if ((value.includes('→') || value.includes('->')) && !candidates.includes(node)) candidates.push(node);
+              });
+              const valid = [];
+              candidates.forEach((node) => {
+                const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
+                const lines = linesOf(container);
+                const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                if (!route) return;
+                const explicit = container && container.querySelector
+                  ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
+                  : null;
+                const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
+                const name = clean(alt || (explicit && explicit.innerText) || lines[0] || '');
+                if (!name || /^(ver sua carona|editar sua carona|resumo da viagem|hor[aá]rio|santo|s[aã]o|pouso|extrema|camanducaia|tr[eê]s)/i.test(name)) return;
+                valid.push({ node: node, container: container });
+              });
+              const item = valid[wantedIndex];
+              if (!item) return JSON.stringify({ found: false, clicked: false });
+              const selector = 'a[href], button, [role="link"], [role="button"]';
+              const direct = item.node && item.node.matches && item.node.matches(selector) ? item.node : null;
+              const nested = !direct && item.node && item.node.querySelector ? item.node.querySelector(selector) : null;
+              const containerTarget = !direct && !nested && item.container && item.container.matches && item.container.matches(selector)
+                ? item.container
+                : (!direct && !nested && item.container && item.container.querySelector ? item.container.querySelector(selector) : null);
+              const clickable = direct || nested || containerTarget || item.node;
+              if (!clickable || typeof clickable.click !== 'function') return JSON.stringify({ found: true, clicked: false });
+              clickable.click();
+              return JSON.stringify({ found: true, clicked: true });
+            })();
+        """.trimIndent()
+
+        private val CLICK_CALL_ACTION_JS = """
+            (function() {
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const nodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
+              const action = nodes.find((node) => {
+                const text = clean(node.innerText || node.textContent);
+                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
+                const href = (node.getAttribute && node.getAttribute('href')) || '';
+                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
+              });
+              if (!action || typeof action.click !== 'function') return JSON.stringify({ present: !!action, clicked: false });
+              action.click();
+              return JSON.stringify({ present: true, clicked: true });
             })();
         """.trimIndent()
 
