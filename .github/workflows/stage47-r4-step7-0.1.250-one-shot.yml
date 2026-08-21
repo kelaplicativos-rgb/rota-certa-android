@@ -1,0 +1,849 @@
+name: Stage47 one-shot direct-source physical fixes 0.1.250
+
+on:
+  push:
+    branches:
+      - agent/stage47-r4-step7-automatic-identity
+    paths:
+      - .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+
+permissions:
+  contents: write
+
+env:
+  GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
+  PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+  BASE_SOURCE_HEAD: 6d0579b5d4760c4ed7cbb3b99f18eb71d0c15c95
+  EXPECTED_VERSION_CODE: '5543'
+  EXPECTED_VERSION_NAME: '0.1.250'
+
+jobs:
+  apply-test-build-persist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout current branch directly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify exact predecessor and protected FAROL
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE_SOURCE_HEAD"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq 'versionCode = 5542' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.249"' app/build.gradle.kts
+          echo "predecessor=$(git rev-parse HEAD^)"
+          echo "transport_commit=$(git rev-parse HEAD)"
+          echo 'direct_source_precheck=PASS'
+
+      - name: Apply only the three physical-test corrections
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ROOT = Path('.')
+          AUTO = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
+          COLLECTOR = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt'
+          DYNAMIC = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          DOM = ROOT / 'app/src/main/java/br/com/mapeia/rotacerta/trips/BlaBlaDomParsing.kt'
+          if not DOM.exists():
+              DOM = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt'
+          TIMELINE = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt'
+          TIMELINE_UI = ROOT / 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          BUILD = ROOT / 'app/build.gradle.kts'
+          VALIDATION = ROOT / '.github/workflows/stage47-direct-source-validation.yml'
+          PHYSICAL = ROOT / '.github/workflows/stage47-direct-source-physical-apk.yml'
+          TEST = ROOT / 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt'
+
+          def once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {count}')
+              return text.replace(old, new, 1)
+
+          def region(text, start, end, replacement, label):
+              a = text.find(start)
+              b = text.find(end, a + len(start)) if a >= 0 else -1
+              if a < 0 or b < 0:
+                  raise SystemExit(f'{label}: region markers not found')
+              return text[:a] + replacement + text[b:]
+
+          # 1) Passenger phone coverage: canonical passenger URL is the hard proof;
+          # semantic text becomes advisory after canonical identity is proven.
+          text = AUTO.read_text(encoding='utf-8')
+          text = region(
+              text,
+              '    private fun passengerEvidenceCompatible(target: PassengerTarget, evidence: MhtmlPassengerEvidence): Boolean {\n',
+              '    private fun persistPassengerEvidence(target: PassengerTarget, evidence: MhtmlPassengerEvidence) {\n',
+              '''    private fun passengerEvidenceCompatible(target: PassengerTarget, evidence: MhtmlPassengerEvidence): Boolean {
+        val canonicalIdentityProven = target.href.isNotBlank() &&
+            BlaBlaHarvestAssociation.passengerCanonicalIdentityProven(
+                target.externalPassengerKey,
+                target.href,
+                evidence.pageUrl,
+            )
+        var semanticCompatible = true
+        var semanticEvidencePresent = false
+        if (target.expectedName.isNotBlank() && evidence.visibleName.isNotBlank()) {
+            semanticEvidencePresent = true
+            if (normalizeText(target.expectedName) != normalizeText(evidence.visibleName)) semanticCompatible = false
+        }
+        if (target.expectedBoarding.isNotBlank() && evidence.boarding.isNotBlank()) {
+            semanticEvidencePresent = true
+            if (!samePlaceEvidence(target.expectedBoarding, evidence.boarding)) semanticCompatible = false
+        }
+        if (target.expectedDropoff.isNotBlank() && evidence.dropoff.isNotBlank()) {
+            semanticEvidencePresent = true
+            if (!samePlaceEvidence(target.expectedDropoff, evidence.dropoff)) semanticCompatible = false
+        }
+        if (canonicalIdentityProven && semanticEvidencePresent && !semanticCompatible) {
+            UnifiedDebugEventStore.record(
+                "HARVEST_PASSENGER_SEMANTIC_DIFFERENCE",
+                packageName,
+                "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} canonicalIdentity=true action=accept_canonical_identity",
+            )
+        }
+        return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProven)
+    }
+
+''',
+              'passenger canonical identity decision',
+          )
+          text = once(
+              text,
+              '''    fun passengerPageMatches(expectedPassengerKey: String, url: String): Boolean =
+        expectedPassengerKey.isNotBlank() && isPassengerHref(url) && passengerKey(url) == expectedPassengerKey
+}''',
+              '''    fun passengerPageMatches(expectedPassengerKey: String, url: String): Boolean =
+        expectedPassengerKey.isNotBlank() && isPassengerHref(url) && passengerKey(url) == expectedPassengerKey
+
+    fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =
+        expectedUrl.isNotBlank() &&
+            capturedUrl.isNotBlank() &&
+            passengerPageMatches(expectedPassengerKey, expectedUrl) &&
+            passengerPageMatches(expectedPassengerKey, capturedUrl) &&
+            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)
+
+    fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven
+}''',
+              'harvest canonical passenger helpers',
+          )
+          AUTO.write_text(text, encoding='utf-8')
+
+          # 2) Trip identity: preserve true duplicates, never silently drop incompatible physical cores.
+          text = COLLECTOR.read_text(encoding='utf-8')
+          text = once(
+              text,
+              '    val passenger_roster_complete: Boolean = false,\n)',
+              '    val passenger_roster_complete: Boolean = false,\n    val identity_conflict: Boolean = false,\n)',
+              'trip identity conflict field',
+          )
+          start = 'internal data class BlaBlaTripIdentityEvidence(\n'
+          end = 'internal object BlaBlaPassengerRosterReconciler {\n'
+          new_identity = '''internal data class BlaBlaTripIdentityEvidence(
+    val key: String,
+    val identityHash: String,
+    val externalTripIdPresent: Boolean,
+    val specificHrefPresent: Boolean,
+    val fallbackIdentityUsed: Boolean,
+    val identityConflict: Boolean,
+)
+
+internal data class BlaBlaTripIdentityConflict(
+    val identityHash: String,
+    val externalTripId: String?,
+    val physicalCores: List<String>,
+)
+
+internal data class BlaBlaTripIdentityResolution(
+    val trips: List<BlaBlaCollectorTrip>,
+    val dedupedCount: Int,
+    val conflicts: List<BlaBlaTripIdentityConflict>,
+)
+
+internal object BlaBlaTripIdentity {
+    fun evidence(trip: BlaBlaCollectorTrip): BlaBlaTripIdentityEvidence {
+        val externalId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+        val specificHref = stableSpecificHref(trip.trip_href)
+        val base = baseKey(trip)
+        val key = if (trip.identity_conflict) "$base|identity-conflict|${physicalCoreKey(trip)}" else base
+        return BlaBlaTripIdentityEvidence(
+            key = key,
+            identityHash = sha256Short(key),
+            externalTripIdPresent = externalId != null,
+            specificHrefPresent = specificHref != null,
+            fallbackIdentityUsed = externalId == null && specificHref == null,
+            identityConflict = trip.identity_conflict,
+        )
+    }
+
+    fun resolveDistinct(trips: List<BlaBlaCollectorTrip>): BlaBlaTripIdentityResolution {
+        if (trips.isEmpty()) return BlaBlaTripIdentityResolution(emptyList(), 0, emptyList())
+        val grouped = trips.groupBy(::baseKey)
+        val conflictKeys = grouped.mapNotNull { (key, group) ->
+            val strong = group.any { trip ->
+                !trip.trip_id.isNullOrBlank() || stableSpecificHref(trip.trip_href) != null
+            }
+            key.takeIf { strong && group.map(::physicalCoreKey).distinct().size > 1 }
+        }.toSet()
+        val conflicts = conflictKeys.map { key ->
+            val group = grouped.getValue(key)
+            BlaBlaTripIdentityConflict(
+                identityHash = sha256Short(key),
+                externalTripId = group.firstNotNullOfOrNull { it.trip_id?.trim()?.takeIf(String::isNotEmpty) },
+                physicalCores = group.map(::physicalCoreKey).distinct(),
+            )
+        }
+        val seen = mutableSetOf<String>()
+        var deduped = 0
+        val resolved = buildList {
+            trips.forEach { trip ->
+                val base = baseKey(trip)
+                val conflict = base in conflictKeys
+                val dedupeKey = if (conflict) "$base|${physicalCoreKey(trip)}" else base
+                if (!seen.add(dedupeKey)) {
+                    deduped++
+                } else {
+                    add(if (conflict) trip.copy(identity_conflict = true) else trip.copy(identity_conflict = false))
+                }
+            }
+        }
+        return BlaBlaTripIdentityResolution(resolved, deduped, conflicts)
+    }
+
+    fun physicalCoreKey(trip: BlaBlaCollectorTrip): String {
+        val origin = trip.actual_departure?.takeIf(String::isNotBlank) ?: trip.search_from.orEmpty()
+        val destination = trip.actual_arrival?.takeIf(String::isNotBlank) ?: trip.search_to.orEmpty()
+        return listOf(
+            trip.date.trim(),
+            trip.departure_time.orEmpty().take(5).trim(),
+            normalizeCorePlace(origin),
+            normalizeCorePlace(destination),
+        ).joinToString("|")
+    }
+
+    fun externalTripIdFromHref(raw: String?): String? {
+        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        runCatching { URI(value) }.getOrNull()?.let { uri ->
+            uri.rawQuery.orEmpty().split('&').firstOrNull { it.substringBefore('=') == "id" }
+                ?.substringAfter('=', "")?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
+            Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
+                .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+            Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
+                .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        }
+        return null
+    }
+
+    private fun baseKey(trip: BlaBlaCollectorTrip): String {
+        val externalId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+        val specificHref = stableSpecificHref(trip.trip_href)
+        return when {
+            externalId != null -> "id|${trip.profile_uuid.trim()}|$externalId"
+            specificHref != null -> "href|${trip.profile_uuid.trim()}|$specificHref"
+            else -> listOf(
+                "fallback",
+                trip.profile_uuid.trim(),
+                trip.date.trim(),
+                trip.departure_time.orEmpty().trim(),
+                trip.arrival_time.orEmpty().trim(),
+                trip.actual_departure.orEmpty().trim(),
+                trip.actual_arrival.orEmpty().trim(),
+                trip.search_from.orEmpty().trim(),
+                trip.search_to.orEmpty().trim(),
+                trip.price.orEmpty().trim(),
+            ).joinToString("|")
+        }
+    }
+
+    private fun stableSpecificHref(raw: String?): String? {
+        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val withoutQuery = value.substringBefore('?').substringBefore('#').trimEnd('/')
+        val path = runCatching {
+            if (withoutQuery.contains("://")) URI(withoutQuery).path else withoutQuery
+        }.getOrNull()?.trimEnd('/')?.takeIf(String::isNotEmpty) ?: return null
+        val normalized = if (path.startsWith('/')) path else "/$path"
+        if (normalized in setOf("/rides", "/rides/offer", "/trip")) return null
+        return normalized.takeIf { candidate ->
+            candidate.startsWith("/rides/offer/") || candidate.startsWith("/trip/")
+        }
+    }
+
+    private fun normalizeCorePlace(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    private fun sha256Short(value: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .take(16)
+        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
+'''
+          text = region(text, start, end, new_identity, 'trip identity resolver')
+          text = once(
+              text,
+              '    val unresolved_target_cards: Int = 0,\n    val past_dates_skipped: Boolean = true,',
+              '    val unresolved_target_cards: Int = 0,\n    val identity_conflicts: Int = 0,\n    val past_dates_skipped: Boolean = true,',
+              'coverage identity conflicts',
+          )
+          text = once(
+              text,
+              '''            blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
+            blablaPassengers = trip.passengers,
+            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),''',
+              '''            blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
+            blablaPassengers = trip.passengers,
+            blablaPassengerRosterComplete = trip.passenger_roster_complete,
+            issues = buildSet {
+                if (!verified) add(TripTimelineIssue.VALIDATION_PENDING)
+                if (trip.identity_conflict) add(TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT)
+            },''',
+              'timeline external completeness/conflict',
+          )
+          COLLECTOR.write_text(text, encoding='utf-8')
+
+          # Make the ride-list candidate the manifest authority for trip ID.
+          text = DOM.read_text(encoding='utf-8')
+          if 'import java.net.URI\n' not in text:
+              text = once(text, 'import java.text.Normalizer\n', 'import java.net.URI\nimport java.text.Normalizer\n', 'DOM URI import')
+          text = once(
+              text,
+              '''        val href = detail.url.takeIf(String::isNotBlank) ?: candidate.href
+        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)''',
+              '''        val candidateHref = candidate.href.trim()
+        val detailHref = detail.url.trim()
+        val candidateTripId = tripId(candidateHref)
+        val detailTripId = tripId(detailHref)
+        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) return null
+        val href = when {
+            candidateTripId != null -> candidateHref
+            detailTripId != null -> detailHref
+            detailHref.isNotBlank() -> detailHref
+            else -> candidateHref
+        }
+        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)''',
+              'candidate trip manifest authority',
+          )
+          text = once(
+              text,
+              '    private fun tripId(href: String): String? = Regex("[?&]id=([^&#]+)").find(href)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)\n',
+              '''    private fun tripId(href: String): String? {
+        val value = href.trim().takeIf(String::isNotEmpty) ?: return null
+        Regex("[?&]id=([^&#]+)").find(value)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        val path = runCatching { URI(value).path.orEmpty() }.getOrDefault("")
+        Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
+            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
+            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        return null
+    }
+''',
+              'DOM robust trip id',
+          )
+          DOM.write_text(text, encoding='utf-8')
+
+          # Resolve identity collisions before combined response; conflict => partial/fail-closed, never silent loss.
+          text = DYNAMIC.read_text(encoding='utf-8')
+          start = '    fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {\n'
+          end = '    fun delete(account: BlaBlaDynamicAccount) {\n'
+          replacement = '''    fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {
+        val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
+        val verified = snapshots.filter { (account, snapshot) ->
+            snapshot.identityVerified && !account.profileUuid.isNullOrBlank() && snapshot.profileUuid == account.profileUuid
+        }
+        val beforeDistinct = verified.flatMap { (_, snapshot) -> snapshot.trips }
+        val resolution = BlaBlaTripIdentity.resolveDistinct(beforeDistinct)
+        beforeDistinct.forEachIndexed { index, trip ->
+            val identity = BlaBlaTripIdentity.evidence(trip)
+            UnifiedDebugEventStore.record(
+                "TRIP_IDENTITY",
+                appContext.packageName,
+                "index=${index + 1}/${beforeDistinct.size} tripId=${trip.trip_id.orEmpty()} core=${BlaBlaTripIdentity.physicalCoreKey(trip)} externalTripIdPresent=${identity.externalTripIdPresent} specificHrefPresent=${identity.specificHrefPresent} fallbackIdentityUsed=${identity.fallbackIdentityUsed} identityHash=${identity.identityHash} identityConflict=${identity.identityConflict}",
+            )
+        }
+        resolution.conflicts.forEach { conflict ->
+            UnifiedDebugEventStore.record(
+                "TRIP_IDENTITY_CONFLICT",
+                appContext.packageName,
+                "identityHash=${conflict.identityHash} tripId=${conflict.externalTripId.orEmpty()} physicalCoreCount=${conflict.physicalCores.size} cores=${conflict.physicalCores.joinToString(" || ")} action=preserve_and_flag",
+            )
+        }
+        val trips = resolution.trips
+            .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
+        val hasIdentityConflict = resolution.conflicts.isNotEmpty()
+        val response = BlaBlaCollectorMonthResponse(
+            collected_at = Instant.now().toString(),
+            status = when {
+                accounts.isEmpty() -> "empty"
+                hasIdentityConflict -> "partial"
+                verified.size == accounts.size -> "validated"
+                verified.isEmpty() -> "blocked"
+                else -> "partial"
+            },
+            month = null,
+            strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
+            profiles = verified.map { (account, _) ->
+                BlaBlaCollectorProfile(
+                    uuid = account.profileUuid.orEmpty(),
+                    name = account.displayLabel,
+                    title = "Sessão autenticada local • perfil WebView isolado • UUID confirmado",
+                )
+            },
+            trips = trips,
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = accounts.isNotEmpty() && verified.size == accounts.size && !hasIdentityConflict,
+                global_profile_month_complete = false,
+                reason = if (hasIdentityConflict) {
+                    "Conflito de identidade externa detectado; viagens preservadas para conferência sem descarte silencioso."
+                } else {
+                    "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado."
+                },
+                requested_queries = accounts.size,
+                validated_queries = verified.size,
+                failed_or_mismatched_queries = (accounts.size - verified.size).coerceAtLeast(0),
+                unresolved_target_cards = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips },
+                identity_conflicts = resolution.conflicts.size,
+                past_dates_skipped = false,
+            ),
+        )
+        UnifiedDebugEventStore.record(
+            "COMBINED_RESPONSE",
+            appContext.packageName,
+            "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=${resolution.conflicts.size} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",
+        )
+        return response
+    }
+
+'''
+          text = region(text, start, end, replacement, 'combined response conflict resolution')
+
+          start = '    private fun finalizeCurrentTrip(expectedSync: Long, expectedCandidate: Int) {\n'
+          end = '    private fun advanceCandidate(expectedSync: Long, expectedCandidate: Int) {\n'
+          replacement = '''    private fun finalizeCurrentTrip(expectedSync: Long, expectedCandidate: Int) {
+        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+            recordStale("finalize_pending_mismatch", expectedSync, expectedCandidate)
+            return
+        }
+        val candidate = candidates.getOrNull(expectedCandidate)
+        val result = pendingTripDetail
+        val definition = account.verifiedDefinition()
+        if (candidate == null || result == null || definition == null) {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "TRIP_REJECTED",
+                packageName,
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=pending_trip_state_missing",
+            )
+            advanceCandidate(expectedSync, expectedCandidate)
+            return
+        }
+
+        val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())
+        val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
+        val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(enrichedDetail.url)
+        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "TRIP_REJECTED",
+                packageName,
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_trip_id_mismatch candidateTripId=$candidateTripId detailTripId=$detailTripId action=reject_stale_detail",
+            )
+            advanceCandidate(expectedSync, expectedCandidate)
+            return
+        }
+        val trip = BlaBlaDomNormalizer.toTrip(
+            account = definition,
+            candidate = candidate,
+            detail = enrichedDetail,
+            today = LocalDate.now(),
+            authenticatedProfileSessionVerified = identityConfirmedThisSync,
+        )
+        if (trip != null && identityConfirmedThisSync) {
+            collected += trip
+            UnifiedDebugEventStore.record(
+                "TRIP_ACCEPTED",
+                packageName,
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=${trip.trip_id.orEmpty()} candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} validation=${trip.uuid_validation} date=${trip.date} departure=${trip.departure_time.orEmpty()} origin=${trip.actual_departure.orEmpty()} destination=${trip.actual_arrival.orEmpty()} passengers=${trip.passengers.size} phones=${trip.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${trip.passenger_roster_complete} deterministicTripIdentity=true",
+            )
+        } else {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "TRIP_REJECTED",
+                packageName,
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=trip_fields_unparseable candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} expectedUuid=${account.profileUuid.orEmpty()}",
+            )
+        }
+        advanceCandidate(expectedSync, expectedCandidate)
+    }
+
+'''
+          text = region(text, start, end, replacement, 'dynamic candidate/detail trip identity guard')
+          DYNAMIC.write_text(text, encoding='utf-8')
+
+          # 3) Timeline distinguishes complete zero-reservation reads from pending reads.
+          text = TIMELINE.read_text(encoding='utf-8')
+          text = once(
+              text,
+              '    val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),\n    val issues: Set<TripTimelineIssue> = emptySet(),',
+              '    val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),\n    val blablaPassengerRosterComplete: Boolean? = null,\n    val issues: Set<TripTimelineIssue> = emptySet(),',
+              'timeline roster completeness field',
+          )
+          text = once(
+              text,
+              '    VALIDATION_PENDING,\n}',
+              '    VALIDATION_PENDING,\n    EXTERNAL_IDENTITY_CONFLICT,\n}',
+              'timeline identity conflict issue',
+          )
+          TIMELINE.write_text(text, encoding='utf-8')
+
+          text = TIMELINE_UI.read_text(encoding='utf-8')
+          marker = '@Composable\nprivate fun TimelineEntryCard('
+          helper = '''internal enum class TimelineOccupancyReadState {
+    CAPACITY_CONFIGURED,
+    RESERVED,
+    COMPLETE_EMPTY,
+    PENDING,
+}
+
+internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState = when {
+    entry.capacity > 0 -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
+    entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
+    entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
+    else -> TimelineOccupancyReadState.PENDING
+}
+
+'''
+          text = once(text, marker, helper + marker, 'timeline occupancy state helper')
+          old = '''            val occupied = entry.maximumOccupiedSeats
+            if (entry.capacity > 0) {
+                val free = (entry.capacity - occupied).coerceAtLeast(0)
+                Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
+            } else if (occupied > 0) {
+                Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
+            } else {
+                Text("Ocupação aguardando leitura ${statusMark(entry)}")
+            }'''
+          new = '''            val occupied = entry.maximumOccupiedSeats
+            when (timelineOccupancyReadState(entry)) {
+                TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
+                    val free = (entry.capacity - occupied).coerceAtLeast(0)
+                    Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
+                }
+                TimelineOccupancyReadState.RESERVED ->
+                    Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
+                TimelineOccupancyReadState.COMPLETE_EMPTY ->
+                    Text("BlaBlaCar: 0 lugares reservados ${statusMark(entry)}")
+                TimelineOccupancyReadState.PENDING ->
+                    Text("Ocupação aguardando leitura ${statusMark(entry)}")
+            }'''
+          text = once(text, old, new, 'timeline complete empty display')
+          text = once(
+              text,
+              '''                TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
+                TripTimelineIssue.VALIDATION_PENDING in entry.issues -> Text("⏳ Falta confirmar a origem dos dados.")''',
+              '''                TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
+                TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
+                TripTimelineIssue.VALIDATION_PENDING in entry.issues -> Text("⏳ Falta confirmar a origem dos dados.")''',
+              'timeline conflict warning',
+          )
+          TIMELINE_UI.write_text(text, encoding='utf-8')
+
+          # Regression tests for all three physical findings.
+          TEST.write_text('''package br.com.mapeiaia.rotacerta.trips
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+
+class Stage47PhysicalFixes0250Test {
+    @Test
+    fun canonicalPassengerUrlWinsOverSemanticPresentationDifference() {
+        val url = "https://www.blablacar.com.br/rides/offer/passenger/booking-a"
+        assertTrue(BlaBlaHarvestAssociation.passengerCanonicalIdentityProven("booking-a", url, url))
+        assertTrue(BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProven = true))
+    }
+
+    @Test
+    fun unprovenPassengerUrlFailsClosedEvenIfSemanticTextCouldLookCompatible() {
+        val expected = "https://www.blablacar.com.br/rides/offer/passenger/booking-a"
+        val wrong = "https://www.blablacar.com.br/rides/offer/passenger/booking-b"
+        assertFalse(BlaBlaHarvestAssociation.passengerCanonicalIdentityProven("booking-a", expected, wrong))
+        assertFalse(BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProven = false))
+    }
+
+    @Test
+    fun candidateTripIdRemainsManifestAuthorityWhenDetailUrlIsGeneric() {
+        val account = BlaBlaAccountDefinition("slot", "Driver", "profile-a", "profile")
+        val candidate = BlaBlaDomRideCandidate(
+            href = "https://www.blablacar.com.br/rides/offer?id=trip-a",
+            departureTime = "11:00",
+            origin = "Origin",
+            destination = "Destination",
+            dateText = "2026-08-28",
+        )
+        val detail = BlaBlaDomTripDetail(url = "https://www.blablacar.com.br/rides/offer")
+        val trip = BlaBlaDomNormalizer.toTrip(account, candidate, detail, LocalDate.of(2026, 8, 21), true)
+        assertEquals("trip-a", trip?.trip_id)
+        assertEquals(candidate.href, trip?.trip_href)
+    }
+
+    @Test
+    fun mismatchedCandidateAndDetailTripIdsAreRejected() {
+        val account = BlaBlaAccountDefinition("slot", "Driver", "profile-a", "profile")
+        val candidate = BlaBlaDomRideCandidate(
+            href = "https://www.blablacar.com.br/rides/offer?id=trip-a",
+            departureTime = "11:00",
+            origin = "Origin",
+            destination = "Destination",
+            dateText = "2026-08-28",
+        )
+        val detail = BlaBlaDomTripDetail(url = "https://www.blablacar.com.br/rides/offer?id=trip-b")
+        assertNull(BlaBlaDomNormalizer.toTrip(account, candidate, detail, LocalDate.of(2026, 8, 21), true))
+    }
+
+    @Test
+    fun sameStrongTripIdWithDifferentPhysicalCoresIsPreservedAndFlagged() {
+        val a = externalTrip("2026-08-28", "11:00", "Origin A", "Destination A", "shared-id")
+        val b = externalTrip("2026-06-27", "10:00", "Origin B", "Destination B", "shared-id")
+        val resolved = BlaBlaTripIdentity.resolveDistinct(listOf(a, b))
+        assertEquals(2, resolved.trips.size)
+        assertEquals(0, resolved.dedupedCount)
+        assertEquals(1, resolved.conflicts.size)
+        assertTrue(resolved.trips.all { it.identity_conflict })
+        assertNotEquals(BlaBlaTripIdentity.evidence(resolved.trips[0]).key, BlaBlaTripIdentity.evidence(resolved.trips[1]).key)
+    }
+
+    @Test
+    fun trueDuplicateStrongTripIdSameCoreStillDedupes() {
+        val a = externalTrip("2026-08-28", "11:00", "Origin", "Destination", "same-id")
+        val b = a.copy(passengers = listOf(BlaBlaCollectorPassenger(name = "Passenger")))
+        val resolved = BlaBlaTripIdentity.resolveDistinct(listOf(a, b))
+        assertEquals(1, resolved.trips.size)
+        assertEquals(1, resolved.dedupedCount)
+        assertTrue(resolved.conflicts.isEmpty())
+    }
+
+    @Test
+    fun completeExternalZeroReservationIsNotPending() {
+        val complete = timelineEntry(occupied = 0, rosterComplete = true)
+        val pending = timelineEntry(occupied = 0, rosterComplete = null)
+        val reserved = timelineEntry(occupied = 1, rosterComplete = true)
+        assertEquals(TimelineOccupancyReadState.COMPLETE_EMPTY, timelineOccupancyReadState(complete))
+        assertEquals(TimelineOccupancyReadState.PENDING, timelineOccupancyReadState(pending))
+        assertEquals(TimelineOccupancyReadState.RESERVED, timelineOccupancyReadState(reserved))
+    }
+
+    private fun externalTrip(date: String, time: String, from: String, to: String, tripId: String) = BlaBlaCollectorTrip(
+        profile_uuid = "profile-a",
+        date = date,
+        departure_time = time,
+        actual_departure = from,
+        actual_arrival = to,
+        trip_id = tripId,
+        uuid_validation = "verified_from_authenticated_profile_session",
+    )
+
+    private fun timelineEntry(occupied: Int, rosterComplete: Boolean?) = TripTimelineEntry(
+        tripId = "entry-$occupied-$rosterComplete",
+        profileId = "profile-a",
+        profileLabel = "Driver",
+        departureAtMillis = 1L,
+        arrivalAtMillis = null,
+        origin = "Origin",
+        destination = "Destination",
+        status = TripStatus.PUBLISHED,
+        capacity = 0,
+        minimumOccupiedSeats = occupied,
+        maximumOccupiedSeats = occupied,
+        sourcePassengerSeats = if (occupied > 0) mapOf(BookingSource.BLABLACAR to occupied) else emptyMap(),
+        blablaPassengerRosterComplete = rosterComplete,
+    )
+}
+''', encoding='utf-8')
+
+          # Version bump only after source corrections exist.
+          text = BUILD.read_text(encoding='utf-8')
+          text = once(text, 'versionCode = 5542', 'versionCode = 5543', 'version code')
+          text = once(text, 'versionName = "0.1.249"', 'versionName = "0.1.250"', 'version name')
+          BUILD.write_text(text, encoding='utf-8')
+
+          # Keep permanent direct-source workflows aligned with the new candidate.
+          for workflow in (VALIDATION, PHYSICAL):
+              text = workflow.read_text(encoding='utf-8')
+              text = text.replace('0.1.249', '0.1.250').replace("'5542'", "'5543'")
+              if 'Stage47PhysicalFixes0250Test.kt' not in text:
+                  anchor = '      - app/src/test/java/br/com/mapeia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt\n'
+                  if anchor not in text:
+                      anchor = '      - app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt\n'
+                  if anchor in text:
+                      text = text.replace(anchor, anchor + '      - app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt\n', 1)
+              test_anchor = "              --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHarvestAssociationTest' \\\n"
+              if 'Stage47PhysicalFixes0250Test' not in text and test_anchor in text:
+                  text = text.replace(test_anchor, test_anchor + "              --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \\\n", 1)
+              workflow.write_text(text, encoding='utf-8')
+
+          # Physical artifact name and validation markers.
+          text = PHYSICAL.read_text(encoding='utf-8')
+          text = text.replace('rota-certa-stage47-deterministic-association-0.1.250', 'rota-certa-stage47-physical-fixes-0.1.250')
+          marker_anchor = "          grep -Fq 'requiresSemanticProof' \"$AUTOMATION\"\n"
+          if marker_anchor in text:
+              text = text.replace(marker_anchor, marker_anchor + "          grep -Fq 'passengerCanonicalIdentityProven' \"$AUTOMATION\"\n          grep -Fq 'TRIP_IDENTITY_CONFLICT' \"$DYNAMIC\"\n", 1)
+          PHYSICAL.write_text(text, encoding='utf-8')
+
+          text = VALIDATION.read_text(encoding='utf-8')
+          marker_anchor = "          grep -Fq 'requiresSemanticProof' \"$AUTOMATION\"\n"
+          if marker_anchor in text:
+              text = text.replace(marker_anchor, marker_anchor + "          grep -Fq 'passengerCanonicalIdentityProven' \"$AUTOMATION\"\n          grep -Fq 'TRIP_IDENTITY_CONFLICT' \"$DYNAMIC\"\n", 1)
+          VALIDATION.write_text(text, encoding='utf-8')
+
+          # Static invariants.
+          required = {
+              AUTO: ['passengerCanonicalIdentityProven', 'HARVEST_PASSENGER_SEMANTIC_DIFFERENCE', 'phoneEvidenceScoped=true'],
+              COLLECTOR: ['identity_conflict', 'resolveDistinct', 'identity_conflicts', 'EXTERNAL_IDENTITY_CONFLICT'],
+              DYNAMIC: ['TRIP_IDENTITY_CONFLICT', 'detail_trip_id_mismatch', 'deterministicTripIdentity=true'],
+              TIMELINE: ['blablaPassengerRosterComplete', 'EXTERNAL_IDENTITY_CONFLICT'],
+              TIMELINE_UI: ['COMPLETE_EMPTY', 'BlaBlaCar: 0 lugares reservados'],
+          }
+          for path, markers in required.items():
+              body = path.read_text(encoding='utf-8')
+              for required_marker in markers:
+                  if required_marker not in body:
+                      raise SystemExit(f'{path}: missing {required_marker}')
+          print('physical_fixes_0_1_250_patch=PASS')
+          PY
+
+      - name: Verify source-only invariants before tests
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'passengerCanonicalIdentityProven' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          grep -Fq 'TRIP_IDENTITY_CONFLICT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'identity_conflicts' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'blablaPassengerRosterComplete' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'COMPLETE_EMPTY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'Intent(Intent.ACTION_CALL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          ! grep -Fq 'Intent(Intent.ACTION_DIAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          echo 'source_invariants_pretest=PASS'
+
+      - name: Run focused unit tests before persistence
+        run: |
+          set -euo pipefail
+          passed=false
+          for attempt in 1 2 3; do
+            echo "precommit_test_attempt=$attempt"
+            if ./gradlew :app:testDebugUnitTest \
+              --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHarvestAssociationTest' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+              --no-daemon --max-workers=1 --no-parallel --stacktrace; then
+              passed=true
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then sleep $((attempt * 10)); fi
+          done
+          test "$passed" = true
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Create final persisted-source commit without bootstrap workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'Rota Certa Stage47 CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+          git add app/build.gradle.kts app/src/main app/src/test .github/workflows/stage47-direct-source-validation.yml .github/workflows/stage47-direct-source-physical-apk.yml
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          git diff --cached --exit-code -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git commit -m 'fix(stage47): close 0.1.249 physical collection gaps'
+          echo "final_source_head=$(git rev-parse HEAD)" | tee /tmp/final-head.txt
+
+      - name: Re-run tests and build APK from final committed app/src
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHarvestAssociationTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Inspect final APK and create evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta' versionCode='$EXPECTED_VERSION_CODE' versionName='$EXPECTED_VERSION_NAME'" evidence/aapt-badging.txt
+          sha256sum "$APK" | tee evidence/apk-sha256.txt
+          FINAL_HEAD="$(git rev-parse HEAD)"
+          APK_SHA="$(awk '{print $1}' evidence/apk-sha256.txt)"
+          FAROL_SHA="$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')"
+          cat > evidence/direct-source-physical-status.txt <<EOF
+          stage47_direct_source_physical_apk=PASS
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          package=br.com.mapeiaia.rotacerta
+          source_head=$FINAL_HEAD
+          direct_source=true
+          fixed_historical_source_checkout=false
+          stage47_materializer_used=false
+          farol_sha256=$FAROL_SHA
+          canonical_passenger_identity=true
+          semantic_difference_advisory_only_after_canonical_proof=true
+          trip_identity_conflict_preserved=true
+          silent_incompatible_trip_dedupe=false
+          complete_empty_roster_not_pending=true
+          stale_callback_fail_closed=true
+          external_dialer_opened=false
+          official_blablacar_write_api_claimed=false
+          apk_sha256=$APK_SHA
+          merge=false
+          release=false
+          latest=false
+          EOF
+          cat evidence/direct-source-physical-status.txt
+
+      - name: Push only after direct-source tests and APK pass
+        run: |
+          set -euo pipefail
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Upload physical-test APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage47-physical-fixes-0.1.250
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            evidence/apk-sha256.txt
+            evidence/aapt-badging.txt
+            evidence/direct-source-physical-status.txt
+          if-no-files-found: error
+          retention-days: 7
