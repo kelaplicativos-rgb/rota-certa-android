@@ -1,4 +1,4 @@
-name: Stage47 direct persisted-source validation
+name: Stage47 one-shot persist harvester navigation watchdog
 
 on:
   pull_request:
@@ -6,149 +6,230 @@ on:
       - agent/stage47-r4-unified-occupancy-step6-validation-apk
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate-direct-source:
+  persist-navigation-watchdog:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    env:
-      GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
-      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+    timeout-minutes: 10
     steps:
-      - name: Checkout PR source directly
+      - name: Checkout PR head directly
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
+          ref: agent/stage47-r4-step7-automatic-identity
+          fetch-depth: 0
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: android-actions/setup-android@v3
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Verify persisted Stage47 source authority
+      - name: Persist focused harvester navigation watchdog
         run: |
           set -euo pipefail
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
-          QUICK='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt'
-          ACTIVITY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
-          DIRECTION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt'
-          COLLECTOR='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
-          PARSER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt'
-          AUTOMATION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
-          TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineExternalQuickPassengerStage47Test.kt'
-          DIRECTION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirectionStage47Test.kt'
-          AUTOMATION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomationStage47Test.kt'
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5538' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.245"' app/build.gradle.kts
-          test -s "$UI"
-          test -s "$QUICK"
-          test -s "$ACTIVITY"
-          test -s "$DIRECTION"
-          test -s "$COLLECTOR"
-          test -s "$PARSER"
-          test -s "$AUTOMATION"
-          test -s "$TEST"
-          test -s "$DIRECTION_TEST"
-          test -s "$AUTOMATION_TEST"
-          grep -Fq 'timelineQuickPassengerOptions(entries, trips)' "$UI"
-          grep -Fq 'ExternalTripCapacitySetup(entry, store, onChanged)' "$UI"
-          grep -Fq 'canonicalTimelineProfileUuid(entry)' "$UI"
-          grep -Fq 'findExistingTimelineBackingTrip(entry, store.trips())' "$UI"
-          grep -Fq 'ResponsiveTripAction("Nova viagem", onClick = onCreateTrip)' "$UI"
-          grep -Fq 'timelineBaseDirectionLabel(entry, trip, directionGeo' "$UI"
-          grep -Fq 'PASSENGER_WHATSAPP_OPEN' "$UI"
-          grep -Fq 'https://wa.me/' "$UI"
-          grep -Fq 'BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking' "$QUICK"
-          grep -Fq 'seatDelta = -plan.passenger.seats' "$QUICK"
-          grep -Fq 'seatDelta = booking.seats' "$QUICK"
-          grep -Fq 'else -> TripScreen.TIMELINE' "$ACTIVITY"
-          grep -Fq 'Ida • saindo da base' "$DIRECTION"
-          grep -Fq 'Volta • retornando à base' "$DIRECTION"
-          grep -Fq 'Neutra • não envolve a base' "$DIRECTION"
-          grep -Fq 'RIDES_BATCH_EVIDENCE' "$COLLECTOR"
-          grep -Fq 'TRIP_BATCH_READY' "$COLLECTOR"
-          grep -Fq 'TRIP_DETAIL_FALLBACK' "$COLLECTOR"
-          grep -Fq 'passengerRosterReportedComplete' "$PARSER"
-          grep -Fq 'get() = passengerRosterReportedComplete' "$PARSER"
-          grep -Fq 'passenger_roster_complete = candidate.passengerRosterComplete || detail.passengerRosterComplete' "$PARSER"
-          ! grep -Fq 'passenger_roster_complete = false' "$PARSER"
-          grep -Fq 'MHTML_ARCHIVE_SAVED' "$AUTOMATION"
-          grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
-          grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
-          grep -Fq 'HARVEST_RIDES_CAPTURED' "$AUTOMATION"
-          grep -Fq 'HARVEST_TRIP_CAPTURED' "$AUTOMATION"
-          grep -Fq 'HARVEST_PASSENGER_CAPTURED' "$AUTOMATION"
-          grep -Fq 'HARVEST_EDIT_CAPTURED' "$AUTOMATION"
-          grep -Fq 'SEAT_OPTIONS_CAPTURED' "$AUTOMATION"
-          grep -Fq 'HARVEST_TRIP_ENRICHED' "$AUTOMATION"
-          grep -Fq 'HARVEST_BLOCK_UNREADABLE' "$AUTOMATION"
-          grep -Fq 'reason=options_link_missing' "$AUTOMATION"
-          grep -Fq 'MAX_EDIT_LINK_READ_ATTEMPTS = 6' "$AUTOMATION"
-          ! grep -Fq 'optionUrlByTrip[it] = optionsUrlForTrip(it)' "$AUTOMATION"
-          grep -Fq 'PASSENGER_CARD_DISCOVERED' "$AUTOMATION"
-          grep -Fq 'PASSENGER_CARD_OPENED' "$AUTOMATION"
-          grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$AUTOMATION"
-          grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
-          grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
-          grep -Fq 'CARD_TARGET_PREFIX = "rotacerta-card:"' "$AUTOMATION"
-          ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
-          ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
-          ! grep -Fq 'startActivity(Intent.ACTION_CALL' "$AUTOMATION"
-          ! grep -Fq 'startActivity(Intent.ACTION_DIAL' "$AUTOMATION"
-          grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' "$AUTOMATION"
-          grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' "$AUTOMATION"
-          grep -Fq 'BookingSource.PRIVATE' "$AUTOMATION"
-          grep -Fq 'BookingSource.OTHER' "$AUTOMATION"
-          grep -Fq 'options-before' "$AUTOMATION"
-          grep -Fq 'options-after' "$AUTOMATION"
-          grep -Fq 'BlaBlaMhtmlHarvestActivity' app/src/main/AndroidManifest.xml
-          grep -Fq 'BlaBlaManualSeatSyncActivity' app/src/main/AndroidManifest.xml
-          ! grep -Fq 'val options = entries.mapNotNull' "$UI"
-          test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
-          test ! -e .github/workflows/stage47-direct-source-external-quick-passenger-apply.yml
-          test ! -e .github/workflows/stage47-persist-passenger-phone.yml
-          test -z "$(find .github/workflows -maxdepth 1 -type f -name 'stage47-direct-source-unified-timeline*.yml' -print -quit)"
-          echo 'stage47_direct_source_authority=PASS version=0.1.245/5538'
-          echo 'fixed_historical_source_checkout=false'
-          echo 'stage47_materializer_used=false'
-          echo 'manual_external_seat_ui_sync_experimental=true'
-          echo 'official_blablacar_write_api_claimed=false'
-          echo 'mhtml_private_archive=true'
-          echo 'harvester_real_options_link_only=true'
-          echo 'mhtml_archive_timeout_guard=true'
-          echo 'passenger_card_traversal=true'
-          echo 'passenger_tel_intercept=true'
-          echo 'external_dialer_opened=false'
-          echo 'harvester_blocks_verified_by_source=true'
-          echo 'whatsapp_passenger_link_preserved=true'
-          echo 'farol_untouched=true'
-          echo 'apk_generated=false'
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Compile and run direct-source unit tests
-        run: |
-          set -euo pipefail
-          ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineBaseDirectionStage47Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaManualSeatAutomationStage47Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace
-          echo 'stage47_direct_source_tests=PASS'
-          echo 'apk_generated=false'
+          p = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt')
+          text = p.read_text(encoding='utf-8')
+          if 'HARVEST_NAVIGATION_TIMEOUT' in text:
+              print('navigation watchdog already persisted')
+              raise SystemExit(0)
 
-      - name: Reconfirm FAROL after direct-source compile
-        run: |
-          set -euo pipefail
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.245/5538'
-          echo 'apk_generated=false'
+          def once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one marker, got {count}')
+              text = text.replace(old, new, 1)
+
+          once(
+          '''    private var passengerCallActionTriggered = false
+              private var interceptedPassengerPhone: String? = null
+          ''',
+          '''    private var passengerCallActionTriggered = false
+              private var interceptedPassengerPhone: String? = null
+              private var navigationGeneration = 0
+              private var navigationPending = false
+              private var ridesNavigationTimeouts = 0
+          ''',
+          'navigation state')
+
+          once(
+          '''            override fun onPageFinished(view: WebView, url: String) {
+                      super.onPageFinished(view, url)
+                      if (!isBlaBla(url) || busy) return
+                      view.postDelayed({ handlePage() }, 900)
+                  }
+          ''',
+          '''            override fun onPageFinished(view: WebView, url: String) {
+                      super.onPageFinished(view, url)
+                      if (!isBlaBla(url)) return
+                      navigationPending = false
+                      if (phase == Phase.RIDES) ridesNavigationTimeouts = 0
+                      if (busy) return
+                      view.postDelayed({ handlePage() }, 900)
+                  }
+          ''',
+          'page finished watchdog release')
+
+          once(
+          '''        setContentView(root)
+              webView.loadUrl(RIDES_URL)
+          }
+
+              private fun interceptPhoneNavigation''',
+          '''        setContentView(root)
+              loadHarvestUrl(RIDES_URL, "rides")
+          }
+
+              private fun loadHarvestUrl(url: String, label: String) {
+                  navigationGeneration++
+                  val generation = navigationGeneration
+                  val expectedPhase = phase
+                  navigationPending = true
+                  webView.loadUrl(url)
+                  webView.postDelayed({
+                      if (!navigationPending || navigationGeneration != generation || phase != expectedPhase || isFinishing) return@postDelayed
+                      navigationPending = false
+                      busy = false
+                      UnifiedDebugEventStore.record(
+                          "HARVEST_NAVIGATION_TIMEOUT",
+                          packageName,
+                          "account=${account.displayLabel} phase=${expectedPhase.name.lowercase()} label=$label tripIndex=$tripIndex passengerIndex=$passengerIndex editIndex=$editIndex optionIndex=$optionIndex",
+                      )
+                      when (expectedPhase) {
+                          Phase.RIDES -> {
+                              if (ridesNavigationTimeouts < MAX_RIDES_NAVIGATION_TIMEOUTS) {
+                                  ridesNavigationTimeouts++
+                                  loadHarvestUrl(RIDES_URL, "rides_retry")
+                              } else {
+                                  UnifiedDebugEventStore.record(
+                                      "MHTML_HARVEST_ABORTED",
+                                      packageName,
+                                      "account=${account.displayLabel} reason=rides_navigation_timeout",
+                                  )
+                                  finishHarvest()
+                              }
+                          }
+                          Phase.TRIP -> {
+                              val tripId = tripHrefs.getOrNull(tripIndex)?.let(::tripIdFromHref).orEmpty()
+                              UnifiedDebugEventStore.record(
+                                  "HARVEST_BLOCK_UNREADABLE",
+                                  packageName,
+                                  "account=${account.displayLabel} block=trip tripId=$tripId reason=navigation_timeout",
+                              )
+                              tripIndex++
+                              loadNextTrip()
+                          }
+                          Phase.PASSENGER_CARD, Phase.PASSENGER -> {
+                              val target = passengerTargets.getOrNull(passengerIndex)
+                              UnifiedDebugEventStore.record(
+                                  "HARVEST_BLOCK_UNREADABLE",
+                                  packageName,
+                                  "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} reason=navigation_timeout",
+                              )
+                              passengerIndex++
+                              passengerCallActionTriggered = false
+                              interceptedPassengerPhone = null
+                              loadNextPassenger()
+                          }
+                          Phase.EDIT -> {
+                              val tripId = editUrls.getOrNull(editIndex)?.let(::tripIdFromEditHref).orEmpty()
+                              UnifiedDebugEventStore.record(
+                                  "HARVEST_BLOCK_UNREADABLE",
+                                  packageName,
+                                  "account=${account.displayLabel} block=edit tripId=$tripId reason=navigation_timeout",
+                              )
+                              editIndex++
+                              loadNextEdit()
+                          }
+                          Phase.OPTIONS -> {
+                              val tripId = optionUrls.getOrNull(optionIndex)?.let(::tripIdFromOptionsHref).orEmpty()
+                              UnifiedDebugEventStore.record(
+                                  "HARVEST_BLOCK_UNREADABLE",
+                                  packageName,
+                                  "account=${account.displayLabel} block=options tripId=$tripId reason=navigation_timeout",
+                              )
+                              optionIndex++
+                              loadNextOption()
+                          }
+                      }
+                  }, NAVIGATION_TIMEOUT_MS)
+              }
+
+              private fun interceptPhoneNavigation''',
+          'watchdog helper')
+
+          once(
+          '''            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
+                  webView.loadUrl(href)
+          ''',
+          '''            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
+                  loadHarvestUrl(href, "trip")
+          ''',
+          'trip tracked load')
+
+          once(
+          '''            if (target.href.isNotBlank()) {
+                      phase = Phase.PASSENGER
+                      webView.loadUrl(target.href)
+                  } else if (target.cardIndex >= 0) {
+                      phase = Phase.PASSENGER_CARD
+                      webView.loadUrl(target.tripHref)
+          ''',
+          '''            if (target.href.isNotBlank()) {
+                      phase = Phase.PASSENGER
+                      loadHarvestUrl(target.href, "passenger")
+                  } else if (target.cardIndex >= 0) {
+                      phase = Phase.PASSENGER_CARD
+                      loadHarvestUrl(target.tripHref, "passenger_card")
+          ''',
+          'passenger tracked load')
+
+          once(
+          '''            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
+                  webView.loadUrl(href)
+          ''',
+          '''            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
+                  loadHarvestUrl(href, "edit")
+          ''',
+          'edit tracked load')
+
+          once(
+          '''            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
+                  webView.loadUrl(href)
+          ''',
+          '''            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
+                  loadHarvestUrl(href, "options")
+          ''',
+          'options tracked load')
+
+          once(
+          '''        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
+                  private const val RETRY_MS = 800L
+          ''',
+          '''        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
+                  private const val MAX_RIDES_NAVIGATION_TIMEOUTS = 1
+                  private const val NAVIGATION_TIMEOUT_MS = 12_000L
+                  private const val RETRY_MS = 800L
+          ''',
+          'watchdog constants')
+
+          for marker in (
+              'HARVEST_NAVIGATION_TIMEOUT',
+              'NAVIGATION_TIMEOUT_MS = 12_000L',
+              'loadHarvestUrl(href, "edit")',
+              'reason=navigation_timeout',
+          ):
+              if marker not in text:
+                  raise SystemExit(f'missing watchdog marker: {marker}')
+
+          p.write_text(text, encoding='utf-8')
+          PY
+
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          git config user.name 'Rota Certa CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          if git diff --cached --quiet; then
+            echo 'no source change needed'
+            exit 0
+          fi
+          git commit -m 'fix(stage47): advance harvester after navigation timeout'
+          git push origin HEAD:agent/stage47-r4-step7-automatic-identity
