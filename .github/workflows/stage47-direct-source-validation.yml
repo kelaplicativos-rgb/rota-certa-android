@@ -1,4 +1,4 @@
-name: Stage47 direct persisted-source validation 0.1.250
+name: Stage47 direct persisted-source validation 0.1.251
 
 on:
   pull_request:
@@ -30,77 +30,64 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify deterministic persisted Stage47 source authority
+      - name: Verify deterministic persisted Stage47 reliability source authority
         run: |
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           AUTOMATION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
           DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
+          POLICY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt'
+          MODEL='app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt'
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
           MANIFEST='app/src/main/AndroidManifest.xml'
           ASSOCIATION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt'
           PHYSICAL_FIXES_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt'
+          RELIABILITY_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47Reliability0251Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5543' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.250"' app/build.gradle.kts
-          test -s "$AUTOMATION"
-          test -s "$DYNAMIC"
-          test -s "$WATCHDOG"
-          test -s "$ASSOCIATION_TEST"
-          test -s "$PHYSICAL_FIXES_TEST"
+          grep -Fq 'versionCode = 5544' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.251"' app/build.gradle.kts
+          for file in "$AUTOMATION" "$DYNAMIC" "$WATCHDOG" "$POLICY" "$MODEL" "$TIMELINE" "$ASSOCIATION_TEST" "$PHYSICAL_FIXES_TEST" "$RELIABILITY_TEST"; do test -s "$file"; done
 
-          grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
-          grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
-          grep -Fq 'HARVEST_PASSENGER_CAPTURED' "$AUTOMATION"
-          grep -Fq 'HARVEST_EDIT_CAPTURED' "$AUTOMATION"
-          grep -Fq 'SEAT_OPTIONS_CAPTURED' "$AUTOMATION"
-          grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
+          for marker in MHTML_ARCHIVE_TIMEOUT MHTML_HARVEST_COMPLETE HARVEST_PASSENGER_CAPTURED PASSENGER_TEL_INTERCEPTED HARVEST_EVALUATION_TIMEOUT HARVEST_USER_BACK_RECOVERY HARVEST_STALE_CALLBACK_IGNORED HARVEST_PAGE_IDENTITY_MISMATCH association_conflict; do
+            grep -Fq "$marker" "$AUTOMATION"
+          done
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
-          grep -Fq 'HARVEST_EVALUATION_TIMEOUT' "$AUTOMATION"
-          grep -Fq 'HARVEST_USER_BACK_RECOVERY' "$AUTOMATION"
-          grep -Fq 'EVALUATION_TIMEOUT_MS = 6_000L' "$AUTOMATION"
-          grep -Fq 'cancel=false partialEvidencePreserved=true' "$AUTOMATION"
-
-          grep -Fq 'navigationGeneration++' "$AUTOMATION"
-          grep -Fq 'loadTrackedUrl(' "$AUTOMATION"
-          grep -Fq 'HARVEST_STALE_CALLBACK_IGNORED' "$AUTOMATION"
-          grep -Fq 'HARVEST_PAGE_IDENTITY_MISMATCH' "$AUTOMATION"
-          grep -Fq 'association_conflict' "$AUTOMATION"
           grep -Fq 'fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String)' "$AUTOMATION"
           grep -Fq 'enrichPassenger(tripId, passenger)' "$AUTOMATION"
-          grep -Fq 'preservedIncomplete=0' "$AUTOMATION"
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
           grep -Fq 'deterministicJoin=true' "$AUTOMATION"
           grep -Fq 'requiresSemanticProof' "$AUTOMATION"
           grep -Fq 'passengerCanonicalIdentityProven' "$AUTOMATION"
           grep -Fq 'TRIP_IDENTITY_CONFLICT' "$DYNAMIC"
-          grep -Fq 'editHref: String = ""' "$AUTOMATION"
-          grep -Fq 'tripIdFromEditHref(href) == target.tripId' "$AUTOMATION"
-          grep -Fq 'tripIdFromOptionsHref(optionHref) == target.tripId' "$AUTOMATION"
-          ! grep -Fq 'passengerEvidence[canonicalHref' "$AUTOMATION"
+          grep -Fq 'MAX_TRIP_ROSTER_READ_ATTEMPTS = 5' "$AUTOMATION"
+          grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
-          grep -Fq 'MAX_TRIP_ROSTER_READ_ATTEMPTS = 5' "$AUTOMATION"
-          grep -Fq 'result.passengers.isEmpty() && !result.rosterComplete' "$AUTOMATION"
-          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$AUTOMATION"
-          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$DYNAMIC"
-          grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
-          grep -Fq 'PASSENGER_PAGE_RELOAD' "$AUTOMATION"
-          grep -Fq 'passenger_evidence_not_ready' "$AUTOMATION"
-
-          grep -Fq 'HARVEST_NAVIGATION_WATCHDOG_ATTACHED' "$WATCHDOG"
+          grep -Fq 'AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = false' "$POLICY"
+          grep -Fq 'HARVEST_SEAT_OPTIONS_SKIPPED' "$WATCHDOG"
+          grep -Fq 'automaticSeatLookup=' "$WATCHDOG"
+          grep -Fq 'capacityAuthority=rota_certa_config' "$WATCHDOG"
+          grep -Fq 'deliverPageFinished(webView, current, synthetic = true)' "$WATCHDOG"
+          grep -Fq 'path.equals("/rides/offer", ignoreCase = true)' "$WATCHDOG"
           grep -Fq 'HARVEST_NAVIGATION_TIMEOUT' "$WATCHDOG"
           grep -Fq 'HARVEST_STALE_PAGE_FINISHED_IGNORED' "$WATCHDOG"
           grep -Fq 'NAVIGATION_TIMEOUT_MS = 12_000L' "$WATCHDOG"
-          grep -Fq 'delegate.onPageFinished(webView, current)' "$WATCHDOG"
           grep -Fq 'syntheticPageFinished=true' "$WATCHDOG"
           grep -Fq 'externalNavigation=false' "$WATCHDOG"
           ! grep -Fq 'ACTION_CALL' "$WATCHDOG"
           ! grep -Fq 'ACTION_DIAL' "$WATCHDOG"
           grep -Fq 'BlaBlaHarvestNavigationWatchdogProvider' "$MANIFEST"
           grep -Fq '${applicationId}.blablacar.harvest.watchdog' "$MANIFEST"
+
+          grep -Fq 'tripDepartureAddress: String = ""' "$MODEL"
+          grep -Fq 'vehicleCapacity: Int = 0' "$MODEL"
+          grep -Fq 'applyConfiguredVehicleCapacity' "$TIMELINE"
+          grep -Fq 'CAPACITY_CONFIGURED_ROSTER_PENDING' "$TIMELINE"
+          grep -Fq 'Local de partida — endereço ou cidade' "$TIMELINE"
+          grep -Fq 'Capacidade do veículo' "$TIMELINE"
 
           test ! -e .github/workflows/stage47-persist-passenger-phone.yml
           test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
@@ -112,25 +99,20 @@ jobs:
           test ! -e .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
           test ! -e .github/workflows/stage47-r4-step7-0.1.250-pr-bridge.yml
 
-          echo 'stage47_direct_source_authority=PASS version=0.1.250/5543'
+          echo 'stage47_direct_source_authority=PASS version=0.1.251/5544'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
-          echo 'harvester_navigation_watchdog=true'
-          echo 'harvester_evaluation_timeout=true'
-          echo 'harvester_back_recovery=true'
-          echo 'deterministic_trip_page_identity=true'
-          echo 'deterministic_passenger_trip_scope=true'
-          echo 'stale_callback_fail_closed=true'
-          echo 'unproven_roster_preserved=false'
-          echo 'passenger_card_semantic_proof=true'
-          echo 'real_edit_and_options_links_only=true'
-          echo 'external_dialer_opened=false'
+          echo 'automatic_published_seat_lookup=false'
+          echo 'capacity_authority=rota_certa_driver_config'
+          echo 'passenger_harvest_preserved=true'
+          echo 'blocking_arbitrary_place_lookup=false'
           echo 'farol_untouched=true'
 
       - name: Compile and run direct-source unit tests
         run: |
           set -euo pipefail
           ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.Stage47Reliability0251Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineBaseDirectionStage47Test' \
@@ -147,4 +129,4 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.250/5543'
+          echo 'stage47_direct_source_validation=PASS version=0.1.251/5544'
