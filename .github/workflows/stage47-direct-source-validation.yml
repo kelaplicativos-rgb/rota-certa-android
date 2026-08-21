@@ -1,4 +1,4 @@
-name: Stage47 direct persisted-source validation 0.1.247
+name: Stage47 direct persisted-source validation 0.1.248
 
 on:
   pull_request:
@@ -35,14 +35,17 @@ jobs:
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           AUTOMATION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
           MANIFEST='app/src/main/AndroidManifest.xml'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          grep -Fq 'versionCode = 5540' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.247"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5541' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.248"' app/build.gradle.kts
           test -s "$AUTOMATION"
+          test -s "$DYNAMIC"
           test -s "$WATCHDOG"
+
           grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
           grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
           grep -Fq 'HARVEST_PASSENGER_CAPTURED' "$AUTOMATION"
@@ -55,11 +58,22 @@ jobs:
           grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$AUTOMATION"
           grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
+
           grep -Fq 'HARVEST_EVALUATION_TIMEOUT' "$AUTOMATION"
           grep -Fq 'HARVEST_USER_BACK_RECOVERY' "$AUTOMATION"
           grep -Fq 'EVALUATION_TIMEOUT_MS = 6_000L' "$AUTOMATION"
           grep -Fq 'trip.passenger_roster_complete ||' "$AUTOMATION"
           grep -Fq 'cancel=false partialEvidencePreserved=true' "$AUTOMATION"
+
+          grep -Fq 'MAX_TRIP_ROSTER_READ_ATTEMPTS = 5' "$AUTOMATION"
+          grep -Fq 'result.passengers.isEmpty() && !result.rosterComplete' "$AUTOMATION"
+          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$AUTOMATION"
+          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$DYNAMIC"
+          grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
+          grep -Fq 'PASSENGER_PAGE_RELOAD' "$AUTOMATION"
+          grep -Fq 'reason=passenger_evidence_not_ready' "$AUTOMATION"
+          grep -Fq 'webView.loadUrl(target.href)' "$AUTOMATION"
+
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
@@ -79,14 +93,21 @@ jobs:
           test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
           test ! -e .github/workflows/stage47-export-authoritative-source.yml
           test ! -e .github/patches/stage47-harvester-recovery.patch
+          test ! -e .github/workflows/stage47-apply-roster-readiness-0.1.248.yml
+          test ! -e .github/patches/stage47-roster-readiness-0.1.248.patch
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
-          echo 'stage47_direct_source_authority=PASS version=0.1.247/5540'
+
+          echo 'stage47_direct_source_authority=PASS version=0.1.248/5541'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
           echo 'harvester_navigation_watchdog=true'
           echo 'harvester_evaluation_timeout=true'
           echo 'harvester_back_recovery=true'
           echo 'passenger_roster_preserved=true'
+          echo 'roster_dom_readiness_reused=true'
+          echo 'trip_roster_retry_bound=5'
+          echo 'passenger_page_reload_bound=1'
+          echo 'blank_passenger_fail_closed=true'
           echo 'passenger_card_traversal=true'
           echo 'passenger_tel_intercept=true'
           echo 'external_dialer_opened=false'
@@ -110,4 +131,4 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           echo 'farol_sha256=2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          echo 'stage47_direct_source_validation=PASS version=0.1.247/5540'
+          echo 'stage47_direct_source_validation=PASS version=0.1.248/5541'
