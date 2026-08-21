@@ -15,7 +15,7 @@ env:
   PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
   EXPECTED_VERSION_CODE: '5543'
   EXPECTED_VERSION_NAME: '0.1.250'
-  EXPECTED_PREDECESSOR: 993bd51afb351c5a1f0edf87a78857f0a26c89e5
+  EXPECTED_PREDECESSOR: c991e01a148818972da467cad063023680affbe9
 
 jobs:
   apply-test-build-persist:
@@ -69,7 +69,7 @@ jobs:
               'passengerCanonicalIdentityProven',
               'TRIP_IDENTITY_CONFLICT',
               'completeExternalZeroReservationIsNotPending',
-              "versionName = \\\"0.1.250\\\"",
+              'versionCode = 5543',
           ]
           for marker in required:
               if marker not in patch:
