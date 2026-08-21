@@ -15,7 +15,7 @@ env:
   PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
   EXPECTED_VERSION_CODE: '5543'
   EXPECTED_VERSION_NAME: '0.1.250'
-  EXPECTED_PREDECESSOR: f1904f3119a5fdce4a90b4ec0e446ead92a8ef31
+  EXPECTED_PREDECESSOR: 4bfaa845b4465bd50e3659ac6cbfdb500f57b54c
 
 jobs:
   apply-test-build-persist:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 6
+          fetch-depth: 7
 
       - uses: actions/setup-java@v4
         with:
@@ -63,11 +63,12 @@ jobs:
               raise SystemExit('prepared patch terminator not found')
           body = [raw[10:] if raw.startswith('          ') else raw.lstrip() for raw in source[start:end]]
           patch = '\n'.join(body) + '\n'
+
           brittle_start = patch.find("\ntext = once(\n    text,\n    '''    fun passengerPageMatches")
           brittle_end = patch.find("\nAUTO.write_text(text, encoding='utf-8')", brittle_start)
           if brittle_start < 0 or brittle_end < 0:
               raise SystemExit('could not locate brittle passenger helper edit in prepared patch')
-          robust = (
+          passenger_robust = (
               "association_start = text.find('internal object BlaBlaHarvestAssociation {')\n"
               "association_end = text.find('\\n}\\n\\nprivate val SEAT_OPTIONS_READ_JS', association_start)\n"
               "if association_start < 0 or association_end < 0:\n"
@@ -77,13 +78,33 @@ jobs:
               "helpers = '''\\n\\n    fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =\\n        expectedUrl.isNotBlank() &&\\n            capturedUrl.isNotBlank() &&\\n            passengerPageMatches(expectedPassengerKey, expectedUrl) &&\\n            passengerPageMatches(expectedPassengerKey, capturedUrl) &&\\n            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)\\n\\n    fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven'''\n"
               "text = text[:association_end] + helpers + text[association_end:]\n"
           )
-          patch = patch[:brittle_start] + '\n' + robust + patch[brittle_end:]
+          patch = patch[:brittle_start] + '\n' + passenger_robust + patch[brittle_end:]
+
+          timeline_label = patch.find("'timeline external completeness/conflict'")
+          timeline_start = patch.rfind("\ntext = once(", 0, timeline_label)
+          timeline_end = patch.find("\nCOLLECTOR.write_text(text, encoding='utf-8')", timeline_label)
+          if timeline_label < 0 or timeline_start < 0 or timeline_end < 0:
+              raise SystemExit('could not locate brittle timeline adapter edit in prepared patch')
+          timeline_robust = (
+              "timeline_marker = '            blablaPassengers = trip.passengers,\\n'\n"
+              "timeline_issue_old = '            issues = if (verified) emptySet() else setOf(TripTimelineIssue.VALIDATION_PENDING),\\n'\n"
+              "if text.count(timeline_marker) != 1:\n"
+              "    raise SystemExit(f'timeline passenger marker expected once, got {text.count(timeline_marker)}')\n"
+              "if text.count(timeline_issue_old) != 1:\n"
+              "    raise SystemExit(f'timeline old issue marker expected once, got {text.count(timeline_issue_old)}')\n"
+              "text = text.replace(timeline_marker, timeline_marker + '            blablaPassengerRosterComplete = trip.passenger_roster_complete,\\n', 1)\n"
+              "timeline_issue_new = '            issues = buildSet {\\n                if (!verified) add(TripTimelineIssue.VALIDATION_PENDING)\\n                if (trip.identity_conflict) add(TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT)\\n            },\\n'\n"
+              "text = text.replace(timeline_issue_old, timeline_issue_new, 1)\n"
+          )
+          patch = patch[:timeline_start] + '\n' + timeline_robust + patch[timeline_end:]
+
           for marker in [
               'passengerCanonicalIdentityProven',
               'TRIP_IDENTITY_CONFLICT',
               'completeExternalZeroReservationIsNotPending',
               'versionCode = 5543',
               'harvest association object boundary not found',
+              'timeline passenger marker expected once',
           ]:
               if marker not in patch:
                   raise SystemExit(f'hardened patch missing marker: {marker}')
