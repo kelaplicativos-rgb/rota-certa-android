@@ -10,6 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
@@ -218,20 +219,88 @@ object BlaBlaManualSeatAutomationIntents {
             .putExtra(EXTRA_ACCOUNT_ID, account.id)
 }
 
+/**
+ * Persisted evidence from the authenticated collector pages.  This is kept
+ * separate from physical vehicle capacity: the number shown by BlaBlaCar in
+ * "Opções de passageiros" is publication inventory evidence, not a hardcoded
+ * global vehicle capacity.
+ */
 @Serializable
-private data class MhtmlRideList(val tripHrefs: List<String> = emptyList())
+data class BlaBlaHarvestTripEvidence(
+    val tripId: String,
+    val publishedSeats: Int? = null,
+    val views: Int? = null,
+    val itineraryStops: List<String> = emptyList(),
+    val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    val passengerRosterComplete: Boolean = false,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
+class BlaBlaHarvestEvidenceStore(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    fun read(accountId: String): List<BlaBlaHarvestTripEvidence> = runCatching {
+        json.decodeFromString<List<BlaBlaHarvestTripEvidence>>(prefs.getString(key(accountId), "[]") ?: "[]")
+    }.getOrDefault(emptyList())
+
+    fun replace(accountId: String, evidence: List<BlaBlaHarvestTripEvidence>) {
+        prefs.edit().putString(key(accountId), json.encodeToString(evidence)).apply()
+    }
+
+    private fun key(accountId: String): String = "account_${accountId.trim()}"
+
+    companion object { private const val PREFS = "rota_certa_blablacar_harvest_evidence_v1" }
+}
 
 @Serializable
-private data class MhtmlPassengerLinks(val hrefs: List<String> = emptyList())
+private data class MhtmlRideList(
+    val tripHrefs: List<String> = emptyList(),
+    val domHtml: String = "",
+)
+
+@Serializable
+private data class MhtmlTripEvidence(
+    val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    val passengerHrefs: List<String> = emptyList(),
+    val itineraryStops: List<String> = emptyList(),
+    val rosterComplete: Boolean = false,
+    val explicitEmptyRoster: Boolean = false,
+    val views: Int = -1,
+    val domHtml: String = "",
+)
+
+@Serializable
+private data class MhtmlPassengerEvidence(
+    val phone: String = "",
+    val visibleName: String = "",
+    val seats: Int = 1,
+    val boarding: String = "",
+    val dropoff: String = "",
+    val price: String = "",
+    val domHtml: String = "",
+)
+
+@Serializable
+private data class MhtmlEditEvidence(
+    val optionsHref: String = "",
+    val domHtml: String = "",
+)
+
+private data class PassengerTarget(val tripId: String, val href: String)
 
 /**
- * Mirrors the authenticated pages that are actually needed by the collector:
- * /rides, each trip detail, individual passenger pages, and seat options.
- * It does not become a second source of truth; app/src collector snapshots remain authoritative.
+ * Mirrors every authenticated block observed in the physical BlaBlaCar flow:
+ * /rides -> trip summary -> each passenger -> Editar sua carona -> Lugares e opções.
+ * Both a full private MHTML and a sanitized per-block HTML snapshot are kept.
+ * The harvested passenger evidence is reconciled back into the dynamic session
+ * snapshot before the Timeline is rebuilt.
  */
 class BlaBlaMhtmlHarvestActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
+    private lateinit var sessionStore: BlaBlaDynamicSessionStore
+    private lateinit var harvestStore: BlaBlaHarvestEvidenceStore
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
@@ -241,21 +310,30 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     private var archived = 0
     private var tripHrefs = emptyList<String>()
     private var tripIndex = 0
-    private val passengerHrefs = linkedSetOf<String>()
+    private val tripEvidence = linkedMapOf<String, MhtmlTripEvidence>()
+    private val passengerTargets = mutableListOf<PassengerTarget>()
     private var passengerIndex = 0
+    private val passengerEvidence = mutableMapOf<String, MhtmlPassengerEvidence>()
+    private var editUrls = emptyList<String>()
+    private var editIndex = 0
+    private val optionUrlByTrip = linkedMapOf<String, String>()
     private var optionUrls = emptyList<String>()
     private var optionIndex = 0
+    private val publishedSeatsByTrip = mutableMapOf<String, Int>()
+    private var pageReadAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         registry = BlaBlaDynamicAccountRegistry(this)
+        sessionStore = BlaBlaDynamicSessionStore(this)
+        harvestStore = BlaBlaHarvestEvidenceStore(this)
         account = registry.get(intent?.getStringExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finish(); return
         }
         archive = BlaBlaMhtmlArchiveStore(this)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         statusView = TextView(this).apply {
-            text = "${account.displayLabel} • preparando MHTMLs necessários…"
+            text = "${account.displayLabel} • coletando blocos HTML/MHTML…"
             setPadding(18, 18, 18, 18)
         }
         root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -265,7 +343,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 if (!isBlaBla(url) || busy) return
-                view.postDelayed({ handlePage() }, 650)
+                view.postDelayed({ handlePage() }, 900)
             }
         }
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -277,65 +355,228 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         if (busy) return
         busy = true
         when (phase) {
-            Phase.RIDES -> archive.save(webView, account, "rides", "latest") { saved ->
+            Phase.RIDES -> captureRides()
+            Phase.TRIP -> captureTrip()
+            Phase.PASSENGER -> capturePassenger()
+            Phase.EDIT -> captureEdit()
+            Phase.OPTIONS -> captureOptions()
+        }
+    }
+
+    private fun captureRides() {
+        evaluate<MhtmlRideList>(RIDE_LINKS_JS) { result ->
+            if (result == null) {
+                retryOrFinish("rides_unreadable")
+                return@evaluate
+            }
+            val links = result.tripHrefs
+                .filter(::isSpecificTripHref)
+                .distinctBy(::canonicalHref)
+                .take(MAX_TRIPS)
+            if (links.isEmpty() && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({ handlePage() }, RETRY_MS)
+                return@evaluate
+            }
+            pageReadAttempts = 0
+            sessionStore.saveDiagnosticHtml(account, "rides", result.domHtml)
+            archive.save(webView, account, "rides", "latest") { saved ->
                 if (saved != null) archived++
-                evaluate<MhtmlRideList>(RIDE_LINKS_JS) { list ->
-                    tripHrefs = list?.tripHrefs.orEmpty()
-                        .filter(::isSpecificTripHref)
-                        .distinct()
-                        .take(MAX_TRIPS)
-                    optionUrls = tripHrefs.mapNotNull(::optionsUrl).distinct()
-                    tripIndex = 0
-                    phase = Phase.TRIP
-                    busy = false
-                    loadNextTrip()
+                tripHrefs = links
+                editUrls = tripHrefs.mapNotNull { href -> tripIdFromHref(href)?.let(::editUrlForTrip) }
+                optionUrlByTrip.clear()
+                tripHrefs.forEach { href -> tripIdFromHref(href)?.let { optionUrlByTrip[it] = optionsUrlForTrip(it) } }
+                UnifiedDebugEventStore.record(
+                    "HARVEST_RIDES_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} trips=${tripHrefs.size} html=true mhtml=${saved != null}",
+                )
+                tripIndex = 0
+                phase = Phase.TRIP
+                busy = false
+                loadNextTrip()
+            }
+        }
+    }
+
+    private fun captureTrip() {
+        val href = tripHrefs.getOrNull(tripIndex)
+        val tripId = href?.let(::tripIdFromHref)
+        if (href == null || tripId == null) {
+            phase = Phase.PASSENGER
+            busy = false
+            loadNextPassenger()
+            return
+        }
+        evaluate<MhtmlTripEvidence>(TRIP_EVIDENCE_JS) { result ->
+            if (result == null) {
+                retryCurrentOrAdvanceTrip(tripId, "trip_unreadable")
+                return@evaluate
+            }
+            val waitingForRoster = result.passengers.isEmpty() && !result.explicitEmptyRoster
+            if (waitingForRoster && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({ handlePage() }, RETRY_MS)
+                return@evaluate
+            }
+            pageReadAttempts = 0
+            tripEvidence[tripId] = result
+            sessionStore.saveDiagnosticHtml(account, "trip-$tripId", result.domHtml)
+            val targets = buildList {
+                result.passengerHrefs.forEach { add(it) }
+                result.passengers.mapNotNull(BlaBlaCollectorPassenger::booking_href).forEach { add(it) }
+            }
+                .map(::absoluteBlaBlaHref)
+                .filter(::isPassengerHref)
+                .distinctBy(::canonicalHref)
+                .map { PassengerTarget(tripId, it) }
+            targets.forEach { target ->
+                if (passengerTargets.none { it.tripId == target.tripId && canonicalHref(it.href) == canonicalHref(target.href) }) {
+                    passengerTargets += target
                 }
             }
-            Phase.TRIP -> {
-                val href = tripHrefs.getOrNull(tripIndex)
-                if (href == null) {
-                    phase = Phase.PASSENGER
+            archive.save(webView, account, "trip", tripId) { saved ->
+                if (saved != null) archived++
+                UnifiedDebugEventStore.record(
+                    "HARVEST_TRIP_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripIdPresent=true index=${tripIndex + 1}/${tripHrefs.size} passengers=${result.passengers.size} passengerLinks=${targets.size} rosterComplete=${result.rosterComplete} empty=${result.explicitEmptyRoster} stops=${result.itineraryStops.size} views=${result.views.coerceAtLeast(0)}",
+                )
+                tripIndex++
+                busy = false
+                loadNextTrip()
+            }
+        }
+    }
+
+    private fun retryCurrentOrAdvanceTrip(tripId: String, reason: String) {
+        if (pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+            pageReadAttempts++
+            busy = false
+            webView.postDelayed({ handlePage() }, RETRY_MS)
+            return
+        }
+        pageReadAttempts = 0
+        UnifiedDebugEventStore.record(
+            "HARVEST_BLOCK_UNREADABLE",
+            packageName,
+            "account=${account.displayLabel} block=trip tripId=$tripId reason=$reason",
+        )
+        tripIndex++
+        busy = false
+        loadNextTrip()
+    }
+
+    private fun capturePassenger() {
+        val target = passengerTargets.getOrNull(passengerIndex)
+        if (target == null) {
+            phase = Phase.EDIT
+            busy = false
+            loadNextEdit()
+            return
+        }
+        evaluate<MhtmlPassengerEvidence>(PASSENGER_EVIDENCE_JS) { result ->
+            if (result == null || (result.phone.isBlank() && result.visibleName.isBlank())) {
+                if (pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+                    pageReadAttempts++
                     busy = false
-                    loadNextPassenger()
-                    return
-                }
-                archive.save(webView, account, "trip", tripKey(href)) { saved ->
-                    if (saved != null) archived++
-                    evaluate<MhtmlPassengerLinks>(PASSENGER_LINKS_JS) { result ->
-                        result?.hrefs.orEmpty().filter(::isPassengerHref).forEach(passengerHrefs::add)
-                        tripIndex++
-                        busy = false
-                        loadNextTrip()
-                    }
+                    webView.postDelayed({ handlePage() }, RETRY_MS)
+                    return@evaluate
                 }
             }
-            Phase.PASSENGER -> {
-                val href = passengerHrefs.elementAtOrNull(passengerIndex)
-                if (href == null) {
-                    phase = Phase.OPTIONS
-                    busy = false
-                    loadNextOption()
-                    return
-                }
-                archive.save(webView, account, "passenger", passengerKey(href)) { saved ->
-                    if (saved != null) archived++
-                    passengerIndex++
-                    busy = false
-                    loadNextPassenger()
-                }
+            pageReadAttempts = 0
+            val evidence = result ?: MhtmlPassengerEvidence()
+            passengerEvidence[canonicalHref(target.href)] = evidence
+            sessionStore.saveDiagnosticHtml(
+                account,
+                "passenger-${target.tripId}-${passengerKey(target.href)}",
+                evidence.domHtml,
+            )
+            archive.save(webView, account, "passenger", "${target.tripId}-${passengerKey(target.href)}") { saved ->
+                if (saved != null) archived++
+                UnifiedDebugEventStore.record(
+                    "HARVEST_PASSENGER_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=${target.tripId} index=${passengerIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()}",
+                )
+                passengerIndex++
+                busy = false
+                loadNextPassenger()
             }
-            Phase.OPTIONS -> {
-                val href = optionUrls.getOrNull(optionIndex)
-                if (href == null) {
-                    finishHarvest()
-                    return
-                }
-                archive.save(webView, account, "options", tripKey(href)) { saved ->
-                    if (saved != null) archived++
-                    optionIndex++
-                    busy = false
-                    loadNextOption()
-                }
+        }
+    }
+
+    private fun captureEdit() {
+        val href = editUrls.getOrNull(editIndex)
+        val tripId = href?.let(::tripIdFromEditHref)
+        if (href == null || tripId == null) {
+            phase = Phase.OPTIONS
+            optionUrls = optionUrlByTrip.values.distinct()
+            optionIndex = 0
+            busy = false
+            loadNextOption()
+            return
+        }
+        evaluate<MhtmlEditEvidence>(EDIT_EVIDENCE_JS) { result ->
+            if (result == null && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({ handlePage() }, RETRY_MS)
+                return@evaluate
+            }
+            pageReadAttempts = 0
+            val evidence = result ?: MhtmlEditEvidence()
+            val options = evidence.optionsHref
+                .takeIf(String::isNotBlank)
+                ?.let(::absoluteBlaBlaHref)
+                ?.takeIf(::isOptionsHref)
+                ?: optionsUrlForTrip(tripId)
+            optionUrlByTrip[tripId] = options
+            sessionStore.saveDiagnosticHtml(account, "edit-$tripId", evidence.domHtml)
+            archive.save(webView, account, "edit", tripId) { saved ->
+                if (saved != null) archived++
+                UnifiedDebugEventStore.record(
+                    "HARVEST_EDIT_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=${evidence.optionsHref.isNotBlank()} html=true mhtml=${saved != null}",
+                )
+                editIndex++
+                busy = false
+                loadNextEdit()
+            }
+        }
+    }
+
+    private fun captureOptions() {
+        val href = optionUrls.getOrNull(optionIndex)
+        val tripId = href?.let(::tripIdFromOptionsHref)
+        if (href == null || tripId == null) {
+            finishHarvest()
+            return
+        }
+        evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { result ->
+            if ((result == null || result.seats < 0) && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+                pageReadAttempts++
+                busy = false
+                webView.postDelayed({ handlePage() }, RETRY_MS)
+                return@evaluate
+            }
+            pageReadAttempts = 0
+            val state = result ?: SeatOptionState()
+            if (state.seats >= 0) publishedSeatsByTrip[tripId] = state.seats
+            sessionStore.saveDiagnosticHtml(account, "options-$tripId", state.domHtml)
+            archive.save(webView, account, "options", tripId) { saved ->
+                if (saved != null) archived++
+                UnifiedDebugEventStore.record(
+                    "SEAT_OPTIONS_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId publishedSeats=${state.seats} canAdd=${state.canAdd} canRemove=${state.canRemove} savePresent=${state.savePresent} html=true mhtml=${saved != null}",
+                )
+                optionIndex++
+                busy = false
+                loadNextOption()
             }
         }
     }
@@ -344,21 +585,35 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         val href = tripHrefs.getOrNull(tripIndex)
         if (href == null) {
             phase = Phase.PASSENGER
+            passengerIndex = 0
             loadNextPassenger()
         } else {
-            statusView.text = "${account.displayLabel} • MHTML viagem ${tripIndex + 1}/${tripHrefs.size}"
+            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
             webView.loadUrl(href)
         }
     }
 
     private fun loadNextPassenger() {
-        val links = passengerHrefs.toList()
-        val href = links.getOrNull(passengerIndex)
+        val target = passengerTargets.getOrNull(passengerIndex)
+        if (target == null) {
+            phase = Phase.EDIT
+            editIndex = 0
+            loadNextEdit()
+        } else {
+            statusView.text = "${account.displayLabel} • passageiro ${passengerIndex + 1}/${passengerTargets.size}"
+            webView.loadUrl(target.href)
+        }
+    }
+
+    private fun loadNextEdit() {
+        val href = editUrls.getOrNull(editIndex)
         if (href == null) {
             phase = Phase.OPTIONS
+            optionUrls = optionUrlByTrip.values.distinct()
+            optionIndex = 0
             loadNextOption()
         } else {
-            statusView.text = "${account.displayLabel} • MHTML passageiro ${passengerIndex + 1}/${links.size}"
+            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
             webView.loadUrl(href)
         }
     }
@@ -368,16 +623,17 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         if (href == null) {
             finishHarvest()
         } else {
-            statusView.text = "${account.displayLabel} • MHTML lugares ${optionIndex + 1}/${optionUrls.size}"
+            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
             webView.loadUrl(href)
         }
     }
 
     private fun finishHarvest() {
+        val enrichment = applyHarvestToSession()
         UnifiedDebugEventStore.record(
             "MHTML_HARVEST_COMPLETE",
             packageName,
-            "account=${account.displayLabel} trips=${tripHrefs.size} passengerPages=${passengerHrefs.size} optionPages=${optionUrls.size} archives=$archived",
+            "account=${account.displayLabel} trips=${tripHrefs.size} passengerPages=${passengerTargets.size} editPages=${editUrls.size} optionPages=${optionUrls.size} archives=$archived enrichedTrips=${enrichment.first} enrichedPassengers=${enrichment.second}",
         )
         setResult(
             RESULT_OK,
@@ -386,6 +642,164 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 .putExtra("archive_count", archived),
         )
         finish()
+    }
+
+    private fun applyHarvestToSession(): Pair<Int, Int> {
+        val snapshot = sessionStore.read(account) ?: return 0 to 0
+        val persistedEvidence = mutableListOf<BlaBlaHarvestTripEvidence>()
+        var enrichedTrips = 0
+        var enrichedPassengers = 0
+        val updatedTrips = snapshot.trips.map { trip ->
+            val tripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
+                ?: trip.trip_href?.let(::tripIdFromHref)
+                ?: return@map trip
+            val summary = tripEvidence[tripId]
+            val mergedPassengers = mergePassengers(trip.passengers, summary?.passengers.orEmpty())
+                .map { passenger -> enrichPassenger(passenger) }
+            val rosterComplete = summary?.rosterComplete == true || summary?.explicitEmptyRoster == true
+            val stops = summary?.itineraryStops.orEmpty()
+            val occupied = occupiedSeatsForTimeline(mergedPassengers, stops)
+            val publishedSeats = publishedSeatsByTrip[tripId]
+            val views = summary?.views?.takeIf { it >= 0 }
+            persistedEvidence += BlaBlaHarvestTripEvidence(
+                tripId = tripId,
+                publishedSeats = publishedSeats,
+                views = views,
+                itineraryStops = stops,
+                passengers = mergedPassengers,
+                passengerRosterComplete = rosterComplete,
+            )
+            if (summary != null || publishedSeats != null || mergedPassengers != trip.passengers) enrichedTrips++
+            enrichedPassengers += mergedPassengers.size
+            UnifiedDebugEventStore.record(
+                "HARVEST_TRIP_ENRICHED",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1}",
+            )
+            trip.copy(
+                passengers = mergedPassengers,
+                booked_seats = occupied,
+                passenger_roster_complete = rosterComplete,
+            )
+        }
+        harvestStore.replace(account.id, persistedEvidence)
+        sessionStore.saveSync(
+            account = account,
+            lastUrl = snapshot.lastUrl,
+            trips = updatedTrips,
+            skippedTrips = snapshot.skippedTrips,
+            identityVerified = snapshot.identityVerified,
+        )
+        return enrichedTrips to enrichedPassengers
+    }
+
+    private fun enrichPassenger(passenger: BlaBlaCollectorPassenger): BlaBlaCollectorPassenger {
+        val href = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty) ?: return passenger
+        val evidence = passengerEvidence[canonicalHref(absoluteBlaBlaHref(href))] ?: return passenger
+        val phone = passenger.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone)
+        return passenger.copy(
+            name = passenger.name.ifBlank { evidence.visibleName.trim() },
+            seats = maxOf(passenger.seats.coerceAtLeast(1), evidence.seats.coerceAtLeast(1)),
+            boarding = passenger.boarding?.takeIf(String::isNotBlank) ?: evidence.boarding.takeIf(String::isNotBlank),
+            dropoff = passenger.dropoff?.takeIf(String::isNotBlank) ?: evidence.dropoff.takeIf(String::isNotBlank),
+            phone = phone,
+            booking_href = absoluteBlaBlaHref(href),
+        )
+    }
+
+    private fun mergePassengers(
+        current: List<BlaBlaCollectorPassenger>,
+        harvested: List<BlaBlaCollectorPassenger>,
+    ): List<BlaBlaCollectorPassenger> {
+        val merged = current.toMutableList()
+        harvested.forEach { incoming ->
+            val index = merged.indexOfFirst { existing -> passengerMatches(existing, incoming) }
+            if (index < 0) {
+                merged += incoming
+            } else {
+                val existing = merged[index]
+                merged[index] = existing.copy(
+                    name = incoming.name.ifBlank { existing.name },
+                    seats = maxOf(existing.seats.coerceAtLeast(1), incoming.seats.coerceAtLeast(1)),
+                    boarding = incoming.boarding?.takeIf(String::isNotBlank) ?: existing.boarding,
+                    dropoff = incoming.dropoff?.takeIf(String::isNotBlank) ?: existing.dropoff,
+                    phone = incoming.phone?.takeIf(String::isNotBlank) ?: existing.phone,
+                    booking_href = incoming.booking_href?.takeIf(String::isNotBlank) ?: existing.booking_href,
+                )
+            }
+        }
+        return merged.filter { it.name.isNotBlank() || !it.booking_href.isNullOrBlank() }
+    }
+
+    private fun passengerMatches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
+        val leftHref = left.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref).orEmpty()
+        val rightHref = right.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref).orEmpty()
+        if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
+        val leftPhone = normalizeCapturedPhone(left.phone).orEmpty()
+        val rightPhone = normalizeCapturedPhone(right.phone).orEmpty()
+        if (leftPhone.isNotBlank() && rightPhone.isNotBlank()) return leftPhone == rightPhone
+        return normalizeText(left.name) == normalizeText(right.name) &&
+            left.seats.coerceAtLeast(1) == right.seats.coerceAtLeast(1) &&
+            normalizeText(left.boarding.orEmpty()) == normalizeText(right.boarding.orEmpty()) &&
+            normalizeText(left.dropoff.orEmpty()) == normalizeText(right.dropoff.orEmpty())
+    }
+
+    private fun occupiedSeatsForTimeline(passengers: List<BlaBlaCollectorPassenger>, stops: List<String>): Int {
+        if (passengers.isEmpty()) return 0
+        val total = passengers.sumOf { it.seats.coerceAtLeast(1) }
+        if (stops.size < 2) return total
+        val loads = IntArray(stops.size - 1)
+        var unresolved = false
+        passengers.forEach { passenger ->
+            val boarding = stopIndex(stops, passenger.boarding)
+            val dropoff = stopIndex(stops, passenger.dropoff, minIndex = boarding + 1)
+            if (boarding < 0 || dropoff <= boarding) {
+                unresolved = true
+            } else {
+                for (segment in boarding until dropoff) loads[segment] += passenger.seats.coerceAtLeast(1)
+            }
+        }
+        val maxKnown = loads.maxOrNull() ?: 0
+        return if (unresolved) maxOf(maxKnown, total) else maxKnown
+    }
+
+    private fun stopIndex(stops: List<String>, raw: String?, minIndex: Int = 0): Int {
+        val wanted = normalizeText(raw.orEmpty())
+        if (wanted.isBlank()) return -1
+        return stops.indices.firstOrNull { index ->
+            index >= minIndex && samePlaceEvidence(stops[index], raw.orEmpty())
+        } ?: -1
+    }
+
+    private fun samePlaceEvidence(left: String, right: String): Boolean {
+        val a = normalizeText(left.substringBefore(','))
+        val b = normalizeText(right.substringBefore(','))
+        if (a.isBlank() || b.isBlank()) return false
+        if (a == b) return true
+        val shorter = if (a.length <= b.length) a else b
+        val longer = if (a.length <= b.length) b else a
+        return shorter.length >= 5 && longer.contains(shorter)
+    }
+
+    private fun normalizeText(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    private fun retryOrFinish(reason: String) {
+        if (pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+            pageReadAttempts++
+            busy = false
+            webView.postDelayed({ handlePage() }, RETRY_MS)
+        } else {
+            UnifiedDebugEventStore.record(
+                "MHTML_HARVEST_ABORTED",
+                packageName,
+                "account=${account.displayLabel} reason=$reason",
+            )
+            finishHarvest()
+        }
     }
 
     private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
@@ -404,25 +818,164 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         super.onDestroy()
     }
 
-    private enum class Phase { RIDES, TRIP, PASSENGER, OPTIONS }
+    private enum class Phase { RIDES, TRIP, PASSENGER, EDIT, OPTIONS }
 
     companion object {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private const val MAX_TRIPS = 80
+        private const val MAX_PAGE_READ_ATTEMPTS = 2
+        private const val RETRY_MS = 800L
+
+        private val SANITIZED_HTML_JS = """
+            const clone = document.documentElement.cloneNode(true);
+            clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
+            clone.querySelectorAll('input, textarea').forEach((node) => {
+              node.removeAttribute('value');
+              node.textContent = '';
+            });
+            const html = clone.outerHTML || '';
+        """.trimIndent()
+
         private val RIDE_LINKS_JS = """
             (function() {
-              const hrefs = Array.from(document.querySelectorAll('article[data-testid^="e2e-your-rides-trip-card-"] a[href], [data-testid^="e2e-your-rides-trip-card-"] a[href]'))
+              const hrefs = Array.from(document.querySelectorAll('a[href]'))
                 .map((a) => a.href || '')
-                .filter((href) => /\/rides\/offer\?[^#]*\bid=/i.test(href));
-              return JSON.stringify({ tripHrefs: Array.from(new Set(hrefs)) });
+                .filter((href) => href && /blablacar\.com\.br/i.test(href))
+                .filter((href) => /\/rides\/offer|\/trip(?:\/|\?)/i.test(href))
+                .filter((href) => !/\/rides\/offer\/(?:passenger|edit)\//i.test(href));
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                tripHrefs: Array.from(new Set(hrefs)),
+                domHtml: html.slice(0, 350000)
+              });
             })();
         """.trimIndent()
-        private val PASSENGER_LINKS_JS = """
+
+        private val TRIP_EVIDENCE_JS = """
             (function() {
-              const hrefs = Array.from(document.querySelectorAll('a[href*="/rides/offer/passenger/"]'))
-                .map((a) => a.href || '')
-                .filter(Boolean);
-              return JSON.stringify({ hrefs: Array.from(new Set(hrefs)) });
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const linesOf = (node) => ((node && node.innerText) || '').split(/\n+/).map(clean).filter(Boolean);
+              const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
+              const pageText = clean(document.body && document.body.innerText);
+              const rows = [];
+              const seen = new Set();
+              const candidateNodes = Array.from(document.querySelectorAll(
+                'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
+              ));
+              Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
+                const text = clean(node.innerText);
+                if ((text.includes('→') || text.includes('->')) && !candidateNodes.includes(node)) candidateNodes.push(node);
+              });
+              candidateNodes.forEach((node, index) => {
+                const anchor = (node.matches && node.matches('a[href]')) ? node : (node.querySelector && node.querySelector('a[href]'));
+                const href = absolute((anchor && anchor.getAttribute('href')) || (node.getAttribute && node.getAttribute('data-href')) || '');
+                const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
+                const lines = linesOf(container);
+                const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                if (!route) return;
+                const explicit = container && container.querySelector
+                  ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
+                  : null;
+                const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
+                let name = clean(alt || (explicit && explicit.innerText) || lines[0] || '');
+                if (!name || /^(ver sua carona|editar sua carona|resumo da viagem|hor[aá]rio|santo|s[aã]o|pouso|extrema|camanducaia|tr[eê]s)/i.test(name)) return;
+                const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
+                const suffix = suffixSource.match(/\((\d+)\)\s*$/);
+                const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
+                name = name.replace(/\s*\(\d+\)\s*$/, '').trim();
+                const routeParts = route.split(/→|->/).map(clean);
+                const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
+                const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
+                if (seen.has(key)) return;
+                seen.add(key);
+                rows.push({
+                  name: name,
+                  seats: seats,
+                  boarding: routeParts.length >= 2 ? routeParts[0] : null,
+                  dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
+                  phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
+                  booking_href: /passenger|booking/i.test(href) ? href : null
+                });
+              });
+              const passengerHrefs = Array.from(document.querySelectorAll('a[href]'))
+                .map((a) => absolute(a.getAttribute('href') || ''))
+                .filter((href) => /\/passenger\/|\/booking\//i.test(href));
+              const stopSelectors = [
+                '[data-testid*="itinerary-departure-station"]',
+                '[data-testid*="itinerary-arrival-station"]',
+                '[data-testid*="itinerary-stop"]',
+                '[data-testid*="station"]'
+              ];
+              const itineraryStops = [];
+              stopSelectors.forEach((selector) => {
+                Array.from(document.querySelectorAll(selector)).forEach((node) => {
+                  const value = clean(node.innerText);
+                  if (value && !itineraryStops.includes(value)) itineraryStops.push(value);
+                });
+              });
+              const explicitEmptyRoster = /nenhum passageiro nesta carona/i.test(pageText);
+              const terminalSeen = /ver sua carona publicada|editar sua carona/i.test(pageText);
+              const hasMore = /mostrar mais|ver mais|mais passageir|mais reserva/i.test(pageText);
+              const viewsMatch = pageText.match(/(\d{1,9})\s+visualiza(?:ç|c)[õo]es/i);
+              const views = viewsMatch ? parseInt(viewsMatch[1], 10) : -1;
+              const rosterComplete = explicitEmptyRoster || (rows.length > 0 && terminalSeen && !hasMore);
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                passengers: rows,
+                passengerHrefs: Array.from(new Set(passengerHrefs)),
+                itineraryStops: itineraryStops,
+                rosterComplete: rosterComplete,
+                explicitEmptyRoster: explicitEmptyRoster,
+                views: Number.isFinite(views) ? views : -1,
+                domHtml: html.slice(0, 350000)
+              });
+            })();
+        """.trimIndent()
+
+        private val PASSENGER_EVIDENCE_JS = """
+            (function() {
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const body = clean(document.body && document.body.innerText);
+              const nameNode = document.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], h1');
+              const visibleName = clean(nameNode && nameNode.innerText);
+              const telCandidates = [];
+              Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"]')).forEach((node) => {
+                const href = (node.getAttribute && node.getAttribute('href')) || '';
+                if (/^tel:/i.test(href)) telCandidates.push(href);
+                (node.outerHTML || '').match(/tel:[+0-9(). \-]{8,32}/ig)?.forEach((value) => telCandidates.push(value));
+              });
+              const pageHtml = document.documentElement ? (document.documentElement.outerHTML || '') : '';
+              (pageHtml.match(/tel:[+0-9(). \-]{8,32}/ig) || []).forEach((value) => telCandidates.push(value));
+              const rawPhone = telCandidates.find((value) => /^tel:/i.test(value)) || '';
+              const phone = rawPhone ? rawPhone.replace(/^tel:/i, '').split('?')[0].replace(/[^+0-9]/g, '') : '';
+              const seatsMatch = body.match(/(\d{1,3})\s+lugar(?:es)?\b/i);
+              const seats = seatsMatch ? Math.max(1, parseInt(seatsMatch[1], 10) || 1) : 1;
+              const routeMatch = body.match(/([^\n|]{2,80})\s*(?:→|->)\s*([^\n|]{2,80})/);
+              const priceMatch = body.match(/R\$\s*[0-9.,]+/i);
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                phone: phone,
+                visibleName: visibleName,
+                seats: seats,
+                boarding: routeMatch ? clean(routeMatch[1]) : '',
+                dropoff: routeMatch ? clean(routeMatch[2]) : '',
+                price: priceMatch ? clean(priceMatch[0]) : '',
+                domHtml: html.slice(0, 350000)
+              });
+            })();
+        """.trimIndent()
+
+        private val EDIT_EVIDENCE_JS = """
+            (function() {
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const links = Array.from(document.querySelectorAll('a[href]'));
+              const option = links.find((a) => /\/edit\/[^/?#]+\/options/i.test(a.href || ''))
+                || links.find((a) => /lugares e op[cç][õo]es|op[cç][õo]es de passageiros/i.test(clean(a.innerText)));
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                optionsHref: option ? (option.href || '') : '',
+                domHtml: html.slice(0, 350000)
+              });
             })();
         """.trimIndent()
     }
@@ -434,6 +987,7 @@ private data class SeatOptionState(
     val canAdd: Boolean = false,
     val canRemove: Boolean = false,
     val savePresent: Boolean = false,
+    val domHtml: String = "",
 )
 
 /**
@@ -607,11 +1161,16 @@ class BlaBlaManualSeatSyncActivity : Activity() {
                 seats = all ? parseInt(all[1], 10) : -1;
               }
               const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
+              const clone = document.documentElement.cloneNode(true);
+              clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
+              clone.querySelectorAll('input, textarea').forEach((node) => { node.removeAttribute('value'); node.textContent = ''; });
+              const html = clone.outerHTML || '';
               return JSON.stringify({
                 seats: Number.isFinite(seats) ? seats : -1,
                 canAdd: !!add && !add.disabled,
                 canRemove: !!remove && !remove.disabled,
-                savePresent: !!save
+                savePresent: !!save,
+                domHtml: html.slice(0, 350000)
               });
             })();
         """.trimIndent()
@@ -672,30 +1231,112 @@ private fun configureProfiledWebView(webView: WebView, account: BlaBlaDynamicAcc
     }
 }
 
+private fun normalizeCapturedPhone(raw: String?): String? {
+    val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val hasPlus = value.startsWith("+")
+    val digits = value.filter(Char::isDigit)
+    if (digits.length !in 8..15) return null
+    return if (hasPlus) "+$digits" else digits
+}
+
 private fun isBlaBla(url: String): Boolean = url.startsWith("https://www.blablacar.com.br/")
 
+private fun absoluteBlaBlaHref(href: String): String {
+    val value = href.trim()
+    if (value.startsWith("https://www.blablacar.com.br/")) return value
+    if (value.startsWith('/')) return "https://www.blablacar.com.br$value"
+    return value
+}
+
+private fun canonicalHref(href: String): String = absoluteBlaBlaHref(href)
+    .substringBefore("&search_uuid=")
+    .substringBefore('#')
+
 private fun isSpecificTripHref(href: String): Boolean =
-    href.startsWith("https://www.blablacar.com.br/rides/offer") && queryId(href) != null
+    absoluteBlaBlaHref(href).contains("blablacar.com.br") && tripIdFromHref(href) != null
 
-private fun isPassengerHref(href: String): Boolean =
-    href.startsWith("https://www.blablacar.com.br/rides/offer/passenger/") && queryId(href) != null
+private fun isPassengerHref(href: String): Boolean {
+    val value = absoluteBlaBlaHref(href)
+    return value.startsWith("https://www.blablacar.com.br/") &&
+        (value.contains("/passenger/") || value.contains("/booking/"))
+}
 
-private fun optionsUrl(href: String): String? = queryId(href)?.let(::optionsUrlForTrip)
+private fun isOptionsHref(href: String): Boolean = Regex("/rides/offer/edit/[^/?#]+/options", RegexOption.IGNORE_CASE)
+    .containsMatchIn(absoluteBlaBlaHref(href))
+
+private fun editUrlForTrip(tripId: String): String =
+    "https://www.blablacar.com.br/rides/offer/edit/${tripId.trim()}"
 
 private fun optionsUrlForTrip(tripId: String): String =
     "https://www.blablacar.com.br/rides/offer/edit/${tripId.trim()}/options"
 
-private fun tripKey(href: String): String = queryId(href) ?: href.substringAfterLast('/').substringBefore('?').take(80)
+private fun tripIdFromHref(href: String): String? {
+    queryId(href)?.let { return it }
+    val path = runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault("")
+    Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
+        .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+    Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
+        .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+    return null
+}
 
-private fun passengerKey(href: String): String = href.substringAfter("/rides/offer/passenger/")
-    .substringBefore('/')
-    .substringBefore('?')
-    .take(80)
+private fun tripIdFromEditHref(href: String): String? = Regex(
+    "/rides/offer/edit/([^/?#]+)(?:$|[/?#])",
+    RegexOption.IGNORE_CASE,
+).find(runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault(""))
+    ?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
+
+private fun tripIdFromOptionsHref(href: String): String? = Regex(
+    "/rides/offer/edit/([^/?#]+)/options",
+    RegexOption.IGNORE_CASE,
+).find(runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault(""))
+    ?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
+
+private fun passengerKey(href: String): String {
+    val value = absoluteBlaBlaHref(href)
+    val fromPath = Regex("/(?:passenger|booking)/([^/?#]+)", RegexOption.IGNORE_CASE)
+        .find(value)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
+    return (fromPath ?: queryId(value) ?: value.substringAfterLast('/').substringBefore('?'))
+        .take(80)
+        .ifBlank { "passenger" }
+}
 
 private fun queryId(href: String): String? = runCatching {
-    URI(href).rawQuery.orEmpty().split('&')
+    URI(absoluteBlaBlaHref(href)).rawQuery.orEmpty().split('&')
         .mapNotNull { part -> part.substringBefore('=', "").takeIf { it == "id" }?.let { part.substringAfter('=', "") } }
         .firstOrNull()
         ?.trim()
         ?.takeIf(String::isNotEmpty)
 }.getOrNull()
+
+private val SEAT_OPTIONS_READ_JS = """
+    (function() {
+      const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+      const remove = document.querySelector('button[aria-label="Remover um lugar"]');
+      const add = document.querySelector('button[aria-label="Adicionar um lugar"]');
+      let root = remove && remove.parentElement;
+      while (root && add && !root.contains(add)) root = root.parentElement;
+      root = root || (add && add.parentElement) || document.body;
+      const leaves = Array.from(root.querySelectorAll('span, p, div'))
+        .filter((node) => node.children.length === 0)
+        .map((node) => clean(node.innerText))
+        .filter((text) => /^\d{1,3}$/.test(text));
+      let seats = leaves.length ? parseInt(leaves[0], 10) : -1;
+      if (seats < 0) {
+        const all = clean(root.innerText).match(/(?:^|\s)(\d{1,3})(?:\s|$)/);
+        seats = all ? parseInt(all[1], 10) : -1;
+      }
+      const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
+      const clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
+      clone.querySelectorAll('input, textarea').forEach((node) => { node.removeAttribute('value'); node.textContent = ''; });
+      const html = clone.outerHTML || '';
+      return JSON.stringify({
+        seats: Number.isFinite(seats) ? seats : -1,
+        canAdd: !!add && !add.disabled,
+        canRemove: !!remove && !remove.disabled,
+        savePresent: !!save,
+        domHtml: html.slice(0, 350000)
+      });
+    })();
+""".trimIndent()
