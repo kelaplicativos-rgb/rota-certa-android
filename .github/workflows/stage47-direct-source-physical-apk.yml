@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.247
+name: Stage47 direct-source physical APK 0.1.248
 
 on:
   pull_request:
@@ -20,8 +20,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5540'
-      EXPECTED_VERSION_NAME: '0.1.247'
+      EXPECTED_VERSION_CODE: '5541'
+      EXPECTED_VERSION_NAME: '0.1.248'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           AUTOMATION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
           MANIFEST='app/src/main/AndroidManifest.xml'
 
@@ -49,7 +50,9 @@ jobs:
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           test -s "$AUTOMATION"
+          test -s "$DYNAMIC"
           test -s "$WATCHDOG"
+
           grep -Fq 'MHTML_ARCHIVE_TIMEOUT' "$AUTOMATION"
           grep -Fq 'MHTML_HARVEST_COMPLETE' "$AUTOMATION"
           grep -Fq 'HARVEST_PASSENGER_CAPTURED' "$AUTOMATION"
@@ -66,6 +69,16 @@ jobs:
           grep -Fq 'EVALUATION_TIMEOUT_MS = 6_000L' "$AUTOMATION"
           grep -Fq 'trip.passenger_roster_complete ||' "$AUTOMATION"
           grep -Fq 'cancel=false partialEvidencePreserved=true' "$AUTOMATION"
+
+          grep -Fq 'MAX_TRIP_ROSTER_READ_ATTEMPTS = 5' "$AUTOMATION"
+          grep -Fq 'result.passengers.isEmpty() && !result.rosterComplete' "$AUTOMATION"
+          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$AUTOMATION"
+          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$DYNAMIC"
+          grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
+          grep -Fq 'PASSENGER_PAGE_RELOAD' "$AUTOMATION"
+          grep -Fq 'reason=passenger_evidence_not_ready' "$AUTOMATION"
+          grep -Fq 'webView.loadUrl(target.href)' "$AUTOMATION"
+
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
@@ -83,6 +96,8 @@ jobs:
           test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
           test ! -e .github/workflows/stage47-export-authoritative-source.yml
           test ! -e .github/patches/stage47-harvester-recovery.patch
+          test ! -e .github/workflows/stage47-apply-roster-readiness-0.1.248.yml
+          test ! -e .github/patches/stage47-roster-readiness-0.1.248.patch
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
 
           CURRENT_HEAD="$(git rev-parse HEAD)"
@@ -94,6 +109,10 @@ jobs:
           echo 'harvester_evaluation_timeout=true'
           echo 'harvester_back_recovery=true'
           echo 'passenger_roster_preserved=true'
+          echo 'roster_dom_readiness_reused=true'
+          echo 'trip_roster_retry_bound=5'
+          echo 'passenger_page_reload_bound=1'
+          echo 'blank_passenger_fail_closed=true'
           echo 'harvester_real_options_link_only=true'
           echo 'mhtml_archive_timeout_guard=true'
           echo 'passenger_card_traversal=true'
@@ -166,6 +185,8 @@ jobs:
             PASSENGER_CARD_OPENED \
             PASSENGER_CALL_ACTION_PRESENT \
             PASSENGER_TEL_INTERCEPTED \
+            PASSENGER_PAGE_RELOAD \
+            passenger_evidence_not_ready \
             HARVEST_EVALUATION_TIMEOUT \
             HARVEST_USER_BACK_RECOVERY \
             HARVEST_NAVIGATION_WATCHDOG_ATTACHED \
@@ -201,6 +222,10 @@ jobs:
           back_recovery_cancels_harvest=false
           partial_evidence_preserved=true
           passenger_roster_preserved=true
+          roster_dom_readiness_reused=true
+          trip_roster_retry_bound=5
+          passenger_page_reload_bound=1
+          blank_passenger_fail_closed=true
           harvester_real_options_link_only=true
           mhtml_archive_timeout_guard=true
           passenger_card_traversal=true
@@ -217,7 +242,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-harvester-recovery-0.1.247
+          name: rota-certa-stage47-roster-readiness-0.1.248
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
