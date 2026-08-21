@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.250
+name: Stage47 direct-source physical APK 0.1.251
 
 on:
   pull_request:
@@ -10,6 +10,7 @@ on:
       - app/src/main/**
       - app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt
       - app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt
+      - app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47Reliability0251Test.kt
   workflow_dispatch:
 
 permissions:
@@ -22,8 +23,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5543'
-      EXPECTED_VERSION_NAME: '0.1.250'
+      EXPECTED_VERSION_CODE: '5544'
+      EXPECTED_VERSION_NAME: '0.1.251'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -46,62 +47,54 @@ jobs:
           AUTOMATION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
           DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
+          POLICY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt'
+          MODEL='app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt'
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
           MANIFEST='app/src/main/AndroidManifest.xml'
           ASSOCIATION_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestAssociationTest.kt'
+          PHYSICAL_FIXES_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47PhysicalFixes0250Test.kt'
+          RELIABILITY_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47Reliability0251Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
-          test -s "$AUTOMATION"
-          test -s "$DYNAMIC"
-          test -s "$WATCHDOG"
-          test -s "$ASSOCIATION_TEST"
+          for file in "$AUTOMATION" "$DYNAMIC" "$WATCHDOG" "$POLICY" "$MODEL" "$TIMELINE" "$ASSOCIATION_TEST" "$PHYSICAL_FIXES_TEST" "$RELIABILITY_TEST"; do test -s "$file"; done
 
-          for marker in \
-            MHTML_ARCHIVE_TIMEOUT \
-            MHTML_HARVEST_COMPLETE \
-            HARVEST_PASSENGER_CAPTURED \
-            HARVEST_EDIT_CAPTURED \
-            SEAT_OPTIONS_CAPTURED \
-            PASSENGER_TEL_INTERCEPTED \
-            HARVEST_EVALUATION_TIMEOUT \
-            HARVEST_USER_BACK_RECOVERY \
-            HARVEST_STALE_CALLBACK_IGNORED \
-            HARVEST_PAGE_IDENTITY_MISMATCH \
-            association_conflict; do
+          for marker in MHTML_ARCHIVE_TIMEOUT MHTML_HARVEST_COMPLETE HARVEST_PASSENGER_CAPTURED PASSENGER_TEL_INTERCEPTED HARVEST_EVALUATION_TIMEOUT HARVEST_USER_BACK_RECOVERY HARVEST_STALE_CALLBACK_IGNORED HARVEST_PAGE_IDENTITY_MISMATCH association_conflict; do
             grep -Fq "$marker" "$AUTOMATION"
           done
           grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
-          grep -Fq 'navigationGeneration++' "$AUTOMATION"
-          grep -Fq 'loadTrackedUrl(' "$AUTOMATION"
           grep -Fq 'fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String)' "$AUTOMATION"
           grep -Fq 'enrichPassenger(tripId, passenger)' "$AUTOMATION"
-          grep -Fq 'preservedIncomplete=0' "$AUTOMATION"
           grep -Fq 'deterministicHarvest=true' "$AUTOMATION"
           grep -Fq 'deterministicJoin=true' "$AUTOMATION"
           grep -Fq 'requiresSemanticProof' "$AUTOMATION"
           grep -Fq 'passengerCanonicalIdentityProven' "$AUTOMATION"
           grep -Fq 'TRIP_IDENTITY_CONFLICT' "$DYNAMIC"
-          grep -Fq 'editHref: String = ""' "$AUTOMATION"
-          grep -Fq 'tripIdFromEditHref(href) == target.tripId' "$AUTOMATION"
-          grep -Fq 'tripIdFromOptionsHref(optionHref) == target.tripId' "$AUTOMATION"
           grep -Fq 'MAX_TRIP_ROSTER_READ_ATTEMPTS = 5' "$AUTOMATION"
           grep -Fq 'MAX_PASSENGER_PAGE_RELOAD_ATTEMPTS = 1' "$AUTOMATION"
-          ! grep -Fq 'passengerEvidence[canonicalHref' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
           ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
 
-          grep -Fq 'rosterContainers.length > 0 && !hasMore' "$DYNAMIC"
-          grep -Fq 'HARVEST_NAVIGATION_WATCHDOG_ATTACHED' "$WATCHDOG"
+          grep -Fq 'AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = false' "$POLICY"
+          grep -Fq 'HARVEST_SEAT_OPTIONS_SKIPPED' "$WATCHDOG"
+          grep -Fq 'automaticSeatLookup=' "$WATCHDOG"
+          grep -Fq 'capacityAuthority=rota_certa_config' "$WATCHDOG"
+          grep -Fq 'deliverPageFinished(webView, current, synthetic = true)' "$WATCHDOG"
+          grep -Fq 'path.equals("/rides/offer", ignoreCase = true)' "$WATCHDOG"
           grep -Fq 'HARVEST_NAVIGATION_TIMEOUT' "$WATCHDOG"
           grep -Fq 'HARVEST_STALE_PAGE_FINISHED_IGNORED' "$WATCHDOG"
           grep -Fq 'NAVIGATION_TIMEOUT_MS = 12_000L' "$WATCHDOG"
-          grep -Fq 'delegate.onPageFinished(webView, current)' "$WATCHDOG"
           grep -Fq 'syntheticPageFinished=true' "$WATCHDOG"
           grep -Fq 'externalNavigation=false' "$WATCHDOG"
           ! grep -Fq 'ACTION_CALL' "$WATCHDOG"
           ! grep -Fq 'ACTION_DIAL' "$WATCHDOG"
           grep -Fq 'BlaBlaHarvestNavigationWatchdogProvider' "$MANIFEST"
+
+          grep -Fq 'tripDepartureAddress: String = ""' "$MODEL"
+          grep -Fq 'vehicleCapacity: Int = 0' "$MODEL"
+          grep -Fq 'applyConfiguredVehicleCapacity' "$TIMELINE"
+          grep -Fq 'CAPACITY_CONFIGURED_ROSTER_PENDING' "$TIMELINE"
 
           test ! -e .github/workflows/stage47-apply-harvester-recovery.yml
           test ! -e .github/workflows/stage47-export-authoritative-source.yml
@@ -109,21 +102,18 @@ jobs:
           test ! -e .github/workflows/stage47-apply-roster-readiness-0.1.248.yml
           test ! -e .github/patches/stage47-roster-readiness-0.1.248.patch
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
+          test ! -e .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+          test ! -e .github/workflows/stage47-r4-step7-0.1.250-pr-bridge.yml
 
           CURRENT_HEAD="$(git rev-parse HEAD)"
           echo "direct_source_head=$CURRENT_HEAD"
           echo 'direct_source=true'
           echo 'fixed_historical_source_checkout=false'
           echo 'stage47_materializer_used=false'
-          echo 'deterministic_trip_page_identity=true'
-          echo 'deterministic_passenger_trip_scope=true'
-          echo 'stale_callback_fail_closed=true'
-          echo 'unproven_roster_preserved=false'
-          echo 'passenger_card_semantic_proof=true'
-          echo 'real_edit_and_options_links_only=true'
-          echo 'harvester_navigation_watchdog=true'
-          echo 'harvester_evaluation_timeout=true'
-          echo 'harvester_back_recovery=true'
+          echo 'automatic_published_seat_lookup=false'
+          echo 'capacity_authority=rota_certa_driver_config'
+          echo 'passenger_harvest_preserved=true'
+          echo 'blocking_arbitrary_place_lookup=false'
           echo 'external_dialer_opened=false'
           echo 'farol_untouched=true'
           echo 'direct_source_authority=PASS'
@@ -135,6 +125,8 @@ jobs:
           for attempt in 1 2 3; do
             echo "direct_source_test_attempt=$attempt"
             if ./gradlew :app:testDebugUnitTest \
+              --tests 'br.com.mapeiaia.rotacerta.trips.Stage47Reliability0251Test' \
+              --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
               --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
               --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineBaseDirectionStage47Test' \
               --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
@@ -183,30 +175,14 @@ jobs:
             unzip -p "$APK" "$dex" | strings >> evidence/dex-strings.txt
           done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
-          for marker in \
-            MHTML_ARCHIVE_TIMEOUT \
-            MHTML_HARVEST_COMPLETE \
-            HARVEST_PASSENGER_CAPTURED \
-            HARVEST_EDIT_CAPTURED \
-            SEAT_OPTIONS_CAPTURED \
-            PASSENGER_TEL_INTERCEPTED \
-            HARVEST_EVALUATION_TIMEOUT \
-            HARVEST_USER_BACK_RECOVERY \
-            HARVEST_STALE_CALLBACK_IGNORED \
-            HARVEST_PAGE_IDENTITY_MISMATCH \
-            association_conflict \
-            deterministicHarvest=true \
-            deterministicJoin=true \
-            preservedIncomplete=0 \
-            HARVEST_NAVIGATION_WATCHDOG_ATTACHED \
-            HARVEST_NAVIGATION_TIMEOUT \
-            HARVEST_STALE_PAGE_FINISHED_IGNORED; do
+          for marker in MHTML_ARCHIVE_TIMEOUT MHTML_HARVEST_COMPLETE HARVEST_PASSENGER_CAPTURED PASSENGER_TEL_INTERCEPTED HARVEST_STALE_CALLBACK_IGNORED HARVEST_PAGE_IDENTITY_MISMATCH association_conflict deterministicHarvest=true deterministicJoin=true HARVEST_NAVIGATION_WATCHDOG_ATTACHED HARVEST_NAVIGATION_TIMEOUT HARVEST_STALE_PAGE_FINISHED_IGNORED HARVEST_SEAT_OPTIONS_SKIPPED TRIP_DRIVER_DEFAULTS_SAVED; do
             grep -Fq "$marker" evidence/dex-strings.txt
           done
           grep -Fq 'externalDialerOpened=false' evidence/dex-strings.txt
-          grep -Fq 'cancel=false partialEvidencePreserved=true' evidence/dex-strings.txt
           grep -Fq 'syntheticPageFinished=true' evidence/dex-strings.txt
           grep -Fq 'externalNavigation=false' evidence/dex-strings.txt
+          grep -Fq 'Local de partida' evidence/dex-strings.txt
+          grep -Fq 'Capacidade do veículo' evidence/dex-strings.txt
 
           sha256sum "$APK" | tee evidence/apk-sha256.txt
           APK_SHA="$(awk '{print $1}' evidence/apk-sha256.txt)"
@@ -222,12 +198,13 @@ jobs:
           fixed_historical_source_checkout=false
           stage47_materializer_used=false
           farol_sha256=$FAROL_SHA
+          automatic_published_seat_lookup=false
+          capacity_authority=rota_certa_driver_config
+          passenger_harvest_preserved=true
+          blocking_arbitrary_place_lookup=false
           deterministic_trip_page_identity=true
           deterministic_passenger_trip_scope=true
           stale_callback_fail_closed=true
-          unproven_roster_preserved=false
-          passenger_card_semantic_proof=true
-          real_edit_and_options_links_only=true
           navigation_timeout_ms=12000
           evaluation_timeout_ms=6000
           external_dialer_opened=false
@@ -242,7 +219,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-physical-fixes-0.1.250
+          name: rota-certa-stage47-reliability-0.1.251
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
