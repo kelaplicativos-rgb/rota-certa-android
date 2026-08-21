@@ -239,7 +239,7 @@ object BlaBlaManualSeatAutomationIntents {
 }
 
 /**
- * Persisted evidence from the authenticated collector pages.  This is kept
+ * Persisted evidence from the authenticated collector pages. This is kept
  * separate from physical vehicle capacity: the number shown by BlaBlaCar in
  * "Opções de passageiros" is publication inventory evidence, not a hardcoded
  * global vehicle capacity.
@@ -275,6 +275,7 @@ class BlaBlaHarvestEvidenceStore(context: Context) {
 @Serializable
 private data class MhtmlRideList(
     val tripHrefs: List<String> = emptyList(),
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
@@ -286,6 +287,7 @@ private data class MhtmlTripEvidence(
     val rosterComplete: Boolean = false,
     val explicitEmptyRoster: Boolean = false,
     val views: Int = -1,
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
@@ -298,6 +300,7 @@ private data class MhtmlPassengerEvidence(
     val dropoff: String = "",
     val price: String = "",
     val callActionPresent: Boolean = false,
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
@@ -310,17 +313,33 @@ private data class MhtmlPassengerCardOpenState(
 @Serializable
 private data class MhtmlEditEvidence(
     val optionsHref: String = "",
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
+private data class TripTarget(
+    val accountId: String,
+    val tripId: String,
+    val href: String,
+)
+
 private data class PassengerTarget(
+    val accountId: String,
     val tripId: String,
     val tripHref: String,
     val href: String = "",
     val cardIndex: Int = -1,
+    val expectedName: String = "",
+    val expectedSeats: Int = 1,
+    val expectedBoarding: String = "",
+    val expectedDropoff: String = "",
 ) {
-    val identityKey: String
-        get() = href.takeIf(String::isNotBlank)?.let(::canonicalHref) ?: "$tripId|card:$cardIndex"
+    val externalPassengerKey: String
+        get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card:$cardIndex"
+    val discoveryKey: String
+        get() = href.takeIf(String::isNotBlank)?.let(::canonicalHref) ?: "card:$cardIndex"
+    val scopedEvidenceKey: String
+        get() = BlaBlaHarvestAssociation.passengerEvidenceKey(accountId, tripId, externalPassengerKey)
     val archiveKey: String
         get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card-${cardIndex + 1}"
 }
@@ -328,9 +347,10 @@ private data class PassengerTarget(
 /**
  * Mirrors every authenticated block observed in the physical BlaBlaCar flow:
  * /rides -> trip summary -> each passenger -> Editar sua carona -> Lugares e opções.
- * Both a full private MHTML and a sanitized per-block HTML snapshot are kept.
- * The harvested passenger evidence is reconciled back into the dynamic session
- * snapshot before the Timeline is rebuilt.
+ * Every persisted block is fail-closed behind navigation generation + page
+ * identity proof. Passenger evidence is scoped to account + trip + passenger,
+ * so no page can be reused by another publication merely because href/name/
+ * phone happens to repeat.
  */
 class BlaBlaMhtmlHarvestActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -344,16 +364,16 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     private var phase = Phase.RIDES
     private var busy = false
     private var archived = 0
-    private var tripHrefs = emptyList<String>()
+    private var tripTargets = emptyList<TripTarget>()
     private var tripIndex = 0
     private val tripEvidence = linkedMapOf<String, MhtmlTripEvidence>()
     private val passengerTargets = mutableListOf<PassengerTarget>()
     private var passengerIndex = 0
     private val passengerEvidence = mutableMapOf<String, MhtmlPassengerEvidence>()
-    private var editUrls = emptyList<String>()
+    private var editTargets = emptyList<TripTarget>()
     private var editIndex = 0
-    private val optionUrlByTrip = linkedMapOf<String, String>()
-    private var optionUrls = emptyList<String>()
+    private val optionTargetByTrip = linkedMapOf<String, TripTarget>()
+    private var optionTargets = emptyList<TripTarget>()
     private var optionIndex = 0
     private val publishedSeatsByTrip = mutableMapOf<String, Int>()
     private var pageReadAttempts = 0
@@ -361,6 +381,11 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     private var interceptedPassengerPhone: String? = null
     private var passengerReloadAttempts = 0
     private var evaluationGeneration = 0L
+    private var navigationGeneration = 0L
+    private var expectedNavigationPhase = Phase.RIDES
+    private var expectedNavigationTripId = ""
+    private var expectedNavigationPassengerIndex = -1
+    private var expectedNavigationUrl = RIDES_URL
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -392,32 +417,59 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (!isBlaBla(url) || busy) return
-                view.postDelayed({ handlePage() }, 900)
+                if (!isBlaBla(url)) return
+                scheduleCurrentPage(view, url)
             }
         }
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
-        webView.loadUrl(RIDES_URL)
+        loadTrackedUrl(RIDES_URL, Phase.RIDES)
     }
 
     private fun interceptPhoneNavigation(rawUrl: String?): Boolean {
         val url = rawUrl?.trim().orEmpty()
         if (!url.startsWith("tel:", ignoreCase = true)) return false
+        val target = passengerTargets.getOrNull(passengerIndex)
+        val pageUrl = if (::webView.isInitialized) webView.url.orEmpty() else ""
         val phone = normalizeCapturedPhone(url.substringAfter(':').substringBefore('?'))
-        if (phase == Phase.PASSENGER) {
+        if (
+            phase == Phase.PASSENGER &&
+            target != null &&
+            target.accountId == account.id &&
+            passengerPageMatchesTarget(target, pageUrl)
+        ) {
             interceptedPassengerPhone = phone
             UnifiedDebugEventStore.record(
                 "PASSENGER_TEL_INTERCEPTED",
                 packageName,
-                "account=${account.displayLabel} index=${passengerIndex + 1}/${passengerTargets.size} phonePresent=${phone != null} externalDialerOpened=false",
+                "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${passengerIndex + 1}/${passengerTargets.size} phonePresent=${phone != null} externalDialerOpened=false",
             )
+        } else {
+            recordStale("tel_intercept_without_current_passenger", navigationGeneration, passengerIndex)
         }
         return true
     }
 
+    private fun scheduleCurrentPage(view: WebView, finishedUrl: String) {
+        val expectedGeneration = navigationGeneration
+        val expectedPhase = expectedNavigationPhase
+        val expectedTripId = expectedNavigationTripId
+        val expectedPassenger = expectedNavigationPassengerIndex
+        view.postDelayed({
+            if (!navigationIsCurrent(expectedGeneration, expectedPhase, expectedTripId, expectedPassenger, finishedUrl)) {
+                recordStale("on_page_finished", expectedGeneration, expectedPassenger)
+                return@postDelayed
+            }
+            if (!busy) handlePage()
+        }, 900)
+    }
+
     private fun handlePage() {
         if (busy) return
+        if (!currentExpectedPageMatches()) {
+            recordPageIdentityMismatch("handle_page", expectedNavigationTripId, webView.url.orEmpty())
+            return
+        }
         busy = true
         when (phase) {
             Phase.RIDES -> captureRides()
@@ -430,16 +482,25 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun captureRides() {
+        val expectedNavigation = navigationGeneration
         evaluate<MhtmlRideList>(RIDE_LINKS_JS) { result ->
+            if (!captureStillCurrent(expectedNavigation, Phase.RIDES, "", -1, result?.pageUrl.orEmpty())) {
+                busy = false
+                return@evaluate
+            }
             if (result == null) {
                 retryOrFinish("rides_unreadable")
                 return@evaluate
             }
-            val links = result.tripHrefs
+            val targets = result.tripHrefs
                 .filter(::isSpecificTripHref)
-                .distinctBy(::canonicalHref)
+                .mapNotNull { raw ->
+                    val href = absoluteBlaBlaHref(raw)
+                    tripIdFromHref(href)?.let { tripId -> TripTarget(account.id, tripId, href) }
+                }
+                .distinctBy { it.tripId }
                 .take(MAX_TRIPS)
-            if (links.isEmpty() && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+            if (targets.isEmpty() && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
                 pageReadAttempts++
                 busy = false
                 webView.postDelayed({ handlePage() }, RETRY_MS)
@@ -448,17 +509,20 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             pageReadAttempts = 0
             sessionStore.saveDiagnosticHtml(account, "rides", result.domHtml)
             archive.save(webView, account, "rides", "latest") { saved ->
+                if (!captureStillCurrent(expectedNavigation, Phase.RIDES, "", -1, result.pageUrl)) {
+                    busy = false
+                    return@save
+                }
                 if (saved != null) archived++
-                tripHrefs = links
-                editUrls = tripHrefs.mapNotNull { href -> tripIdFromHref(href)?.let(::editUrlForTrip) }
-                optionUrlByTrip.clear()
+                tripTargets = targets
+                editTargets = tripTargets.map { target -> target.copy(href = editUrlForTrip(target.tripId)) }
+                optionTargetByTrip.clear()
                 UnifiedDebugEventStore.record(
                     "HARVEST_RIDES_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} trips=${tripHrefs.size} html=true mhtml=${saved != null}",
+                    "account=${account.displayLabel} trips=${tripTargets.size} manifestFrozen=true html=true mhtml=${saved != null}",
                 )
                 tripIndex = 0
-                phase = Phase.TRIP
                 busy = false
                 loadNextTrip()
             }
@@ -466,17 +530,29 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun captureTrip() {
-        val href = tripHrefs.getOrNull(tripIndex)
-        val tripId = href?.let(::tripIdFromHref)
-        if (href == null || tripId == null) {
+        val target = tripTargets.getOrNull(tripIndex)
+        if (target == null) {
             phase = Phase.PASSENGER
             busy = false
             loadNextPassenger()
             return
         }
+        val expectedNavigation = navigationGeneration
+        val expectedIndex = tripIndex
         evaluate<MhtmlTripEvidence>(TRIP_EVIDENCE_JS) { result ->
+            val capturedTripId = result?.pageUrl?.let(::tripIdFromHref)
+            if (
+                !captureStillCurrent(expectedNavigation, Phase.TRIP, target.tripId, expectedIndex, result?.pageUrl.orEmpty()) ||
+                capturedTripId != target.tripId
+            ) {
+                if (result != null && capturedTripId != target.tripId) {
+                    recordPageIdentityMismatch("trip_after_evaluate", target.tripId, result.pageUrl)
+                }
+                busy = false
+                return@evaluate
+            }
             if (result == null) {
-                retryCurrentOrAdvanceTrip(tripId, "trip_unreadable")
+                retryCurrentOrAdvanceTrip(target, "trip_unreadable")
                 return@evaluate
             }
             val waitingForRoster = result.passengers.isEmpty() && !result.rosterComplete
@@ -487,46 +563,92 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 return@evaluate
             }
             pageReadAttempts = 0
-            tripEvidence[tripId] = result
-            sessionStore.saveDiagnosticHtml(account, "trip-$tripId", result.domHtml)
-            val targets = buildList {
-                result.passengerHrefs.forEach { add(it) }
-                result.passengers.mapNotNull(BlaBlaCollectorPassenger::booking_href).forEach { add(it) }
-            }.mapNotNull { raw ->
-                when {
-                    raw.startsWith(CARD_TARGET_PREFIX) -> raw.removePrefix(CARD_TARGET_PREFIX).toIntOrNull()?.let { cardIndex ->
-                        PassengerTarget(tripId = tripId, tripHref = href, cardIndex = cardIndex)
-                    }
-                    else -> absoluteBlaBlaHref(raw).takeIf(::isPassengerHref)?.let { passengerHref ->
-                        PassengerTarget(tripId = tripId, tripHref = href, href = passengerHref)
-                    }
-                }
-            }.distinctBy(PassengerTarget::identityKey)
-            targets.forEach { target ->
-                if (passengerTargets.none { it.tripId == target.tripId && it.identityKey == target.identityKey }) {
-                    passengerTargets += target
+            tripEvidence[target.tripId] = result
+            sessionStore.saveDiagnosticHtml(account, "trip-${target.tripId}", result.domHtml)
+            passengerTargetsForTrip(target, result).forEach { passengerTarget ->
+                if (passengerTargets.none { it.tripId == passengerTarget.tripId && it.discoveryKey == passengerTarget.discoveryKey }) {
+                    passengerTargets += passengerTarget
                     UnifiedDebugEventStore.record(
                         "PASSENGER_CARD_DISCOVERED",
                         packageName,
-                        "account=${account.displayLabel} tripId=$tripId cardIndex=${target.cardIndex} hrefPresent=${target.href.isNotBlank()} clickable=true",
+                        "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${passengerTarget.externalPassengerKey} cardIndex=${passengerTarget.cardIndex} hrefPresent=${passengerTarget.href.isNotBlank()} clickable=true",
                     )
                 }
             }
-            archive.save(webView, account, "trip", tripId) { saved ->
+            archive.save(webView, account, "trip", target.tripId) { saved ->
+                if (!captureStillCurrent(expectedNavigation, Phase.TRIP, target.tripId, expectedIndex, result.pageUrl)) {
+                    busy = false
+                    return@save
+                }
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "HARVEST_TRIP_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripIdPresent=true index=${tripIndex + 1}/${tripHrefs.size} passengers=${result.passengers.size} passengerLinks=${targets.size} rosterComplete=${result.rosterComplete} empty=${result.explicitEmptyRoster} stops=${result.itineraryStops.size} views=${result.views.coerceAtLeast(0)}",
+                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=$capturedTripId index=${expectedIndex + 1}/${tripTargets.size} passengers=${result.passengers.size} rosterComplete=${result.rosterComplete} empty=${result.explicitEmptyRoster} stops=${result.itineraryStops.size} views=${result.views.coerceAtLeast(0)} identityMatch=true",
                 )
-                tripIndex++
+                tripIndex = expectedIndex + 1
                 busy = false
                 loadNextTrip()
             }
         }
     }
 
-    private fun retryCurrentOrAdvanceTrip(tripId: String, reason: String) {
+    private fun passengerTargetsForTrip(target: TripTarget, result: MhtmlTripEvidence): List<PassengerTarget> {
+        val discovered = linkedMapOf<String, PassengerTarget>()
+        fun fromPassenger(index: Int, passenger: BlaBlaCollectorPassenger, hrefOverride: String? = null): PassengerTarget {
+            val realHref = (hrefOverride ?: passenger.booking_href)
+                ?.takeIf(String::isNotBlank)
+                ?.let(::absoluteBlaBlaHref)
+                ?.takeIf(::isPassengerHref)
+                .orEmpty()
+            return PassengerTarget(
+                accountId = account.id,
+                tripId = target.tripId,
+                tripHref = target.href,
+                href = realHref,
+                cardIndex = index,
+                expectedName = passenger.name.trim(),
+                expectedSeats = passenger.seats.coerceAtLeast(1),
+                expectedBoarding = passenger.boarding.orEmpty().trim(),
+                expectedDropoff = passenger.dropoff.orEmpty().trim(),
+            )
+        }
+        result.passengers.forEachIndexed { index, passenger ->
+            val passengerTarget = fromPassenger(index, passenger)
+            discovered[passengerTarget.discoveryKey] = passengerTarget
+        }
+        result.passengerHrefs.forEach { raw ->
+            when {
+                raw.startsWith(CARD_TARGET_PREFIX) -> {
+                    val cardIndex = raw.removePrefix(CARD_TARGET_PREFIX).toIntOrNull() ?: return@forEach
+                    val existingPassenger = result.passengers.getOrNull(cardIndex) ?: return@forEach
+                    val passengerTarget = fromPassenger(cardIndex, existingPassenger)
+                    discovered.putIfAbsent(passengerTarget.discoveryKey, passengerTarget)
+                }
+                else -> {
+                    val passengerHref = absoluteBlaBlaHref(raw).takeIf(::isPassengerHref) ?: return@forEach
+                    val canonical = canonicalHref(passengerHref)
+                    val matchIndex = result.passengers.indexOfFirst { passenger ->
+                        passenger.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref) == canonical
+                    }
+                    val passengerTarget = if (matchIndex >= 0) {
+                        fromPassenger(matchIndex, result.passengers[matchIndex], passengerHref)
+                    } else {
+                        PassengerTarget(
+                            accountId = account.id,
+                            tripId = target.tripId,
+                            tripHref = target.href,
+                            href = passengerHref,
+                        )
+                    }
+                    discovered[passengerTarget.discoveryKey] = passengerTarget
+                }
+            }
+        }
+        return discovered.values.toList()
+    }
+
+    private fun retryCurrentOrAdvanceTrip(target: TripTarget, reason: String) {
         if (pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
             pageReadAttempts++
             busy = false
@@ -537,7 +659,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         UnifiedDebugEventStore.record(
             "HARVEST_BLOCK_UNREADABLE",
             packageName,
-            "account=${account.displayLabel} block=trip tripId=$tripId reason=$reason",
+            "account=${account.displayLabel} block=trip tripId=${target.tripId} reason=$reason",
         )
         tripIndex++
         busy = false
@@ -553,17 +675,32 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             return
         }
         val expectedIndex = passengerIndex
+        val expectedNavigation = navigationGeneration
+        if (target.cardIndex < 0 || !BlaBlaHarvestAssociation.tripPageMatches(target.tripId, webView.url.orEmpty())) {
+            recordPageIdentityMismatch("passenger_card_parent", target.tripId, webView.url.orEmpty())
+            advancePassenger(expectedIndex, "parent_trip_not_proven")
+            return
+        }
         evaluate<MhtmlPassengerCardOpenState>(passengerCardOpenJs(target.cardIndex)) { state ->
+            if (!captureStillCurrent(expectedNavigation, Phase.PASSENGER_CARD, target.tripId, expectedIndex, webView.url.orEmpty())) {
+                busy = false
+                return@evaluate
+            }
             if (state?.clicked == true) {
                 pageReadAttempts = 0
-                phase = Phase.PASSENGER
-                busy = false
+                beginImplicitPassengerNavigation(target, expectedIndex)
                 UnifiedDebugEventStore.record(
                     "PASSENGER_CARD_OPENED",
                     packageName,
-                    "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} hrefPresent=false cardIndex=${target.cardIndex} clicked=true",
+                    "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} hrefPresent=false cardIndex=${target.cardIndex} clicked=true identityPending=true",
                 )
                 webView.postDelayed({
+                    if (!bindPassengerTargetToCurrentPage(expectedIndex, target.tripId)) {
+                        if (phase == Phase.PASSENGER && passengerIndex == expectedIndex) {
+                            advancePassenger(expectedIndex, "passenger_url_not_proven")
+                        }
+                        return@postDelayed
+                    }
                     if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
                 }, PASSENGER_NAVIGATION_SETTLE_MS)
                 return@evaluate
@@ -575,18 +712,74 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 return@evaluate
             }
             pageReadAttempts = 0
-            UnifiedDebugEventStore.record(
-                "HARVEST_BLOCK_UNREADABLE",
-                packageName,
-                "account=${account.displayLabel} block=passenger_card tripId=${target.tripId} cardIndex=${target.cardIndex} reason=card_not_clickable",
-            )
-            passengerIndex++
-            busy = false
-            loadNextPassenger()
+            advancePassenger(expectedIndex, "card_not_clickable")
         }
     }
 
+    private fun beginImplicitPassengerNavigation(target: PassengerTarget, expectedIndex: Int) {
+        navigationGeneration++
+        evaluationGeneration++
+        phase = Phase.PASSENGER
+        expectedNavigationPhase = Phase.PASSENGER
+        expectedNavigationTripId = target.tripId
+        expectedNavigationPassengerIndex = expectedIndex
+        expectedNavigationUrl = ""
+        busy = false
+    }
+
+    private fun bindPassengerTargetToCurrentPage(expectedIndex: Int, expectedTripId: String): Boolean {
+        if (phase != Phase.PASSENGER || passengerIndex != expectedIndex || expectedNavigationPassengerIndex != expectedIndex) return false
+        val current = passengerTargets.getOrNull(expectedIndex) ?: return false
+        if (current.tripId != expectedTripId || current.accountId != account.id) return false
+        if (current.href.isNotBlank()) return passengerPageMatchesTarget(current, webView.url.orEmpty())
+        val actualHref = webView.url.orEmpty().takeIf(::isPassengerHref) ?: run {
+            recordPageIdentityMismatch("passenger_bind_url", expectedTripId, webView.url.orEmpty())
+            return false
+        }
+        val actualKey = passengerKey(actualHref)
+        val duplicate = passengerTargets.withIndex().any { (index, other) ->
+            index != expectedIndex &&
+                other.tripId == expectedTripId &&
+                other.href.isNotBlank() &&
+                passengerKey(other.href) == actualKey
+        }
+        if (duplicate) {
+            UnifiedDebugEventStore.record(
+                "association_conflict",
+                packageName,
+                "account=${account.displayLabel} tripId=$expectedTripId passengerKey=$actualKey reason=duplicate_passenger_key_within_trip action=reject",
+            )
+            return false
+        }
+        val bound = current.copy(href = actualHref)
+        passengerTargets[expectedIndex] = bound
+        if (current.cardIndex >= 0) {
+            val summary = tripEvidence[expectedTripId]
+            val passengers = summary?.passengers?.toMutableList()
+            val existing = passengers?.getOrNull(current.cardIndex)
+            if (summary != null && passengers != null && existing != null) {
+                passengers[current.cardIndex] = existing.copy(booking_href = actualHref)
+                tripEvidence[expectedTripId] = summary.copy(passengers = passengers)
+            }
+        }
+        UnifiedDebugEventStore.record(
+            "PASSENGER_TARGET_BOUND",
+            packageName,
+            "account=${account.displayLabel} parentTripId=$expectedTripId passengerKey=$actualKey cardIndex=${current.cardIndex} realHref=true",
+        )
+        return passengerPageMatchesTarget(bound, actualHref)
+    }
+
     private fun capturePassenger() {
+        if (!bindPassengerTargetToCurrentPage(passengerIndex, passengerTargets.getOrNull(passengerIndex)?.tripId.orEmpty())) {
+            val target = passengerTargets.getOrNull(passengerIndex)
+            if (target != null && target.href.isNotBlank() && passengerPageMatchesTarget(target, webView.url.orEmpty())) {
+                // already bound direct target
+            } else {
+                advancePassenger(passengerIndex, "passenger_page_identity_unproven")
+                return
+            }
+        }
         val target = passengerTargets.getOrNull(passengerIndex)
         if (target == null) {
             phase = Phase.EDIT
@@ -595,22 +788,10 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             return
         }
         val expectedIndex = passengerIndex
+        val expectedNavigation = navigationGeneration
         evaluate<MhtmlPassengerEvidence>(PASSENGER_EVIDENCE_JS) { result ->
-            val directPhone = normalizeCapturedPhone(result?.phone)
-            val capturedPhone = directPhone ?: interceptedPassengerPhone
-            if (capturedPhone == null && result?.callActionPresent == true && !passengerCallActionTriggered) {
-                passengerCallActionTriggered = true
-                UnifiedDebugEventStore.record(
-                    "PASSENGER_CALL_ACTION_PRESENT",
-                    packageName,
-                    "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} actionPresent=true clickIntercepted=true",
-                )
-                evaluateRaw(CLICK_CALL_ACTION_JS) {
-                    busy = false
-                    webView.postDelayed({
-                        if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
-                    }, PASSENGER_CALL_SETTLE_MS)
-                }
+            if (!passengerCaptureStillCurrent(expectedNavigation, expectedIndex, target, result?.pageUrl.orEmpty())) {
+                busy = false
                 return@evaluate
             }
             val pageLooksReady = result != null && (
@@ -619,6 +800,32 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                     result.boarding.isNotBlank() ||
                     result.dropoff.isNotBlank()
                 )
+            if (result != null && pageLooksReady && !passengerEvidenceCompatible(target, result)) {
+                recordPageIdentityMismatch("passenger_semantic_mismatch", target.tripId, result.pageUrl)
+                advancePassenger(expectedIndex, "passenger_semantic_mismatch")
+                return@evaluate
+            }
+            val directPhone = normalizeCapturedPhone(result?.phone)
+            val capturedPhone = directPhone ?: interceptedPassengerPhone
+            if (capturedPhone == null && result?.callActionPresent == true && !passengerCallActionTriggered) {
+                passengerCallActionTriggered = true
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_CALL_ACTION_PRESENT",
+                    packageName,
+                    "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} actionPresent=true clickIntercepted=true",
+                )
+                evaluateRaw(CLICK_CALL_ACTION_JS) {
+                    if (!passengerCaptureStillCurrent(expectedNavigation, expectedIndex, target, webView.url.orEmpty())) {
+                        busy = false
+                        return@evaluateRaw
+                    }
+                    busy = false
+                    webView.postDelayed({
+                        if (phase == Phase.PASSENGER && passengerIndex == expectedIndex && !busy) handlePage()
+                    }, PASSENGER_CALL_SETTLE_MS)
+                }
+                return@evaluate
+            }
             if ((capturedPhone == null || !pageLooksReady) && pageReadAttempts < MAX_PASSENGER_PHONE_READ_ATTEMPTS) {
                 pageReadAttempts++
                 busy = false
@@ -633,26 +840,16 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                     passengerReloadAttempts++
                     passengerCallActionTriggered = false
                     interceptedPassengerPhone = null
-                    busy = false
                     UnifiedDebugEventStore.record(
                         "PASSENGER_PAGE_RELOAD",
                         packageName,
-                        "account=${account.displayLabel} tripId=${target.tripId} index=${expectedIndex + 1}/${passengerTargets.size} attempt=$passengerReloadAttempts reason=evidence_not_ready hrefPresent=true",
+                        "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} attempt=$passengerReloadAttempts reason=evidence_not_ready hrefPresent=true",
                     )
-                    webView.loadUrl(target.href)
+                    busy = false
+                    loadTrackedUrl(target.href, Phase.PASSENGER, target.tripId, expectedIndex)
                     return@evaluate
                 }
-                UnifiedDebugEventStore.record(
-                    "HARVEST_BLOCK_UNREADABLE",
-                    packageName,
-                    "account=${account.displayLabel} block=passenger tripId=${target.tripId} reason=passenger_evidence_not_ready hrefPresent=${target.href.isNotBlank()}",
-                )
-                passengerIndex++
-                passengerCallActionTriggered = false
-                interceptedPassengerPhone = null
-                passengerReloadAttempts = 0
-                busy = false
-                loadNextPassenger()
+                advancePassenger(expectedIndex, "passenger_evidence_not_ready")
                 return@evaluate
             }
             val baseEvidence = result ?: MhtmlPassengerEvidence()
@@ -664,51 +861,62 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 evidence.domHtml,
             )
             archive.save(webView, account, "passenger", "${target.tripId}-${target.archiveKey}") { saved ->
+                if (!passengerCaptureStillCurrent(expectedNavigation, expectedIndex, target, evidence.pageUrl)) {
+                    busy = false
+                    return@save
+                }
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "HARVEST_PASSENGER_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=${target.tripId} index=${passengerIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()} callActionPresent=${evidence.callActionPresent}",
+                    "account=${account.displayLabel} parentTripId=${target.tripId} enrichedTripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()} callActionPresent=${evidence.callActionPresent} identityMatch=true",
                 )
-                passengerIndex++
-                passengerCallActionTriggered = false
-                interceptedPassengerPhone = null
-                passengerReloadAttempts = 0
+                passengerIndex = expectedIndex + 1
+                resetPassengerReadState()
                 busy = false
                 loadNextPassenger()
             }
         }
     }
 
+    private fun passengerEvidenceCompatible(target: PassengerTarget, evidence: MhtmlPassengerEvidence): Boolean {
+        if (target.expectedName.isNotBlank() && evidence.visibleName.isNotBlank()) {
+            if (normalizeText(target.expectedName) != normalizeText(evidence.visibleName)) return false
+        }
+        if (target.expectedBoarding.isNotBlank() && evidence.boarding.isNotBlank()) {
+            if (!samePlaceEvidence(target.expectedBoarding, evidence.boarding)) return false
+        }
+        if (target.expectedDropoff.isNotBlank() && evidence.dropoff.isNotBlank()) {
+            if (!samePlaceEvidence(target.expectedDropoff, evidence.dropoff)) return false
+        }
+        return true
+    }
+
     private fun persistPassengerEvidence(target: PassengerTarget, evidence: MhtmlPassengerEvidence) {
-        passengerEvidence[target.identityKey] = evidence
-        if (target.href.isNotBlank()) passengerEvidence[canonicalHref(target.href)] = evidence
-        if (target.cardIndex < 0) return
-        val summary = tripEvidence[target.tripId] ?: return
-        val passengers = summary.passengers.toMutableList()
-        val current = passengers.getOrNull(target.cardIndex) ?: return
-        passengers[target.cardIndex] = current.copy(
-            name = current.name.ifBlank { evidence.visibleName.trim() },
-            seats = maxOf(current.seats.coerceAtLeast(1), evidence.seats.coerceAtLeast(1)),
-            boarding = current.boarding?.takeIf(String::isNotBlank) ?: evidence.boarding.takeIf(String::isNotBlank),
-            dropoff = current.dropoff?.takeIf(String::isNotBlank) ?: evidence.dropoff.takeIf(String::isNotBlank),
-            phone = current.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone),
-        )
-        tripEvidence[target.tripId] = summary.copy(passengers = passengers)
+        if (!passengerPageMatchesTarget(target, evidence.pageUrl)) {
+            recordPageIdentityMismatch("persist_passenger", target.tripId, evidence.pageUrl)
+            return
+        }
+        passengerEvidence[target.scopedEvidenceKey] = evidence
     }
 
     private fun captureEdit() {
-        val href = editUrls.getOrNull(editIndex)
-        val tripId = href?.let(::tripIdFromEditHref)
-        if (href == null || tripId == null) {
+        val target = editTargets.getOrNull(editIndex)
+        if (target == null) {
             phase = Phase.OPTIONS
-            optionUrls = optionUrlByTrip.values.distinct()
+            optionTargets = optionTargetByTrip.values.toList()
             optionIndex = 0
             busy = false
             loadNextOption()
             return
         }
+        val expectedNavigation = navigationGeneration
+        val expectedIndex = editIndex
         evaluate<MhtmlEditEvidence>(EDIT_EVIDENCE_JS) { result ->
+            if (!captureStillCurrent(expectedNavigation, Phase.EDIT, target.tripId, expectedIndex, result?.pageUrl.orEmpty())) {
+                busy = false
+                return@evaluate
+            }
             if ((result == null || result.optionsHref.isBlank()) && pageReadAttempts < MAX_EDIT_LINK_READ_ATTEMPTS) {
                 pageReadAttempts++
                 busy = false
@@ -721,24 +929,36 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 .takeIf(String::isNotBlank)
                 ?.let(::absoluteBlaBlaHref)
                 ?.takeIf(::isOptionsHref)
+                ?.takeIf { optionHref -> tripIdFromOptionsHref(optionHref) == target.tripId }
             if (options != null) {
-                optionUrlByTrip[tripId] = options
+                optionTargetByTrip[target.tripId] = target.copy(href = options)
             } else {
+                if (evidence.optionsHref.isNotBlank()) {
+                    UnifiedDebugEventStore.record(
+                        "association_conflict",
+                        packageName,
+                        "account=${account.displayLabel} tripId=${target.tripId} reason=options_link_trip_mismatch action=reject",
+                    )
+                }
                 UnifiedDebugEventStore.record(
                     "HARVEST_BLOCK_UNREADABLE",
                     packageName,
-                    "account=${account.displayLabel} block=edit tripId=$tripId reason=options_link_missing",
+                    "account=${account.displayLabel} block=edit tripId=${target.tripId} reason=options_link_missing_or_mismatch",
                 )
             }
-            sessionStore.saveDiagnosticHtml(account, "edit-$tripId", evidence.domHtml)
-            archive.save(webView, account, "edit", tripId) { saved ->
+            sessionStore.saveDiagnosticHtml(account, "edit-${target.tripId}", evidence.domHtml)
+            archive.save(webView, account, "edit", target.tripId) { saved ->
+                if (!captureStillCurrent(expectedNavigation, Phase.EDIT, target.tripId, expectedIndex, evidence.pageUrl)) {
+                    busy = false
+                    return@save
+                }
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "HARVEST_EDIT_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=${options != null} html=true mhtml=${saved != null}",
+                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${tripIdFromEditHref(evidence.pageUrl).orEmpty()} optionsLinkPresent=${options != null} html=true mhtml=${saved != null} identityMatch=true",
                 )
-                editIndex++
+                editIndex = expectedIndex + 1
                 busy = false
                 loadNextEdit()
             }
@@ -746,13 +966,18 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun captureOptions() {
-        val href = optionUrls.getOrNull(optionIndex)
-        val tripId = href?.let(::tripIdFromOptionsHref)
-        if (href == null || tripId == null) {
+        val target = optionTargets.getOrNull(optionIndex)
+        if (target == null) {
             finishHarvest()
             return
         }
+        val expectedNavigation = navigationGeneration
+        val expectedIndex = optionIndex
         evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { result ->
+            if (!captureStillCurrent(expectedNavigation, Phase.OPTIONS, target.tripId, expectedIndex, result?.pageUrl.orEmpty())) {
+                busy = false
+                return@evaluate
+            }
             if ((result == null || result.seats < 0) && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
                 pageReadAttempts++
                 busy = false
@@ -761,16 +986,20 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             }
             pageReadAttempts = 0
             val state = result ?: SeatOptionState()
-            if (state.seats >= 0) publishedSeatsByTrip[tripId] = state.seats
-            sessionStore.saveDiagnosticHtml(account, "options-$tripId", state.domHtml)
-            archive.save(webView, account, "options", tripId) { saved ->
+            if (state.seats >= 0) publishedSeatsByTrip[target.tripId] = state.seats
+            sessionStore.saveDiagnosticHtml(account, "options-${target.tripId}", state.domHtml)
+            archive.save(webView, account, "options", target.tripId) { saved ->
+                if (!captureStillCurrent(expectedNavigation, Phase.OPTIONS, target.tripId, expectedIndex, state.pageUrl)) {
+                    busy = false
+                    return@save
+                }
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "SEAT_OPTIONS_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId publishedSeats=${state.seats} canAdd=${state.canAdd} canRemove=${state.canRemove} savePresent=${state.savePresent} html=true mhtml=${saved != null}",
+                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${tripIdFromOptionsHref(state.pageUrl).orEmpty()} publishedSeats=${state.seats} canAdd=${state.canAdd} canRemove=${state.canRemove} savePresent=${state.savePresent} html=true mhtml=${saved != null} identityMatch=true",
                 )
-                optionIndex++
+                optionIndex = expectedIndex + 1
                 busy = false
                 loadNextOption()
             }
@@ -778,14 +1007,14 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
     }
 
     private fun loadNextTrip() {
-        val href = tripHrefs.getOrNull(tripIndex)
-        if (href == null) {
+        val target = tripTargets.getOrNull(tripIndex)
+        if (target == null) {
             phase = Phase.PASSENGER
             passengerIndex = 0
             loadNextPassenger()
         } else {
-            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
-            webView.loadUrl(href)
+            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripTargets.size}"
+            loadTrackedUrl(target.href, Phase.TRIP, target.tripId, tripIndex)
         }
     }
 
@@ -796,50 +1025,179 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             editIndex = 0
             loadNextEdit()
         } else {
-            pageReadAttempts = 0
-            passengerCallActionTriggered = false
-            interceptedPassengerPhone = null
-            passengerReloadAttempts = 0
+            resetPassengerReadState()
             statusView.text = "${account.displayLabel} • passageiro ${passengerIndex + 1}/${passengerTargets.size}"
             if (target.href.isNotBlank()) {
-                phase = Phase.PASSENGER
-                webView.loadUrl(target.href)
+                loadTrackedUrl(target.href, Phase.PASSENGER, target.tripId, passengerIndex)
             } else if (target.cardIndex >= 0) {
-                phase = Phase.PASSENGER_CARD
-                webView.loadUrl(target.tripHref)
+                loadTrackedUrl(target.tripHref, Phase.PASSENGER_CARD, target.tripId, passengerIndex)
             } else {
-                UnifiedDebugEventStore.record(
-                    "HARVEST_BLOCK_UNREADABLE",
-                    packageName,
-                    "account=${account.displayLabel} block=passenger tripId=${target.tripId} reason=target_missing",
-                )
-                passengerIndex++
-                loadNextPassenger()
+                advancePassenger(passengerIndex, "target_missing")
             }
         }
     }
 
     private fun loadNextEdit() {
-        val href = editUrls.getOrNull(editIndex)
-        if (href == null) {
+        val target = editTargets.getOrNull(editIndex)
+        if (target == null) {
             phase = Phase.OPTIONS
-            optionUrls = optionUrlByTrip.values.distinct()
+            optionTargets = optionTargetByTrip.values.toList()
             optionIndex = 0
             loadNextOption()
         } else {
-            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
-            webView.loadUrl(href)
+            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editTargets.size}"
+            loadTrackedUrl(target.href, Phase.EDIT, target.tripId, editIndex)
         }
     }
 
     private fun loadNextOption() {
-        val href = optionUrls.getOrNull(optionIndex)
-        if (href == null) {
+        val target = optionTargets.getOrNull(optionIndex)
+        if (target == null) {
             finishHarvest()
         } else {
-            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
-            webView.loadUrl(href)
+            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionTargets.size}"
+            loadTrackedUrl(target.href, Phase.OPTIONS, target.tripId, optionIndex)
         }
+    }
+
+    private fun loadTrackedUrl(url: String, targetPhase: Phase, tripId: String = "", passengerOrBlockIndex: Int = -1) {
+        navigationGeneration++
+        evaluationGeneration++
+        phase = targetPhase
+        expectedNavigationPhase = targetPhase
+        expectedNavigationTripId = tripId
+        expectedNavigationPassengerIndex = passengerOrBlockIndex
+        expectedNavigationUrl = url
+        busy = false
+        webView.loadUrl(url)
+    }
+
+    private fun navigationIsCurrent(
+        expectedGeneration: Long,
+        expectedPhase: Phase,
+        expectedTripId: String,
+        expectedPassengerOrBlockIndex: Int,
+        finishedUrl: String,
+    ): Boolean {
+        if (expectedGeneration != navigationGeneration || expectedPhase != phase || expectedPhase != expectedNavigationPhase) return false
+        if (expectedTripId != expectedNavigationTripId || expectedPassengerOrBlockIndex != expectedNavigationPassengerIndex) return false
+        if (!pageIdentityMatches(expectedPhase, expectedTripId, expectedPassengerOrBlockIndex, finishedUrl)) return false
+        return pageIdentityMatches(expectedPhase, expectedTripId, expectedPassengerOrBlockIndex, webView.url.orEmpty())
+    }
+
+    private fun currentExpectedPageMatches(): Boolean = pageIdentityMatches(
+        expectedNavigationPhase,
+        expectedNavigationTripId,
+        expectedNavigationPassengerIndex,
+        webView.url.orEmpty(),
+    )
+
+    private fun captureStillCurrent(
+        expectedGeneration: Long,
+        expectedPhase: Phase,
+        expectedTripId: String,
+        expectedPassengerOrBlockIndex: Int,
+        capturedUrl: String,
+    ): Boolean {
+        val current = navigationIsCurrent(
+            expectedGeneration,
+            expectedPhase,
+            expectedTripId,
+            expectedPassengerOrBlockIndex,
+            capturedUrl,
+        )
+        if (!current) {
+            if (capturedUrl.isNotBlank()) recordPageIdentityMismatch("capture_after_evaluate", expectedTripId, capturedUrl)
+            else recordStale("capture_after_evaluate", expectedGeneration, expectedPassengerOrBlockIndex)
+        }
+        return current
+    }
+
+    private fun passengerCaptureStillCurrent(
+        expectedGeneration: Long,
+        expectedIndex: Int,
+        target: PassengerTarget,
+        capturedUrl: String,
+    ): Boolean {
+        if (
+            expectedGeneration != navigationGeneration ||
+            phase != Phase.PASSENGER ||
+            expectedNavigationPhase != Phase.PASSENGER ||
+            expectedIndex != passengerIndex ||
+            expectedIndex != expectedNavigationPassengerIndex ||
+            target.tripId != expectedNavigationTripId ||
+            target.accountId != account.id
+        ) {
+            recordStale("passenger_capture_context", expectedGeneration, expectedIndex)
+            return false
+        }
+        val currentTarget = passengerTargets.getOrNull(expectedIndex) ?: return false
+        if (currentTarget.tripId != target.tripId || currentTarget.externalPassengerKey != target.externalPassengerKey) {
+            UnifiedDebugEventStore.record(
+                "association_conflict",
+                packageName,
+                "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} reason=target_changed_during_capture action=reject",
+            )
+            return false
+        }
+        if (!passengerPageMatchesTarget(currentTarget, capturedUrl) || !passengerPageMatchesTarget(currentTarget, webView.url.orEmpty())) {
+            recordPageIdentityMismatch("passenger_after_evaluate", target.tripId, capturedUrl)
+            return false
+        }
+        return true
+    }
+
+    private fun pageIdentityMatches(targetPhase: Phase, tripId: String, index: Int, url: String): Boolean = when (targetPhase) {
+        Phase.RIDES -> BlaBlaHarvestAssociation.ridesPageMatches(url)
+        Phase.TRIP -> BlaBlaHarvestAssociation.tripPageMatches(tripId, url)
+        Phase.PASSENGER_CARD -> BlaBlaHarvestAssociation.tripPageMatches(tripId, url)
+        Phase.PASSENGER -> passengerTargets.getOrNull(index)?.let { target ->
+            target.tripId == tripId && passengerPageMatchesTarget(target, url)
+        } == true
+        Phase.EDIT -> BlaBlaHarvestAssociation.editPageMatches(tripId, url)
+        Phase.OPTIONS -> BlaBlaHarvestAssociation.optionsPageMatches(tripId, url)
+    }
+
+    private fun passengerPageMatchesTarget(target: PassengerTarget, url: String): Boolean {
+        if (!isPassengerHref(url)) return false
+        if (target.href.isBlank()) return true
+        return BlaBlaHarvestAssociation.passengerPageMatches(target.externalPassengerKey, url)
+    }
+
+    private fun recordStale(reason: String, expectedGeneration: Long, expectedIndex: Int) {
+        UnifiedDebugEventStore.record(
+            "HARVEST_STALE_CALLBACK_IGNORED",
+            packageName,
+            "account=${account.displayLabel} reason=$reason expectedNavigation=$expectedGeneration currentNavigation=$navigationGeneration expectedPhase=${expectedNavigationPhase.name.lowercase()} currentPhase=${phase.name.lowercase()} expectedIndex=$expectedIndex currentTripIndex=$tripIndex currentPassengerIndex=$passengerIndex currentEditIndex=$editIndex currentOptionIndex=$optionIndex",
+        )
+    }
+
+    private fun recordPageIdentityMismatch(reason: String, expectedTripId: String, capturedUrl: String) {
+        UnifiedDebugEventStore.record(
+            "HARVEST_PAGE_IDENTITY_MISMATCH",
+            packageName,
+            "account=${account.displayLabel} reason=$reason phase=${phase.name.lowercase()} expectedTripId=$expectedTripId expectedUrl=${sanitizeHarvestUrl(expectedNavigationUrl)} capturedUrl=${sanitizeHarvestUrl(capturedUrl)} action=reject",
+        )
+    }
+
+    private fun advancePassenger(expectedIndex: Int, reason: String) {
+        val target = passengerTargets.getOrNull(expectedIndex)
+        UnifiedDebugEventStore.record(
+            "HARVEST_BLOCK_UNREADABLE",
+            packageName,
+            "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} passengerKey=${target?.externalPassengerKey.orEmpty()} reason=$reason",
+        )
+        passengerIndex = maxOf(passengerIndex, expectedIndex + 1)
+        resetPassengerReadState()
+        busy = false
+        loadNextPassenger()
+    }
+
+    private fun resetPassengerReadState() {
+        pageReadAttempts = 0
+        passengerCallActionTriggered = false
+        interceptedPassengerPhone = null
+        passengerReloadAttempts = 0
     }
 
     private fun finishHarvest() {
@@ -847,7 +1205,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         UnifiedDebugEventStore.record(
             "MHTML_HARVEST_COMPLETE",
             packageName,
-            "account=${account.displayLabel} trips=${tripHrefs.size} passengerPages=${passengerTargets.size} editPages=${editUrls.size} optionPages=${optionUrls.size} archives=$archived enrichedTrips=${enrichment.first} enrichedPassengers=${enrichment.second}",
+            "account=${account.displayLabel} trips=${tripTargets.size} passengerPages=${passengerTargets.size} editPages=${editTargets.size} optionPages=${optionTargets.size} archives=$archived enrichedTrips=${enrichment.first} enrichedPassengers=${enrichment.second} deterministic=true",
         )
         setResult(
             RESULT_OK,
@@ -866,15 +1224,12 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         val updatedTrips = snapshot.trips.map { trip ->
             val tripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
                 ?: trip.trip_href?.let(::tripIdFromHref)
-                ?: return@map trip
+                ?: return@map trip.copy(passengers = emptyList(), booked_seats = 0, passenger_roster_complete = false)
             val summary = tripEvidence[tripId]
-            val mergedPassengers = mergePassengers(trip.passengers, summary?.passengers.orEmpty())
-                .map { passenger -> enrichPassenger(passenger) }
-            val rosterComplete = trip.passenger_roster_complete ||
-                summary?.rosterComplete == true ||
-                summary?.explicitEmptyRoster == true
+            val mergedPassengers = summary?.passengers.orEmpty().map { passenger -> enrichPassenger(tripId, passenger) }
+            val rosterComplete = summary != null && (summary.rosterComplete || summary.explicitEmptyRoster)
             val stops = summary?.itineraryStops.orEmpty()
-            val occupied = occupiedSeatsForTimeline(mergedPassengers, stops)
+            val occupied = if (summary == null) 0 else occupiedSeatsForTimeline(mergedPassengers, stops)
             val publishedSeats = publishedSeatsByTrip[tripId]
             val views = summary?.views?.takeIf { it >= 0 }
             persistedEvidence += BlaBlaHarvestTripEvidence(
@@ -885,12 +1240,19 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 passengers = mergedPassengers,
                 passengerRosterComplete = rosterComplete,
             )
-            if (summary != null || publishedSeats != null || mergedPassengers != trip.passengers) enrichedTrips++
+            if (summary != null || publishedSeats != null) enrichedTrips++
             enrichedPassengers += mergedPassengers.size
+            if (summary == null) {
+                UnifiedDebugEventStore.record(
+                    "HARVEST_TRIP_AWAITING_READ",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId action=clear_unproven_roster rosterComplete=false",
+                )
+            }
             UnifiedDebugEventStore.record(
                 "HARVEST_TRIP_ENRICHED",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1}",
+                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1} deterministicJoin=true",
             )
             trip.copy(
                 passengers = mergedPassengers,
@@ -899,19 +1261,53 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             )
         }
         harvestStore.replace(account.id, persistedEvidence)
-        sessionStore.saveSync(
-            account = account,
-            lastUrl = snapshot.lastUrl,
-            trips = updatedTrips,
-            skippedTrips = snapshot.skippedTrips,
-            identityVerified = snapshot.identityVerified,
-        )
+        saveDeterministicSnapshot(snapshot, updatedTrips)
         return enrichedTrips to enrichedPassengers
     }
 
-    private fun enrichPassenger(passenger: BlaBlaCollectorPassenger): BlaBlaCollectorPassenger {
+    /**
+     * Harvest evidence must not be passed through the normal incomplete-roster
+     * preservation path: a contaminated roster from 0.1.248 could otherwise be
+     * revived when the new deterministic capture intentionally fails closed.
+     */
+    private fun saveDeterministicSnapshot(
+        previous: BlaBlaDynamicSessionSnapshot,
+        trips: List<BlaBlaCollectorTrip>,
+    ) {
+        val target = File(filesDir, "blablacar-dynamic-session-${account.id}.json")
+        val temp = File(target.parentFile, target.name + ".harvest.tmp")
+        val replacement = previous.copy(
+            profileUuid = account.profileUuid,
+            profileLabel = account.displayLabel,
+            lastUrl = previous.lastUrl,
+            updatedAtMillis = System.currentTimeMillis(),
+            trips = trips,
+        )
+        temp.writeText(json.encodeToString(replacement), Charsets.UTF_8)
+        if (!temp.renameTo(target)) {
+            target.writeText(temp.readText(Charsets.UTF_8), Charsets.UTF_8)
+            temp.delete()
+        }
+        UnifiedDebugEventStore.record(
+            "SNAPSHOT_SAVED",
+            packageName,
+            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${trips.size} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} preservedIncomplete=0 skipped=${previous.skippedTrips} identityVerified=${previous.identityVerified} deterministicHarvest=true",
+        )
+    }
+
+    private fun enrichPassenger(tripId: String, passenger: BlaBlaCollectorPassenger): BlaBlaCollectorPassenger {
         val href = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty) ?: return passenger
-        val evidence = passengerEvidence[canonicalHref(absoluteBlaBlaHref(href))] ?: return passenger
+        val absoluteHref = absoluteBlaBlaHref(href)
+        val key = BlaBlaHarvestAssociation.passengerEvidenceKey(account.id, tripId, passengerKey(absoluteHref))
+        val evidence = passengerEvidence[key] ?: return passenger.copy(booking_href = absoluteHref)
+        if (!BlaBlaHarvestAssociation.passengerPageMatches(passengerKey(absoluteHref), evidence.pageUrl)) {
+            UnifiedDebugEventStore.record(
+                "association_conflict",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId passengerKey=${passengerKey(absoluteHref)} reason=evidence_page_mismatch action=reject",
+            )
+            return passenger.copy(booking_href = absoluteHref)
+        }
         val phone = passenger.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone)
         return passenger.copy(
             name = passenger.name.ifBlank { evidence.visibleName.trim() },
@@ -919,45 +1315,8 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             boarding = passenger.boarding?.takeIf(String::isNotBlank) ?: evidence.boarding.takeIf(String::isNotBlank),
             dropoff = passenger.dropoff?.takeIf(String::isNotBlank) ?: evidence.dropoff.takeIf(String::isNotBlank),
             phone = phone,
-            booking_href = absoluteBlaBlaHref(href),
+            booking_href = absoluteHref,
         )
-    }
-
-    private fun mergePassengers(
-        current: List<BlaBlaCollectorPassenger>,
-        harvested: List<BlaBlaCollectorPassenger>,
-    ): List<BlaBlaCollectorPassenger> {
-        val merged = current.toMutableList()
-        harvested.forEach { incoming ->
-            val index = merged.indexOfFirst { existing -> passengerMatches(existing, incoming) }
-            if (index < 0) {
-                merged += incoming
-            } else {
-                val existing = merged[index]
-                merged[index] = existing.copy(
-                    name = incoming.name.ifBlank { existing.name },
-                    seats = maxOf(existing.seats.coerceAtLeast(1), incoming.seats.coerceAtLeast(1)),
-                    boarding = incoming.boarding?.takeIf(String::isNotBlank) ?: existing.boarding,
-                    dropoff = incoming.dropoff?.takeIf(String::isNotBlank) ?: existing.dropoff,
-                    phone = incoming.phone?.takeIf(String::isNotBlank) ?: existing.phone,
-                    booking_href = incoming.booking_href?.takeIf(String::isNotBlank) ?: existing.booking_href,
-                )
-            }
-        }
-        return merged.filter { it.name.isNotBlank() || !it.booking_href.isNullOrBlank() }
-    }
-
-    private fun passengerMatches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
-        val leftHref = left.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref).orEmpty()
-        val rightHref = right.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref).orEmpty()
-        if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
-        val leftPhone = normalizeCapturedPhone(left.phone).orEmpty()
-        val rightPhone = normalizeCapturedPhone(right.phone).orEmpty()
-        if (leftPhone.isNotBlank() && rightPhone.isNotBlank()) return leftPhone == rightPhone
-        return normalizeText(left.name) == normalizeText(right.name) &&
-            left.seats.coerceAtLeast(1) == right.seats.coerceAtLeast(1) &&
-            normalizeText(left.boarding.orEmpty()) == normalizeText(right.boarding.orEmpty()) &&
-            normalizeText(left.dropoff.orEmpty()) == normalizeText(right.dropoff.orEmpty())
     }
 
     private fun occupiedSeatsForTimeline(passengers: List<BlaBlaCollectorPassenger>, stops: List<String>): Int {
@@ -1056,6 +1415,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             return
         }
         evaluationGeneration++
+        navigationGeneration++
         webView.stopLoading()
         busy = false
         pageReadAttempts = 0
@@ -1067,11 +1427,11 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         when (phase) {
             Phase.RIDES -> finishHarvest()
             Phase.TRIP -> {
-                val tripId = tripHrefs.getOrNull(tripIndex)?.let(::tripIdFromHref).orEmpty()
+                val target = tripTargets.getOrNull(tripIndex)
                 UnifiedDebugEventStore.record(
                     "HARVEST_BLOCK_UNREADABLE",
                     packageName,
-                    "account=${account.displayLabel} block=trip tripId=$tripId reason=user_back_recovery",
+                    "account=${account.displayLabel} block=trip tripId=${target?.tripId.orEmpty()} reason=user_back_recovery",
                 )
                 tripIndex++
                 loadNextTrip()
@@ -1081,29 +1441,28 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "HARVEST_BLOCK_UNREADABLE",
                     packageName,
-                    "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} reason=user_back_recovery",
+                    "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} passengerKey=${target?.externalPassengerKey.orEmpty()} reason=user_back_recovery",
                 )
                 passengerIndex++
-                passengerCallActionTriggered = false
-                interceptedPassengerPhone = null
+                resetPassengerReadState()
                 loadNextPassenger()
             }
             Phase.EDIT -> {
-                val tripId = editUrls.getOrNull(editIndex)?.let(::tripIdFromEditHref).orEmpty()
+                val target = editTargets.getOrNull(editIndex)
                 UnifiedDebugEventStore.record(
                     "HARVEST_BLOCK_UNREADABLE",
                     packageName,
-                    "account=${account.displayLabel} block=edit tripId=$tripId reason=user_back_recovery",
+                    "account=${account.displayLabel} block=edit tripId=${target?.tripId.orEmpty()} reason=user_back_recovery",
                 )
                 editIndex++
                 loadNextEdit()
             }
             Phase.OPTIONS -> {
-                val tripId = optionUrls.getOrNull(optionIndex)?.let(::tripIdFromOptionsHref).orEmpty()
+                val target = optionTargets.getOrNull(optionIndex)
                 UnifiedDebugEventStore.record(
                     "HARVEST_BLOCK_UNREADABLE",
                     packageName,
-                    "account=${account.displayLabel} block=options tripId=$tripId reason=user_back_recovery",
+                    "account=${account.displayLabel} block=options tripId=${target?.tripId.orEmpty()} reason=user_back_recovery",
                 )
                 optionIndex++
                 loadNextOption()
@@ -1113,6 +1472,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
 
     override fun onDestroy() {
         evaluationGeneration++
+        navigationGeneration++
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
     }
@@ -1154,6 +1514,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 tripHrefs: Array.from(new Set(hrefs)),
+                pageUrl: location.href || '',
                 domHtml: html.slice(0, 350000)
               });
             })();
@@ -1247,6 +1608,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 rosterComplete: rosterComplete,
                 explicitEmptyRoster: explicitEmptyRoster,
                 views: Number.isFinite(views) ? views : -1,
+                pageUrl: location.href || '',
                 domHtml: html.slice(0, 350000)
               });
             })();
@@ -1288,6 +1650,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 dropoff: routeMatch ? clean(routeMatch[2]) : '',
                 price: priceMatch ? clean(priceMatch[0]) : '',
                 callActionPresent: !!callAction,
+                pageUrl: location.href || '',
                 domHtml: html.slice(0, 350000)
               });
             })();
@@ -1359,6 +1722,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 optionsHref: option ? (option.href || '') : '',
+                pageUrl: location.href || '',
                 domHtml: html.slice(0, 350000)
               });
             })();
@@ -1372,6 +1736,7 @@ private data class SeatOptionState(
     val canAdd: Boolean = false,
     val canRemove: Boolean = false,
     val savePresent: Boolean = false,
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
@@ -1694,6 +2059,30 @@ private fun queryId(href: String): String? = runCatching {
         ?.takeIf(String::isNotEmpty)
 }.getOrNull()
 
+private fun sanitizeHarvestUrl(url: String): String = url.substringBefore('#').take(240)
+
+internal object BlaBlaHarvestAssociation {
+    fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String): String =
+        "${accountId.trim()}|${tripId.trim()}|${passengerKey.trim()}"
+
+    fun ridesPageMatches(url: String): Boolean = runCatching {
+        val uri = URI(absoluteBlaBlaHref(url))
+        uri.host.equals("www.blablacar.com.br", ignoreCase = true) && uri.path.trimEnd('/') == "/rides"
+    }.getOrDefault(false)
+
+    fun tripPageMatches(expectedTripId: String, url: String): Boolean =
+        expectedTripId.isNotBlank() && tripIdFromHref(url) == expectedTripId
+
+    fun editPageMatches(expectedTripId: String, url: String): Boolean =
+        expectedTripId.isNotBlank() && tripIdFromEditHref(url) == expectedTripId && !isOptionsHref(url)
+
+    fun optionsPageMatches(expectedTripId: String, url: String): Boolean =
+        expectedTripId.isNotBlank() && tripIdFromOptionsHref(url) == expectedTripId
+
+    fun passengerPageMatches(expectedPassengerKey: String, url: String): Boolean =
+        expectedPassengerKey.isNotBlank() && isPassengerHref(url) && passengerKey(url) == expectedPassengerKey
+}
+
 private val SEAT_OPTIONS_READ_JS = """
     (function() {
       const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
@@ -1721,6 +2110,7 @@ private val SEAT_OPTIONS_READ_JS = """
         canAdd: !!add && !add.disabled,
         canRemove: !!remove && !remove.disabled,
         savePresent: !!save,
+        pageUrl: location.href || '',
         domHtml: html.slice(0, 350000)
       });
     })();
