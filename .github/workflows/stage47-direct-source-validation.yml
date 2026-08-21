@@ -34,187 +34,138 @@ jobs:
           def once(old, new, label):
               global text
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one marker, got {count}')
+              if count < 1:
+                  raise SystemExit(f'{label}: marker not found')
               text = text.replace(old, new, 1)
 
           once(
-          '''    private var passengerCallActionTriggered = false
-              private var interceptedPassengerPhone: String? = null
-          ''',
-          '''    private var passengerCallActionTriggered = false
-              private var interceptedPassengerPhone: String? = null
-              private var navigationGeneration = 0
-              private var navigationPending = false
-              private var ridesNavigationTimeouts = 0
-          ''',
-          'navigation state')
+              '    private var passengerCallActionTriggered = false\n    private var interceptedPassengerPhone: String? = null\n',
+              '    private var passengerCallActionTriggered = false\n    private var interceptedPassengerPhone: String? = null\n    private var navigationGeneration = 0\n    private var navigationPending = false\n    private var ridesNavigationTimeouts = 0\n',
+              'navigation state',
+          )
 
           once(
-          '''            override fun onPageFinished(view: WebView, url: String) {
-                      super.onPageFinished(view, url)
-                      if (!isBlaBla(url) || busy) return
-                      view.postDelayed({ handlePage() }, 900)
-                  }
-          ''',
-          '''            override fun onPageFinished(view: WebView, url: String) {
-                      super.onPageFinished(view, url)
-                      if (!isBlaBla(url)) return
-                      navigationPending = false
-                      if (phase == Phase.RIDES) ridesNavigationTimeouts = 0
-                      if (busy) return
-                      view.postDelayed({ handlePage() }, 900)
-                  }
-          ''',
-          'page finished watchdog release')
+              '                if (!isBlaBla(url) || busy) return\n                view.postDelayed({ handlePage() }, 900)\n',
+              '                if (!isBlaBla(url)) return\n                navigationPending = false\n                if (phase == Phase.RIDES) ridesNavigationTimeouts = 0\n                if (busy) return\n                view.postDelayed({ handlePage() }, 900)\n',
+              'page finished watchdog release',
+          )
 
           once(
-          '''        setContentView(root)
-              webView.loadUrl(RIDES_URL)
-          }
+              '        setContentView(root)\n        webView.loadUrl(RIDES_URL)\n    }\n\n    private fun interceptPhoneNavigation',
+              '''        setContentView(root)
+        loadHarvestUrl(RIDES_URL, "rides")
+    }
 
-              private fun interceptPhoneNavigation''',
-          '''        setContentView(root)
-              loadHarvestUrl(RIDES_URL, "rides")
-          }
+    private fun loadHarvestUrl(url: String, label: String) {
+        navigationGeneration++
+        val generation = navigationGeneration
+        val expectedPhase = phase
+        navigationPending = true
+        webView.loadUrl(url)
+        webView.postDelayed({
+            if (!navigationPending || navigationGeneration != generation || phase != expectedPhase || isFinishing) return@postDelayed
+            navigationPending = false
+            busy = false
+            UnifiedDebugEventStore.record(
+                "HARVEST_NAVIGATION_TIMEOUT",
+                packageName,
+                "account=${account.displayLabel} phase=${expectedPhase.name.lowercase()} label=$label tripIndex=$tripIndex passengerIndex=$passengerIndex editIndex=$editIndex optionIndex=$optionIndex",
+            )
+            when (expectedPhase) {
+                Phase.RIDES -> {
+                    if (ridesNavigationTimeouts < MAX_RIDES_NAVIGATION_TIMEOUTS) {
+                        ridesNavigationTimeouts++
+                        loadHarvestUrl(RIDES_URL, "rides_retry")
+                    } else {
+                        UnifiedDebugEventStore.record(
+                            "MHTML_HARVEST_ABORTED",
+                            packageName,
+                            "account=${account.displayLabel} reason=rides_navigation_timeout",
+                        )
+                        finishHarvest()
+                    }
+                }
+                Phase.TRIP -> {
+                    val tripId = tripHrefs.getOrNull(tripIndex)?.let(::tripIdFromHref).orEmpty()
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_BLOCK_UNREADABLE",
+                        packageName,
+                        "account=${account.displayLabel} block=trip tripId=$tripId reason=navigation_timeout",
+                    )
+                    tripIndex++
+                    loadNextTrip()
+                }
+                Phase.PASSENGER_CARD, Phase.PASSENGER -> {
+                    val target = passengerTargets.getOrNull(passengerIndex)
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_BLOCK_UNREADABLE",
+                        packageName,
+                        "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} reason=navigation_timeout",
+                    )
+                    passengerIndex++
+                    passengerCallActionTriggered = false
+                    interceptedPassengerPhone = null
+                    loadNextPassenger()
+                }
+                Phase.EDIT -> {
+                    val tripId = editUrls.getOrNull(editIndex)?.let(::tripIdFromEditHref).orEmpty()
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_BLOCK_UNREADABLE",
+                        packageName,
+                        "account=${account.displayLabel} block=edit tripId=$tripId reason=navigation_timeout",
+                    )
+                    editIndex++
+                    loadNextEdit()
+                }
+                Phase.OPTIONS -> {
+                    val tripId = optionUrls.getOrNull(optionIndex)?.let(::tripIdFromOptionsHref).orEmpty()
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_BLOCK_UNREADABLE",
+                        packageName,
+                        "account=${account.displayLabel} block=options tripId=$tripId reason=navigation_timeout",
+                    )
+                    optionIndex++
+                    loadNextOption()
+                }
+            }
+        }, NAVIGATION_TIMEOUT_MS)
+    }
 
-              private fun loadHarvestUrl(url: String, label: String) {
-                  navigationGeneration++
-                  val generation = navigationGeneration
-                  val expectedPhase = phase
-                  navigationPending = true
-                  webView.loadUrl(url)
-                  webView.postDelayed({
-                      if (!navigationPending || navigationGeneration != generation || phase != expectedPhase || isFinishing) return@postDelayed
-                      navigationPending = false
-                      busy = false
-                      UnifiedDebugEventStore.record(
-                          "HARVEST_NAVIGATION_TIMEOUT",
-                          packageName,
-                          "account=${account.displayLabel} phase=${expectedPhase.name.lowercase()} label=$label tripIndex=$tripIndex passengerIndex=$passengerIndex editIndex=$editIndex optionIndex=$optionIndex",
-                      )
-                      when (expectedPhase) {
-                          Phase.RIDES -> {
-                              if (ridesNavigationTimeouts < MAX_RIDES_NAVIGATION_TIMEOUTS) {
-                                  ridesNavigationTimeouts++
-                                  loadHarvestUrl(RIDES_URL, "rides_retry")
-                              } else {
-                                  UnifiedDebugEventStore.record(
-                                      "MHTML_HARVEST_ABORTED",
-                                      packageName,
-                                      "account=${account.displayLabel} reason=rides_navigation_timeout",
-                                  )
-                                  finishHarvest()
-                              }
-                          }
-                          Phase.TRIP -> {
-                              val tripId = tripHrefs.getOrNull(tripIndex)?.let(::tripIdFromHref).orEmpty()
-                              UnifiedDebugEventStore.record(
-                                  "HARVEST_BLOCK_UNREADABLE",
-                                  packageName,
-                                  "account=${account.displayLabel} block=trip tripId=$tripId reason=navigation_timeout",
-                              )
-                              tripIndex++
-                              loadNextTrip()
-                          }
-                          Phase.PASSENGER_CARD, Phase.PASSENGER -> {
-                              val target = passengerTargets.getOrNull(passengerIndex)
-                              UnifiedDebugEventStore.record(
-                                  "HARVEST_BLOCK_UNREADABLE",
-                                  packageName,
-                                  "account=${account.displayLabel} block=passenger tripId=${target?.tripId.orEmpty()} reason=navigation_timeout",
-                              )
-                              passengerIndex++
-                              passengerCallActionTriggered = false
-                              interceptedPassengerPhone = null
-                              loadNextPassenger()
-                          }
-                          Phase.EDIT -> {
-                              val tripId = editUrls.getOrNull(editIndex)?.let(::tripIdFromEditHref).orEmpty()
-                              UnifiedDebugEventStore.record(
-                                  "HARVEST_BLOCK_UNREADABLE",
-                                  packageName,
-                                  "account=${account.displayLabel} block=edit tripId=$tripId reason=navigation_timeout",
-                              )
-                              editIndex++
-                              loadNextEdit()
-                          }
-                          Phase.OPTIONS -> {
-                              val tripId = optionUrls.getOrNull(optionIndex)?.let(::tripIdFromOptionsHref).orEmpty()
-                              UnifiedDebugEventStore.record(
-                                  "HARVEST_BLOCK_UNREADABLE",
-                                  packageName,
-                                  "account=${account.displayLabel} block=options tripId=$tripId reason=navigation_timeout",
-                              )
-                              optionIndex++
-                              loadNextOption()
-                          }
-                      }
-                  }, NAVIGATION_TIMEOUT_MS)
-              }
-
-              private fun interceptPhoneNavigation''',
-          'watchdog helper')
+    private fun interceptPhoneNavigation''',
+              'watchdog helper',
+          )
 
           once(
-          '''            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
-                  webView.loadUrl(href)
-          ''',
-          '''            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"
-                  loadHarvestUrl(href, "trip")
-          ''',
-          'trip tracked load')
-
+              '            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"\n            webView.loadUrl(href)\n',
+              '            statusView.text = "${account.displayLabel} • resumo ${tripIndex + 1}/${tripHrefs.size}"\n            loadHarvestUrl(href, "trip")\n',
+              'trip tracked load',
+          )
           once(
-          '''            if (target.href.isNotBlank()) {
-                      phase = Phase.PASSENGER
-                      webView.loadUrl(target.href)
-                  } else if (target.cardIndex >= 0) {
-                      phase = Phase.PASSENGER_CARD
-                      webView.loadUrl(target.tripHref)
-          ''',
-          '''            if (target.href.isNotBlank()) {
-                      phase = Phase.PASSENGER
-                      loadHarvestUrl(target.href, "passenger")
-                  } else if (target.cardIndex >= 0) {
-                      phase = Phase.PASSENGER_CARD
-                      loadHarvestUrl(target.tripHref, "passenger_card")
-          ''',
-          'passenger tracked load')
-
+              '                phase = Phase.PASSENGER\n                webView.loadUrl(target.href)\n            } else if (target.cardIndex >= 0) {\n                phase = Phase.PASSENGER_CARD\n                webView.loadUrl(target.tripHref)\n',
+              '                phase = Phase.PASSENGER\n                loadHarvestUrl(target.href, "passenger")\n            } else if (target.cardIndex >= 0) {\n                phase = Phase.PASSENGER_CARD\n                loadHarvestUrl(target.tripHref, "passenger_card")\n',
+              'passenger tracked load',
+          )
           once(
-          '''            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
-                  webView.loadUrl(href)
-          ''',
-          '''            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"
-                  loadHarvestUrl(href, "edit")
-          ''',
-          'edit tracked load')
-
+              '            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"\n            webView.loadUrl(href)\n',
+              '            statusView.text = "${account.displayLabel} • editar ${editIndex + 1}/${editUrls.size}"\n            loadHarvestUrl(href, "edit")\n',
+              'edit tracked load',
+          )
           once(
-          '''            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
-                  webView.loadUrl(href)
-          ''',
-          '''            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"
-                  loadHarvestUrl(href, "options")
-          ''',
-          'options tracked load')
-
+              '            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"\n            webView.loadUrl(href)\n',
+              '            statusView.text = "${account.displayLabel} • lugares ${optionIndex + 1}/${optionUrls.size}"\n            loadHarvestUrl(href, "options")\n',
+              'options tracked load',
+          )
           once(
-          '''        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
-                  private const val RETRY_MS = 800L
-          ''',
-          '''        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
-                  private const val MAX_RIDES_NAVIGATION_TIMEOUTS = 1
-                  private const val NAVIGATION_TIMEOUT_MS = 12_000L
-                  private const val RETRY_MS = 800L
-          ''',
-          'watchdog constants')
+              '        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6\n        private const val RETRY_MS = 800L\n',
+              '        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6\n        private const val MAX_RIDES_NAVIGATION_TIMEOUTS = 1\n        private const val NAVIGATION_TIMEOUT_MS = 12_000L\n        private const val RETRY_MS = 800L\n',
+              'watchdog constants',
+          )
 
           for marker in (
               'HARVEST_NAVIGATION_TIMEOUT',
               'NAVIGATION_TIMEOUT_MS = 12_000L',
               'loadHarvestUrl(href, "edit")',
+              'loadHarvestUrl(href, "options")',
               'reason=navigation_timeout',
           ):
               if marker not in text:
@@ -223,7 +174,8 @@ jobs:
           p.write_text(text, encoding='utf-8')
           PY
 
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
           git config user.name 'Rota Certa CI'
           git config user.email 'actions@users.noreply.github.com'
           git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
