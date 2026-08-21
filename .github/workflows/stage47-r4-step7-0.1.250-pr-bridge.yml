@@ -15,7 +15,7 @@ env:
   PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
   EXPECTED_VERSION_CODE: '5543'
   EXPECTED_VERSION_NAME: '0.1.250'
-  EXPECTED_PREDECESSOR: d791331db3a94f0d3ad2a16dd2990f397683bd16
+  EXPECTED_PREDECESSOR: f1904f3119a5fdce4a90b4ec0e446ead92a8ef31
 
 jobs:
   apply-test-build-persist:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 5
+          fetch-depth: 6
 
       - uses: actions/setup-java@v4
         with:
@@ -63,32 +63,28 @@ jobs:
               raise SystemExit('prepared patch terminator not found')
           body = [raw[10:] if raw.startswith('          ') else raw.lstrip() for raw in source[start:end]]
           patch = '\n'.join(body) + '\n'
-
           brittle_start = patch.find("\ntext = once(\n    text,\n    '''    fun passengerPageMatches")
           brittle_end = patch.find("\nAUTO.write_text(text, encoding='utf-8')", brittle_start)
           if brittle_start < 0 or brittle_end < 0:
               raise SystemExit('could not locate brittle passenger helper edit in prepared patch')
-          robust = r"""
-association_start = text.find('internal object BlaBlaHarvestAssociation {')
-association_end = text.find('\n}\n\nprivate val SEAT_OPTIONS_READ_JS', association_start)
-if association_start < 0 or association_end < 0:
-    raise SystemExit('harvest association object boundary not found')
-helper_marker = '    fun passengerCanonicalIdentityProven('
-if helper_marker in text[association_start:association_end]:
-    raise SystemExit('canonical passenger helpers already present unexpectedly')
-helpers = '''\n\n    fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =\n        expectedUrl.isNotBlank() &&\n            capturedUrl.isNotBlank() &&\n            passengerPageMatches(expectedPassengerKey, expectedUrl) &&\n            passengerPageMatches(expectedPassengerKey, capturedUrl) &&\n            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)\n\n    fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven'''
-text = text[:association_end] + helpers + text[association_end:]
-"""
-          patch = patch[:brittle_start] + '\n' + robust.strip('\n') + patch[brittle_end:]
-
-          required = [
+          robust = (
+              "association_start = text.find('internal object BlaBlaHarvestAssociation {')\n"
+              "association_end = text.find('\\n}\\n\\nprivate val SEAT_OPTIONS_READ_JS', association_start)\n"
+              "if association_start < 0 or association_end < 0:\n"
+              "    raise SystemExit('harvest association object boundary not found')\n"
+              "if '    fun passengerCanonicalIdentityProven(' in text[association_start:association_end]:\n"
+              "    raise SystemExit('canonical passenger helpers already present unexpectedly')\n"
+              "helpers = '''\\n\\n    fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =\\n        expectedUrl.isNotBlank() &&\\n            capturedUrl.isNotBlank() &&\\n            passengerPageMatches(expectedPassengerKey, expectedUrl) &&\\n            passengerPageMatches(expectedPassengerKey, capturedUrl) &&\\n            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)\\n\\n    fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven'''\n"
+              "text = text[:association_end] + helpers + text[association_end:]\n"
+          )
+          patch = patch[:brittle_start] + '\n' + robust + patch[brittle_end:]
+          for marker in [
               'passengerCanonicalIdentityProven',
               'TRIP_IDENTITY_CONFLICT',
               'completeExternalZeroReservationIsNotPending',
               'versionCode = 5543',
               'harvest association object boundary not found',
-          ]
-          for marker in required:
+          ]:
               if marker not in patch:
                   raise SystemExit(f'hardened patch missing marker: {marker}')
           Path('/tmp/stage47_0250_patch.py').write_text(patch, encoding='utf-8')
