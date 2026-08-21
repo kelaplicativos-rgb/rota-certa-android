@@ -222,7 +222,7 @@ private fun TripDriverDefaultsCard(
             Button(
                 onClick = {
                     val parsed = capacity.toIntOrNull()
-                    if (parsed !in 1..999) {
+                    if (parsed == null || parsed !in 1..999) {
                         error = "Informe uma capacidade entre 1 e 999 lugares."
                         return@Button
                     }
@@ -231,7 +231,7 @@ private fun TripDriverDefaultsCard(
                         repository.saveSettings(
                             settings.copy(
                                 tripDepartureAddress = departure.trim(),
-                                vehicleCapacity = parsed!!,
+                                vehicleCapacity = parsed,
                             ),
                         )
                         UnifiedDebugEventStore.record(
