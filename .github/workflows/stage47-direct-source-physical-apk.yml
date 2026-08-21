@@ -1,4 +1,4 @@
-name: Stage47 direct-source physical APK 0.1.244
+name: Stage47 direct-source physical APK 0.1.245
 
 on:
   pull_request:
@@ -18,8 +18,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5537'
-      EXPECTED_VERSION_NAME: '0.1.244'
+      EXPECTED_VERSION_CODE: '5538'
+      EXPECTED_VERSION_NAME: '0.1.245'
     steps:
       - name: Checkout persisted PR source directly
         uses: actions/checkout@v4
@@ -100,6 +100,16 @@ jobs:
           grep -Fq 'reason=options_link_missing' "$AUTOMATION"
           grep -Fq 'MAX_EDIT_LINK_READ_ATTEMPTS = 6' "$AUTOMATION"
           ! grep -Fq 'optionUrlByTrip[it] = optionsUrlForTrip(it)' "$AUTOMATION"
+          grep -Fq 'PASSENGER_CARD_DISCOVERED' "$AUTOMATION"
+          grep -Fq 'PASSENGER_CARD_OPENED' "$AUTOMATION"
+          grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$AUTOMATION"
+          grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$AUTOMATION"
+          grep -Fq 'externalDialerOpened=false' "$AUTOMATION"
+          grep -Fq 'CARD_TARGET_PREFIX = "rotacerta-card:"' "$AUTOMATION"
+          ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTOMATION"
+          ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTOMATION"
+          ! grep -Fq 'startActivity(Intent.ACTION_CALL' "$AUTOMATION"
+          ! grep -Fq 'startActivity(Intent.ACTION_DIAL' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' "$AUTOMATION"
           grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' "$AUTOMATION"
           grep -Fq 'options-before' "$AUTOMATION"
@@ -110,6 +120,7 @@ jobs:
 
           test ! -e stage47/source-patches/external-quick-passenger-direct-source.patch
           test ! -e .github/workflows/stage47-direct-source-external-quick-passenger-apply.yml
+          test ! -e .github/workflows/stage47-persist-passenger-phone.yml
           test -z "$(find .github/workflows -maxdepth 1 -type f -name 'stage47-direct-source-unified-timeline*.yml' -print -quit)"
 
           CURRENT_HEAD="$(git rev-parse HEAD)"
@@ -121,6 +132,9 @@ jobs:
           echo 'mhtml_private_archive=true'
           echo 'harvester_real_options_link_only=true'
           echo 'mhtml_archive_timeout_guard=true'
+          echo 'passenger_card_traversal=true'
+          echo 'passenger_tel_intercept=true'
+          echo 'external_dialer_opened=false'
           echo 'harvester_blocks_verified_by_source=true'
           echo 'whatsapp_passenger_link_preserved=true'
           echo 'farol_untouched=true'
@@ -205,6 +219,11 @@ jobs:
           grep -Fq 'HARVEST_TRIP_ENRICHED' evidence/dex-strings.txt
           grep -Fq 'HARVEST_BLOCK_UNREADABLE' evidence/dex-strings.txt
           grep -Fq 'options_link_missing' evidence/dex-strings.txt
+          grep -Fq 'PASSENGER_CARD_DISCOVERED' evidence/dex-strings.txt
+          grep -Fq 'PASSENGER_CARD_OPENED' evidence/dex-strings.txt
+          grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' evidence/dex-strings.txt
+          grep -Fq 'PASSENGER_TEL_INTERCEPTED' evidence/dex-strings.txt
+          grep -Fq 'externalDialerOpened=false' evidence/dex-strings.txt
           grep -Fq 'EXTERNAL_SEAT_SYNC_QUEUED' evidence/dex-strings.txt
           grep -Fq 'EXTERNAL_SEAT_SYNC_VERIFIED' evidence/dex-strings.txt
           grep -Fq 'PASSENGER_WHATSAPP_OPEN' evidence/dex-strings.txt
@@ -230,6 +249,9 @@ jobs:
           harvester_blocks_verified_in_apk=true
           harvester_real_options_link_only=true
           mhtml_archive_timeout_guard=true
+          passenger_card_traversal=true
+          passenger_tel_intercept=true
+          external_dialer_opened=false
           manual_external_seat_ui_sync_experimental=true
           official_blablacar_write_api_claimed=false
           external_seat_write_scope=manual_private_other_only
@@ -246,7 +268,7 @@ jobs:
       - name: Upload direct-source physical APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-stage47-navigation-fix-0.1.244
+          name: rota-certa-stage47-passenger-phone-0.1.245
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
