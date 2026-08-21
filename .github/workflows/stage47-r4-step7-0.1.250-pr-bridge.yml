@@ -1,0 +1,200 @@
+name: Stage47 tracked direct-source physical fixes 0.1.250
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage47-0.1.250-physical-fixes-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  GOOGLE_MAPS_API_KEY: stage47_ci_dummy_key
+  PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+  EXPECTED_VERSION_CODE: '5543'
+  EXPECTED_VERSION_NAME: '0.1.250'
+  EXPECTED_PREDECESSOR: 993bd51afb351c5a1f0edf87a78857f0a26c89e5
+
+jobs:
+  apply-test-build-persist:
+    if: github.event.pull_request.head.ref == 'agent/stage47-r4-step7-automatic-identity'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout PR head directly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 3
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify tracked predecessor and FAROL
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PREDECESSOR"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq 'versionCode = 5542' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.249"' app/build.gradle.kts
+          echo 'tracked_precheck=PASS'
+
+      - name: Extract prepared patch from one-shot transport
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/stage47-r4-step7-0.1.250-one-shot.yml').read_text(encoding='utf-8').splitlines()
+          starts = [i for i, line in enumerate(source) if line.strip() == "python3 - <<'PY'"]
+          if len(starts) != 1:
+              raise SystemExit(f'expected one prepared python patch, got {len(starts)}')
+          start = starts[0] + 1
+          end = next((i for i in range(start, len(source)) if source[i].strip() == 'PY'), None)
+          if end is None:
+              raise SystemExit('prepared patch terminator not found')
+          body = []
+          for raw in source[start:end]:
+              body.append(raw[10:] if raw.startswith('          ') else raw.lstrip())
+          patch = '\n'.join(body) + '\n'
+          required = [
+              'passengerCanonicalIdentityProven',
+              'TRIP_IDENTITY_CONFLICT',
+              'completeExternalZeroReservationIsNotPending',
+              "versionName = \\\"0.1.250\\\"",
+          ]
+          for marker in required:
+              if marker not in patch:
+                  raise SystemExit(f'prepared patch missing marker: {marker}')
+          Path('/tmp/stage47_0250_patch.py').write_text(patch, encoding='utf-8')
+          print('prepared_patch_extracted=PASS')
+          PY
+
+      - name: Apply only the three physical-test corrections
+        run: |
+          set -euo pipefail
+          python3 /tmp/stage47_0250_patch.py
+
+      - name: Verify direct app source before tests
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          AUTO='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          COLLECTOR='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt'
+          TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt'
+          TIMELINE_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'passengerCanonicalIdentityProven' "$AUTO"
+          grep -Fq 'HARVEST_PASSENGER_SEMANTIC_DIFFERENCE' "$AUTO"
+          grep -Fq 'TRIP_IDENTITY_CONFLICT' "$DYNAMIC"
+          grep -Fq 'detail_trip_id_mismatch' "$DYNAMIC"
+          grep -Fq 'identity_conflicts' "$COLLECTOR"
+          grep -Fq 'blablaPassengerRosterComplete' "$TIMELINE"
+          grep -Fq 'COMPLETE_EMPTY' "$TIMELINE_UI"
+          ! grep -Fq 'Intent(Intent.ACTION_CALL' "$AUTO"
+          ! grep -Fq 'Intent(Intent.ACTION_DIAL' "$AUTO"
+          echo 'direct_app_source_pretest=PASS'
+
+      - name: Run focused regression tests before persistence
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHarvestAssociationTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Persist final app source and remove transport workflows
+        run: |
+          set -euo pipefail
+          git config user.name 'Rota Certa Stage47 CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+          git rm .github/workflows/stage47-r4-step7-0.1.250-pr-bridge.yml
+          git add app/build.gradle.kts app/src/main app/src/test .github/workflows/stage47-direct-source-validation.yml .github/workflows/stage47-direct-source-physical-apk.yml
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          git diff --cached --exit-code -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git commit -m 'fix(stage47): close 0.1.249 physical collection gaps'
+          echo "final_source_head=$(git rev-parse HEAD)"
+
+      - name: Re-run tests and build APK from final committed app/src
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/stage47-r4-step7-0.1.250-one-shot.yml
+          test ! -e .github/workflows/stage47-r4-step7-0.1.250-pr-bridge.yml
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.Stage47PhysicalFixes0250Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaHarvestAssociationTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripBlaBlaCollectorStage47R4Step5Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Inspect final APK and evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta' versionCode='$EXPECTED_VERSION_CODE' versionName='$EXPECTED_VERSION_NAME'" evidence/aapt-badging.txt
+          sha256sum "$APK" | tee evidence/apk-sha256.txt
+          FINAL_HEAD="$(git rev-parse HEAD)"
+          APK_SHA="$(awk '{print $1}' evidence/apk-sha256.txt)"
+          FAROL_SHA="$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')"
+          cat > evidence/direct-source-physical-status.txt <<EOF
+          stage47_direct_source_physical_apk=PASS
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          package=br.com.mapeiaia.rotacerta
+          source_head=$FINAL_HEAD
+          direct_source=true
+          fixed_historical_source_checkout=false
+          stage47_materializer_used=false
+          farol_sha256=$FAROL_SHA
+          canonical_passenger_identity=true
+          semantic_difference_advisory_only_after_canonical_proof=true
+          trip_identity_conflict_preserved=true
+          silent_incompatible_trip_dedupe=false
+          complete_empty_roster_not_pending=true
+          stale_callback_fail_closed=true
+          external_dialer_opened=false
+          official_blablacar_write_api_claimed=false
+          apk_sha256=$APK_SHA
+          merge=false
+          release=false
+          latest=false
+          EOF
+          cat evidence/direct-source-physical-status.txt
+
+      - name: Push final source only after tests and APK pass
+        run: |
+          set -euo pipefail
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+      - name: Upload tracked physical-test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage47-physical-fixes-0.1.250
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            evidence/apk-sha256.txt
+            evidence/aapt-badging.txt
+            evidence/direct-source-physical-status.txt
+          if-no-files-found: error
+          retention-days: 7
