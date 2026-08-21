@@ -30,6 +30,11 @@ import java.util.WeakHashMap
  * wrapper around the harvester's existing WebViewClient and, after a bounded
  * timeout, delivers the missing completion callback back to that same client.
  *
+ * Automatic harvesting is passenger-focused. When the policy disables the
+ * published-seat lookup, edit/options links are suppressed only on the trip
+ * detail DOM before the existing activity reads it. Passenger links remain
+ * untouched. The explicit manual seat-sync Activity is not wrapped here.
+ *
  * No route, city, account, passenger, capacity or locale is hardcoded here.
  * The wrapper does not open external dialers and preserves the existing tel:
  * interception implemented by BlaBlaMhtmlHarvestActivity.
@@ -75,7 +80,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         UnifiedDebugEventStore.record(
             "HARVEST_NAVIGATION_WATCHDOG_ATTACHED",
             activity.packageName,
-            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true",
+            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP}",
         )
     }
 
@@ -142,7 +147,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
             generation++
             expectedUrl = null
             handler.removeCallbacksAndMessages(null)
-            delegate.onPageFinished(view, url)
+            deliverPageFinished(view, url, synthetic = false)
         }
 
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
@@ -158,6 +163,34 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
             error: WebResourceError?,
         ) {
             delegate.onReceivedError(view, request, error)
+        }
+
+        private fun deliverPageFinished(view: WebView, url: String, synthetic: Boolean) {
+            if (
+                BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP ||
+                !isTripDetailUrl(url)
+            ) {
+                delegate.onPageFinished(view, url)
+                return
+            }
+            val deliveredGeneration = generation
+            view.evaluateJavascript(SUPPRESS_EDIT_LINKS_JS) {
+                if (disposed || activity.isFinishing || activity.isDestroyed) return@evaluateJavascript
+                if (generation != deliveredGeneration || !sameNavigationUrl(view.url, url)) {
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_STALE_PAGE_FINISHED_IGNORED",
+                        appContext.packageName,
+                        "currentPath=${safePath(view.url)} stalePath=${safePath(url)} seatLookupSuppression=true",
+                    )
+                    return@evaluateJavascript
+                }
+                UnifiedDebugEventStore.record(
+                    "HARVEST_SEAT_OPTIONS_SKIPPED",
+                    appContext.packageName,
+                    "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic",
+                )
+                delegate.onPageFinished(view, url)
+            }
         }
 
         private fun arm(url: String?) {
@@ -179,7 +212,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                     "timeoutMs=$NAVIGATION_TIMEOUT_MS path=${safePath(current)} syntheticPageFinished=true externalNavigation=false",
                 )
                 webView.stopLoading()
-                delegate.onPageFinished(webView, current)
+                deliverPageFinished(webView, current, synthetic = true)
             }, NAVIGATION_TIMEOUT_MS)
         }
     }
@@ -187,9 +220,30 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
     companion object {
         private const val NAVIGATION_TIMEOUT_MS = 12_000L
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
+        private val SUPPRESS_EDIT_LINKS_JS = """
+            (function() {
+              Array.from(document.querySelectorAll('a[href]')).forEach((anchor) => {
+                const href = anchor.getAttribute('href') || '';
+                if (/\/rides\/offer\/edit\//i.test(href)) {
+                  anchor.removeAttribute('href');
+                  anchor.setAttribute('data-rotacerta-automatic-seat-lookup', 'disabled');
+                }
+              });
+              return 'ok';
+            })();
+        """.trimIndent()
 
         private fun isBlaBlaUrl(value: String?): Boolean =
             value?.startsWith("https://www.blablacar.com.br/", ignoreCase = true) == true
+
+        private fun isTripDetailUrl(value: String?): Boolean {
+            if (!isBlaBlaUrl(value)) return false
+            val path = runCatching { Uri.parse(value).path.orEmpty() }.getOrDefault("")
+            if (path.contains("/rides/offer/edit/", ignoreCase = true)) return false
+            if (path.contains("/passenger/", ignoreCase = true) || path.contains("/booking/", ignoreCase = true)) return false
+            return Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path) ||
+                Regex("/trip/[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
+        }
 
         private fun sameNavigationUrl(left: String?, right: String?): Boolean {
             if (left.isNullOrBlank() || right.isNullOrBlank()) return false
