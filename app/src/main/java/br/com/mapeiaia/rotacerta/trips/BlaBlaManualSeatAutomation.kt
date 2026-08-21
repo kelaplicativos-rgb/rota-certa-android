@@ -177,16 +177,32 @@ class BlaBlaMhtmlArchiveStore(private val context: Context) {
     ) {
         val dir = File(root, safe(account.id)).apply { mkdirs() }
         val target = File(dir, "${safe(kind)}-${safe(key)}.mht")
+        var completed = false
+        fun complete(saved: String?) {
+            if (completed) return
+            completed = true
+            if (!saved.isNullOrBlank()) {
+                UnifiedDebugEventStore.record(
+                    "MHTML_ARCHIVE_SAVED",
+                    context.packageName,
+                    "account=${account.displayLabel} kind=${safe(kind)} file=${target.name}",
+                )
+            }
+            onDone(saved)
+        }
+        webView.postDelayed({
+            if (!completed) {
+                UnifiedDebugEventStore.record(
+                    "MHTML_ARCHIVE_TIMEOUT",
+                    context.packageName,
+                    "account=${account.displayLabel} kind=${safe(kind)} keyPresent=${key.isNotBlank()}",
+                )
+                complete(null)
+            }
+        }, MHTML_SAVE_TIMEOUT_MS)
         runCatching {
             webView.saveWebArchive(target.absolutePath, false) { saved ->
-                if (!saved.isNullOrBlank()) {
-                    UnifiedDebugEventStore.record(
-                        "MHTML_ARCHIVE_SAVED",
-                        context.packageName,
-                        "account=${account.displayLabel} kind=${safe(kind)} file=${target.name}",
-                    )
-                }
-                onDone(saved)
+                complete(saved)
             }
         }.onFailure {
             UnifiedDebugEventStore.record(
@@ -194,7 +210,7 @@ class BlaBlaMhtmlArchiveStore(private val context: Context) {
                 context.packageName,
                 "account=${account.displayLabel} kind=${safe(kind)} reason=${it.javaClass.simpleName}",
             )
-            onDone(null)
+            complete(null)
         }
     }
 
@@ -203,6 +219,8 @@ class BlaBlaMhtmlArchiveStore(private val context: Context) {
         .trim('-')
         .take(90)
         .ifBlank { "page" }
+
+    companion object { private const val MHTML_SAVE_TIMEOUT_MS = 4_500L }
 }
 
 object BlaBlaManualSeatAutomationIntents {
@@ -386,7 +404,6 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 tripHrefs = links
                 editUrls = tripHrefs.mapNotNull { href -> tripIdFromHref(href)?.let(::editUrlForTrip) }
                 optionUrlByTrip.clear()
-                tripHrefs.forEach { href -> tripIdFromHref(href)?.let { optionUrlByTrip[it] = optionsUrlForTrip(it) } }
                 UnifiedDebugEventStore.record(
                     "HARVEST_RIDES_CAPTURED",
                     packageName,
@@ -520,7 +537,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             return
         }
         evaluate<MhtmlEditEvidence>(EDIT_EVIDENCE_JS) { result ->
-            if (result == null && pageReadAttempts < MAX_PAGE_READ_ATTEMPTS) {
+            if ((result == null || result.optionsHref.isBlank()) && pageReadAttempts < MAX_EDIT_LINK_READ_ATTEMPTS) {
                 pageReadAttempts++
                 busy = false
                 webView.postDelayed({ handlePage() }, RETRY_MS)
@@ -532,15 +549,22 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 .takeIf(String::isNotBlank)
                 ?.let(::absoluteBlaBlaHref)
                 ?.takeIf(::isOptionsHref)
-                ?: optionsUrlForTrip(tripId)
-            optionUrlByTrip[tripId] = options
+            if (options != null) {
+                optionUrlByTrip[tripId] = options
+            } else {
+                UnifiedDebugEventStore.record(
+                    "HARVEST_BLOCK_UNREADABLE",
+                    packageName,
+                    "account=${account.displayLabel} block=edit tripId=$tripId reason=options_link_missing",
+                )
+            }
             sessionStore.saveDiagnosticHtml(account, "edit-$tripId", evidence.domHtml)
             archive.save(webView, account, "edit", tripId) { saved ->
                 if (saved != null) archived++
                 UnifiedDebugEventStore.record(
                     "HARVEST_EDIT_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=${evidence.optionsHref.isNotBlank()} html=true mhtml=${saved != null}",
+                    "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=${options != null} html=true mhtml=${saved != null}",
                 )
                 editIndex++
                 busy = false
@@ -824,6 +848,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private const val MAX_TRIPS = 80
         private const val MAX_PAGE_READ_ATTEMPTS = 2
+        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 6
         private const val RETRY_MS = 800L
 
         private val SANITIZED_HTML_JS = """
