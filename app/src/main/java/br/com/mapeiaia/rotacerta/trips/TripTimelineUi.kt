@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +38,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun TripTimelineScreen(
@@ -66,28 +69,19 @@ fun TripTimelineScreen(
     LaunchedEffect(autoSyncToken) {
         if (autoSyncToken > 0) showSync = true
     }
-    var geo by remember { mutableStateOf<Map<String, TimelineGeoPoint>>(emptyMap()) }
-    var geoReady by remember { mutableStateOf(false) }
     val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
-    val merged = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
+    val mergedRaw = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
+    val merged = remember(mergedRaw, appSettings.vehicleCapacity) {
+        applyConfiguredVehicleCapacity(mergedRaw, appSettings.vehicleCapacity)
+    }
     val directionGeo = remember(merged, trips, appSettings) {
         TripTimelineGeoResolver.resolveTrustedStops(
             places = merged.flatMap { listOf(it.origin, it.destination) },
             trustedStops = timelineTrustedDirectionStops(trips, appSettings),
         )
     }
-
-    LaunchedEffect(merged, trips) {
-        geoReady = merged.size < 2
-        geo = TripTimelineGeoResolver.resolve(
-            context,
-            merged.flatMap { listOf(it.origin, it.destination) },
-            trips.flatMap(Trip::stops),
-        )
-        geoReady = true
-    }
-    val physical = remember(merged, geo, geoReady) {
-        if (geoReady) TripPhysicalRideConsolidator.consolidate(merged, geo) else emptyList()
+    val physical = remember(merged, directionGeo) {
+        TripPhysicalRideConsolidator.consolidate(merged, directionGeo)
     }
     val today = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
     val entries = remember(physical, archiveRevision, showArchived, today) {
@@ -104,6 +98,11 @@ fun TripTimelineScreen(
         Text(if (showArchived) "Arquivadas" else "Próximas viagens", style = MaterialTheme.typography.titleLarge)
         TextButton(onClick = onBack) { Text("Voltar") }
     }
+    TripDriverDefaultsCard(
+        settings = appSettings,
+        repository = settingsRepository,
+        onChanged = onChanged,
+    )
     ResponsiveTripActions(listOf(
         ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
         ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
@@ -121,11 +120,6 @@ fun TripTimelineScreen(
             autoSyncToken = autoSyncToken,
             autoSyncProfileUuid = autoSyncProfileUuid,
         )
-    }
-
-    if (!geoReady) {
-        Text("Conferindo continuidade e rotas…")
-        return
     }
 
     OutlinedTextField(
@@ -190,18 +184,106 @@ fun TripTimelineScreen(
     }
 }
 
-internal enum class TimelineOccupancyReadState {
-CAPACITY_CONFIGURED,
-RESERVED,
-COMPLETE_EMPTY,
-PENDING,
+@Composable
+private fun TripDriverDefaultsCard(
+    settings: AppSettings,
+    repository: SettingsRepository,
+    onChanged: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var departure by remember(settings.tripDepartureAddress) { mutableStateOf(settings.tripDepartureAddress) }
+    var capacity by remember(settings.vehicleCapacity) {
+        mutableStateOf(settings.vehicleCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Dados do veículo", style = MaterialTheme.typography.titleSmall)
+            OutlinedTextField(
+                value = departure,
+                onValueChange = { departure = it },
+                label = { Text("Local de partida — endereço ou cidade") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = capacity,
+                onValueChange = { capacity = it.filter(Char::isDigit).take(3) },
+                label = { Text("Capacidade do veículo") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "A capacidade física informada aqui é a referência do Rota Certa. A leitura externa de lugares publicados não define essa capacidade.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Button(
+                onClick = {
+                    val parsed = capacity.toIntOrNull()
+                    if (parsed !in 1..999) {
+                        error = "Informe uma capacidade entre 1 e 999 lugares."
+                        return@Button
+                    }
+                    error = null
+                    scope.launch {
+                        repository.saveSettings(
+                            settings.copy(
+                                tripDepartureAddress = departure.trim(),
+                                vehicleCapacity = parsed!!,
+                            ),
+                        )
+                        UnifiedDebugEventStore.record(
+                            "TRIP_DRIVER_DEFAULTS_SAVED",
+                            "br.com.mapeiaia.rotacerta",
+                            "departureConfigured=${departure.isNotBlank()} vehicleCapacity=$parsed externalSeatAuthority=false",
+                        )
+                        onChanged(
+                            if (departure.isBlank()) {
+                                "Capacidade salva. O local de partida ainda não foi informado."
+                            } else {
+                                "Local de partida e capacidade salvos."
+                            },
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Salvar dados do veículo") }
+        }
+    }
 }
 
+internal fun applyConfiguredVehicleCapacity(
+    entries: List<TripTimelineEntry>,
+    vehicleCapacity: Int,
+): List<TripTimelineEntry> {
+    if (vehicleCapacity !in 1..999) return entries
+    return entries.map { entry ->
+        if (entry.capacity > 0) entry else entry.copy(capacity = vehicleCapacity)
+    }
+}
+
+internal enum class TimelineOccupancyReadState {
+    CAPACITY_CONFIGURED,
+    CAPACITY_CONFIGURED_ROSTER_PENDING,
+    RESERVED,
+    COMPLETE_EMPTY,
+    PENDING,
+}
+
+private fun hasExternalPublication(entry: TripTimelineEntry): Boolean =
+    !entry.blablaTripId.isNullOrBlank() ||
+        !entry.blablaTripHref.isNullOrBlank() ||
+        !entry.blablaProfileUuid.isNullOrBlank()
+
 internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState = when {
-entry.capacity > 0 -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
-entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
-entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
-else -> TimelineOccupancyReadState.PENDING
+    entry.capacity > 0 && hasExternalPublication(entry) && entry.blablaPassengerRosterComplete != true && entry.maximumOccupiedSeats <= 0 ->
+        TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING
+    entry.capacity > 0 -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
+    entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
+    entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
+    else -> TimelineOccupancyReadState.PENDING
 }
 
 @Composable
@@ -248,6 +330,8 @@ private fun TimelineEntryCard(
                     val free = (entry.capacity - occupied).coerceAtLeast(0)
                     Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
                 }
+                TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
+                    Text("Capacidade: ${entry.capacity} • reservas aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED ->
                     Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
                 TimelineOccupancyReadState.COMPLETE_EMPTY ->
@@ -319,8 +403,14 @@ private fun TimelineEntryCard(
                 }
             }
             if (trip == null && quickOpen) {
-                Text("A publicação foi coletada, mas a capacidade física ainda não está configurada no Rota Certa.")
-                ExternalTripCapacitySetup(entry, store, onChanged)
+                Text(
+                    if (entry.capacity > 0) {
+                        "Capacidade padrão do veículo: ${entry.capacity}. Vincule esta publicação à agenda interna para controlar passageiros por trecho."
+                    } else {
+                        "A publicação foi coletada, mas a capacidade física ainda não está configurada no Rota Certa."
+                    },
+                )
+                ExternalTripCapacitySetup(entry, store, onChanged, entry.capacity)
             }
         }
     }
@@ -499,8 +589,11 @@ private fun ExternalTripCapacitySetup(
     entry: TripTimelineEntry,
     store: TripStore,
     onChanged: (String) -> Unit,
+    defaultCapacity: Int = 0,
 ) {
-    var capacityText by remember(entry.tripId) { mutableStateOf("") }
+    var capacityText by remember(entry.tripId, defaultCapacity) {
+        mutableStateOf(defaultCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    }
     var error by remember(entry.tripId) { mutableStateOf<String?>(null) }
     OutlinedTextField(
         value = capacityText,
@@ -533,7 +626,7 @@ private fun ExternalTripCapacitySetup(
             }
         },
         modifier = Modifier.fillMaxWidth(),
-    ) { Text("Salvar capacidade interna") }
+    ) { Text("Vincular capacidade à viagem") }
 }
 
 @Composable
@@ -600,10 +693,14 @@ private fun GlobalQuickPassengerPanel(
                 } else {
                     Text("Data/hora: $date", style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "Capacidade física ainda não configurada no Rota Certa. Nenhum passageiro será incluído até essa capacidade ser informada.",
+                        if (entry.capacity > 0) {
+                            "Capacidade padrão do veículo: ${entry.capacity}. Vincule a publicação à agenda interna antes de incluir passageiros por trecho."
+                        } else {
+                            "Capacidade física ainda não configurada no Rota Certa. Nenhum passageiro será incluído até essa capacidade ser informada."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    ExternalTripCapacitySetup(entry, store, onChanged)
+                    ExternalTripCapacitySetup(entry, store, onChanged, entry.capacity)
                 }
             }
         }
