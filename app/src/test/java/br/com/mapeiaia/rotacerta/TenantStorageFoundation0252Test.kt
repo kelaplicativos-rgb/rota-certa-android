@@ -52,4 +52,11 @@ class TenantStorageFoundation0252Test {
         assertEquals("", identity.displayName)
         assertEquals("", identity.userId)
     }
+
+    @Test
+    fun financialParserAcceptsDifferentCurrencySymbolsAndDecimalConventions() {
+        assertEquals(123_456L, FinancialRepository.parseCurrencyToCents("$ 1,234.56"))
+        assertEquals(123_456L, FinancialRepository.parseCurrencyToCents("€ 1.234,56"))
+        assertEquals(123_456L, FinancialRepository.parseCurrencyToCents("R$ 1.234,56"))
+    }
 }
