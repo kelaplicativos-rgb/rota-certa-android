@@ -238,9 +238,11 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
 
         private fun isTripDetailUrl(value: String?): Boolean {
             if (!isBlaBlaUrl(value)) return false
-            val path = runCatching { Uri.parse(value).path.orEmpty() }.getOrDefault("")
+            val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return false
+            val path = parsed.path.orEmpty().trimEnd('/')
             if (path.contains("/rides/offer/edit/", ignoreCase = true)) return false
             if (path.contains("/passenger/", ignoreCase = true) || path.contains("/booking/", ignoreCase = true)) return false
+            if (path.equals("/rides/offer", ignoreCase = true)) return true
             return Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path) ||
                 Regex("/trip/[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
         }
