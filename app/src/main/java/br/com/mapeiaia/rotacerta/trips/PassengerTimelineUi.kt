@@ -75,8 +75,10 @@ internal fun EnhancedPassengerTimelineSection(
     if (rawRows.isEmpty()) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
+    // Keep trusted route/GPS ordering internally, but do not expose a
+    // "next action" status in the card. The driver now has an explicit
+    // pickup Maps action for each passenger.
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
-    val nextRowIndex = passengerTimelineNextActionIndex(rows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -85,10 +87,6 @@ internal fun EnhancedPassengerTimelineSection(
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            passengerTimelineActionLabel(passenger, index, nextRowIndex, progress)?.let { label ->
-                Text(label, style = MaterialTheme.typography.labelMedium)
-            }
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -115,6 +113,28 @@ internal fun EnhancedPassengerTimelineSection(
                         tint = Color.Unspecified,
                         modifier = Modifier.size(22.dp),
                     )
+                }
+
+                externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {
+                    IconButton(
+                        onClick = {
+                            if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                                Toast.makeText(
+                                    context,
+                                    "Conta BlaBlaCar desta viagem não está conectada.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_blablacar_action),
+                            contentDescription = "Abrir viagem no BlaBlaCar",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
 
                 TextButton(
@@ -157,6 +177,22 @@ internal fun EnhancedPassengerTimelineSection(
                 ) {
                     Text("💰", maxLines = 1)
                 }
+
+                val pickupTarget = passengerPickupMapTarget(passenger)
+                IconButton(
+                    onClick = {
+                        if (pickupTarget != null) openPassengerPickupMap(context, pickupTarget)
+                    },
+                    enabled = pickupTarget != null,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_pickup_maps_action),
+                        contentDescription = "Abrir embarque no Maps",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
 
             Text(
@@ -182,15 +218,6 @@ internal fun EnhancedPassengerTimelineSection(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-
-            if (passenger.boardingStopIndex == null && trip != null) {
-                Text(
-                    "⚠ ordem de embarque pendente",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 
@@ -523,6 +550,26 @@ private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardR
     Toast.makeText(context, "Valor copiado: $formatted", Toast.LENGTH_SHORT).show()
 }
 
+internal data class ExternalTripTarget(val profileUuid: String, val href: String)
+
+internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {
+    val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null
+    if (!CANONICAL_PROFILE_UUID.matches(profile)) return null
+    val targetHref = href?.trim()?.substringBefore("&search_uuid=")?.takeIf(String::isNotEmpty) ?: return null
+    if (!targetHref.startsWith("https://www.blablacar.com.br/")) return null
+    if (!targetHref.contains("/rides/offer/") && !targetHref.contains("/trip/")) return null
+    return ExternalTripTarget(profileUuid = profile, href = targetHref)
+}
+
+internal data class PassengerPickupMapTarget(val query: String)
+
+internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
+    val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
+    val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
+    val query = exact ?: collected ?: return null
+    return PassengerPickupMapTarget(query)
+}
+
 internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
 
 internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPassengerTarget? {
@@ -530,6 +577,42 @@ internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPas
     val href = row.externalBookingHref?.trim()?.takeIf(String::isNotEmpty) ?: return null
     if (!href.startsWith("https://www.blablacar.com.br/") || !href.contains("/rides/offer/passenger/")) return null
     return ExternalPassengerTarget(profileUuid = profileUuid, href = href)
+}
+
+private fun openExternalTripBlaBla(context: Context, profileUuid: String?, href: String?): Boolean {
+    val target = externalTripTarget(profileUuid, href) ?: return false
+    val account = BlaBlaDynamicAccountRegistry(context).list()
+        .firstOrNull { it.profileUuid?.trim()?.lowercase() == target.profileUuid }
+        ?: return false
+    UnifiedDebugEventStore.record(
+        "BLABLACAR_TRIP_OPEN_EXPLICIT",
+        context.packageName,
+        "timeline=true profile_uuid=${target.profileUuid} href_present=true",
+    )
+    context.startActivity(
+        BlaBlaDynamicSessionIntents.manage(context, account, target.href)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    return true
+}
+
+private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapTarget) {
+    val uri = Uri.parse("geo:0,0?q=${Uri.encode(target.query)}")
+    val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage("com.google.android.apps.maps")
+        .addFlags(flags)
+    val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
+    UnifiedDebugEventStore.record(
+        "PASSENGER_PICKUP_MAP_OPEN",
+        context.packageName,
+        "timeline=true exact_or_collected_pickup=true",
+    )
+    runCatching { context.startActivity(mapsIntent) }
+        .recoverCatching { context.startActivity(fallbackIntent) }
+        .onFailure {
+            Toast.makeText(context, "Não foi possível abrir o local de embarque.", Toast.LENGTH_LONG).show()
+        }
 }
 
 private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassengerCardRow): Boolean {
@@ -585,6 +668,10 @@ private fun enhancedSourceShort(source: BookingSource): String = when (source) {
     BookingSource.ROTA_CERTA -> "Rota Certa"
     BookingSource.OTHER -> "Outro"
 }
+
+private val CANONICAL_PROFILE_UUID = Regex(
+    "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+)
 
 private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 private val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
