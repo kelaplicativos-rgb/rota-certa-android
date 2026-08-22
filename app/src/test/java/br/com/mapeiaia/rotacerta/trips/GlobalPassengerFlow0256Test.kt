@@ -152,4 +152,91 @@ class GlobalPassengerFlow0256Test {
         assertEquals(CapacityClaimType.RESERVED_SEAT, claim.capacityClaimType)
         assertFalse(claim.passengerName.isBlank())
     }
+
+    @Test
+    fun legacyBlaBlaPassengerWithoutSourceReferenceIsNotCountedTwice() {
+        val passengers = listOf(
+            BlaBlaCollectorPassenger(
+                name = "P1",
+                seats = 3,
+                boarding = "Cidade A",
+                dropoff = "Cidade D",
+                booking_href = "https://www.blablacar.com.br/rides/offer/passenger/p1",
+            ),
+            BlaBlaCollectorPassenger(
+                name = "P2",
+                seats = 3,
+                boarding = "Cidade A",
+                dropoff = "Cidade D",
+                booking_href = "https://www.blablacar.com.br/rides/offer/passenger/p2",
+            ),
+        )
+        val entry = externalEntry(passengers, bookedSeats = 6)
+        val trip = buildTimelineExternalBackingTrip(entry, 14)
+        val stops = trip.stops.sortedBy(TripStop::order)
+        val legacy = Booking(
+            id = "legacy-external-passenger",
+            tripId = trip.id,
+            passengerName = "Reserva antiga",
+            boardingStopId = stops.first().id,
+            dropoffStopId = stops.last().id,
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+            sourceReference = "",
+        )
+
+        val claims = planTimelineExternalCapacityClaims(entry, trip, listOf(legacy))
+        assertEquals(5, claims.sumOf(Booking::seats))
+        val availability = SeatAvailabilityEngine.availability(
+            trip = trip,
+            bookings = listOf(legacy) + claims,
+            boardingStopId = stops.first().id,
+            dropoffStopId = stops.last().id,
+            requestedSeats = 1,
+        )
+        assertTrue(availability.canBook)
+        assertEquals(8, availability.availableSeats)
+    }
+
+    @Test
+    fun legacyExternalCapacityIsSubtractedOnlyOnItsPhysicalSegment() {
+        val passengers = listOf(
+            BlaBlaCollectorPassenger(
+                name = "P1",
+                seats = 1,
+                boarding = "Cidade A",
+                dropoff = "Cidade B",
+                booking_href = "https://www.blablacar.com.br/rides/offer/passenger/p1",
+            ),
+            BlaBlaCollectorPassenger(
+                name = "P2",
+                seats = 2,
+                boarding = "Cidade B",
+                dropoff = "Cidade D",
+                booking_href = "https://www.blablacar.com.br/rides/offer/passenger/p2",
+            ),
+        )
+        val entry = externalEntry(passengers, bookedSeats = 3)
+        val trip = buildTimelineExternalBackingTrip(entry, 14)
+        val stops = trip.stops.sortedBy(TripStop::order)
+        val legacy = Booking(
+            id = "legacy-segment-a-b",
+            tripId = trip.id,
+            passengerName = "Reserva externa antiga",
+            boardingStopId = stops[0].id,
+            dropoffStopId = stops[1].id,
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+            sourceReference = "legacy-without-reconciler-prefix",
+        )
+
+        val claims = planTimelineExternalCapacityClaims(entry, trip, listOf(legacy))
+        val loads = SeatAvailabilityEngine.segmentLoads(trip, listOf(legacy) + claims)
+        assertEquals(listOf(1, 2), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(2, claims.sumOf(Booking::seats))
+    }
 }
