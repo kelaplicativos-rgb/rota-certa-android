@@ -18,6 +18,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.lang.reflect.Method
 import java.util.WeakHashMap
 
 /**
@@ -30,15 +31,21 @@ import java.util.WeakHashMap
  * wrapper around the harvester's existing WebViewClient and, after a bounded
  * timeout, delivers the missing completion callback back to that same client.
  *
- * Automatic harvesting is passenger-focused. When the policy disables the
- * published-seat lookup, edit/options links are suppressed only on the trip
- * detail DOM before the existing activity reads it. Passenger links remain
- * untouched. The explicit manual seat-sync Activity is not wrapped here.
+ * Automatic harvesting is passenger-focused. Published-seat Editar/Lugares work
+ * is not part of the automatic path. The provider strips those actions from trip
+ * detail pages and also fail-closes if an old state-machine target still tries to
+ * navigate there. The explicit manual seat-sync Activity is not wrapped here.
  *
  * Navigation identity includes the canonical id query parameter when present.
  * This is required because current BlaBlaCar trip pages commonly share the same
  * /rides/offer path while the strong trip identity lives in ?id=... . Treating
  * path alone as identity lets a late callback from trip N leak into trip N+1.
+ *
+ * The existing activity keeps its conservative delayed read as a fallback. This
+ * wrapper asks the same private state machine to probe earlier after a verified
+ * page completion. If the DOM is not ready, the activity's existing bounded
+ * retries remain authoritative; no evidence is fabricated and no identity check
+ * is bypassed.
  *
  * No route, city, account, passenger, capacity or locale is hardcoded here.
  * The wrapper does not open external dialers and preserves the existing tel:
@@ -85,7 +92,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         UnifiedDebugEventStore.record(
             "HARVEST_NAVIGATION_WATCHDOG_ATTACHED",
             activity.packageName,
-            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP} strongQueryIdentity=true",
+            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP} strongQueryIdentity=true fastProbeMs=${BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS}",
         )
     }
 
@@ -121,6 +128,8 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         private var generation = 0L
         private var expectedUrl: String? = null
         private var disposed = false
+        private val handlePageMethod: Method? by lazy { privateMethod("handlePage") }
+        private val finishHarvestMethod: Method? by lazy { privateMethod("finishHarvest") }
 
         fun armInitialNavigation() {
             arm(webView.url ?: RIDES_URL)
@@ -134,6 +143,22 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            if (
+                !BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+                BlaBlaHarvestNavigationIdentity.isEditOrOptionsHref(url)
+            ) {
+                handler.removeCallbacksAndMessages(null)
+                generation++
+                expectedUrl = null
+                view.stopLoading()
+                val completed = invokePrivate(finishHarvestMethod, "finishHarvest")
+                UnifiedDebugEventStore.record(
+                    "HARVEST_PUBLISHED_SEAT_PHASE_SHORT_CIRCUITED",
+                    appContext.packageName,
+                    "automatic=true path=${safePath(url)} publishedSeatLookup=false completed=$completed externalWrite=false",
+                )
+                if (completed) return
+            }
             arm(url)
             delegate.onPageStarted(view, url, favicon)
         }
@@ -175,7 +200,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP ||
                 !isTripDetailUrl(url)
             ) {
-                delegate.onPageFinished(view, url)
+                deliverDelegateAndAccelerate(view, url)
                 return
             }
             val deliveredGeneration = generation
@@ -194,8 +219,27 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                     appContext.packageName,
                     "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic strongQueryIdentity=true",
                 )
-                delegate.onPageFinished(view, url)
+                deliverDelegateAndAccelerate(view, url)
             }
+        }
+
+        private fun deliverDelegateAndAccelerate(view: WebView, url: String) {
+            delegate.onPageFinished(view, url)
+            scheduleFastProbe(view, url)
+        }
+
+        private fun scheduleFastProbe(view: WebView, url: String) {
+            val expectedGeneration = generation
+            handler.postDelayed({
+                if (disposed || activity.isFinishing || activity.isDestroyed) return@postDelayed
+                if (generation != expectedGeneration || !sameNavigationUrl(view.url, url)) return@postDelayed
+                val invoked = invokePrivate(handlePageMethod, "handlePage")
+                UnifiedDebugEventStore.record(
+                    "HARVEST_FAST_DOM_PROBE",
+                    appContext.packageName,
+                    "delayMs=${BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS} path=${safePath(url)} invoked=$invoked fallbackPreserved=true",
+                )
+            }, BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS)
         }
 
         private fun arm(url: String?) {
@@ -219,6 +263,32 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 webView.stopLoading()
                 deliverPageFinished(webView, current, synthetic = true)
             }, NAVIGATION_TIMEOUT_MS)
+        }
+
+        private fun privateMethod(name: String): Method? = runCatching {
+            activity.javaClass.getDeclaredMethod(name).apply { isAccessible = true }
+        }.getOrElse {
+            UnifiedDebugEventStore.record(
+                "HARVEST_FAST_PATH_REFLECTION_UNAVAILABLE",
+                appContext.packageName,
+                "method=$name fallbackPreserved=true",
+            )
+            null
+        }
+
+        private fun invokePrivate(method: Method?, name: String): Boolean {
+            if (method == null) return false
+            return runCatching {
+                method.invoke(activity)
+                true
+            }.getOrElse {
+                UnifiedDebugEventStore.record(
+                    "HARVEST_FAST_PATH_REFLECTION_FAILED",
+                    appContext.packageName,
+                    "method=$name fallbackPreserved=true error=${it.javaClass.simpleName}",
+                )
+                false
+            }
         }
     }
 
