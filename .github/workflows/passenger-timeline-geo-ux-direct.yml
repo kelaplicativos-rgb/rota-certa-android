@@ -1,0 +1,116 @@
+name: Passenger timeline geo UX direct-source 0.1.253
+
+on:
+  push:
+    branches:
+      - agent/passenger-timeline-geo-ux
+  pull_request:
+    branches:
+      - agent/global-multitenant-foundation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-direct-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
+      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+      EXPECTED_VERSION_CODE: '5546'
+      EXPECTED_VERSION_NAME: '0.1.253'
+    steps:
+      - name: Checkout feature HEAD directly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify direct source and protected FAROL
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerMoney.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'fareMinorUnits' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'TripReferenceOriginStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'EnhancedPassengerTimelineSection' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          echo "source_head=$(git rev-parse HEAD)"
+          echo 'direct_source=true'
+          echo 'historical_sha_checkout=false'
+          echo 'materializer_used=false'
+          echo 'farol_untouched=true'
+
+      - name: Run unit and regression tests directly on app source
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Assemble debug APK directly from app source
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+          mkdir -p evidence
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
+          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          sha256sum "$APK" | tee evidence/apk-sha256.txt
+
+          cat > evidence/passenger-timeline-geo-ux-status.txt <<EOF
+          passenger_timeline_geo_ux_direct_source=PASS
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$(git rev-parse HEAD)
+          direct_source=true
+          historical_sha_checkout=false
+          materializer_used=false
+          farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
+          canonical_passenger_identity=true
+          booking_specific_fare_and_addresses=true
+          manual_segment_selection=true
+          trip_reference_origin=true
+          direction_cards=true
+          passenger_route_order=true
+          physical_ui_validation=false
+          merge=false
+          release=false
+          latest=false
+          EOF
+
+      - name: Upload direct-source candidate APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-timeline-geo-ux-0.1.253
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            evidence/apk-sha256.txt
+            evidence/aapt-badging.txt
+            evidence/passenger-timeline-geo-ux-status.txt
+          if-no-files-found: error
+          retention-days: 7
