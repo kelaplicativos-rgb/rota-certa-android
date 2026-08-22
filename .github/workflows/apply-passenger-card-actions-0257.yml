@@ -1,0 +1,412 @@
+name: Apply passenger card action UX 0.1.257
+
+on:
+  push:
+    branches:
+      - agent/passenger-timeline-geo-ux
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/passenger-timeline-geo-ux
+          fetch-depth: 1
+
+      - name: Patch app/src directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          passenger_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt')
+          text = passenger_path.read_text()
+
+          text = text.replace(
+          '''    val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
+              val rows = passengerTimelineOperationalOrder(rawRows, progress)
+              val nextRowIndex = passengerTimelineNextActionIndex(rows, progress)
+          ''',
+          '''    val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
+              // Keep the trusted route/GPS ordering internally, but do not expose a
+              // "next action" status in the passenger card. The driver now uses the
+              // explicit pickup Maps action instead.
+              val rows = passengerTimelineOperationalOrder(rawRows, progress)
+          '''
+          )
+
+          text = text.replace(
+          '''        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                  passengerTimelineActionLabel(passenger, index, nextRowIndex, progress)?.let { label ->
+                      Text(label, style = MaterialTheme.typography.labelMedium)
+                  }
+          
+                  Row(
+          ''',
+          '''        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                  Row(
+          '''
+          )
+
+          old_whatsapp = '''                IconButton(
+                      onClick = {
+                          if (!phone.isNullOrBlank()) {
+                              UnifiedDebugEventStore.record(
+                                  "PASSENGER_WHATSAPP_OPEN",
+                                  context.packageName,
+                                  "timeline=true phone_present=true",
+                              )
+                              openPassengerWhatsApp(context, phone)
+                          }
+                      },
+                      enabled = !phone.isNullOrBlank(),
+                      modifier = Modifier.size(36.dp),
+                  ) {
+                      Icon(
+                          painter = painterResource(R.drawable.ic_whatsapp_action),
+                          contentDescription = "WhatsApp",
+                          tint = Color.Unspecified,
+                          modifier = Modifier.size(22.dp),
+                      )
+                  }
+          
+                  TextButton(
+          '''
+          new_whatsapp = '''                IconButton(
+                      onClick = {
+                          if (!phone.isNullOrBlank()) {
+                              UnifiedDebugEventStore.record(
+                                  "PASSENGER_WHATSAPP_OPEN",
+                                  context.packageName,
+                                  "timeline=true phone_present=true",
+                              )
+                              openPassengerWhatsApp(context, phone)
+                          }
+                      },
+                      enabled = !phone.isNullOrBlank(),
+                      modifier = Modifier.size(36.dp),
+                  ) {
+                      Icon(
+                          painter = painterResource(R.drawable.ic_whatsapp_action),
+                          contentDescription = "WhatsApp",
+                          tint = Color.Unspecified,
+                          modifier = Modifier.size(22.dp),
+                      )
+                  }
+          
+                  externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {
+                      IconButton(
+                          onClick = {
+                              if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                                  Toast.makeText(
+                                      context,
+                                      "Conta BlaBlaCar desta viagem não está conectada.",
+                                      Toast.LENGTH_LONG,
+                                  ).show()
+                              }
+                          },
+                          modifier = Modifier.size(36.dp),
+                      ) {
+                          Icon(
+                              painter = painterResource(R.drawable.ic_blablacar_action),
+                              contentDescription = "Abrir viagem no BlaBlaCar",
+                              tint = Color.Unspecified,
+                              modifier = Modifier.size(22.dp),
+                          )
+                      }
+                  }
+          
+                  TextButton(
+          '''
+          if old_whatsapp not in text:
+              raise SystemExit('WhatsApp insertion anchor not found')
+          text = text.replace(old_whatsapp, new_whatsapp, 1)
+
+          old_money = '''                OutlinedButton(
+                      onClick = {
+                          if (passenger.fareMinorUnits != null) {
+                              copyPassengerFareValue(context, passenger)
+                          } else {
+                              fareEditRow = passenger
+                          }
+                      },
+                      contentPadding = COMPACT_ACTION_PADDING,
+                      modifier = Modifier.heightIn(min = 36.dp),
+                  ) {
+                      Text("💰", maxLines = 1)
+                  }
+              }
+          '''
+          new_money = '''                OutlinedButton(
+                      onClick = {
+                          if (passenger.fareMinorUnits != null) {
+                              copyPassengerFareValue(context, passenger)
+                          } else {
+                              fareEditRow = passenger
+                          }
+                      },
+                      contentPadding = COMPACT_ACTION_PADDING,
+                      modifier = Modifier.heightIn(min = 36.dp),
+                  ) {
+                      Text("💰", maxLines = 1)
+                  }
+          
+                  val pickupTarget = passengerPickupMapTarget(passenger)
+                  IconButton(
+                      onClick = {
+                          if (pickupTarget != null) openPassengerPickupMap(context, pickupTarget)
+                      },
+                      enabled = pickupTarget != null,
+                      modifier = Modifier.size(36.dp),
+                  ) {
+                      Icon(
+                          painter = painterResource(R.drawable.ic_pickup_maps_action),
+                          contentDescription = "Abrir embarque no Maps",
+                          tint = Color.Unspecified,
+                          modifier = Modifier.size(22.dp),
+                      )
+                  }
+              }
+          '''
+          if old_money not in text:
+              raise SystemExit('Money insertion anchor not found')
+          text = text.replace(old_money, new_money, 1)
+
+          pending = '''
+                  if (passenger.boardingStopIndex == null && trip != null) {
+                      Text(
+                          "⚠ ordem de embarque pendente",
+                          style = MaterialTheme.typography.bodySmall,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                      )
+                  }
+          '''
+          if pending not in text:
+              raise SystemExit('Pending-order visual anchor not found')
+          text = text.replace(pending, '', 1)
+
+          target_anchor = '''internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
+          
+          internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPassengerTarget? {
+          '''
+          target_insert = '''internal data class ExternalTripTarget(val profileUuid: String, val href: String)
+          
+          internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {
+              val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null
+              if (!CANONICAL_PROFILE_UUID.matches(profile)) return null
+              val targetHref = href?.trim()?.substringBefore("&search_uuid=")?.takeIf(String::isNotEmpty) ?: return null
+              if (!targetHref.startsWith("https://www.blablacar.com.br/")) return null
+              if (!targetHref.contains("/rides/offer/") && !targetHref.contains("/trip/")) return null
+              return ExternalTripTarget(profileUuid = profile, href = targetHref)
+          }
+          
+          internal data class PassengerPickupMapTarget(val query: String)
+          
+          internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
+              val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
+              val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
+              val query = exact ?: collected ?: return null
+              return PassengerPickupMapTarget(query)
+          }
+          
+          internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
+          
+          internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPassengerTarget? {
+          '''
+          if target_anchor not in text:
+              raise SystemExit('External target anchor not found')
+          text = text.replace(target_anchor, target_insert, 1)
+
+          open_anchor = '''private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassengerCardRow): Boolean {
+          '''
+          open_insert = '''private fun openExternalTripBlaBla(context: Context, profileUuid: String?, href: String?): Boolean {
+              val target = externalTripTarget(profileUuid, href) ?: return false
+              val account = BlaBlaDynamicAccountRegistry(context).list()
+                  .firstOrNull { it.profileUuid?.trim()?.lowercase() == target.profileUuid }
+                  ?: return false
+              UnifiedDebugEventStore.record(
+                  "BLABLACAR_TRIP_OPEN_EXPLICIT",
+                  context.packageName,
+                  "timeline=true profile_uuid=${target.profileUuid} href_present=true",
+              )
+              context.startActivity(
+                  BlaBlaDynamicSessionIntents.manage(context, account, target.href)
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+              )
+              return true
+          }
+          
+          private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapTarget) {
+              val uri = Uri.parse("geo:0,0?q=${Uri.encode(target.query)}")
+              val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+              val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
+                  .setPackage("com.google.android.apps.maps")
+                  .addFlags(flags)
+              val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).addFlags(flags)
+              UnifiedDebugEventStore.record(
+                  "PASSENGER_PICKUP_MAP_OPEN",
+                  context.packageName,
+                  "timeline=true exact_or_collected_pickup=true",
+              )
+              runCatching { context.startActivity(mapsIntent) }
+                  .recoverCatching { context.startActivity(fallbackIntent) }
+                  .onFailure {
+                      Toast.makeText(context, "Não foi possível abrir o local de embarque.", Toast.LENGTH_LONG).show()
+                  }
+          }
+          
+          private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassengerCardRow): Boolean {
+          '''
+          if open_anchor not in text:
+              raise SystemExit('Open external passenger anchor not found')
+          text = text.replace(open_anchor, open_insert, 1)
+
+          constant_anchor = '''private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+          '''
+          constant_insert = '''private val CANONICAL_PROFILE_UUID = Regex(
+              "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          )
+          
+          private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+          '''
+          if constant_anchor not in text:
+              raise SystemExit('Constant anchor not found')
+          text = text.replace(constant_anchor, constant_insert, 1)
+          passenger_path.write_text(text)
+
+          trip_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
+          trip = trip_path.read_text()
+          old_card = '''    fun openCard() {
+              when {
+                  !entry.blablaTripHref.isNullOrBlank() -> if (!openBlaBlaHref(context, entry, entry.blablaTripHref!!)) {
+                      Toast.makeText(context, "Conta BlaBlaCar não conectada.", Toast.LENGTH_LONG).show()
+                  }
+                  entry.localTripId != null -> onManageLocal(entry.localTripId)
+                  trip != null -> onManageLocal(trip.id)
+              }
+          }
+          
+              Card(
+                  onClick = ::openCard,
+                  modifier = Modifier.fillMaxWidth(),
+          '''
+          new_card = '''    Card(
+                  modifier = Modifier.fillMaxWidth(),
+          '''
+          if old_card not in trip:
+              raise SystemExit('Clickable card anchor not found')
+          trip = trip.replace(old_card, new_card, 1)
+          trip_path.write_text(trip)
+
+          Path('app/src/main/res/drawable/ic_blablacar_action.xml').write_text('''<vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#FF00A087"
+                  android:pathData="M4,4h16c1.1,0 2,0.9 2,2v9c0,1.1 -0.9,2 -2,2h-7l-4.5,3v-3H4c-1.1,0 -2,-0.9 -2,-2V6c0,-1.1 0.9,-2 2,-2z" />
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M7,9.5m-1.25,0a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0M12,9.5m-1.25,0a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0M17,9.5m-1.25,0a1.25,1.25 0,1 0,2.5 0a1.25,1.25 0,1 0,-2.5 0" />
+          </vector>
+          ''')
+
+          Path('app/src/main/res/drawable/ic_pickup_maps_action.xml').write_text('''<vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24">
+              <path
+                  android:fillColor="#FF4285F4"
+                  android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7z" />
+              <path
+                  android:fillColor="#FFFFFFFF"
+                  android:pathData="M12,6m-3,0a3,3 0,1 0,6 0a3,3 0,1 0,-6 0" />
+              <path
+                  android:fillColor="#FF34A853"
+                  android:pathData="M11,5h2v8h-2zM8,8h8v2H8z" />
+          </vector>
+          ''')
+
+          Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0257Test.kt').write_text('''package br.com.mapeiaia.rotacerta.trips
+          
+          import kotlin.test.Test
+          import kotlin.test.assertEquals
+          import kotlin.test.assertNull
+          
+          class PassengerCardActions0257Test {
+              @Test
+              fun tripTargetRequiresCanonicalProfileAndRideHref() {
+                  val uuid = "7371F028-9C55-4903-8444-308015823EFD"
+                  val target = externalTripTarget(uuid, "https://www.blablacar.com.br/rides/offer/abc&search_uuid=x")!!
+                  assertEquals("7371f028-9c55-4903-8444-308015823efd", target.profileUuid)
+                  assertEquals("https://www.blablacar.com.br/rides/offer/abc", target.href)
+                  assertNull(externalTripTarget("not-a-uuid", target.href))
+                  assertNull(externalTripTarget(uuid, "https://example.com/rides/offer/abc"))
+              }
+          
+              @Test
+              fun pickupMapsPrefersExactReservationAddress() {
+                  val row = row().copy(
+                      boarding = "São Paulo",
+                      boardingAddress = "Av. Cruzeiro do Sul, 1230, São Paulo",
+                  )
+                  assertEquals(
+                      "Av. Cruzeiro do Sul, 1230, São Paulo",
+                      passengerPickupMapTarget(row)?.query,
+                  )
+              }
+          
+              @Test
+              fun pickupMapsFallsBackToCollectedBoardingWithoutInventing() {
+                  assertEquals("Três Corações", passengerPickupMapTarget(row().copy(boarding = "Três Corações"))?.query)
+                  assertNull(passengerPickupMapTarget(row().copy(boarding = null, boardingAddress = "")))
+              }
+          
+              @Test
+              fun operationalRouteOrderingRemainsAvailableWithoutVisualNextAction() {
+                  val rows = listOf(row(3, "Depois"), row(1, "Primeiro"), row(2, "Segundo"))
+                  val progress = TripRouteProgress(stopIndexProgress = 0.2, corridorDistanceKm = 0.1)
+                  val ordered = passengerTimelineOperationalOrder(rows, progress)
+                  assertEquals(listOf("Primeiro", "Segundo", "Depois"), ordered.map { it.name })
+              }
+          
+              private fun row(stop: Int? = null, name: String = "Passageiro") = EnhancedPassengerCardRow(
+                  name = name,
+                  phone = null,
+                  seats = 1,
+                  boarding = null,
+                  dropoff = "Destino",
+                  sources = setOf(BookingSource.BLABLACAR),
+                  boardingStopIndex = stop,
+                  bookingStatus = BookingStatus.CONFIRMED,
+              )
+          }
+          ''')
+          PY
+
+          git diff --check
+          git status --short
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+
+      - name: Commit direct app source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/main/res/drawable/ic_blablacar_action.xml \
+                  app/src/main/res/drawable/ic_pickup_maps_action.xml \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0257Test.kt
+          git commit -m 'Make trip card actions explicit and add passenger pickup Maps action'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
