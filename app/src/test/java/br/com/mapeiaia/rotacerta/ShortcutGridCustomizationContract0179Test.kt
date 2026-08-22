@@ -33,7 +33,8 @@ class ShortcutGridCustomizationContract0179Test {
         assertTrue(store.contains("MAX_GRID_ITEMS"))
         assertTrue(store.contains("ShortcutActionCatalog0184.allSpecs"))
         assertTrue(store.contains("lastUpdateTime > info.firstInstallTime"))
-        assertTrue(store.contains("initialEntries(isUpgradeInstallation())"))
+        assertTrue(store.contains("val isUpgrade = isUpgradeInstallation()"))
+        assertTrue(store.contains("initialEntries(isUpgrade)"))
         assertFalse(store.contains("Intent.parseUri"))
     }
 }

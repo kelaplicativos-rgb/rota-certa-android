@@ -84,6 +84,18 @@ data class Booking(
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    /** Canonical Rota Certa person identity. This is deliberately distinct from Booking.id. */
+    val passengerId: String = "",
+    /** Fare for this reservation/segment, never a permanent property of the passenger. */
+    val fareMinorUnits: Long? = null,
+    /** ISO 4217 code when known. Empty means the original source did not provide a reliable currency. */
+    val fareCurrencyCode: String = "",
+    /** Exact reservation pickup address; the shared TripStop remains the route-order authority. */
+    val boardingAddress: String = "",
+    /** Exact reservation dropoff address; the shared TripStop remains the route-order authority. */
+    val dropoffAddress: String = "",
+    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address metadata. */
+    val localMetadataTouched: Boolean = false,
 )
 
 data class SegmentLoad(

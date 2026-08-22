@@ -49,8 +49,24 @@ class TripStore(context: Context) {
     }
 
     fun saveBooking(booking: Booking): Booking {
-        val normalized = booking.copy(updatedAtMillis = System.currentTimeMillis())
-        val current = bookings().filterNot { it.id == normalized.id }
+        val all = bookings()
+        val existing = all.firstOrNull { it.id == booking.id }
+        val withPreservedLocalMetadata = if (
+            existing?.localMetadataTouched == true && !booking.localMetadataTouched
+        ) {
+            booking.copy(
+                passengerId = existing.passengerId,
+                fareMinorUnits = existing.fareMinorUnits,
+                fareCurrencyCode = existing.fareCurrencyCode,
+                boardingAddress = existing.boardingAddress,
+                dropoffAddress = existing.dropoffAddress,
+                localMetadataTouched = true,
+            )
+        } else {
+            booking
+        }
+        val normalized = withPreservedLocalMetadata.copy(updatedAtMillis = System.currentTimeMillis())
+        val current = all.filterNot { it.id == normalized.id }
         prefs.edit().putString(bookingsKey, json.encodeToString(listOf(normalized) + current)).apply()
         refreshTripStatus(normalized.tripId)
         return normalized
