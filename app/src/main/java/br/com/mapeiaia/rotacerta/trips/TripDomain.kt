@@ -94,6 +94,8 @@ data class Booking(
     val boardingAddress: String = "",
     /** Exact reservation dropoff address; the shared TripStop remains the route-order authority. */
     val dropoffAddress: String = "",
+    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address metadata. */
+    val localMetadataTouched: Boolean = false,
 )
 
 data class SegmentLoad(
