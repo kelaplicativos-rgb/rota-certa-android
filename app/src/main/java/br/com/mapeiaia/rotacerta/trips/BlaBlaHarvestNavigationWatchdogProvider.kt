@@ -35,6 +35,11 @@ import java.util.WeakHashMap
  * detail DOM before the existing activity reads it. Passenger links remain
  * untouched. The explicit manual seat-sync Activity is not wrapped here.
  *
+ * Navigation identity includes the canonical id query parameter when present.
+ * This is required because current BlaBlaCar trip pages commonly share the same
+ * /rides/offer path while the strong trip identity lives in ?id=... . Treating
+ * path alone as identity lets a late callback from trip N leak into trip N+1.
+ *
  * No route, city, account, passenger, capacity or locale is hardcoded here.
  * The wrapper does not open external dialers and preserves the existing tel:
  * interception implemented by BlaBlaMhtmlHarvestActivity.
@@ -80,7 +85,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         UnifiedDebugEventStore.record(
             "HARVEST_NAVIGATION_WATCHDOG_ATTACHED",
             activity.packageName,
-            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP}",
+            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP} strongQueryIdentity=true",
         )
     }
 
@@ -140,7 +145,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 UnifiedDebugEventStore.record(
                     "HARVEST_STALE_PAGE_FINISHED_IGNORED",
                     appContext.packageName,
-                    "currentPath=${safePath(current)} stalePath=${safePath(url)}",
+                    "currentPath=${safePath(current)} stalePath=${safePath(url)} strongQueryIdentity=true",
                 )
                 return
             }
@@ -180,14 +185,14 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                     UnifiedDebugEventStore.record(
                         "HARVEST_STALE_PAGE_FINISHED_IGNORED",
                         appContext.packageName,
-                        "currentPath=${safePath(view.url)} stalePath=${safePath(url)} seatLookupSuppression=true",
+                        "currentPath=${safePath(view.url)} stalePath=${safePath(url)} seatLookupSuppression=true strongQueryIdentity=true",
                     )
                     return@evaluateJavascript
                 }
                 UnifiedDebugEventStore.record(
                     "HARVEST_SEAT_OPTIONS_SKIPPED",
                     appContext.packageName,
-                    "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic",
+                    "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic strongQueryIdentity=true",
                 )
                 delegate.onPageFinished(view, url)
             }
@@ -222,11 +227,17 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private val SUPPRESS_EDIT_LINKS_JS = """
             (function() {
+              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
               Array.from(document.querySelectorAll('a[href]')).forEach((anchor) => {
-                const href = anchor.getAttribute('href') || '';
-                if (/\/rides\/offer\/edit\//i.test(href)) {
-                  anchor.removeAttribute('href');
+                const rawHref = anchor.getAttribute('href') || '';
+                let path = '';
+                try { path = new URL(rawHref, location.href).pathname.replace(/\/+$/, ''); } catch (_) {}
+                const text = clean(anchor.innerText || anchor.textContent);
+                const editPath = /^\/rides\/offer\/edit(?:\/|$)/i.test(path);
+                const editAction = /editar sua carona|lugares e op[cç][õo]es|op[cç][õo]es de passageiros/i.test(text);
+                if (editPath || editAction) {
                   anchor.setAttribute('data-rotacerta-automatic-seat-lookup', 'disabled');
+                  anchor.removeAttribute('href');
                 }
               });
               return 'ok';
@@ -240,7 +251,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
             if (!isBlaBlaUrl(value)) return false
             val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return false
             val path = parsed.path.orEmpty().trimEnd('/')
-            if (path.contains("/rides/offer/edit/", ignoreCase = true)) return false
+            if (path.equals("/rides/offer/edit", ignoreCase = true) || path.startsWith("/rides/offer/edit/", ignoreCase = true)) return false
             if (path.contains("/passenger/", ignoreCase = true) || path.contains("/booking/", ignoreCase = true)) return false
             if (path.equals("/rides/offer", ignoreCase = true)) return true
             return Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path) ||
@@ -249,15 +260,36 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
 
         private fun sameNavigationUrl(left: String?, right: String?): Boolean {
             if (left.isNullOrBlank() || right.isNullOrBlank()) return false
-            val a = runCatching { Uri.parse(left) }.getOrNull()
-            val b = runCatching { Uri.parse(right) }.getOrNull()
-            return a?.scheme.equals(b?.scheme, ignoreCase = true) &&
-                a?.host.equals(b?.host, ignoreCase = true) &&
-                a?.path.orEmpty().trimEnd('/') == b?.path.orEmpty().trimEnd('/')
+            val a = navigationIdentity(left) ?: return false
+            val b = navigationIdentity(right) ?: return false
+            return a == b
         }
 
+        private fun navigationIdentity(value: String): NavigationIdentity? = runCatching {
+            val parsed = Uri.parse(value)
+            NavigationIdentity(
+                scheme = parsed.scheme.orEmpty().lowercase(),
+                host = parsed.host.orEmpty().lowercase(),
+                path = parsed.path.orEmpty().trimEnd('/').lowercase(),
+                strongId = parsed.getQueryParameter("id").orEmpty(),
+            )
+        }.getOrNull()
+
         private fun safePath(value: String?): String = runCatching {
-            Uri.parse(value).path.orEmpty().take(160)
+            val parsed = Uri.parse(value)
+            val id = parsed.getQueryParameter("id")?.takeIf(String::isNotBlank)
+            if (id == null) {
+                parsed.path.orEmpty().take(160)
+            } else {
+                "${parsed.path.orEmpty().take(100)}?id=${id.take(54)}"
+            }
         }.getOrDefault("")
+
+        private data class NavigationIdentity(
+            val scheme: String,
+            val host: String,
+            val path: String,
+            val strongId: String,
+        )
     }
 }
