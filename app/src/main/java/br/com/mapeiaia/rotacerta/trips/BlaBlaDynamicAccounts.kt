@@ -339,6 +339,8 @@ private data class DynamicTripDetail(
 private data class DynamicPassengerContactEvidence(
     val phone: String = "",
     val visibleName: String = "",
+    val fareAmount: String = "",
+    val fareCurrencyCode: String = "",
 )
 
 internal class BlaBlaSyncCompletionGate {
@@ -369,6 +371,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var store: BlaBlaDynamicSessionStore
+    private lateinit var passengerIdentityStore: PassengerIdentityStore
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
@@ -396,6 +399,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         super.onCreate(savedInstanceState)
         registry = BlaBlaDynamicAccountRegistry(this)
         store = BlaBlaDynamicSessionStore(this)
+        passengerIdentityStore = PassengerIdentityStore(this)
         account = registry.get(intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finish()
             return
@@ -641,7 +645,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
         val candidate = candidates[candidateIndex]
         val definition = account.verifiedDefinition()
-        val missingContactLink = candidate.passengers.any { it.phone.isNullOrBlank() && it.booking_href.isNullOrBlank() }
+        val missingContactLink = candidate.passengers.any { it.booking_href.isNullOrBlank() }
         val hasBatchRosterEvidence = candidate.passengerRosterComplete || candidate.passengers.isNotEmpty()
         val synthetic = DynamicTripDetail(
             detail = BlaBlaDomTripDetail(
@@ -672,7 +676,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 packageName,
                 "account=${account.displayLabel} index=${candidateIndex + 1}/${candidates.size} passengers=${candidate.passengers.size} bookingLinks=${candidate.passengers.count { !it.booking_href.isNullOrBlank() }} phones=${candidate.passengers.count { !it.phone.isNullOrBlank() }} rosterComplete=${candidate.passengerRosterComplete}",
             )
-            if (pendingTripPassengers.any { it.phone.isNullOrBlank() && !it.booking_href.isNullOrBlank() }) {
+            if (pendingTripPassengers.any(::passengerNeedsReservationPage)) {
                 loadNextPassengerContact(syncGeneration, candidateIndex)
             } else {
                 finalizeCurrentTrip(syncGeneration, candidateIndex)
@@ -789,7 +793,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             pendingTripCandidateIndex = expectedCandidate
             passengerContactIndex = 0
             passengerContactReadAttempts = 0
-            if (pendingTripPassengers.any { it.phone.isNullOrBlank() && !it.booking_href.isNullOrBlank() }) {
+            if (pendingTripPassengers.any(::passengerNeedsReservationPage)) {
                 loadNextPassengerContact(expectedSync, expectedCandidate)
             } else {
                 finalizeCurrentTrip(expectedSync, expectedCandidate)
@@ -804,6 +808,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             expectedCandidate == candidateIndex &&
             expectedCandidate in candidates.indices
 
+    private fun passengerNeedsReservationPage(passenger: BlaBlaCollectorPassenger): Boolean {
+        val href = passenger.booking_href?.trim().orEmpty()
+        if (href.isBlank() || !isBlaBla(href)) return false
+        val metadataKey = externalPassengerReservationKey(account.profileUuid, href)
+        val metadata = passengerIdentityStore.externalMetadata(metadataKey)
+        return passenger.phone.isNullOrBlank() || metadata?.fareMinorUnits == null
+    }
+
     private fun loadNextPassengerContact(expectedSync: Long, expectedCandidate: Int) {
         if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
             recordStale("passenger_load_pending_mismatch", expectedSync, expectedCandidate)
@@ -812,11 +824,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         while (passengerContactIndex < pendingTripPassengers.size) {
             val passenger = pendingTripPassengers[passengerContactIndex]
             val href = passenger.booking_href?.trim().orEmpty()
-            if (passenger.phone.isNullOrBlank() && href.isNotBlank() && isBlaBla(href)) {
+            if (passengerNeedsReservationPage(passenger)) {
                 phase = Phase.PASSENGER_CONTACT
                 passengerContactReadAttempts = 0
                 passengerCaptureInFlight = false
-                statusView.text = "${account.displayLabel} • contato ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
+                statusView.text = "${account.displayLabel} • reserva ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
                 loadTrackedUrl(href)
                 return
             }
@@ -850,8 +862,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 recordStale("passenger_after_evaluate", expectedSync, expectedCandidate)
                 return@evaluate
             }
-            val phone = normalizeCapturedPhone(evidence?.phone)
-            if (phone == null && passengerContactReadAttempts < 2) {
+            val capturedPhone = normalizeCapturedPhone(evidence?.phone)
+            val effectivePhone = current.phone?.takeIf(String::isNotBlank) ?: capturedPhone
+            val fareCaptured = saveCapturedPassengerFare(current.booking_href, evidence)
+            if (effectivePhone == null && passengerContactReadAttempts < 2) {
                 passengerContactReadAttempts++
                 webView.postDelayed({
                     capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
@@ -862,12 +876,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val visibleName = evidence?.visibleName?.trim().orEmpty()
             pendingTripPassengers[expectedPassenger] = current.copy(
                 name = current.name.ifBlank { visibleName },
-                phone = current.phone?.takeIf(String::isNotBlank) ?: phone,
+                phone = effectivePhone,
             )
             UnifiedDebugEventStore.record(
                 "PASSENGER_CONTACT_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} tripIndex=${expectedCandidate + 1}/${candidates.size} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${phone != null} bookingLinkPresent=${!current.booking_href.isNullOrBlank()}",
+                "account=${account.displayLabel} tripIndex=${expectedCandidate + 1}/${candidates.size} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${effectivePhone != null} bookingLinkPresent=${!current.booking_href.isNullOrBlank()} fareCaptured=$fareCaptured",
             )
             passengerContactIndex = expectedPassenger + 1
             loadNextPassengerContact(expectedSync, expectedCandidate)
@@ -974,6 +988,27 @@ advanceCandidate(expectedSync, expectedCandidate)
             packageName,
             "account=${account.displayLabel} reason=$reason expectedGeneration=$expectedSync currentGeneration=$syncGeneration expectedCandidate=${expectedCandidate + 1} currentCandidate=${candidateIndex + 1} candidateCount=${candidates.size}",
         )
+    }
+
+    private fun saveCapturedPassengerFare(
+        href: String?,
+        evidence: DynamicPassengerContactEvidence?,
+    ): Boolean {
+        val key = externalPassengerReservationKey(account.profileUuid, href) ?: return false
+        val baseSpec = PassengerMoney.spec(this)
+        val currencyCode = resolvePassengerFareCurrency(evidence?.fareCurrencyCode, baseSpec.currencyCode) ?: return false
+        val rawAmount = evidence?.fareAmount?.trim()?.takeIf(String::isNotEmpty) ?: return false
+        val currency = runCatching { java.util.Currency.getInstance(currencyCode) }.getOrNull() ?: return false
+        val fractionDigits = currency.defaultFractionDigits.takeIf { it in 0..3 } ?: 2
+        val amount = PassengerMoney.parseMinorUnits(
+            rawAmount,
+            baseSpec.copy(currencyCode = currencyCode, fractionDigits = fractionDigits),
+        ) ?: return false
+        val current = passengerIdentityStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
+        passengerIdentityStore.saveExternalMetadata(
+            current.copy(fareMinorUnits = amount, fareCurrencyCode = currencyCode),
+        )
+        return true
     }
 
     private fun normalizeCapturedPhone(raw: String?): String? {
@@ -1276,9 +1311,24 @@ advanceCandidate(expectedSync, expectedCandidate)
                 ? rawPhone.replace(/^tel:/i, '').split('?')[0].replace(/[^+0-9]/g, '')
                 : '';
               const nameNode = document.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], h1');
+              const fareNode = document.querySelector(
+                '[data-testid*="booking-price"], [data-testid*="reservation-price"], [data-testid*="passenger-price"], [data-testid*="booking-total"], [data-testid*="reservation-total"]'
+              );
+              const currencyNode = fareNode && fareNode.closest('[data-currency], [data-currency-code], [data-testid*="booking"], [data-testid*="reservation"]');
+              const fareAmount = clean(fareNode && (
+                fareNode.getAttribute('data-value') ||
+                fareNode.getAttribute('content') ||
+                fareNode.innerText
+              ));
+              const fareCurrencyCode = clean(currencyNode && (
+                currencyNode.getAttribute('data-currency-code') ||
+                currencyNode.getAttribute('data-currency')
+              )).toUpperCase();
               return JSON.stringify({
                 phone: phone,
-                visibleName: clean(nameNode && nameNode.innerText)
+                visibleName: clean(nameNode && nameNode.innerText),
+                fareAmount: fareAmount,
+                fareCurrencyCode: fareCurrencyCode
               });
             })();
         """.trimIndent()

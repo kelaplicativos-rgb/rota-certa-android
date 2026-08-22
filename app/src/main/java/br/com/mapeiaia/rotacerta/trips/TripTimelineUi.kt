@@ -101,6 +101,9 @@ fun TripTimelineScreen(
             trustedStops = timelineTrustedDirectionStops(trips, appSettings),
         )
     }
+    val directionReference = remember(referenceOrigin, appSettings.homeCoordinate, appSettings.homeRadiusKm) {
+        timelineDirectionReference(referenceOrigin, appSettings)
+    }
     val physical = remember(merged, directionGeo) {
         TripPhysicalRideConsolidator.consolidate(merged, directionGeo)
     }
@@ -199,8 +202,8 @@ fun TripTimelineScreen(
                 autoSyncProfileUuid = profileUuid
                 onRequestBlaBlaSync()
             },
-            referenceCoordinate = referenceOrigin?.coordinate,
-            referenceRadiusKm = referenceOrigin?.radiusKm ?: TripReferenceOrigin.DEFAULT_RADIUS_KM,
+            referenceCoordinate = directionReference.coordinate,
+            referenceRadiusKm = directionReference.radiusKm,
             directionGeo = directionGeo,
             currentCoordinate = currentCoordinate,
         ) {
@@ -393,8 +396,8 @@ private fun TimelineEntryCard(
     )
     val dark = isSystemInDarkTheme()
     val cardColor = when (direction) {
-        TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF17351F) else Color(0xFFEAF7ED)
-        TimelineDirectionState.INBOUND -> if (dark) Color(0xFF3B291F) else Color(0xFFFFF0E6)
+        TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF17351F) else Color(0xFFDDF3E3)
+        TimelineDirectionState.INBOUND -> if (dark) Color(0xFF3B291F) else Color(0xFFFFE4D6)
         TimelineDirectionState.NEUTRAL,
         TimelineDirectionState.UNKNOWN,
         -> MaterialTheme.colorScheme.surface

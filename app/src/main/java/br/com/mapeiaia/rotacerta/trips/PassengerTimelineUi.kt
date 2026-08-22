@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +45,9 @@ internal data class EnhancedPassengerCardRow(
     val passengerId: String? = null,
     val localBookingId: String? = null,
     val externalReservationKey: String? = null,
+    val externalBookingHref: String? = null,
+    val externalProfileUuid: String? = null,
+    val bookingStatus: BookingStatus? = null,
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -62,27 +67,22 @@ internal fun EnhancedPassengerTimelineSection(
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
-    val rows = enhancedPassengerRows(entry, trip, store, passengerStore)
-    if (rows.isEmpty()) return
+    val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
+    if (rawRows.isEmpty()) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
-    val nextRowIndex = progress?.let { trustedProgress ->
-        rows.indexOfFirst { row ->
-            val order = row.boardingStopIndex ?: return@indexOfFirst false
-            TripPassengerRouteOrder.isNextBoarding(order, trustedProgress)
-        }.takeIf { it >= 0 }
-    }
+    val rows = passengerTimelineOperationalOrder(rawRows, progress)
+    val nextRowIndex = passengerTimelineNextActionIndex(rows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
-    var addressEdit by remember { mutableStateOf<Pair<EnhancedPassengerCardRow, Boolean>?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            if (nextRowIndex == index && passenger.boardingStopIndex != null) {
-                Text("📍 PRÓXIMO EMBARQUE", style = MaterialTheme.typography.labelMedium)
+            passengerTimelineActionLabel(passenger, index, nextRowIndex, progress)?.let { label ->
+                Text(label, style = MaterialTheme.typography.labelMedium)
             }
 
             Row(
@@ -91,7 +91,7 @@ internal fun EnhancedPassengerTimelineSection(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 val phone = passenger.phone
-                OutlinedButton(
+                IconButton(
                     onClick = {
                         if (!phone.isNullOrBlank()) {
                             UnifiedDebugEventStore.record(
@@ -103,15 +103,23 @@ internal fun EnhancedPassengerTimelineSection(
                         }
                     },
                     enabled = !phone.isNullOrBlank(),
-                    contentPadding = COMPACT_ACTION_PADDING,
-                    modifier = Modifier.heightIn(min = 36.dp),
+                    modifier = Modifier.size(36.dp),
                 ) {
-                    Text("WA", maxLines = 1)
+                    Text("☎", maxLines = 1)
                 }
 
                 TextButton(
                     onClick = {
-                        if (!passenger.passengerId.isNullOrBlank() && passengerStore.profile(passenger.passengerId) != null) {
+                        val externalTarget = externalPassengerTarget(passenger)
+                        if (externalTarget != null) {
+                            if (!openExternalPassengerBlaBla(context, passenger)) {
+                                Toast.makeText(
+                                    context,
+                                    "Conta BlaBlaCar desta reserva não está conectada.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        } else if (!passenger.passengerId.isNullOrBlank() && passengerStore.profile(passenger.passengerId) != null) {
                             profileRow = passenger
                         } else {
                             createProfileRow = passenger
@@ -142,35 +150,12 @@ internal fun EnhancedPassengerTimelineSection(
                 }
             }
 
-            Row(
+            Text(
+                "📍 ${passengerTimelineCompactPlace(passenger.boarding)} → 🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                TextButton(
-                    onClick = { addressEdit = passenger to true },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = COMPACT_ROUTE_PADDING,
-                ) {
-                    Text(
-                        "📍 ${passengerTimelineCompactPlace(passenger.boarding)}",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text("→", maxLines = 1)
-                TextButton(
-                    onClick = { addressEdit = passenger to false },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = COMPACT_ROUTE_PADDING,
-                ) {
-                    Text(
-                        "🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            )
 
             val source = passenger.sources.joinToString(" + ") { enhancedSourceShort(it) }
             val seats = if (passenger.seats == 1) "1 lugar" else "${passenger.seats} lugares"
@@ -181,29 +166,13 @@ internal fun EnhancedPassengerTimelineSection(
                 else -> ""
             }
 
-            Row(
+            Text(
+                "$source • $seats$identity",
+                style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    "$source • $seats$identity",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                TextButton(
-                    enabled = passenger.boardingAddress.isNotBlank(),
-                    onClick = { openNavigation(context, passenger.boardingAddress) },
-                    contentPadding = COMPACT_NAV_PADDING,
-                ) { Text("🧭📍", maxLines = 1) }
-                TextButton(
-                    enabled = passenger.dropoffAddress.isNotBlank(),
-                    onClick = { openNavigation(context, passenger.dropoffAddress) },
-                    contentPadding = COMPACT_NAV_PADDING,
-                ) { Text("🧭🏁", maxLines = 1) }
-            }
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             if (passenger.boardingStopIndex == null && trip != null) {
                 Text(
@@ -266,22 +235,6 @@ internal fun EnhancedPassengerTimelineSection(
         )
     }
 
-    addressEdit?.let { (row, boarding) ->
-        PassengerAddressEditorDialog(
-            row = row,
-            boarding = boarding,
-            onDismiss = { addressEdit = null },
-            onSave = { value ->
-                if (savePassengerAddress(row, boarding, value, store, passengerStore)) {
-                    onChanged(if (boarding) "Endereço exato de embarque salvo." else "Endereço exato de destino salvo.")
-                } else {
-                    Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
-                }
-                addressEdit = null
-            },
-        )
-    }
-
     fareEditRow?.let { row ->
         PassengerFareEditorDialog(
             row = row,
@@ -325,6 +278,8 @@ internal fun enhancedPassengerRows(
             sources = setOf(BookingSource.BLABLACAR),
             passengerId = metadata?.passengerId?.takeIf(String::isNotBlank),
             externalReservationKey = metadataKey,
+            externalBookingHref = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty),
+            externalProfileUuid = entry.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty),
             fareMinorUnits = metadata?.fareMinorUnits,
             fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
             boardingAddress = metadata?.boardingAddress.orEmpty(),
@@ -367,6 +322,7 @@ internal fun enhancedPassengerRows(
                     sources = current.sources + booking.source,
                     passengerId = booking.passengerId.takeIf(String::isNotBlank) ?: current.passengerId,
                     localBookingId = booking.id,
+                    bookingStatus = booking.status,
                     fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank) ?: current.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank) ?: current.boardingAddress,
@@ -385,6 +341,7 @@ internal fun enhancedPassengerRows(
                     sources = setOf(booking.source),
                     passengerId = booking.passengerId.takeIf(String::isNotBlank),
                     localBookingId = booking.id,
+                    bookingStatus = booking.status,
                     fareMinorUnits = booking.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress,
@@ -613,6 +570,27 @@ private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardR
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("Valor da reserva", formatted))
     Toast.makeText(context, "Valor copiado: $formatted", Toast.LENGTH_SHORT).show()
+}
+
+internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
+
+internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPassengerTarget? {
+    val profileUuid = row.externalProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null
+    val href = row.externalBookingHref?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    if (!href.startsWith("https://www.blablacar.com.br/") || !href.contains("/rides/offer/passenger/")) return null
+    return ExternalPassengerTarget(profileUuid = profileUuid, href = href)
+}
+
+private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassengerCardRow): Boolean {
+    val target = externalPassengerTarget(row) ?: return false
+    val account = BlaBlaDynamicAccountRegistry(context).list()
+        .firstOrNull { it.profileUuid?.trim()?.lowercase() == target.profileUuid }
+        ?: return false
+    context.startActivity(
+        BlaBlaDynamicSessionIntents.manage(context, account, target.href)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    return true
 }
 
 private fun openPassengerWhatsApp(context: Context, raw: String) {
