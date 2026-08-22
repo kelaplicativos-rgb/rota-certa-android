@@ -389,7 +389,6 @@ private fun TimelineEntryCard(
     currentCoordinate: Coordinate?,
     onArchive: () -> Unit,
 ) {
-    val context = LocalContext.current
     val direction = timelineDirectionState(
         entry = entry,
         trip = trip,
@@ -406,18 +405,7 @@ private fun TimelineEntryCard(
         -> MaterialTheme.colorScheme.surface
     }
 
-    fun openCard() {
-        when {
-            !entry.blablaTripHref.isNullOrBlank() -> if (!openBlaBlaHref(context, entry, entry.blablaTripHref!!)) {
-                Toast.makeText(context, "Conta BlaBlaCar não conectada.", Toast.LENGTH_LONG).show()
-            }
-            entry.localTripId != null -> onManageLocal(entry.localTripId)
-            trip != null -> onManageLocal(trip.id)
-        }
-    }
-
     Card(
-        onClick = ::openCard,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardColor),
     ) {
