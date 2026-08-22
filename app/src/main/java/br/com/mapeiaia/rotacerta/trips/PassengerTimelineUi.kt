@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,10 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
+import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
 
@@ -105,7 +109,12 @@ internal fun EnhancedPassengerTimelineSection(
                     enabled = !phone.isNullOrBlank(),
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Text("☎", maxLines = 1)
+                    Icon(
+                        painter = painterResource(R.drawable.ic_whatsapp_action),
+                        contentDescription = "WhatsApp",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
 
                 TextButton(
@@ -419,40 +428,6 @@ internal fun passengerTimelineFareClipboardText(
 ): String = PassengerMoney.formatMinorUnits(amountMinorUnits, currencyCode, localeTag)
 
 @Composable
-private fun PassengerAddressEditorDialog(
-    row: EnhancedPassengerCardRow,
-    boarding: Boolean,
-    onDismiss: () -> Unit,
-    onSave: (String) -> Unit,
-) {
-    val place = if (boarding) row.boarding else row.dropoff
-    val current = if (boarding) row.boardingAddress else row.dropoffAddress
-    var value by remember(row.localBookingId, row.externalReservationKey, boarding, current) { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (boarding) "Endereço de embarque" else "Endereço de destino") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(place?.takeIf(String::isNotBlank) ?: "Local não identificado")
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it.take(500) },
-                    label = { Text("Endereço exato") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                )
-                Text(
-                    "A cidade/parada continua definindo a ordem da rota; este endereço é exclusivo desta reserva.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = { onSave(value.trim()) }) { Text("Salvar") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
-    )
-}
-
-@Composable
 private fun PassengerFareEditorDialog(
     row: EnhancedPassengerCardRow,
     onDismiss: () -> Unit,
@@ -496,30 +471,6 @@ private fun PassengerFareEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
-}
-
-private fun savePassengerAddress(
-    row: EnhancedPassengerCardRow,
-    boarding: Boolean,
-    value: String,
-    store: TripStore,
-    passengerStore: PassengerIdentityStore,
-): Boolean {
-    row.localBookingId?.let { bookingId ->
-        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(
-            if (boarding) booking.copy(boardingAddress = value.trim(), localMetadataTouched = true)
-            else booking.copy(dropoffAddress = value.trim(), localMetadataTouched = true),
-        )
-        return true
-    }
-    val key = row.externalReservationKey ?: return false
-    val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
-    passengerStore.saveExternalMetadata(
-        if (boarding) current.copy(boardingAddress = value.trim())
-        else current.copy(dropoffAddress = value.trim()),
-    )
-    return true
 }
 
 private fun savePassengerFare(
@@ -605,16 +556,6 @@ private fun openPassengerWhatsApp(context: Context, raw: String) {
     }
 }
 
-private fun openNavigation(context: Context, address: String) {
-    val destination = address.trim().takeIf(String::isNotEmpty) ?: return
-    val uri = Uri.parse("geo:0,0?q=${Uri.encode(destination)}")
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.onFailure {
-        Toast.makeText(context, "Nenhum aplicativo de navegação conseguiu abrir este endereço.", Toast.LENGTH_LONG).show()
-    }
-}
-
 private fun enhancedPassengerNameKey(raw: String): String = Normalizer.normalize(raw.trim(), Normalizer.Form.NFD)
     .replace(Regex("\\p{M}+"), "")
     .lowercase()
@@ -647,5 +588,3 @@ private fun enhancedSourceShort(source: BookingSource): String = when (source) {
 
 private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 private val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-private val COMPACT_ROUTE_PADDING = PaddingValues(horizontal = 2.dp, vertical = 0.dp)
-private val COMPACT_NAV_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
