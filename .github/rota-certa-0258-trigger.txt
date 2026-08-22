@@ -1,1 +1,1 @@
-temporary trigger for source edit workflow; remove before final direct-source validation
+temporary trigger for source edit workflow v2; remove before final direct-source validation
