@@ -37,6 +37,10 @@ jobs:
           script = source.split(start_marker, 1)[1].split(end_marker, 1)[0]
           exec(compile(textwrap.dedent(script), '<apply-0255>', 'exec'))
           PY
+          # The Actions token has contents:write but not workflow-update permission.
+          # Persist app/src/tests/version here; the normal direct-source workflow file
+          # is updated separately through the GitHub connector after this commit.
+          git checkout -- .github/workflows/passenger-timeline-geo-ux-direct.yml
           rm .github/workflows/_one_time_apply_0255.yml
           rm .github/workflows/_pr_apply_0255.yml
           echo "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560  app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt" | sha256sum -c -
