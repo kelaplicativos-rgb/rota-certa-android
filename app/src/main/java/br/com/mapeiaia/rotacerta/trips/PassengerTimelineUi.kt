@@ -27,7 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
 import br.com.mapeiaia.rotacerta.MessageTemplateRenderer0172
-import br.com.mapeiaia.rotacerta.MessageTemplateStore0172
+import br.com.mapeiaia.rotacerta.TenantMessageTemplateStore
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
 
@@ -64,10 +64,12 @@ internal fun EnhancedPassengerTimelineSection(
     if (rows.isEmpty()) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
-    val nextRowIndex = rows.indexOfFirst { row ->
-        val order = row.boardingStopIndex ?: return@indexOfFirst false
-        progress == null || TripPassengerRouteOrder.isNextBoarding(order, progress)
-    }.takeIf { it >= 0 }
+    val nextRowIndex = progress?.let { trustedProgress ->
+        rows.indexOfFirst { row ->
+            val order = row.boardingStopIndex ?: return@indexOfFirst false
+            TripPassengerRouteOrder.isNextBoarding(order, trustedProgress)
+        }.takeIf { it >= 0 }
+    }
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -84,17 +86,18 @@ internal fun EnhancedPassengerTimelineSection(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                if (!passenger.phone.isNullOrBlank()) {
+                val phone = passenger.phone
+                if (!phone.isNullOrBlank()) {
                     OutlinedButton(onClick = {
                         UnifiedDebugEventStore.record(
                             "PASSENGER_WHATSAPP_OPEN",
                             context.packageName,
                             "timeline=true phone_present=true",
                         )
-                        openPassengerWhatsApp(context, passenger.phone)
-                    }) { Text("WA") }
+                        openPassengerWhatsApp(context, phone)
+                    }) { Text("WhatsApp") }
                 } else {
-                    OutlinedButton(onClick = {}, enabled = false) { Text("WA") }
+                    OutlinedButton(onClick = {}, enabled = false) { Text("WhatsApp") }
                 }
 
                 TextButton(onClick = {
@@ -407,8 +410,8 @@ private fun savePassengerAddress(
     row.localBookingId?.let { bookingId ->
         val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
         store.saveBooking(
-            if (boarding) booking.copy(boardingAddress = value.trim())
-            else booking.copy(dropoffAddress = value.trim()),
+            if (boarding) booking.copy(boardingAddress = value.trim(), localMetadataTouched = true)
+            else booking.copy(dropoffAddress = value.trim(), localMetadataTouched = true),
         )
         return true
     }
@@ -430,7 +433,13 @@ private fun savePassengerFare(
 ): Boolean {
     row.localBookingId?.let { bookingId ->
         val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(booking.copy(fareMinorUnits = amount, fareCurrencyCode = currency))
+        store.saveBooking(
+            booking.copy(
+                fareMinorUnits = amount,
+                fareCurrencyCode = currency,
+                localMetadataTouched = true,
+            ),
+        )
         return true
     }
     val key = row.externalReservationKey ?: return false
@@ -447,7 +456,7 @@ private fun linkPassengerProfile(
 ): Boolean {
     row.localBookingId?.let { bookingId ->
         val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(booking.copy(passengerId = passengerId))
+        store.saveBooking(booking.copy(passengerId = passengerId, localMetadataTouched = true))
         return true
     }
     val key = row.externalReservationKey ?: return false
@@ -461,7 +470,7 @@ private fun copyPassengerPaymentMessage(context: Context, row: EnhancedPassenger
     val localeTag = PassengerMoney.spec(context).localeTag
     val formatted = PassengerMoney.formatMinorUnits(amount, row.fareCurrencyCode, localeTag)
     val message = MessageTemplateRenderer0172.apply(
-        MessageTemplateStore0172.readValue(context),
+        TenantMessageTemplateStore.readValue(context),
         mapOf(
             "nome" to row.name,
             "lugares" to if (row.seats == 1) "1 lugar" else "${row.seats} lugares",
