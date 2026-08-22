@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.258
+name: Passenger timeline geo UX direct-source 0.1.259
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5551'
-      EXPECTED_VERSION_NAME: '0.1.258'
+      EXPECTED_VERSION_CODE: '5552'
+      EXPECTED_VERSION_NAME: '0.1.259'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -42,6 +42,8 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           PASSENGER_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
           TIMELINE_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          HARVEST_POLICY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt'
+          HARVEST_WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerMoney.kt
@@ -52,6 +54,9 @@ jobs:
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          test -s "$HARVEST_POLICY"
+          test -s "$HARVEST_WATCHDOG"
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestEfficiency0259Test.kt
           test -s app/src/main/res/drawable/ic_whatsapp_action.xml
           test -s app/src/main/res/drawable/ic_blablacar_action.xml
           test -s app/src/main/res/drawable/ic_pickup_maps_action.xml
@@ -66,6 +71,11 @@ jobs:
           test ! -e .github/rota-certa-0258-trigger.txt
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = false' "$HARVEST_POLICY"
+          grep -Fq 'AUTOMATIC_PAGE_SETTLE_MS: Long = 250L' "$HARVEST_POLICY"
+          grep -Fq 'BlaBlaHarvestNavigationIdentity.same' "$HARVEST_WATCHDOG"
+          grep -Fq 'HARVEST_PUBLISHED_SEAT_PHASE_SHORT_CIRCUITED' "$HARVEST_WATCHDOG"
+          grep -Fq 'HARVEST_FAST_DOM_PROBE' "$HARVEST_WATCHDOG"
           grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'fareMinorUnits' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'TripReferenceOriginStore' "$TIMELINE_UI"
@@ -136,6 +146,11 @@ jobs:
           historical_sha_checkout=false
           materializer_used=false
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
+          collector_strong_query_identity=true
+          collector_stale_page_guard=true
+          collector_fast_dom_probe_ms=250
+          collector_automatic_published_seat_traversal=false
+          collector_external_write=false
           global_passenger_flow=true
           external_backing_duplicate_guard=true
           external_capacity_reserved_seat_reconciliation=true
@@ -158,6 +173,7 @@ jobs:
           home_coordinate_direction_fallback=true
           direction_cards=true
           physical_ui_validation=false
+          collector_physical_validation=false
           merge=false
           release=false
           latest=false
@@ -166,7 +182,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.258
+          name: rota-certa-passenger-timeline-geo-ux-0.1.259
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
