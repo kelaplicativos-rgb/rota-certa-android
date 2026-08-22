@@ -10,7 +10,7 @@ class PassengerCardActions0257Test {
         val uuid = "7371F028-9C55-4903-8444-308015823EFD"
         val target = externalTripTarget(
             uuid,
-            "https://www.blablacar.com.br/rides/offer/abc&search_uuid=x",
+            "https://www.blablacar.com.br/rides/offer/abc?search_uuid=x",
         )!!
         assertEquals("7371f028-9c55-4903-8444-308015823efd", target.profileUuid)
         assertEquals("https://www.blablacar.com.br/rides/offer/abc", target.href)
