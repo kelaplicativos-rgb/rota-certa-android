@@ -63,6 +63,8 @@ class PassengerCardActions0258Test {
             destination = "B",
             status = TripStatus.PUBLISHED,
             capacity = 4,
+            minimumOccupiedSeats = 1,
+            maximumOccupiedSeats = 1,
             sourcePassengerSeats = mapOf(BookingSource.BLABLACAR to 1),
         )
         assertTrue(hasExternalTripActionEvidence(entry))
