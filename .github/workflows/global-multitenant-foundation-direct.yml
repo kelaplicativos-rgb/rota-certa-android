@@ -1,4 +1,4 @@
-name: Global foundation + passenger timeline direct-source 0.1.253
+name: Global foundation + passenger timeline direct-source 0.1.254
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5546'
-      EXPECTED_VERSION_NAME: '0.1.253'
+      EXPECTED_VERSION_CODE: '5547'
+      EXPECTED_VERSION_NAME: '0.1.254'
     steps:
       - name: Checkout branch source directly
         uses: actions/checkout@v4
@@ -51,9 +51,10 @@ jobs:
           ROUTE_ORDER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt'
           REFERENCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt'
           FEATURE_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt'
+          COMPACT_REGRESSION='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$PASSENGERS" "$MONEY" "$PASSENGER_UI" "$ROUTE_ORDER" "$REFERENCE" "$FEATURE_TEST"; do test -s "$file"; done
+          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$PASSENGERS" "$MONEY" "$PASSENGER_UI" "$ROUTE_ORDER" "$REFERENCE" "$FEATURE_TEST" "$COMPACT_REGRESSION"; do test -s "$file"; done
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'provisionalLocal' "$TENANT"
@@ -72,13 +73,17 @@ jobs:
           grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
           grep -Fq 'TenantMessageTemplateStore' app/src/main/java/br/com/mapeiaia/rotacerta/MessageTemplatesActivity.kt
           ! grep -Fq 'Locale("pt", "BR")' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'passengerTimelinePlaceLabel' "$PASSENGER_UI"
+          grep -Fq 'passengerTimelineCompactPlace' "$PASSENGER_UI"
+          grep -Fq 'copyPassengerFareValue' "$PASSENGER_UI"
+          grep -Fq 'Text("WA"' "$PASSENGER_UI"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
           echo 'materializer_used=false'
           echo 'farol_untouched=true'
-          echo 'passenger_timeline_feature_present=true'
+          echo 'passenger_timeline_compact_regression_present=true'
 
       - name: Run all unit and regression tests directly on app source
         run: |
@@ -116,8 +121,10 @@ jobs:
           booking_specific_fare_and_addresses=true
           tenant_scoped_passenger_store=true
           tenant_scoped_trip_reference=true
-          tenant_scoped_message_template_editor=true
-          manual_explicit_segment_selection=true
+          compact_passenger_layout=true
+          duplicate_name_route_cleanup=true
+          money_action_copies_value_only=true
+          individual_blablacar_fare_not_inferred=true
           direction_cards=true
           passenger_route_order=true
           physical_ui_validation=false
@@ -129,7 +136,7 @@ jobs:
       - name: Upload direct-source passenger timeline APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.253
+          name: rota-certa-passenger-timeline-geo-ux-0.1.254
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

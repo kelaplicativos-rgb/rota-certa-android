@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.253
+name: Passenger timeline geo UX direct-source 0.1.254
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5546'
-      EXPECTED_VERSION_NAME: '0.1.253'
+      EXPECTED_VERSION_CODE: '5547'
+      EXPECTED_VERSION_NAME: '0.1.254'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -47,6 +47,7 @@ jobs:
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
@@ -54,6 +55,10 @@ jobs:
           grep -Fq 'TripReferenceOriginStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'EnhancedPassengerTimelineSection' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'passengerTimelinePlaceLabel' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'passengerTimelineCompactPlace' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'copyPassengerFareValue' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'Text("WA"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
@@ -93,7 +98,10 @@ jobs:
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
           canonical_passenger_identity=true
           booking_specific_fare_and_addresses=true
-          manual_segment_selection=true
+          compact_passenger_layout=true
+          duplicate_name_route_cleanup=true
+          money_action_copies_value_only=true
+          individual_blablacar_fare_not_inferred=true
           trip_reference_origin=true
           direction_cards=true
           passenger_route_order=true
@@ -106,7 +114,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.253
+          name: rota-certa-passenger-timeline-geo-ux-0.1.254
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
