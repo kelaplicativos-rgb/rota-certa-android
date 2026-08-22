@@ -1,148 +1,176 @@
-name: Persist passenger address actions 0.1.258
+name: Passenger timeline geo UX direct-source 0.1.258
 
 on:
   push:
     branches:
       - agent/passenger-timeline-geo-ux
+  pull_request:
+    branches:
+      - agent/global-multitenant-foundation
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  persist-source:
-    if: github.actor != 'github-actions[bot]'
+  validate-direct-source:
     runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
+      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
+      EXPECTED_VERSION_CODE: '5551'
+      EXPECTED_VERSION_NAME: '0.1.258'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout feature HEAD directly
+        uses: actions/checkout@v4
         with:
-          ref: agent/passenger-timeline-geo-ux
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
 
-      - name: Patch real app/src
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-          def replace_once(text, old, new, label):
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected exactly 1 match, found {count}')
-              return text.replace(old, new, 1)
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
 
-          passenger_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt')
-          text = passenger_path.read_text()
-          text = replace_once(text,
-              '    var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }\n',
-              '    var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }\n    var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }\n    var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }\n',
-              'address editor state')
-
-          old = '''\n                externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {\n                    IconButton(\n                        onClick = {\n                            if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {\n                                Toast.makeText(\n                                    context,\n                                    "Conta BlaBlaCar desta viagem não está conectada.",\n                                    Toast.LENGTH_LONG,\n                                ).show()\n                            }\n                        },\n                        modifier = Modifier.size(36.dp),\n                    ) {\n                        Icon(\n                            painter = painterResource(R.drawable.ic_blablacar_action),\n                            contentDescription = "Abrir viagem no BlaBlaCar",\n                            tint = Color.Unspecified,\n                            modifier = Modifier.size(22.dp),\n                        )\n                    }\n                }\n'''
-          text = replace_once(text, old, '\n', 'remove repeated trip action')
-
-          old = '''            Text(\n                "📍 ${passengerTimelineCompactPlace(passenger.boarding)} → 🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",\n                maxLines = 1,\n                overflow = TextOverflow.Ellipsis,\n                modifier = Modifier.fillMaxWidth(),\n            )\n'''
-          new = '''            Row(\n                modifier = Modifier.fillMaxWidth(),\n                verticalAlignment = Alignment.CenterVertically,\n                horizontalArrangement = Arrangement.spacedBy(2.dp),\n            ) {\n                TextButton(\n                    onClick = { boardingAddressEditRow = passenger },\n                    modifier = Modifier.weight(1f),\n                    contentPadding = ADDRESS_PLACE_PADDING,\n                ) {\n                    Text(\n                        "📍 ${passengerTimelineCompactPlace(passenger.boarding)}",\n                        maxLines = 1,\n                        overflow = TextOverflow.Ellipsis,\n                    )\n                }\n                Text("→")\n                TextButton(\n                    onClick = { dropoffAddressEditRow = passenger },\n                    modifier = Modifier.weight(1f),\n                    contentPadding = ADDRESS_PLACE_PADDING,\n                ) {\n                    Text(\n                        "🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",\n                        maxLines = 1,\n                        overflow = TextOverflow.Ellipsis,\n                    )\n                }\n            }\n'''
-          text = replace_once(text, old, new, 'clickable route places')
-
-          anchor = '''    fareEditRow?.let { row ->\n        PassengerFareEditorDialog(\n            row = row,\n            onDismiss = { fareEditRow = null },\n            onSave = { amount, currency ->\n                if (savePassengerFare(row, amount, currency, store, passengerStore)) {\n                    copyPassengerFareValue(\n                        context,\n                        row.copy(\n                            fareMinorUnits = amount,\n                            fareCurrencyCode = currency,\n                        ),\n                    )\n                    onChanged("Valor salvo e copiado.")\n                } else {\n                    Toast.makeText(context, "Reserva sem referência estável; valor não foi salvo.", Toast.LENGTH_LONG).show()\n                }\n                fareEditRow = null\n            },\n        )\n    }\n}\n'''
-          replacement = anchor[:-2] + '''\n\n    boardingAddressEditRow?.let { row ->\n        PassengerAddressEditorDialog(\n            title = "Endereço completo de embarque",\n            initialValue = passengerAddressEditorInitialValue(row.boardingAddress, row.boarding),\n            onDismiss = { boardingAddressEditRow = null },\n            onSave = { address ->\n                if (savePassengerAddress(row, address, true, store, passengerStore)) {\n                    onChanged("Endereço de embarque salvo.")\n                } else {\n                    Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()\n                }\n                boardingAddressEditRow = null\n            },\n        )\n    }\n\n    dropoffAddressEditRow?.let { row ->\n        PassengerAddressEditorDialog(\n            title = "Endereço completo de destino",\n            initialValue = passengerAddressEditorInitialValue(row.dropoffAddress, row.dropoff),\n            onDismiss = { dropoffAddressEditRow = null },\n            onSave = { address ->\n                if (savePassengerAddress(row, address, false, store, passengerStore)) {\n                    onChanged("Endereço de destino salvo.")\n                } else {\n                    Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()\n                }\n                dropoffAddressEditRow = null\n            },\n        )\n    }\n}\n'''
-          text = replace_once(text, anchor, replacement, 'address dialogs')
-
-          marker = '@Composable\nprivate fun PassengerFareEditorDialog(\n'
-          helpers = '''internal fun passengerAddressEditorInitialValue(savedAddress: String?, collectedPlace: String?): String =\n    savedAddress?.trim()?.takeIf(String::isNotEmpty)\n        ?: collectedPlace?.trim()?.takeIf(String::isNotEmpty)\n        ?: ""\n\n@Composable\nprivate fun PassengerAddressEditorDialog(\n    title: String,\n    initialValue: String,\n    onDismiss: () -> Unit,\n    onSave: (String) -> Unit,\n) {\n    var value by remember(title, initialValue) { mutableStateOf(initialValue) }\n    val normalized = value.trim()\n    AlertDialog(\n        onDismissRequest = onDismiss,\n        title = { Text(title) },\n        text = {\n            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {\n                OutlinedTextField(\n                    value = value,\n                    onValueChange = { value = it.take(240) },\n                    label = { Text("Rua, número, bairro, cidade") },\n                    singleLine = false,\n                    modifier = Modifier.fillMaxWidth(),\n                )\n                Text(\n                    "Este endereço pertence a esta reserva/viagem. O atalho do Maps usa o endereço completo de embarque quando ele estiver salvo.",\n                    style = MaterialTheme.typography.bodySmall,\n                )\n            }\n        },\n        confirmButton = {\n            TextButton(enabled = normalized.isNotBlank(), onClick = { onSave(normalized) }) { Text("Salvar") }\n        },\n        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },\n    )\n}\n\n'''
-          text = replace_once(text, marker, helpers + marker, 'address helper')
-
-          marker = 'private fun savePassengerFare(\n'
-          save_address = '''private fun savePassengerAddress(\n    row: EnhancedPassengerCardRow,\n    addressRaw: String,\n    boarding: Boolean,\n    store: TripStore,\n    passengerStore: PassengerIdentityStore,\n): Boolean {\n    val address = addressRaw.trim().takeIf(String::isNotEmpty) ?: return false\n    row.localBookingId?.let { bookingId ->\n        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let\n        store.saveBooking(\n            if (boarding) booking.copy(boardingAddress = address, localMetadataTouched = true)\n            else booking.copy(dropoffAddress = address, localMetadataTouched = true),\n        )\n        return true\n    }\n    val key = row.externalReservationKey ?: return false\n    val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)\n    passengerStore.saveExternalMetadata(\n        if (boarding) current.copy(boardingAddress = address) else current.copy(dropoffAddress = address),\n    )\n    return true\n}\n\n'''
-          text = replace_once(text, marker, save_address + marker, 'address persistence')
-
-          old = '''internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {\n    val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null\n    if (!CANONICAL_PROFILE_UUID.matches(profile)) return null\n    val targetHref = href?.trim()?.substringBefore("&search_uuid=")?.takeIf(String::isNotEmpty) ?: return null\n    if (!targetHref.startsWith("https://www.blablacar.com.br/")) return null\n    if (!targetHref.contains("/rides/offer/") && !targetHref.contains("/trip/")) return null\n    return ExternalTripTarget(profileUuid = profile, href = targetHref)\n}\n'''
-          new = '''internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {\n    val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null\n    if (!CANONICAL_PROFILE_UUID.matches(profile)) return null\n    val rawHref = href?.trim()?.takeIf(String::isNotEmpty) ?: return null\n    val uri = runCatching { java.net.URI(rawHref) }.getOrNull() ?: return null\n    if (uri.scheme != "https" || uri.host != "www.blablacar.com.br") return null\n    val path = uri.path.orEmpty().trimEnd('/')\n    val pathIdentity = Regex("^/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+$", RegexOption.IGNORE_CASE).matches(path) ||\n        Regex("^/trip/[^/?#]+$", RegexOption.IGNORE_CASE).matches(path)\n    val rawQuery = uri.rawQuery.orEmpty()\n    val queryId = rawQuery.split('&').firstOrNull { it.substringBefore('=') == "id" }\n        ?.substringAfter('=', "")?.trim()?.takeIf(String::isNotEmpty)\n    val queryIdentity = path in setOf("/rides/offer", "/trip") && queryId != null\n    if (!pathIdentity && !queryIdentity) return null\n    val keptQuery = rawQuery.split('&').filter(String::isNotBlank)\n        .filterNot { it.substringBefore('=') == "search_uuid" }\n        .joinToString("&").takeIf(String::isNotBlank)\n    val canonicalHref = runCatching { java.net.URI(uri.scheme, uri.authority, uri.path, keptQuery, null).toString() }.getOrNull() ?: return null\n    return ExternalTripTarget(profileUuid = profile, href = canonicalHref)\n}\n\ninternal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =\n    entry.sourcePassengerSeats[BookingSource.BLABLACAR]?.let { it > 0 } == true ||\n        !entry.blablaTripId.isNullOrBlank() || !entry.blablaTripHref.isNullOrBlank() || !entry.blablaProfileUuid.isNullOrBlank()\n\n@Composable\ninternal fun TripSourceLineWithBlaBlaAction(entry: TripTimelineEntry, sourceLine: String) {\n    val context = LocalContext.current\n    Row(\n        modifier = Modifier.fillMaxWidth(),\n        verticalAlignment = Alignment.CenterVertically,\n        horizontalArrangement = Arrangement.spacedBy(4.dp),\n    ) {\n        Text(sourceLine, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)\n        if (hasExternalTripActionEvidence(entry)) {\n            IconButton(\n                onClick = {\n                    if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {\n                        Toast.makeText(\n                            context,\n                            "Link direto da viagem indisponível. Sincronize o BlaBlaCar para recuperar a referência desta publicação.",\n                            Toast.LENGTH_LONG,\n                        ).show()\n                    }\n                },\n                modifier = Modifier.size(36.dp),\n            ) {\n                Icon(\n                    painter = painterResource(R.drawable.ic_blablacar_action),\n                    contentDescription = "Abrir viagem no BlaBlaCar",\n                    tint = Color.Unspecified,\n                    modifier = Modifier.size(24.dp),\n                )\n            }\n        }\n    }\n}\n'''
-          text = replace_once(text, old, new, 'query-id trip action')
-
-          text = replace_once(text,
-              'private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)\nprivate val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)\n',
-              'private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)\nprivate val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)\nprivate val ADDRESS_PLACE_PADDING = PaddingValues(horizontal = 0.dp, vertical = 0.dp)\n',
-              'address padding')
-          passenger_path.write_text(text)
-
-          timeline_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
-          timeline = timeline_path.read_text()
-          timeline = replace_once(timeline,
-              '            if (sourceLine.isNotBlank()) Text(sourceLine, style = MaterialTheme.typography.bodySmall)\n',
-              '            if (sourceLine.isNotBlank()) TripSourceLineWithBlaBlaAction(entry, sourceLine)\n',
-              'single source-line trip action')
-          timeline_path.write_text(timeline)
-
-          gradle_path = Path('app/build.gradle.kts')
-          gradle = gradle_path.read_text()
-          gradle = replace_once(gradle, 'versionCode = 5550', 'versionCode = 5551', 'version code')
-          gradle = replace_once(gradle, 'versionName = "0.1.257"', 'versionName = "0.1.258"', 'version name')
-          gradle_path.write_text(gradle)
-
-          Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0258Test.kt').write_text(r'''package br.com.mapeiaia.rotacerta.trips
-
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
-
-class PassengerCardActions0258Test {
-    private val uuid = "7371f028-9c55-4903-8444-308015823efd"
-
-    @Test fun tripTargetAcceptsStrongQueryIdOfferAndRemovesSearchUuid() {
-        val target = externalTripTarget(uuid, "https://www.blablacar.com.br/rides/offer?id=trip-123&search_uuid=volatile")
-        assertNotNull(target)
-        assertEquals("https://www.blablacar.com.br/rides/offer?id=trip-123", target.href)
-    }
-
-    @Test fun tripTargetAcceptsStrongQueryIdTrip() {
-        val target = externalTripTarget(uuid, "https://www.blablacar.com.br/trip?id=trip-456")
-        assertNotNull(target)
-        assertEquals("https://www.blablacar.com.br/trip?id=trip-456", target.href)
-    }
-
-    @Test fun tripTargetRejectsGenericPageWithoutStrongIdentity() {
-        assertNull(externalTripTarget(uuid, "https://www.blablacar.com.br/rides/offer"))
-        assertNull(externalTripTarget(uuid, "https://www.blablacar.com.br/trip"))
-    }
-
-    @Test fun addressEditorPrefersSavedReservationAddress() {
-        assertEquals("Av. Industrial, 1000, Santo André", passengerAddressEditorInitialValue(" Av. Industrial, 1000, Santo André ", "Santo André"))
-    }
-
-    @Test fun addressEditorFallsBackToCollectedPlaceWithoutInventing() {
-        assertEquals("Pouso Alegre", passengerAddressEditorInitialValue("", " Pouso Alegre "))
-        assertEquals("", passengerAddressEditorInitialValue(null, null))
-    }
-
-    @Test fun externalTripEvidenceKeepsSingleActionVisibleWhenHrefNeedsResync() {
-        val entry = TripTimelineEntry(
-            tripId = "x", profileId = uuid, profileLabel = "Conta", departureAtMillis = 1L, arrivalAtMillis = 2L,
-            origin = "A", destination = "B", status = TripStatus.PUBLISHED, capacity = 4,
-            sourcePassengerSeats = mapOf(BookingSource.BLABLACAR to 1),
-        )
-        assertTrue(hasExternalTripActionEvidence(entry))
-    }
-}
-''')
-          PY
-
-      - name: Verify and commit persisted source
-        shell: bash
+      - name: Verify direct source and protected FAROL
         run: |
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
-          grep -Fq 'versionCode = 5551' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.258"' app/build.gradle.kts
-          grep -Fq 'PassengerAddressEditorDialog' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'TripSourceLineWithBlaBlaAction(entry, sourceLine)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          PASSENGER_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          TIMELINE_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerMoney.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerFareEvidence.kt
+          test -s "$PASSENGER_UI"
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineOperationalOrder.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TimelineDirectionReference.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          test -s app/src/main/res/drawable/ic_whatsapp_action.xml
+          test -s app/src/main/res/drawable/ic_blablacar_action.xml
+          test -s app/src/main/res/drawable/ic_pickup_maps_action.xml
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0255RegressionTest.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/GlobalPassengerFlow0256Test.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0257Test.kt
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0258Test.kt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src app/build.gradle.kts
-          git commit -m 'Passenger address editing and single BlaBla trip action 0.1.258'
-          git push origin HEAD:agent/passenger-timeline-geo-ux
+          test ! -e .github/workflows/apply-passenger-card-actions-0257.yml
+          test ! -e .github/workflows/apply-passenger-address-actions-0258.yml
+          test ! -e .github/rota-certa-0258-trigger.txt
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'fareMinorUnits' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'TripReferenceOriginStore' "$TIMELINE_UI"
+          grep -Fq 'timelineDirectionReference' "$TIMELINE_UI"
+          grep -Fq 'EnhancedPassengerTimelineSection' "$TIMELINE_UI"
+          grep -Fq 'GlobalPassengerFlowPanel' "$TIMELINE_UI"
+          grep -Fq 'prepareTimelineTripForPassenger' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'planTimelineExternalCapacityClaims' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'CapacityClaimType.RESERVED_SEAT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'showExistingPassengers = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'passengerTimelinePlaceLabel' "$PASSENGER_UI"
+          grep -Fq 'copyPassengerFareValue' "$PASSENGER_UI"
+          grep -Fq 'externalPassengerTarget' "$PASSENGER_UI"
+          grep -Fq 'externalTripTarget' "$PASSENGER_UI"
+          grep -Fq 'passengerPickupMapTarget' "$PASSENGER_UI"
+          grep -Fq 'passengerTimelineOperationalOrder' "$PASSENGER_UI"
+          grep -Fq 'PassengerAddressEditorDialog' "$PASSENGER_UI"
+          grep -Fq 'passengerAddressEditorInitialValue' "$PASSENGER_UI"
+          grep -Fq 'savePassengerAddress' "$PASSENGER_UI"
+          grep -Fq 'hasExternalTripActionEvidence' "$PASSENGER_UI"
+          grep -Fq 'TripBlaBlaTripActionRow' "$PASSENGER_UI"
+          grep -Fq 'saveCapturedPassengerFare' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'ic_whatsapp_action' "$PASSENGER_UI"
+          grep -Fq 'ic_blablacar_action' "$PASSENGER_UI"
+          grep -Fq 'ic_pickup_maps_action' "$PASSENGER_UI"
+          ! grep -Fq 'onClick = ::openCard' "$TIMELINE_UI"
+          ! grep -Fq 'passengerTimelineActionLabel(passenger' "$PASSENGER_UI"
+          ! grep -Fq '⚠ ordem de embarque pendente' "$PASSENGER_UI"
+          ! grep -Fq 'Text("WA"' "$PASSENGER_UI"
+          ! grep -Fq 'Text("☎"' "$PASSENGER_UI"
+          ! grep -Fq 'Text("🧭📍"' "$PASSENGER_UI"
+          ! grep -Fq 'Text("🧭🏁"' "$PASSENGER_UI"
+          echo "source_head=$(git rev-parse HEAD)"
+          echo 'direct_source=true'
+          echo 'historical_sha_checkout=false'
+          echo 'materializer_used=false'
+          echo 'farol_untouched=true'
+
+      - name: Run unit and regression tests directly on app source
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+      - name: Assemble debug APK directly from app source
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
+
+          mkdir -p evidence
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
+          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          sha256sum "$APK" | tee evidence/apk-sha256.txt
+
+          cat > evidence/passenger-timeline-geo-ux-status.txt <<EOF
+          passenger_timeline_geo_ux_direct_source=PASS
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$(git rev-parse HEAD)
+          direct_source=true
+          historical_sha_checkout=false
+          materializer_used=false
+          farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
+          global_passenger_flow=true
+          external_backing_duplicate_guard=true
+          external_capacity_reserved_seat_reconciliation=true
+          selectable_route_points_from_trusted_evidence=true
+          compact_whatsapp_icon=true
+          single_blablacar_trip_action=true
+          blablacar_query_id_href_supported=true
+          passenger_address_editor=true
+          reservation_scoped_boarding_dropoff_addresses=true
+          passenger_pickup_maps_prefers_exact_address=true
+          trip_card_body_click=false
+          next_action_visual_label=false
+          operational_route_order_preserved=true
+          visible_authenticated_navigation_preserved=true
+          canonical_passenger_identity=true
+          external_passenger_booking_href_action=true
+          individual_reservation_fare_capture=true
+          money_action_copies_value_only=true
+          gps_never_confirms_boarding=true
+          home_coordinate_direction_fallback=true
+          direction_cards=true
+          physical_ui_validation=false
+          merge=false
+          release=false
+          latest=false
+          EOF
+
+      - name: Upload direct-source candidate APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-passenger-timeline-geo-ux-0.1.258
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            evidence/apk-sha256.txt
+            evidence/aapt-badging.txt
+            evidence/passenger-timeline-geo-ux-status.txt
+          if-no-files-found: error
+          retention-days: 7
