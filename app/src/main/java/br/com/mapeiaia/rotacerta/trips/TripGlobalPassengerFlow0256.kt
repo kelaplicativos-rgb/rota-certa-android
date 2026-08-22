@@ -244,28 +244,32 @@ internal fun planTimelineExternalCapacityClaims(
     }
     if (desiredBySegment.all { it == 0 }) return emptyList()
 
-    return desiredBySegment.mapIndexedNotNull { segment, seats ->
-        if (seats <= 0) return@mapIndexedNotNull null
-        val from = stops[segment]
-        val to = stops[segment + 1]
-        val refHash = sha256Short0256(
-            "$externalKey|segment|${from.id}|${to.id}",
-            24,
-        )
-        Booking(
-            id = "timeline-ext-seat-$refHash",
-            tripId = trip.id,
-            passengerName = "Reservas externas reconciliadas",
-            boardingStopId = from.id,
-            dropoffStopId = to.id,
-            seats = seats,
-            status = BookingStatus.CONFIRMED,
-            source = BookingSource.BLABLACAR,
-            capacityClaimType = CapacityClaimType.RESERVED_SEAT,
-            sourceReference = "$EXTERNAL_CAPACITY_PREFIX$refHash",
-            createdAtMillis = now,
-            updatedAtMillis = now,
-        )
+    return buildList {
+        desiredBySegment.forEachIndexed { segment, seats ->
+            if (seats <= 0) return@forEachIndexed
+            val from = stops[segment]
+            val to = stops[segment + 1]
+            val refHash = sha256Short0256(
+                "$externalKey|segment|${from.id}|${to.id}",
+                24,
+            )
+            add(
+                Booking(
+                    id = "timeline-ext-seat-$refHash",
+                    tripId = trip.id,
+                    passengerName = "Reservas externas reconciliadas",
+                    boardingStopId = from.id,
+                    dropoffStopId = to.id,
+                    seats = seats,
+                    status = BookingStatus.CONFIRMED,
+                    source = BookingSource.BLABLACAR,
+                    capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+                    sourceReference = "$EXTERNAL_CAPACITY_PREFIX$refHash",
+                    createdAtMillis = now,
+                    updatedAtMillis = now,
+                ),
+            )
+        }
     }
 }
 
