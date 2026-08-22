@@ -27,6 +27,13 @@ class BlaBlaHarvestEfficiency0259Test {
     }
 
     @Test
+    fun nonCanonicalHostCannotAliasCanonicalTripIdentity() {
+        val canonical = "https://www.blablacar.com.br/rides/offer?id=trip-a"
+        val foreign = "https://example.invalid/rides/offer?id=trip-a"
+        assertFalse(BlaBlaHarvestNavigationIdentity.same(canonical, foreign))
+    }
+
+    @Test
     fun editAndOptionsFormsAreClassifiedAsNonAutomaticSeatWork() {
         assertTrue(
             BlaBlaHarvestNavigationIdentity.isEditOrOptionsHref(
