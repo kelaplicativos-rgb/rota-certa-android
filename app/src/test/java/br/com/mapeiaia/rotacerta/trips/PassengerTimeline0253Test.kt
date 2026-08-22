@@ -49,7 +49,42 @@ class PassengerTimeline0253Test {
         assertEquals("USD", booking.fareCurrencyCode)
         assertEquals("Pickup 123", booking.boardingAddress)
         assertEquals("Dropoff 456", booking.dropoffAddress)
+        assertTrue(booking.localMetadataTouched)
         assertEquals(listOf(2, 2), SeatAvailabilityEngine.segmentLoads(trip, plan.writes()).drop(1).map { it.occupiedSeats })
+    }
+
+    @Test
+    fun remoteMappingCanPreserveLocalOnlyMetadataExplicitly() {
+        val local = Booking(
+            id = "booking-1",
+            tripId = "trip-253",
+            passengerName = "Passenger",
+            passengerContact = "+12025550123",
+            boardingStopId = "b",
+            dropoffStopId = "d",
+            status = BookingStatus.CONFIRMED,
+            passengerId = "passenger-1",
+            fareMinorUnits = 8_500L,
+            fareCurrencyCode = "USD",
+            boardingAddress = "Pickup",
+            dropoffAddress = "Dropoff",
+            localMetadataTouched = true,
+        )
+        val remote = RemoteBooking(
+            id = "booking-1",
+            passengerName = "Passenger",
+            passengerContact = "+12025550123",
+            boardingStopId = "b",
+            dropoffStopId = "d",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+        )
+        val refreshed = remote.toLocalBooking("trip-253", existingLocal = local)
+        assertEquals("passenger-1", refreshed.passengerId)
+        assertEquals(8_500L, refreshed.fareMinorUnits)
+        assertEquals("USD", refreshed.fareCurrencyCode)
+        assertEquals("Pickup", refreshed.boardingAddress)
+        assertEquals("Dropoff", refreshed.dropoffAddress)
     }
 
     @Test
