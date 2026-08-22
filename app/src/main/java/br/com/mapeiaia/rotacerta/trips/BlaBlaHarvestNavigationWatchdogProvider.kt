@@ -258,22 +258,8 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 Regex("/trip/[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
         }
 
-        private fun sameNavigationUrl(left: String?, right: String?): Boolean {
-            if (left.isNullOrBlank() || right.isNullOrBlank()) return false
-            val a = navigationIdentity(left) ?: return false
-            val b = navigationIdentity(right) ?: return false
-            return a == b
-        }
-
-        private fun navigationIdentity(value: String): NavigationIdentity? = runCatching {
-            val parsed = Uri.parse(value)
-            NavigationIdentity(
-                scheme = parsed.scheme.orEmpty().lowercase(),
-                host = parsed.host.orEmpty().lowercase(),
-                path = parsed.path.orEmpty().trimEnd('/').lowercase(),
-                strongId = parsed.getQueryParameter("id").orEmpty(),
-            )
-        }.getOrNull()
+        private fun sameNavigationUrl(left: String?, right: String?): Boolean =
+            BlaBlaHarvestNavigationIdentity.same(left, right)
 
         private fun safePath(value: String?): String = runCatching {
             val parsed = Uri.parse(value)
@@ -284,12 +270,5 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 "${parsed.path.orEmpty().take(100)}?id=${id.take(54)}"
             }
         }.getOrDefault("")
-
-        private data class NavigationIdentity(
-            val scheme: String,
-            val host: String,
-            val path: String,
-            val strongId: String,
-        )
     }
 }
