@@ -31,6 +31,8 @@ fun QuickPassengerPanel(
     store: TripStore,
     onChanged: (String) -> Unit,
     onBlaBlaSyncRequested: (() -> Unit)? = null,
+    onSaved: (() -> Unit)? = null,
+    showExistingPassengers: Boolean = true,
 ) {
     val context = LocalContext.current
     val externalSeatLedger = remember(context) { BlaBlaManualSeatSyncLedger(context) }
@@ -71,7 +73,7 @@ fun QuickPassengerPanel(
     }
 
     HorizontalDivider()
-    Text("Adicionar passageiro particular")
+    Text("Adicionar passageiro")
     OutlinedTextField(
         value = name,
         onValueChange = {
@@ -178,7 +180,8 @@ fun QuickPassengerPanel(
     when {
         !validSegment -> Text("Selecione embarque e destino para calcular as vagas deste trecho.")
         availability?.canBook == true -> Text("${availability.availableSeats} vaga(s) livre(s) neste trecho")
-        else -> Text("Sem vaga física neste trecho")
+        availability != null -> Text("Sem vaga física neste trecho")
+        else -> Text("Não foi possível calcular as vagas deste trecho.")
     }
     error?.let { Text(it) }
 
@@ -254,10 +257,11 @@ fun QuickPassengerPanel(
                         if (external != null) {
                             "Passageiro particular adicionado. Ocupação interna recalculada • sincronizando ${plan.passenger.seats} vaga(s) no BlaBlaCar…"
                         } else {
-                            "Passageiro particular adicionado. Ocupação interna recalculada • sincronização externa pendente ⚠️"
+                            "Passageiro particular adicionado. Ocupação interna recalculada."
                         },
                     )
                     onBlaBlaSyncRequested?.invoke()
+                    onSaved?.invoke()
                 }.onFailure { error = "Não foi possível salvar: ${it.message}" }
                 busy = false
             }
@@ -272,7 +276,7 @@ fun QuickPassengerPanel(
         it.capacityClaimType == CapacityClaimType.PASSENGER &&
             (it.status == BookingStatus.CONFIRMED || it.status == BookingStatus.HELD)
     }
-    if (active.isNotEmpty()) {
+    if (showExistingPassengers && active.isNotEmpty()) {
         HorizontalDivider()
         Text("Particulares (${active.sumOf(Booking::seats)})")
         active.forEach { booking ->
