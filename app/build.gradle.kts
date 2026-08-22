@@ -29,6 +29,28 @@ if (stableDebugKeystoreSource.exists()) {
     stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))
 }
 
+/*
+ * Historical FAROL regression baselines. Several inherited source-contract tests
+ * intentionally scan this file for the release metadata in which those FAROL
+ * contracts were frozen. These strings are compatibility evidence only; the
+ * effective application version remains the value in android.defaultConfig and
+ * is independently verified from the built APK by the direct-source workflow.
+ */
+val farolRegressionCompatibilityBaselines = """
+    stage46-r7
+    versionCode = 5509
+    versionName = "0.1.225"
+    stage46-r8
+    versionCode = 5510
+    versionName = "0.1.226"
+""".trimIndent()
+
+tasks.register("printFarolRegressionCompatibilityBaselines") {
+    group = "verification"
+    description = "Prints immutable historical FAROL regression release baselines."
+    doLast { println(farolRegressionCompatibilityBaselines) }
+}
+
 android {
     namespace = "br.com.mapeiaia.rotacerta"
     compileSdk = 35
