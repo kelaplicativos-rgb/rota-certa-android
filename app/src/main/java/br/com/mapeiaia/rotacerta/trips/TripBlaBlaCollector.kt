@@ -504,8 +504,8 @@ object BlaBlaTimelineAdapter {
                 merged += external.copy(
                     tripId = local.tripId,
                     localTripId = local.localTripId ?: local.tripId,
-                    origin = external.origin,
-                    destination = external.destination,
+                    origin = local.origin,
+                    destination = local.destination,
                     status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,
                     capacity = local.capacity,
                     minimumOccupiedSeats = maxOf(local.minimumOccupiedSeats, external.minimumOccupiedSeats),
