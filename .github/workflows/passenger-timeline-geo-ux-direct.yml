@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.255
+name: Passenger timeline geo UX direct-source 0.1.256
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5548'
-      EXPECTED_VERSION_NAME: '0.1.255'
+      EXPECTED_VERSION_CODE: '5549'
+      EXPECTED_VERSION_NAME: '0.1.256'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -49,9 +49,12 @@ jobs:
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TimelineDirectionReference.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
+          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          test -s app/src/main/res/drawable/ic_whatsapp_action.xml
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt
           test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0255RegressionTest.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/GlobalPassengerFlow0256Test.kt
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
@@ -59,14 +62,20 @@ jobs:
           grep -Fq 'TripReferenceOriginStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'timelineDirectionReference' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'EnhancedPassengerTimelineSection' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'GlobalPassengerFlowPanel' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'prepareTimelineTripForPassenger' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'planTimelineExternalCapacityClaims' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'CapacityClaimType.RESERVED_SEAT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'showExistingPassengers = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
           grep -Fq 'passengerTimelinePlaceLabel' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'passengerTimelineCompactPlace' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'copyPassengerFareValue' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'externalPassengerTarget' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'passengerTimelineOperationalOrder' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'saveCapturedPassengerFare' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'ic_whatsapp_action' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           ! grep -Fq 'Text("WA"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          ! grep -Fq 'Text("☎"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           ! grep -Fq 'Text("🧭📍"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           ! grep -Fq 'Text("🧭🏁"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           echo "source_head=$(git rev-parse HEAD)"
@@ -106,9 +115,14 @@ jobs:
           historical_sha_checkout=false
           materializer_used=false
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
+          global_passenger_flow=true
+          external_backing_duplicate_guard=true
+          external_capacity_reserved_seat_reconciliation=true
+          selectable_route_points_from_trusted_evidence=true
+          compact_whatsapp_icon=true
+          visible_authenticated_navigation_preserved=true
           canonical_passenger_identity=true
           booking_specific_fare_and_addresses=true
-          compact_whatsapp_action=true
           external_passenger_booking_href_action=true
           individual_reservation_fare_capture=true
           money_action_copies_value_only=true
@@ -125,7 +139,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.255
+          name: rota-certa-passenger-timeline-geo-ux-0.1.256
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
