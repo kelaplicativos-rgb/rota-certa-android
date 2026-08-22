@@ -83,6 +83,12 @@ internal fun EnhancedPassengerTimelineSection(
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+
+    if (hasExternalTripActionEvidence(entry)) {
+        TripBlaBlaTripActionRow(entry)
+    }
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
@@ -113,28 +119,6 @@ internal fun EnhancedPassengerTimelineSection(
                         tint = Color.Unspecified,
                         modifier = Modifier.size(22.dp),
                     )
-                }
-
-                externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {
-                    IconButton(
-                        onClick = {
-                            if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
-                                Toast.makeText(
-                                    context,
-                                    "Conta BlaBlaCar desta viagem não está conectada.",
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        },
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_blablacar_action),
-                            contentDescription = "Abrir viagem no BlaBlaCar",
-                            tint = Color.Unspecified,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
                 }
 
                 TextButton(
@@ -195,12 +179,35 @@ internal fun EnhancedPassengerTimelineSection(
                 }
             }
 
-            Text(
-                "📍 ${passengerTimelineCompactPlace(passenger.boarding)} → 🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                TextButton(
+                    onClick = { boardingAddressEditRow = passenger },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = ADDRESS_PLACE_PADDING,
+                ) {
+                    Text(
+                        "📍 ${passengerTimelineCompactPlace(passenger.boarding)}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text("→")
+                TextButton(
+                    onClick = { dropoffAddressEditRow = passenger },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = ADDRESS_PLACE_PADDING,
+                ) {
+                    Text(
+                        "🏁 ${passengerTimelineCompactPlace(passenger.dropoff)}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
 
             val source = passenger.sources.joinToString(" + ") { enhancedSourceShort(it) }
             val seats = if (passenger.seats == 1) "1 lugar" else "${passenger.seats} lugares"
@@ -289,6 +296,38 @@ internal fun EnhancedPassengerTimelineSection(
                     Toast.makeText(context, "Reserva sem referência estável; valor não foi salvo.", Toast.LENGTH_LONG).show()
                 }
                 fareEditRow = null
+            },
+        )
+    }
+
+    boardingAddressEditRow?.let { row ->
+        PassengerAddressEditorDialog(
+            title = "Endereço completo de embarque",
+            initialValue = passengerAddressEditorInitialValue(row.boardingAddress, row.boarding),
+            onDismiss = { boardingAddressEditRow = null },
+            onSave = { address ->
+                if (savePassengerAddress(row, address, true, store, passengerStore)) {
+                    onChanged("Endereço de embarque salvo.")
+                } else {
+                    Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
+                }
+                boardingAddressEditRow = null
+            },
+        )
+    }
+
+    dropoffAddressEditRow?.let { row ->
+        PassengerAddressEditorDialog(
+            title = "Endereço completo de destino",
+            initialValue = passengerAddressEditorInitialValue(row.dropoffAddress, row.dropoff),
+            onDismiss = { dropoffAddressEditRow = null },
+            onSave = { address ->
+                if (savePassengerAddress(row, address, false, store, passengerStore)) {
+                    onChanged("Endereço de destino salvo.")
+                } else {
+                    Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
+                }
+                dropoffAddressEditRow = null
             },
         )
     }
@@ -454,6 +493,48 @@ internal fun passengerTimelineFareClipboardText(
     localeTag: String,
 ): String = PassengerMoney.formatMinorUnits(amountMinorUnits, currencyCode, localeTag)
 
+internal fun passengerAddressEditorInitialValue(savedAddress: String?, collectedPlace: String?): String =
+    savedAddress?.trim()?.takeIf(String::isNotEmpty)
+        ?: collectedPlace?.trim()?.takeIf(String::isNotEmpty)
+        ?: ""
+
+@Composable
+private fun PassengerAddressEditorDialog(
+    title: String,
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var value by remember(title, initialValue) { mutableStateOf(initialValue) }
+    val normalized = value.trim()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it.take(240) },
+                    label = { Text("Rua, número, bairro, cidade") },
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Este endereço pertence a esta reserva/viagem. O atalho do Maps usa o endereço completo de embarque quando ele estiver salvo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = normalized.isNotBlank(),
+                onClick = { onSave(normalized) },
+            ) { Text("Salvar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
 @Composable
 private fun PassengerFareEditorDialog(
     row: EnhancedPassengerCardRow,
@@ -498,6 +579,33 @@ private fun PassengerFareEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
+}
+
+private fun savePassengerAddress(
+    row: EnhancedPassengerCardRow,
+    addressRaw: String,
+    boarding: Boolean,
+    store: TripStore,
+    passengerStore: PassengerIdentityStore,
+): Boolean {
+    val address = addressRaw.trim().takeIf(String::isNotEmpty) ?: return false
+    row.localBookingId?.let { bookingId ->
+        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
+        store.saveBooking(
+            if (boarding) {
+                booking.copy(boardingAddress = address, localMetadataTouched = true)
+            } else {
+                booking.copy(dropoffAddress = address, localMetadataTouched = true)
+            },
+        )
+        return true
+    }
+    val key = row.externalReservationKey ?: return false
+    val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
+    passengerStore.saveExternalMetadata(
+        if (boarding) current.copy(boardingAddress = address) else current.copy(dropoffAddress = address),
+    )
+    return true
 }
 
 private fun savePassengerFare(
@@ -555,10 +663,67 @@ internal data class ExternalTripTarget(val profileUuid: String, val href: String
 internal fun externalTripTarget(profileUuid: String?, href: String?): ExternalTripTarget? {
     val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null
     if (!CANONICAL_PROFILE_UUID.matches(profile)) return null
-    val targetHref = href?.trim()?.substringBefore("&search_uuid=")?.takeIf(String::isNotEmpty) ?: return null
-    if (!targetHref.startsWith("https://www.blablacar.com.br/")) return null
-    if (!targetHref.contains("/rides/offer/") && !targetHref.contains("/trip/")) return null
-    return ExternalTripTarget(profileUuid = profile, href = targetHref)
+    val rawHref = href?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val uri = runCatching { java.net.URI(rawHref) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.host != "www.blablacar.com.br") return null
+    val path = uri.path.orEmpty().trimEnd('/')
+    val pathIdentity = Regex(
+        "^/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+$",
+        RegexOption.IGNORE_CASE,
+    ).matches(path) || Regex("^/trip/[^/?#]+$", RegexOption.IGNORE_CASE).matches(path)
+    val rawQuery = uri.rawQuery.orEmpty()
+    val queryId = rawQuery.split('&')
+        .firstOrNull { it.substringBefore('=') == "id" }
+        ?.substringAfter('=', "")
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+    val queryIdentity = path in setOf("/rides/offer", "/trip") && queryId != null
+    if (!pathIdentity && !queryIdentity) return null
+    val keptQuery = rawQuery.split('&')
+        .filter(String::isNotBlank)
+        .filterNot { it.substringBefore('=') == "search_uuid" }
+        .joinToString("&")
+        .takeIf(String::isNotBlank)
+    val canonicalHref = runCatching {
+        java.net.URI(uri.scheme, uri.authority, uri.path, keptQuery, null).toString()
+    }.getOrNull() ?: return null
+    return ExternalTripTarget(profileUuid = profile, href = canonicalHref)
+}
+
+internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
+    entry.sourcePassengerSeats[BookingSource.BLABLACAR]?.let { it > 0 } == true ||
+        !entry.blablaTripId.isNullOrBlank() ||
+        !entry.blablaTripHref.isNullOrBlank() ||
+        !entry.blablaProfileUuid.isNullOrBlank()
+
+@Composable
+private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(
+            onClick = {
+                if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                    Toast.makeText(
+                        context,
+                        "Link direto da viagem indisponível. Sincronize o BlaBlaCar para recuperar a referência desta publicação.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            },
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_blablacar_action),
+                contentDescription = "Abrir viagem no BlaBlaCar",
+                tint = Color.Unspecified,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
 }
 
 internal data class PassengerPickupMapTarget(val query: String)
@@ -675,3 +840,4 @@ private val CANONICAL_PROFILE_UUID = Regex(
 
 private val COMPACT_ACTION_PADDING = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
 private val COMPACT_NAME_PADDING = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+private val ADDRESS_PLACE_PADDING = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
