@@ -74,9 +74,6 @@ object QuickPassengerEngine {
             require(linked.seats == request.seats) { "A vaga vinculada precisa ter a mesma quantidade de lugares." }
         }
 
-        // If the passenger is naming an already blocked RESERVED_SEAT, that seat is
-        // temporarily removed from the availability check because the plan will link
-        // both records into the same physical occupancy group instead of adding a seat.
         val availabilityBase = if (linked == null) existingBookings else existingBookings.filterNot { it.id == linked.id }
         val availability = SeatAvailabilityEngine.availability(
             trip = trip,
@@ -110,6 +107,7 @@ object QuickPassengerEngine {
             fareCurrencyCode = request.fareCurrencyCode.trim().uppercase(),
             boardingAddress = request.boardingAddress.trim(),
             dropoffAddress = request.dropoffAddress.trim(),
+            localMetadataTouched = true,
             status = BookingStatus.CONFIRMED,
             source = request.source,
             capacityClaimType = CapacityClaimType.PASSENGER,
@@ -140,8 +138,6 @@ object QuickPassengerEngine {
         val linkedUpdate = linked?.copy(occupancyGroupId = groupId, updatedAtMillis = nowMillis)
         val plan = QuickPassengerPlan(passenger, mirror, linkedUpdate)
 
-        // Final guard: the whole plan must still fit the physical vehicle. Mirror/link
-        // records share the same occupancyGroupId and therefore cannot double count.
         val projected = existingBookings
             .filterNot { existing -> linkedUpdate != null && existing.id == linkedUpdate.id }
             .plus(plan.writes())
