@@ -6,9 +6,14 @@ import java.util.UUID
 data class QuickPassengerRequest(
     val passengerName: String,
     val passengerContact: String = "",
+    val passengerId: String = "",
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
     val source: BookingSource = BookingSource.PRIVATE,
     val sourceReference: String = "",
     /** Optional source where the same physical seat is already blocked/reserved. */
@@ -39,6 +44,10 @@ object QuickPassengerEngine {
     ): QuickPassengerPlan {
         require(request.passengerName.isNotBlank()) { "Informe o nome do passageiro." }
         require(request.seats in 1..trip.capacity) { "Quantidade de vagas inválida." }
+        require(request.fareMinorUnits == null || request.fareMinorUnits > 0L) { "Valor da reserva inválido." }
+        require(request.fareCurrencyCode.isBlank() || request.fareCurrencyCode.matches(Regex("[A-Za-z]{3}"))) {
+            "Moeda da reserva inválida."
+        }
         require(request.mirrorSource == null || request.mirrorSource != request.source) {
             "A vaga espelho deve usar outra origem."
         }
@@ -86,15 +95,21 @@ object QuickPassengerEngine {
             request.mirrorSource != null -> "seat-${idFactory()}"
             else -> null
         }
-        val passengerId = idFactory()
+        val canonicalPassengerId = request.passengerId.trim().takeIf(String::isNotEmpty) ?: idFactory()
+        val bookingId = idFactory()
         val passenger = Booking(
-            id = passengerId,
+            id = bookingId,
             tripId = trip.id,
             passengerName = request.passengerName.trim(),
             passengerContact = request.passengerContact.trim(),
+            passengerId = canonicalPassengerId,
             boardingStopId = request.boardingStopId,
             dropoffStopId = request.dropoffStopId,
             seats = request.seats,
+            fareMinorUnits = request.fareMinorUnits,
+            fareCurrencyCode = request.fareCurrencyCode.trim().uppercase(),
+            boardingAddress = request.boardingAddress.trim(),
+            dropoffAddress = request.dropoffAddress.trim(),
             status = BookingStatus.CONFIRMED,
             source = request.source,
             capacityClaimType = CapacityClaimType.PASSENGER,
