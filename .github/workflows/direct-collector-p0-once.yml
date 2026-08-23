@@ -1,0 +1,1060 @@
+name: Apply direct collector P0 once
+
+on:
+  push:
+    branches:
+      - agent/passenger-timeline-geo-ux
+    paths:
+      - .github/workflows/direct-collector-p0-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/passenger-timeline-geo-ux
+          fetch-depth: 0
+
+      - name: Verify starting point and protected FAROL
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "ada652324377af879a475faab5e16c1041f5b34f"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
+
+      - name: Add direct collector state helpers and regressions
+        run: |
+          set -euo pipefail
+          cat > app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt <<'EOF'
+          package br.com.mapeiaia.rotacerta.trips
+
+          internal enum class BlaBlaDirectRosterState {
+              UNKNOWN,
+              COMPLETE_EMPTY,
+              COMPLETE_WITH_PASSENGERS,
+          }
+
+          internal fun blaBlaDirectRosterState(
+              passengerCount: Int,
+              rosterComplete: Boolean,
+              explicitEmpty: Boolean,
+          ): BlaBlaDirectRosterState = when {
+              explicitEmpty && passengerCount == 0 -> BlaBlaDirectRosterState.COMPLETE_EMPTY
+              rosterComplete && passengerCount > 0 -> BlaBlaDirectRosterState.COMPLETE_WITH_PASSENGERS
+              else -> BlaBlaDirectRosterState.UNKNOWN
+          }
+
+          internal enum class BlaBlaDirectPassengerStep {
+              RESERVATION_URL,
+              PASSENGER_CARD,
+              SKIP,
+              FINISH,
+          }
+
+          internal fun blaBlaDirectPassengerStep(
+              passengerPresent: Boolean,
+              hasBookingHref: Boolean,
+              needsReservationPage: Boolean,
+              hasPassengerCard: Boolean,
+          ): BlaBlaDirectPassengerStep = when {
+              !passengerPresent -> BlaBlaDirectPassengerStep.FINISH
+              hasBookingHref && needsReservationPage -> BlaBlaDirectPassengerStep.RESERVATION_URL
+              !hasBookingHref && hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD
+              else -> BlaBlaDirectPassengerStep.SKIP
+          }
+
+          internal fun blaBlaDirectCollectorStatus(
+              accountCount: Int,
+              verifiedAccountCount: Int,
+              identityConflictCount: Int,
+              rosterIncompleteCount: Int,
+              skippedCount: Int,
+          ): String = when {
+              accountCount <= 0 -> "empty"
+              verifiedAccountCount <= 0 -> "blocked"
+              identityConflictCount > 0 || rosterIncompleteCount > 0 || skippedCount > 0 -> "partial"
+              verifiedAccountCount == accountCount -> "validated"
+              else -> "partial"
+          }
+
+          internal fun blaBlaDirectCoverageComplete(
+              accountCount: Int,
+              verifiedAccountCount: Int,
+              identityConflictCount: Int,
+              rosterIncompleteCount: Int,
+              skippedCount: Int,
+          ): Boolean = blaBlaDirectCollectorStatus(
+              accountCount = accountCount,
+              verifiedAccountCount = verifiedAccountCount,
+              identityConflictCount = identityConflictCount,
+              rosterIncompleteCount = rosterIncompleteCount,
+              skippedCount = skippedCount,
+          ) == "validated"
+
+          internal fun blaBlaDirectCallbackMatches(
+              expectedSyncGeneration: Long,
+              expectedNavigationGeneration: Long,
+              expectedCandidateIndex: Int,
+              expectedTripId: String?,
+              currentSyncGeneration: Long,
+              currentNavigationGeneration: Long,
+              currentCandidateIndex: Int,
+              currentTripId: String?,
+          ): Boolean =
+              expectedSyncGeneration == currentSyncGeneration &&
+                  expectedNavigationGeneration == currentNavigationGeneration &&
+                  expectedCandidateIndex == currentCandidateIndex &&
+                  !expectedTripId.isNullOrBlank() &&
+                  expectedTripId == currentTripId
+          EOF
+
+          cat > app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt <<'EOF'
+          package br.com.mapeiaia.rotacerta.trips
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class BlaBlaDirectCollector0261Test {
+              @Test
+              fun incompleteEmptyRosterRemainsUnknown() {
+                  assertEquals(
+                      BlaBlaDirectRosterState.UNKNOWN,
+                      blaBlaDirectRosterState(0, rosterComplete = false, explicitEmpty = false),
+                  )
+              }
+
+              @Test
+              fun explicitEmptyRosterCanFinalize() {
+                  assertEquals(
+                      BlaBlaDirectRosterState.COMPLETE_EMPTY,
+                      blaBlaDirectRosterState(0, rosterComplete = true, explicitEmpty = true),
+                  )
+              }
+
+              @Test
+              fun positiveRosterMustBeReportedComplete() {
+                  assertEquals(
+                      BlaBlaDirectRosterState.UNKNOWN,
+                      blaBlaDirectRosterState(2, rosterComplete = false, explicitEmpty = false),
+                  )
+                  assertEquals(
+                      BlaBlaDirectRosterState.COMPLETE_WITH_PASSENGERS,
+                      blaBlaDirectRosterState(2, rosterComplete = true, explicitEmpty = false),
+                  )
+              }
+
+              @Test
+              fun bookingHrefStartsIndividualReservationStep() {
+                  assertEquals(
+                      BlaBlaDirectPassengerStep.RESERVATION_URL,
+                      blaBlaDirectPassengerStep(true, hasBookingHref = true, needsReservationPage = true, hasPassengerCard = false),
+                  )
+              }
+
+              @Test
+              fun passengerCardIsUsedWhenHrefIsNotExposed() {
+                  assertEquals(
+                      BlaBlaDirectPassengerStep.PASSENGER_CARD,
+                      blaBlaDirectPassengerStep(true, hasBookingHref = false, needsReservationPage = false, hasPassengerCard = true),
+                  )
+              }
+
+              @Test
+              fun staleCallbackCannotMatchNextCandidate() {
+                  assertFalse(
+                      blaBlaDirectCallbackMatches(7, 11, 2, "trip-a", 7, 12, 3, "trip-b"),
+                  )
+                  assertTrue(
+                      blaBlaDirectCallbackMatches(7, 11, 2, "trip-a", 7, 11, 2, "trip-a"),
+                  )
+              }
+
+              @Test
+              fun validatedIdentityWithIncompleteDataIsPartial() {
+                  assertEquals(
+                      "partial",
+                      blaBlaDirectCollectorStatus(2, 2, 0, rosterIncompleteCount = 3, skippedCount = 2),
+                  )
+                  assertFalse(
+                      blaBlaDirectCoverageComplete(2, 2, 0, rosterIncompleteCount = 3, skippedCount = 2),
+                  )
+              }
+          }
+          EOF
+
+      - name: Patch direct collector in app source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt')
+          s = path.read_text()
+
+          def rep(old, new, label):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, got {count}')
+              s = s.replace(old, new, 1)
+
+          rep('''val trips = resolution.trips
+            .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
+          val hasIdentityConflict = resolution.conflicts.isNotEmpty()
+          val response = BlaBlaCollectorMonthResponse(
+            collected_at = Instant.now().toString(),
+            status = when {
+                accounts.isEmpty() -> "empty"
+                hasIdentityConflict -> "partial"
+                verified.size == accounts.size -> "validated"
+                verified.isEmpty() -> "blocked"
+                else -> "partial"
+            },''', '''val trips = resolution.trips
+            .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
+          val identityConflictCount = resolution.conflicts.size
+          val hasIdentityConflict = identityConflictCount > 0
+          val skippedCount = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }
+          val rosterIncompleteCount = trips.count { !it.passenger_roster_complete }
+          val dataCoveragePartial = rosterIncompleteCount > 0 || skippedCount > 0
+          val identityStatus = when {
+              accounts.isEmpty() -> "empty"
+              verified.size == accounts.size -> "validated"
+              verified.isEmpty() -> "blocked"
+              else -> "partial"
+          }
+          val dataCoverage = if (!dataCoveragePartial && !hasIdentityConflict) "complete" else "partial"
+          val response = BlaBlaCollectorMonthResponse(
+            collected_at = Instant.now().toString(),
+            status = blaBlaDirectCollectorStatus(
+                accountCount = accounts.size,
+                verifiedAccountCount = verified.size,
+                identityConflictCount = identityConflictCount,
+                rosterIncompleteCount = rosterIncompleteCount,
+                skippedCount = skippedCount,
+            ),''', 'combined status')
+
+          rep('''      complete_for_scope = accounts.isNotEmpty() && verified.size == accounts.size && !hasIdentityConflict,
+                global_profile_month_complete = false,
+                reason = if (hasIdentityConflict) {
+                    "Conflito de identidade externa detectado; viagens preservadas para conferência sem descarte silencioso."
+                } else {
+                    "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado."
+                },''', '''      complete_for_scope = blaBlaDirectCoverageComplete(
+                    accountCount = accounts.size,
+                    verifiedAccountCount = verified.size,
+                    identityConflictCount = identityConflictCount,
+                    rosterIncompleteCount = rosterIncompleteCount,
+                    skippedCount = skippedCount,
+                ),
+                global_profile_month_complete = false,
+                reason = when {
+                    hasIdentityConflict -> "Conflito de identidade externa detectado; viagens preservadas para conferência sem descarte silencioso."
+                    dataCoveragePartial -> "Identidade das contas validada, mas a cobertura dos dados está parcial por roster incompleto ou cartão não resolvido."
+                    else -> "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado."
+                },''', 'coverage complete')
+
+          rep('''      unresolved_target_cards = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips },''', '''      unresolved_target_cards = skippedCount,''', 'unresolved cards')
+
+          rep('''  "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=${resolution.conflicts.size} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} skipped=${snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }} status=${response.status}",''', '''  "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=$identityConflictCount rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=$rosterIncompleteCount skipped=$skippedCount identityStatus=$identityStatus dataCoverage=$dataCoverage status=${response.status}",''', 'combined log')
+
+          rep('''private data class DynamicTripDetail(
+              val detail: BlaBlaDomTripDetail = BlaBlaDomTripDetail(),
+              val driverProfileLinks: List<String> = emptyList(),
+              val domHtml: String = "",
+          )''', '''private data class DynamicTripDetail(
+              val detail: BlaBlaDomTripDetail = BlaBlaDomTripDetail(),
+              val driverProfileLinks: List<String> = emptyList(),
+              val passengerHrefs: List<String> = emptyList(),
+              val explicitEmptyRoster: Boolean = false,
+              val domHtml: String = "",
+          )''', 'trip detail DTO')
+
+          rep('''@Serializable
+          private data class DynamicPassengerContactEvidence(''', '''@Serializable
+          private data class DynamicPassengerCardOpenState(
+              val found: Boolean = false,
+              val clicked: Boolean = false,
+          )
+
+          @Serializable
+          private data class DynamicPassengerContactEvidence(''', 'passenger card DTO')
+
+          rep('''    private var rideReadAttempts = 0
+              private var pendingTripDetail: DynamicTripDetail? = null
+              private var pendingTripPassengers = mutableListOf<BlaBlaCollectorPassenger>()
+              private var passengerContactIndex = 0
+              private var passengerContactReadAttempts = 0
+              private var syncGeneration = 0L
+              private var navigationGeneration = 0L
+              private var detailCaptureInFlight = false
+              private var passengerCaptureInFlight = false''', '''    private var rideReadAttempts = 0
+              private var tripRosterReadAttempts = 0
+              private var pendingTripDetail: DynamicTripDetail? = null
+              private var pendingTripPassengers = mutableListOf<BlaBlaCollectorPassenger>()
+              private val pendingTripPassengerCardIndexes = mutableMapOf<Int, Int>()
+              private var passengerContactIndex = 0
+              private var passengerContactReadAttempts = 0
+              private var passengerCardReadAttempts = 0
+              private var syncGeneration = 0L
+              private var navigationGeneration = 0L
+              private var detailCaptureInFlight = false
+              private var passengerCaptureInFlight = false
+              private var passengerCardCaptureInFlight = false''', 'state fields')
+
+          rep('''                    Phase.DETAIL -> if (isBlaBla(url)) scheduleTripDetailCapture(view)
+                          Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)''', '''                    Phase.DETAIL -> if (isBlaBla(url)) scheduleTripDetailCapture(view)
+                          Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)
+                          Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)''', 'page phases')
+
+          rep('''        detailCaptureInFlight = false
+                  passengerCaptureInFlight = false''', '''        detailCaptureInFlight = false
+                  passengerCaptureInFlight = false
+                  passengerCardCaptureInFlight = false''', 'begin capture reset')
+
+          rep('''        rideReadAttempts = 0
+                  identityConfirmedThisSync = false
+                  pendingTripDetail = null
+                  pendingTripPassengers.clear()
+                  passengerContactIndex = 0
+                  passengerContactReadAttempts = 0''', '''        rideReadAttempts = 0
+                  tripRosterReadAttempts = 0
+                  identityConfirmedThisSync = false
+                  pendingTripDetail = null
+                  pendingTripPassengers.clear()
+                  pendingTripPassengerCardIndexes.clear()
+                  passengerContactIndex = 0
+                  passengerContactReadAttempts = 0
+                  passengerCardReadAttempts = 0''', 'begin state reset')
+
+          rep('''    private fun schedulePassengerContactCapture(view: WebView) {
+                  val expectedSync = syncGeneration
+                  val expectedNavigation = navigationGeneration
+                  val expectedCandidate = candidateIndex
+                  val expectedPassenger = passengerContactIndex
+                  view.postDelayed({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 850)
+              }''', '''    private fun schedulePassengerCardOpen(view: WebView) {
+                  val expectedSync = syncGeneration
+                  val expectedNavigation = navigationGeneration
+                  val expectedCandidate = candidateIndex
+                  val expectedPassenger = passengerContactIndex
+                  view.postDelayed({ openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 600)
+              }
+
+              private fun schedulePassengerContactCapture(view: WebView) {
+                  val expectedSync = syncGeneration
+                  val expectedNavigation = navigationGeneration
+                  val expectedCandidate = candidateIndex
+                  val expectedPassenger = passengerContactIndex
+                  view.postDelayed({ capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 850)
+              }''', 'capture schedulers')
+
+          rep('''        val hasBatchRosterEvidence = candidate.passengerRosterComplete || candidate.passengers.isNotEmpty()''', '''        val hasBatchRosterEvidence = candidate.passengerRosterComplete && candidate.passengers.isNotEmpty()''', 'batch roster gate')
+
+          rep('''            ),
+                  )
+                  val batchTrip = if (definition != null && identityConfirmedThisSync) {''', '''            ),
+                      passengerHrefs = candidate.passengers.mapNotNull { it.booking_href?.takeIf(String::isNotBlank) },
+                  )
+                  val batchTrip = if (definition != null && identityConfirmedThisSync) {''', 'synthetic hrefs')
+
+          rep('''            pendingTripPassengers = candidate.passengers.toMutableList()
+                      pendingTripSyncGeneration = syncGeneration
+                      pendingTripCandidateIndex = candidateIndex
+                      passengerContactIndex = 0
+                      passengerContactReadAttempts = 0
+                      UnifiedDebugEventStore.record(
+                          "TRIP_BATCH_READY",''', '''            pendingTripPassengers = candidate.passengers.toMutableList()
+                      pendingTripPassengerCardIndexes.clear()
+                      pendingTripSyncGeneration = syncGeneration
+                      pendingTripCandidateIndex = candidateIndex
+                      passengerContactIndex = 0
+                      passengerContactReadAttempts = 0
+                      passengerCardReadAttempts = 0
+                      tripRosterReadAttempts = 0
+                      val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+                      UnifiedDebugEventStore.record(
+                          "TRIP_ROSTER_PROBE",
+                          packageName,
+                          "account=${account.displayLabel} tripId=$tripId attempt=0 passengerCards=${candidate.passengers.size} bookingLinks=${candidate.passengers.count { !it.booking_href.isNullOrBlank() }} rosterComplete=${candidate.passengerRosterComplete} explicitEmpty=false state=${BlaBlaDirectRosterState.COMPLETE_WITH_PASSENGERS}",
+                      )
+                      UnifiedDebugEventStore.record(
+                          "TRIP_BATCH_READY",''', 'batch pending state')
+
+          rep('''            if (pendingTripPassengers.any(::passengerNeedsReservationPage)) {
+                          loadNextPassengerContact(syncGeneration, candidateIndex)
+                      } else {
+                          finalizeCurrentTrip(syncGeneration, candidateIndex)
+                      }
+                      return''', '''            loadNextPassengerContact(syncGeneration, candidateIndex)
+                      return''', 'batch sequential')
+
+          rep('''            store.saveDiagnosticHtml(account, "trip-${expectedCandidate + 1}", result.domHtml)
+                      val driverUuids = uuids(result.driverProfileLinks)''', '''            val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
+                      val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(result.detail.url)
+                      if (candidateTripId.isNullOrBlank() || detailTripId.isNullOrBlank() || candidateTripId != detailTripId) {
+                          skipped++
+                          UnifiedDebugEventStore.record(
+                              "TRIP_REJECTED",
+                              packageName,
+                              "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_trip_id_mismatch candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} action=reject_stale_detail",
+                          )
+                          advanceCandidate(expectedSync, expectedCandidate)
+                          return@evaluate
+                      }
+                      val rosterState = blaBlaDirectRosterState(
+                          passengerCount = result.detail.passengers.size,
+                          rosterComplete = result.detail.passengerRosterComplete,
+                          explicitEmpty = result.explicitEmptyRoster,
+                      )
+                      UnifiedDebugEventStore.record(
+                          "TRIP_ROSTER_PROBE",
+                          packageName,
+                          "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${result.detail.passengers.size} bookingLinks=${result.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} rosterComplete=${result.detail.passengerRosterComplete} explicitEmpty=${result.explicitEmptyRoster} state=$rosterState",
+                      )
+                      if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+                          if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                              tripRosterReadAttempts++
+                              statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                              webView.postDelayed({
+                                  captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                              }, ROSTER_RETRY_MS)
+                              return@evaluate
+                          }
+                          skipped++
+                          UnifiedDebugEventStore.record(
+                              "TRIP_REJECTED",
+                              packageName,
+                              "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
+                          )
+                          advanceCandidate(expectedSync, expectedCandidate)
+                          return@evaluate
+                      }
+                      tripRosterReadAttempts = 0
+                      store.saveDiagnosticHtml(account, "trip-${expectedCandidate + 1}", result.domHtml)
+                      val driverUuids = uuids(result.driverProfileLinks)''', 'detail identity and roster probe')
+
+          rep('''            pendingTripDetail = result
+                      pendingTripPassengers = (preview?.passengers ?: result.detail.passengers).toMutableList()
+                      pendingTripSyncGeneration = expectedSync
+                      pendingTripCandidateIndex = expectedCandidate
+                      passengerContactIndex = 0
+                      passengerContactReadAttempts = 0
+                      if (pendingTripPassengers.any(::passengerNeedsReservationPage)) {
+                          loadNextPassengerContact(expectedSync, expectedCandidate)
+                      } else {
+                          finalizeCurrentTrip(expectedSync, expectedCandidate)
+                      }''', '''            pendingTripDetail = result
+                      pendingTripPassengers = (preview?.passengers ?: result.detail.passengers).toMutableList()
+                      pendingTripPassengerCardIndexes.clear()
+                      result.passengerHrefs.forEach { target ->
+                          if (!target.startsWith(CARD_TARGET_PREFIX)) return@forEach
+                          val cardIndex = target.removePrefix(CARD_TARGET_PREFIX).toIntOrNull() ?: return@forEach
+                          if (cardIndex in pendingTripPassengers.indices) pendingTripPassengerCardIndexes[cardIndex] = cardIndex
+                      }
+                      pendingTripSyncGeneration = expectedSync
+                      pendingTripCandidateIndex = expectedCandidate
+                      passengerContactIndex = 0
+                      passengerContactReadAttempts = 0
+                      passengerCardReadAttempts = 0
+                      loadNextPassengerContact(expectedSync, expectedCandidate)''', 'detail pending sequential')
+
+          rep('''    private fun detailCaptureIsCurrent(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int): Boolean =
+                  phase == Phase.DETAIL &&
+                      expectedSync == syncGeneration &&
+                      expectedNavigation == navigationGeneration &&
+                      expectedCandidate == candidateIndex &&
+                      expectedCandidate in candidates.indices''', '''    private fun detailCaptureIsCurrent(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int): Boolean {
+                  if (phase != Phase.DETAIL || expectedCandidate !in candidates.indices) return false
+                  val expectedTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href)
+                  val currentTripId = BlaBlaTripIdentity.externalTripIdFromHref(webView.url.orEmpty())
+                  return blaBlaDirectCallbackMatches(
+                      expectedSyncGeneration = expectedSync,
+                      expectedNavigationGeneration = expectedNavigation,
+                      expectedCandidateIndex = expectedCandidate,
+                      expectedTripId = expectedTripId,
+                      currentSyncGeneration = syncGeneration,
+                      currentNavigationGeneration = navigationGeneration,
+                      currentCandidateIndex = candidateIndex,
+                      currentTripId = currentTripId,
+                  )
+              }''', 'detail callback guard')
+
+          old_load = '''    private fun loadNextPassengerContact(expectedSync: Long, expectedCandidate: Int) {
+                  if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+                      recordStale("passenger_load_pending_mismatch", expectedSync, expectedCandidate)
+                      return
+                  }
+                  while (passengerContactIndex < pendingTripPassengers.size) {
+                      val passenger = pendingTripPassengers[passengerContactIndex]
+                      val href = passenger.booking_href?.trim().orEmpty()
+                      if (passengerNeedsReservationPage(passenger)) {
+                          phase = Phase.PASSENGER_CONTACT
+                          passengerContactReadAttempts = 0
+                          passengerCaptureInFlight = false
+                          statusView.text = "${account.displayLabel} • reserva ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
+                          loadTrackedUrl(href)
+                          return
+                      }
+                      passengerContactIndex++
+                  }
+                  finalizeCurrentTrip(expectedSync, expectedCandidate)
+              }
+          '''
+          new_load = '''    private fun loadNextPassengerContact(expectedSync: Long, expectedCandidate: Int) {
+                  if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+                      recordStale("passenger_load_pending_mismatch", expectedSync, expectedCandidate)
+                      return
+                  }
+                  while (passengerContactIndex < pendingTripPassengers.size) {
+                      val passenger = pendingTripPassengers[passengerContactIndex]
+                      val href = passenger.booking_href?.trim().orEmpty()
+                      val hasBookingHref = href.isNotBlank() && isPassengerHref(href)
+                      val cardIndex = pendingTripPassengerCardIndexes[passengerContactIndex]
+                      when (
+                          blaBlaDirectPassengerStep(
+                              passengerPresent = true,
+                              hasBookingHref = hasBookingHref,
+                              needsReservationPage = hasBookingHref && passengerNeedsReservationPage(passenger),
+                              hasPassengerCard = cardIndex != null,
+                          )
+                      ) {
+                          BlaBlaDirectPassengerStep.RESERVATION_URL -> {
+                              phase = Phase.PASSENGER_CONTACT
+                              passengerContactReadAttempts = 0
+                              passengerCaptureInFlight = false
+                              statusView.text = "${account.displayLabel} • reserva ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
+                              loadTrackedUrl(href)
+                              return
+                          }
+                          BlaBlaDirectPassengerStep.PASSENGER_CARD -> {
+                              phase = Phase.PASSENGER_CARD
+                              passengerContactReadAttempts = 0
+                              passengerCardReadAttempts = 0
+                              passengerCardCaptureInFlight = false
+                              statusView.text = "${account.displayLabel} • abrindo passageiro ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
+                              if (currentTripMatchesCandidate(expectedCandidate)) {
+                                  val expectedNavigation = navigationGeneration
+                                  webView.postDelayed({
+                                      openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, passengerContactIndex)
+                                  }, 350)
+                              } else {
+                                  loadTrackedUrl(candidates[expectedCandidate].href)
+                              }
+                              return
+                          }
+                          BlaBlaDirectPassengerStep.SKIP -> {
+                              if (!hasBookingHref && cardIndex == null) {
+                                  UnifiedDebugEventStore.record(
+                                      "PASSENGER_CONTACT_SKIPPED",
+                                      packageName,
+                                      "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${passengerContactIndex + 1}/${pendingTripPassengers.size} reason=no_individual_target",
+                                  )
+                              }
+                              passengerContactIndex++
+                          }
+                          BlaBlaDirectPassengerStep.FINISH -> break
+                      }
+                  }
+                  finalizeCurrentTrip(expectedSync, expectedCandidate)
+              }
+
+              private fun openPendingPassengerCard(
+                  expectedSync: Long,
+                  expectedNavigation: Long,
+                  expectedCandidate: Int,
+                  expectedPassenger: Int,
+              ) {
+                  if (!passengerCardCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)) {
+                      recordStale("passenger_card_before_evaluate", expectedSync, expectedCandidate)
+                      return
+                  }
+                  if (passengerCardCaptureInFlight) {
+                      recordStale("passenger_card_in_flight", expectedSync, expectedCandidate)
+                      return
+                  }
+                  val cardIndex = pendingTripPassengerCardIndexes[expectedPassenger] ?: run {
+                      recordStale("passenger_card_index_missing", expectedSync, expectedCandidate)
+                      return
+                  }
+                  passengerCardCaptureInFlight = true
+                  evaluate<DynamicPassengerCardOpenState>(passengerCardOpenJs(cardIndex)) { state ->
+                      passengerCardCaptureInFlight = false
+                      if (
+                          phase != Phase.PASSENGER_CARD ||
+                          expectedSync != syncGeneration ||
+                          expectedNavigation != navigationGeneration ||
+                          expectedCandidate != candidateIndex ||
+                          expectedPassenger != passengerContactIndex ||
+                          !pendingTripIsCurrent(expectedSync, expectedCandidate)
+                      ) {
+                          recordStale("passenger_card_after_evaluate", expectedSync, expectedCandidate)
+                          return@evaluate
+                      }
+                      if (state?.clicked == true) {
+                          passengerCardReadAttempts = 0
+                          navigationGeneration++
+                          val passengerNavigation = navigationGeneration
+                          phase = Phase.PASSENGER_CONTACT
+                          statusView.text = "${account.displayLabel} • reserva ${expectedPassenger + 1}/${pendingTripPassengers.size}…"
+                          webView.postDelayed({
+                              capturePassengerContactAfterNavigation(
+                                  expectedSync,
+                                  passengerNavigation,
+                                  expectedCandidate,
+                                  expectedPassenger,
+                              )
+                          }, PASSENGER_NAVIGATION_SETTLE_MS)
+                          return@evaluate
+                      }
+                      if (passengerCardReadAttempts < MAX_PASSENGER_CARD_READ_ATTEMPTS) {
+                          passengerCardReadAttempts++
+                          webView.postDelayed({
+                              openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
+                          }, ROSTER_RETRY_MS)
+                          return@evaluate
+                      }
+                      UnifiedDebugEventStore.record(
+                          "PASSENGER_CONTACT_SKIPPED",
+                          packageName,
+                          "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} reason=card_not_clickable attempts=${passengerCardReadAttempts + 1}",
+                      )
+                      passengerContactIndex = expectedPassenger + 1
+                      passengerCardReadAttempts = 0
+                      loadNextPassengerContact(expectedSync, expectedCandidate)
+                  }
+              }
+
+              private fun passengerCardCaptureIsCurrent(
+                  expectedSync: Long,
+                  expectedNavigation: Long,
+                  expectedCandidate: Int,
+                  expectedPassenger: Int,
+              ): Boolean =
+                  phase == Phase.PASSENGER_CARD &&
+                      expectedSync == syncGeneration &&
+                      expectedNavigation == navigationGeneration &&
+                      expectedCandidate == candidateIndex &&
+                      expectedPassenger == passengerContactIndex &&
+                      pendingTripIsCurrent(expectedSync, expectedCandidate) &&
+                      currentTripMatchesCandidate(expectedCandidate)
+
+              private fun capturePassengerContactAfterNavigation(
+                  expectedSync: Long,
+                  expectedNavigation: Long,
+                  expectedCandidate: Int,
+                  expectedPassenger: Int,
+              ) {
+                  if (
+                      phase != Phase.PASSENGER_CONTACT ||
+                      expectedSync != syncGeneration ||
+                      expectedNavigation != navigationGeneration ||
+                      expectedCandidate != candidateIndex ||
+                      expectedPassenger != passengerContactIndex ||
+                      !pendingTripIsCurrent(expectedSync, expectedCandidate)
+                  ) {
+                      recordStale("passenger_bind_before_capture", expectedSync, expectedCandidate)
+                      return
+                  }
+                  if (!bindPendingPassengerTarget(expectedCandidate, expectedPassenger)) {
+                      if (passengerContactReadAttempts < MAX_PASSENGER_BIND_READ_ATTEMPTS) {
+                          passengerContactReadAttempts++
+                          webView.postDelayed({
+                              capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
+                          }, ROSTER_RETRY_MS)
+                          return
+                      }
+                      UnifiedDebugEventStore.record(
+                          "PASSENGER_CONTACT_SKIPPED",
+                          packageName,
+                          "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} reason=passenger_page_identity_unproven attempts=${passengerContactReadAttempts + 1}",
+                      )
+                      passengerContactIndex = expectedPassenger + 1
+                      passengerContactReadAttempts = 0
+                      loadNextPassengerContact(expectedSync, expectedCandidate)
+                      return
+                  }
+                  passengerContactReadAttempts = 0
+                  capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
+              }
+
+              private fun bindPendingPassengerTarget(expectedCandidate: Int, expectedPassenger: Int): Boolean {
+                  val current = pendingTripPassengers.getOrNull(expectedPassenger) ?: return false
+                  val existingHref = current.booking_href?.trim().orEmpty()
+                  if (existingHref.isNotBlank()) return passengerPageMatchesExpected(existingHref, webView.url.orEmpty())
+                  val cardIndex = pendingTripPassengerCardIndexes[expectedPassenger] ?: return false
+                  val actualHref = webView.url.orEmpty().takeIf(::isPassengerHref) ?: return false
+                  val actualKey = passengerPageKey(actualHref)
+                  val duplicate = pendingTripPassengers.withIndex().any { (index, other) ->
+                      index != expectedPassenger &&
+                          !other.booking_href.isNullOrBlank() &&
+                          passengerPageKey(other.booking_href.orEmpty()) == actualKey
+                  }
+                  if (duplicate) {
+                      UnifiedDebugEventStore.record(
+                          "PASSENGER_TARGET_REJECTED",
+                          packageName,
+                          "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} reason=duplicate_passenger_page action=fail_closed",
+                      )
+                      return false
+                  }
+                  pendingTripPassengers[expectedPassenger] = current.copy(booking_href = actualHref)
+                  pendingTripPassengerCardIndexes.remove(expectedPassenger)
+                  UnifiedDebugEventStore.record(
+                      "PASSENGER_TARGET_BOUND",
+                      packageName,
+                      "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} cardIndex=$cardIndex hrefPresent=true",
+                  )
+                  return true
+              }
+          '''
+          rep(old_load, new_load, 'sequential passenger flow')
+
+          rep('''            val fareCaptured = saveCapturedPassengerFare(current.booking_href, evidence)
+                      val boardingEvidenceCaptured = saveCapturedPassengerBoardingEvidence(current.booking_href, evidence)''', '''            saveCapturedPassengerFare(current.booking_href, evidence)
+                      saveCapturedPassengerBoardingEvidence(current.booking_href, evidence)''', 'capture metadata calls')
+
+          rep('''            val metadataKey = externalPassengerReservationKey(account.profileUuid, current.booking_href)
+                      val coordinatePresent = passengerIdentityStore.externalMetadata(metadataKey)?.hasBoardingCoordinates == true
+                      UnifiedDebugEventStore.record(
+                          "PASSENGER_CONTACT_CAPTURED",
+                          packageName,
+                          "account=${account.displayLabel} tripIndex=${expectedCandidate + 1}/${candidates.size} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${effectivePhone != null} bookingLinkPresent=${!current.booking_href.isNullOrBlank()} fareCaptured=$fareCaptured boardingEvidenceCaptured=$boardingEvidenceCaptured boardingCoordinatePresent=$coordinatePresent htmlCaptured=${!evidence?.domHtml.isNullOrBlank()}",
+                      )''', '''            val boundHref = pendingTripPassengers[expectedPassenger].booking_href
+                      val metadataKey = externalPassengerReservationKey(account.profileUuid, boundHref)
+                      val metadata = passengerIdentityStore.externalMetadata(metadataKey)
+                      val farePresent = metadata?.fareMinorUnits != null
+                      val addressPresent = !metadata?.boardingAddress.isNullOrBlank()
+                      val coordinatePresent = metadata?.hasBoardingCoordinates == true
+                      val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()
+                      UnifiedDebugEventStore.record(
+                          "PASSENGER_CONTACT_CAPTURED",
+                          packageName,
+                          "account=${account.displayLabel} tripId=$tripId passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${effectivePhone != null} farePresent=$farePresent addressPresent=$addressPresent coordinatePresent=$coordinatePresent bookingLinkPresent=${!boundHref.isNullOrBlank()} htmlCaptured=${!evidence?.domHtml.isNullOrBlank()}",
+                      )''', 'safe passenger diagnostics')
+
+          rep('''    ): Boolean = phase == Phase.PASSENGER_CONTACT &&
+                  expectedSync == syncGeneration &&
+                  expectedNavigation == navigationGeneration &&
+                  expectedCandidate == candidateIndex &&
+                  expectedPassenger == passengerContactIndex &&
+                  pendingTripIsCurrent(expectedSync, expectedCandidate) &&
+                  expectedPassenger in pendingTripPassengers.indices''', '''    ): Boolean = phase == Phase.PASSENGER_CONTACT &&
+                  expectedSync == syncGeneration &&
+                  expectedNavigation == navigationGeneration &&
+                  expectedCandidate == candidateIndex &&
+                  expectedPassenger == passengerContactIndex &&
+                  pendingTripIsCurrent(expectedSync, expectedCandidate) &&
+                  expectedPassenger in pendingTripPassengers.indices &&
+                  passengerPageMatchesExpected(
+                      pendingTripPassengers[expectedPassenger].booking_href.orEmpty(),
+                      webView.url.orEmpty(),
+                  )''', 'passenger callback page guard')
+
+          rep('''
+          val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())''', '''
+          val rosterState = blaBlaDirectRosterState(
+            passengerCount = pendingTripPassengers.size,
+            rosterComplete = result.detail.passengerRosterComplete,
+            explicitEmpty = result.explicitEmptyRoster,
+          )
+          if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "TRIP_REJECTED",
+                packageName,
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=finalize_unknown_roster action=fail_closed",
+            )
+            advanceCandidate(expectedSync, expectedCandidate)
+            return
+          }
+
+          val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())''', 'finalize roster guard')
+
+          rep('''        pendingTripPassengers.clear()
+                  pendingTripSyncGeneration = -1L
+                  pendingTripCandidateIndex = -1
+                  passengerContactIndex = 0
+                  passengerContactReadAttempts = 0
+                  passengerCaptureInFlight = false''', '''        pendingTripPassengers.clear()
+                  pendingTripPassengerCardIndexes.clear()
+                  pendingTripSyncGeneration = -1L
+                  pendingTripCandidateIndex = -1
+                  passengerContactIndex = 0
+                  passengerContactReadAttempts = 0
+                  passengerCardReadAttempts = 0
+                  tripRosterReadAttempts = 0
+                  passengerCaptureInFlight = false
+                  passengerCardCaptureInFlight = false''', 'advance reset')
+
+          rep('''    private fun isBlaBla(url: String): Boolean = url.contains("blablacar.com.br")
+              private fun looksLoggedOut(text: String): Boolean {''', '''    private fun isBlaBla(url: String): Boolean = url.contains("blablacar.com.br")
+              private fun isPassengerHref(url: String): Boolean =
+                  isBlaBla(url) && (url.contains("/passenger/") || url.contains("/booking/"))
+
+              private fun passengerPageKey(url: String): String = url.substringBefore('#').substringBefore('?').trimEnd('/')
+
+              private fun passengerPageMatchesExpected(expected: String, actual: String): Boolean =
+                  expected.isNotBlank() && actual.isNotBlank() &&
+                      isPassengerHref(expected) && isPassengerHref(actual) &&
+                      passengerPageKey(expected) == passengerPageKey(actual)
+
+              private fun currentTripMatchesCandidate(expectedCandidate: Int): Boolean {
+                  val candidate = candidates.getOrNull(expectedCandidate) ?: return false
+                  val expectedTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href) ?: return false
+                  val currentTripId = BlaBlaTripIdentity.externalTripIdFromHref(webView.url.orEmpty()) ?: return false
+                  return expectedTripId == currentTripId
+              }
+
+              private fun looksLoggedOut(text: String): Boolean {''', 'URL identity helpers')
+
+          rep('''    private enum class Phase { IDLE, IDENTITY, RIDES, DETAIL, PASSENGER_CONTACT }''', '''    private enum class Phase { IDLE, IDENTITY, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT }''', 'phase enum')
+
+          rep('''        private const val MAX_TRIPS = 80
+                  private val UUID_REGEX''', '''        private const val MAX_TRIPS = 80
+                  private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
+                  private const val MAX_PASSENGER_CARD_READ_ATTEMPTS = 4
+                  private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
+                  private const val ROSTER_RETRY_MS = 800L
+                  private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
+                  private const val CARD_TARGET_PREFIX = "rotacerta-card:"
+                  private val UUID_REGEX''', 'collector constants')
+
+          old_passenger_extract = '''              const passengerAnchors = Array.from(document.querySelectorAll('a[href*="/rides/offer/passenger/"]'));
+                        const passengerMap = new Map();
+                        passengerAnchors.forEach((anchor) => {
+                          const href = anchor.href || '';
+                          if (!href || passengerMap.has(href)) return;
+                          const root = anchor.closest('li, article, [data-testid*="passenger"], [role="listitem"]') || anchor;
+                          const raw = (root.innerText || anchor.innerText || '').trim();
+                          const lines = raw.split(/\\n+/).map(clean).filter(Boolean);
+                          const named = root.querySelector && root.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]');
+                          const alt = named && named.getAttribute ? clean(named.getAttribute('alt')) : '';
+                          let name = clean(alt || (named && named.innerText) || lines[0] || '').replace(/\\s*\\(\\d+\\)\\s*$/, '');
+                          const suffixSource = lines.find((line) => /\\(\\d+\\)\\s*$/.test(line)) || name;
+                          const suffix = suffixSource.match(/\\((\\d+)\\)\\s*$/);
+                          const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
+                          const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                          const routeParts = route.split(/→|->/).map(clean);
+                          const tel = root.querySelector && root.querySelector('a[href^="tel:"]');
+                          passengerMap.set(href, {
+                            name: name,
+                            seats: seats,
+                            boarding: routeParts.length >= 2 ? routeParts[0] : null,
+                            dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
+                            phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
+                            booking_href: href
+                          });
+                        });
+                        const passengers = Array.from(passengerMap.values()).filter((item) => item.name);
+                        const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
+                          const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
+                          return marker.includes('passenger') || marker.includes('passageir') || marker.includes('booking') || marker.includes('reserva');
+                        });
+                        const hasMore = Array.from(document.querySelectorAll('button, a, [role="button"]')).some((node) => /mostrar mais|ver mais|mais passageir|mais reserva/i.test(clean(node.innerText)));
+                        const passengerRosterComplete = rosterContainers.length > 0 && !hasMore;'''
+          new_passenger_extract = '''              const linesOf = (node) => ((node && node.innerText) || '').split(/\\n+/).map(clean).filter(Boolean);
+                        const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
+                        const rows = [];
+                        const seenPassengers = new Set();
+                        const passengerTargets = [];
+                        const candidateNodes = Array.from(document.querySelectorAll(
+                          'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
+                        ));
+                        Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
+                          const text = clean(node.innerText);
+                          if ((text.includes('→') || text.includes('->')) && !candidateNodes.includes(node)) candidateNodes.push(node);
+                        });
+                        candidateNodes.forEach((node, index) => {
+                          const anchor = (node.matches && node.matches('a[href]')) ? node : (node.querySelector && node.querySelector('a[href]'));
+                          const href = absolute((anchor && anchor.getAttribute('href')) || (node.getAttribute && node.getAttribute('data-href')) || '');
+                          const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
+                          const lines = linesOf(container);
+                          const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                          if (!route) return;
+                          const explicit = container && container.querySelector
+                            ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
+                            : null;
+                          const marker = clean(
+                            ((container && container.getAttribute && container.getAttribute('data-testid')) || '') + ' ' +
+                            ((container && container.getAttribute && container.getAttribute('aria-label')) || '')
+                          ).toLowerCase();
+                          const passengerMarked = /passenger|booking|reservation/i.test(marker) || /passenger|booking/i.test(href);
+                          if (!explicit && !passengerMarked) return;
+                          const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
+                          let name = clean(alt || (explicit && explicit.innerText) || lines[0] || '').replace(/\\s*\\(\\d+\\)\\s*$/, '');
+                          if (!name) return;
+                          const suffixSource = lines.find((line) => /\\(\\d+\\)\\s*$/.test(line)) || name;
+                          const suffix = suffixSource.match(/\\((\\d+)\\)\\s*$/);
+                          const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
+                          const routeParts = route.split(/→|->/).map(clean);
+                          const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
+                          if (seenPassengers.has(key)) return;
+                          seenPassengers.add(key);
+                          const rowIndex = rows.length;
+                          const realPassengerHref = /\\/passenger\\/|\\/booking\\//i.test(href) ? href : '';
+                          passengerTargets.push(realPassengerHref || CARD_TARGET_PREFIX_JS + rowIndex);
+                          const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
+                          rows.push({
+                            name: name,
+                            seats: seats,
+                            boarding: routeParts.length >= 2 ? routeParts[0] : null,
+                            dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
+                            phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
+                            booking_href: realPassengerHref || null
+                          });
+                        });
+                        Array.from(document.querySelectorAll('a[href]'))
+                          .map((a) => absolute(a.getAttribute('href') || ''))
+                          .filter((href) => /\\/passenger\\/|\\/booking\\//i.test(href))
+                          .forEach((href) => passengerTargets.push(href));
+                        const passengers = rows;
+                        const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
+                          const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
+                          return marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+                        });
+                        const hasMore = Array.from(document.querySelectorAll('[data-testid], [aria-label], [aria-controls]')).some((node) => {
+                          const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '') + ' ' + (node.getAttribute('aria-controls') || '')).toLowerCase();
+                          const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+                          return passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
+                        });
+                        const explicitEmptyRoster = Array.from(document.querySelectorAll('[data-testid]')).some((node) => {
+                          const marker = (node.getAttribute('data-testid') || '').toLowerCase();
+                          const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+                          return passengerMarker && (marker.includes('empty') || marker.includes('none') || marker.includes('zero') || marker.includes('no-'));
+                        });
+                        const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);'''
+          # Kotlin interpolation injects the constant token into JS; keep the JavaScript literal generic and non-tenant-specific.
+          new_passenger_extract = new_passenger_extract.replace('CARD_TARGET_PREFIX_JS', "'rotacerta-card:' + ")
+          # Fix the expression created by the literal substitution above.
+          new_passenger_extract = new_passenger_extract.replace("passengerTargets.push(realPassengerHref || 'rotacerta-card:' +  + rowIndex);", "passengerTargets.push(realPassengerHref || 'rotacerta-card:' + rowIndex);")
+          rep(old_passenger_extract, new_passenger_extract, 'trip passenger DOM extraction')
+
+          rep('''                driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
+                          domHtml: html.slice(0, 350000)''', '''                driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
+                          passengerHrefs: Array.from(new Set(passengerTargets)),
+                          explicitEmptyRoster: explicitEmptyRoster,
+                          domHtml: html.slice(0, 350000)''', 'trip detail output')
+
+          marker = '''        private val TRIP_DETAIL_DYNAMIC_JS = """'''
+          card_js = '''        private fun passengerCardOpenJs(cardIndex: Int): String = """
+                      (function() {
+                        const wantedIndex = $cardIndex;
+                        const clean = (v) => (v || '').replace(/\\s+/g, ' ').trim();
+                        const linesOf = (node) => ((node && node.innerText) || '').split(/\\n+/).map(clean).filter(Boolean);
+                        const candidates = Array.from(document.querySelectorAll(
+                          'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
+                        ));
+                        Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
+                          const value = clean(node.innerText);
+                          if ((value.includes('→') || value.includes('->')) && !candidates.includes(node)) candidates.push(node);
+                        });
+                        const valid = [];
+                        const seen = new Set();
+                        candidates.forEach((node, index) => {
+                          const anchor = (node.matches && node.matches('a[href]')) ? node : (node.querySelector && node.querySelector('a[href]'));
+                          const href = (anchor && (anchor.href || anchor.getAttribute('href'))) || (node.getAttribute && node.getAttribute('data-href')) || '';
+                          const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
+                          const lines = linesOf(container);
+                          const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
+                          if (!route) return;
+                          const explicit = container && container.querySelector
+                            ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
+                            : null;
+                          const marker = clean(
+                            ((container && container.getAttribute && container.getAttribute('data-testid')) || '') + ' ' +
+                            ((container && container.getAttribute && container.getAttribute('aria-label')) || '')
+                          ).toLowerCase();
+                          const passengerMarked = /passenger|booking|reservation/i.test(marker) || /passenger|booking/i.test(href);
+                          if (!explicit && !passengerMarked) return;
+                          const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
+                          const name = clean(alt || (explicit && explicit.innerText) || lines[0] || '');
+                          if (!name) return;
+                          const suffixSource = lines.find((line) => /\\(\\d+\\)\\s*$/.test(line)) || name;
+                          const suffix = suffixSource.match(/\\((\\d+)\\)\\s*$/);
+                          const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
+                          const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
+                          if (seen.has(key)) return;
+                          seen.add(key);
+                          valid.push({ node: node, container: container });
+                        });
+                        const item = valid[wantedIndex];
+                        if (!item) return JSON.stringify({ found: false, clicked: false });
+                        const selector = 'a[href], button, [role="link"], [role="button"]';
+                        const direct = item.node && item.node.matches && item.node.matches(selector) ? item.node : null;
+                        const nested = !direct && item.node && item.node.querySelector ? item.node.querySelector(selector) : null;
+                        const containerTarget = !direct && !nested && item.container && item.container.matches && item.container.matches(selector)
+                          ? item.container
+                          : (!direct && !nested && item.container && item.container.querySelector ? item.container.querySelector(selector) : null);
+                        const clickable = direct || nested || containerTarget || item.node;
+                        if (!clickable || typeof clickable.click !== 'function') return JSON.stringify({ found: true, clicked: false });
+                        clickable.click();
+                        return JSON.stringify({ found: true, clicked: true });
+                      })();
+                  """.trimIndent()
+
+          ''' + marker
+          rep(marker, card_js, 'passenger card JS')
+
+          path.write_text(s)
+          PY
+
+      - name: Bump direct-source candidate version and workflow
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          gradle = Path('app/build.gradle.kts')
+          s = gradle.read_text()
+          if 'versionCode = 5553' not in s or 'versionName = "0.1.260"' not in s:
+              raise SystemExit('unexpected app version')
+          s = s.replace('versionCode = 5553', 'versionCode = 5554', 1)
+          s = s.replace('versionName = "0.1.260"', 'versionName = "0.1.261"', 1)
+          gradle.write_text(s)
+
+          wf = Path('.github/workflows/passenger-timeline-geo-ux-direct.yml')
+          w = wf.read_text()
+          w = w.replace('Passenger timeline geo UX direct-source 0.1.260', 'Passenger timeline geo UX direct-source 0.1.261', 1)
+          w = w.replace("EXPECTED_VERSION_CODE: '5553'", "EXPECTED_VERSION_CODE: '5554'", 1)
+          w = w.replace("EXPECTED_VERSION_NAME: '0.1.260'", "EXPECTED_VERSION_NAME: '0.1.261'", 1)
+          w = w.replace('rota-certa-passenger-timeline-geo-ux-0.1.260', 'rota-certa-passenger-timeline-geo-ux-0.1.261', 1)
+          anchor = '          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt\n'
+          if anchor not in w:
+              raise SystemExit('workflow test anchor missing')
+          w = w.replace(anchor, '          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt\n          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt\n' + anchor, 1)
+          wf.write_text(w)
+          PY
+
+      - name: Verify source contract, remove one-time workflow, commit
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
+          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
+          grep -Fq 'explicitEmptyRoster' "$DYNAMIC"
+          grep -Fq 'BlaBlaDirectRosterState.UNKNOWN' "$DYNAMIC"
+          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
+          grep -Fq 'farePresent=' "$DYNAMIC"
+          grep -Fq 'addressPresent=' "$DYNAMIC"
+          grep -Fq 'coordinatePresent=' "$DYNAMIC"
+          grep -Fq 'dataCoverage=' "$DYNAMIC"
+          grep -Fq 'versionCode = 5554' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.261"' app/build.gradle.kts
+          git diff --check
+          git rm .github/workflows/direct-collector-p0-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt \
+                  app/build.gradle.kts \
+                  .github/workflows/passenger-timeline-geo-ux-direct.yml
+          git commit -m 'fix: fail closed on unknown direct passenger rosters'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
