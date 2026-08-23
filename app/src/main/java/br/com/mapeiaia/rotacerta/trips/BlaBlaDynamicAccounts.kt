@@ -466,6 +466,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var pendingTripSyncGeneration = -1L
     private var pendingTripCandidateIndex = -1
     private val completionGate = BlaBlaSyncCompletionGate()
+    private var networkDiagnosticRecorder: BlaBlaNetworkDiagnosticRecorder? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -530,6 +531,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
+        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            networkDiagnosticRecorder = BlaBlaNetworkDiagnosticRecorder(
+                context = this,
+                accountId = account.id,
+                appPackageName = packageName,
+            ).also { recorder -> recorder.install(webView) }
+        }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val target = request?.url?.toString()
@@ -587,6 +595,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun beginSync() {
         syncGeneration++
+        networkDiagnosticRecorder?.startSync(syncGeneration)
         navigationGeneration = 0L
         detailCaptureInFlight = false
         passengerCaptureInFlight = false
@@ -832,11 +841,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             blockSyncWithoutCurrentCard("current_card_missing")
             return
         }
+        val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+        networkDiagnosticRecorder?.beginFirstCard(tripId)
+        networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.CARD)
         statusView.text = "${account.displayLabel} • card ${resolvedCardTraversalKeys.size + 1} • lendo completo…"
         UnifiedDebugEventStore.record(
             "TRIP_DETAIL_REQUIRED",
             packageName,
-            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()} batchShortcut=false",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=$tripId batchShortcut=false",
         )
         loadTrackedUrl(candidate.href)
     }
@@ -1065,6 +1077,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
             recordStale("passenger_load_pending_mismatch", expectedSync, expectedCandidate)
             return
+        }
+        if (pendingTripPassengers.isNotEmpty()) {
+            networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.PASSENGERS)
         }
         while (passengerContactIndex < pendingTripPassengers.size) {
             val passenger = pendingTripPassengers[passengerContactIndex]
@@ -1414,6 +1429,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         editReadAttempts = 0
         editCaptureInFlight = false
         phase = Phase.EDIT
+        networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.EDIT)
         statusView.text = "${account.displayLabel} • edição do card ${resolvedCardTraversalKeys.size + 1}…"
         UnifiedDebugEventStore.record(
             "DIRECT_EDIT_REQUIRED",
@@ -1481,6 +1497,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=true htmlCaptured=${evidence.domHtml.isNotBlank()} identityMatch=true sequential=true",
             )
             phase = Phase.OPTIONS
+            networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.OPTIONS)
             statusView.text = "${account.displayLabel} • vagas do card ${resolvedCardTraversalKeys.size + 1}…"
             loadTrackedUrl(optionsHref)
         }
@@ -1623,6 +1640,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             packageName,
             "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size} tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=complete nextCardAllowed=true",
         )
+        networkDiagnosticRecorder?.finishFirstCard("complete")
         saveProgressSnapshot("card_complete")
         clearPendingCardState()
         currentCardTraversalKey = ""
@@ -1672,6 +1690,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             packageName,
             "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size} tripId=$tripId reason=$reason completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} published=false nextCardAllowed=${BlaBlaCollectorCardModule.canAdvance(currentCardComplete = false, currentCardQuarantined = true)}",
         )
+        networkDiagnosticRecorder?.finishFirstCard("quarantined")
         saveProgressSnapshot("card_quarantined_$reason")
         clearPendingCardState()
         currentCardTraversalKey = ""
@@ -1685,6 +1704,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun blockSyncWithoutCurrentCard(reason: String) {
         skipped = maxOf(skipped, 1)
+        networkDiagnosticRecorder?.finishFirstCard("sync_blocked")
         UnifiedDebugEventStore.record(
             "SYNC_BLOCKED",
             packageName,
@@ -1906,6 +1926,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     override fun onDestroy() {
+        networkDiagnosticRecorder?.finishFirstCard("activity_closed")
+        networkDiagnosticRecorder?.close()
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
     }
