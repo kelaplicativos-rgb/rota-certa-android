@@ -1,1 +1,0 @@
-one-time trigger; strict sequential collector persistence retry 3
