@@ -1,0 +1,97 @@
+name: Direct-source branch APK
+
+on:
+  push:
+    branches:
+      - agent/passenger-timeline-geo-ux
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - '.github/workflows/direct-source-branch-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout triggering source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove direct source and record HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_HEAD="$(git rev-parse HEAD)"
+          printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
+          test "$SOURCE_HEAD" = "${GITHUB_SHA}"
+          test -d app/src/main
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          if git status --porcelain | grep -q .; then
+            echo "Checkout is not clean before validation." >&2
+            git status --short
+            exit 1
+          fi
+
+      - name: Record protected FAROL before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-before.sha256
+          test "$(cut -d' ' -f1 farol-before.sha256)" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test and build directly from app/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Prove source and FAROL unchanged after build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-after.sha256
+          cmp -s farol-before.sha256 farol-after.sha256
+          if git status --porcelain --untracked-files=no | grep -q .; then
+            echo "Tracked source changed during validation." >&2
+            git status --short
+            exit 1
+          fi
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+
+      - name: Upload direct-source APK evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-direct-source-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            source_head.txt
+            app-version.txt
+            farol-before.sha256
+            farol-after.sha256
+            apk.sha256
