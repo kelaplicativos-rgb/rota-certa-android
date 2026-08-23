@@ -314,6 +314,38 @@ internal class BlaBlaNetworkDiagnosticStore(
     companion object {
         private const val MAX_LINE_BYTES = 96_000
         private const val MAX_FILE_BYTES = 2_000_000L
+        private const val MAX_REPORT_CAPTURES = 4
+        private const val MAX_REPORT_RESPONSES_PER_PHASE = 10
+
+        fun exportLatest(context: Context): String {
+            val root = File(context.filesDir, "blablacar-network-diagnostic")
+            val captures = root.listFiles()
+                .orEmpty()
+                .map { directory -> File(directory, "first-card-latest.jsonl") }
+                .filter(File::isFile)
+                .sortedByDescending(File::lastModified)
+                .take(MAX_REPORT_CAPTURES)
+            if (captures.isEmpty()) return "sem captura network-first"
+            return captures.mapIndexed { captureIndex, file ->
+                val lines = runCatching { file.readLines(Charsets.UTF_8) }.getOrDefault(emptyList())
+                    .filter { line -> line.startsWith('{') && line.endsWith('}') }
+                val selectedIndexes = linkedSetOf<Int>()
+                lines.indices.filterTo(selectedIndexes) { index -> !lines[index].contains("\"record\":\"response\"") }
+                BlaBlaNetworkCapturePhase.entries.forEach { capturePhase ->
+                    lines.indices.asSequence()
+                        .filter { index ->
+                            lines[index].contains("\"record\":\"response\"") &&
+                                lines[index].contains("\"phase\":\"${capturePhase.wireName}\"")
+                        }
+                        .take(MAX_REPORT_RESPONSES_PER_PHASE)
+                        .forEach(selectedIndexes::add)
+                }
+                buildString {
+                    appendLine("captura=${captureIndex + 1}/${captures.size} linhas=${lines.size} respostasPorFaseMax=$MAX_REPORT_RESPONSES_PER_PHASE")
+                    selectedIndexes.sorted().forEach { index -> appendLine(lines[index]) }
+                }.trimEnd()
+            }.joinToString("\n")
+        }
 
         private fun stableDirectoryTag(accountId: String): String =
             MessageDigest.getInstance("SHA-256")
