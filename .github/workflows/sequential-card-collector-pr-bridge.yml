@@ -22,21 +22,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          SOURCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           awk '
             /python3 - <<.PY./ {inside=1; next}
             inside && /^          PY$/ {inside=0; exit}
             inside {sub(/^          /, ""); print}
           ' .github/workflows/sequential-card-collector-once.yml > /tmp/sequential_patch.py
           test -s /tmp/sequential_patch.py
-          if grep -Fq 'CARD_TRAVERSAL_COMPLETE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt && ! grep -Fq 'MAX_TRIPS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt; then
+          if grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$SOURCE" && ! grep -Fq 'MAX_TRIPS' "$SOURCE"; then
             echo 'strict sequential source already persisted'
             exit 0
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt')
+          s = source.read_text()
+          old = '        rideReadAttempts = 0\n        tripRosterReadAttempts = 0'
+          new = '''        rideReadAttempts = 0
+        completedCardTraversalKeys.clear()
+        currentCardTraversalKey = ""
+        ridesResumeScrollY = 0
+        ridesRestorePending = false
+        ridesBottomStablePasses = 0
+        tripRosterReadAttempts = 0'''
+          if s.count(old) != 1:
+              raise SystemExit(f'pre-reset expected 1 occurrence, got {s.count(old)}')
+          source.write_text(s.replace(old, new, 1))
+
+          patch = Path('/tmp/sequential_patch.py')
+          t = patch.read_text()
+          label = t.index("'reset-state'")
+          start = t.rfind('once(', 0, label)
+          end = t.index('\n\n', label)
+          t = t[:start] + '# reset-state handled by observable bridge\n' + t[end + 2:]
+          patch.write_text(t)
+          PY
           python3 /tmp/sequential_patch.py
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560'
+          grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$SOURCE"
+          grep -Fq 'fixedTripLimit=false' "$SOURCE"
+          ! grep -Fq 'MAX_TRIPS' "$SOURCE"
           git config user.name 'rota-certa-ci'
           git config user.email 'actions@users.noreply.github.com'
-          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          git add "$SOURCE"
           git diff --cached --quiet && exit 0
           git commit -m 'collector: restore strict sequential card traversal'
           git push origin HEAD:agent/passenger-timeline-geo-ux
