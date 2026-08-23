@@ -33,7 +33,7 @@ jobs:
         if: hashFiles('.github/workflows/direct-collector-p0-once.yml') != ''
         run: |
           set -euo pipefail
-          git fetch --depth=12 origin agent/passenger-timeline-geo-ux
+          git fetch --depth=16 origin agent/passenger-timeline-geo-ux
           git merge-base --is-ancestor ada652324377af879a475faab5e16c1041f5b34f HEAD
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
@@ -47,7 +47,10 @@ jobs:
           steps = workflow['jobs']['apply']['steps']
           for step in steps:
               name = step.get('name', 'unnamed run step')
-              if name == 'Verify starting point and protected FAROL':
+              if name in {
+                  'Verify starting point and protected FAROL',
+                  'Bump direct-source candidate version and workflow',
+              }:
                   continue
               script = step.get('run')
               if not script:
@@ -76,6 +79,28 @@ jobs:
                   if old not in script:
                       raise SystemExit('rep helper signature not found')
                   script = script.replace(old, new, 1)
+              elif name == 'Verify source contract, remove one-time workflow, commit':
+                  script = '''set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
+          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
+          grep -Fq 'explicitEmptyRoster' "$DYNAMIC"
+          grep -Fq 'BlaBlaDirectRosterState.UNKNOWN' "$DYNAMIC"
+          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
+          grep -Fq 'farePresent=' "$DYNAMIC"
+          grep -Fq 'addressPresent=' "$DYNAMIC"
+          grep -Fq 'coordinatePresent=' "$DYNAMIC"
+          grep -Fq 'dataCoverage=' "$DYNAMIC"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt
+          git commit -m 'fix: fail closed on unknown direct passenger rosters'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
+          '''
               print(f'::group::{name}')
               subprocess.run(script, shell=True, check=True, executable='/bin/bash')
               print('::endgroup::')
