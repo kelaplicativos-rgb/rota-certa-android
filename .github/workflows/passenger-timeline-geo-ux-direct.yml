@@ -33,7 +33,7 @@ jobs:
         if: hashFiles('.github/workflows/direct-collector-p0-once.yml') != ''
         run: |
           set -euo pipefail
-          git fetch --depth=8 origin agent/passenger-timeline-geo-ux
+          git fetch --depth=12 origin agent/passenger-timeline-geo-ux
           git merge-base --is-ancestor ada652324377af879a475faab5e16c1041f5b34f HEAD
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
@@ -53,14 +53,29 @@ jobs:
               if not script:
                   continue
               if name == 'Patch direct collector in app source':
-                  script = script.replace(
-                      '                          Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)',
-                      '                    Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)',
-                  )
-                  script = script.replace(
-                      '                          Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)',
-                      '                    Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)',
-                  )
+                  old = '''def rep(old, new, label):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, got {count}')
+              s = s.replace(old, new, 1)'''
+                  new = '''def rep(old, new, label):
+              global s
+              count = s.count(old)
+              if count == 1:
+                  s = s.replace(old, new, 1)
+                  return
+              import re
+              old_lines = old.splitlines()
+              pattern = r'\\n'.join(r'[ \\t]*' + re.escape(line.lstrip()) for line in old_lines)
+              matches = list(re.finditer(pattern, s))
+              if len(matches) != 1:
+                  raise SystemExit(f'{label}: expected 1 match, got exact={count} whitespace={len(matches)}')
+              match = matches[0]
+              s = s[:match.start()] + new + s[match.end():]'''
+                  if old not in script:
+                      raise SystemExit('rep helper signature not found')
+                  script = script.replace(old, new, 1)
               print(f'::group::{name}')
               subprocess.run(script, shell=True, check=True, executable='/bin/bash')
               print('::endgroup::')
