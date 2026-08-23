@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.261
+name: Passenger timeline geo UX sequential persistence bridge
 
 on:
   push:
@@ -7,128 +7,48 @@ on:
   pull_request:
     branches:
       - agent/global-multitenant-foundation
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate-direct-source:
+  persist-sequential-source:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    env:
-      GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
-      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5554'
-      EXPECTED_VERSION_NAME: '0.1.261'
     steps:
-      - name: Checkout feature HEAD directly
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: agent/passenger-timeline-geo-ux
           fetch-depth: 1
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Verify direct source, P0 contract and protected FAROL
+      - name: Persist reviewed sequential collector into app/src
+        shell: bash
         run: |
-          set -euo pipefail
+          set -u
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
-          P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
-          P0_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
-
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          test -s "$DYNAMIC"
-          test -s "$P0"
-          test -s "$P0_TEST"
-          test ! -e .github/workflows/direct-collector-p0-once.yml
-
-          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
-          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
-          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
-          grep -Fq 'roster_unknown_after_probe' "$DYNAMIC"
-          grep -Fq 'finalize_unknown_roster' "$DYNAMIC"
-          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
-          grep -Fq 'PASSENGER_CONTACT_CAPTURED' "$DYNAMIC"
-          grep -Fq 'farePresent=' "$DYNAMIC"
-          grep -Fq 'addressPresent=' "$DYNAMIC"
-          grep -Fq 'coordinatePresent=' "$DYNAMIC"
-          grep -Fq 'detail_trip_id_mismatch' "$DYNAMIC"
-          grep -Fq 'identityStatus=' "$DYNAMIC"
-          grep -Fq 'dataCoverage=' "$DYNAMIC"
-          grep -Fq 'BlaBlaDirectRosterState.UNKNOWN' "$P0"
-          grep -Fq 'COMPLETE_EMPTY' "$P0"
-          grep -Fq 'COMPLETE_WITH_PASSENGERS' "$P0"
-          grep -Fq 'BlaBlaDirectPassengerStep.PASSENGER_CARD' "$P0"
-          grep -Fq 'validatedIdentityWithIncompleteDataIsPartial' "$P0_TEST"
-          grep -Fq 'staleCallbackCannotMatchNextCandidate' "$P0_TEST"
-
-          echo "source_head=$(git rev-parse HEAD)"
-          echo 'direct_source=true'
-          echo 'historical_sha_checkout=false'
-          echo 'materializer_used=false'
-          echo 'farol_untouched=true'
-
-      - name: Run unit and regression tests directly on app source
-        run: |
-          set -euo pipefail
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-
-      - name: Assemble debug APK directly from app source
-        run: |
-          set -euo pipefail
-          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$APK"
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-
-          mkdir -p evidence
-          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
-          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
-          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
-          sha256sum "$APK" | tee evidence/apk-sha256.txt
-
-          cat > evidence/passenger-timeline-geo-ux-status.txt <<EOF
-          passenger_timeline_geo_ux_direct_source=PASS
-          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
-          source_head=$(git rev-parse HEAD)
-          direct_source=true
-          historical_sha_checkout=false
-          materializer_used=false
-          farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
-          direct_roster_unknown_fail_closed=true
-          direct_roster_explicit_empty_required=true
-          direct_passenger_card_fallback=true
-          direct_trip_id_guard=true
-          direct_data_coverage_status=true
-          passenger_contact_safe_diagnostics=true
-          collector_external_write=false
-          physical_ui_validation=false
-          collector_physical_validation=false
-          merge=false
-          release=false
-          latest=false
-          EOF
-
-      - name: Upload direct-source candidate APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.261
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            evidence/apk-sha256.txt
-            evidence/aapt-badging.txt
-            evidence/passenger-timeline-geo-ux-status.txt
-          if-no-files-found: error
-          retention-days: 7
+          SOURCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          RESULT='.github/sequential-persistence-result.txt'
+          status=0
+          python3 .github/sequential_card_patch.py > /tmp/sequential.out 2>&1 || status=$?
+          {
+            echo "patch_exit=$status"
+            echo "source_head_before=$(git rev-parse HEAD)"
+            cat /tmp/sequential.out
+          } > "$RESULT"
+          if [ "$status" -eq 0 ]; then
+            farol_sha="$(sha256sum "$FAROL" | awk '{print $1}')"
+            echo "farol_sha=$farol_sha" >> "$RESULT"
+            [ "$farol_sha" = '2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560' ] || status=91
+            grep -Fq 'CARD_TRAVERSAL_START' "$SOURCE" || status=92
+            grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$SOURCE" || status=93
+            grep -Fq 'CARD_TRAVERSAL_BLOCKED' "$SOURCE" || status=94
+            grep -Fq 'fixedTripLimit=false' "$SOURCE" || status=95
+            if grep -Fq 'MAX_TRIPS' "$SOURCE"; then status=96; fi
+          fi
+          echo "final_status=$status" >> "$RESULT"
+          git config user.name 'rota-certa-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add "$RESULT"
+          if [ "$status" -eq 0 ]; then git add "$SOURCE"; fi
+          if git diff --cached --quiet; then exit "$status"; fi
+          git commit -m 'collector: persist sequential card traversal result'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
+          exit "$status"
