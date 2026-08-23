@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -355,6 +356,8 @@ private data class DynamicTripDetail(
     val driverProfileLinks: List<String> = emptyList(),
     val passengerHrefs: List<String> = emptyList(),
     val explicitEmptyRoster: Boolean = false,
+    val itineraryStops: List<String> = emptyList(),
+    val views: Int? = null,
     val domHtml: String = "",
 )
 
@@ -370,6 +373,7 @@ private data class DynamicPassengerContactEvidence(
     val visibleName: String = "",
     val fareAmount: String = "",
     val fareCurrencyCode: String = "",
+    val callActionPresent: Boolean = false,
     val boardingAddress: String = "",
     val boardingLatitude: Double? = null,
     val boardingLongitude: Double? = null,
@@ -430,6 +434,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var passengerContactIndex = 0
     private var passengerContactReadAttempts = 0
     private var passengerCardReadAttempts = 0
+    private var passengerCallActionTriggered = false
+    private var interceptedPassengerPhone: String? = null
     private var syncGeneration = 0L
     private var navigationGeneration = 0L
     private var detailCaptureInFlight = false
@@ -503,6 +509,16 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val target = request?.url?.toString()
+                return if (interceptPhoneNavigation(target)) true else super.shouldOverrideUrlLoading(view, request)
+            }
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, url)
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
@@ -520,6 +536,29 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+    }
+
+    private fun interceptPhoneNavigation(rawUrl: String?): Boolean {
+        val url = rawUrl?.trim().orEmpty()
+        if (!url.startsWith("tel:", ignoreCase = true)) return false
+        val passenger = pendingTripPassengers.getOrNull(passengerContactIndex)
+        val pageUrl = if (::webView.isInitialized) webView.url.orEmpty() else ""
+        val phone = normalizeCapturedPhone(url.substringAfter(':').substringBefore('?'))
+        if (
+            phase == Phase.PASSENGER_CONTACT &&
+            passenger != null &&
+            passengerPageMatchesExpected(passenger.booking_href.orEmpty(), pageUrl)
+        ) {
+            interceptedPassengerPhone = phone
+            UnifiedDebugEventStore.record(
+                "PASSENGER_TEL_INTERCEPTED",
+                packageName,
+                "account=${account.displayLabel} tripId=${candidates.getOrNull(candidateIndex)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()} passengerIndex=${passengerContactIndex + 1}/${pendingTripPassengers.size} phonePresent=${phone != null} externalDialerOpened=false",
+            )
+        } else {
+            recordStale("tel_intercept_without_current_passenger", syncGeneration, candidateIndex)
+        }
+        return true
     }
 
     private fun beginSync() {
@@ -548,6 +587,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         passengerContactIndex = 0
         passengerContactReadAttempts = 0
         passengerCardReadAttempts = 0
+        passengerCallActionTriggered = false
+        interceptedPassengerPhone = null
         phase = Phase.IDENTITY
         statusView.text = "${account.displayLabel} • confirmando conta…"
         UnifiedDebugEventStore.record(
@@ -938,6 +979,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 BlaBlaDirectPassengerStep.RESERVATION_URL -> {
                     phase = Phase.PASSENGER_CONTACT
                     passengerContactReadAttempts = 0
+                    passengerCallActionTriggered = false
+                    interceptedPassengerPhone = null
                     passengerCaptureInFlight = false
                     statusView.text = "${account.displayLabel} • reserva ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
                     loadTrackedUrl(href)
@@ -947,6 +990,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     phase = Phase.PASSENGER_CARD
                     passengerContactReadAttempts = 0
                     passengerCardReadAttempts = 0
+                    passengerCallActionTriggered = false
+                    interceptedPassengerPhone = null
                     passengerCardCaptureInFlight = false
                     statusView.text = "${account.displayLabel} • abrindo passageiro ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
                     if (currentTripMatchesCandidate(expectedCandidate)) {
@@ -1160,7 +1205,25 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             evidence.domHtml.takeIf(String::isNotBlank)?.let { html ->
                 store.saveDiagnosticHtml(account, "card-${completedCardTraversalKeys.size + 1}-passenger-${expectedPassenger + 1}", html)
             }
-            val effectivePhone = current.phone?.takeIf(String::isNotBlank) ?: normalizeCapturedPhone(evidence.phone)
+            val effectivePhone = current.phone?.takeIf(String::isNotBlank)
+                ?: normalizeCapturedPhone(evidence.phone)
+                ?: interceptedPassengerPhone
+            if (effectivePhone == null && evidence.callActionPresent && !passengerCallActionTriggered) {
+                passengerCallActionTriggered = true
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_CALL_ACTION_PRESENT",
+                    packageName,
+                    "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} actionPresent=true clickIntercepted=true",
+                )
+                webView.evaluateJavascript(CLICK_CALL_ACTION_JS) {
+                    if (passengerCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)) {
+                        webView.postDelayed({
+                            capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
+                        }, PASSENGER_CALL_SETTLE_MS)
+                    }
+                }
+                return@evaluate
+            }
             saveCapturedPassengerFare(current.booking_href, evidence)
             saveCapturedPassengerBoardingEvidence(current.booking_href, evidence)
             val metadata = passengerIdentityStore.externalMetadata(externalPassengerReservationKey(account.profileUuid, current.booking_href))
@@ -1193,6 +1256,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             )
             passengerContactIndex = expectedPassenger + 1
             passengerContactReadAttempts = 0
+            passengerCallActionTriggered = false
+            interceptedPassengerPhone = null
             loadNextPassengerContact(expectedSync, expectedCandidate)
         }
     }
@@ -1283,6 +1348,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         val tripId = candidates.getOrNull(expectedCandidate)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()
+        persistDirectTripEvidence(tripId)
         completedCardTraversalKeys += currentCardTraversalKey
         UnifiedDebugEventStore.record(
             "CARD_TRAVERSAL_COMPLETE",
@@ -1296,6 +1362,28 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         phase = Phase.RIDES
         ridesRestorePending = ridesResumeScrollY > 0
         loadTrackedUrl(RIDES_URL)
+    }
+
+    private fun persistDirectTripEvidence(tripId: String) {
+        if (tripId.isBlank()) return
+        val detail = pendingTripDetail ?: return
+        val evidenceStore = BlaBlaHarvestEvidenceStore(this)
+        val existing = evidenceStore.read(account.id)
+        val prior = existing.firstOrNull { it.tripId == tripId }
+        val evidence = BlaBlaHarvestTripEvidence(
+            tripId = tripId,
+            publishedSeats = prior?.publishedSeats,
+            views = detail.views ?: prior?.views,
+            itineraryStops = detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() },
+            passengers = pendingTripPassengers.toList(),
+            passengerRosterComplete = detail.detail.passengerRosterComplete || detail.explicitEmptyRoster,
+        )
+        evidenceStore.replace(account.id, existing.filterNot { it.tripId == tripId } + evidence)
+        UnifiedDebugEventStore.record(
+            "DIRECT_TRIP_EVIDENCE_PERSISTED",
+            packageName,
+            "account=${account.displayLabel} tripId=$tripId stops=${evidence.itineraryStops.size} viewsPresent=${evidence.views != null} passengers=${evidence.passengers.size} rosterComplete=${evidence.passengerRosterComplete}",
+        )
     }
 
     private fun blockCurrentCard(expectedSync: Long, expectedCandidate: Int, reason: String) {
@@ -1333,6 +1421,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         passengerContactIndex = 0
         passengerContactReadAttempts = 0
         passengerCardReadAttempts = 0
+        passengerCallActionTriggered = false
+        interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
@@ -1533,6 +1623,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
         private const val ROSTER_RETRY_MS = 800L
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
+        private const val PASSENGER_CALL_SETTLE_MS = 650L
         private const val CARD_TARGET_PREFIX = "rotacerta-card:"
         private val UUID_REGEX = Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
@@ -1727,7 +1818,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
               };
               const validLatitude = (value) => value !== null && value >= -90 && value <= 90;
               const validLongitude = (value) => value !== null && value >= -180 && value <= 180;
-              const nodes = Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"]'));
+              const nodes = Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"], [role="link"]'));
+              const callAction = nodes.find((node) => {
+                const text = clean(node.innerText || node.textContent);
+                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
+                const href = (node.getAttribute && node.getAttribute('href')) || '';
+                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
+              });
               const candidates = [];
               nodes.forEach((node) => {
                 const href = (node.getAttribute && node.getAttribute('href')) || '';
@@ -1866,6 +1963,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 visibleName: clean(nameNode && nameNode.innerText),
                 fareAmount: fareAmount,
                 fareCurrencyCode: fareCurrencyCode,
+                callActionPresent: !!callAction,
                 boardingAddress: pickup.address,
                 boardingLatitude: pickup.latitude,
                 boardingLongitude: pickup.longitude,
@@ -1873,6 +1971,22 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 boardingLocationSource: pickup.source,
                 domHtml: html.slice(0, 350000)
               });
+            })();
+        """.trimIndent()
+
+        private val CLICK_CALL_ACTION_JS = """
+            (function() {
+              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+              const nodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
+              const action = nodes.find((node) => {
+                const text = clean(node.innerText || node.textContent);
+                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
+                const href = (node.getAttribute && node.getAttribute('href')) || '';
+                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
+              });
+              if (!action || typeof action.click !== 'function') return JSON.stringify({ present: !!action, clicked: false });
+              action.click();
+              return JSON.stringify({ present: true, clicked: true });
             })();
         """.trimIndent()
 
@@ -2033,6 +2147,21 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return passengerMarker && (marker.includes('empty') || marker.includes('none') || marker.includes('zero') || marker.includes('no-'));
               });
               const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
+              const itineraryStops = [];
+              [
+                '[data-testid*="itinerary-departure-station"]',
+                '[data-testid*="itinerary-arrival-station"]',
+                '[data-testid*="itinerary-stop"]',
+                '[data-testid*="station"]'
+              ].forEach((selector) => {
+                Array.from(document.querySelectorAll(selector)).forEach((node) => {
+                  const value = clean(node.innerText);
+                  if (value && !itineraryStops.includes(value)) itineraryStops.push(value);
+                });
+              });
+              const pageText = clean(document.body && document.body.innerText);
+              const viewsMatch = pageText.match(/(\d{1,9})\s+visualiza(?:ç|c)[õo]es/i);
+              const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 detail: {
@@ -2052,6 +2181,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
                 passengerHrefs: Array.from(new Set(passengerTargets)),
                 explicitEmptyRoster: explicitEmptyRoster,
+                itineraryStops: itineraryStops,
+                views: Number.isFinite(views) ? views : null,
                 domHtml: html.slice(0, 350000)
               });
             })();
