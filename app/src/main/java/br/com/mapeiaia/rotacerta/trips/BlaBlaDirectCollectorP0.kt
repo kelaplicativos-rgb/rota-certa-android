@@ -23,6 +23,12 @@ internal enum class BlaBlaDirectPassengerStep {
     FINISH,
 }
 
+/**
+ * The authenticated collector follows the same order the driver sees on the trip
+ * page. When the passenger row is available we click that row first, even if a
+ * reservation href was already discovered. A direct href is only a fallback for
+ * layouts where the visible passenger row cannot be addressed deterministically.
+ */
 internal fun blaBlaDirectPassengerStep(
     passengerPresent: Boolean,
     hasBookingHref: Boolean,
@@ -30,8 +36,8 @@ internal fun blaBlaDirectPassengerStep(
     hasPassengerCard: Boolean,
 ): BlaBlaDirectPassengerStep = when {
     !passengerPresent -> BlaBlaDirectPassengerStep.FINISH
+    hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD
     hasBookingHref && needsReservationPage -> BlaBlaDirectPassengerStep.RESERVATION_URL
-    !hasBookingHref && hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD
     else -> BlaBlaDirectPassengerStep.SKIP
 }
 
