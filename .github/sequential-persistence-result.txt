@@ -1,4 +1,4 @@
 patch_exit=2
-source_head_before=0135e96e5860f0576509559a18edb69fe6a88051
+source_head_before=58bdcfde7270820f36dc1191b8dd63a768cf0390
 python3: can't open file '/home/runner/work/rota-certa-android/rota-certa-android/.github/sequential_card_patch.py': [Errno 2] No such file or directory
 final_status=2
