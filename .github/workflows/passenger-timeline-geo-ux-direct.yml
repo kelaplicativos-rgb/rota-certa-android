@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.263
+name: Passenger timeline geo UX direct-source 0.1.264
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5556'
-      EXPECTED_VERSION_NAME: '0.1.263'
+      EXPECTED_VERSION_CODE: '5557'
+      EXPECTED_VERSION_NAME: '0.1.264'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -42,16 +42,28 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
+          CARD_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt'
+          PASSENGER_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt'
+          VALUE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorValueModule.kt'
+          SEAT_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSeatModule.kt'
+          TIMELINE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
           TEST261='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
           TEST262='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
           TEST263='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0263Test.kt'
+          TEST264='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s "$DYNAMIC"
           test -s "$P0"
+          test -s "$CARD_MODULE"
+          test -s "$PASSENGER_MODULE"
+          test -s "$VALUE_MODULE"
+          test -s "$SEAT_MODULE"
+          test -s "$TIMELINE_MODULE"
           test -s "$TEST261"
           test -s "$TEST262"
           test -s "$TEST263"
+          test -s "$TEST264"
 
           for temp in \
             .github/workflows/sequential-card-collector-once.yml \
@@ -76,6 +88,7 @@ jobs:
           grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$DYNAMIC"
           grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$DYNAMIC"
           grep -Fq 'DIRECT_TRIP_EVIDENCE_PERSISTED' "$DYNAMIC"
+          grep -Fq 'TIMELINE_CARD_CHECKPOINT_SAVED' "$DYNAMIC"
           grep -Fq 'DIRECT_EDIT_CAPTURED' "$DYNAMIC"
           grep -Fq 'DIRECT_SEAT_OPTIONS_CAPTURED' "$DYNAMIC"
           grep -Fq 'itineraryStops: itineraryStops' "$DYNAMIC"
@@ -85,19 +98,30 @@ jobs:
           grep -Fq 'coordinatePresent=' "$DYNAMIC"
           ! grep -Fq 'MAX_TRIPS' "$DYNAMIC"
 
-          grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$P0"
-          grep -Fq 'blaBlaFirstUncompletedVisibleKey' "$P0"
-          grep -Fq 'blaBlaCanAdvanceToNextCard' "$P0"
-          grep -Fq 'blaBlaDirectRosterCompleteAfterStableProbe' "$P0"
+          grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$PASSENGER_MODULE"
+          grep -Fq 'firstUnresolvedVisibleKey' "$CARD_MODULE"
+          grep -Fq 'fun canAdvance' "$CARD_MODULE"
+          grep -Fq 'emptyListIsAuthoritative' "$CARD_MODULE"
+          grep -Fq 'rosterCompleteAfterStableProbe' "$PASSENGER_MODULE"
+          grep -Fq 'farePresent' "$VALUE_MODULE"
+          grep -Fq 'optionsIdentityMatches' "$SEAT_MODULE"
+          grep -Fq 'preservedMissingTrips' "$TIMELINE_MODULE"
+          grep -Fq 'action=preserve_last_confirmed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
           grep -Fq 'firstUncompletedCardKeepsExactUiOrder' "$TEST262"
           grep -Fq 'terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt' "$TEST262"
           grep -Fq 'stablePositiveRosterCompletesWithoutBrittleContainerMarker' "$TEST263"
+          grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$TEST264"
+          grep -Fq 'zeroVisibleCardsWithoutExplicitEmptyEvidenceIsNeverAuthoritative' "$TEST264"
+          grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
           echo 'materializer_used=false'
           echo 'strict_sequential_card_traversal=true'
+          echo 'collector_modules=true'
+          echo 'partial_snapshot_monotonic=true'
+          echo 'mhtml_enrichment_monotonic=true'
           echo 'past_date_filter=false'
           echo 'fixed_trip_limit=false'
           echo 'farol_untouched=true'
@@ -135,6 +159,11 @@ jobs:
           strict_sequential_card_traversal=true
           incomplete_card_quarantine_and_continue=true
           stable_roster_probe=true
+          collector_modules=true
+          partial_snapshot_monotonic=true
+          explicit_empty_list_required=true
+          mhtml_enrichment_monotonic=true
+          per_card_timeline_checkpoint=true
           edit_options_same_trip_required=true
           published_seats_read_required=true
           past_date_filter=false
@@ -154,7 +183,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.263
+          name: rota-certa-passenger-timeline-geo-ux-0.1.264
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

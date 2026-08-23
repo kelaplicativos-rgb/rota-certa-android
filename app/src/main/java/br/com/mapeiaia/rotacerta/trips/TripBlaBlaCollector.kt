@@ -258,7 +258,7 @@ internal object BlaBlaPassengerRosterReconciler {
         )
     }
 
-    private fun matches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
+    internal fun matches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
         val leftHref = left.booking_href?.trim().orEmpty()
         val rightHref = right.booking_href?.trim().orEmpty()
         if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
@@ -405,8 +405,17 @@ class BlaBlaCollectorStateStore(context: Context) {
         prefs.getString(KEY_RESPONSE, null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
     }.getOrNull()
 
-    fun saveResponse(response: BlaBlaCollectorMonthResponse) {
-        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(response)).apply()
+    fun saveResponse(
+        response: BlaBlaCollectorMonthResponse,
+        preserveOnPartial: Boolean = true,
+    ): BlaBlaCollectorMonthResponse {
+        val effective = BlaBlaCollectorTimelineModule.mergePublishedResponse(
+            previous = lastResponse(),
+            incoming = response,
+            preserveOnPartial = preserveOnPartial,
+        )
+        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(effective)).apply()
+        return effective
     }
 
     fun lastProfile1(): String = prefs.getString(KEY_PROFILE1, "").orEmpty()

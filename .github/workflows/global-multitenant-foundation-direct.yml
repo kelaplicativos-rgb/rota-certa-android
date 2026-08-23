@@ -1,4 +1,4 @@
-name: Global foundation + passenger timeline direct-source 0.1.263
+name: Global foundation + passenger timeline direct-source 0.1.264
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5556'
-      EXPECTED_VERSION_NAME: '0.1.263'
+      EXPECTED_VERSION_CODE: '5557'
+      EXPECTED_VERSION_NAME: '0.1.264'
     steps:
       - name: Checkout branch source directly
         uses: actions/checkout@v4
@@ -52,9 +52,11 @@ jobs:
           REFERENCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt'
           FEATURE_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt'
           COMPACT_REGRESSION='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt'
+          COLLECTOR_TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
+          COLLECTOR_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$PASSENGERS" "$MONEY" "$PASSENGER_UI" "$ROUTE_ORDER" "$REFERENCE" "$FEATURE_TEST" "$COMPACT_REGRESSION"; do test -s "$file"; done
+          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$PASSENGERS" "$MONEY" "$PASSENGER_UI" "$ROUTE_ORDER" "$REFERENCE" "$FEATURE_TEST" "$COMPACT_REGRESSION" "$COLLECTOR_TIMELINE" "$COLLECTOR_TEST"; do test -s "$file"; done
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'provisionalLocal' "$TENANT"
@@ -76,7 +78,9 @@ jobs:
           grep -Fq 'passengerTimelinePlaceLabel' "$PASSENGER_UI"
           grep -Fq 'passengerTimelineCompactPlace' "$PASSENGER_UI"
           grep -Fq 'copyPassengerFareValue' "$PASSENGER_UI"
-          grep -Fq 'Text("WA"' "$PASSENGER_UI"
+          grep -Fq 'R.drawable.ic_whatsapp_action' "$PASSENGER_UI"
+          grep -Fq 'preservedMissingTrips' "$COLLECTOR_TIMELINE"
+          grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$COLLECTOR_TEST"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
@@ -84,6 +88,7 @@ jobs:
           echo 'materializer_used=false'
           echo 'farol_untouched=true'
           echo 'passenger_timeline_compact_regression_present=true'
+          echo 'collector_partial_snapshot_monotonic=true'
 
       - name: Run all unit and regression tests directly on app source
         run: |
@@ -127,6 +132,9 @@ jobs:
           individual_blablacar_fare_not_inferred=true
           direction_cards=true
           passenger_route_order=true
+          collector_partial_snapshot_monotonic=true
+          mhtml_enrichment_monotonic=true
+          per_card_timeline_checkpoint=true
           physical_ui_validation=false
           merge=false
           release=false
@@ -136,7 +144,7 @@ jobs:
       - name: Upload direct-source passenger timeline APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.263-foundation
+          name: rota-certa-passenger-timeline-geo-ux-0.1.264-foundation
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

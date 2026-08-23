@@ -67,10 +67,10 @@ fun BlaBlaCollectorPanel(
     fun publishCombined(messagePrefix: String) {
         val accounts = registry.list()
         val response = sessionStore.combinedResponse(accounts)
-        stateStore.saveResponse(response)
-        onResult(response)
+        val published = stateStore.saveResponse(response)
+        onResult(published)
         refresh()
-        message = "$messagePrefix • ${response.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${response.trips.size} viagens."
+        message = "$messagePrefix • ${published.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${published.trips.size} viagens."
         onChanged(message.orEmpty())
     }
 
@@ -153,8 +153,8 @@ fun BlaBlaCollectorPanel(
     LaunchedEffect(Unit) {
         if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
             val clean = sessionStore.combinedResponse(registry.list())
-            stateStore.saveResponse(clean)
-            onResult(clean)
+            val published = stateStore.saveResponse(clean, preserveOnPartial = false)
+            onResult(published)
         }
     }
 

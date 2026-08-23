@@ -1274,48 +1274,69 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
 
     private fun applyHarvestToSession(): Pair<Int, Int> {
         val snapshot = sessionStore.read(account) ?: return 0 to 0
+        val previousEvidenceByTripId = harvestStore.read(account.id).associateBy(BlaBlaHarvestTripEvidence::tripId)
         val persistedEvidence = mutableListOf<BlaBlaHarvestTripEvidence>()
+        val touchedEvidenceTripIds = mutableSetOf<String>()
         var enrichedTrips = 0
         var enrichedPassengers = 0
         val updatedTrips = snapshot.trips.map { trip ->
             val tripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
                 ?: trip.trip_href?.let(::tripIdFromHref)
-                ?: return@map trip.copy(passengers = emptyList(), booked_seats = 0, passenger_roster_complete = false)
+                ?: run {
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_TRIP_AWAITING_READ",
+                        packageName,
+                        "account=${account.displayLabel} tripId=missing action=preserve_last_confirmed reason=trip_identity_missing",
+                    )
+                    return@map trip
+                }
+            touchedEvidenceTripIds += tripId
+            val previousEvidence = previousEvidenceByTripId[tripId]
             val summary = tripEvidence[tripId]
-            val mergedPassengers = summary?.passengers.orEmpty().map { passenger -> enrichPassenger(tripId, passenger) }
-            val rosterComplete = summary != null && (summary.rosterComplete || summary.explicitEmptyRoster)
-            val stops = summary?.itineraryStops.orEmpty()
-            val occupied = if (summary == null) 0 else occupiedSeatsForTimeline(mergedPassengers, stops)
-            val publishedSeats = publishedSeatsByTrip[tripId]
-            val views = summary?.views?.takeIf { it >= 0 }
+            if (summary == null) {
+                previousEvidence?.let(persistedEvidence::add)
+                UnifiedDebugEventStore.record(
+                    "HARVEST_TRIP_AWAITING_READ",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId action=preserve_last_confirmed rosterComplete=${trip.passenger_roster_complete} passengers=${trip.passengers.size}",
+                )
+                return@map trip
+            }
+            val mergedPassengers = summary.passengers.map { passenger -> enrichPassenger(tripId, passenger) }
+            val rosterComplete = summary.rosterComplete || summary.explicitEmptyRoster
+            val stops = summary.itineraryStops.ifEmpty { previousEvidence?.itineraryStops.orEmpty() }
+            val occupied = occupiedSeatsForTimeline(mergedPassengers, stops)
+            val publishedSeats = publishedSeatsByTrip[tripId] ?: previousEvidence?.publishedSeats
+            val views = summary.views.takeIf { it >= 0 } ?: previousEvidence?.views
+            val capturedTrip = trip.copy(
+                passengers = mergedPassengers,
+                booked_seats = occupied,
+                passenger_roster_complete = rosterComplete,
+            )
+            val monotonicTrip = BlaBlaCollectorPassengerModule.mergeMonotonic(
+                previous = trip,
+                current = capturedTrip,
+            )
             persistedEvidence += BlaBlaHarvestTripEvidence(
                 tripId = tripId,
                 publishedSeats = publishedSeats,
                 views = views,
                 itineraryStops = stops,
-                passengers = mergedPassengers,
-                passengerRosterComplete = rosterComplete,
+                passengers = monotonicTrip.passengers,
+                passengerRosterComplete = monotonicTrip.passenger_roster_complete,
             )
-            if (summary != null || publishedSeats != null) enrichedTrips++
-            enrichedPassengers += mergedPassengers.size
-            if (summary == null) {
-                UnifiedDebugEventStore.record(
-                    "HARVEST_TRIP_AWAITING_READ",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$tripId action=clear_unproven_roster rosterComplete=false",
-                )
-            }
+            enrichedTrips++
+            enrichedPassengers += monotonicTrip.passengers.size
             UnifiedDebugEventStore.record(
                 "HARVEST_TRIP_ENRICHED",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1} deterministicJoin=true phoneEvidenceScoped=true",
+                "account=${account.displayLabel} tripId=$tripId passengers=${monotonicTrip.passengers.size} phones=${monotonicTrip.passengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${monotonicTrip.passengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=${monotonicTrip.booked_seats} publishedSeats=${publishedSeats ?: -1} rosterComplete=${monotonicTrip.passenger_roster_complete} stops=${stops.size} views=${views ?: -1} deterministicJoin=true phoneEvidenceScoped=true monotonic=true",
             )
-            trip.copy(
-                passengers = mergedPassengers,
-                booked_seats = occupied,
-                passenger_roster_complete = rosterComplete,
-            )
+            monotonicTrip
         }
+        persistedEvidence += previousEvidenceByTripId
+            .filterKeys { it !in touchedEvidenceTripIds }
+            .values
         harvestStore.replace(account.id, persistedEvidence)
         saveDeterministicSnapshot(snapshot, updatedTrips)
         return enrichedTrips to enrichedPassengers
