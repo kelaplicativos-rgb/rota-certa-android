@@ -158,6 +158,18 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
+    fun passengerNavigationPrioritizesVisibleCardBeforeReservationUrl() {
+        val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
+            passengerPresent = true,
+            hasBookingHref = true,
+            needsReservationPage = true,
+            hasPassengerCard = true,
+        )
+
+        assertEquals(BlaBlaDirectPassengerStep.PASSENGER_CARD, step)
+    }
+
+    @Test
     fun seatModuleRequiresEditOptionsAndSeatCountFromSameTrip() {
         val complete = BlaBlaCollectorSeatModule.state(
             tripId = "trip-a",

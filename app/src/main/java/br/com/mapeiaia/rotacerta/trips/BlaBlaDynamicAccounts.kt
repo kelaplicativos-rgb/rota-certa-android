@@ -1072,7 +1072,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val hasBookingHref = href.isNotBlank() && isPassengerHref(href)
             val cardIndex = pendingTripPassengerCardIndexes[passengerContactIndex]
             when (
-                BlaBlaCollectorPassengerModule.nextStep(
+                BlaBlaCollectorPassengerNavigationModule.nextStep(
                     passengerPresent = true,
                     hasBookingHref = hasBookingHref,
                     needsReservationPage = hasBookingHref && passengerNeedsReservationPage(passenger),

@@ -6,14 +6,7 @@ internal enum class BlaBlaDirectRosterState {
     COMPLETE_WITH_PASSENGERS,
 }
 
-internal enum class BlaBlaDirectPassengerStep {
-    RESERVATION_URL,
-    PASSENGER_CARD,
-    SKIP,
-    FINISH,
-}
-
-/** Passenger roster, navigation and monotonic merge decisions. */
+/** Passenger roster, names and monotonic merge decisions. */
 internal object BlaBlaCollectorPassengerModule {
     fun rosterState(
         passengerCount: Int,
@@ -44,18 +37,6 @@ internal object BlaBlaCollectorPassengerModule {
         structurallyComplete && passengerCount > 0 -> true
         passengerCount > 0 -> stablePasses >= 2
         else -> stablePasses >= 3
-    }
-
-    fun nextStep(
-        passengerPresent: Boolean,
-        hasBookingHref: Boolean,
-        needsReservationPage: Boolean,
-        hasPassengerCard: Boolean,
-    ): BlaBlaDirectPassengerStep = when {
-        !passengerPresent -> BlaBlaDirectPassengerStep.FINISH
-        hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD
-        hasBookingHref && needsReservationPage -> BlaBlaDirectPassengerStep.RESERVATION_URL
-        else -> BlaBlaDirectPassengerStep.SKIP
     }
 
     /** An incomplete read may enrich, but can never erase confirmed rows. */
@@ -117,16 +98,4 @@ internal fun blaBlaDirectRosterCompleteAfterStableProbe(
     hasMore,
     terminalEvidence,
     stablePasses,
-)
-
-internal fun blaBlaDirectPassengerStep(
-    passengerPresent: Boolean,
-    hasBookingHref: Boolean,
-    needsReservationPage: Boolean,
-    hasPassengerCard: Boolean,
-): BlaBlaDirectPassengerStep = BlaBlaCollectorPassengerModule.nextStep(
-    passengerPresent,
-    hasBookingHref,
-    needsReservationPage,
-    hasPassengerCard,
 )

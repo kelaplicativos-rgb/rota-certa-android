@@ -44,6 +44,7 @@ jobs:
           P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
           CARD_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt'
           PASSENGER_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt'
+          PASSENGER_NAVIGATION_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerNavigationModule.kt'
           VALUE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorValueModule.kt'
           SEAT_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSeatModule.kt'
           TIMELINE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
@@ -57,6 +58,7 @@ jobs:
           test -s "$P0"
           test -s "$CARD_MODULE"
           test -s "$PASSENGER_MODULE"
+          test -s "$PASSENGER_NAVIGATION_MODULE"
           test -s "$VALUE_MODULE"
           test -s "$SEAT_MODULE"
           test -s "$TIMELINE_MODULE"
@@ -98,11 +100,12 @@ jobs:
           grep -Fq 'coordinatePresent=' "$DYNAMIC"
           ! grep -Fq 'MAX_TRIPS' "$DYNAMIC"
 
-          grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$PASSENGER_MODULE"
+          grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$PASSENGER_NAVIGATION_MODULE"
           grep -Fq 'firstUnresolvedVisibleKey' "$CARD_MODULE"
           grep -Fq 'fun canAdvance' "$CARD_MODULE"
           grep -Fq 'emptyListIsAuthoritative' "$CARD_MODULE"
           grep -Fq 'rosterCompleteAfterStableProbe' "$PASSENGER_MODULE"
+          grep -Fq 'passengerNavigationPrioritizesVisibleCardBeforeReservationUrl' "$TEST264"
           grep -Fq 'farePresent' "$VALUE_MODULE"
           grep -Fq 'optionsIdentityMatches' "$SEAT_MODULE"
           grep -Fq 'preservedMissingTrips' "$TIMELINE_MODULE"
