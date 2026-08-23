@@ -414,6 +414,13 @@ class BlaBlaCollectorStateStore(context: Context) {
             incoming = response,
             preserveOnPartial = preserveOnPartial,
         )
+        if (effective.trips != response.trips) {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_PARTIAL_RESPONSE_PRESERVED",
+                appContext.packageName,
+                "status=${response.status} incomingTrips=${response.trips.size} publishedTrips=${effective.trips.size} incomingPassengers=${response.trips.sumOf { it.passengers.size }} publishedPassengers=${effective.trips.sumOf { it.passengers.size }}",
+            )
+        }
         prefs.edit().putString(KEY_RESPONSE, json.encodeToString(effective)).apply()
         return effective
     }

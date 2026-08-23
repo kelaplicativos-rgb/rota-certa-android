@@ -114,6 +114,7 @@ jobs:
           grep -Fq 'terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt' "$TEST262"
           grep -Fq 'stablePositiveRosterCompletesWithoutBrittleContainerMarker' "$TEST263"
           grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$TEST264"
+          grep -Fq 'videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions' "$TEST264"
           grep -Fq 'zeroVisibleCardsWithoutExplicitEmptyEvidenceIsNeverAuthoritative' "$TEST264"
           grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
 

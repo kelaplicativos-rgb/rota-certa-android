@@ -121,6 +121,27 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
+    fun videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions() {
+        val directSnapshot = trip()
+        val incompleteMhtmlRead = trip(
+            passengers = emptyList(),
+            bookedSeats = 0,
+            rosterComplete = false,
+        )
+
+        val afterMhtml = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(directSnapshot),
+            current = listOf(incompleteMhtmlRead),
+            authoritativeComplete = false,
+        ).trips.single()
+
+        assertEquals(passenger.name, afterMhtml.passengers.single().name)
+        assertEquals(passenger.phone, afterMhtml.passengers.single().phone)
+        assertEquals(passenger.booking_href, afterMhtml.passengers.single().booking_href)
+        assertEquals(1, afterMhtml.booked_seats)
+    }
+
+    @Test
     fun explicitEmptyRegistryResponseDoesNotKeepRemovedAccountTrips() {
         val previous = BlaBlaCollectorMonthResponse(
             status = "validated",

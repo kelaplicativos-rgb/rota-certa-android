@@ -81,6 +81,7 @@ jobs:
           grep -Fq 'R.drawable.ic_whatsapp_action' "$PASSENGER_UI"
           grep -Fq 'preservedMissingTrips' "$COLLECTOR_TIMELINE"
           grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$COLLECTOR_TEST"
+          grep -Fq 'videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions' "$COLLECTOR_TEST"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
