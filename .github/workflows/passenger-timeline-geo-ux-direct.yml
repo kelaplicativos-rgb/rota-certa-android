@@ -33,7 +33,10 @@ jobs:
         if: hashFiles('.github/workflows/direct-collector-p0-once.yml') != ''
         run: |
           set -euo pipefail
-          git fetch --depth=2 origin agent/passenger-timeline-geo-ux
+          git fetch --depth=5 origin agent/passenger-timeline-geo-ux
+          git merge-base --is-ancestor ada652324377af879a475faab5e16c1041f5b34f HEAD
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           python3 -m pip install --quiet pyyaml
           python3 - <<'PY'
           import subprocess
@@ -43,10 +46,12 @@ jobs:
           workflow = yaml.safe_load(Path('.github/workflows/direct-collector-p0-once.yml').read_text())
           steps = workflow['jobs']['apply']['steps']
           for step in steps:
+              name = step.get('name', 'unnamed run step')
+              if name == 'Verify starting point and protected FAROL':
+                  continue
               script = step.get('run')
               if not script:
                   continue
-              name = step.get('name', 'unnamed run step')
               print(f'::group::{name}')
               subprocess.run(script, shell=True, check=True, executable='/bin/bash')
               print('::endgroup::')
