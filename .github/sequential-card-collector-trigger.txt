@@ -1,1 +1,1 @@
-one-time trigger; delete after persistence
+one-time trigger; observable bridge retry 2
