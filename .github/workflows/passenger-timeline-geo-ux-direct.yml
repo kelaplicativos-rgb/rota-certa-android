@@ -27,7 +27,11 @@ jobs:
           SOURCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
           RESULT='.github/sequential-persistence-result.txt'
           status=0
-          python3 .github/sequential_card_patch.py > /tmp/sequential.out 2>&1 || status=$?
+          : > /tmp/sequential.out
+          python3 .github/sequential_card_patch.py >> /tmp/sequential.out 2>&1 || status=$?
+          if [ "$status" -eq 0 ]; then
+            python3 .github/sequential_followup_patch.py >> /tmp/sequential.out 2>&1 || status=$?
+          fi
           {
             echo "patch_exit=$status"
             echo "source_head_before=$(git rev-parse HEAD)"
@@ -41,6 +45,9 @@ jobs:
             grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$SOURCE" || status=93
             grep -Fq 'CARD_TRAVERSAL_BLOCKED' "$SOURCE" || status=94
             grep -Fq 'fixedTripLimit=false' "$SOURCE" || status=95
+            grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$SOURCE" || status=97
+            grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$SOURCE" || status=98
+            grep -Fq 'DIRECT_TRIP_EVIDENCE_PERSISTED' "$SOURCE" || status=99
             if grep -Fq 'MAX_TRIPS' "$SOURCE"; then status=96; fi
           fi
           echo "final_status=$status" >> "$RESULT"
@@ -49,6 +56,6 @@ jobs:
           git add "$RESULT"
           if [ "$status" -eq 0 ]; then git add "$SOURCE"; fi
           if git diff --cached --quiet; then exit "$status"; fi
-          git commit -m 'collector: persist sequential card traversal result'
+          git commit -m 'collector: persist sequential direct evidence result'
           git push origin HEAD:agent/passenger-timeline-geo-ux
           exit "$status"
