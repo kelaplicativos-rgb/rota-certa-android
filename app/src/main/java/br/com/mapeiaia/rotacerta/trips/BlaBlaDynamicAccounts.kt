@@ -341,6 +341,12 @@ private data class DynamicPassengerContactEvidence(
     val visibleName: String = "",
     val fareAmount: String = "",
     val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val boardingAccuracyMeters: Double? = null,
+    val boardingLocationSource: String = "",
+    val domHtml: String = "",
 )
 
 internal class BlaBlaSyncCompletionGate {
@@ -813,7 +819,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (href.isBlank() || !isBlaBla(href)) return false
         val metadataKey = externalPassengerReservationKey(account.profileUuid, href)
         val metadata = passengerIdentityStore.externalMetadata(metadataKey)
-        return passenger.phone.isNullOrBlank() || metadata?.fareMinorUnits == null
+        return passenger.phone.isNullOrBlank() || metadata?.fareMinorUnits == null || metadata?.hasBoardingCoordinates != true
     }
 
     private fun loadNextPassengerContact(expectedSync: Long, expectedCandidate: Int) {
@@ -862,9 +868,17 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 recordStale("passenger_after_evaluate", expectedSync, expectedCandidate)
                 return@evaluate
             }
+            evidence?.domHtml?.takeIf(String::isNotBlank)?.let { html ->
+                store.saveDiagnosticHtml(
+                    account,
+                    "trip-${expectedCandidate + 1}-passenger-${expectedPassenger + 1}",
+                    html,
+                )
+            }
             val capturedPhone = normalizeCapturedPhone(evidence?.phone)
             val effectivePhone = current.phone?.takeIf(String::isNotBlank) ?: capturedPhone
             val fareCaptured = saveCapturedPassengerFare(current.booking_href, evidence)
+            val boardingEvidenceCaptured = saveCapturedPassengerBoardingEvidence(current.booking_href, evidence)
             if (effectivePhone == null && passengerContactReadAttempts < 2) {
                 passengerContactReadAttempts++
                 webView.postDelayed({
@@ -878,10 +892,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 name = current.name.ifBlank { visibleName },
                 phone = effectivePhone,
             )
+            val metadataKey = externalPassengerReservationKey(account.profileUuid, current.booking_href)
+            val coordinatePresent = passengerIdentityStore.externalMetadata(metadataKey)?.hasBoardingCoordinates == true
             UnifiedDebugEventStore.record(
                 "PASSENGER_CONTACT_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} tripIndex=${expectedCandidate + 1}/${candidates.size} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${effectivePhone != null} bookingLinkPresent=${!current.booking_href.isNullOrBlank()} fareCaptured=$fareCaptured",
+                "account=${account.displayLabel} tripIndex=${expectedCandidate + 1}/${candidates.size} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} phonePresent=${effectivePhone != null} bookingLinkPresent=${!current.booking_href.isNullOrBlank()} fareCaptured=$fareCaptured boardingEvidenceCaptured=$boardingEvidenceCaptured boardingCoordinatePresent=$coordinatePresent htmlCaptured=${!evidence?.domHtml.isNullOrBlank()}",
             )
             passengerContactIndex = expectedPassenger + 1
             loadNextPassengerContact(expectedSync, expectedCandidate)
@@ -1007,6 +1023,39 @@ advanceCandidate(expectedSync, expectedCandidate)
         val current = passengerIdentityStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
         passengerIdentityStore.saveExternalMetadata(
             current.copy(fareMinorUnits = amount, fareCurrencyCode = currencyCode),
+        )
+        return true
+    }
+
+    private fun saveCapturedPassengerBoardingEvidence(
+        href: String?,
+        evidence: DynamicPassengerContactEvidence?,
+    ): Boolean {
+        val key = externalPassengerReservationKey(account.profileUuid, href) ?: return false
+        evidence ?: return false
+        val address = evidence.boardingAddress.trim().take(500)
+        val latitude = validLatitude(evidence.boardingLatitude)
+        val longitude = validLongitude(evidence.boardingLongitude)
+        val hasCoordinates = latitude != null && longitude != null
+        if (address.isBlank() && !hasCoordinates) return false
+        val current = passengerIdentityStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
+        passengerIdentityStore.saveExternalMetadata(
+            current.copy(
+                boardingAddress = address.ifBlank { current.boardingAddress },
+                boardingLatitude = if (hasCoordinates) latitude else current.boardingLatitude,
+                boardingLongitude = if (hasCoordinates) longitude else current.boardingLongitude,
+                boardingAccuracyMeters = if (hasCoordinates) {
+                    evidence.boardingAccuracyMeters?.takeIf { it.isFinite() && it >= 0.0 && it <= 100_000.0 }
+                } else {
+                    current.boardingAccuracyMeters
+                },
+                boardingLocationSource = if (hasCoordinates) {
+                    evidence.boardingLocationSource.trim().take(80).ifBlank { "blablacar_booking_structured_pickup" }
+                } else {
+                    current.boardingLocationSource
+                },
+                boardingLocationCollectedAtMillis = if (hasCoordinates) System.currentTimeMillis() else current.boardingLocationCollectedAtMillis,
+            ),
         )
         return true
     }
@@ -1295,6 +1344,13 @@ advanceCandidate(expectedSync, expectedCandidate)
         private val PASSENGER_CONTACT_JS = """
             (function() {
               const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+              const numberOrNull = (value) => {
+                if (value === null || value === undefined || value === '') return null;
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : null;
+              };
+              const validLatitude = (value) => value !== null && value >= -90 && value <= 90;
+              const validLongitude = (value) => value !== null && value >= -180 && value <= 180;
               const nodes = Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"]'));
               const candidates = [];
               nodes.forEach((node) => {
@@ -1324,11 +1380,122 @@ advanceCandidate(expectedSync, expectedCandidate)
                 currencyNode.getAttribute('data-currency-code') ||
                 currencyNode.getAttribute('data-currency')
               )).toUpperCase();
+
+              const pickup = {
+                address: '',
+                latitude: null,
+                longitude: null,
+                accuracyMeters: null,
+                source: ''
+              };
+              const addressText = (value) => {
+                if (!value) return '';
+                if (typeof value === 'string') return clean(value);
+                if (typeof value !== 'object') return '';
+                return clean(
+                  value.label || value.name || value.formattedAddress || value.formatted_address ||
+                  value.fullAddress || value.full_address || value.address ||
+                  [value.street, value.streetNumber || value.number, value.cityName || value.city, value.postalCode || value.zipCode]
+                    .filter(Boolean).join(', ')
+                );
+              };
+              const readCoordinate = (place) => {
+                if (!place || typeof place !== 'object') return null;
+                const coordinate = place.coordinates || place.coordinate || place.location || place.geo || place;
+                if (!coordinate || typeof coordinate !== 'object') return null;
+                const latitude = numberOrNull(
+                  coordinate.latitude !== undefined ? coordinate.latitude : coordinate.lat
+                );
+                const longitude = numberOrNull(
+                  coordinate.longitude !== undefined ? coordinate.longitude :
+                    (coordinate.lng !== undefined ? coordinate.lng : coordinate.lon)
+                );
+                if (!validLatitude(latitude) || !validLongitude(longitude)) return null;
+                const accuracy = numberOrNull(
+                  coordinate.accuracy !== undefined ? coordinate.accuracy : coordinate.accuracyMeters
+                );
+                return { latitude: latitude, longitude: longitude, accuracyMeters: accuracy };
+              };
+              const acceptPickupPlace = (place, source) => {
+                if (!place || typeof place !== 'object') return;
+                const address = addressText(place.address || place);
+                if (!pickup.address && address) pickup.address = address;
+                const coordinate = readCoordinate(place);
+                if (coordinate && pickup.latitude === null) {
+                  pickup.latitude = coordinate.latitude;
+                  pickup.longitude = coordinate.longitude;
+                  pickup.accuracyMeters = coordinate.accuracyMeters;
+                  pickup.source = source;
+                }
+              };
+              const seen = new Set();
+              const walk = (value, depth) => {
+                if (value === null || value === undefined || depth > 10) return;
+                if (typeof value !== 'object') return;
+                if (seen.has(value)) return;
+                seen.add(value);
+                if (Array.isArray(value)) {
+                  value.forEach((item) => walk(item, depth + 1));
+                  return;
+                }
+                Object.keys(value).forEach((key) => {
+                  const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
+                  if (normalized === 'pickupplace' || normalized === 'boardingplace' || normalized === 'pickuppoint') {
+                    acceptPickupPlace(value[key], 'blablacar_booking_structured_pickup');
+                  }
+                  walk(value[key], depth + 1);
+                });
+              };
+              const scriptTexts = Array.from(document.querySelectorAll('script'))
+                .map((script) => script.textContent || '')
+                .filter((text) => /pickup|boarding/i.test(text));
+              scriptTexts.forEach((text) => {
+                try {
+                  walk(JSON.parse(text), 0);
+                } catch (_) {
+                  // Framework bootstrap scripts are often JavaScript rather than pure JSON.
+                }
+              });
+              if (pickup.latitude === null) {
+                scriptTexts.concat([pageHtml]).some((raw) => {
+                  const marker = raw.search(/pickupPlace|pickup_place|boardingPlace|boarding_place/i);
+                  if (marker < 0) return false;
+                  const slice = raw.slice(marker, marker + 6000);
+                  const latitudeMatch = slice.match(/["'](?:latitude|lat)["']\s*:\s*(-?\d{1,3}(?:\.\d+)?)/i);
+                  const longitudeMatch = slice.match(/["'](?:longitude|lng|lon)["']\s*:\s*(-?\d{1,3}(?:\.\d+)?)/i);
+                  const latitude = numberOrNull(latitudeMatch && latitudeMatch[1]);
+                  const longitude = numberOrNull(longitudeMatch && longitudeMatch[1]);
+                  if (!validLatitude(latitude) || !validLongitude(longitude)) return false;
+                  pickup.latitude = latitude;
+                  pickup.longitude = longitude;
+                  pickup.source = 'blablacar_booking_structured_pickup_text';
+                  const accuracyMatch = slice.match(/["'](?:accuracy|accuracyMeters)["']\s*:\s*(\d+(?:\.\d+)?)/i);
+                  pickup.accuracyMeters = numberOrNull(accuracyMatch && accuracyMatch[1]);
+                  if (!pickup.address) {
+                    const addressMatch = slice.match(/["'](?:formattedAddress|fullAddress|address)["']\s*:\s*["']([^"']{3,240})["']/i);
+                    if (addressMatch) pickup.address = clean(addressMatch[1]);
+                  }
+                  return true;
+                });
+              }
+              if (!pickup.address) {
+                const pickupNode = document.querySelector(
+                  '[data-testid*="pickup-address"], [data-testid*="boarding-address"], [data-testid*="pickup-place"], [data-testid*="boarding-place"]'
+                );
+                pickup.address = clean(pickupNode && pickupNode.innerText);
+              }
+              $SANITIZED_HTML_JS
               return JSON.stringify({
                 phone: phone,
                 visibleName: clean(nameNode && nameNode.innerText),
                 fareAmount: fareAmount,
-                fareCurrencyCode: fareCurrencyCode
+                fareCurrencyCode: fareCurrencyCode,
+                boardingAddress: pickup.address,
+                boardingLatitude: pickup.latitude,
+                boardingLongitude: pickup.longitude,
+                boardingAccuracyMeters: pickup.accuracyMeters,
+                boardingLocationSource: pickup.source,
+                domHtml: html.slice(0, 350000)
               });
             })();
         """.trimIndent()
