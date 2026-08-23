@@ -1787,7 +1787,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
 }
 
 @Serializable
-private data class SeatOptionState(
+internal data class SeatOptionState(
     val seats: Int = -1,
     val canAdd: Boolean = false,
     val canRemove: Boolean = false,
@@ -2143,24 +2143,38 @@ internal object BlaBlaHarvestAssociation {
     fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven
 }
 
-private val SEAT_OPTIONS_READ_JS = """
+internal val SEAT_OPTIONS_READ_JS = """
     (function() {
       const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-      const remove = document.querySelector('button[aria-label="Remover um lugar"]');
-      const add = document.querySelector('button[aria-label="Adicionar um lugar"]');
-      let root = remove && remove.parentElement;
-      while (root && add && !root.contains(add)) root = root.parentElement;
-      root = root || (add && add.parentElement) || document.body;
+      const marker = (node) => clean(
+        ((node && node.getAttribute && node.getAttribute('data-testid')) || '') + ' ' +
+        ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
+        ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
+        ((node && node.innerText) || '')
+      ).toLowerCase();
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+      let remove = buttons.find((node) => /decrement|decrease|remove|minus/.test(marker(node)) || /^[−–-]$/.test(clean(node.innerText)));
+      let add = buttons.find((node) => /increment|increase|add|plus/.test(marker(node)) || /^\+$/.test(clean(node.innerText)));
+      let root = (remove && remove.parentElement) || (add && add.parentElement) || null;
+      while (root && root !== document.body && root.querySelectorAll('button, [role="button"]').length < 2) root = root.parentElement;
+      const groupedButtons = root ? Array.from(root.querySelectorAll('button, [role="button"]')) : [];
+      if (!remove && groupedButtons.length >= 2) remove = groupedButtons[0];
+      if (!add && groupedButtons.length >= 2) add = groupedButtons[groupedButtons.length - 1];
+      root = root || document.querySelector('[data-testid*="seat"], [data-testid*="capacity"], [role="spinbutton"]') || document.body;
+      const numericControl = root.querySelector('input[type="number"], [role="spinbutton"], select');
+      const controlledValue = numericControl && clean(
+        numericControl.value || numericControl.getAttribute('aria-valuenow') || numericControl.getAttribute('value') || ''
+      );
       const leaves = Array.from(root.querySelectorAll('span, p, div'))
         .filter((node) => node.children.length === 0)
         .map((node) => clean(node.innerText))
         .filter((text) => /^\d{1,3}$/.test(text));
-      let seats = leaves.length ? parseInt(leaves[0], 10) : -1;
+      let seats = /^\d{1,3}$/.test(controlledValue || '') ? parseInt(controlledValue, 10) : (leaves.length ? parseInt(leaves[0], 10) : -1);
       if (seats < 0) {
         const all = clean(root.innerText).match(/(?:^|\s)(\d{1,3})(?:\s|$)/);
         seats = all ? parseInt(all[1], 10) : -1;
       }
-      const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
+      const save = document.querySelector('button[type="submit"], [data-testid*="save"], [data-testid*="submit"]');
       const clone = document.documentElement.cloneNode(true);
       clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
       clone.querySelectorAll('input, textarea').forEach((node) => { node.removeAttribute('value'); node.textContent = ''; });

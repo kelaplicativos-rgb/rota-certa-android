@@ -12,8 +12,29 @@ internal fun blaBlaDirectRosterState(
     explicitEmpty: Boolean,
 ): BlaBlaDirectRosterState = when {
     explicitEmpty && passengerCount == 0 -> BlaBlaDirectRosterState.COMPLETE_EMPTY
+    rosterComplete && passengerCount == 0 -> BlaBlaDirectRosterState.COMPLETE_EMPTY
     rosterComplete && passengerCount > 0 -> BlaBlaDirectRosterState.COMPLETE_WITH_PASSENGERS
     else -> BlaBlaDirectRosterState.UNKNOWN
+}
+
+/**
+ * Accepts a rendered roster without depending on one brittle data-testid. A
+ * positive roster needs two identical terminal observations; an unmarked empty
+ * roster needs three. A visible expansion control always keeps the result open.
+ */
+internal fun blaBlaDirectRosterCompleteAfterStableProbe(
+    passengerCount: Int,
+    structurallyComplete: Boolean,
+    explicitEmpty: Boolean,
+    hasMore: Boolean,
+    terminalEvidence: Boolean,
+    stablePasses: Int,
+): Boolean = when {
+    passengerCount < 0 || hasMore || !terminalEvidence -> false
+    explicitEmpty && passengerCount == 0 -> true
+    structurallyComplete && passengerCount > 0 -> true
+    passengerCount > 0 -> stablePasses >= 2
+    else -> stablePasses >= 3
 }
 
 internal enum class BlaBlaDirectPassengerStep {
@@ -44,14 +65,18 @@ internal fun blaBlaDirectPassengerStep(
 /** First unresolved card in the exact order currently exposed by the UI. */
 internal fun blaBlaFirstUncompletedVisibleKey(
     visibleKeysInUiOrder: List<String>,
-    completedKeys: Set<String>,
+    resolvedKeys: Set<String>,
 ): String? = visibleKeysInUiOrder.firstOrNull { key ->
-    key.isNotBlank() && key !in completedKeys
+    key.isNotBlank() && key !in resolvedKeys
 }
 
-/** A following card is never legal until the current card was fully completed. */
-internal fun blaBlaCanAdvanceToNextCard(currentCardComplete: Boolean, currentCardBlocked: Boolean): Boolean =
-    currentCardComplete && !currentCardBlocked
+/**
+ * A following card is legal only after the current card reached a terminal
+ * result. Quarantined cards are not published, but they must not starve later
+ * cards in the driver's visual order.
+ */
+internal fun blaBlaCanAdvanceToNextCard(currentCardComplete: Boolean, currentCardQuarantined: Boolean): Boolean =
+    currentCardComplete || currentCardQuarantined
 
 /** More list content is requested only after every visible card is already done. */
 internal fun blaBlaShouldScrollForMore(

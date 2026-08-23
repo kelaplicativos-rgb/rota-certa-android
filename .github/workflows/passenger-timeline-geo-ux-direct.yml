@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.262
+name: Passenger timeline geo UX direct-source 0.1.263
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5555'
-      EXPECTED_VERSION_NAME: '0.1.262'
+      EXPECTED_VERSION_CODE: '5556'
+      EXPECTED_VERSION_NAME: '0.1.263'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -44,12 +44,14 @@ jobs:
           P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
           TEST261='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
           TEST262='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
+          TEST263='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0263Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s "$DYNAMIC"
           test -s "$P0"
           test -s "$TEST261"
           test -s "$TEST262"
+          test -s "$TEST263"
 
           for temp in \
             .github/workflows/sequential-card-collector-once.yml \
@@ -66,7 +68,7 @@ jobs:
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'CARD_TRAVERSAL_START' "$DYNAMIC"
           grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$DYNAMIC"
-          grep -Fq 'CARD_TRAVERSAL_BLOCKED' "$DYNAMIC"
+          grep -Fq 'CARD_TRAVERSAL_QUARANTINED' "$DYNAMIC"
           grep -Fq 'RIDES_TRAVERSAL_SCROLL' "$DYNAMIC"
           grep -Fq 'fixedTripLimit=false' "$DYNAMIC"
           grep -Fq 'dateIgnored=true' "$DYNAMIC"
@@ -74,6 +76,8 @@ jobs:
           grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$DYNAMIC"
           grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$DYNAMIC"
           grep -Fq 'DIRECT_TRIP_EVIDENCE_PERSISTED' "$DYNAMIC"
+          grep -Fq 'DIRECT_EDIT_CAPTURED' "$DYNAMIC"
+          grep -Fq 'DIRECT_SEAT_OPTIONS_CAPTURED' "$DYNAMIC"
           grep -Fq 'itineraryStops: itineraryStops' "$DYNAMIC"
           grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
           grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
@@ -84,8 +88,10 @@ jobs:
           grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$P0"
           grep -Fq 'blaBlaFirstUncompletedVisibleKey' "$P0"
           grep -Fq 'blaBlaCanAdvanceToNextCard' "$P0"
+          grep -Fq 'blaBlaDirectRosterCompleteAfterStableProbe' "$P0"
           grep -Fq 'firstUncompletedCardKeepsExactUiOrder' "$TEST262"
-          grep -Fq 'blockedOrIncompleteCardCannotReleaseNextCard' "$TEST262"
+          grep -Fq 'terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt' "$TEST262"
+          grep -Fq 'stablePositiveRosterCompletesWithoutBrittleContainerMarker' "$TEST263"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
@@ -127,6 +133,10 @@ jobs:
           historical_sha_checkout=false
           materializer_used=false
           strict_sequential_card_traversal=true
+          incomplete_card_quarantine_and_continue=true
+          stable_roster_probe=true
+          edit_options_same_trip_required=true
+          published_seats_read_required=true
           past_date_filter=false
           fixed_trip_limit=false
           passenger_ui_order=true
@@ -144,7 +154,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.262
+          name: rota-certa-passenger-timeline-geo-ux-0.1.263
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

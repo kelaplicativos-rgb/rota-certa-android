@@ -28,11 +28,11 @@ class BlaBlaDirectCollector0262Test {
     }
 
     @Test
-    fun blockedOrIncompleteCardCannotReleaseNextCard() {
-        assertFalse(blaBlaCanAdvanceToNextCard(currentCardComplete = false, currentCardBlocked = false))
-        assertFalse(blaBlaCanAdvanceToNextCard(currentCardComplete = false, currentCardBlocked = true))
-        assertFalse(blaBlaCanAdvanceToNextCard(currentCardComplete = true, currentCardBlocked = true))
-        assertTrue(blaBlaCanAdvanceToNextCard(currentCardComplete = true, currentCardBlocked = false))
+    fun terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt() {
+        assertFalse(blaBlaCanAdvanceToNextCard(currentCardComplete = false, currentCardQuarantined = false))
+        assertTrue(blaBlaCanAdvanceToNextCard(currentCardComplete = false, currentCardQuarantined = true))
+        assertTrue(blaBlaCanAdvanceToNextCard(currentCardComplete = true, currentCardQuarantined = false))
+        assertTrue(blaBlaCanAdvanceToNextCard(currentCardComplete = true, currentCardQuarantined = true))
     }
 
     @Test

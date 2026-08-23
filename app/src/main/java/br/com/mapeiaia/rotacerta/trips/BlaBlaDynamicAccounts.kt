@@ -356,6 +356,9 @@ private data class DynamicTripDetail(
     val driverProfileLinks: List<String> = emptyList(),
     val passengerHrefs: List<String> = emptyList(),
     val explicitEmptyRoster: Boolean = false,
+    val rosterHasMore: Boolean = false,
+    val rosterTerminalEvidence: Boolean = false,
+    val editHref: String = "",
     val itineraryStops: List<String> = emptyList(),
     val views: Int? = null,
     val domHtml: String = "",
@@ -379,6 +382,13 @@ private data class DynamicPassengerContactEvidence(
     val boardingLongitude: Double? = null,
     val boardingAccuracyMeters: Double? = null,
     val boardingLocationSource: String = "",
+    val domHtml: String = "",
+)
+
+@Serializable
+private data class DynamicEditEvidence(
+    val optionsHref: String = "",
+    val pageUrl: String = "",
     val domHtml: String = "",
 )
 
@@ -423,11 +433,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var identityConfirmedThisSync = false
     private var rideReadAttempts = 0
     private val completedCardTraversalKeys = linkedSetOf<String>()
+    private val quarantinedCardTraversalKeys = linkedSetOf<String>()
+    private val resolvedCardTraversalKeys = linkedSetOf<String>()
     private var currentCardTraversalKey = ""
     private var ridesResumeScrollY = 0
     private var ridesRestorePending = false
     private var ridesBottomStablePasses = 0
     private var tripRosterReadAttempts = 0
+    private var lastTripRosterSignature = ""
+    private var tripRosterStablePasses = 0
     private var pendingTripDetail: DynamicTripDetail? = null
     private var pendingTripPassengers = mutableListOf<BlaBlaCollectorPassenger>()
     private val pendingTripPassengerCardIndexes = mutableMapOf<Int, Int>()
@@ -436,11 +450,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var passengerCardReadAttempts = 0
     private var passengerCallActionTriggered = false
     private var interceptedPassengerPhone: String? = null
+    private var pendingEditHref = ""
+    private var pendingOptionsHref = ""
+    private var pendingPublishedSeats: Int? = null
+    private var editReadAttempts = 0
+    private var optionsReadAttempts = 0
     private var syncGeneration = 0L
     private var navigationGeneration = 0L
     private var detailCaptureInFlight = false
     private var passengerCaptureInFlight = false
     private var passengerCardCaptureInFlight = false
+    private var editCaptureInFlight = false
+    private var optionsCaptureInFlight = false
     private var pendingTripSyncGeneration = -1L
     private var pendingTripCandidateIndex = -1
     private val completionGate = BlaBlaSyncCompletionGate()
@@ -528,8 +549,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     Phase.IDENTITY -> if (isBlaBla(url)) view.postDelayed({ captureIdentityForSync() }, 650)
                     Phase.RIDES -> if (isBlaBla(url)) view.postDelayed({ captureRideList() }, 900)
                     Phase.DETAIL -> if (isBlaBla(url)) scheduleTripDetailCapture(view)
-                Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)
-                Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)
+                    Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)
+                    Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)
+                    Phase.EDIT -> if (isBlaBla(url)) scheduleEditCapture(view)
+                    Phase.OPTIONS -> if (isBlaBla(url)) scheduleOptionsCapture(view)
                     Phase.IDLE -> if (isBlaBla(url)) view.postDelayed({ probeIdentity() }, 500)
                 }
             }
@@ -567,6 +590,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         detailCaptureInFlight = false
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
+        editCaptureInFlight = false
+        optionsCaptureInFlight = false
         pendingTripSyncGeneration = -1L
         pendingTripCandidateIndex = -1
         collected.clear()
@@ -575,11 +600,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         skipped = 0
         rideReadAttempts = 0
         completedCardTraversalKeys.clear()
+        quarantinedCardTraversalKeys.clear()
+        resolvedCardTraversalKeys.clear()
         currentCardTraversalKey = ""
         ridesResumeScrollY = 0
         ridesRestorePending = false
         ridesBottomStablePasses = 0
         tripRosterReadAttempts = 0
+        lastTripRosterSignature = ""
+        tripRosterStablePasses = 0
         identityConfirmedThisSync = false
         pendingTripDetail = null
         pendingTripPassengers.clear()
@@ -589,6 +618,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         passengerCardReadAttempts = 0
         passengerCallActionTriggered = false
         interceptedPassengerPhone = null
+        pendingEditHref = ""
+        pendingOptionsHref = ""
+        pendingPublishedSeats = null
+        editReadAttempts = 0
+        optionsReadAttempts = 0
         phase = Phase.IDENTITY
         statusView.text = "${account.displayLabel} • confirmando conta…"
         UnifiedDebugEventStore.record(
@@ -625,6 +659,20 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         val expectedCandidate = candidateIndex
         val expectedPassenger = passengerContactIndex
         view.postDelayed({ capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 850)
+    }
+
+    private fun scheduleEditCapture(view: WebView) {
+        val expectedSync = syncGeneration
+        val expectedNavigation = navigationGeneration
+        val expectedCandidate = candidateIndex
+        view.postDelayed({ captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
+    }
+
+    private fun scheduleOptionsCapture(view: WebView) {
+        val expectedSync = syncGeneration
+        val expectedNavigation = navigationGeneration
+        val expectedCandidate = candidateIndex
+        view.postDelayed({ captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
     }
 
     private fun captureIdentityForSync() {
@@ -695,7 +743,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "RIDES_TRAVERSAL_SCAN",
                 packageName,
-                "account=${account.displayLabel} visible=${visible.size} completed=${completedCardTraversalKeys.size} scrollY=${result.scrollY} scrollHeight=${result.scrollHeight} viewport=${result.viewportHeight} atBottom=${result.atBottom} pastDateFilter=false fixedTripLimit=false",
+                "account=${account.displayLabel} visible=${visible.size} resolved=${resolvedCardTraversalKeys.size} completed=${completedCardTraversalKeys.size} quarantined=${quarantinedCardTraversalKeys.size} scrollY=${result.scrollY} scrollHeight=${result.scrollHeight} viewport=${result.viewportHeight} atBottom=${result.atBottom} pastDateFilter=false fixedTripLimit=false",
             )
             if (visible.isEmpty() && rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS && !looksLoggedOut(result.bodyText)) {
                 rideReadAttempts++
@@ -706,10 +754,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 blockSyncWithoutCurrentCard("rides_session_logged_out")
                 return@evaluate
             }
-            val next = visible.firstOrNull { candidate ->
-                val key = tripTraversalKey(candidate)
-                key.isNotBlank() && key !in completedCardTraversalKeys
-            }
+            val nextKey = blaBlaFirstUncompletedVisibleKey(
+                visibleKeysInUiOrder = visible.map(::tripTraversalKey),
+                resolvedKeys = resolvedCardTraversalKeys,
+            )
+            val next = nextKey?.let { key -> visible.firstOrNull { tripTraversalKey(it) == key } }
             if (next != null) {
                 rideReadAttempts = 0
                 ridesBottomStablePasses = 0
@@ -721,7 +770,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "CARD_TRAVERSAL_START",
                     packageName,
-                    "account=${account.displayLabel} order=${completedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(next.href).orEmpty()} uiOrder=true dateIgnored=true",
+                    "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(next.href).orEmpty()} uiOrder=true dateIgnored=true",
                 )
                 loadCurrentCandidate()
                 return@evaluate
@@ -742,7 +791,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "RIDES_TRAVERSAL_SCROLL",
                     packageName,
-                    "account=${account.displayLabel} from=${result.scrollY} to=$target completed=${completedCardTraversalKeys.size}",
+                    "account=${account.displayLabel} from=${result.scrollY} to=$target resolved=${resolvedCardTraversalKeys.size} completed=${completedCardTraversalKeys.size} quarantined=${quarantinedCardTraversalKeys.size}",
                 )
                 webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
                     webView.postDelayed({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
@@ -760,7 +809,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "RIDES_TRAVERSAL_COMPLETE",
                     packageName,
-                    "account=${account.displayLabel} completedCards=${completedCardTraversalKeys.size} pastDateFilter=false fixedTripLimit=false",
+                    "account=${account.displayLabel} resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} pastDateFilter=false fixedTripLimit=false",
                 )
                 completeSync(collected.size)
             } else {
@@ -775,11 +824,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             blockSyncWithoutCurrentCard("current_card_missing")
             return
         }
-        statusView.text = "${account.displayLabel} • card ${completedCardTraversalKeys.size + 1} • lendo completo…"
+        statusView.text = "${account.displayLabel} • card ${resolvedCardTraversalKeys.size + 1} • lendo completo…"
         UnifiedDebugEventStore.record(
             "TRIP_DETAIL_REQUIRED",
             packageName,
-            "account=${account.displayLabel} order=${completedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()} batchShortcut=false",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()} batchShortcut=false",
         )
         loadTrackedUrl(candidate.href)
     }
@@ -840,23 +889,50 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluate
             }
-            val rosterState = blaBlaDirectRosterState(
+            val rosterSignature = directRosterSignature(result)
+            if (rosterSignature == lastTripRosterSignature) {
+                tripRosterStablePasses++
+            } else {
+                lastTripRosterSignature = rosterSignature
+                tripRosterStablePasses = 1
+            }
+            val confirmedRosterComplete = blaBlaDirectRosterCompleteAfterStableProbe(
                 passengerCount = result.detail.passengers.size,
-                rosterComplete = result.detail.passengerRosterComplete,
+                structurallyComplete = result.detail.passengerRosterComplete,
                 explicitEmpty = result.explicitEmptyRoster,
+                hasMore = result.rosterHasMore,
+                terminalEvidence = result.rosterTerminalEvidence,
+                stablePasses = tripRosterStablePasses,
+            )
+            val acceptedResult = if (confirmedRosterComplete && !result.detail.passengerRosterComplete) {
+                result.copy(detail = result.detail.copy(passengerRosterComplete = true))
+            } else {
+                result
+            }
+            val rosterState = blaBlaDirectRosterState(
+                passengerCount = acceptedResult.detail.passengers.size,
+                rosterComplete = acceptedResult.detail.passengerRosterComplete,
+                explicitEmpty = acceptedResult.explicitEmptyRoster,
             )
             UnifiedDebugEventStore.record(
                 "TRIP_ROSTER_PROBE",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${result.detail.passengers.size} bookingLinks=${result.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} rosterComplete=${result.detail.passengerRosterComplete} explicitEmpty=${result.explicitEmptyRoster} state=$rosterState",
+                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${result.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses state=$rosterState",
             )
             if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
                 if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
                     tripRosterReadAttempts++
                     statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
-                    webView.postDelayed({
-                        captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
-                    }, ROSTER_RETRY_MS)
+                    val retryRoster = {
+                        webView.postDelayed({
+                            captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                        }, ROSTER_RETRY_MS)
+                    }
+                    if (acceptedResult.rosterHasMore) {
+                        webView.evaluateJavascript(EXPAND_ROSTER_JS) { retryRoster() }
+                    } else {
+                        retryRoster()
+                    }
                     return@evaluate
                 }
                 skipped++
@@ -868,14 +944,33 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluate
             }
+            val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+            if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                tripRosterReadAttempts++
+                statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                webView.postDelayed({
+                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                }, ROSTER_RETRY_MS)
+                return@evaluate
+            }
+            if (!editLinkMatches) {
+                skipped++
+                UnifiedDebugEventStore.record(
+                    "TRIP_REJECTED",
+                    packageName,
+                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                )
+                advanceCandidate(expectedSync, expectedCandidate)
+                return@evaluate
+            }
             tripRosterReadAttempts = 0
-            store.saveDiagnosticHtml(account, "trip-${expectedCandidate + 1}", result.domHtml)
-            val driverUuids = uuids(result.driverProfileLinks)
+            store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-trip", acceptedResult.domHtml)
+            val driverUuids = uuids(acceptedResult.driverProfileLinks)
             val expectedUuid = account.profileUuid?.lowercase()
             UnifiedDebugEventStore.record(
                 "TRIP_DETAIL_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${result.detail.passengers.size} rosterComplete=${result.detail.passengerRosterComplete} url=${sanitizedUrl(webView.url.orEmpty())}",
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${acceptedResult.detail.passengers.size} rosterComplete=${acceptedResult.detail.passengerRosterComplete} editLinkPresent=${acceptedResult.editHref.isNotBlank()} url=${sanitizedUrl(webView.url.orEmpty())}",
             )
             if (expectedUuid != null && driverUuids.isNotEmpty() && expectedUuid !in driverUuids) {
                 skipped++
@@ -890,7 +985,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             when {
                 expectedUuid != null && expectedUuid in driverUuids -> identityConfirmedThisSync = true
                 expectedUuid == null && driverUuids.size == 1 -> {
-                    val updated = registry.bindIdentity(account.id, driverUuids.single(), result.detail.driverName)
+                    val updated = registry.bindIdentity(account.id, driverUuids.single(), acceptedResult.detail.driverName)
                     if (updated != null) {
                         account = updated
                         identityConfirmedThisSync = true
@@ -914,13 +1009,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 BlaBlaDomNormalizer.toTrip(
                     account = it,
                     candidate = candidate,
-                    detail = result.detail,
+                    detail = acceptedResult.detail,
                     today = LocalDate.now(),
                     authenticatedProfileSessionVerified = identityConfirmedThisSync,
                 )
             }
-            pendingTripDetail = result
-            pendingTripPassengers = (preview?.passengers ?: result.detail.passengers).toMutableList()
+            pendingTripDetail = acceptedResult
+            pendingTripPassengers = (preview?.passengers ?: acceptedResult.detail.passengers).toMutableList()
             pendingTripPassengerCardIndexes.clear()
             pendingTripPassengers.indices.forEach { rowIndex ->
                 pendingTripPassengerCardIndexes[rowIndex] = rowIndex
@@ -1017,7 +1112,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 BlaBlaDirectPassengerStep.FINISH -> break
             }
         }
-        finalizeCurrentTrip(expectedSync, expectedCandidate)
+        loadCurrentTripEdit(expectedSync, expectedCandidate)
     }
 
     private fun openPendingPassengerCard(
@@ -1203,7 +1298,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return@evaluate
             }
             evidence.domHtml.takeIf(String::isNotBlank)?.let { html ->
-                store.saveDiagnosticHtml(account, "card-${completedCardTraversalKeys.size + 1}-passenger-${expectedPassenger + 1}", html)
+                store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-passenger-${expectedPassenger + 1}", html)
             }
             val effectivePhone = current.phone?.takeIf(String::isNotBlank)
                 ?: normalizeCapturedPhone(evidence.phone)
@@ -1286,6 +1381,153 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             pendingTripCandidateIndex == expectedCandidate &&
             pendingTripDetail != null
 
+    private fun loadCurrentTripEdit(expectedSync: Long, expectedCandidate: Int) {
+        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+            recordStale("edit_load_pending_mismatch", expectedSync, expectedCandidate)
+            return
+        }
+        val tripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+        val editHref = pendingTripDetail?.editHref?.trim().orEmpty()
+        if (tripId.isNullOrBlank() || !BlaBlaHarvestAssociation.editPageMatches(tripId, editHref)) {
+            skipped++
+            blockCurrentCard(expectedSync, expectedCandidate, "edit_link_missing_or_mismatch")
+            return
+        }
+        pendingEditHref = editHref
+        pendingOptionsHref = ""
+        pendingPublishedSeats = null
+        editReadAttempts = 0
+        editCaptureInFlight = false
+        phase = Phase.EDIT
+        statusView.text = "${account.displayLabel} • edição do card ${resolvedCardTraversalKeys.size + 1}…"
+        UnifiedDebugEventStore.record(
+            "DIRECT_EDIT_REQUIRED",
+            packageName,
+            "account=${account.displayLabel} tripId=$tripId editLinkPresent=true sequential=true",
+        )
+        loadTrackedUrl(editHref)
+    }
+
+    private fun captureEditEvidence(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int) {
+        if (
+            phase != Phase.EDIT ||
+            expectedSync != syncGeneration ||
+            expectedNavigation != navigationGeneration ||
+            expectedCandidate != candidateIndex ||
+            !pendingTripIsCurrent(expectedSync, expectedCandidate)
+        ) {
+            recordStale("edit_before_evaluate", expectedSync, expectedCandidate)
+            return
+        }
+        val tripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+        if (tripId.isNullOrBlank() || !BlaBlaHarvestAssociation.editPageMatches(tripId, webView.url.orEmpty())) {
+            skipped++
+            blockCurrentCard(expectedSync, expectedCandidate, "edit_page_identity_mismatch")
+            return
+        }
+        if (editCaptureInFlight) return
+        editCaptureInFlight = true
+        evaluate<DynamicEditEvidence>(DIRECT_EDIT_EVIDENCE_JS) { evidence ->
+            editCaptureInFlight = false
+            if (
+                phase != Phase.EDIT ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedCandidate != candidateIndex ||
+                !pendingTripIsCurrent(expectedSync, expectedCandidate)
+            ) {
+                recordStale("edit_after_evaluate", expectedSync, expectedCandidate)
+                return@evaluate
+            }
+            val pageMatches = evidence != null && BlaBlaHarvestAssociation.editPageMatches(tripId, evidence.pageUrl)
+            val optionsHref = evidence?.optionsHref?.trim().orEmpty()
+            val optionsMatch = optionsHref.isNotBlank() && BlaBlaHarvestAssociation.optionsPageMatches(tripId, optionsHref)
+            if ((!pageMatches || !optionsMatch) && editReadAttempts < MAX_EDIT_LINK_READ_ATTEMPTS) {
+                editReadAttempts++
+                webView.postDelayed({
+                    captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate)
+                }, ROSTER_RETRY_MS)
+                return@evaluate
+            }
+            if (!pageMatches || !optionsMatch || evidence == null) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "options_link_missing_or_mismatch")
+                return@evaluate
+            }
+            store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-edit", evidence.domHtml)
+            pendingOptionsHref = optionsHref
+            editReadAttempts = 0
+            optionsReadAttempts = 0
+            optionsCaptureInFlight = false
+            UnifiedDebugEventStore.record(
+                "DIRECT_EDIT_CAPTURED",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=true htmlCaptured=${evidence.domHtml.isNotBlank()} identityMatch=true sequential=true",
+            )
+            phase = Phase.OPTIONS
+            statusView.text = "${account.displayLabel} • vagas do card ${resolvedCardTraversalKeys.size + 1}…"
+            loadTrackedUrl(optionsHref)
+        }
+    }
+
+    private fun captureOptionsEvidence(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int) {
+        if (
+            phase != Phase.OPTIONS ||
+            expectedSync != syncGeneration ||
+            expectedNavigation != navigationGeneration ||
+            expectedCandidate != candidateIndex ||
+            !pendingTripIsCurrent(expectedSync, expectedCandidate)
+        ) {
+            recordStale("options_before_evaluate", expectedSync, expectedCandidate)
+            return
+        }
+        val tripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+        if (tripId.isNullOrBlank() || !BlaBlaHarvestAssociation.optionsPageMatches(tripId, webView.url.orEmpty())) {
+            skipped++
+            blockCurrentCard(expectedSync, expectedCandidate, "options_page_identity_mismatch")
+            return
+        }
+        if (optionsCaptureInFlight) return
+        optionsCaptureInFlight = true
+        evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { evidence ->
+            optionsCaptureInFlight = false
+            if (
+                phase != Phase.OPTIONS ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedCandidate != candidateIndex ||
+                !pendingTripIsCurrent(expectedSync, expectedCandidate)
+            ) {
+                recordStale("options_after_evaluate", expectedSync, expectedCandidate)
+                return@evaluate
+            }
+            val identityMatch = evidence != null && BlaBlaHarvestAssociation.optionsPageMatches(tripId, evidence.pageUrl)
+            if ((evidence == null || evidence.seats < 0 || !identityMatch) && optionsReadAttempts < MAX_OPTIONS_READ_ATTEMPTS) {
+                optionsReadAttempts++
+                webView.postDelayed({
+                    captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate)
+                }, ROSTER_RETRY_MS)
+                return@evaluate
+            }
+            if (evidence == null || evidence.seats < 0 || !identityMatch) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "published_seats_unreadable_or_mismatched")
+                return@evaluate
+            }
+            pendingPublishedSeats = evidence.seats
+            store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-options", evidence.domHtml)
+            UnifiedDebugEventStore.record(
+                "DIRECT_SEAT_OPTIONS_CAPTURED",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId publishedSeats=${evidence.seats} canAdd=${evidence.canAdd} canRemove=${evidence.canRemove} savePresent=${evidence.savePresent} htmlCaptured=${evidence.domHtml.isNotBlank()} identityMatch=true sequential=true",
+            )
+            finalizeCurrentTrip(expectedSync, expectedCandidate)
+        }
+    }
+
     private fun finalizeCurrentTrip(expectedSync: Long, expectedCandidate: Int) {
         if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
             recordStale("finalize_pending_mismatch", expectedSync, expectedCandidate)
@@ -1294,7 +1536,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         val candidate = candidates.getOrNull(expectedCandidate)
         val result = pendingTripDetail
         val definition = account.verifiedDefinition()
-        if (candidate == null || result == null || definition == null) {
+        if (candidate == null || result == null || definition == null || pendingPublishedSeats == null) {
             skipped++
             blockCurrentCard(expectedSync, expectedCandidate, "pending_trip_state_missing")
             return
@@ -1333,7 +1575,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "TRIP_ACCEPTED",
             packageName,
-            "account=${account.displayLabel} order=${completedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} sequential=true",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${pendingPublishedSeats ?: -1} sequential=true",
         )
         completeCurrentCard(expectedSync, expectedCandidate)
     }
@@ -1350,10 +1592,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         val tripId = candidates.getOrNull(expectedCandidate)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()
         persistDirectTripEvidence(tripId)
         completedCardTraversalKeys += currentCardTraversalKey
+        resolvedCardTraversalKeys += currentCardTraversalKey
         UnifiedDebugEventStore.record(
             "CARD_TRAVERSAL_COMPLETE",
             packageName,
-            "account=${account.displayLabel} order=${completedCardTraversalKeys.size} tripId=$tripId passengers=${pendingTripPassengers.size} result=complete nextCardAllowed=true",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size} tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=complete nextCardAllowed=true",
         )
         clearPendingCardState()
         currentCardTraversalKey = ""
@@ -1372,7 +1615,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         val prior = existing.firstOrNull { it.tripId == tripId }
         val evidence = BlaBlaHarvestTripEvidence(
             tripId = tripId,
-            publishedSeats = prior?.publishedSeats,
+            publishedSeats = pendingPublishedSeats ?: prior?.publishedSeats,
             views = detail.views ?: prior?.views,
             itineraryStops = detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() },
             passengers = pendingTripPassengers.toList(),
@@ -1382,7 +1625,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "DIRECT_TRIP_EVIDENCE_PERSISTED",
             packageName,
-            "account=${account.displayLabel} tripId=$tripId stops=${evidence.itineraryStops.size} viewsPresent=${evidence.views != null} passengers=${evidence.passengers.size} rosterComplete=${evidence.passengerRosterComplete}",
+            "account=${account.displayLabel} tripId=$tripId stops=${evidence.itineraryStops.size} viewsPresent=${evidence.views != null} passengers=${evidence.passengers.size} rosterComplete=${evidence.passengerRosterComplete} publishedSeats=${evidence.publishedSeats ?: -1}",
         )
     }
 
@@ -1392,21 +1635,32 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         val tripId = candidates.getOrNull(expectedCandidate)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()
+        if (currentCardTraversalKey.isBlank()) {
+            blockSyncWithoutCurrentCard("card_without_traversal_key_$reason")
+            return
+        }
+        quarantinedCardTraversalKeys += currentCardTraversalKey
+        resolvedCardTraversalKeys += currentCardTraversalKey
         UnifiedDebugEventStore.record(
-            "CARD_TRAVERSAL_BLOCKED",
+            "CARD_TRAVERSAL_QUARANTINED",
             packageName,
-            "account=${account.displayLabel} order=${completedCardTraversalKeys.size + 1} tripId=$tripId reason=$reason completedCards=${completedCardTraversalKeys.size} nextCardAllowed=false",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size} tripId=$tripId reason=$reason completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} published=false nextCardAllowed=${blaBlaCanAdvanceToNextCard(currentCardComplete = false, currentCardQuarantined = true)}",
         )
-        saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
-        phase = Phase.IDLE
-        statusView.text = "${account.displayLabel} • card incompleto ⚠️ • sincronização interrompida"
+        clearPendingCardState()
+        currentCardTraversalKey = ""
+        candidates = emptyList()
+        candidateIndex = 0
+        phase = Phase.RIDES
+        ridesRestorePending = ridesResumeScrollY > 0
+        statusView.text = "${account.displayLabel} • card isolado ⚠️ • continuando…"
+        loadTrackedUrl(RIDES_URL)
     }
 
     private fun blockSyncWithoutCurrentCard(reason: String) {
         UnifiedDebugEventStore.record(
             "SYNC_BLOCKED",
             packageName,
-            "account=${account.displayLabel} reason=$reason completedCards=${completedCardTraversalKeys.size} nextCardAllowed=false",
+            "account=${account.displayLabel} reason=$reason resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} nextCardAllowed=false",
         )
         saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
         phase = Phase.IDLE
@@ -1424,8 +1678,37 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         passengerCallActionTriggered = false
         interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
+        lastTripRosterSignature = ""
+        tripRosterStablePasses = 0
+        pendingEditHref = ""
+        pendingOptionsHref = ""
+        pendingPublishedSeats = null
+        editReadAttempts = 0
+        optionsReadAttempts = 0
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
+        editCaptureInFlight = false
+        optionsCaptureInFlight = false
+    }
+
+    private fun directRosterSignature(result: DynamicTripDetail): String = buildString {
+        append(result.detail.passengers.size)
+        result.detail.passengers.forEach { passenger ->
+            append('|')
+            append(passenger.name.trim())
+            append('|')
+            append(passenger.seats.coerceAtLeast(1))
+            append('|')
+            append(passenger.boarding.orEmpty().trim())
+            append('|')
+            append(passenger.dropoff.orEmpty().trim())
+            append('|')
+            append(passenger.booking_href.orEmpty().substringBefore('#').substringBefore('?'))
+        }
+        append("|targets=")
+        append(result.passengerHrefs.joinToString("|") { it.substringBefore('#').substringBefore('?') })
+        append("|more=")
+        append(result.rosterHasMore)
     }
 
     private fun tripTraversalKey(candidate: BlaBlaDomRideCandidate): String {
@@ -1544,10 +1827,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         phase = Phase.IDLE
+        val finalStatus = if (skipped > 0 || quarantinedCardTraversalKeys.isNotEmpty()) "partial" else "success"
         UnifiedDebugEventStore.record(
             "SYNC_END",
             packageName,
-            "account=${account.displayLabel} status=success trips=$count skipped=$skipped identityVerified=$identityConfirmedThisSync",
+            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync",
         )
         setResult(
             RESULT_OK,
@@ -1607,7 +1891,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return normalized.contains("continuar com e-mail") || normalized.contains("como você deseja se conectar") || normalized.contains("como voce deseja se conectar")
     }
 
-    private enum class Phase { IDLE, IDENTITY, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT }
+    private enum class Phase { IDLE, IDENTITY, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
 
     companion object {
         private const val HOME_URL = "https://www.blablacar.com.br/"
@@ -1621,6 +1905,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
         private const val MAX_PASSENGER_CARD_READ_ATTEMPTS = 4
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
+        private const val MAX_EDIT_LINK_READ_ATTEMPTS = 5
+        private const val MAX_OPTIONS_READ_ATTEMPTS = 3
         private const val ROSTER_RETRY_MS = 800L
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
         private const val PASSENGER_CALL_SETTLE_MS = 650L
@@ -2046,6 +2332,45 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             })();
         """.trimIndent()
 
+        private val EXPAND_ROSTER_JS = """
+            (function() {
+              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+              const controls = Array.from(document.querySelectorAll(
+                'button, a, [role="button"], [data-testid], [aria-label], [aria-controls]'
+              ));
+              const target = controls.find((node) => {
+                const marker = (
+                  (node.getAttribute('data-testid') || '') + ' ' +
+                  (node.getAttribute('aria-label') || '') + ' ' +
+                  (node.getAttribute('aria-controls') || '')
+                ).toLowerCase();
+                const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+                const markerRequestsMore = passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
+                const collapsedNearRoute = node.getAttribute('aria-expanded') === 'false' && /(?:→|->)/.test(clean((node.parentElement && node.parentElement.innerText) || ''));
+                return markerRequestsMore || collapsedNearRoute;
+              });
+              if (!target || typeof target.click !== 'function') return JSON.stringify({ found: false, clicked: false });
+              target.click();
+              return JSON.stringify({ found: true, clicked: true });
+            })();
+        """.trimIndent()
+
+        private val DIRECT_EDIT_EVIDENCE_JS = """
+            (function() {
+              const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
+              const candidates = Array.from(document.querySelectorAll('a[href], [data-href]'))
+                .map((node) => absolute(node.getAttribute('href') || node.getAttribute('data-href') || ''))
+                .filter(Boolean);
+              const option = candidates.find((href) => /\/rides\/offer\/edit\/[^/?#]+\/options\/?(?:$|[?#])/i.test(href)) || '';
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                optionsHref: option,
+                pageUrl: location.href || '',
+                domHtml: html.slice(0, 350000)
+              });
+            })();
+        """.trimIndent()
+
         private val TRIP_DETAIL_DYNAMIC_JS = """
             (function() {
               const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
@@ -2132,21 +2457,30 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .filter((href) => /\/passenger\/|\/booking\//i.test(href))
                 .forEach((href) => passengerTargets.push(href));
               const passengers = rows;
+              const links = Array.from(document.querySelectorAll('a[href]'));
+              const edit = links.find((a) => {
+                const href = absolute(a.getAttribute('href') || a.href || '');
+                return /\/rides\/offer\/edit\/[^/?#]+\/?(?:$|[?#])/i.test(href) && !/\/options\/?(?:$|[?#])/i.test(href);
+              });
               const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
                 const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
                 return marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
               });
-              const hasMore = Array.from(document.querySelectorAll('[data-testid], [aria-label], [aria-controls]')).some((node) => {
+              const rosterExpandControls = Array.from(document.querySelectorAll('button, a, [role="button"], [data-testid], [aria-label], [aria-controls]')).filter((node) => {
                 const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '') + ' ' + (node.getAttribute('aria-controls') || '')).toLowerCase();
                 const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
-                return passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
+                const markerRequestsMore = passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
+                const collapsedNearRoute = node.getAttribute('aria-expanded') === 'false' && /(?:→|->)/.test(clean((node.parentElement && node.parentElement.innerText) || ''));
+                return markerRequestsMore || collapsedNearRoute;
               });
+              const hasMore = rosterExpandControls.length > 0;
               const explicitEmptyRoster = Array.from(document.querySelectorAll('[data-testid]')).some((node) => {
                 const marker = (node.getAttribute('data-testid') || '').toLowerCase();
                 const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
                 return passengerMarker && (marker.includes('empty') || marker.includes('none') || marker.includes('zero') || marker.includes('no-'));
               });
               const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
+              const rosterTerminalEvidence = !!edit || rosterContainers.length > 0 || document.readyState === 'complete';
               const itineraryStops = [];
               [
                 '[data-testid*="itinerary-departure-station"]',
@@ -2181,6 +2515,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
                 passengerHrefs: Array.from(new Set(passengerTargets)),
                 explicitEmptyRoster: explicitEmptyRoster,
+                rosterHasMore: hasMore,
+                rosterTerminalEvidence: rosterTerminalEvidence,
+                editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
                 itineraryStops: itineraryStops,
                 views: Number.isFinite(views) ? views : null,
                 domHtml: html.slice(0, 350000)
