@@ -31,8 +31,20 @@ data class ExternalPassengerMetadata(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    /** Exact pickup coordinate captured from stable external reservation evidence, never inferred from city/name text. */
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    /** Optional source accuracy when the external evidence exposes it. */
+    val boardingAccuracyMeters: Double? = null,
+    /** Short provenance marker, for example blablacar_booking_structured_pickup. */
+    val boardingLocationSource: String = "",
+    /** Local capture time for the coordinate evidence. */
+    val boardingLocationCollectedAtMillis: Long? = null,
     val updatedAtMillis: Long = System.currentTimeMillis(),
-)
+) {
+    val hasBoardingCoordinates: Boolean
+        get() = validLatitude(boardingLatitude) != null && validLongitude(boardingLongitude) != null
+}
 
 class PassengerIdentityStore(context: Context) {
     private val appContext = context.applicationContext
@@ -85,11 +97,20 @@ class PassengerIdentityStore(context: Context) {
 
     fun saveExternalMetadata(metadata: ExternalPassengerMetadata): ExternalPassengerMetadata {
         require(metadata.reservationKey.isNotBlank()) { "Referência externa inválida." }
+        val latitude = validLatitude(metadata.boardingLatitude)
+        val longitude = validLongitude(metadata.boardingLongitude)
+        val hasCoordinatePair = latitude != null && longitude != null
         val normalized = metadata.copy(
             passengerId = metadata.passengerId.trim(),
             fareCurrencyCode = metadata.fareCurrencyCode.trim().uppercase().take(3),
             boardingAddress = metadata.boardingAddress.trim().take(500),
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
+            boardingLatitude = latitude.takeIf { hasCoordinatePair },
+            boardingLongitude = longitude.takeIf { hasCoordinatePair },
+            boardingAccuracyMeters = metadata.boardingAccuracyMeters
+                ?.takeIf { hasCoordinatePair && it.isFinite() && it >= 0.0 && it <= 100_000.0 },
+            boardingLocationSource = metadata.boardingLocationSource.trim().take(80).takeIf { hasCoordinatePair }.orEmpty(),
+            boardingLocationCollectedAtMillis = metadata.boardingLocationCollectedAtMillis.takeIf { hasCoordinatePair },
             updatedAtMillis = System.currentTimeMillis(),
         )
         val current = externalMetadata().filterNot { it.reservationKey == normalized.reservationKey }
@@ -110,6 +131,10 @@ class PassengerIdentityStore(context: Context) {
         private const val KEY_EXTERNAL_METADATA = "external_passenger_metadata"
     }
 }
+
+internal fun validLatitude(value: Double?): Double? = value?.takeIf { it.isFinite() && it in -90.0..90.0 }
+
+internal fun validLongitude(value: Double?): Double? = value?.takeIf { it.isFinite() && it in -180.0..180.0 }
 
 internal fun passengerContactKey(raw: String?): String {
     val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return ""
