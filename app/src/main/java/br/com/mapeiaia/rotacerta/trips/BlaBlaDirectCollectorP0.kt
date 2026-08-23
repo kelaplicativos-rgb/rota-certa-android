@@ -41,6 +41,24 @@ internal fun blaBlaDirectPassengerStep(
     else -> BlaBlaDirectPassengerStep.SKIP
 }
 
+/** First unresolved card in the exact order currently exposed by the UI. */
+internal fun blaBlaFirstUncompletedVisibleKey(
+    visibleKeysInUiOrder: List<String>,
+    completedKeys: Set<String>,
+): String? = visibleKeysInUiOrder.firstOrNull { key ->
+    key.isNotBlank() && key !in completedKeys
+}
+
+/** A following card is never legal until the current card was fully completed. */
+internal fun blaBlaCanAdvanceToNextCard(currentCardComplete: Boolean, currentCardBlocked: Boolean): Boolean =
+    currentCardComplete && !currentCardBlocked
+
+/** More list content is requested only after every visible card is already done. */
+internal fun blaBlaShouldScrollForMore(
+    unresolvedVisibleCardExists: Boolean,
+    atBottom: Boolean,
+): Boolean = !unresolvedVisibleCardExists && !atBottom
+
 internal fun blaBlaDirectCollectorStatus(
     accountCount: Int,
     verifiedAccountCount: Int,
