@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.260
+name: Passenger timeline geo UX direct-source 0.1.261
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate-direct-source:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5553'
-      EXPECTED_VERSION_NAME: '0.1.260'
+      EXPECTED_VERSION_CODE: '5554'
+      EXPECTED_VERSION_NAME: '0.1.261'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -28,170 +28,48 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
 
-      - name: Apply queued direct collector source patch once
-        id: p0_patch
-        if: hashFiles('.github/workflows/direct-collector-p0-once.yml') != ''
-        run: |
-          set -euo pipefail
-          git fetch --depth=16 origin agent/passenger-timeline-geo-ux
-          git merge-base --is-ancestor ada652324377af879a475faab5e16c1041f5b34f HEAD
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          python3 -m pip install --quiet pyyaml
-          python3 - <<'PY'
-          import subprocess
-          from pathlib import Path
-          import yaml
-
-          workflow = yaml.safe_load(Path('.github/workflows/direct-collector-p0-once.yml').read_text())
-          steps = workflow['jobs']['apply']['steps']
-          for step in steps:
-              name = step.get('name', 'unnamed run step')
-              if name in {
-                  'Verify starting point and protected FAROL',
-                  'Bump direct-source candidate version and workflow',
-              }:
-                  continue
-              script = step.get('run')
-              if not script:
-                  continue
-              if name == 'Patch direct collector in app source':
-                  old = '''def rep(old, new, label):
-              global s
-              count = s.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected 1 match, got {count}')
-              s = s.replace(old, new, 1)'''
-                  new = '''def rep(old, new, label):
-              global s
-              count = s.count(old)
-              if count == 1:
-                  s = s.replace(old, new, 1)
-                  return
-              import re
-              old_lines = old.splitlines()
-              pattern = r'\\n'.join(r'[ \\t]*' + re.escape(line.lstrip()) for line in old_lines)
-              matches = list(re.finditer(pattern, s))
-              if len(matches) != 1:
-                  raise SystemExit(f'{label}: expected 1 match, got exact={count} whitespace={len(matches)}')
-              match = matches[0]
-              s = s[:match.start()] + new + s[match.end():]'''
-                  if old not in script:
-                      raise SystemExit('rep helper signature not found')
-                  script = script.replace(old, new, 1)
-              elif name == 'Verify source contract, remove one-time workflow, commit':
-                  script = '''set -euo pipefail
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
-          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
-          grep -Fq 'explicitEmptyRoster' "$DYNAMIC"
-          grep -Fq 'BlaBlaDirectRosterState.UNKNOWN' "$DYNAMIC"
-          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
-          grep -Fq 'farePresent=' "$DYNAMIC"
-          grep -Fq 'addressPresent=' "$DYNAMIC"
-          grep -Fq 'coordinatePresent=' "$DYNAMIC"
-          grep -Fq 'dataCoverage=' "$DYNAMIC"
-          git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt \
-                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt
-          git commit -m 'fix: fail closed on unknown direct passenger rosters'
-          git push origin HEAD:agent/passenger-timeline-geo-ux
-          '''
-              print(f'::group::{name}')
-              subprocess.run(script, shell=True, check=True, executable='/bin/bash')
-              print('::endgroup::')
-          PY
-          echo 'applied=true' >> "$GITHUB_OUTPUT"
-
       - uses: actions/setup-java@v4
-        if: steps.p0_patch.outputs.applied != 'true'
         with:
           distribution: temurin
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
-        if: steps.p0_patch.outputs.applied != 'true'
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.p0_patch.outputs.applied != 'true'
 
-      - name: Verify direct source and protected FAROL
-        if: steps.p0_patch.outputs.applied != 'true'
+      - name: Verify direct source, P0 contract and protected FAROL
         run: |
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          PASSENGER_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
-          TIMELINE_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
-          HARVEST_POLICY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt'
-          HARVEST_WATCHDOG='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestNavigationWatchdogProvider.kt'
+          DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
+          P0_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
+
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerMoney.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerFareEvidence.kt
-          test -s "$PASSENGER_UI"
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineOperationalOrder.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TimelineDirectionReference.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt
-          test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
-          test -s "$HARVEST_POLICY"
-          test -s "$HARVEST_WATCHDOG"
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestEfficiency0259Test.kt
-          test -s app/src/main/res/drawable/ic_whatsapp_action.xml
-          test -s app/src/main/res/drawable/ic_blablacar_action.xml
-          test -s app/src/main/res/drawable/ic_pickup_maps_action.xml
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0255RegressionTest.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/GlobalPassengerFlow0256Test.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0257Test.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCardActions0258Test.kt
-          test ! -e .github/workflows/apply-passenger-card-actions-0257.yml
-          test ! -e .github/workflows/apply-passenger-address-actions-0258.yml
-          test ! -e .github/rota-certa-0258-trigger.txt
+          test -s "$DYNAMIC"
+          test -s "$P0"
+          test -s "$P0_TEST"
+          test ! -e .github/workflows/direct-collector-p0-once.yml
+
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
-          grep -Fq 'AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = false' "$HARVEST_POLICY"
-          grep -Fq 'AUTOMATIC_PAGE_SETTLE_MS: Long = 250L' "$HARVEST_POLICY"
-          grep -Fq 'BlaBlaHarvestNavigationIdentity.same' "$HARVEST_WATCHDOG"
-          grep -Fq 'HARVEST_PUBLISHED_SEAT_PHASE_SHORT_CIRCUITED' "$HARVEST_WATCHDOG"
-          grep -Fq 'HARVEST_FAST_DOM_PROBE' "$HARVEST_WATCHDOG"
-          grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'fareMinorUnits' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'TripReferenceOriginStore' "$TIMELINE_UI"
-          grep -Fq 'timelineDirectionReference' "$TIMELINE_UI"
-          grep -Fq 'EnhancedPassengerTimelineSection' "$TIMELINE_UI"
-          grep -Fq 'GlobalPassengerFlowPanel' "$TIMELINE_UI"
-          grep -Fq 'prepareTimelineTripForPassenger' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
-          grep -Fq 'planTimelineExternalCapacityClaims' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
-          grep -Fq 'CapacityClaimType.RESERVED_SEAT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
-          grep -Fq 'showExistingPassengers = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
-          grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
-          grep -Fq 'passengerTimelinePlaceLabel' "$PASSENGER_UI"
-          grep -Fq 'copyPassengerFareValue' "$PASSENGER_UI"
-          grep -Fq 'externalPassengerTarget' "$PASSENGER_UI"
-          grep -Fq 'externalTripTarget' "$PASSENGER_UI"
-          grep -Fq 'passengerPickupMapTarget' "$PASSENGER_UI"
-          grep -Fq 'passengerTimelineOperationalOrder' "$PASSENGER_UI"
-          grep -Fq 'PassengerAddressEditorDialog' "$PASSENGER_UI"
-          grep -Fq 'passengerAddressEditorInitialValue' "$PASSENGER_UI"
-          grep -Fq 'savePassengerAddress' "$PASSENGER_UI"
-          grep -Fq 'hasExternalTripActionEvidence' "$PASSENGER_UI"
-          grep -Fq 'TripBlaBlaTripActionRow' "$PASSENGER_UI"
-          grep -Fq 'saveCapturedPassengerFare' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'ic_whatsapp_action' "$PASSENGER_UI"
-          grep -Fq 'ic_blablacar_action' "$PASSENGER_UI"
-          grep -Fq 'ic_pickup_maps_action' "$PASSENGER_UI"
-          ! grep -Fq 'onClick = ::openCard' "$TIMELINE_UI"
-          ! grep -Fq 'passengerTimelineActionLabel(passenger' "$PASSENGER_UI"
-          ! grep -Fq '⚠ ordem de embarque pendente' "$PASSENGER_UI"
-          ! grep -Fq 'Text("WA"' "$PASSENGER_UI"
-          ! grep -Fq 'Text("☎"' "$PASSENGER_UI"
-          ! grep -Fq 'Text("🧭📍"' "$PASSENGER_UI"
-          ! grep -Fq 'Text("🧭🏁"' "$PASSENGER_UI"
+          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
+          grep -Fq 'roster_unknown_after_probe' "$DYNAMIC"
+          grep -Fq 'finalize_unknown_roster' "$DYNAMIC"
+          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
+          grep -Fq 'PASSENGER_CONTACT_CAPTURED' "$DYNAMIC"
+          grep -Fq 'farePresent=' "$DYNAMIC"
+          grep -Fq 'addressPresent=' "$DYNAMIC"
+          grep -Fq 'coordinatePresent=' "$DYNAMIC"
+          grep -Fq 'detail_trip_id_mismatch' "$DYNAMIC"
+          grep -Fq 'identityStatus=' "$DYNAMIC"
+          grep -Fq 'dataCoverage=' "$DYNAMIC"
+          grep -Fq 'BlaBlaDirectRosterState.UNKNOWN' "$P0"
+          grep -Fq 'COMPLETE_EMPTY' "$P0"
+          grep -Fq 'COMPLETE_WITH_PASSENGERS' "$P0"
+          grep -Fq 'BlaBlaDirectPassengerStep.PASSENGER_CARD' "$P0"
+          grep -Fq 'validatedIdentityWithIncompleteDataIsPartial' "$P0_TEST"
+          grep -Fq 'staleCallbackCannotMatchNextCandidate' "$P0_TEST"
+
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
@@ -199,14 +77,12 @@ jobs:
           echo 'farol_untouched=true'
 
       - name: Run unit and regression tests directly on app source
-        if: steps.p0_patch.outputs.applied != 'true'
         run: |
           set -euo pipefail
           ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
 
       - name: Assemble debug APK directly from app source
-        if: steps.p0_patch.outputs.applied != 'true'
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -231,32 +107,13 @@ jobs:
           historical_sha_checkout=false
           materializer_used=false
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
-          collector_strong_query_identity=true
-          collector_stale_page_guard=true
-          collector_fast_dom_probe_ms=250
-          collector_automatic_published_seat_traversal=false
+          direct_roster_unknown_fail_closed=true
+          direct_roster_explicit_empty_required=true
+          direct_passenger_card_fallback=true
+          direct_trip_id_guard=true
+          direct_data_coverage_status=true
+          passenger_contact_safe_diagnostics=true
           collector_external_write=false
-          global_passenger_flow=true
-          external_backing_duplicate_guard=true
-          external_capacity_reserved_seat_reconciliation=true
-          selectable_route_points_from_trusted_evidence=true
-          compact_whatsapp_icon=true
-          single_blablacar_trip_action=true
-          blablacar_query_id_href_supported=true
-          passenger_address_editor=true
-          reservation_scoped_boarding_dropoff_addresses=true
-          passenger_pickup_maps_prefers_exact_address=true
-          trip_card_body_click=false
-          next_action_visual_label=false
-          operational_route_order_preserved=true
-          visible_authenticated_navigation_preserved=true
-          canonical_passenger_identity=true
-          external_passenger_booking_href_action=true
-          individual_reservation_fare_capture=true
-          money_action_copies_value_only=true
-          gps_never_confirms_boarding=true
-          home_coordinate_direction_fallback=true
-          direction_cards=true
           physical_ui_validation=false
           collector_physical_validation=false
           merge=false
@@ -265,10 +122,9 @@ jobs:
           EOF
 
       - name: Upload direct-source candidate APK
-        if: steps.p0_patch.outputs.applied != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.260
+          name: rota-certa-passenger-timeline-geo-ux-0.1.261
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
