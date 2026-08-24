@@ -1,0 +1,1 @@
+Validação isolada da versão 0.1.159: diagnóstico do popup silencioso, rolagem do Financeiro e liberação da captura repetida, sem tocar no farol estável.
