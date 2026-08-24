@@ -10,12 +10,12 @@ permissions:
 
 jobs:
   apply-causal-patch:
-    if: ${{ !contains(github.event.head_commit.message, '[agenda-auto-seat-fix]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: kelaplicativos-rgb/rota-certa-android
           ref: agent/passenger-timeline-geo-ux
           fetch-depth: 1
 
@@ -23,6 +23,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt; then
+            echo 'causal patch already present'
+            exit 0
+          fi
           python3 - <<'PY'
           from pathlib import Path
 
@@ -186,13 +190,18 @@ jobs:
 
           git diff --check
           grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'automaticPublishedSeatLookupRemainsOutsideNormalSync' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt
           grep -Fq 'versionCode = 5565' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.272"' app/build.gradle.kts
 
-      - name: Commit exact source changes to work branch
+      - name: Persist patch on work branch
         shell: bash
         run: |
           set -euo pipefail
+          if git diff --quiet; then
+            echo 'no patch to persist'
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
