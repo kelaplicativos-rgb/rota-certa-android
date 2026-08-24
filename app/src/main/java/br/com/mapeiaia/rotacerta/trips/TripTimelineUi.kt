@@ -150,6 +150,33 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
+            ResponsiveTripAction("Limpar Timeline") {
+                val clearedResponse = collectorStore.saveResponse(
+                    BlaBlaCollectorMonthResponse(
+                        status = "cleared",
+                        month = collectorResponse?.month,
+                        strategy = collectorResponse?.strategy,
+                        profiles = collectorResponse?.profiles.orEmpty(),
+                        routes = collectorResponse?.routes.orEmpty(),
+                        coverage = BlaBlaCollectorCoverage(
+                            complete_for_scope = true,
+                            global_profile_month_complete = true,
+                            reason = "cleared_by_user",
+                            past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
+                        ),
+                    ),
+                    preserveOnPartial = false,
+                )
+                collectorResponse = clearedResponse
+                showArchived = false
+                searchQuery = ""
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_CLEARED_BY_USER",
+                    context.packageName,
+                    "externalTripsRemoved=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
+                )
+                onChanged("Timeline sincronizada limpa. Viagens locais, reservas e login foram preservados.")
+            },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
     )
