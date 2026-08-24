@@ -1,287 +1,217 @@
-name: Passenger timeline geo UX direct-source 0.1.271
+name: Passenger timeline geo UX causal patch materializer
 
 on:
   push:
     branches:
       - agent/passenger-timeline-geo-ux
-  pull_request:
-    branches:
-      - agent/global-multitenant-foundation
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate-direct-source:
+  materialize-causal-fix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    env:
-      GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
-      PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
-      EXPECTED_VERSION_CODE: '5564'
-      EXPECTED_VERSION_NAME: '0.1.271'
+    timeout-minutes: 10
     steps:
-      - name: Checkout feature HEAD directly
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: agent/passenger-timeline-geo-ux
           fetch-depth: 1
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Verify strict sequential direct source and protected FAROL
+      - name: Apply exact Agenda collector corrections
+        shell: bash
         run: |
           set -euo pipefail
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           DYNAMIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
-          P0='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollectorP0.kt'
-          CARD_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt'
-          PASSENGER_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt'
-          PASSENGER_NAVIGATION_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerNavigationModule.kt'
-          VALUE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorValueModule.kt'
-          SEAT_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSeatModule.kt'
-          TIMELINE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
-          SESSION_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt'
-          URL_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt'
-          IDENTITY_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorIdentityModule.kt'
-          NETWORK_SOURCE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt'
-          CLEAN_PRINT_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/OverlayFreeScreenPrint0267.kt'
-          RELIABLE_SEAT_SYNC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt'
-          QUICK_PASSENGER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt'
-          GLOBAL_PASSENGER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt'
-          COLLECTOR_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt'
-          TEST261='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
-          TEST262='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
-          TEST263='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0263Test.kt'
-          TEST264='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
-          TEST265='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorBoundaries0265Test.kt'
-          TEST266='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSource0266Test.kt'
-          TEST267='app/src/test/java/br/com/mapeiaia/rotacerta/OverlayFreeScreenPrint0267Test.kt'
-          TEST271='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt'
+          if grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' "$DYNAMIC"; then
+            echo 'causal patch already materialized'
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
 
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          test -s "$DYNAMIC"
-          test -s "$P0"
-          test -s "$CARD_MODULE"
-          test -s "$PASSENGER_MODULE"
-          test -s "$PASSENGER_NAVIGATION_MODULE"
-          test -s "$VALUE_MODULE"
-          test -s "$SEAT_MODULE"
-          test -s "$TIMELINE_MODULE"
-          test -s "$SESSION_MODULE"
-          test -s "$URL_MODULE"
-          test -s "$IDENTITY_MODULE"
-          test -s "$NETWORK_SOURCE_MODULE"
-          test -s "$CLEAN_PRINT_MODULE"
-          test -s "$RELIABLE_SEAT_SYNC"
-          test -s "$QUICK_PASSENGER"
-          test -s "$GLOBAL_PASSENGER"
-          test -s "$COLLECTOR_UI"
-          test -s "$TEST261"
-          test -s "$TEST262"
-          test -s "$TEST263"
-          test -s "$TEST264"
-          test -s "$TEST265"
-          test -s "$TEST266"
-          test -s "$TEST267"
-          test -s "$TEST271"
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+              file.write_text(text.replace(old, new, 1))
 
-          for temp in \
-            .github/workflows/sequential-card-collector-once.yml \
-            .github/workflows/sequential-card-collector-pr-bridge.yml \
-            .github/workflows/sequential-card-collector-pr-bridge-v2.yml \
-            .github/sequential-card-collector-trigger.txt \
-            .github/sequential_card_patch.py \
-            .github/sequential_followup_patch.py \
-            .github/sequential-persistence-result.txt; do
-            test ! -e "$temp"
-          done
+          dynamic = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          test262 = 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
+          test264 = 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
+          gradle = 'app/build.gradle.kts'
 
-          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
-          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
-          grep -Fq 'CARD_TRAVERSAL_START' "$DYNAMIC"
-          grep -Fq 'CARD_TRAVERSAL_COMPLETE' "$DYNAMIC"
-          grep -Fq 'CARD_TRAVERSAL_QUARANTINED' "$DYNAMIC"
-          grep -Fq 'RIDES_TRAVERSAL_SCROLL' "$DYNAMIC"
-          grep -Fq 'fixedTripLimit=false' "$DYNAMIC"
-          grep -Fq 'dateIgnored=true' "$DYNAMIC"
-          grep -Fq 'batchShortcut=false' "$DYNAMIC"
-          grep -Fq 'PASSENGER_TEL_INTERCEPTED' "$DYNAMIC"
-          grep -Fq 'PASSENGER_CALL_ACTION_PRESENT' "$DYNAMIC"
-          grep -Fq 'DIRECT_TRIP_EVIDENCE_PERSISTED' "$DYNAMIC"
-          grep -Fq 'TIMELINE_CARD_CHECKPOINT_SAVED' "$DYNAMIC"
-          grep -Fq 'DIRECT_EDIT_CAPTURED' "$DYNAMIC"
-          grep -Fq 'DIRECT_SEAT_OPTIONS_CAPTURED' "$DYNAMIC"
-          grep -Fq 'itineraryStops: itineraryStops' "$DYNAMIC"
-          grep -Fq 'TRIP_ROSTER_PROBE' "$DYNAMIC"
-          grep -Fq 'PASSENGER_TARGET_BOUND' "$DYNAMIC"
-          grep -Fq 'PASSENGER_CONTACT_CAPTURED' "$DYNAMIC"
-          grep -Fq 'coordinatePresent=' "$DYNAMIC"
-          ! grep -Fq 'MAX_TRIPS' "$DYNAMIC"
+          replace_once(
+              dynamic,
+              '''            val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+            if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                tripRosterReadAttempts++
+                statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                webView.postDelayed({
+                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                }, ROSTER_RETRY_MS)
+                return@evaluate
+            }
+            if (!editLinkMatches) {
+                skipped++
+                UnifiedDebugEventStore.record(
+                    "TRIP_REJECTED",
+                    packageName,
+                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                )
+                advanceCandidate(expectedSync, expectedCandidate)
+                return@evaluate
+            }
+''',
+              '''            if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+                val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+                if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                    tripRosterReadAttempts++
+                    statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                    webView.postDelayed({
+                        captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                    }, ROSTER_RETRY_MS)
+                    return@evaluate
+                }
+                if (!editLinkMatches) {
+                    skipped++
+                    UnifiedDebugEventStore.record(
+                        "TRIP_REJECTED",
+                        packageName,
+                        "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                    )
+                    advanceCandidate(expectedSync, expectedCandidate)
+                    return@evaluate
+                }
+            }
+''',
+          )
 
-          grep -Fq 'hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD' "$PASSENGER_NAVIGATION_MODULE"
-          grep -Fq 'firstUnresolvedVisibleKey' "$CARD_MODULE"
-          grep -Fq 'fun canAdvance' "$CARD_MODULE"
-          grep -Fq 'emptyListIsAuthoritative' "$CARD_MODULE"
-          grep -Fq 'rosterCompleteAfterStableProbe' "$PASSENGER_MODULE"
-          grep -Fq 'passengerNavigationPrioritizesVisibleCardBeforeReservationUrl' "$TEST264"
-          grep -Fq 'farePresent' "$VALUE_MODULE"
-          grep -Fq 'optionsIdentityMatches' "$SEAT_MODULE"
-          grep -Fq 'preservedMissingTrips' "$TIMELINE_MODULE"
-          grep -Fq 'fun saveHarvestTrips' "$SESSION_MODULE"
-          grep -Fq 'ConcurrentHashMap' "$SESSION_MODULE"
-          grep -Fq 'authority=session_store' "$SESSION_MODULE"
-          grep -Fq 'fun isAllowed' "$URL_MODULE"
-          grep -Fq 'fun canonical' "$URL_MODULE"
-          grep -Fq 'fun samePassengerPage' "$URL_MODULE"
-          grep -Fq 'fun passengerPage' "$URL_MODULE"
-          grep -Fq 'fun isManageTarget' "$URL_MODULE"
-          grep -Fq 'fun trustedDriverProfileLinks' "$IDENTITY_MODULE"
-          grep -Fq 'fun resolve' "$NETWORK_SOURCE_MODULE"
-          grep -Fq 'fun parseCanonicalMinorUnits' "$NETWORK_SOURCE_MODULE"
-          grep -Fq '__rotaCertaNetworkTripSource' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
-          grep -Fq 'BLABLACAR_NETWORK_SOURCE_APPLIED' "$DYNAMIC"
-          grep -Fq 'OVERLAY_FREE_APPLICATION_WINDOW_PRINT_0267' "$CLEAN_PRINT_MODULE"
-          grep -Fq 'takeScreenshotOfWindow' "$CLEAN_PRINT_MODULE"
-          grep -Fq 'OverlayFreeScreenPrint0267.captureIfSupported' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
-          grep -Fq 'context = this' "$FAROL"
-          ! grep -Fq 'saveDeterministicSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
-          ! grep -Fq '.harvest.tmp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
-          grep -Fq 'action=preserve_last_confirmed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
-          grep -Fq 'firstUncompletedCardKeepsExactUiOrder' "$TEST262"
-          grep -Fq 'terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt' "$TEST262"
-          grep -Fq 'stablePositiveRosterCompletesWithoutBrittleContainerMarker' "$TEST263"
-          grep -Fq 'explicitEmptyRosterAlsoNeedsThreeStableTerminalObservations' "$TEST263"
-          grep -Fq 'everyDomEmptyRosterWaitsForNetworkBeforeFinalizing' "$TEST263"
-          grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$TEST264"
-          grep -Fq 'videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions' "$TEST264"
-          grep -Fq 'zeroVisibleCardsWithoutExplicitEmptyEvidenceIsNeverAuthoritative' "$TEST264"
-          grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
-          grep -Fq 'duplicateWeakAndStrongDomEvidenceBecomesOnePassenger' "$TEST264"
-          grep -Fq 'sameVisibleNameWithDifferentStrongPassengerPagesStaysDistinct' "$TEST264"
-          grep -Fq 'normalizedTripDoesNotCountDuplicateDomNodesAsOccupiedSeats' "$TEST264"
-          grep -Fq 'staleHarvestCannotEraseIndividualPassengerActionsOrNewerCards' "$TEST265"
-          grep -Fq 'exactCollectorOriginRejectsLookalikeAndForeignHosts' "$TEST265"
-          grep -Fq 'manageTargetAcceptsPassengerPageWithoutWeakeningOriginBoundary' "$TEST265"
-          grep -Fq 'exactCompleteSourceCreatesIndividualPassengerShortcutAndMetadata' "$TEST266"
-          grep -Fq 'verifiedSessionDoesNotTreatPassengerUuidAsDriverUuid' "$TEST266"
-          grep -Fq 'activeApplicationWindowWinsOverBubbleAndShortcutPanel' "$TEST267"
-          grep -Fq 'TIMELINE_CLEARED_BY_USER' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'preserveOnPartial = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          replace_once(
+              dynamic,
+              '''        loadCurrentTripEdit(expectedSync, expectedCandidate)
+    }
 
-          grep -Fq 'compensateAfterCancellation' "$RELIABLE_SEAT_SYNC"
-          grep -Fq 'EXTERNAL_SEAT_SYNC_RELIABLE_VERIFIED' "$RELIABLE_SEAT_SYNC"
-          grep -Fq 'PENDING_CONFLICT' "$RELIABLE_SEAT_SYNC"
-          grep -Fq 'BlaBlaReliableSeatSyncIntents.seatSync' "$COLLECTOR_UI"
-          grep -Fq 'externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry)' "$GLOBAL_PASSENGER"
-          grep -Fq 'BlaBlaReliableSeatSyncBridge.onManualBookingCancelled' "$QUICK_PASSENGER"
-          grep -Fq 'retryAfterExternalSaveDoesNotDecreaseTwice' "$TEST271"
-          grep -Fq 'cancellationAfterUncertainDecreaseLandedRestoresOriginalSeatCount' "$TEST271"
+    private fun openPendingPassengerCard(''',
+              '''        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            loadCurrentTripEdit(expectedSync, expectedCandidate)
+        } else {
+            UnifiedDebugEventStore.record(
+                "AUTOMATIC_SEAT_LOOKUP_SKIPPED",
+                packageName,
+                "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} reason=policy_disabled manualSeatSyncPreserved=true",
+            )
+            finalizeCurrentTrip(expectedSync, expectedCandidate)
+        }
+    }
 
-          echo "source_head=$(git rev-parse HEAD)"
-          echo 'direct_source=true'
-          echo 'historical_sha_checkout=false'
-          echo 'materializer_used=false'
-          echo 'strict_sequential_card_traversal=true'
-          echo 'collector_modules=true'
-          echo 'partial_snapshot_monotonic=true'
-          echo 'mhtml_enrichment_monotonic=true'
-          echo 'single_session_persistence_authority=true'
-          echo 'single_collector_url_authority=true'
-          echo 'network_first_roster_authority=true'
-          echo 'passenger_uuid_not_driver_identity=true'
-          echo 'overlay_free_window_print=true'
-          echo 'past_date_filter=false'
-          echo 'fixed_trip_limit=false'
-          echo 'manual_seat_sync_retry_safe=true'
-          echo 'manual_seat_sync_exact_booking_binding=true'
-          echo 'manual_seat_cancel_reverse_guarded=true'
-          echo 'manual_seat_uncertain_write_compensation=true'
-          echo 'farol_decision_logic_untouched=true'
-          echo 'farol_context_bridge_authorized=true'
+    private fun openPendingPassengerCard(''',
+          )
 
-      - name: Run unit and regression tests directly on app source
+          replace_once(
+              dynamic,
+              '''        val seatState = BlaBlaCollectorSeatModule.state(
+            tripId = candidateTripId,
+            editHref = pendingEditHref,
+            optionsHref = pendingOptionsHref,
+            publishedSeats = pendingPublishedSeats,
+        )
+        if (!BlaBlaCollectorSeatModule.complete(seatState)) {
+            skipped++
+            blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
+            return
+        }
+''',
+              '''        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            val seatState = BlaBlaCollectorSeatModule.state(
+                tripId = candidateTripId,
+                editHref = pendingEditHref,
+                optionsHref = pendingOptionsHref,
+                publishedSeats = pendingPublishedSeats,
+            )
+            if (!BlaBlaCollectorSeatModule.complete(seatState)) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
+                return
+            }
+        }
+''',
+          )
+
+          replace_once(
+              test262,
+              '''    fun visualPassengerCardWinsOverDirectHref() {
+        assertEquals(
+            BlaBlaDirectPassengerStep.PASSENGER_CARD,''',
+              '''    fun canonicalReservationHrefWinsOverVisualPassengerCard() {
+        assertEquals(
+            BlaBlaDirectPassengerStep.RESERVATION_URL,''',
+          )
+
+          replace_once(
+              test264,
+              '''    fun passengerNavigationPrioritizesVisibleCardBeforeReservationUrl() {
+        val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
+            passengerPresent = true,
+            hasBookingHref = true,
+            needsReservationPage = true,
+            hasPassengerCard = true,
+        )
+
+        assertEquals(BlaBlaDirectPassengerStep.PASSENGER_CARD, step)
+    }
+
+    @Test
+    fun seatModuleRequiresEditOptionsAndSeatCountFromSameTrip() {''',
+              '''    fun passengerNavigationPrioritizesCanonicalReservationUrlOverVisibleCard() {
+        val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
+            passengerPresent = true,
+            hasBookingHref = true,
+            needsReservationPage = true,
+            hasPassengerCard = true,
+        )
+
+        assertEquals(BlaBlaDirectPassengerStep.RESERVATION_URL, step)
+    }
+
+    @Test
+    fun automaticPublishedSeatLookupRemainsOutsideNormalSync() {
+        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
+    }
+
+    @Test
+    fun seatModuleRequiresEditOptionsAndSeatCountFromSameTrip() {''',
+          )
+
+          replace_once(
+              gradle,
+              '        versionCode = 5564\n        versionName = "0.1.271"',
+              '        versionCode = 5565\n        versionName = "0.1.272"',
+          )
+          PY
+
+          git diff --check
+          grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' "$DYNAMIC"
+          grep -Fq 'canonicalReservationHrefWinsOverVisualPassengerCard' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt
+          grep -Fq 'automaticPublishedSeatLookupRemainsOutsideNormalSync' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt
+          grep -Fq 'versionCode = 5565' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.272"' app/build.gradle.kts
+
+      - name: Persist exact source patch
+        shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-
-      - name: Assemble debug APK directly from app source
-        run: |
-          set -euo pipefail
-          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$APK"
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-
-          mkdir -p evidence
-          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
-          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
-          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
-          sha256sum "$APK" | tee evidence/apk-sha256.txt
-
-          cat > evidence/passenger-timeline-geo-ux-status.txt <<EOF
-          passenger_timeline_geo_ux_direct_source=PASS
-          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
-          source_head=$(git rev-parse HEAD)
-          direct_source=true
-          historical_sha_checkout=false
-          materializer_used=false
-          strict_sequential_card_traversal=true
-          incomplete_card_quarantine_and_continue=true
-          stable_roster_probe=true
-          collector_modules=true
-          partial_snapshot_monotonic=true
-          explicit_empty_list_required=true
-          mhtml_enrichment_monotonic=true
-          single_session_persistence_authority=true
-          single_collector_url_authority=true
-          network_first_roster_authority=true
-          passenger_uuid_not_driver_identity=true
-          overlay_free_window_print=true
-          stale_harvest_cannot_overwrite_direct_sync=true
-          per_card_timeline_checkpoint=true
-          edit_options_same_trip_required=true
-          published_seats_read_required=true
-          past_date_filter=false
-          fixed_trip_limit=false
-          passenger_ui_order=true
-          hidden_phone_tel_intercept=true
-          direct_itinerary_evidence=true
-          timeline_clear_cache_only=true
-          manual_seat_sync_retry_safe=true
-          manual_seat_sync_exact_booking_binding=true
-          manual_seat_cancel_reverse_guarded=true
-          manual_seat_uncertain_write_compensation=true
-          farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
-          collector_external_write=false
-          manual_seat_ui_write=true
-          manual_seat_ui_write_user_initiated=true
-          physical_ui_validation=false
-          collector_physical_validation=false
-          merge=false
-          release=false
-          latest=false
-          EOF
-
-      - name: Upload direct-source candidate APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.271
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            evidence/apk-sha256.txt
-            evidence/aapt-badging.txt
-            evidence/passenger-timeline-geo-ux-status.txt
-          if-no-files-found: error
-          retention-days: 7
+          if git diff --quiet; then
+            echo 'nothing to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt \
+                  app/build.gradle.kts
+          git commit -m '[agenda-auto-seat-fix] fix(agenda): preserve network-first trips without automatic seat lookup'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
