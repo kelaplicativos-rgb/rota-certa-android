@@ -246,7 +246,7 @@ class BlaBlaCollectorModules0264Test {
         val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
             passengerPresent = true,
             hasBookingHref = true,
-            nedsReservationPage = true,
+            needsReservationPage = true,
             hasPassengerCard = true,
         )
 
