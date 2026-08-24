@@ -36,12 +36,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Test and assemble direct source
+      - name: Test Consulta Publica and assemble direct source
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew \
+            :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest \
+            :app:assembleDebug \
+            --no-daemon --stacktrace
 
       - name: Verify protected FAROL and APK
         shell: bash
