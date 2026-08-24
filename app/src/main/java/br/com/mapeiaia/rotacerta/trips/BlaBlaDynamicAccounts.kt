@@ -16,8 +16,6 @@ import android.widget.TextView
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import java.io.File
-import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -57,7 +55,8 @@ data class BlaBlaDynamicAccount(
 }
 
 class BlaBlaDynamicAccountRegistry(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun list(): List<BlaBlaDynamicAccount> = runCatching {
@@ -95,7 +94,7 @@ class BlaBlaDynamicAccountRegistry(context: Context) {
         val current = list()
         val account = current.firstOrNull { it.id == id } ?: return
         save(current.filterNot { it.id == id })
-        BlaBlaDynamicSessionStore(prefsContext()).delete(account)
+        BlaBlaDynamicSessionStore(appContext).delete(account)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             runCatching { ProfileStore.getInstance().deleteProfile(account.webProfileName) }
         }
@@ -105,210 +104,9 @@ class BlaBlaDynamicAccountRegistry(context: Context) {
         prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(accounts)).apply()
     }
 
-    private fun prefsContext(): Context = AppContextHolder.requireContext(prefs)
-
     companion object {
         private const val PREFS = "rota_certa_blablacar_dynamic_accounts_v2"
         private const val KEY_ACCOUNTS = "accounts"
-    }
-}
-
-/** Small holder used only to recover the application Context from the registry path. */
-private object AppContextHolder {
-    private var context: Context? = null
-
-    fun initialize(context: Context) {
-        this.context = context.applicationContext
-    }
-
-    fun requireContext(@Suppress("UNUSED_PARAMETER") ignored: Any): Context =
-        context ?: error("BlaBlaCar account registry context not initialized")
-}
-
-@Serializable
-data class BlaBlaDynamicSessionSnapshot(
-    val accountId: String,
-    val profileUuid: String? = null,
-    val profileLabel: String = "",
-    val identityVerified: Boolean = false,
-    val lastUrl: String = "",
-    val updatedAtMillis: Long = System.currentTimeMillis(),
-    val trips: List<BlaBlaCollectorTrip> = emptyList(),
-    val skippedTrips: Int = 0,
-)
-
-class BlaBlaDynamicSessionStore(context: Context) {
-    private val appContext = context.applicationContext.also(AppContextHolder::initialize)
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-
-    fun read(account: BlaBlaDynamicAccount): BlaBlaDynamicSessionSnapshot? = runCatching {
-        val target = file(account.id)
-        if (!target.isFile) null else json.decodeFromString<BlaBlaDynamicSessionSnapshot>(target.readText(Charsets.UTF_8))
-    }.getOrNull()?.takeIf { it.accountId == account.id }
-
-    fun markSeen(account: BlaBlaDynamicAccount, lastUrl: String) {
-        val previous = read(account)
-        write(
-            account,
-            (previous ?: BlaBlaDynamicSessionSnapshot(account.id, account.profileUuid, account.displayLabel)).copy(
-                profileUuid = account.profileUuid,
-                profileLabel = account.displayLabel,
-                lastUrl = lastUrl.take(1000),
-                updatedAtMillis = System.currentTimeMillis(),
-            ),
-        )
-    }
-
-    fun saveSync(
-        account: BlaBlaDynamicAccount,
-        lastUrl: String,
-        trips: List<BlaBlaCollectorTrip>,
-        skippedTrips: Int,
-        identityVerified: Boolean,
-    ) {
-        val previous = read(account)
-        val authoritativeComplete = identityVerified && skippedTrips == 0
-        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
-            previous = previous?.trips.orEmpty(),
-            current = trips,
-            authoritativeComplete = authoritativeComplete,
-        )
-        val preservedVerifiedIdentity =
-            !authoritativeComplete &&
-                previous?.identityVerified == true &&
-                previous.profileUuid == account.profileUuid
-        val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
-        write(
-            account,
-            BlaBlaDynamicSessionSnapshot(
-                accountId = account.id,
-                profileUuid = account.profileUuid,
-                profileLabel = account.displayLabel,
-                identityVerified = effectiveIdentityVerified,
-                lastUrl = lastUrl.take(1000),
-                updatedAtMillis = System.currentTimeMillis(),
-                trips = merged.trips,
-                skippedTrips = skippedTrips,
-            ),
-        )
-        UnifiedDebugEventStore.record(
-            "SNAPSHOT_SAVED",
-            appContext.packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete",
-        )
-    }
-
-    fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {
-val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
-val verified = snapshots.filter { (account, snapshot) ->
-  snapshot.identityVerified && !account.profileUuid.isNullOrBlank() && snapshot.profileUuid == account.profileUuid
-}
-val beforeDistinct = verified.flatMap { (_, snapshot) -> snapshot.trips }
-val resolution = BlaBlaTripIdentity.resolveDistinct(beforeDistinct)
-beforeDistinct.forEachIndexed { index, trip ->
-  val identity = BlaBlaTripIdentity.evidence(trip)
-  UnifiedDebugEventStore.record(
-      "TRIP_IDENTITY",
-      appContext.packageName,
-      "index=${index + 1}/${beforeDistinct.size} tripId=${trip.trip_id.orEmpty()} core=${BlaBlaTripIdentity.physicalCoreKey(trip)} externalTripIdPresent=${identity.externalTripIdPresent} specificHrefPresent=${identity.specificHrefPresent} fallbackIdentityUsed=${identity.fallbackIdentityUsed} identityHash=${identity.identityHash} identityConflict=${identity.identityConflict}",
-  )
-}
-resolution.conflicts.forEach { conflict ->
-  UnifiedDebugEventStore.record(
-      "TRIP_IDENTITY_CONFLICT",
-      appContext.packageName,
-      "identityHash=${conflict.identityHash} tripId=${conflict.externalTripId.orEmpty()} physicalCoreCount=${conflict.physicalCores.size} cores=${conflict.physicalCores.joinToString(" || ")} action=preserve_and_flag",
-  )
-}
-val trips = resolution.trips
-  .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
-val identityConflictCount = resolution.conflicts.size
-val hasIdentityConflict = identityConflictCount > 0
-val skippedCount = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }
-val rosterIncompleteCount = trips.count { !it.passenger_roster_complete }
-val dataCoveragePartial = rosterIncompleteCount > 0 || skippedCount > 0
-val identityStatus = when {
-    accounts.isEmpty() -> "empty"
-    verified.size == accounts.size -> "validated"
-    verified.isEmpty() -> "blocked"
-    else -> "partial"
-}
-val dataCoverage = if (!dataCoveragePartial && !hasIdentityConflict) "complete" else "partial"
-val response = BlaBlaCollectorMonthResponse(
-  collected_at = Instant.now().toString(),
-  status = blaBlaDirectCollectorStatus(
-      accountCount = accounts.size,
-      verifiedAccountCount = verified.size,
-      identityConflictCount = identityConflictCount,
-      rosterIncompleteCount = rosterIncompleteCount,
-      skippedCount = skippedCount,
-  ),
-  month = null,
-  strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
-  profiles = verified.map { (account, _) ->
-      BlaBlaCollectorProfile(
-          uuid = account.profileUuid.orEmpty(),
-          name = account.displayLabel,
-          title = "Sessão autenticada local • perfil WebView isolado • UUID confirmado",
-      )
-  },
-  trips = trips,
-  coverage = BlaBlaCollectorCoverage(
-      complete_for_scope = blaBlaDirectCoverageComplete(
-          accountCount = accounts.size,
-          verifiedAccountCount = verified.size,
-          identityConflictCount = identityConflictCount,
-          rosterIncompleteCount = rosterIncompleteCount,
-          skippedCount = skippedCount,
-      ),
-      global_profile_month_complete = false,
-      reason = when {
-          hasIdentityConflict -> "Conflito de identidade externa detectado; viagens preservadas para conferência sem descarte silencioso."
-          dataCoveragePartial -> "Identidade das contas validada, mas a cobertura dos dados está parcial por roster incompleto ou cartão não resolvido."
-          else -> "Contas cadastradas pelo usuário; leitura autenticada local de Suas viagens com UUID confirmado."
-      },
-      requested_queries = accounts.size,
-      validated_queries = verified.size,
-      failed_or_mismatched_queries = (accounts.size - verified.size).coerceAtLeast(0),
-      unresolved_target_cards = skippedCount,
-      identity_conflicts = resolution.conflicts.size,
-      past_dates_skipped = false,
-  ),
-)
-UnifiedDebugEventStore.record(
-  "COMBINED_RESPONSE",
-  appContext.packageName,
-  "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=$identityConflictCount rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=$rosterIncompleteCount skipped=$skippedCount identityStatus=$identityStatus dataCoverage=$dataCoverage status=${response.status}",
-)
-return response
-}
-
-    fun delete(account: BlaBlaDynamicAccount) {
-        file(account.id).delete()
-        diagnosticDir(account.id).deleteRecursively()
-    }
-
-    fun saveDiagnosticHtml(account: BlaBlaDynamicAccount, kind: String, html: String) {
-        if (html.isBlank()) return
-        val dir = diagnosticDir(account.id).apply { mkdirs() }
-        File(dir, "$kind-latest.html").writeText(html.take(MAX_HTML_CHARS), Charsets.UTF_8)
-    }
-
-    private fun write(account: BlaBlaDynamicAccount, snapshot: BlaBlaDynamicSessionSnapshot) {
-        val target = file(account.id)
-        val temp = File(target.parentFile, target.name + ".tmp")
-        temp.writeText(json.encodeToString(snapshot), Charsets.UTF_8)
-        if (!temp.renameTo(target)) {
-            target.writeText(temp.readText(Charsets.UTF_8), Charsets.UTF_8)
-            temp.delete()
-        }
-    }
-
-    private fun file(id: String): File = File(appContext.filesDir, "blablacar-dynamic-session-$id.json")
-    private fun diagnosticDir(id: String): File = File(appContext.filesDir, "blablacar-dom/$id")
-
-    companion object {
-        private const val MAX_HTML_CHARS = 350_000
     }
 }
 
@@ -555,14 +353,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     statusView.text = "${account.displayLabel} • ${url.take(110)}"
                 }
                 when (phase) {
-                    Phase.IDENTITY -> if (isBlaBla(url)) view.postDelayed({ captureIdentityForSync() }, 650)
-                    Phase.RIDES -> if (isBlaBla(url)) view.postDelayed({ captureRideList() }, 900)
-                    Phase.DETAIL -> if (isBlaBla(url)) scheduleTripDetailCapture(view)
-                    Phase.PASSENGER_CARD -> if (isBlaBla(url)) schedulePassengerCardOpen(view)
-                    Phase.PASSENGER_CONTACT -> if (isBlaBla(url)) schedulePassengerContactCapture(view)
-                    Phase.EDIT -> if (isBlaBla(url)) scheduleEditCapture(view)
-                    Phase.OPTIONS -> if (isBlaBla(url)) scheduleOptionsCapture(view)
-                    Phase.IDLE -> if (isBlaBla(url)) view.postDelayed({ probeIdentity() }, 500)
+                    Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureIdentityForSync() }, 650)
+                    Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureRideList() }, 900)
+                    Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
+                    Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
+                    Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
+                    Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
+                    Phase.OPTIONS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleOptionsCapture(view)
+                    Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ probeIdentity() }, 500)
                 }
             }
         }
@@ -575,11 +373,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (!url.startsWith("tel:", ignoreCase = true)) return false
         val passenger = pendingTripPassengers.getOrNull(passengerContactIndex)
         val pageUrl = if (::webView.isInitialized) webView.url.orEmpty() else ""
-        val phone = normalizeCapturedPhone(url.substringAfter(':').substringBefore('?'))
+        val phone = BlaBlaCollectorPassengerModule.normalizePhone(url.substringAfter(':').substringBefore('?'))
         if (
             phase == Phase.PASSENGER_CONTACT &&
             passenger != null &&
-            passengerPageMatchesExpected(passenger.booking_href.orEmpty(), pageUrl)
+            BlaBlaCollectorUrlModule.samePassengerPage(passenger.booking_href.orEmpty(), pageUrl)
         ) {
             interceptedPassengerPhone = phone
             UnifiedDebugEventStore.record(
@@ -638,7 +436,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "SYNC_START",
             packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${sanitizedUrl(PROFILE_URL)}",
+            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(PROFILE_URL)}",
         )
         loadTrackedUrl(PROFILE_URL)
     }
@@ -700,7 +498,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "IDENTITY_EVIDENCE",
                     packageName,
-                    "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${sanitizedUrl(webView.url.orEmpty())}",
+                    "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
             }
             if (identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()) {
@@ -747,9 +545,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val visible = result.candidates
                 .filter { candidate ->
                     val href = candidate.href
-                    isBlaBla(href) && (href.contains("/rides/offer") || href.contains("/trip?") || href.contains("/trip/"))
+                    BlaBlaCollectorUrlModule.isSpecificTrip(href)
                 }
-                .distinctBy { canonicalHref(it.href) }
+                .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
             UnifiedDebugEventStore.record(
                 "RIDES_TRAVERSAL_SCAN",
                 packageName,
@@ -891,7 +689,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "TRIP_REJECTED",
                     packageName,
-                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_dom_unreadable url=${sanitizedUrl(webView.url.orEmpty())}",
+                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_dom_unreadable url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluate
@@ -990,7 +788,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "TRIP_DETAIL_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${acceptedResult.detail.passengers.size} rosterComplete=${acceptedResult.detail.passengerRosterComplete} editLinkPresent=${acceptedResult.editHref.isNotBlank()} url=${sanitizedUrl(webView.url.orEmpty())}",
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${acceptedResult.detail.passengers.size} rosterComplete=${acceptedResult.detail.passengerRosterComplete} editLinkPresent=${acceptedResult.editHref.isNotBlank()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
             )
             if (expectedUuid != null && driverUuids.isNotEmpty() && expectedUuid !in driverUuids) {
                 skipped++
@@ -1067,7 +865,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun passengerNeedsReservationPage(passenger: BlaBlaCollectorPassenger): Boolean {
         val href = passenger.booking_href?.trim().orEmpty()
-        if (href.isBlank() || !isBlaBla(href)) return false
+        if (href.isBlank() || !BlaBlaCollectorUrlModule.isAllowed(href)) return false
         val metadataKey = externalPassengerReservationKey(account.profileUuid, href)
         val metadata = passengerIdentityStore.externalMetadata(metadataKey)
         return passenger.phone.isNullOrBlank() || metadata?.fareMinorUnits == null || metadata?.boardingAddress.isNullOrBlank()
@@ -1084,7 +882,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         while (passengerContactIndex < pendingTripPassengers.size) {
             val passenger = pendingTripPassengers[passengerContactIndex]
             val href = passenger.booking_href?.trim().orEmpty()
-            val hasBookingHref = href.isNotBlank() && isPassengerHref(href)
+            val hasBookingHref = href.isNotBlank() && BlaBlaCollectorUrlModule.isPassenger(href)
             val cardIndex = pendingTripPassengerCardIndexes[passengerContactIndex]
             when (
                 BlaBlaCollectorPassengerNavigationModule.nextStep(
@@ -1260,14 +1058,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private fun bindPendingPassengerTarget(expectedCandidate: Int, expectedPassenger: Int): Boolean {
         val current = pendingTripPassengers.getOrNull(expectedPassenger) ?: return false
         val existingHref = current.booking_href?.trim().orEmpty()
-        if (existingHref.isNotBlank()) return passengerPageMatchesExpected(existingHref, webView.url.orEmpty())
+        if (existingHref.isNotBlank()) return BlaBlaCollectorUrlModule.samePassengerPage(existingHref, webView.url.orEmpty())
         val cardIndex = pendingTripPassengerCardIndexes[expectedPassenger] ?: return false
-        val actualHref = webView.url.orEmpty().takeIf(::isPassengerHref) ?: return false
-        val actualKey = passengerPageKey(actualHref)
+        val actualHref = webView.url.orEmpty().takeIf(BlaBlaCollectorUrlModule::isPassenger) ?: return false
+        val actualKey = BlaBlaCollectorUrlModule.passengerPageKey(actualHref)
         val duplicate = pendingTripPassengers.withIndex().any { (index, other) ->
             index != expectedPassenger &&
                 !other.booking_href.isNullOrBlank() &&
-                passengerPageKey(other.booking_href.orEmpty()) == actualKey
+                BlaBlaCollectorUrlModule.passengerPageKey(other.booking_href.orEmpty()) == actualKey
         }
         if (duplicate) {
             UnifiedDebugEventStore.record(
@@ -1324,7 +1122,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-passenger-${expectedPassenger + 1}", html)
             }
             val effectivePhone = current.phone?.takeIf(String::isNotBlank)
-                ?: normalizeCapturedPhone(evidence.phone)
+                ?: BlaBlaCollectorPassengerModule.normalizePhone(evidence.phone)
                 ?: interceptedPassengerPhone
             if (effectivePhone == null && evidence.callActionPresent && !passengerCallActionTriggered) {
                 passengerCallActionTriggered = true
@@ -1398,7 +1196,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         expectedPassenger == passengerContactIndex &&
         pendingTripIsCurrent(expectedSync, expectedCandidate) &&
         expectedPassenger in pendingTripPassengers.indices &&
-        passengerPageMatchesExpected(
+        BlaBlaCollectorUrlModule.samePassengerPage(
             pendingTripPassengers[expectedPassenger].booking_href.orEmpty(),
             webView.url.orEmpty(),
         )
@@ -1777,7 +1575,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun tripTraversalKey(candidate: BlaBlaDomRideCandidate): String {
         BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)?.takeIf(String::isNotBlank)?.let { return "id|$it" }
-        return canonicalHref(candidate.href).trim().takeIf(String::isNotBlank)?.let { "href|$it" }.orEmpty()
+        return BlaBlaCollectorUrlModule.canonical(candidate.href).trim().takeIf(String::isNotBlank)?.let { "href|$it" }.orEmpty()
     }
 
     private fun recordStale(reason: String, expectedSync: Long, expectedCandidate: Int) {
@@ -1842,14 +1640,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return true
     }
 
-    private fun normalizeCapturedPhone(raw: String?): String? {
-        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val hasPlus = value.startsWith("+")
-        val digits = value.filter(Char::isDigit)
-        if (digits.length < 8 || digits.length > 15) return null
-        return if (hasPlus) "+$digits" else digits
-    }
-
     private fun bindIdentityFromLinks(links: List<String>, visibleName: String): BlaBlaDynamicAccount? {
         val found = uuids(links)
         val currentUuid = account.profileUuid?.lowercase()
@@ -1908,10 +1698,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun manageTargetUrl(): String? {
         val value = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
-        return value.takeIf { href ->
-            href.startsWith("https://www.blablacar.com.br/") &&
-                (href.contains("/trip") || href.contains("/rides/offer"))
-        }
+        return value.takeIf(BlaBlaCollectorUrlModule::isSpecificTrip)
     }
 
     private fun finishSeen() {
@@ -1932,23 +1719,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun canonicalHref(href: String): String = href.substringBefore("&search_uuid=")
-    private fun sanitizedUrl(url: String): String = url.substringBefore('?').substringBefore('#').take(240)
-    private fun isBlaBla(url: String): Boolean = url.contains("blablacar.com.br")
-    private fun isPassengerHref(url: String): Boolean =
-        isBlaBla(url) && (url.contains("/passenger/") || url.contains("/booking/"))
-
-    private fun passengerPageKey(url: String): String = url.substringBefore('#').substringBefore('?').trimEnd('/')
-
-    private fun passengerPageMatchesExpected(expected: String, actual: String): Boolean =
-        expected.isNotBlank() && actual.isNotBlank() &&
-            isPassengerHref(expected) && isPassengerHref(actual) &&
-            passengerPageKey(expected) == passengerPageKey(actual)
-
     private fun currentTripMatchesCandidate(expectedCandidate: Int): Boolean {
         val candidate = candidates.getOrNull(expectedCandidate) ?: return false
-        val expectedTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href) ?: return false
-        val currentTripId = BlaBlaTripIdentity.externalTripIdFromHref(webView.url.orEmpty()) ?: return false
+        val expectedTripId = BlaBlaCollectorUrlModule.tripId(candidate.href) ?: return false
+        val currentTripId = BlaBlaCollectorUrlModule.tripId(webView.url.orEmpty()) ?: return false
         return expectedTripId == currentTripId
     }
 

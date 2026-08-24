@@ -8,6 +8,14 @@ internal enum class BlaBlaDirectRosterState {
 
 /** Passenger roster, names and monotonic merge decisions. */
 internal object BlaBlaCollectorPassengerModule {
+    fun normalizePhone(raw: String?): String? {
+        val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val hasPlus = value.startsWith("+")
+        val digits = value.filter(Char::isDigit)
+        if (digits.length !in 8..15) return null
+        return if (hasPlus) "+$digits" else digits
+    }
+
     fun rosterState(
         passengerCount: Int,
         rosterComplete: Boolean,

@@ -314,8 +314,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
             })();
         """.trimIndent()
 
-        private fun isBlaBlaUrl(value: String?): Boolean =
-            value?.startsWith("https://www.blablacar.com.br/", ignoreCase = true) == true
+        private fun isBlaBlaUrl(value: String?): Boolean = BlaBlaCollectorUrlModule.isAllowed(value)
 
         private fun isTripDetailUrl(value: String?): Boolean {
             if (!isBlaBlaUrl(value)) return false
