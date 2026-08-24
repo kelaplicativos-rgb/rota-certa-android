@@ -199,7 +199,7 @@ internal object BlaBlaReliableSeatSyncPolicy {
     }
 }
 
-internal data class BlaBlaManualSeatCancellationResult(
+data class BlaBlaManualSeatCancellationResult(
     val shouldSync: Boolean,
     val message: String,
 )
