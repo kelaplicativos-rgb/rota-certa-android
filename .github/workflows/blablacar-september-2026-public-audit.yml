@@ -1,0 +1,84 @@
+name: BlaBlaCar September 2026 public audit
+
+on:
+  push:
+    branches:
+      - audit/blablacar-september-2026-public
+    paths:
+      - '.github/workflows/blablacar-september-2026-public-audit.yml'
+      - 'collector/requests/september-2026-public-audit.json'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install public collector
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Start isolated public profile-month collector
+        working-directory: tools/blablacar-public-search
+        run: |
+          xvfb-run -a node profile-month-service.mjs > /tmp/blablacar-audit-service.log 2>&1 &
+          echo $! > /tmp/blablacar-audit-service.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/blablacar-audit-service.log
+          exit 1
+
+      - name: Audit both profiles across September public searches
+        run: |
+          mkdir -p collector/results
+          curl --fail-with-body --max-time 840 \
+            -H 'Content-Type: application/json' \
+            --data-binary @collector/requests/september-2026-public-audit.json \
+            http://127.0.0.1:8080/v1/blablacar/profile-month \
+            -o collector/results/september-2026-public-audit.json
+          python3 -m json.tool collector/results/september-2026-public-audit.json > collector/results/september-2026-public-audit.pretty.json
+          mv collector/results/september-2026-public-audit.pretty.json collector/results/september-2026-public-audit.json
+
+      - name: Preserve service log
+        if: always()
+        run: cp /tmp/blablacar-audit-service.log collector/results/september-2026-public-audit-service.log || true
+
+      - name: Commit audit evidence
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add collector/results/september-2026-public-audit.json collector/results/september-2026-public-audit-service.log || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'data(blablacar): September 2026 public audit evidence [skip ci]'
+            git push
+          fi
+
+      - name: Require validated scoped audit
+        run: |
+          python3 - <<'PY'
+          import json
+          p='collector/results/september-2026-public-audit.json'
+          d=json.load(open(p, encoding='utf-8'))
+          print('status=', d.get('status'))
+          print('queries=', d.get('coverage',{}).get('requested_queries'))
+          print('validated=', d.get('coverage',{}).get('validated_queries'))
+          print('failed=', d.get('coverage',{}).get('failed_or_mismatched_queries'))
+          print('trips=', len(d.get('trips',[])))
+          if d.get('status') != 'validated':
+              raise SystemExit(1)
+          PY
