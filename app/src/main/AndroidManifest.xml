@@ -77,7 +77,7 @@
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
-                android:name="android.support.accessibility"
+                android:name="android.accessibilityservice"
                 android:resource="@xml/rota_certa_accessibility" />
         </service>
 
