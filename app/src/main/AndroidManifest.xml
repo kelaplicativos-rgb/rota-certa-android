@@ -136,5 +136,8 @@
         <activity
             android:name=".trips.BlaBlaManualSeatSyncActivity"
             android:exported="false" />
+        <activity
+            android:name=".trips.BlaBlaReliableSeatSyncActivity"
+            android:exported="false" />
     </application>
 </manifest>
