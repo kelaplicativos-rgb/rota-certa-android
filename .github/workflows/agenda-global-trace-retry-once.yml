@@ -1,79 +1,14 @@
-name: Agenda global trace retry once
+name: Agenda global trace materializer retired
 
 on:
-  push:
-    branches:
-      - agent/passenger-timeline-geo-ux
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  materialize:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 12
+  retired:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: kelaplicativos-rgb/rota-certa-android
-          ref: agent/passenger-timeline-geo-ux
-          fetch-depth: 1
-
-      - name: Materialize exact saved patch safely
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          if test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt \
-             && grep -Fq 'versionName = "0.1.273"' app/build.gradle.kts \
-             && grep -Fq '.agendaInteractionTrace(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt; then
-            echo 'Agenda global trace contract already materialized.'
-            exit 0
-          fi
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64
-
-          text = Path('.github/workflows/agenda-global-trace-contract-once.yml').read_text(encoding='utf-8')
-          prefix = "echo '"
-          suffix = "' | base64 -d > /tmp/agenda_trace_patch.py"
-          payloads = []
-          for line in text.splitlines():
-              stripped = line.strip()
-              if stripped.startswith(prefix) and stripped.endswith(suffix):
-                  payloads.append(stripped[len(prefix):-len(suffix)])
-          assert len(payloads) == 1, f'saved payload matches={len(payloads)}'
-          raw = ''.join(payloads[0].split())
-          Path('/tmp/agenda_trace_patch.py').write_bytes(base64.b64decode(raw, validate=True))
-          PY
-          python3 /tmp/agenda_trace_patch.py
-          git diff --check
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-
-      - name: Commit Agenda trace contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo 'No materialization changes required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRoutePlannerUi.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripAndroidEntryPoints.kt \
-            app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTraceContract0273Test.kt \
-            docs/AGENDA_GLOBAL_TRACE_CONTRACT.md \
-            .github/workflows/direct-source-branch-apk.yml
-          git diff --cached --check
-          git commit -m 'feat(agenda): global forensic trace contract 0.1.273'
-          git push origin HEAD:agent/passenger-timeline-geo-ux
+      - name: Retired
+        run: echo 'Global Agenda trace is materialized directly in app/src and validated by Direct-source branch APK.'
