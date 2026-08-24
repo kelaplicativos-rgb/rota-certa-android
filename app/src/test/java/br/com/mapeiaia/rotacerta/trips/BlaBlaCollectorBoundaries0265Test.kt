@@ -80,6 +80,23 @@ class BlaBlaCollectorBoundaries0265Test {
     }
 
     @Test
+    fun manageTargetAcceptsPassengerPageWithoutWeakeningOriginBoundary() {
+        assertTrue(
+            BlaBlaCollectorUrlModule.isManageTarget(
+                "https://www.blablacar.com.br/rides/offer/passenger/booking-a/0?id=trip-a",
+            ),
+        )
+        assertTrue(BlaBlaCollectorUrlModule.isManageTarget("/rides/offer?id=trip-a"))
+        assertFalse(BlaBlaCollectorUrlModule.isManageTarget("https://www.blablacar.com.br/rides"))
+        assertFalse(BlaBlaCollectorUrlModule.isManageTarget("/rides/offer/edit/trip-a"))
+        assertFalse(
+            BlaBlaCollectorUrlModule.isManageTarget(
+                "https://www.blablacar.com.br.evil.invalid/rides/offer/passenger/booking-a/0?id=trip-a",
+            ),
+        )
+    }
+
+    @Test
     fun phoneNormalizationHasOneCollectorAuthority() {
         assertEquals("+5511999999999", BlaBlaCollectorPassengerModule.normalizePhone("+55 (11) 99999-9999"))
         assertEquals("5511999999999", BlaBlaCollectorPassengerModule.normalizePhone("55 11 99999-9999"))

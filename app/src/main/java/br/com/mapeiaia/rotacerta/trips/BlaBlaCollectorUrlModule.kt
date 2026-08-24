@@ -78,6 +78,10 @@ internal object BlaBlaCollectorUrlModule {
     fun isSpecificTrip(raw: String?): Boolean =
         isAllowed(raw) && !isPassenger(raw) && !isEditOrOptions(raw) && tripId(raw) != null
 
+    /** URLs the authenticated management browser may open on explicit user action. */
+    fun isManageTarget(raw: String?): Boolean =
+        isSpecificTrip(raw) || (isAllowed(raw) && isPassenger(raw))
+
     fun ridesPageMatches(raw: String?): Boolean =
         parseAllowed(raw)?.path.orEmpty().trimEnd('/').equals("/rides", ignoreCase = true)
 

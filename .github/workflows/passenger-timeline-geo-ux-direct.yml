@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.267
+name: Passenger timeline geo UX direct-source 0.1.268
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
-      EXPECTED_VERSION_CODE: '5560'
-      EXPECTED_VERSION_NAME: '0.1.267'
+      EXPECTED_VERSION_CODE: '5561'
+      EXPECTED_VERSION_NAME: '0.1.268'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -132,6 +132,7 @@ jobs:
           grep -Fq 'fun canonical' "$URL_MODULE"
           grep -Fq 'fun samePassengerPage' "$URL_MODULE"
           grep -Fq 'fun passengerPage' "$URL_MODULE"
+          grep -Fq 'fun isManageTarget' "$URL_MODULE"
           grep -Fq 'fun trustedDriverProfileLinks' "$IDENTITY_MODULE"
           grep -Fq 'fun resolve' "$NETWORK_SOURCE_MODULE"
           grep -Fq 'fun parseCanonicalMinorUnits' "$NETWORK_SOURCE_MODULE"
@@ -153,6 +154,7 @@ jobs:
           grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
           grep -Fq 'staleHarvestCannotEraseIndividualPassengerActionsOrNewerCards' "$TEST265"
           grep -Fq 'exactCollectorOriginRejectsLookalikeAndForeignHosts' "$TEST265"
+          grep -Fq 'manageTargetAcceptsPassengerPageWithoutWeakeningOriginBoundary' "$TEST265"
           grep -Fq 'exactCompleteSourceCreatesIndividualPassengerShortcutAndMetadata' "$TEST266"
           grep -Fq 'verifiedSessionDoesNotTreatPassengerUuidAsDriverUuid' "$TEST266"
           grep -Fq 'activeApplicationWindowWinsOverBubbleAndShortcutPanel' "$TEST267"
@@ -238,7 +240,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.267
+          name: rota-certa-passenger-timeline-geo-ux-0.1.268
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

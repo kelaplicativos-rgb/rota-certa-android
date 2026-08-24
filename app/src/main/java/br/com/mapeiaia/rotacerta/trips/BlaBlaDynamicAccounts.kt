@@ -1773,7 +1773,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun manageTargetUrl(): String? {
         val value = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
-        return value.takeIf(BlaBlaCollectorUrlModule::isSpecificTrip)
+        return value.takeIf(BlaBlaCollectorUrlModule::isManageTarget)
     }
 
     private fun finishSeen() {
