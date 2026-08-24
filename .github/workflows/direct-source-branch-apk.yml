@@ -33,7 +33,6 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_HEAD="$(git rev-parse HEAD)"
-          printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
           test "$SOURCE_HEAD" = "${GITHUB_SHA}"
           test -d app/src/main
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
@@ -42,6 +41,7 @@ jobs:
             git status --short
             exit 1
           fi
+          printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
 
       - name: Record protected FAROL before build
         shell: bash
