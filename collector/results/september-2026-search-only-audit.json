@@ -1,0 +1,612 @@
+{
+  "schema_version": 1,
+  "scope": "all public searches Santo André ↔ São Thomé das Letras, every date in September 2026",
+  "method": "PR105 headed Chromium /search only; no login and no /user/show UUID page",
+  "queries_total": 60,
+  "queries_validated": 0,
+  "queries_error": 60,
+  "queries_mismatch": 0,
+  "matches": [],
+  "queries": [
+    {
+      "request_id": "2026-09-01-ida",
+      "date": "2026-09-01",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-01-volta",
+      "date": "2026-09-01",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-02-ida",
+      "date": "2026-09-02",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-02-volta",
+      "date": "2026-09-02",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-03-ida",
+      "date": "2026-09-03",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-03-volta",
+      "date": "2026-09-03",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-04-ida",
+      "date": "2026-09-04",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-04-volta",
+      "date": "2026-09-04",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-05-ida",
+      "date": "2026-09-05",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-05-volta",
+      "date": "2026-09-05",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-06-ida",
+      "date": "2026-09-06",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-06-volta",
+      "date": "2026-09-06",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-07-ida",
+      "date": "2026-09-07",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-07-volta",
+      "date": "2026-09-07",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-08-ida",
+      "date": "2026-09-08",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-08-volta",
+      "date": "2026-09-08",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-09-ida",
+      "date": "2026-09-09",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-09-volta",
+      "date": "2026-09-09",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-10-ida",
+      "date": "2026-09-10",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-10-volta",
+      "date": "2026-09-10",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-11-ida",
+      "date": "2026-09-11",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-11-volta",
+      "date": "2026-09-11",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-12-ida",
+      "date": "2026-09-12",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-12-volta",
+      "date": "2026-09-12",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-13-ida",
+      "date": "2026-09-13",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-13-volta",
+      "date": "2026-09-13",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-14-ida",
+      "date": "2026-09-14",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-14-volta",
+      "date": "2026-09-14",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-15-ida",
+      "date": "2026-09-15",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-15-volta",
+      "date": "2026-09-15",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-16-ida",
+      "date": "2026-09-16",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-16-volta",
+      "date": "2026-09-16",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-17-ida",
+      "date": "2026-09-17",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-17-volta",
+      "date": "2026-09-17",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-18-ida",
+      "date": "2026-09-18",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-18-volta",
+      "date": "2026-09-18",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-19-ida",
+      "date": "2026-09-19",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-19-volta",
+      "date": "2026-09-19",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-20-ida",
+      "date": "2026-09-20",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-20-volta",
+      "date": "2026-09-20",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-21-ida",
+      "date": "2026-09-21",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-21-volta",
+      "date": "2026-09-21",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-22-ida",
+      "date": "2026-09-22",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-22-volta",
+      "date": "2026-09-22",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-23-ida",
+      "date": "2026-09-23",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-23-volta",
+      "date": "2026-09-23",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-24-ida",
+      "date": "2026-09-24",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-24-volta",
+      "date": "2026-09-24",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-25-ida",
+      "date": "2026-09-25",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-25-volta",
+      "date": "2026-09-25",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-26-ida",
+      "date": "2026-09-26",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-26-volta",
+      "date": "2026-09-26",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-27-ida",
+      "date": "2026-09-27",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-27-volta",
+      "date": "2026-09-27",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-28-ida",
+      "date": "2026-09-28",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-28-volta",
+      "date": "2026-09-28",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-29-ida",
+      "date": "2026-09-29",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-29-volta",
+      "date": "2026-09-29",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-30-ida",
+      "date": "2026-09-30",
+      "from": "Santo André, SP, Brasil",
+      "to": "São Thomé das Letras, MG, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    },
+    {
+      "request_id": "2026-09-30-volta",
+      "date": "2026-09-30",
+      "from": "São Thomé das Letras, MG, Brasil",
+      "to": "Santo André, SP, Brasil",
+      "status": "error",
+      "driver_cards_count": 0,
+      "zero_results_confirmed": false,
+      "error": "página pública retornou HTTP 403"
+    }
+  ]
+}

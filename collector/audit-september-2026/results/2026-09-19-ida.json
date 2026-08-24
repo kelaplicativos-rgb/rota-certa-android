@@ -1,0 +1,19 @@
+{
+  "schema_version": 4,
+  "request_id": "2026-09-19-ida",
+  "collected_at": "2026-08-24T21:31:05.428Z",
+  "status": "error",
+  "strategy": "headed_chromium_rendered_public_page",
+  "error": "página pública retornou HTTP 403",
+  "request": {
+    "from": "Santo André, SP, Brasil",
+    "to": "São Thomé das Letras, MG, Brasil",
+    "date": "2026-09-19",
+    "seats": 1
+  },
+  "zero_results_confirmed": false,
+  "driver_cards_count": 0,
+  "ezequiel_s_visible": null,
+  "barbosa_visible": null,
+  "trips": []
+}
