@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.269
+name: Passenger timeline geo UX direct-source 0.1.270
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
-      EXPECTED_VERSION_CODE: '5562'
-      EXPECTED_VERSION_NAME: '0.1.269'
+      EXPECTED_VERSION_CODE: '5563'
+      EXPECTED_VERSION_NAME: '0.1.270'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -163,6 +163,8 @@ jobs:
           grep -Fq 'exactCompleteSourceCreatesIndividualPassengerShortcutAndMetadata' "$TEST266"
           grep -Fq 'verifiedSessionDoesNotTreatPassengerUuidAsDriverUuid' "$TEST266"
           grep -Fq 'activeApplicationWindowWinsOverBubbleAndShortcutPanel' "$TEST267"
+          grep -Fq 'TIMELINE_CLEARED_BY_USER' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'preserveOnPartial = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
@@ -233,6 +235,7 @@ jobs:
           passenger_ui_order=true
           hidden_phone_tel_intercept=true
           direct_itinerary_evidence=true
+          timeline_clear_cache_only=true
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
           collector_external_write=false
           physical_ui_validation=false
@@ -245,7 +248,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.269
+          name: rota-certa-passenger-timeline-geo-ux-0.1.270
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
