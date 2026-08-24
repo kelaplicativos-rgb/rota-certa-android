@@ -1,0 +1,12 @@
+{
+  "profiles": [
+    {"uuid": "175a7068-50d8-40c3-a27a-214b9c6e0461", "label": "Barbosa"},
+    {"uuid": "7371f028-9c55-4903-8444-308015823efd", "label": "Ezequiel S"}
+  ],
+  "month": "2026-09",
+  "routes": [
+    {"from": "Santo André, SP, Brasil", "to": "São Thomé das Letras, MG, Brasil"},
+    {"from": "São Thomé das Letras, MG, Brasil", "to": "Santo André, SP, Brasil"}
+  ],
+  "include_past": false
+}
