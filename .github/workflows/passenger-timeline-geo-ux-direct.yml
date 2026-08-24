@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.270
+name: Passenger timeline geo UX direct-source 0.1.271
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
-      EXPECTED_VERSION_CODE: '5563'
-      EXPECTED_VERSION_NAME: '0.1.270'
+      EXPECTED_VERSION_CODE: '5564'
+      EXPECTED_VERSION_NAME: '0.1.271'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -53,6 +53,10 @@ jobs:
           IDENTITY_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorIdentityModule.kt'
           NETWORK_SOURCE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt'
           CLEAN_PRINT_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/OverlayFreeScreenPrint0267.kt'
+          RELIABLE_SEAT_SYNC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt'
+          QUICK_PASSENGER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt'
+          GLOBAL_PASSENGER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt'
+          COLLECTOR_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt'
           TEST261='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
           TEST262='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
           TEST263='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0263Test.kt'
@@ -60,6 +64,7 @@ jobs:
           TEST265='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorBoundaries0265Test.kt'
           TEST266='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSource0266Test.kt'
           TEST267='app/src/test/java/br/com/mapeiaia/rotacerta/OverlayFreeScreenPrint0267Test.kt'
+          TEST271='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s "$DYNAMIC"
@@ -75,6 +80,10 @@ jobs:
           test -s "$IDENTITY_MODULE"
           test -s "$NETWORK_SOURCE_MODULE"
           test -s "$CLEAN_PRINT_MODULE"
+          test -s "$RELIABLE_SEAT_SYNC"
+          test -s "$QUICK_PASSENGER"
+          test -s "$GLOBAL_PASSENGER"
+          test -s "$COLLECTOR_UI"
           test -s "$TEST261"
           test -s "$TEST262"
           test -s "$TEST263"
@@ -82,6 +91,7 @@ jobs:
           test -s "$TEST265"
           test -s "$TEST266"
           test -s "$TEST267"
+          test -s "$TEST271"
 
           for temp in \
             .github/workflows/sequential-card-collector-once.yml \
@@ -166,6 +176,15 @@ jobs:
           grep -Fq 'TIMELINE_CLEARED_BY_USER' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'preserveOnPartial = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
 
+          grep -Fq 'compensateAfterCancellation' "$RELIABLE_SEAT_SYNC"
+          grep -Fq 'EXTERNAL_SEAT_SYNC_RELIABLE_VERIFIED' "$RELIABLE_SEAT_SYNC"
+          grep -Fq 'PENDING_CONFLICT' "$RELIABLE_SEAT_SYNC"
+          grep -Fq 'BlaBlaReliableSeatSyncIntents.seatSync' "$COLLECTOR_UI"
+          grep -Fq 'externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry)' "$GLOBAL_PASSENGER"
+          grep -Fq 'BlaBlaReliableSeatSyncBridge.onManualBookingCancelled' "$QUICK_PASSENGER"
+          grep -Fq 'retryAfterExternalSaveDoesNotDecreaseTwice' "$TEST271"
+          grep -Fq 'cancellationAfterUncertainDecreaseLandedRestoresOriginalSeatCount' "$TEST271"
+
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
@@ -181,6 +200,10 @@ jobs:
           echo 'overlay_free_window_print=true'
           echo 'past_date_filter=false'
           echo 'fixed_trip_limit=false'
+          echo 'manual_seat_sync_retry_safe=true'
+          echo 'manual_seat_sync_exact_booking_binding=true'
+          echo 'manual_seat_cancel_reverse_guarded=true'
+          echo 'manual_seat_uncertain_write_compensation=true'
           echo 'farol_decision_logic_untouched=true'
           echo 'farol_context_bridge_authorized=true'
 
@@ -236,8 +259,14 @@ jobs:
           hidden_phone_tel_intercept=true
           direct_itinerary_evidence=true
           timeline_clear_cache_only=true
+          manual_seat_sync_retry_safe=true
+          manual_seat_sync_exact_booking_binding=true
+          manual_seat_cancel_reverse_guarded=true
+          manual_seat_uncertain_write_compensation=true
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
           collector_external_write=false
+          manual_seat_ui_write=true
+          manual_seat_ui_write_user_initiated=true
           physical_ui_validation=false
           collector_physical_validation=false
           merge=false
@@ -248,7 +277,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.270
+          name: rota-certa-passenger-timeline-geo-ux-0.1.271
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
