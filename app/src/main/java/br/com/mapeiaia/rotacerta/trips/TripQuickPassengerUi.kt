@@ -31,11 +31,11 @@ fun QuickPassengerPanel(
     store: TripStore,
     onChanged: (String) -> Unit,
     onBlaBlaSyncRequested: (() -> Unit)? = null,
+    externalSeatTarget: BlaBlaManualSeatExternalTarget? = null,
     onSaved: (() -> Unit)? = null,
     showExistingPassengers: Boolean = true,
 ) {
     val context = LocalContext.current
-    val externalSeatLedger = remember(context) { BlaBlaManualSeatSyncLedger(context) }
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val moneySpec = remember(context) { PassengerMoney.spec(context) }
     val stops = trip.stops.sortedBy(TripStop::order)
@@ -239,11 +239,12 @@ fun QuickPassengerPanel(
                     )
                 }.onSuccess {
                     val external = if (onBlaBlaSyncRequested != null) {
-                        BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking(
+                        BlaBlaReliableSeatSyncBridge.enqueueForManualBooking(
                             context = context,
                             trip = trip,
                             booking = plan.passenger,
                             seatDelta = -plan.passenger.seats,
+                            explicitTarget = externalSeatTarget,
                         )
                     } else null
                     name = ""
@@ -254,10 +255,10 @@ fun QuickPassengerPanel(
                     fromStopId = null
                     toStopId = null
                     onChanged(
-                        if (external != null) {
-                            "Passageiro particular adicionado. Ocupação interna recalculada • sincronizando ${plan.passenger.seats} vaga(s) no BlaBlaCar…"
-                        } else {
-                            "Passageiro particular adicionado. Ocupação interna recalculada."
+                        when {
+                            external != null -> "Passageiro particular adicionado. Ocupação interna recalculada • ajustando ${plan.passenger.seats} vaga(s) na mesma publicação BlaBlaCar…"
+                            onBlaBlaSyncRequested != null -> "Passageiro particular adicionado. Ocupação interna recalculada • sincronização externa pendente ⚠️"
+                            else -> "Passageiro particular adicionado. Ocupação interna recalculada."
                         },
                     )
                     onBlaBlaSyncRequested?.invoke()
@@ -288,23 +289,21 @@ fun QuickPassengerPanel(
                         scope.launch {
                             runCatching { store.saveBooking(booking.copy(status = BookingStatus.CANCELLED)) }
                                 .onSuccess {
-                                    val priorExternalDecreaseVerified = externalSeatLedger.canReverse(booking.id, booking.seats)
-                                    val external = if (onBlaBlaSyncRequested != null && priorExternalDecreaseVerified) {
-                                        BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking(
+                                    val cancellation = if (onBlaBlaSyncRequested != null) {
+                                        BlaBlaReliableSeatSyncBridge.onManualBookingCancelled(
                                             context = context,
                                             trip = trip,
                                             booking = booking,
-                                            seatDelta = booking.seats,
+                                            explicitTarget = externalSeatTarget,
                                         )
-                                    } else null
-                                    onChanged(
-                                        when {
-                                            external != null -> "Passageiro manual removido. Vaga interna liberada • devolvendo ${booking.seats} vaga(s) ao BlaBlaCar…"
-                                            priorExternalDecreaseVerified -> "Passageiro manual removido. Vaga interna liberada • sincronização externa pendente ⚠️"
-                                            else -> "Passageiro manual removido. Vaga interna liberada • nenhuma vaga externa foi devolvida porque não havia redução externa confirmada."
-                                        },
-                                    )
-                                    onBlaBlaSyncRequested?.invoke()
+                                    } else {
+                                        BlaBlaManualSeatCancellationResult(
+                                            shouldSync = false,
+                                            message = "Passageiro manual cancelado. Vaga interna liberada.",
+                                        )
+                                    }
+                                    onChanged(cancellation.message)
+                                    if (cancellation.shouldSync) onBlaBlaSyncRequested?.invoke()
                                 }
                                 .onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
                             busy = false
