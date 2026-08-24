@@ -16,8 +16,11 @@ internal object BlaBlaCollectorPassengerNavigationModule {
         hasPassengerCard: Boolean,
     ): BlaBlaDirectPassengerStep = when {
         !passengerPresent -> BlaBlaDirectPassengerStep.FINISH
+        // A canonical reservation URL is stronger and more stable evidence than a DOM-only
+        // passenger card click. Network-first can already provide this URL even when the
+        // corresponding visual card is temporarily not clickable.
+        hasBookingHref -> BlaBlaDirectPassengerStep.RESERVATION_URL
         hasPassengerCard -> BlaBlaDirectPassengerStep.PASSENGER_CARD
-        hasBookingHref && needsReservationPage -> BlaBlaDirectPassengerStep.RESERVATION_URL
         else -> BlaBlaDirectPassengerStep.SKIP
     }
 }
