@@ -7,9 +7,9 @@ import org.junit.Test
 
 class BlaBlaDirectCollector0262Test {
     @Test
-    fun visualPassengerCardWinsOverDirectHref() {
+    fun canonicalReservationHrefWinsOverVisualPassengerCard() {
         assertEquals(
-            BlaBlaDirectPassengerStep.PASSENGER_CARD,
+            BlaBlaDirectPassengerStep.RESERVATION_URL,
             blaBlaDirectPassengerStep(
                 passengerPresent = true,
                 hasBookingHref = true,
