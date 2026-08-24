@@ -1,0 +1,131 @@
+name: Public search Agenda module direct-source
+
+on:
+  push:
+    branches:
+      - agent/public-search-agenda-module
+    paths:
+      - '.github/workflows/public-search-agenda-module-direct-source.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Integrate Consulta Pública into Agenda Timeline
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          timeline = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
+          text = timeline.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '    val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }\n',
+                  '    val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }\n'
+                  '    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }\n',
+              ),
+              (
+                  '    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }\n',
+                  '    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }\n'
+                  '    var publicSearchResponse by remember { mutableStateOf(publicSearchStore.lastResponse()) }\n',
+              ),
+              (
+                  '    var showSync by remember { mutableStateOf(false) }\n',
+                  '    var showSync by remember { mutableStateOf(false) }\n'
+                  '    var showPublicSearch by remember { mutableStateOf(false) }\n',
+              ),
+              (
+                  '            ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },\n'
+                  '            ResponsiveTripAction("Limpar Timeline") {\n',
+                  '            ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },\n'
+                  '            ResponsiveTripAction(if (showPublicSearch) "Fechar consulta pública" else "Consulta pública") { showPublicSearch = !showPublicSearch },\n'
+                  '            ResponsiveTripAction("Limpar Timeline") {\n',
+              ),
+              (
+                  '    if (showSync) {\n'
+                  '        BlaBlaCollectorPanel(\n'
+                  '            trips = trips,\n'
+                  '            stateStore = collectorStore,\n'
+                  '            currentResponse = collectorResponse,\n'
+                  '            onResult = { collectorResponse = it },\n'
+                  '            onChanged = onChanged,\n'
+                  '            autoSyncToken = autoSyncToken,\n'
+                  '            autoSyncProfileUuid = autoSyncProfileUuid,\n'
+                  '        )\n'
+                  '    }\n\n'
+                  '    OutlinedTextField(\n',
+                  '    if (showSync) {\n'
+                  '        BlaBlaCollectorPanel(\n'
+                  '            trips = trips,\n'
+                  '            stateStore = collectorStore,\n'
+                  '            currentResponse = collectorResponse,\n'
+                  '            onResult = { collectorResponse = it },\n'
+                  '            onChanged = onChanged,\n'
+                  '            autoSyncToken = autoSyncToken,\n'
+                  '            autoSyncProfileUuid = autoSyncProfileUuid,\n'
+                  '        )\n'
+                  '    }\n\n'
+                  '    if (showPublicSearch) {\n'
+                  '        BlaBlaPublicSearchPanel(\n'
+                  '            trips = trips,\n'
+                  '            currentResponse = publicSearchResponse,\n'
+                  '            onResult = { publicSearchResponse = it },\n'
+                  '            onChanged = onChanged,\n'
+                  '        )\n'
+                  '    }\n\n'
+                  '    OutlinedTextField(\n',
+              ),
+              (
+                  '    if (entries.isEmpty()) {\n',
+                  '    if (showPublicSearch) {\n'
+                  '        publicSearchResponse?.let { response ->\n'
+                  '            BlaBlaPublicSearchTimelineResults(response = response, trips = trips)\n'
+                  '        }\n'
+                  '    }\n\n'
+                  '    if (entries.isEmpty()) {\n',
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('TripTimelineUi integration marker not found: ' + old[:120].replace('\\n',' '))
+              text = text.replace(old, new, 1)
+          timeline.write_text(text, encoding='utf-8')
+
+          manifest = Path('app/src/main/AndroidManifest.xml')
+          m = manifest.read_text(encoding='utf-8')
+          old = '''        <activity\n            android:name=".trips.BlaBlaReliableSeatSyncActivity"\n            android:exported="false" />\n'''
+          new = old + '''        <activity\n            android:name=".trips.BlaBlaPublicSearchActivity"\n            android:exported="false" />\n'''
+          if old not in m:
+              raise SystemExit('AndroidManifest public-search insertion marker not found')
+          manifest.write_text(m.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate public search module
+        run: |
+          ./gradlew testDebugUnitTest assembleDebug
+
+      - name: Commit validated direct-source integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt app/src/main/AndroidManifest.xml
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(public-search): integrate public audit into Agenda timeline [skip ci]'
+            git push
+          fi
