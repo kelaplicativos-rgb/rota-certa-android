@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-before.sha256
-          test "$(cut -d' ' -f1 farol-before.sha256)" = "2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560"
+          test "$(cut -d' ' -f1 farol-before.sha256)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

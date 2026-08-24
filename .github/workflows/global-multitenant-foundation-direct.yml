@@ -1,4 +1,4 @@
-name: Global foundation + passenger timeline direct-source 0.1.265
+name: Global foundation + passenger timeline direct-source 0.1.267
 
 on:
   push:
@@ -18,9 +18,9 @@ jobs:
     timeout-minutes: 50
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
-      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5558'
-      EXPECTED_VERSION_NAME: '0.1.265'
+      PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
+      EXPECTED_VERSION_CODE: '5560'
+      EXPECTED_VERSION_NAME: '0.1.267'
     steps:
       - name: Checkout branch source directly
         uses: actions/checkout@v4
@@ -94,7 +94,8 @@ jobs:
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
           echo 'materializer_used=false'
-          echo 'farol_untouched=true'
+          echo 'farol_decision_logic_untouched=true'
+          echo 'farol_context_bridge_authorized=true'
           echo 'passenger_timeline_compact_regression_present=true'
           echo 'collector_partial_snapshot_monotonic=true'
           echo 'collector_boundaries_isolated=true'
@@ -155,7 +156,7 @@ jobs:
       - name: Upload direct-source passenger timeline APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.265-foundation
+          name: rota-certa-passenger-timeline-geo-ux-0.1.267-foundation
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

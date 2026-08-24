@@ -352,7 +352,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         ) // directional_alert_init_checklist_5
         radarDetectionCue = RadarDetectionCue()
         shortcutOverlayController = BubbleShortcutOverlayController(
-            context = applicationContext,
+            context = this,
             windowManager = requireNotNull(windowManager),
             trace = ::traceEvent,
         )
