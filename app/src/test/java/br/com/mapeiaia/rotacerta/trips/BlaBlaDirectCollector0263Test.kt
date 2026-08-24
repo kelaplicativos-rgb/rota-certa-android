@@ -66,4 +66,56 @@ class BlaBlaDirectCollector0263Test {
             ),
         )
     }
+
+    @Test
+    fun explicitEmptyRosterAlsoNeedsThreeStableTerminalObservations() {
+        assertFalse(
+            blaBlaDirectRosterCompleteAfterStableProbe(
+                passengerCount = 0,
+                structurallyComplete = true,
+                explicitEmpty = true,
+                hasMore = false,
+                terminalEvidence = true,
+                stablePasses = 2,
+            ),
+        )
+        assertTrue(
+            blaBlaDirectRosterCompleteAfterStableProbe(
+                passengerCount = 0,
+                structurallyComplete = true,
+                explicitEmpty = true,
+                hasMore = false,
+                terminalEvidence = true,
+                stablePasses = 3,
+            ),
+        )
+    }
+
+    @Test
+    fun everyDomEmptyRosterWaitsForNetworkBeforeFinalizing() {
+        assertTrue(
+            BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                networkResolved = false,
+                passengerCount = 0,
+                readAttempts = 0,
+                maxReadAttempts = 5,
+            ),
+        )
+        assertFalse(
+            BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                networkResolved = true,
+                passengerCount = 0,
+                readAttempts = 0,
+                maxReadAttempts = 5,
+            ),
+        )
+        assertFalse(
+            BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                networkResolved = false,
+                passengerCount = 3,
+                readAttempts = 0,
+                maxReadAttempts = 5,
+            ),
+        )
+    }
 }

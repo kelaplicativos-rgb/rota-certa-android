@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,6 +95,68 @@ class BlaBlaCollectorModules0264Test {
         assertEquals(passenger.phone, merged.passengers.single().phone)
         assertEquals(passenger.booking_href, merged.passengers.single().booking_href)
         assertTrue(merged.passenger_roster_complete)
+    }
+
+    @Test
+    fun duplicateWeakAndStrongDomEvidenceBecomesOnePassenger() {
+        val weak = passenger.copy(phone = null, booking_href = null)
+        val strong = passenger.copy(name = "Passenger A", seats = 1)
+
+        val merged = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(listOf(weak, strong))
+
+        assertEquals(1, merged.size)
+        assertEquals(passenger.phone, merged.single().phone)
+        assertEquals(passenger.booking_href, merged.single().booking_href)
+        assertEquals(1, merged.single().seats)
+    }
+
+    @Test
+    fun sameVisibleNameWithDifferentStrongPassengerPagesStaysDistinct() {
+        val other = passenger.copy(
+            phone = null,
+            booking_href = "https://www.blablacar.com.br/rides/offer/passenger/reservation-b",
+        )
+
+        val merged = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+            listOf(passenger.copy(phone = null), other),
+        )
+
+        assertEquals(2, merged.size)
+    }
+
+    @Test
+    fun normalizedTripDoesNotCountDuplicateDomNodesAsOccupiedSeats() {
+        val weak = passenger.copy(phone = null, booking_href = null)
+        val account = BlaBlaAccountDefinition(
+            slot = "slot",
+            label = "Driver",
+            uuid = "7371f028-9c55-4903-8444-308015823efd",
+            dataDirectorySuffix = "profile",
+        )
+        val candidate = BlaBlaDomRideCandidate(
+            href = "https://www.blablacar.com.br/rides/offer?id=trip-a",
+            departureTime = "10:30",
+            origin = "Origin",
+            destination = "Destination",
+            dateText = "2026-08-23",
+            passengers = listOf(weak),
+        )
+        val detail = BlaBlaDomTripDetail(
+            url = candidate.href,
+            passengers = listOf(passenger),
+            passengerRosterComplete = true,
+        )
+
+        val normalized = BlaBlaDomNormalizer.toTrip(
+            account = account,
+            candidate = candidate,
+            detail = detail,
+            today = LocalDate.of(2026, 8, 23),
+            authenticatedProfileSessionVerified = true,
+        )!!
+
+        assertEquals(1, normalized.passengers.size)
+        assertEquals(1, normalized.booked_seats)
     }
 
     @Test

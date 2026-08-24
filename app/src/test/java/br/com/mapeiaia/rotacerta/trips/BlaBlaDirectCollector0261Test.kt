@@ -23,6 +23,14 @@ class BlaBlaDirectCollector0261Test {
     }
 
     @Test
+    fun visibleEmptyMarkerCannotFinalizeBeforeProbeConfirmation() {
+        assertEquals(
+            BlaBlaDirectRosterState.UNKNOWN,
+            blaBlaDirectRosterState(0, rosterComplete = false, explicitEmpty = true),
+        )
+    }
+
+    @Test
     fun positiveRosterMustBeReportedComplete() {
         assertEquals(
             BlaBlaDirectRosterState.UNKNOWN,

@@ -117,7 +117,9 @@ object BlaBlaDomNormalizer {
             detailHref.isNotBlank() -> detailHref
             else -> candidateHref
         }
-        val passengers = mergePassengerEvidence(candidate.passengers, detail.passengers)
+        val passengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+            mergePassengerEvidence(candidate.passengers, detail.passengers),
+        )
         return BlaBlaCollectorTrip(
             profile_uuid = account.uuid,
             profile_name = account.label,

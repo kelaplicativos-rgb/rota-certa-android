@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.text.Normalizer
+
 internal enum class BlaBlaDirectRosterState {
     UNKNOWN,
     COMPLETE_EMPTY,
@@ -21,7 +23,7 @@ internal object BlaBlaCollectorPassengerModule {
         rosterComplete: Boolean,
         explicitEmpty: Boolean,
     ): BlaBlaDirectRosterState = when {
-        explicitEmpty && passengerCount == 0 -> BlaBlaDirectRosterState.COMPLETE_EMPTY
+        explicitEmpty && !rosterComplete -> BlaBlaDirectRosterState.UNKNOWN
         rosterComplete && passengerCount == 0 -> BlaBlaDirectRosterState.COMPLETE_EMPTY
         rosterComplete && passengerCount > 0 -> BlaBlaDirectRosterState.COMPLETE_WITH_PASSENGERS
         else -> BlaBlaDirectRosterState.UNKNOWN
@@ -41,10 +43,47 @@ internal object BlaBlaCollectorPassengerModule {
         stablePasses: Int,
     ): Boolean = when {
         passengerCount < 0 || hasMore || !terminalEvidence -> false
-        explicitEmpty && passengerCount == 0 -> true
+        explicitEmpty && passengerCount == 0 -> stablePasses >= 3
         structurallyComplete && passengerCount > 0 -> true
         passengerCount > 0 -> stablePasses >= 2
         else -> stablePasses >= 3
+    }
+
+    fun shouldAwaitNetworkBeforeEmptyRoster(
+        networkResolved: Boolean,
+        passengerCount: Int,
+        readAttempts: Int,
+        maxReadAttempts: Int,
+    ): Boolean = !networkResolved && passengerCount == 0 && readAttempts < maxReadAttempts
+
+    /**
+     * Collapses two DOM observations of the same visible booking without
+     * inventing extra occupied seats. Distinct strong passenger URLs or phone
+     * numbers remain separate even when the visible name is the same.
+     */
+    fun coalesceDuplicateEvidence(
+        passengers: List<BlaBlaCollectorPassenger>,
+    ): List<BlaBlaCollectorPassenger> {
+        if (passengers.size < 2) return passengers
+        val merged = mutableListOf<BlaBlaCollectorPassenger>()
+        passengers.forEach { incoming ->
+            val normalizedIncoming = incoming.copy(seats = incoming.seats.coerceAtLeast(1))
+            val index = merged.indexOfFirst { existing -> duplicateEvidenceMatches(existing, normalizedIncoming) }
+            if (index < 0) {
+                merged += normalizedIncoming
+            } else {
+                val existing = merged[index]
+                merged[index] = existing.copy(
+                    name = normalizedIncoming.name.ifBlank { existing.name },
+                    seats = maxOf(existing.seats, normalizedIncoming.seats),
+                    boarding = normalizedIncoming.boarding?.takeIf(String::isNotBlank) ?: existing.boarding,
+                    dropoff = normalizedIncoming.dropoff?.takeIf(String::isNotBlank) ?: existing.dropoff,
+                    phone = normalizedIncoming.phone?.takeIf(String::isNotBlank) ?: existing.phone,
+                    booking_href = normalizedIncoming.booking_href?.takeIf(String::isNotBlank) ?: existing.booking_href,
+                )
+            }
+        }
+        return merged
     }
 
     /** An incomplete read may enrich, but can never erase confirmed rows. */
@@ -80,6 +119,39 @@ internal object BlaBlaCollectorPassengerModule {
             booked_seats = maxOf(current.booked_seats, occupied),
         )
     }
+
+    private fun duplicateEvidenceMatches(
+        left: BlaBlaCollectorPassenger,
+        right: BlaBlaCollectorPassenger,
+    ): Boolean {
+        val leftHref = left.booking_href?.trim().orEmpty()
+        val rightHref = right.booking_href?.trim().orEmpty()
+        if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
+            return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
+        }
+
+        val leftPhone = normalizePhone(left.phone)
+        val rightPhone = normalizePhone(right.phone)
+        if (leftPhone != null && rightPhone != null) return leftPhone == rightPhone
+
+        val leftName = normalizeEvidence(left.name)
+        val rightName = normalizeEvidence(right.name)
+        if (leftName.isBlank() || leftName != rightName) return false
+        return compatiblePlace(left.boarding, right.boarding) &&
+            compatiblePlace(left.dropoff, right.dropoff)
+    }
+
+    private fun compatiblePlace(left: String?, right: String?): Boolean {
+        val first = normalizeEvidence(left.orEmpty())
+        val second = normalizeEvidence(right.orEmpty())
+        return first.isBlank() || second.isBlank() || first == second
+    }
+
+    private fun normalizeEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
 }
 
 internal fun blaBlaDirectRosterState(

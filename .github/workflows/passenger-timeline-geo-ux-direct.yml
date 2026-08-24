@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.268
+name: Passenger timeline geo UX direct-source 0.1.269
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
-      EXPECTED_VERSION_CODE: '5561'
-      EXPECTED_VERSION_NAME: '0.1.268'
+      EXPECTED_VERSION_CODE: '5562'
+      EXPECTED_VERSION_NAME: '0.1.269'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -148,10 +148,15 @@ jobs:
           grep -Fq 'firstUncompletedCardKeepsExactUiOrder' "$TEST262"
           grep -Fq 'terminallyQuarantinedCardReleasesNextCardWithoutPublishingIt' "$TEST262"
           grep -Fq 'stablePositiveRosterCompletesWithoutBrittleContainerMarker' "$TEST263"
+          grep -Fq 'explicitEmptyRosterAlsoNeedsThreeStableTerminalObservations' "$TEST263"
+          grep -Fq 'everyDomEmptyRosterWaitsForNetworkBeforeFinalizing' "$TEST263"
           grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$TEST264"
           grep -Fq 'videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions' "$TEST264"
           grep -Fq 'zeroVisibleCardsWithoutExplicitEmptyEvidenceIsNeverAuthoritative' "$TEST264"
           grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
+          grep -Fq 'duplicateWeakAndStrongDomEvidenceBecomesOnePassenger' "$TEST264"
+          grep -Fq 'sameVisibleNameWithDifferentStrongPassengerPagesStaysDistinct' "$TEST264"
+          grep -Fq 'normalizedTripDoesNotCountDuplicateDomNodesAsOccupiedSeats' "$TEST264"
           grep -Fq 'staleHarvestCannotEraseIndividualPassengerActionsOrNewerCards' "$TEST265"
           grep -Fq 'exactCollectorOriginRejectsLookalikeAndForeignHosts' "$TEST265"
           grep -Fq 'manageTargetAcceptsPassengerPageWithoutWeakeningOriginBoundary' "$TEST265"
@@ -240,7 +245,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.268
+          name: rota-certa-passenger-timeline-geo-ux-0.1.269
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

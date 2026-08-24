@@ -709,7 +709,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return@evaluate
             }
             val networkResolution = BlaBlaCollectorNetworkSourceModule.resolve(candidateTripId, result.networkSource)
-            val sourceBackedResult = networkResolution?.let { resolution ->
+            val sourceBackedResult = (networkResolution?.let { resolution ->
                 result.copy(
                     detail = result.detail.copy(
                         passengers = resolution.passengers,
@@ -720,7 +720,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     rosterHasMore = false,
                     rosterTerminalEvidence = true,
                 )
-            } ?: result
+            } ?: result).let { source ->
+                source.copy(
+                    detail = source.detail.copy(
+                        passengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(source.detail.passengers),
+                    ),
+                    passengerHrefs = source.passengerHrefs.distinct(),
+                )
+            }
             if (networkResolution != null) {
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_NETWORK_SOURCE_APPLIED",
@@ -735,24 +742,24 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 lastTripRosterSignature = rosterSignature
                 tripRosterStablePasses = 1
             }
-            val awaitNetworkBeforeInferredEmpty = networkResolution == null &&
-                sourceBackedResult.detail.passengers.isEmpty() &&
-                !sourceBackedResult.explicitEmptyRoster &&
-                tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS
-            val confirmedRosterComplete = !awaitNetworkBeforeInferredEmpty &&
-                BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+            val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                networkResolved = networkResolution != null,
+                passengerCount = sourceBackedResult.detail.passengers.size,
+                readAttempts = tripRosterReadAttempts,
+                maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
+            )
+            val confirmedRosterComplete = networkResolution != null ||
+                (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
                     passengerCount = sourceBackedResult.detail.passengers.size,
                     structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
                     explicitEmpty = sourceBackedResult.explicitEmptyRoster,
                     hasMore = sourceBackedResult.rosterHasMore,
                     terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
                     stablePasses = tripRosterStablePasses,
-                )
-            val acceptedResult = if (confirmedRosterComplete && !sourceBackedResult.detail.passengerRosterComplete) {
-                sourceBackedResult.copy(detail = sourceBackedResult.detail.copy(passengerRosterComplete = true))
-            } else {
-                sourceBackedResult
-            }
+                ))
+            val acceptedResult = sourceBackedResult.copy(
+                detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
+            )
             val rosterState = BlaBlaCollectorPassengerModule.rosterState(
                 passengerCount = acceptedResult.detail.passengers.size,
                 rosterComplete = acceptedResult.detail.passengerRosterComplete,
@@ -761,7 +768,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "TRIP_ROSTER_PROBE",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeInferredEmpty state=$rosterState",
+                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
             )
             if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
                 if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
@@ -1506,7 +1513,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             views = detail.views ?: prior?.views,
             itineraryStops = detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() },
             passengers = pendingTripPassengers.toList(),
-            passengerRosterComplete = detail.detail.passengerRosterComplete || detail.explicitEmptyRoster,
+            passengerRosterComplete = detail.detail.passengerRosterComplete,
         )
         evidenceStore.replace(account.id, existing.filterNot { it.tripId == tripId } + evidence)
         UnifiedDebugEventStore.record(
@@ -1541,8 +1548,16 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         candidateIndex = 0
         phase = Phase.RIDES
         ridesRestorePending = ridesResumeScrollY > 0
-        statusView.text = "${account.displayLabel} • card isolado ⚠️ • continuando…"
+        statusView.text = "${account.displayLabel} • card não publicado: ${quarantineReasonLabel(reason)} • continuando…"
         loadTrackedUrl(RIDES_URL)
+    }
+
+    private fun quarantineReasonLabel(reason: String): String = when {
+        "roster" in reason -> "passageiros não confirmados"
+        "passenger" in reason -> "passageiro não confirmado"
+        "seat" in reason || "options" in reason -> "lugares publicados não confirmados"
+        "identity" in reason || "trip_id" in reason -> "conta ou viagem não confirmada"
+        else -> "dados obrigatórios incompletos"
     }
 
     private fun blockSyncWithoutCurrentCard(reason: String) {
@@ -2394,10 +2409,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return markerRequestsMore || collapsedNearRoute;
               });
               const hasMore = rosterExpandControls.length > 0;
-              const explicitEmptyRoster = Array.from(document.querySelectorAll('[data-testid]')).some((node) => {
-                const marker = (node.getAttribute('data-testid') || '').toLowerCase();
-                const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
-                return passengerMarker && (marker.includes('empty') || marker.includes('none') || marker.includes('zero') || marker.includes('no-'));
+              const isVisible = (node) => {
+                if (!node || !node.isConnected) return false;
+                const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+                if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) return false;
+                return !node.getClientRects || node.getClientRects().length > 0;
+              };
+              const emptyRosterText = /^(?:nenhum(?:a)? passageir[oa].{0,50}(?:carona|viagem|reserva)|sem passageir[oa]s?(?: nesta carona)?|no passengers?(?: on this ride)?|aucun passager|keine mitfahrer|sin pasajeros|nessun passeggero)$/i;
+              const explicitEmptyRoster = passengers.length === 0 && Array.from(document.querySelectorAll(
+                'p, span, h1, h2, h3, [role="status"], [data-testid*="passenger"], [data-testid*="booking"], [data-testid*="reservation"]'
+              )).some((node) => {
+                const text = clean(node.innerText || node.textContent);
+                return isVisible(node) && text.length > 0 && text.length <= 160 && emptyRosterText.test(text);
               });
               const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
               const rosterTerminalEvidence = !!edit || rosterContainers.length > 0 || document.readyState === 'complete';
