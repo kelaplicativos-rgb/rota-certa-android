@@ -56,6 +56,7 @@ class BlaBlaPublicSearchActivity : Activity() {
     private var tasks: List<BlaBlaPublicSearchTask> = emptyList()
     private var taskIndex = 0
     private var generation = 0L
+    private var capturedGeneration = Long.MIN_VALUE
     private val matches = mutableListOf<BlaBlaPublicSearchCard>()
     private val queries = mutableListOf<BlaBlaPublicSearchQueryResult>()
 
@@ -74,7 +75,9 @@ class BlaBlaPublicSearchActivity : Activity() {
             finishWithError("Informe uma data AAAA-MM-DD ou um mês AAAA-MM válido.")
             return
         }
-        val unsupported = tasks.flatMap { listOf(it.from, it.to) }.firstOrNull { !BlaBlaPublicPlaceDirectory.supported(it) }
+        val unsupported = tasks
+            .flatMap { listOf(it.from, it.to) }
+            .firstOrNull { !BlaBlaPublicPlaceDirectory.supported(it) }
         if (unsupported != null) {
             finishWithError("Cidade ainda não reconhecida pela Consulta Pública: $unsupported")
             return
@@ -96,13 +99,19 @@ class BlaBlaPublicSearchActivity : Activity() {
     private fun createUi() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
         }
         statusView = TextView(this).apply {
             text = "Consulta Pública"
             setPadding(24, 18, 24, 18)
         }
-        root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(
+            statusView,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
 
         webView = WebView(this)
         WebViewCompat.setProfile(webView, PUBLIC_PROFILE)
@@ -135,11 +144,16 @@ class BlaBlaPublicSearchActivity : Activity() {
                 super.onPageFinished(view, url)
                 val expectedGeneration = generation
                 view.postDelayed({
-                    if (expectedGeneration == generation && taskIndex < tasks.size) captureCurrentPage(expectedGeneration)
+                    if (expectedGeneration == generation && taskIndex < tasks.size) {
+                        captureCurrentPage(expectedGeneration)
+                    }
                 }, PAGE_SETTLE_MS)
             }
         }
-        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(
+            webView,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
+        )
         setContentView(root)
     }
 
@@ -159,7 +173,8 @@ class BlaBlaPublicSearchActivity : Activity() {
     }
 
     private fun captureCurrentPage(expectedGeneration: Long) {
-        if (expectedGeneration != generation) return
+        if (expectedGeneration != generation || capturedGeneration == expectedGeneration) return
+        capturedGeneration = expectedGeneration
         val task = tasks.getOrNull(taskIndex) ?: return
         webView.evaluateJavascript(EXTRACT_PUBLIC_SEARCH_JS) { raw ->
             if (expectedGeneration != generation || taskIndex >= tasks.size) return@evaluateJavascript
@@ -171,10 +186,15 @@ class BlaBlaPublicSearchActivity : Activity() {
             }
             val currentUrl = webView.url.orEmpty()
             val exact = exactSearchUrl(currentUrl, task)
-            val zeroResults = ZERO_RESULTS.any { marker -> evidence.bodyText.contains(marker, ignoreCase = true) }
+            val zeroResults = ZERO_RESULTS.any { marker ->
+                evidence.bodyText.contains(marker, ignoreCase = true)
+            }
             val visibleCards = evidence.cards.filter { it.driverName.isNotBlank() }
             val contentConfirmed = zeroResults || visibleCards.isNotEmpty()
             val status = if (exact && contentConfirmed) "validated" else "mismatch"
+            val targetMatches = visibleCards.filter {
+                BlaBlaPublicSearchPlanner.matchesTarget(it.driverName, request.targetNames)
+            }
             queries += BlaBlaPublicSearchQueryResult(
                 date = task.date.toString(),
                 from = task.from,
@@ -185,14 +205,12 @@ class BlaBlaPublicSearchActivity : Activity() {
                 error = if (status == "validated") null else "A página final não confirmou rota/data/conteúdo.",
             )
             if (status == "validated") {
-                visibleCards
-                    .filter { BlaBlaPublicSearchPlanner.matchesTarget(it.driverName, request.targetNames) }
-                    .forEach { card -> matches += card.toPublicCard(task) }
+                targetMatches.forEach { card -> matches += card.toPublicCard(task) }
             }
             UnifiedDebugEventStore.record(
                 "PUBLIC_SEARCH_QUERY",
                 packageName,
-                "index=${taskIndex + 1}/${tasks.size} date=${task.date} status=$status cards=${visibleCards.size} targetMatches=${visibleCards.count { BlaBlaPublicSearchPlanner.matchesTarget(it.driverName, request.targetNames) }} zero=$zeroResults",
+                "index=${taskIndex + 1}/${tasks.size} date=${task.date} status=$status cards=${visibleCards.size} targetMatches=${targetMatches.size} zero=$zeroResults",
             )
             advance()
         }
@@ -227,7 +245,10 @@ class BlaBlaPublicSearchActivity : Activity() {
         val response = BlaBlaPublicSearchResponse(
             status = status,
             request = request,
-            cards = matches.distinctBy { listOf(it.driverName, it.date, it.departureTime, it.searchFrom, it.searchTo, it.tripHref).joinToString("|") },
+            cards = matches.distinctBy {
+                listOf(it.driverName, it.date, it.departureTime, it.searchFrom, it.searchTo, it.tripHref)
+                    .joinToString("|")
+            },
             queries = queries.toList(),
         )
         store.saveResponse(response)
@@ -247,7 +268,10 @@ class BlaBlaPublicSearchActivity : Activity() {
         if (::store.isInitialized && ::request.isInitialized) {
             store.saveResponse(BlaBlaPublicSearchResponse(status = "error", request = request))
         }
-        setResult(RESULT_CANCELED, Intent().putExtra(BlaBlaPublicSearchIntents.EXTRA_RESULT_STATUS, "error"))
+        setResult(
+            RESULT_CANCELED,
+            Intent().putExtra(BlaBlaPublicSearchIntents.EXTRA_RESULT_STATUS, "error"),
+        )
         if (::statusView.isInitialized) statusView.text = message
         finish()
     }
@@ -267,8 +291,10 @@ class BlaBlaPublicSearchActivity : Activity() {
             key to value
         }
         return query["db"] == task.date.toString() &&
-            BlaBlaPublicSearchPlanner.normalizePlace(query["fn"].orEmpty()) == BlaBlaPublicSearchPlanner.normalizePlace(task.from) &&
-            BlaBlaPublicSearchPlanner.normalizePlace(query["tn"].orEmpty()) == BlaBlaPublicSearchPlanner.normalizePlace(task.to)
+            BlaBlaPublicSearchPlanner.normalizePlace(query["fn"].orEmpty()) ==
+            BlaBlaPublicSearchPlanner.normalizePlace(task.from) &&
+            BlaBlaPublicSearchPlanner.normalizePlace(query["tn"].orEmpty()) ==
+            BlaBlaPublicSearchPlanner.normalizePlace(task.to)
     }
 
     private fun PublicRenderedCard.toPublicCard(task: BlaBlaPublicSearchTask): BlaBlaPublicSearchCard {
@@ -312,7 +338,7 @@ class BlaBlaPublicSearchActivity : Activity() {
 
     companion object {
         private const val PUBLIC_PROFILE = "rota_certa_blablacar_public_search"
-        private const val PAGE_SETTLE_MS = 2_600L
+        private const val PAGE_SETTLE_MS = 3_500L
         private val ZERO_RESULTS = listOf(
             "Ainda não existem viagens entre essas cidades",
             "0 viagem disponível",
