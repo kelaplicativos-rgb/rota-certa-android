@@ -1,0 +1,134 @@
+name: BlaBlaCar September 2026 search-only audit
+
+on:
+  push:
+    branches:
+      - audit/blablacar-september-2026-search-only
+    paths:
+      - '.github/workflows/blablacar-september-2026-search-only-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install proven PR105 public collector
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Build all September route/date requests
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, datetime
+          root=pathlib.Path('collector/audit-september-2026/requests')
+          root.mkdir(parents=True, exist_ok=True)
+          routes=[
+            ('ida','Santo André, SP, Brasil','São Thomé das Letras, MG, Brasil'),
+            ('volta','São Thomé das Letras, MG, Brasil','Santo André, SP, Brasil'),
+          ]
+          d=datetime.date(2026,9,1)
+          while d.month==9:
+            for label,orig,dest in routes:
+              payload={
+                'request_id':f'2026-09-{d.day:02d}-{label}',
+                'from':orig,'to':dest,'date':d.isoformat(),'seats':1
+              }
+              (root/f'{d.isoformat()}-{label}.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+            d += datetime.timedelta(days=1)
+          PY
+
+      - name: Run public searches only — no profile page, no login
+        run: |
+          mkdir -p collector/audit-september-2026/results
+          cat > /tmp/run_one.sh <<'SH'
+          #!/usr/bin/env bash
+          set +e
+          req="$1"
+          base="$(basename "$req" .json)"
+          xvfb-run -a node tools/blablacar-public-search/collect-dom.mjs \
+            "$req" \
+            "collector/audit-september-2026/results/${base}.json" \
+            "collector/audit-september-2026/results/${base}.md" \
+            "collector/audit-september-2026/results/${base}.png"
+          exit 0
+          SH
+          chmod +x /tmp/run_one.sh
+          find collector/audit-september-2026/requests -name '*.json' -print0 | sort -z | xargs -0 -n1 -P2 /tmp/run_one.sh
+
+      - name: Aggregate Barbosa and Ezequiel evidence
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, unicodedata
+          root=pathlib.Path('collector/audit-september-2026/results')
+          def fold(s):
+            s=unicodedata.normalize('NFD',str(s or ''))
+            return ''.join(c for c in s if unicodedata.category(c)!='Mn').lower().strip()
+          rows=[]; matches=[]
+          for p in sorted(root.glob('*.json')):
+            d=json.loads(p.read_text(encoding='utf-8'))
+            row={
+              'request_id':d.get('request_id'),
+              'date':d.get('request',{}).get('date'),
+              'from':d.get('request',{}).get('from'),
+              'to':d.get('request',{}).get('to'),
+              'status':d.get('status'),
+              'driver_cards_count':d.get('driver_cards_count',0),
+              'zero_results_confirmed':d.get('zero_results_confirmed',False),
+              'error':d.get('error'),
+            }
+            rows.append(row)
+            for t in d.get('trips',[]):
+              n=fold(t.get('driver_name'))
+              if n in {'barbosa','ezequiel s'}:
+                matches.append({
+                  'date':row['date'],'from':row['from'],'to':row['to'],
+                  'driver_name':t.get('driver_name'),
+                  'departure_time':t.get('departure_time'),
+                  'arrival_time':t.get('arrival_time'),
+                  'actual_departure':t.get('actual_departure'),
+                  'actual_arrival':t.get('actual_arrival'),
+                  'price':t.get('price'),
+                  'flags':t.get('flags',[]),
+                  'availability':t.get('availability'),
+                  'trip_href':t.get('trip_href'),
+                })
+          out={
+            'schema_version':1,
+            'scope':'all public searches Santo André ↔ São Thomé das Letras, every date in September 2026',
+            'method':'PR105 headed Chromium /search only; no login and no /user/show UUID page',
+            'queries_total':len(rows),
+            'queries_validated':sum(r['status']=='validated' for r in rows),
+            'queries_error':sum(r['status']=='error' for r in rows),
+            'queries_mismatch':sum(r['status']=='mismatch' for r in rows),
+            'matches':matches,
+            'queries':rows,
+          }
+          pathlib.Path('collector/results/september-2026-search-only-audit.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print(json.dumps({k:out[k] for k in ['queries_total','queries_validated','queries_error','queries_mismatch']},ensure_ascii=False))
+          print('matches=',len(matches))
+          for m in matches: print(m)
+          PY
+
+      - name: Commit audit evidence
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add collector/results/september-2026-search-only-audit.json collector/audit-september-2026 || true
+          if ! git diff --cached --quiet; then
+            git commit -m 'data(blablacar): September 2026 search-only audit [skip ci]'
+            git push
+          fi
