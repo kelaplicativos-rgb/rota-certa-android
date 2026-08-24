@@ -9,28 +9,34 @@ import java.util.Calendar
 
 class WorkTrackingRepository(context: Context) {
     private val appContext = context.applicationContext
+    private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-    private val pointsFile = File(appContext.filesDir, POINTS_FILE_NAME)
+    private val activeKey = tenantScope.key(KEY_ACTIVE)
+    private val sessionStartedAtKey = tenantScope.key(KEY_SESSION_STARTED_AT)
+    private val pointsFile = File(
+        appContext.filesDir,
+        if (tenantScope.usesLegacyKeys) POINTS_FILE_NAME else "work-tracking-points-${tenantScope.namespace}.jsonl",
+    )
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun isTrackingActive(): Boolean = preferences.getBoolean(KEY_ACTIVE, false)
+    fun isTrackingActive(): Boolean = preferences.getBoolean(activeKey, false)
 
     fun sessionStartedAtMillis(): Long? = preferences
-        .getLong(KEY_SESSION_STARTED_AT, 0L)
+        .getLong(sessionStartedAtKey, 0L)
         .takeIf { it > 0L }
 
     fun markTrackingStarted(nowMillis: Long = System.currentTimeMillis()) {
         preferences.edit()
-            .putBoolean(KEY_ACTIVE, true)
-            .putLong(KEY_SESSION_STARTED_AT, nowMillis)
+            .putBoolean(activeKey, true)
+            .putLong(sessionStartedAtKey, nowMillis)
             .apply()
         pruneOldPoints(nowMillis)
     }
 
     fun markTrackingStopped() {
         preferences.edit()
-            .putBoolean(KEY_ACTIVE, false)
-            .remove(KEY_SESSION_STARTED_AT)
+            .putBoolean(activeKey, false)
+            .remove(sessionStartedAtKey)
             .apply()
     }
 
@@ -73,7 +79,7 @@ class WorkTrackingRepository(context: Context) {
     private fun rewrite(points: List<WorkTrackPoint>) {
         synchronized(FILE_LOCK) {
             pointsFile.parentFile?.mkdirs()
-            val temporary = File(pointsFile.parentFile, "$POINTS_FILE_NAME.tmp")
+            val temporary = File(pointsFile.parentFile, pointsFile.name + ".tmp")
             temporary.bufferedWriter().use { writer ->
                 points.forEach { point ->
                     writer.append(json.encodeToString(point)).append('\n')

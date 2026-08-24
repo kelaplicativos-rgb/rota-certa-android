@@ -14,8 +14,13 @@ import java.util.UUID
 
 class FinancialRepository(context: Context) {
     private val appContext = context.applicationContext
-    private val entriesFile = File(appContext.filesDir, ENTRIES_FILE_NAME)
+    private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
+    private val entriesFile = File(
+        appContext.filesDir,
+        if (tenantScope.usesLegacyKeys) ENTRIES_FILE_NAME else "finance-entries-${tenantScope.namespace}.jsonl",
+    )
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val closedDaysKey = tenantScope.key(KEY_CLOSED_DAYS)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun readAll(): List<FinanceEntry> = synchronized(FILE_LOCK) { readAllLocked() }
@@ -125,13 +130,13 @@ class FinancialRepository(context: Context) {
     }
 
     fun isDayClosed(nowMillis: Long = System.currentTimeMillis()): Boolean =
-        dayKey(nowMillis) in preferences.getStringSet(KEY_CLOSED_DAYS, emptySet()).orEmpty()
+        dayKey(nowMillis) in preferences.getStringSet(closedDaysKey, emptySet()).orEmpty()
 
     fun setDayClosed(closed: Boolean, nowMillis: Long = System.currentTimeMillis()) {
-        val days = preferences.getStringSet(KEY_CLOSED_DAYS, emptySet()).orEmpty().toMutableSet()
+        val days = preferences.getStringSet(closedDaysKey, emptySet()).orEmpty().toMutableSet()
         val key = dayKey(nowMillis)
         if (closed) days += key else days -= key
-        preferences.edit().putStringSet(KEY_CLOSED_DAYS, days).apply()
+        preferences.edit().putStringSet(closedDaysKey, days).apply()
     }
 
     private fun append(entry: FinanceEntry) = synchronized(FILE_LOCK) { appendLocked(entry) }
@@ -152,7 +157,7 @@ class FinancialRepository(context: Context) {
 
     private fun rewriteLocked(entries: List<FinanceEntry>) {
         entriesFile.parentFile?.mkdirs()
-        val temporary = File(entriesFile.parentFile, "$ENTRIES_FILE_NAME.tmp")
+        val temporary = File(entriesFile.parentFile, entriesFile.name + ".tmp")
         temporary.bufferedWriter().use { writer ->
             entries.forEach { writer.append(json.encodeToString(it)).append('\n') }
         }
@@ -176,29 +181,32 @@ class FinancialRepository(context: Context) {
     }
 
     private fun dayKey(nowMillis: Long): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis))
+        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(nowMillis))
 
     companion object {
+        /**
+         * Currency-symbol agnostic parser. Symbols/letters are ignored and both
+         * comma and dot decimal conventions are accepted without assuming country.
+         */
         fun parseCurrencyToCents(raw: String): Long? {
-            val normalized = raw.trim().replace("R$", "", ignoreCase = true).replace(" ", "")
-            if (normalized.isBlank()) return null
-            val decimalSeparator = normalized.lastIndexOf(',')
-            val integerPart: String
-            val centsPart: String
-            if (decimalSeparator >= 0) {
-                integerPart = normalized.substring(0, decimalSeparator).replace(".", "")
-                centsPart = normalized.substring(decimalSeparator + 1).padEnd(2, '0').take(2)
+            val normalized = raw.trim().filter { it.isDigit() || it == ',' || it == '.' }
+            if (normalized.isBlank() || normalized.none(Char::isDigit)) return null
+
+            val separatorIndex = maxOf(normalized.lastIndexOf(','), normalized.lastIndexOf('.'))
+            val decimalDigits = if (separatorIndex >= 0) normalized.substring(separatorIndex + 1).filter(Char::isDigit) else ""
+            val hasDecimal = separatorIndex >= 0 && decimalDigits.length in 1..2
+            val integerDigits = if (hasDecimal) {
+                normalized.substring(0, separatorIndex).filter(Char::isDigit)
             } else {
-                integerPart = normalized.replace(".", "")
-                centsPart = "00"
+                normalized.filter(Char::isDigit)
             }
-            val integer = integerPart.filter(Char::isDigit).toLongOrNull() ?: return null
-            val cents = centsPart.filter(Char::isDigit).toIntOrNull() ?: return null
+            val integer = integerDigits.ifBlank { "0" }.toLongOrNull() ?: return null
+            val cents = if (hasDecimal) decimalDigits.padEnd(2, '0').take(2).toIntOrNull() ?: return null else 0
             return (integer * 100L + cents).takeIf { it > 0L }
         }
 
         fun normalizeForKey(value: String): String = Normalizer
-            .normalize(value.lowercase(Locale("pt", "BR")).trim(), Normalizer.Form.NFD)
+            .normalize(value.lowercase(Locale.ROOT).trim(), Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
