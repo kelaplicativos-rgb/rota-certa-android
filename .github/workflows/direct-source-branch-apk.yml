@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: direct-source-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   direct-source:
     runs-on: ubuntu-latest
@@ -42,6 +46,23 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
+
+      - name: Prove Agenda global trace contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt
+          ACTIONS=app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          test -f "$TRACE"
+          grep -Fq 'class AgendaTraceProvider : ContentProvider()' "$TRACE"
+          grep -Fq 'activity.javaClass.name.startsWith(AGENDA_PACKAGE_PREFIX)' "$TRACE"
+          grep -Fq 'method.name == "dispatchTouchEvent"' "$TRACE"
+          grep -Fq 'MotionEvent.ACTION_UP' "$TRACE"
+          grep -Fq 'UnifiedDebugEventStore.record' "$TRACE"
+          grep -Fq 'android:name=".trips.AgendaTraceProvider"' app/src/main/AndroidManifest.xml
+          grep -Fq 'AgendaTrace.action(context, action.traceKey, action.label)' "$ACTIONS"
+          grep -Fq 'versionCode = 5566' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.273"' app/build.gradle.kts
 
       - name: Record protected FAROL before build
         shell: bash
