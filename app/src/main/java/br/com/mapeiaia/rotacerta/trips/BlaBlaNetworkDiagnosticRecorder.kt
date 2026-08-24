@@ -47,11 +47,11 @@ internal data class BlaBlaNetworkCaptureContext(
 )
 
 /**
- * A one-card diagnostic recorder for BlaBlaCar's own fetch/XHR responses.
+ * The single fetch/XHR observer used by the collector and its one-card report.
  *
- * The page script strips query strings and anonymizes response values before the
- * bridge is crossed. Native code then validates the origin and anonymizes the
- * payload a second time before it is written to the app-private JSONL file.
+ * An allowlisted trip source stays only in the page's memory for collection.
+ * The diagnostic bridge remains first-card-only and receives only anonymized
+ * values, which native code validates and anonymizes again before persistence.
  */
 internal class BlaBlaNetworkDiagnosticRecorder(
     context: Context,
@@ -74,42 +74,47 @@ internal class BlaBlaNetworkDiagnosticRecorder(
     fun install(webView: WebView): Boolean {
         val documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
         val messageListenerSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
-        if (!documentStartSupported || !messageListenerSupported) {
+        if (!documentStartSupported) {
             UnifiedDebugEventStore.record(
                 "BLABLACAR_NETWORK_DIAGNOSTIC_UNAVAILABLE",
                 appPackageName,
-                "documentStart=$documentStartSupported messageListener=$messageListenerSupported collectorChanged=false",
+                "documentStart=false messageListener=$messageListenerSupported networkSource=false collectorChanged=false",
             )
             return false
         }
+        installedWebView = webView
+        if (messageListenerSupported) {
+            listenerInstalled = runCatching {
+                WebViewCompat.addWebMessageListener(
+                    webView,
+                    BRIDGE_NAME,
+                    BlaBlaNetworkDiagnosticPolicy.ALLOWED_PAGE_ORIGINS,
+                    WebViewCompat.WebMessageListener { _, message, sourceOrigin, isMainFrame, _ ->
+                        onBridgeMessage(message.data, sourceOrigin, isMainFrame)
+                    },
+                )
+                true
+            }.getOrDefault(false)
+        }
         return runCatching {
-            WebViewCompat.addWebMessageListener(
-                webView,
-                BRIDGE_NAME,
-                BlaBlaNetworkDiagnosticPolicy.ALLOWED_PAGE_ORIGINS,
-                WebViewCompat.WebMessageListener { _, message, sourceOrigin, isMainFrame, _ ->
-                    onBridgeMessage(message.data, sourceOrigin, isMainFrame)
-                },
-            )
-            listenerInstalled = true
             scriptHandler = WebViewCompat.addDocumentStartJavaScript(
                 webView,
                 BlaBlaNetworkDiagnosticPolicy.DOCUMENT_START_SCRIPT,
                 BlaBlaNetworkDiagnosticPolicy.ALLOWED_PAGE_ORIGINS,
             )
-            installedWebView = webView
             UnifiedDebugEventStore.record(
                 "BLABLACAR_NETWORK_DIAGNOSTIC_INSTALLED",
                 appPackageName,
-                "origin=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true domRead=false requestHeaders=false requestBody=false",
+                "origin=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true networkSource=true diagnosticBridge=$listenerInstalled domRead=false requestHeaders=false requestBody=false",
             )
             true
         }.getOrElse {
-            listenerInstalled = false
+            disableDiagnosticListener()
+            installedWebView = null
             UnifiedDebugEventStore.record(
                 "BLABLACAR_NETWORK_DIAGNOSTIC_UNAVAILABLE",
                 appPackageName,
-                "documentStart=true messageListener=true installFailed=true collectorChanged=false",
+                "documentStart=true messageListener=$messageListenerSupported installFailed=true networkSource=false collectorChanged=false",
             )
             false
         }
@@ -181,7 +186,7 @@ internal class BlaBlaNetworkDiagnosticRecorder(
             appPackageName,
             "session=$sessionTag card=$cardTag outcome=${BlaBlaNetworkDiagnosticPolicy.safeOutcome(outcome)} responses=$acceptedMessages file=${store.relativePath}",
         )
-        disableBridge()
+        disableDiagnosticListener()
     }
 
     fun close() {
@@ -219,13 +224,17 @@ internal class BlaBlaNetworkDiagnosticRecorder(
     private fun disableBridge() {
         scriptHandler?.let { handler -> runCatching { handler.remove() } }
         scriptHandler = null
+        disableDiagnosticListener()
+        installedWebView = null
+    }
+
+    private fun disableDiagnosticListener() {
         if (listenerInstalled) {
             installedWebView?.let { view ->
                 runCatching { WebViewCompat.removeWebMessageListener(view, BRIDGE_NAME) }
             }
         }
         listenerInstalled = false
-        installedWebView = null
     }
 
     companion object {
@@ -596,7 +605,6 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           if (window !== window.top) return;
           if (location.protocol !== 'https:' || location.hostname.toLowerCase() !== 'www.blablacar.com.br') return;
           const bridge = window.RotaCertaNetworkDiagnostic;
-          if (!bridge || typeof bridge.postMessage !== 'function') return;
           Object.defineProperty(window, '__rotaCertaNetworkDiagnosticInstalled', { value: true });
 
           const MAX_BODY_CHARS = 600000;
@@ -605,6 +613,17 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const MAX_FIELDS = 48;
           const MAX_ARRAY = 18;
           const MAX_NODES = 420;
+          const MAX_SOURCE_BOOKINGS = 48;
+          const MAX_SOURCE_TRIPS = 24;
+          const networkTripSources = new Map();
+          Object.defineProperty(window, '__rotaCertaNetworkTripSource', {
+            value: function(rawTripId) {
+              const tripId = String(rawTripId || '').trim().toLowerCase();
+              const source = networkTripSources.get(tripId) || null;
+              if (!source) return null;
+              try { return JSON.parse(JSON.stringify(source)); } catch (_) { return null; }
+            }
+          });
           const safeSegments = new Set([
             'api', 'graphql', 'rides', 'ride', 'offer', 'offers', 'trip', 'trips', 'booking', 'bookings',
             'passenger', 'passengers', 'reservation', 'reservations', 'edit', 'options', 'seats', 'seat',
@@ -638,6 +657,103 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               return 'https://' + url.hostname.toLowerCase() + (parts.length ? '/' + parts.join('/') : '');
             } catch (_) {
               return '';
+            }
+          }
+
+          function sourceText(value, maxLength) {
+            if (typeof value !== 'string' && typeof value !== 'number') return '';
+            return String(value).trim().slice(0, maxLength);
+          }
+
+          function sourceNumber(value, minimum, maximum) {
+            const number = typeof value === 'number' ? value : Number(value);
+            return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
+          }
+
+          function sourceObject(value) {
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : Object.create(null);
+          }
+
+          function sourceWaypoint(rawValue) {
+            const waypoint = sourceObject(rawValue);
+            const place = sourceObject(waypoint.place);
+            const address = sourceText(place.address || waypoint.address || waypoint.secondary_text, 500);
+            return {
+              label: sourceText(waypoint.main_text || place.city || waypoint.secondary_text || address, 240),
+              address: address,
+              latitude: sourceNumber(place.latitude !== undefined ? place.latitude : waypoint.latitude, -90, 90),
+              longitude: sourceNumber(place.longitude !== undefined ? place.longitude : waypoint.longitude, -180, 180)
+            };
+          }
+
+          function sourcePhone(rawModes) {
+            if (!Array.isArray(rawModes)) return '';
+            for (const rawMode of rawModes.slice(0, 12)) {
+              const mode = sourceObject(rawMode);
+              const phone = sourceText(mode.phone_number || mode.phoneNumber, 40);
+              if (phone) return phone;
+            }
+            return '';
+          }
+
+          function rememberTripRoot(rawRoot) {
+            const root = sourceObject(rawRoot);
+            if (!Array.isArray(root.bookings)) return;
+            const tripId = sourceText(root.trip_offer_encrypted_id, 160).toLowerCase();
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
+            const bookings = root.bookings.slice(0, MAX_SOURCE_BOOKINGS).map(function(rawBooking) {
+              const booking = sourceObject(rawBooking);
+              const passenger = sourceObject(booking.passenger);
+              const price = sourceObject(booking.price);
+              return {
+                passengerId: sourceText(passenger.id, 160),
+                passengerName: sourceText(passenger.display_name, 120),
+                seats: sourceNumber(booking.seats_reserved, 1, 20) || 0,
+                phone: sourcePhone(booking.contact_modes),
+                fareAmount: sourceText(price.amount, 40),
+                fareCurrencyCode: sourceText(price.currency, 3).toUpperCase(),
+                fareFormatted: sourceText(price.formatted_price, 80),
+                pickup: sourceWaypoint(booking.pickup_waypoint),
+                dropoff: sourceWaypoint(booking.dropoff_waypoint)
+              };
+            });
+            if (!networkTripSources.has(tripId) && networkTripSources.size >= MAX_SOURCE_TRIPS) {
+              const oldest = networkTripSources.keys().next();
+              if (!oldest.done) networkTripSources.delete(oldest.value);
+            }
+            networkTripSources.set(tripId, {
+              tripId: tripId,
+              bookingsComplete: root.bookings.length <= MAX_SOURCE_BOOKINGS,
+              bookings: bookings
+            });
+          }
+
+          function rememberNetworkTripSources(parsed) {
+            if (!parsed || typeof parsed !== 'object') return;
+            const pending = [{ value: parsed, depth: 0 }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 160) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+              if (!Array.isArray(value) && Array.isArray(value.bookings) && value.trip_offer_encrypted_id) {
+                rememberTripRoot(value);
+              }
+              if (current.depth >= 5) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 32).forEach(function(item) {
+                  if (item && typeof item === 'object') pending.push({ value: item, depth: current.depth + 1 });
+                });
+              } else {
+                Object.keys(value).slice(0, 64).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') pending.push({ value: child, depth: current.depth + 1 });
+                });
+              }
             }
           }
 
@@ -736,6 +852,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           }
 
           function post(envelope) {
+            if (!bridge || typeof bridge.postMessage !== 'function') return;
             try {
               let serialized = JSON.stringify(envelope);
               if (serialized.length > MAX_MESSAGE_CHARS) {
@@ -792,6 +909,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 return;
               }
               const parsed = JSON.parse(text);
+              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed);
               const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
               post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
             } catch (_) {
@@ -854,6 +972,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   }
                   parsed = JSON.parse(text);
                 }
+                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed);
                 const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
                 post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
               } catch (_) {

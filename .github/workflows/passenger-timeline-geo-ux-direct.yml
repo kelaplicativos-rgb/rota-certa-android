@@ -1,4 +1,4 @@
-name: Passenger timeline geo UX direct-source 0.1.265
+name: Passenger timeline geo UX direct-source 0.1.266
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
       PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5558'
-      EXPECTED_VERSION_NAME: '0.1.265'
+      EXPECTED_VERSION_CODE: '5559'
+      EXPECTED_VERSION_NAME: '0.1.266'
     steps:
       - name: Checkout feature HEAD directly
         uses: actions/checkout@v4
@@ -50,11 +50,14 @@ jobs:
           TIMELINE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
           SESSION_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt'
           URL_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt'
+          IDENTITY_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorIdentityModule.kt'
+          NETWORK_SOURCE_MODULE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt'
           TEST261='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0261Test.kt'
           TEST262='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
           TEST263='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0263Test.kt'
           TEST264='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
           TEST265='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorBoundaries0265Test.kt'
+          TEST266='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSource0266Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
           test -s "$DYNAMIC"
@@ -67,11 +70,14 @@ jobs:
           test -s "$TIMELINE_MODULE"
           test -s "$SESSION_MODULE"
           test -s "$URL_MODULE"
+          test -s "$IDENTITY_MODULE"
+          test -s "$NETWORK_SOURCE_MODULE"
           test -s "$TEST261"
           test -s "$TEST262"
           test -s "$TEST263"
           test -s "$TEST264"
           test -s "$TEST265"
+          test -s "$TEST266"
 
           for temp in \
             .github/workflows/sequential-card-collector-once.yml \
@@ -121,6 +127,12 @@ jobs:
           grep -Fq 'fun isAllowed' "$URL_MODULE"
           grep -Fq 'fun canonical' "$URL_MODULE"
           grep -Fq 'fun samePassengerPage' "$URL_MODULE"
+          grep -Fq 'fun passengerPage' "$URL_MODULE"
+          grep -Fq 'fun trustedDriverProfileLinks' "$IDENTITY_MODULE"
+          grep -Fq 'fun resolve' "$NETWORK_SOURCE_MODULE"
+          grep -Fq 'fun parseCanonicalMinorUnits' "$NETWORK_SOURCE_MODULE"
+          grep -Fq '__rotaCertaNetworkTripSource' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
+          grep -Fq 'BLABLACAR_NETWORK_SOURCE_APPLIED' "$DYNAMIC"
           ! grep -Fq 'saveDeterministicSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
           ! grep -Fq '.harvest.tmp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
           grep -Fq 'action=preserve_last_confirmed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
@@ -133,6 +145,8 @@ jobs:
           grep -Fq 'completeRosterStillPreservesConfirmedPhoneForMatchingPassenger' "$TEST264"
           grep -Fq 'staleHarvestCannotEraseIndividualPassengerActionsOrNewerCards' "$TEST265"
           grep -Fq 'exactCollectorOriginRejectsLookalikeAndForeignHosts' "$TEST265"
+          grep -Fq 'exactCompleteSourceCreatesIndividualPassengerShortcutAndMetadata' "$TEST266"
+          grep -Fq 'verifiedSessionDoesNotTreatPassengerUuidAsDriverUuid' "$TEST266"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
@@ -144,6 +158,8 @@ jobs:
           echo 'mhtml_enrichment_monotonic=true'
           echo 'single_session_persistence_authority=true'
           echo 'single_collector_url_authority=true'
+          echo 'network_first_roster_authority=true'
+          echo 'passenger_uuid_not_driver_identity=true'
           echo 'past_date_filter=false'
           echo 'fixed_trip_limit=false'
           echo 'farol_untouched=true'
@@ -187,6 +203,8 @@ jobs:
           mhtml_enrichment_monotonic=true
           single_session_persistence_authority=true
           single_collector_url_authority=true
+          network_first_roster_authority=true
+          passenger_uuid_not_driver_identity=true
           stale_harvest_cannot_overwrite_direct_sync=true
           per_card_timeline_checkpoint=true
           edit_options_same_trip_required=true
@@ -208,7 +226,7 @@ jobs:
       - name: Upload direct-source candidate APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-timeline-geo-ux-0.1.265
+          name: rota-certa-passenger-timeline-geo-ux-0.1.266
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt

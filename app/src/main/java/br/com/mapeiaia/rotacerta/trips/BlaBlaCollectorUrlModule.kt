@@ -62,6 +62,13 @@ internal object BlaBlaCollectorUrlModule {
             .ifBlank { "passenger" }
     }
 
+    fun passengerPage(passengerId: String?, tripId: String?): String? {
+        val passenger = passengerId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
+        val trip = tripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
+        return "$ORIGIN/rides/offer/passenger/$passenger/0?id=$trip"
+            .takeIf(::isPassenger)
+    }
+
     fun tripId(raw: String?): String? {
         val absolute = absolute(raw)
         if (!isAllowed(absolute)) return null
@@ -144,4 +151,6 @@ internal object BlaBlaCollectorUrlModule {
         val path: String,
         val strongId: String,
     )
+
+    private val STABLE_EXTERNAL_ID = Regex("[A-Za-z0-9_-]{8,160}")
 }

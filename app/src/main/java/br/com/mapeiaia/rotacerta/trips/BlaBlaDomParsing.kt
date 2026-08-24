@@ -49,7 +49,6 @@ data class BlaBlaDomTripDetail(
 )
 
 object BlaBlaDomNormalizer {
-    private val uuidRegex = Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
     private val timeRegex = Regex("(?<!\\d)([01]?\\d|2[0-3]):[0-5]\\d(?!\\d)")
     private val isoDateRegex = Regex("(?<!\\d)(20\\d{2})-(0?[1-9]|1[0-2])-([0-2]?\\d|3[01])(?!\\d)")
     private val numericDateRegex = Regex("(?<!\\d)([0-2]?\\d|3[01])[/.-](0?[1-9]|1[0-2])(?:[/.-](20\\d{2}|\\d{2}))?(?!\\d)")
@@ -69,9 +68,8 @@ object BlaBlaDomNormalizer {
         "dez" to 12, "dezembro" to 12,
     )
 
-    fun profileUuids(detail: BlaBlaDomTripDetail): Set<String> = detail.profileLinks
-        .flatMap { link -> uuidRegex.findAll(link).map { it.value.lowercase() }.toList() }
-        .toSet()
+    fun profileUuids(detail: BlaBlaDomTripDetail): Set<String> =
+        BlaBlaCollectorIdentityModule.uuids(detail.profileLinks)
 
     fun isExpectedProfile(account: BlaBlaAccountDefinition, detail: BlaBlaDomTripDetail): Boolean =
         account.uuid.lowercase() in profileUuids(detail)

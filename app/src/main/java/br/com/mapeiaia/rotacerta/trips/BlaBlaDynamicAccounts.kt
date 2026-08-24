@@ -152,6 +152,7 @@ private data class DynamicRideList(
 @Serializable
 private data class DynamicTripDetail(
     val detail: BlaBlaDomTripDetail = BlaBlaDomTripDetail(),
+    val networkSource: BlaBlaNetworkTripSourceEvidence? = null,
     val driverProfileLinks: List<String> = emptyList(),
     val passengerHrefs: List<String> = emptyList(),
     val explicitEmptyRoster: Boolean = false,
@@ -707,25 +708,50 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluate
             }
-            val rosterSignature = directRosterSignature(result)
+            val networkResolution = BlaBlaCollectorNetworkSourceModule.resolve(candidateTripId, result.networkSource)
+            val sourceBackedResult = networkResolution?.let { resolution ->
+                result.copy(
+                    detail = result.detail.copy(
+                        passengers = resolution.passengers,
+                        passengerRosterComplete = true,
+                    ),
+                    passengerHrefs = resolution.passengers.mapNotNull { passenger -> passenger.booking_href },
+                    explicitEmptyRoster = resolution.explicitEmpty,
+                    rosterHasMore = false,
+                    rosterTerminalEvidence = true,
+                )
+            } ?: result
+            if (networkResolution != null) {
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_NETWORK_SOURCE_APPLIED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} exactTrip=true rosterComplete=true piiLogged=false",
+                )
+            }
+            val rosterSignature = directRosterSignature(sourceBackedResult)
             if (rosterSignature == lastTripRosterSignature) {
                 tripRosterStablePasses++
             } else {
                 lastTripRosterSignature = rosterSignature
                 tripRosterStablePasses = 1
             }
-            val confirmedRosterComplete = BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
-                passengerCount = result.detail.passengers.size,
-                structurallyComplete = result.detail.passengerRosterComplete,
-                explicitEmpty = result.explicitEmptyRoster,
-                hasMore = result.rosterHasMore,
-                terminalEvidence = result.rosterTerminalEvidence,
-                stablePasses = tripRosterStablePasses,
-            )
-            val acceptedResult = if (confirmedRosterComplete && !result.detail.passengerRosterComplete) {
-                result.copy(detail = result.detail.copy(passengerRosterComplete = true))
+            val awaitNetworkBeforeInferredEmpty = networkResolution == null &&
+                sourceBackedResult.detail.passengers.isEmpty() &&
+                !sourceBackedResult.explicitEmptyRoster &&
+                tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS
+            val confirmedRosterComplete = !awaitNetworkBeforeInferredEmpty &&
+                BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                    passengerCount = sourceBackedResult.detail.passengers.size,
+                    structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
+                    explicitEmpty = sourceBackedResult.explicitEmptyRoster,
+                    hasMore = sourceBackedResult.rosterHasMore,
+                    terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
+                    stablePasses = tripRosterStablePasses,
+                )
+            val acceptedResult = if (confirmedRosterComplete && !sourceBackedResult.detail.passengerRosterComplete) {
+                sourceBackedResult.copy(detail = sourceBackedResult.detail.copy(passengerRosterComplete = true))
             } else {
-                result
+                sourceBackedResult
             }
             val rosterState = BlaBlaCollectorPassengerModule.rosterState(
                 passengerCount = acceptedResult.detail.passengers.size,
@@ -735,7 +761,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "TRIP_ROSTER_PROBE",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${result.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses state=$rosterState",
+                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeInferredEmpty state=$rosterState",
             )
             if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
                 if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
@@ -783,12 +809,28 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             }
             tripRosterReadAttempts = 0
             store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-trip", acceptedResult.domHtml)
-            val driverUuids = uuids(acceptedResult.driverProfileLinks)
             val expectedUuid = account.profileUuid?.lowercase()
+            val trustedDriverLinks = BlaBlaCollectorIdentityModule.trustedDriverProfileLinks(
+                expectedUuid = expectedUuid,
+                authenticatedProfileSessionVerified = identityConfirmedThisSync,
+                observedLinks = acceptedResult.driverProfileLinks,
+            )
+            val trustedDetailLinks = BlaBlaCollectorIdentityModule.trustedDriverProfileLinks(
+                expectedUuid = expectedUuid,
+                authenticatedProfileSessionVerified = identityConfirmedThisSync,
+                observedLinks = acceptedResult.detail.profileLinks,
+            )
+            val identityAcceptedResult = acceptedResult.copy(
+                detail = acceptedResult.detail.copy(profileLinks = trustedDetailLinks),
+                driverProfileLinks = trustedDriverLinks,
+            )
+            val ignoredProfileLinks =
+                (acceptedResult.driverProfileLinks.size - trustedDriverLinks.size).coerceAtLeast(0)
+            val driverUuids = BlaBlaCollectorIdentityModule.uuids(trustedDriverLinks)
             UnifiedDebugEventStore.record(
                 "TRIP_DETAIL_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} passengers=${acceptedResult.detail.passengers.size} rosterComplete=${acceptedResult.detail.passengerRosterComplete} editLinkPresent=${acceptedResult.editHref.isNotBlank()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
+                "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} ignoredNonDriverProfileLinks=$ignoredProfileLinks passengers=${identityAcceptedResult.detail.passengers.size} rosterComplete=${identityAcceptedResult.detail.passengerRosterComplete} networkSource=${networkResolution != null} editLinkPresent=${identityAcceptedResult.editHref.isNotBlank()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
             )
             if (expectedUuid != null && driverUuids.isNotEmpty() && expectedUuid !in driverUuids) {
                 skipped++
@@ -827,13 +869,16 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 BlaBlaDomNormalizer.toTrip(
                     account = it,
                     candidate = candidate,
-                    detail = acceptedResult.detail,
+                    detail = identityAcceptedResult.detail,
                     today = LocalDate.now(),
                     authenticatedProfileSessionVerified = identityConfirmedThisSync,
                 )
             }
-            pendingTripDetail = acceptedResult
-            pendingTripPassengers = (preview?.passengers ?: acceptedResult.detail.passengers).toMutableList()
+            networkResolution?.let(::saveNetworkPassengerMetadata)
+            pendingTripDetail = identityAcceptedResult
+            pendingTripPassengers = (
+                networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers
+            ).toMutableList()
             pendingTripPassengerCardIndexes.clear()
             pendingTripPassengers.indices.forEach { rowIndex ->
                 pendingTripPassengerCardIndexes[rowIndex] = rowIndex
@@ -1607,6 +1652,40 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return true
     }
 
+    private fun saveNetworkPassengerMetadata(resolution: BlaBlaNetworkTripResolution) {
+        resolution.bookings.forEach { booking ->
+            val href = booking.passenger.booking_href
+            val key = externalPassengerReservationKey(account.profileUuid, href) ?: return@forEach
+            val current = passengerIdentityStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
+            val boardingAddress = booking.boardingAddress.ifBlank { booking.passenger.boarding.orEmpty() }.take(500)
+            val dropoffAddress = booking.dropoffAddress.ifBlank { booking.passenger.dropoff.orEmpty() }.take(500)
+            val latitude = validLatitude(booking.boardingLatitude)
+            val longitude = validLongitude(booking.boardingLongitude)
+            val hasCoordinates = latitude != null && longitude != null
+            passengerIdentityStore.saveExternalMetadata(
+                current.copy(
+                    passengerId = booking.passengerId,
+                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
+                    fareCurrencyCode = booking.fareCurrencyCode.ifBlank { current.fareCurrencyCode },
+                    boardingAddress = boardingAddress.ifBlank { current.boardingAddress },
+                    dropoffAddress = dropoffAddress.ifBlank { current.dropoffAddress },
+                    boardingLatitude = if (hasCoordinates) latitude else current.boardingLatitude,
+                    boardingLongitude = if (hasCoordinates) longitude else current.boardingLongitude,
+                    boardingLocationSource = if (hasCoordinates) {
+                        "blablacar_network_booking_pickup"
+                    } else {
+                        current.boardingLocationSource
+                    },
+                    boardingLocationCollectedAtMillis = if (hasCoordinates) {
+                        System.currentTimeMillis()
+                    } else {
+                        current.boardingLocationCollectedAtMillis
+                    },
+                ),
+            )
+        }
+    }
+
     private fun saveCapturedPassengerBoardingEvidence(
         href: String?,
         evidence: DynamicPassengerContactEvidence?,
@@ -1641,7 +1720,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     private fun bindIdentityFromLinks(links: List<String>, visibleName: String): BlaBlaDynamicAccount? {
-        val found = uuids(links)
+        val found = BlaBlaCollectorIdentityModule.uuids(links)
         val currentUuid = account.profileUuid?.lowercase()
         return when {
             currentUuid != null && currentUuid in found -> {
@@ -1655,10 +1734,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             else -> null
         }
     }
-
-    private fun uuids(links: List<String>): Set<String> = links.flatMap { href ->
-        UUID_REGEX.findAll(href).map { it.value.lowercase() }.toList()
-    }.toSet()
 
     private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
         webView.evaluateJavascript(script) { encoded ->
@@ -1751,8 +1826,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
         private const val PASSENGER_CALL_SETTLE_MS = 650L
         private const val CARD_TARGET_PREFIX = "rotacerta-card:"
-        private val UUID_REGEX = Regex("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
-
         private val SANITIZED_HTML_JS = """
             const clone = document.documentElement.cloneNode(true);
             clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
@@ -2343,6 +2416,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
               const pageText = clean(document.body && document.body.innerText);
               const viewsMatch = pageText.match(/(\d{1,9})\s+visualiza(?:ç|c)[õo]es/i);
               const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
+              let currentTripId = '';
+              try {
+                const currentUrl = new URL(location.href);
+                currentTripId = clean(currentUrl.searchParams.get('id'));
+                if (!currentTripId) {
+                  const match = currentUrl.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
+                  currentTripId = clean(match && match[1]);
+                }
+              } catch (_) {}
+              const networkSource = typeof window.__rotaCertaNetworkTripSource === 'function'
+                ? window.__rotaCertaNetworkTripSource(currentTripId)
+                : null;
               $SANITIZED_HTML_JS
               return JSON.stringify({
                 detail: {
@@ -2359,6 +2444,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                   passengers: passengers,
                   passengerRosterComplete: passengerRosterComplete
                 },
+                networkSource: networkSource,
                 driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
                 passengerHrefs: Array.from(new Set(passengerTargets)),
                 explicitEmptyRoster: explicitEmptyRoster,

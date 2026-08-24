@@ -100,6 +100,13 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("XMLHttpRequest.prototype.open"))
         assertTrue(script.contains("XMLHttpRequest.prototype.send"))
         assertTrue(script.contains("bridge.postMessage"))
+        assertTrue(script.contains("__rotaCertaNetworkTripSource"))
+        assertTrue(script.contains("rememberNetworkTripSources(parsed)"))
+        assertTrue(script.contains("trip_offer_encrypted_id"))
+        assertTrue(script.contains("pickup_waypoint"))
+        assertTrue(script.contains("dropoff_waypoint"))
+        assertEquals(1, script.windowCount("window.fetch = function"))
+        assertEquals(1, script.windowCount("XMLHttpRequest.prototype.send = function"))
         assertFalse(script.contains("document."))
         assertFalse(script.contains("querySelector"))
         assertFalse(script.contains("localStorage"))
@@ -109,4 +116,7 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertFalse(script.contains("request.headers"))
         assertFalse(script.contains("args[1].body"))
     }
+
+    private fun String.windowCount(needle: String): Int = windowed(needle.length)
+        .count { value -> value == needle }
 }
