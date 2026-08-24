@@ -31,7 +31,22 @@ jobs:
             echo 'Agenda global trace contract already materialized.'
             exit 0
           fi
-          python3 -c 'from pathlib import Path; import re,base64; t=Path(".github/workflows/agenda-global-trace-contract-once.yml").read_text(); m=re.search(r"echo .([^.]*)", "") if False else re.search(r"echo .(.+?). \\| base64 -d > /tmp/agenda_trace_patch[.]py", t); assert m, "saved payload not found"; raw="".join(m.group(1).split()); Path("/tmp/agenda_trace_patch.py").write_bytes(base64.b64decode(raw, validate=True))'
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+
+          text = Path('.github/workflows/agenda-global-trace-contract-once.yml').read_text(encoding='utf-8')
+          prefix = "echo '"
+          suffix = "' | base64 -d > /tmp/agenda_trace_patch.py"
+          payloads = []
+          for line in text.splitlines():
+              stripped = line.strip()
+              if stripped.startswith(prefix) and stripped.endswith(suffix):
+                  payloads.append(stripped[len(prefix):-len(suffix)])
+          assert len(payloads) == 1, f'saved payload matches={len(payloads)}'
+          raw = ''.join(payloads[0].split())
+          Path('/tmp/agenda_trace_patch.py').write_bytes(base64.b64decode(raw, validate=True))
+          PY
           python3 /tmp/agenda_trace_patch.py
           git diff --check
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
