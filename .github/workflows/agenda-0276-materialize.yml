@@ -1,4 +1,5 @@
 name: Agenda 0.1.276 materialize
+# Re-run after minimal PassengerRideHistory visibility correction.
 
 on:
   push:
