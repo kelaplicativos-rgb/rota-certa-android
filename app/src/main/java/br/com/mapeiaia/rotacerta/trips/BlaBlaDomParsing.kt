@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.net.URI
 import java.text.Normalizer
 import java.time.LocalDate
@@ -48,7 +49,14 @@ data class BlaBlaDomTripDetail(
     val passengerRosterComplete: Boolean = false,
 )
 
+internal data class BlaBlaDomNormalizationResult(
+    val trip: BlaBlaCollectorTrip? = null,
+    val rejectionReason: String? = null,
+)
+
 object BlaBlaDomNormalizer {
+    private const val APP_PACKAGE = "br.com.mapeiaia.rotacerta"
+    private const val DIAGNOSTIC_DETAIL_LIMIT = 320
     private val timeRegex = Regex("(?<!\\d)([01]?\\d|2[0-3]):[0-5]\\d(?!\\d)")
     private val isoDateRegex = Regex("(?<!\\d)(20\\d{2})-(0?[1-9]|1[0-2])-([0-2]?\\d|3[01])(?!\\d)")
     private val numericDateRegex = Regex("(?<!\\d)([0-2]?\\d|3[01])[/.-](0?[1-9]|1[0-2])(?:[/.-](20\\d{2}|\\d{2}))?(?!\\d)")
@@ -81,27 +89,53 @@ object BlaBlaDomNormalizer {
         today: LocalDate = LocalDate.now(),
         authenticatedProfileSessionVerified: Boolean = false,
     ): BlaBlaCollectorTrip? {
+        val result = diagnoseTrip(
+            account = account,
+            candidate = candidate,
+            detail = detail,
+            today = today,
+            authenticatedProfileSessionVerified = authenticatedProfileSessionVerified,
+        )
+        if (result.trip == null) {
+            recordNormalizationRejected(
+                reason = result.rejectionReason ?: "unknown",
+                candidate = candidate,
+                detail = detail,
+                authenticatedProfileSessionVerified = authenticatedProfileSessionVerified,
+            )
+        }
+        return result.trip
+    }
+
+    internal fun diagnoseTrip(
+        account: BlaBlaAccountDefinition,
+        candidate: BlaBlaDomRideCandidate,
+        detail: BlaBlaDomTripDetail,
+        today: LocalDate = LocalDate.now(),
+        authenticatedProfileSessionVerified: Boolean = false,
+    ): BlaBlaDomNormalizationResult {
         val detailUuids = profileUuids(detail)
         val expectedUuid = account.uuid.lowercase()
         val uuidValidation = when {
             expectedUuid in detailUuids -> "verified_from_trip_detail_profile_link"
-            detailUuids.isNotEmpty() -> return null
+            detailUuids.isNotEmpty() -> return rejected("profile_uuid_conflict")
             authenticatedProfileSessionVerified -> "verified_from_authenticated_profile_session"
-            else -> return null
+            else -> return rejected("identity_unverified")
         }
         val date = parseDate(
             listOf(detail.dateText, candidate.dateText, candidate.text, detail.bodyText.take(6000)).joinToString(" | "),
             today,
-        ) ?: return null
+        ) ?: return rejected("date_unparseable")
         val departureTime = normalizeTime(detail.departureTime.ifBlank { candidate.departureTime })
             ?: timeRegex.find(candidate.text)?.value?.let(::normalizeTime)
-            ?: return null
+            ?: return rejected("departure_time_unparseable")
         val timeValues = timeRegex.findAll(candidate.text).map { it.value }.toList()
         val arrivalTime = normalizeTime(detail.arrivalTime.ifBlank { candidate.arrivalTime })
             ?: timeValues.drop(1).firstOrNull()?.let(::normalizeTime)
         val origin = detail.origin.trim().ifBlank { candidate.origin.trim() }
         val destination = detail.destination.trim().ifBlank { candidate.destination.trim() }
-        if (origin.isBlank() || destination.isBlank()) return null
+        if (origin.isBlank()) return rejected("origin_missing")
+        if (destination.isBlank()) return rejected("destination_missing")
         val allText = "${candidate.text} ${detail.bodyText}"
         val full = listOf("cheio", "esgotad", "sem vagas", "indisponível", "indisponivel").any { token ->
             normalize(allText).contains(token)
@@ -110,7 +144,9 @@ object BlaBlaDomNormalizer {
         val detailHref = detail.url.trim()
         val candidateTripId = tripId(candidateHref)
         val detailTripId = tripId(detailHref)
-        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) return null
+        if (candidateTripId != null && detailTripId != null && candidateTripId != detailTripId) {
+            return rejected("trip_id_mismatch")
+        }
         val href = when {
             candidateTripId != null -> candidateHref
             detailTripId != null -> detailHref
@@ -120,23 +156,25 @@ object BlaBlaDomNormalizer {
         val passengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
             mergePassengerEvidence(candidate.passengers, detail.passengers),
         )
-        return BlaBlaCollectorTrip(
-            profile_uuid = account.uuid,
-            profile_name = account.label,
-            date = date.toString(),
-            departure_time = departureTime,
-            arrival_time = arrivalTime,
-            actual_departure = origin,
-            actual_arrival = destination,
-            price = detail.price.trim().ifBlank { candidate.price.trim() }.takeIf(String::isNotBlank),
-            flags = if (full) listOf("Cheio") else emptyList(),
-            availability = if (full) "full" else "unknown",
-            trip_href = href.takeIf(String::isNotBlank),
-            trip_id = tripId(href),
-            uuid_validation = uuidValidation,
-            passengers = passengers,
-            booked_seats = passengers.sumOf(BlaBlaCollectorPassenger::seats),
-            passenger_roster_complete = candidate.passengerRosterComplete || detail.passengerRosterComplete,
+        return BlaBlaDomNormalizationResult(
+            trip = BlaBlaCollectorTrip(
+                profile_uuid = account.uuid,
+                profile_name = account.label,
+                date = date.toString(),
+                departure_time = departureTime,
+                arrival_time = arrivalTime,
+                actual_departure = origin,
+                actual_arrival = destination,
+                price = detail.price.trim().ifBlank { candidate.price.trim() }.takeIf(String::isNotBlank),
+                flags = if (full) listOf("Cheio") else emptyList(),
+                availability = if (full) "full" else "unknown",
+                trip_href = href.takeIf(String::isNotBlank),
+                trip_id = tripId(href),
+                uuid_validation = uuidValidation,
+                passengers = passengers,
+                booked_seats = passengers.sumOf(BlaBlaCollectorPassenger::seats),
+                passenger_roster_complete = candidate.passengerRosterComplete || detail.passengerRosterComplete,
+            ),
         )
     }
 
@@ -177,6 +215,39 @@ object BlaBlaDomNormalizer {
                 inferredDate(today, month, day)?.let { return it }
             }
         return null
+    }
+
+    private fun rejected(reason: String): BlaBlaDomNormalizationResult =
+        BlaBlaDomNormalizationResult(rejectionReason = reason)
+
+    private fun recordNormalizationRejected(
+        reason: String,
+        candidate: BlaBlaDomRideCandidate,
+        detail: BlaBlaDomTripDetail,
+        authenticatedProfileSessionVerified: Boolean,
+    ) {
+        val details = buildString {
+            append("reason=").append(reason)
+            append(" authSessionVerified=").append(authenticatedProfileSessionVerified)
+            append(" detailProfileEvidence=").append(profileUuids(detail).isNotEmpty())
+            append(" candidateDate=").append(candidate.dateText.isNotBlank())
+            append(" detailDate=").append(detail.dateText.isNotBlank())
+            append(" candidateTime=").append(candidate.departureTime.isNotBlank() || timeRegex.containsMatchIn(candidate.text))
+            append(" detailTime=").append(detail.departureTime.isNotBlank())
+            append(" candidateOrigin=").append(candidate.origin.isNotBlank())
+            append(" detailOrigin=").append(detail.origin.isNotBlank())
+            append(" candidateDestination=").append(candidate.destination.isNotBlank())
+            append(" detailDestination=").append(detail.destination.isNotBlank())
+            append(" candidateTripId=").append(tripId(candidate.href) != null)
+            append(" detailTripId=").append(tripId(detail.url) != null)
+        }
+        runCatching {
+            UnifiedDebugEventStore.record(
+                "TRIP_NORMALIZATION_REJECTED",
+                APP_PACKAGE,
+                details.take(DIAGNOSTIC_DETAIL_LIMIT),
+            )
+        }
     }
 
     private fun explicitDate(year: Int, month: Int, day: Int): LocalDate? =
