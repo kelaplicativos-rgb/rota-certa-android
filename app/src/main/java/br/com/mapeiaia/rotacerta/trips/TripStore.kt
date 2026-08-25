@@ -48,6 +48,16 @@ class TripStore(context: Context) {
             .apply()
     }
 
+    fun clearTimelineLocalData(): Pair<Int, Int> {
+        val tripsRemoved = trips().size
+        val bookingsRemoved = bookings().size
+        prefs.edit()
+            .remove(tripsKey)
+            .remove(bookingsKey)
+            .apply()
+        return tripsRemoved to bookingsRemoved
+    }
+
     fun saveBooking(booking: Booking): Booking {
         val all = bookings()
         val existing = all.firstOrNull { it.id == booking.id }

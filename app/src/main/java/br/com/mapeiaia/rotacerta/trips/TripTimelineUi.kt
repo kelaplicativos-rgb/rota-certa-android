@@ -156,6 +156,7 @@ fun TripTimelineScreen(
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
             ResponsiveTripAction("Limpar Timeline") {
                 archiveStore.clearExternal(physical)
+                val localClear = store.clearTimelineLocalData()
                 val clearedResponse = collectorStore.saveResponse(
                     BlaBlaCollectorMonthResponse(
                         status = "cleared",
@@ -178,9 +179,9 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CLEARED_BY_USER",
                     context.packageName,
-                    "externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
+                    "externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true",
                 )
-                onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")
+                onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")
             },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
