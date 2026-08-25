@@ -1,3 +1,4 @@
+# trigger-2: workflow already exists on branch
 name: Agenda 0.1.276 materialize
 
 on:
@@ -37,13 +38,11 @@ jobs:
               if count != 1: raise SystemExit(f'{path}: expected 1 occurrence, found {count}: {old[:80]!r}')
               p.write_text(text.replace(old,new,1))
 
-          # 1) Use the collector's strong passenger reconciler at physical-card merge time.
           p='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPhysicalRideConsolidator.kt'
           replace_once(p,
               'blablaPassengers = group.flatMap(TripTimelineEntry::blablaPassengers).distinctBy { it.booking_href ?: "${it.name}|${it.boarding}|${it.dropoff}" },',
               'blablaPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(group.flatMap(TripTimelineEntry::blablaPassengers)),')
 
-          # 2) Timeline: all dates, publisher module, exact-card sync target.
           p='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
           replace_once(p,
               '    var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }\n    var searchQuery by remember { mutableStateOf("") }',
@@ -126,7 +125,6 @@ jobs:
                 onSyncExactCard = onSyncExactCard,
             )''')
 
-          # 3) Passenger cards: message shortcut, strong identity/block status, exact-card sync icon.
           p='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
           replace_once(p,
               '    val probableMatch: Boolean = false,\n)',
@@ -139,10 +137,9 @@ jobs:
     onChanged: (String) -> Unit,
     onSyncExactCard: (() -> Unit)? = null,
 ) {''')
+          replace_once(p, '        TripBlaBlaTripActionRow(entry)', '        TripBlaBlaTripActionRow(entry, onSyncExactCard)')
           replace_once(p,
-              '        TripBlaBlaTripActionRow(entry)',
-              '        TripBlaBlaTripActionRow(entry, onSyncExactCard)')
-          old='''                OutlinedButton(
+              '''                OutlinedButton(
                     onClick = {
                         if (passenger.fareMinorUnits != null) {
                             copyPassengerFareValue(context, passenger)
@@ -154,15 +151,14 @@ jobs:
                     modifier = Modifier.heightIn(min = 36.dp),
                 ) {
                     Text("💰", maxLines = 1)
-                }'''
-          new='''                OutlinedButton(
+                }''',
+              '''                OutlinedButton(
                     onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
                     contentPadding = COMPACT_ACTION_PADDING,
                     modifier = Modifier.heightIn(min = 36.dp),
                 ) {
                     Text("💬", maxLines = 1)
-                }'''
-          replace_once(p,old,new)
+                }''')
           replace_once(p,
               '''            Text(
                 "$source • $seats$identity",
@@ -183,7 +179,7 @@ jobs:
             val rideHistory = canonicalProfile?.let { passengerStore.rideHistory(it.id) }
             val identityLabel = when {
                 canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO"
-                rideHistory != null && rideHistory.totalRides > 0 -> "${rideHistory.totalRides}ª carona registrada"
+                rideHistory != null && rideHistory.totalRides > 0 -> "${rideHistory.totalRides} carona(s) registrada(s)"
                 passenger.externalPassengerId != null -> "Identidade BlaBlaCar disponível"
                 else -> null
             }
@@ -210,9 +206,7 @@ jobs:
                         passengerStore.linkExternalPassengerId(profile.id, externalId)?.let { linked -> profile = linked }
                     }
                     if (linkPassengerProfile(row, profile.id, store, passengerStore)) {''')
-          replace_once(p,
-              '''private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry) {''',
-              '''private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {''')
+          replace_once(p, 'private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry) {', 'private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {')
           replace_once(p,
               '''    Row(
         modifier = Modifier.fillMaxWidth(),
@@ -239,8 +233,7 @@ jobs:
             ) { Text("🔄") }
         }
         IconButton(''')
-          # Add confirmation message builder/copy helper before fare helper.
-          marker='''private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardRow) {'''
+          marker='private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardRow) {'
           addition='''internal fun passengerConfirmationMessage(
     entry: TripTimelineEntry,
     row: EnhancedPassengerCardRow,
@@ -264,11 +257,7 @@ jobs:
     if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
     lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
     if (row.fareMinorUnits != null && context != null) {
-        val formatted = passengerTimelineFareClipboardText(
-            row.fareMinorUnits,
-            row.fareCurrencyCode,
-            PassengerMoney.spec(context).localeTag,
-        )
+        val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
         lines += "💰 $formatted"
     }
     lines += ""
@@ -290,7 +279,6 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
 
 '''
           replace_once(p, marker, addition+marker)
-          # Add block/unblock semantics in profile dialog.
           replace_once(p,
               '''        val profile = passengerStore.profile(row.passengerId)
         AlertDialog(''',
@@ -299,12 +287,10 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
         val history = profile?.let { passengerStore.rideHistory(it.id) }
         AlertDialog(''')
           replace_once(p,
-              '''                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)''',
-              '''                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
-                    history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }
-                    if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)''')
+              '                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)',
+              '                    Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)\n                    history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }\n                    if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)')
           replace_once(p,
-              '''            confirmButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },''',
+              '            confirmButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },',
               '''            confirmButton = {
                 TextButton(onClick = {
                     profile?.let { passengerStore.setBlocked(it.id, !it.blocked, if (!it.blocked) "Bloqueado pelo motorista" else "") }
@@ -314,7 +300,6 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
             },
             dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },''')
 
-          # 4) Collector UI: exact-card targeted sync + automatic blocked queue processing.
           p='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt'
           replace_once(p,
               '''    autoSyncToken: Int = 0,
@@ -324,16 +309,15 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
     autoSyncProfileUuid: String? = null,
     autoSyncTripId: String? = null,
 ) {''')
+          replace_once(p, '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }', '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }\n    var targetedSyncTripId by remember { mutableStateOf<String?>(null) }')
           replace_once(p,
-              '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }',
-              '    var handledAutoSyncToken by remember { mutableIntStateOf(0) }\n    var targetedSyncTripId by remember { mutableStateOf<String?>(null) }')
-          replace_once(p,
-              '''            publishCombined("Sincronização + MHTML concluídos")''',
+              '            publishCombined("Sincronização + MHTML concluídos")',
               '''            publishCombined("Sincronização + MHTML concluídos")
             if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
                 context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
             }''')
-          old='''            if (result.resultCode == Activity.RESULT_OK) {
+          replace_once(p,
+              '''            if (result.resultCode == Activity.RESULT_OK) {
                 val account = registry.get(accountId)
                 if (account != null) {
                     archiving = true
@@ -343,8 +327,8 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
                 } else {
                     advanceSyncQueue()
                 }
-            } else {'''
-          new='''            if (result.resultCode == Activity.RESULT_OK) {
+            } else {''',
+              '''            if (result.resultCode == Activity.RESULT_OK) {
                 val account = registry.get(accountId)
                 if (targetedSyncTripId != null) {
                     syncing = false
@@ -371,11 +355,10 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
                 } else {
                     advanceSyncQueue()
                 }
-            } else {'''
-          replace_once(p,old,new)
+            } else {''')
           replace_once(p,
-              '''    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, archiving, manualSeatSyncing, accounts.size) {''',
-              '''    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {''')
+              '    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, archiving, manualSeatSyncing, accounts.size) {',
+              '    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {')
           replace_once(p,
               '''        handledAutoSyncToken = autoSyncToken
         syncQueue = selectedAccounts.map { it.id }
@@ -387,7 +370,7 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
         syncCursor = 0
         syncing = true''')
           replace_once(p,
-              '''            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))''',
+              '            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))',
               '''            val exactTripId = targetedSyncTripId
             if (exactTripId != null) {
                 val currentTrip = stateStore.lastResponse()?.trips?.singleOrNull { trip ->
@@ -414,14 +397,8 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
                         syncCursor = 0
                         syncing = true''')
 
-          # 5) Existing direct collector gains a targeted entry path, without a second collector.
           p='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
-          replace_once(p,
-              '''    const val EXTRA_TARGET_URL = "blablacar_target_url"
-    const val MODE_LOGIN = "login"''',
-              '''    const val EXTRA_TARGET_URL = "blablacar_target_url"
-    const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
-    const val MODE_LOGIN = "login"''')
+          replace_once(p, '    const val EXTRA_TARGET_URL = "blablacar_target_url"\n    const val MODE_LOGIN = "login"', '    const val EXTRA_TARGET_URL = "blablacar_target_url"\n    const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"\n    const val MODE_LOGIN = "login"')
           replace_once(p,
               '''    fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
     fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =''',
@@ -431,13 +408,7 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
             .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
             .putExtra(EXTRA_TARGET_URL, tripHref)
     fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =''')
-          replace_once(p,
-              '''    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN
-    private var phase = Phase.IDLE''',
-              '''    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN
-    private var targetTripId = ""
-    private var targetTripHref = ""
-    private var phase = Phase.IDLE''')
+          replace_once(p, '    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN\n    private var phase = Phase.IDLE', '    private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN\n    private var targetTripId = ""\n    private var targetTripHref = ""\n    private var phase = Phase.IDLE')
           replace_once(p,
               '''        mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
         if (!WebViewFeature.isFeatureSupported''',
@@ -489,7 +460,7 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
             return
         }
         completedCardTraversalKeys += currentCardTraversalKey''')
-          marker='''    private fun persistDirectTripEvidence(tripId: String) {'''
+          marker='    private fun persistDirectTripEvidence(tripId: String) {'
           helper='''    private fun publishTargetedTripToTimeline(tripId: String) {
         val updatedTrip = collected.lastOrNull { it.trip_id == tripId } ?: return
         val timelineStore = BlaBlaCollectorStateStore(this)
@@ -528,16 +499,11 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
                 externalProfileUuid = account.profileUuid.orEmpty(),
                 fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,''')
           replace_once(p,
-              '''        resolution.bookings.forEach { booking ->
-            val href = booking.passenger.booking_href''',
-              '''        resolution.bookings.forEach { booking ->
-            val href = booking.passenger.booking_href''')
-          # Enqueue blocked passengers after the network metadata loop.
-          needle='''        }
+              '''        }
     }
 
-    private fun saveCapturedPassengerBoardingEvidence('''
-          repl='''        }
+    private fun saveCapturedPassengerBoardingEvidence(''',
+              '''        }
         val blockedQueued = BlockedPassengerCancellationCoordinator.enqueueBlockedFromNetwork(this, account, resolution)
         if (blockedQueued > 0) {
             UnifiedDebugEventStore.record(
@@ -548,10 +514,8 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
         }
     }
 
-    private fun saveCapturedPassengerBoardingEvidence('''
-          replace_once(p, needle, repl)
+    private fun saveCapturedPassengerBoardingEvidence(''')
 
-          # 6) Manifest and version. Public-search activities remain unchanged.
           p='app/src/main/AndroidManifest.xml'
           replace_once(p,
               '''        <activity
@@ -567,9 +531,7 @@ private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimeli
             android:name=".trips.AgendaBatchPublisherActivity"
             android:exported="false" />''')
           p='app/build.gradle.kts'
-          replace_once(p,
-              '        versionCode = 5568\n        versionName = "0.1.275"',
-              '        versionCode = 5569\n        versionName = "0.1.276"')
+          replace_once(p, '        versionCode = 5568\n        versionName = "0.1.275"', '        versionCode = 5569\n        versionName = "0.1.276"')
           PY
 
           git diff --check
