@@ -692,26 +692,20 @@ internal fun passengerConfirmationMessage(
     val zone = java.time.ZoneId.systemDefault()
     val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
     val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
-    val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(departure)
     val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
     val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
-    val boarding = row.boardingAddress.trim().takeIf(String::isNotEmpty) ?: row.boarding?.trim().orEmpty()
-    val dropoff = row.dropoffAddress.trim().takeIf(String::isNotEmpty) ?: row.dropoff?.trim().orEmpty()
     val lines = mutableListOf<String>()
     lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
     lines += ""
     if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
     lines += "📅 $date"
-    lines += "🕒 Saída: $time"
-    if (boarding.isNotBlank()) lines += "📍 Embarque: $boarding"
-    if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
     lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
     if (row.fareMinorUnits != null && context != null) {
         val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
         lines += "💰 $formatted"
     }
     lines += ""
-    lines += "Se precisar ajustar o ponto de embarque ou destino, me avise por aqui. Quando eu estiver a caminho, envio a localização. 👍"
+    lines += "Quando eu estiver a caminho, envio a localização. 👍"
     return lines.joinToString("\n")
 }
 

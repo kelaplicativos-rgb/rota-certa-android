@@ -152,10 +152,16 @@ internal object AgendaBatchPublisherPlanner {
             }
             if (template.seats !in 1..4) errors += "$label: vagas deve ficar entre 1 e 4."
         }
-        templateErrors("IDA", draft.outbound)
-        templateErrors("VOLTA", draft.inbound)
+        val selectedProfiles = draft.profiles.filter(AgendaPublishProfileDraft::selected)
+        val outboundRequested = selectedProfiles.any { it.outboundDays.isNotBlank() }
+        val inboundRequested = selectedProfiles.any { it.inboundDays.isNotBlank() }
+        if (outboundRequested) templateErrors("IDA", draft.outbound)
+        if (inboundRequested) templateErrors("VOLTA", draft.inbound)
+        if (selectedProfiles.isNotEmpty() && !outboundRequested && !inboundRequested) {
+            errors += "Informe ao menos um dia de IDA ou VOLTA."
+        }
 
-        draft.profiles.filter(AgendaPublishProfileDraft::selected).forEach { profileDraft ->
+        selectedProfiles.forEach { profileDraft ->
             val account = accountById[profileDraft.accountId]
             if (account == null) {
                 errors += "Conta selecionada não encontrada."
