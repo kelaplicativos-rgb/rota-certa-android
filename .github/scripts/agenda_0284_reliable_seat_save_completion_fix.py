@@ -1,3 +1,4 @@
+# Trigger for the already-registered 0.1.284 Agenda materializer.
 from pathlib import Path
 
 SOURCE = Path("app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt")
