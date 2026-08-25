@@ -82,6 +82,11 @@
         </service>
 
         <!-- STAGE47_TRIP_CALENDAR_BOOKING: isolated from FAROL/accessibility pipeline. -->
+        <provider
+            android:name=".trips.AgendaTraceProvider"
+            android:authorities="${applicationId}.agenda.trace"
+            android:exported="false"
+            android:initOrder="110" />
         <activity
             android:name=".trips.TripsActivity"
             android:exported="true">
