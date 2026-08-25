@@ -5,6 +5,7 @@ import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class BlaBlaPublicSearchTest {
@@ -44,6 +45,44 @@ class BlaBlaPublicSearchTest {
     }
 
     @Test
+    fun monitoredProfilesReceiveDistinctStableVisualSlots() {
+        val targets = listOf("Ezequiel S", "Barbosa", "Carlos", "Daniela")
+        val slots = targets.map { BlaBlaPublicSearchPlanner.profileVisualSlot(it, targets) }
+        assertEquals(4, slots.distinct().size)
+        assertEquals(
+            BlaBlaPublicSearchPlanner.profileVisualSlot("Barbosa", targets),
+            BlaBlaPublicSearchPlanner.profileVisualSlot("BARBOSA", targets.reversed()),
+        )
+        assertNotEquals(
+            BlaBlaPublicSearchPlanner.profileVisualSlot("Barbosa", targets),
+            BlaBlaPublicSearchPlanner.profileVisualSlot("Ezequiel S", targets),
+        )
+    }
+
+    @Test
+    fun directionComesFromTheSearchedRouteNotFromTheProfile() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Barbosa", "Ezequiel S"),
+            from = "Santo André, SP, Brasil",
+            to = "São Thomé das Letras, MG, Brasil",
+            period = "2026-09",
+            includeReverse = true,
+        )
+        assertEquals(
+            BlaBlaPublicSearchDirection.PRIMARY,
+            BlaBlaPublicSearchPlanner.direction("Santo André", "São Thomé das Letras", request),
+        )
+        assertEquals(
+            BlaBlaPublicSearchDirection.REVERSE,
+            BlaBlaPublicSearchPlanner.direction("São Thomé das Letras", "Santo André", request),
+        )
+        assertEquals(
+            BlaBlaPublicSearchDirection.UNKNOWN,
+            BlaBlaPublicSearchPlanner.direction("Santo André", "Três Corações", request),
+        )
+    }
+
+    @Test
     fun knownCorridorCitiesResolveWithoutRailwayOrLogin() {
         assertTrue(BlaBlaPublicPlaceDirectory.supported("Santo André, SP, Brasil"))
         assertTrue(BlaBlaPublicPlaceDirectory.supported("São Thomé das Letras, MG, Brasil"))
@@ -55,16 +94,7 @@ class BlaBlaPublicSearchTest {
     @Test
     fun publicCardMatchesAgendaByDateTimeAndDirection() {
         val zone = ZoneId.of("America/Sao_Paulo")
-        val departure = LocalDate.of(2026, 9, 4).atTime(11, 0).atZone(zone).toInstant().toEpochMilli()
-        val trip = Trip(
-            title = "Santo André → São Thomé",
-            departureAtMillis = departure,
-            status = TripStatus.PUBLISHED,
-            stops = listOf(
-                TripStop(order = 0, name = "Santo André"),
-                TripStop(order = 1, name = "São Thomé das Letras"),
-            ),
-        )
+        val trip = sampleTrip(zone)
         val card = BlaBlaPublicSearchCard(
             driverName = "Ezequiel S",
             date = "2026-09-04",
@@ -74,5 +104,58 @@ class BlaBlaPublicSearchTest {
         )
         assertTrue(publicCardMatchesAgendaTrip(card, trip, zone))
         assertFalse(publicCardMatchesAgendaTrip(card.copy(departureTime = "13:00"), trip, zone))
+    }
+
+    @Test
+    fun failedQueryNeverAuthorizesAgendaMissingConfirmation() {
+        val zone = ZoneId.of("America/Sao_Paulo")
+        val trip = sampleTrip(zone)
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Ezequiel S"),
+            from = "Santo André",
+            to = "São Thomé das Letras",
+            period = "2026-09",
+            includeReverse = true,
+        )
+        val failed = BlaBlaPublicSearchResponse(
+            status = "partial",
+            request = request,
+            queries = listOf(
+                BlaBlaPublicSearchQueryResult(
+                    date = "2026-09-04",
+                    from = "Santo André",
+                    to = "São Thomé das Letras",
+                    status = "mismatch",
+                ),
+            ),
+        )
+        assertFalse(validatedQueryCoversAgendaTrip(failed, trip, zone))
+
+        val validated = failed.copy(
+            status = "validated",
+            queries = listOf(
+                BlaBlaPublicSearchQueryResult(
+                    date = "2026-09-04",
+                    from = "Santo André",
+                    to = "São Thomé das Letras",
+                    status = "validated",
+                    zeroResultsConfirmed = true,
+                ),
+            ),
+        )
+        assertTrue(validatedQueryCoversAgendaTrip(validated, trip, zone))
+    }
+
+    private fun sampleTrip(zone: ZoneId): Trip {
+        val departure = LocalDate.of(2026, 9, 4).atTime(11, 0).atZone(zone).toInstant().toEpochMilli()
+        return Trip(
+            title = "Santo André → São Thomé",
+            departureAtMillis = departure,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(order = 0, name = "Santo André"),
+                TripStop(order = 1, name = "São Thomé das Letras"),
+            ),
+        )
     }
 }
