@@ -32,6 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -c 'from pathlib import Path; p=Path(".github/scripts/agenda_0276_materialize.py"); s=p.read_text(); p.write_text(s.replace("            current.copy(\\n                passengerId = booking.passengerId,", "                current.copy(\\n                passengerId = booking.passengerId,", 1))'
           python3 .github/scripts/agenda_0276_materialize.py
           git diff --check
           grep -Fq 'versionCode = 5569' app/build.gradle.kts
