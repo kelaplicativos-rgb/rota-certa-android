@@ -242,7 +242,7 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
-    fun passengerNavigationPrioritizesVisibleCardBeforeReservationUrl() {
+    fun passengerNavigationPrioritizesCanonicalReservationUrlOverVisibleCard() {
         val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
             passengerPresent = true,
             hasBookingHref = true,
@@ -250,7 +250,12 @@ class BlaBlaCollectorModules0264Test {
             hasPassengerCard = true,
         )
 
-        assertEquals(BlaBlaDirectPassengerStep.PASSENGER_CARD, step)
+        assertEquals(BlaBlaDirectPassengerStep.RESERVATION_URL, step)
+    }
+
+    @Test
+    fun automaticPublishedSeatLookupRemainsOutsideNormalSync() {
+        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
     }
 
     @Test

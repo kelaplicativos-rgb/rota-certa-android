@@ -795,24 +795,26 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluate
             }
-            val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
-            if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
-                tripRosterReadAttempts++
-                statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
-                webView.postDelayed({
-                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
-                }, ROSTER_RETRY_MS)
-                return@evaluate
-            }
-            if (!editLinkMatches) {
-                skipped++
-                UnifiedDebugEventStore.record(
-                    "TRIP_REJECTED",
-                    packageName,
-                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
-                )
-                advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+            if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+                val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+                if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                    tripRosterReadAttempts++
+                    statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                    webView.postDelayed({
+                        captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                    }, ROSTER_RETRY_MS)
+                    return@evaluate
+                }
+                if (!editLinkMatches) {
+                    skipped++
+                    UnifiedDebugEventStore.record(
+                        "TRIP_REJECTED",
+                        packageName,
+                        "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                    )
+                    advanceCandidate(expectedSync, expectedCandidate)
+                    return@evaluate
+                }
             }
             tripRosterReadAttempts = 0
             store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-trip", acceptedResult.domHtml)
@@ -985,7 +987,16 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 BlaBlaDirectPassengerStep.FINISH -> break
             }
         }
-        loadCurrentTripEdit(expectedSync, expectedCandidate)
+        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            loadCurrentTripEdit(expectedSync, expectedCandidate)
+        } else {
+            UnifiedDebugEventStore.record(
+                "AUTOMATIC_SEAT_LOOKUP_SKIPPED",
+                packageName,
+                "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} reason=policy_disabled manualSeatSyncPreserved=true",
+            )
+            finalizeCurrentTrip(expectedSync, expectedCandidate)
+        }
     }
 
     private fun openPendingPassengerCard(
@@ -1423,16 +1434,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
-        val seatState = BlaBlaCollectorSeatModule.state(
-            tripId = candidateTripId,
-            editHref = pendingEditHref,
-            optionsHref = pendingOptionsHref,
-            publishedSeats = pendingPublishedSeats,
-        )
-        if (!BlaBlaCollectorSeatModule.complete(seatState)) {
-            skipped++
-            blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
-            return
+        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            val seatState = BlaBlaCollectorSeatModule.state(
+                tripId = candidateTripId,
+                editHref = pendingEditHref,
+                optionsHref = pendingOptionsHref,
+                publishedSeats = pendingPublishedSeats,
+            )
+            if (!BlaBlaCollectorSeatModule.complete(seatState)) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
+                return
+            }
         }
         val rosterState = BlaBlaCollectorPassengerModule.rosterState(
             passengerCount = pendingTripPassengers.size,
