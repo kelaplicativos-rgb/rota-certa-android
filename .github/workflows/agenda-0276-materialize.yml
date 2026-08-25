@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -c 'from pathlib import Path; p=Path(".github/scripts/agenda_0276_materialize.py"); s=p.read_text(); needle="passengerId = booking.passengerId"; i=s.index(needle); old="            current.copy("; j=s.rfind(old,0,i); assert j >= 0; p.write_text(s[:j] + s[j:].replace(old,"                current.copy(",1))'
+          python3 -c 'from pathlib import Path; p=Path(".github/scripts/agenda_0276_materialize.py"); s=p.read_text(); needle="passengerId = booking.passengerId"; i=s.index(needle); a=s.rfind("'''",0,i)+3; b=s.index("'''",i); block=s[a:b]; block=block.replace("\n            current.copy(","\n                current.copy(",1).replace("\n                passengerId = booking.passengerId,","\n                    passengerId = booking.passengerId,",1).replace("\n                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,","\n                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,",1); p.write_text(s[:a]+block+s[b:])'
           python3 .github/scripts/agenda_0276_materialize.py
           git diff --check
           grep -Fq 'versionCode = 5569' app/build.gradle.kts
