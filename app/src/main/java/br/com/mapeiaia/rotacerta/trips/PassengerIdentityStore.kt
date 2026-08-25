@@ -15,6 +15,11 @@ data class PassengerProfile(
     val id: String = UUID.randomUUID().toString(),
     val displayName: String,
     val whatsapp: String = "",
+    /** Stable external passenger/member IDs explicitly associated with this canonical profile. */
+    val externalPassengerIds: Set<String> = emptySet(),
+    /** Local driver preference. This flag never blocks by name or phone similarity. */
+    val blocked: Boolean = false,
+    val blockedReason: String = "",
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )
@@ -26,7 +31,12 @@ data class PassengerProfile(
 @Serializable
 data class ExternalPassengerMetadata(
     val reservationKey: String,
+    /** Canonical local PassengerProfile id. Never populated from a BlaBlaCar passenger id. */
     val passengerId: String = "",
+    /** Strong external passenger/member id captured from exact booking/network evidence. */
+    val externalPassengerId: String = "",
+    val externalTripId: String = "",
+    val externalProfileUuid: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -46,6 +56,11 @@ data class ExternalPassengerMetadata(
         get() = validLatitude(boardingLatitude) != null && validLongitude(boardingLongitude) != null
 }
 
+internal data class PassengerRideHistory(
+    val totalRides: Int,
+    val ridesByDriverProfile: Map<String, Int>,
+)
+
 class PassengerIdentityStore(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -63,11 +78,18 @@ class PassengerIdentityStore(context: Context) {
         return profiles().firstOrNull { it.id == canonical }
     }
 
+    fun profileByExternalPassengerId(raw: String?): PassengerProfile? {
+        val externalId = stableExternalPassengerId(raw) ?: return null
+        return profiles().singleOrNull { profile -> externalId in profile.externalPassengerIds }
+    }
+
     fun saveProfile(profile: PassengerProfile): PassengerProfile {
         val now = System.currentTimeMillis()
         val normalized = profile.copy(
             displayName = profile.displayName.trim().take(120),
             whatsapp = profile.whatsapp.trim().take(40),
+            externalPassengerIds = profile.externalPassengerIds.mapNotNull(::stableExternalPassengerId).toSet(),
+            blockedReason = profile.blockedReason.trim().take(240),
             updatedAtMillis = now,
         )
         require(normalized.displayName.isNotBlank()) { "Informe o nome do passageiro." }
@@ -83,6 +105,51 @@ class PassengerIdentityStore(context: Context) {
         ),
     )
 
+    fun linkExternalPassengerId(profileId: String, externalPassengerId: String): PassengerProfile? {
+        val externalId = stableExternalPassengerId(externalPassengerId) ?: return null
+        val target = profile(profileId) ?: return null
+        val alreadyOwned = profileByExternalPassengerId(externalId)
+        if (alreadyOwned != null && alreadyOwned.id != target.id) return null
+        val saved = saveProfile(target.copy(externalPassengerIds = target.externalPassengerIds + externalId))
+        val metadata = externalMetadata()
+        var changed = false
+        val linked = metadata.map { item ->
+            if (item.externalPassengerId == externalId && item.passengerId != saved.id) {
+                changed = true
+                item.copy(passengerId = saved.id)
+            } else {
+                item
+            }
+        }
+        if (changed) saveExternalMetadataList(linked)
+        return saved
+    }
+
+    fun setBlocked(profileId: String, blocked: Boolean, reason: String = ""): PassengerProfile? {
+        val target = profile(profileId) ?: return null
+        return saveProfile(target.copy(blocked = blocked, blockedReason = if (blocked) reason else ""))
+    }
+
+    fun rideHistory(profileId: String): PassengerRideHistory {
+        val target = profile(profileId) ?: return PassengerRideHistory(0, emptyMap())
+        val externalIds = target.externalPassengerIds
+        if (externalIds.isEmpty()) return PassengerRideHistory(0, emptyMap())
+        val rides = externalMetadata()
+            .filter { it.externalPassengerId in externalIds }
+            .distinctBy { metadata ->
+                listOf(
+                    metadata.externalProfileUuid.ifBlank { "profile?" },
+                    metadata.externalTripId.ifBlank { metadata.reservationKey },
+                ).joinToString("|")
+            }
+        return PassengerRideHistory(
+            totalRides = rides.size,
+            ridesByDriverProfile = rides
+                .groupingBy { it.externalProfileUuid.ifBlank { "Perfil não identificado" } }
+                .eachCount(),
+        )
+    }
+
     /** Exact contact lookup is only a discovery aid. Callers must still require an explicit reuse action. */
     fun exactContactMatches(raw: String): List<PassengerProfile> {
         val key = passengerContactKey(raw)
@@ -95,6 +162,11 @@ class PassengerIdentityStore(context: Context) {
         return externalMetadata().firstOrNull { it.reservationKey == key }
     }
 
+    fun externalMetadataByPassengerId(raw: String?): List<ExternalPassengerMetadata> {
+        val externalId = stableExternalPassengerId(raw) ?: return emptyList()
+        return externalMetadata().filter { it.externalPassengerId == externalId }
+    }
+
     fun saveExternalMetadata(metadata: ExternalPassengerMetadata): ExternalPassengerMetadata {
         require(metadata.reservationKey.isNotBlank()) { "Referência externa inválida." }
         val latitude = validLatitude(metadata.boardingLatitude)
@@ -102,6 +174,9 @@ class PassengerIdentityStore(context: Context) {
         val hasCoordinatePair = latitude != null && longitude != null
         val normalized = metadata.copy(
             passengerId = metadata.passengerId.trim(),
+            externalPassengerId = stableExternalPassengerId(metadata.externalPassengerId).orEmpty(),
+            externalTripId = stableExternalPassengerId(metadata.externalTripId).orEmpty(),
+            externalProfileUuid = metadata.externalProfileUuid.trim().lowercase().take(80),
             fareCurrencyCode = metadata.fareCurrencyCode.trim().uppercase().take(3),
             boardingAddress = metadata.boardingAddress.trim().take(500),
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
@@ -114,8 +189,12 @@ class PassengerIdentityStore(context: Context) {
             updatedAtMillis = System.currentTimeMillis(),
         )
         val current = externalMetadata().filterNot { it.reservationKey == normalized.reservationKey }
-        prefs.edit().putString(externalMetadataKey, json.encodeToString(listOf(normalized) + current)).apply()
+        saveExternalMetadataList(listOf(normalized) + current)
         return normalized
+    }
+
+    private fun saveExternalMetadataList(value: List<ExternalPassengerMetadata>) {
+        prefs.edit().putString(externalMetadataKey, json.encodeToString(value)).apply()
     }
 
     private fun externalMetadata(): List<ExternalPassengerMetadata> =
@@ -131,6 +210,10 @@ class PassengerIdentityStore(context: Context) {
         private const val KEY_EXTERNAL_METADATA = "external_passenger_metadata"
     }
 }
+
+internal fun stableExternalPassengerId(raw: String?): String? = raw
+    ?.trim()
+    ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{8,160}")) }
 
 internal fun validLatitude(value: Double?): Double? = value?.takeIf { it.isFinite() && it in -90.0..90.0 }
 
