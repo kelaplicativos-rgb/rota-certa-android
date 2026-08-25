@@ -100,7 +100,9 @@ fun BlaBlaCollectorPanel(
             syncCursor++
         } else {
             syncing = false
-            publishCombined("Sincronização + MHTML concluídos")
+            publishCombined(
+                if (syncDateScope != null) "Sincronização do card de hoje concluída" else "Sincronização + MHTML concluídos",
+            )
             if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
                 context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
             }
@@ -141,6 +143,16 @@ fun BlaBlaCollectorPanel(
                     if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
                         context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
                     }
+                } else if (account != null && syncDateScope != null) {
+                    archiving = false
+                    message = "${account.displayLabel}: card de hoje concluído ✅"
+                    onChanged(message.orEmpty())
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_TODAY_CARD_SYNC_FINISHED",
+                        context.packageName,
+                        "accountPresent=true targetDate=$syncDateScope mhtmlFullAccountSkipped=true noLaterCardsVisited=true",
+                    )
+                    advanceSyncQueue()
                 } else if (account != null) {
                     archiving = true
                     message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
@@ -302,6 +314,7 @@ fun BlaBlaCollectorPanel(
             }
         } else {
             val exactTripId = targetedSyncTripId
+            val dateScope = syncDateScope
             if (exactTripId != null) {
                 val currentTrip = stateStore.lastResponse()?.trips?.singleOrNull { trip ->
                     trip.profile_uuid.equals(account.profileUuid, ignoreCase = true) && trip.trip_id == exactTripId
@@ -316,6 +329,8 @@ fun BlaBlaCollectorPanel(
                 } else {
                     sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
                 }
+            } else if (dateScope != null) {
+                sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncToday(context, account, dateScope))
             } else {
                 sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
             }
@@ -393,7 +408,7 @@ fun BlaBlaCollectorPanel(
                         syncCursor = 0
                         syncing = true
                         archiving = false
-                        message = "Sincronizando ${accounts.size} conta(s) • Timeline somente de ${today.format(DateTimeFormatter.ofPattern("dd/MM"))}…"
+                        message = "Sincronizando somente o card de hoje (${today.format(DateTimeFormatter.ofPattern("dd/MM"))})…"
                         onChanged(message.orEmpty())
                         UnifiedDebugEventStore.record(
                             "AGENDA_TODAY_ONLY_SYNC_REQUESTED",

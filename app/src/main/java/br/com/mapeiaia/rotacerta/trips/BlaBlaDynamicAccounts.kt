@@ -115,12 +115,15 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_MODE = "blablacar_mode"
     const val EXTRA_TARGET_URL = "blablacar_target_url"
     const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
+    const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_MANAGE = "manage"
 
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
     fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+    fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
+        intent(context, account, MODE_SYNC).putExtra(EXTRA_TARGET_DATE, targetDate.toString())
     fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
         intent(context, account, MODE_SYNC)
             .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
@@ -232,6 +235,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN
     private var targetTripId = ""
     private var targetTripHref = ""
+    private var targetDate: LocalDate? = null
     private var phase = Phase.IDLE
     private var candidates = emptyList<BlaBlaDomRideCandidate>()
     private val collected = mutableListOf<BlaBlaCollectorTrip>()
@@ -286,9 +290,16 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
         targetTripId = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID)?.trim().orEmpty()
         targetTripHref = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
+        targetDate = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_DATE)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+            ?.takeIf { mode == BlaBlaDynamicSessionIntents.MODE_SYNC }
         if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
             targetTripId = ""
             targetTripHref = ""
+        } else {
+            targetDate = null
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             setContentView(TextView(this).apply {
@@ -569,28 +580,32 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 return@evaluate
             }
             store.saveDiagnosticHtml(account, "rides", result.domHtml)
-            val visible = result.candidates
+            val visibleAll = result.candidates
                 .filter { candidate ->
                     val href = candidate.href
                     BlaBlaCollectorUrlModule.isSpecificTrip(href)
                 }
                 .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
+            val requestedDate = targetDate
+            val visible = requestedDate?.let { date ->
+                BlaBlaCollectorCardModule.candidatesOnDate(visibleAll, date)
+            } ?: visibleAll
             UnifiedDebugEventStore.record(
                 "RIDES_TRAVERSAL_SCAN",
                 packageName,
-                "account=${account.displayLabel} visible=${visible.size} resolved=${resolvedCardTraversalKeys.size} completed=${completedCardTraversalKeys.size} quarantined=${quarantinedCardTraversalKeys.size} scrollY=${result.scrollY} scrollHeight=${result.scrollHeight} viewport=${result.viewportHeight} atBottom=${result.atBottom} pastDateFilter=false fixedTripLimit=false",
+                "account=${account.displayLabel} visible=${visibleAll.size} eligible=${visible.size} resolved=${resolvedCardTraversalKeys.size} completed=${completedCardTraversalKeys.size} quarantined=${quarantinedCardTraversalKeys.size} scrollY=${result.scrollY} scrollHeight=${result.scrollHeight} viewport=${result.viewportHeight} atBottom=${result.atBottom} pastDateFilter=${requestedDate != null} fixedTripLimit=${requestedDate != null} targetDate=${requestedDate ?: "none"}",
             )
-            if (visible.isEmpty() && rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS && !looksLoggedOut(result.bodyText)) {
+            if (visibleAll.isEmpty() && rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS && !looksLoggedOut(result.bodyText)) {
                 rideReadAttempts++
                 webView.postDelayed({ captureRideList() }, 1200)
                 return@evaluate
             }
-            if (visible.isEmpty() && looksLoggedOut(result.bodyText)) {
+            if (visibleAll.isEmpty() && looksLoggedOut(result.bodyText)) {
                 blockSyncWithoutCurrentCard("rides_session_logged_out")
                 return@evaluate
             }
             if (
-                visible.isEmpty() &&
+                visibleAll.isEmpty() &&
                 !BlaBlaCollectorCardModule.emptyListIsAuthoritative(result.explicitEmptyList)
             ) {
                 blockSyncWithoutCurrentCard("rides_empty_without_explicit_terminal_evidence")
@@ -612,13 +627,35 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "CARD_TRAVERSAL_START",
                     packageName,
-                    "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(next.href).orEmpty()} uiOrder=true dateIgnored=true",
+                    "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(next.href).orEmpty()} uiOrder=true dateIgnored=${requestedDate == null} dateScope=${if (requestedDate == null) "all" else "today"} targetDate=${requestedDate ?: "none"}",
                 )
                 loadCurrentCandidate()
                 return@evaluate
             }
             if (visible.any { tripTraversalKey(it).isBlank() }) {
                 blockSyncWithoutCurrentCard("visible_card_without_stable_identity")
+                return@evaluate
+            }
+            if (requestedDate != null) {
+                val firstVisibleDate = visibleAll.firstOrNull()?.let { candidate ->
+                    BlaBlaCollectorCardModule.candidateDate(candidate)
+                }
+                if (collected.isEmpty() && visible.isEmpty() && visibleAll.isNotEmpty() && firstVisibleDate == null) {
+                    blockSyncWithoutCurrentCard("today_card_date_unreadable")
+                    return@evaluate
+                }
+                val verified = identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()
+                saveFinalSnapshotOnce(verified)
+                if (verified) {
+                    UnifiedDebugEventStore.record(
+                        "RIDES_TRAVERSAL_COMPLETE",
+                        packageName,
+                        "account=${account.displayLabel} resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} pastDateFilter=true fixedTripLimit=true targetDate=$requestedDate noLaterCardsVisited=true",
+                    )
+                    completeSync(collected.size)
+                } else {
+                    blockSyncWithoutCurrentCard("identity_not_verified_after_today_card")
+                }
                 return@evaluate
             }
             if (!result.atBottom) {
