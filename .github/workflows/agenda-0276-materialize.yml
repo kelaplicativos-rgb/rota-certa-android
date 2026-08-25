@@ -1,5 +1,5 @@
 name: Agenda 0.1.278 materialize
-# Minimal continuation of the existing Agenda materializer: preserve 0.1.277 and make Limpar Timeline remove local/manual trips too.
+# Current-source continuation of the consolidated Agenda branch. Fixes Limpar Timeline without touching FAROL or Public Search.
 
 on:
   push:
@@ -7,200 +7,45 @@ on:
       - agent/agenda-ux-passenger-publisher-0.1.276
     paths:
       - '.github/workflows/agenda-0276-materialize.yml'
-      - '.github/scripts/agenda_0276_materialize.py'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: agenda-0278-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   materialize-test-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: agent/agenda-ux-passenger-publisher-0.1.276
 
-      - name: Protect FAROL and public search
+      - name: Prove authoritative Agenda baseline
         shell: bash
         run: |
           set -euo pipefail
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.before
-
-      - name: Materialize consolidated Agenda baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -c 'from pathlib import Path; p=Path(".github/scripts/agenda_0276_materialize.py"); s=p.read_text(); old="            current.copy(\n                passengerId = booking.passengerId,\n                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,"; new="                current.copy(\n                    passengerId = booking.passengerId,\n                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,"; assert old in s; p.write_text(s.replace(old,new,1))'
-          python3 .github/scripts/agenda_0276_materialize.py
-
-      - name: Materialize minimal 0.1.277 adjustments
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
-              if path.endswith('BlaBlaCollectorPassengerModule.kt') and 'PASSENGER_UUID' in text:
-                  return
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
-              p.write_text(text.replace(old, new, 1))
-
-          passenger = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt'
-          replace_once(
-              passenger,
-              '''        val leftHref = left.booking_href?.trim().orEmpty()
-                  val rightHref = right.booking_href?.trim().orEmpty()
-                  if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
-                      return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
-                  }
-          ''',
-              '''        val leftHref = left.booking_href?.trim().orEmpty()
-                  val rightHref = right.booking_href?.trim().orEmpty()
-                  val leftUuid = passengerUuid(leftHref)
-                  val rightUuid = passengerUuid(rightHref)
-                  if (leftUuid != null && rightUuid != null && leftUuid == rightUuid) return true
-                  if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
-                      return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
-                  }
-          ''',
-          )
-          replace_once(
-              passenger,
-              '''    private fun compatiblePlace(left: String?, right: String?): Boolean {
-          ''',
-              '''    private fun passengerUuid(raw: String): String? {
-                      if (raw.isBlank()) return null
-                      val identity = BlaBlaCollectorUrlModule.passengerIdentityKey(raw).lowercase()
-                      return identity.takeIf(PASSENGER_UUID::matches)
-                  }
-
-                  private fun compatiblePlace(left: String?, right: String?): Boolean {
-          ''',
-          )
-          replace_once(
-              passenger,
-              '''    private fun normalizeEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
-                      .replace(Regex("\\p{M}+"), "")
-                      .lowercase()
-                      .replace(Regex("[^a-z0-9]+"), " ")
-                      .trim()
-          }
-          ''',
-              '''    private fun normalizeEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
-                      .replace(Regex("\\p{M}+"), "")
-                      .lowercase()
-                      .replace(Regex("[^a-z0-9]+"), " ")
-                      .trim()
-
-                  private val PASSENGER_UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-          }
-          ''',
-          )
-
-          publisher = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt'
-          replace_once(
-              publisher,
-              '''        templateErrors("IDA", draft.outbound)
-                  templateErrors("VOLTA", draft.inbound)
-
-                  draft.profiles.filter(AgendaPublishProfileDraft::selected).forEach { profileDraft ->
-          ''',
-              '''        val selectedProfiles = draft.profiles.filter(AgendaPublishProfileDraft::selected)
-                  val outboundRequested = selectedProfiles.any { it.outboundDays.isNotBlank() }
-                  val inboundRequested = selectedProfiles.any { it.inboundDays.isNotBlank() }
-                  if (outboundRequested) templateErrors("IDA", draft.outbound)
-                  if (inboundRequested) templateErrors("VOLTA", draft.inbound)
-                  if (selectedProfiles.isNotEmpty() && !outboundRequested && !inboundRequested) {
-                      errors += "Informe ao menos um dia de IDA ou VOLTA."
-                  }
-
-                  selectedProfiles.forEach { profileDraft ->
-          ''',
-          )
-
-          timeline = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
-          old_message = '''internal fun passengerConfirmationMessage(
-              entry: TripTimelineEntry,
-              row: EnhancedPassengerCardRow,
-              context: Context? = null,
-          ): String {
-              val zone = java.time.ZoneId.systemDefault()
-              val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
-              val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
-              val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(departure)
-              val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
-              val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
-              val boarding = row.boardingAddress.trim().takeIf(String::isNotEmpty) ?: row.boarding?.trim().orEmpty()
-              val dropoff = row.dropoffAddress.trim().takeIf(String::isNotEmpty) ?: row.dropoff?.trim().orEmpty()
-              val lines = mutableListOf<String>()
-              lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
-              lines += ""
-              if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
-              lines += "📅 $date"
-              lines += "🕒 Saída: $time"
-              if (boarding.isNotBlank()) lines += "📍 Embarque: $boarding"
-              if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
-              lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
-              if (row.fareMinorUnits != null && context != null) {
-                  val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
-                  lines += "💰 $formatted"
-              }
-              lines += ""
-              lines += "Se precisar ajustar o ponto de embarque ou destino, me avise por aqui. Quando eu estiver a caminho, envio a localização. 👍"
-              return lines.joinToString("\\n")
-          }
-          '''
-          new_message = '''internal fun passengerConfirmationMessage(
-              entry: TripTimelineEntry,
-              row: EnhancedPassengerCardRow,
-              context: Context? = null,
-          ): String {
-              val zone = java.time.ZoneId.systemDefault()
-              val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
-              val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
-              val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
-              val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
-              val lines = mutableListOf<String>()
-              lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
-              lines += ""
-              if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
-              lines += "📅 $date"
-              lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
-              if (row.fareMinorUnits != null && context != null) {
-                  val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
-                  lines += "💰 $formatted"
-              }
-              lines += ""
-              lines += "Quando eu estiver a caminho, envio a localização. 👍"
-              return lines.joinToString("\\n")
-          }
-          '''
-          replace_once(timeline, old_message, new_message)
-
-          build = 'app/build.gradle.kts'
-          replace_once(build, '        versionCode = 5569\n        versionName = "0.1.276"', '        versionCode = 5570\n        versionName = "0.1.277"')
-          PY
-
-          git diff --check
-          grep -Fq 'versionCode = 5570' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.277"' app/build.gradle.kts
           grep -Fq 'PASSENGER_UUID' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
           grep -Fq 'selectedProfiles.any { it.outboundDays.isNotBlank() }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt
           grep -Fq 'Quando eu estiver a caminho, envio a localização. 👍' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          if grep -Fq 'Se precisar ajustar o ponto de embarque ou destino' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt; then exit 1; fi
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after
-          cmp /tmp/public.before /tmp/public.after
+          grep -Fq 'ResponsiveTripAction("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+
+      - name: Protect FAROL and Public Search
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test "$(sha256sum "$FAROL" | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt \
+            > /tmp/public.before
 
       - name: Materialize complete Timeline clear 0.1.278
         shell: bash
@@ -209,34 +54,13 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
-              p.write_text(text.replace(old, new, 1))
-
-          store = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt'
-          replace_once(
-              store,
-              '''    fun deleteTrip(id: String) {
-                  prefs.edit()
-                      .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))
-                      .putString(bookingsKey, json.encodeToString(bookings().filterNot { it.tripId == id }))
-                      .apply()
-              }
-          ''',
-              '''    fun deleteTrip(id: String) {
-                  prefs.edit()
-                      .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))
-                      .putString(bookingsKey, json.encodeToString(bookings().filterNot { it.tripId == id }))
-                      .apply()
-              }
-
-              fun clearTimelineLocalData(): Pair<Int, Int> {
+          store = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt')
+          store_text = store.read_text()
+          if 'fun clearTimelineLocalData(): Pair<Int, Int>' not in store_text:
+              marker = '    fun saveBooking(booking: Booking): Booking {'
+              if store_text.count(marker) != 1:
+                  raise SystemExit('TripStore.kt: saveBooking anchor not unique')
+              method = '''    fun clearTimelineLocalData(): Pair<Int, Int> {
                   val tripsRemoved = trips().size
                   val bookingsRemoved = bookings().size
                   prefs.edit()
@@ -245,71 +69,45 @@ jobs:
                       .apply()
                   return tripsRemoved to bookingsRemoved
               }
-          ''',
-          )
 
-          timeline = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
-          old_clear = '''            ResponsiveTripAction("Limpar Timeline") {
-                  archiveStore.clearExternal(physical)
-                  val clearedResponse = collectorStore.saveResponse(
-                      BlaBlaCollectorMonthResponse(
-                          status = "cleared",
-                          month = collectorResponse?.month,
-                          strategy = collectorResponse?.strategy,
-                          profiles = collectorResponse?.profiles.orEmpty(),
-                          routes = collectorResponse?.routes.orEmpty(),
-                          coverage = BlaBlaCollectorCoverage(
-                              complete_for_scope = true,
-                              global_profile_month_complete = true,
-                              reason = "cleared_by_user",
-                              past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
-                          ),
-                      ),
-                      preserveOnPartial = false,
-                  )
-                  collectorResponse = clearedResponse
-                  showArchived = false
-                  searchQuery = ""
-                  UnifiedDebugEventStore.record(
-                      "TIMELINE_CLEARED_BY_USER",
-                      context.packageName,
-                      "externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
-                  )
-                  onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")
-              },'''
-          new_clear = '''            ResponsiveTripAction("Limpar Timeline") {
-                  archiveStore.clearExternal(physical)
-                  val localClear = store.clearTimelineLocalData()
-                  val clearedResponse = collectorStore.saveResponse(
-                      BlaBlaCollectorMonthResponse(
-                          status = "cleared",
-                          month = collectorResponse?.month,
-                          strategy = collectorResponse?.strategy,
-                          profiles = collectorResponse?.profiles.orEmpty(),
-                          routes = collectorResponse?.routes.orEmpty(),
-                          coverage = BlaBlaCollectorCoverage(
-                              complete_for_scope = true,
-                              global_profile_month_complete = true,
-                              reason = "cleared_by_user",
-                              past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
-                          ),
-                      ),
-                      preserveOnPartial = false,
-                  )
-                  collectorResponse = clearedResponse
-                  showArchived = false
-                  searchQuery = ""
-                  UnifiedDebugEventStore.record(
-                      "TIMELINE_CLEARED_BY_USER",
-                      context.packageName,
-                      "externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true",
-                  )
-                  onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")
-              },'''
-          replace_once(timeline, old_clear, new_clear)
+          '''
+              store.write_text(store_text.replace(marker, method + marker, 1))
 
-          build = 'app/build.gradle.kts'
-          replace_once(build, '        versionCode = 5570\n        versionName = "0.1.277"', '        versionCode = 5571\n        versionName = "0.1.278"')
+          timeline = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
+          text = timeline.read_text()
+          if 'val localClear = store.clearTimelineLocalData()' not in text:
+              anchor = '                archiveStore.clearExternal(physical)\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'TripTimelineUi.kt: clear anchor count={text.count(anchor)}')
+              text = text.replace(anchor, anchor + '                val localClear = store.clearTimelineLocalData()\n', 1)
+
+          old_debug = '"externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}"'
+          new_debug = '"externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true"'
+          if old_debug in text:
+              text = text.replace(old_debug, new_debug, 1)
+          elif new_debug not in text:
+              raise SystemExit('TripTimelineUi.kt: debug clear contract not found')
+
+          old_message = 'onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")'
+          new_message = 'onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")'
+          if old_message in text:
+              text = text.replace(old_message, new_message, 1)
+          elif new_message not in text:
+              raise SystemExit('TripTimelineUi.kt: user clear message not found')
+          timeline.write_text(text)
+
+          build = Path('app/build.gradle.kts')
+          build_text = build.read_text()
+          target = '        versionCode = 5571\n        versionName = "0.1.278"'
+          if target not in build_text:
+              candidates = [
+                  '        versionCode = 5570\n        versionName = "0.1.277"',
+                  '        versionCode = 5568\n        versionName = "0.1.275"',
+              ]
+              matches = [candidate for candidate in candidates if candidate in build_text]
+              if len(matches) != 1:
+                  raise SystemExit(f'app/build.gradle.kts: expected one known baseline, found {len(matches)}')
+              build.write_text(build_text.replace(matches[0], target, 1))
           PY
 
           git diff --check
@@ -318,28 +116,47 @@ jobs:
           grep -Fq '.remove(bookingsKey)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
           grep -Fq 'val localClear = store.clearTimelineLocalData()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'localTripsRemoved=${localClear.first}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          if grep -Fq 'localTripsPreserved=${trips.size}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then exit 1; fi
+          if grep -Fq 'localTripsPreserved=${trips.size}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then
+            echo 'Legacy local-trip preservation is still present.' >&2
+            exit 1
+          fi
           grep -Fq 'versionCode = 5571' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.278"' app/build.gradle.kts
+
+      - name: Verify protected sources remain untouched
+        shell: bash
+        run: |
+          set -euo pipefail
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.timeline-clear
-          cmp /tmp/public.before /tmp/public.timeline-clear
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt \
+            > /tmp/public.after
+          cmp /tmp/public.before /tmp/public.after
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests and debug APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify protected sources and APK
+      - name: Verify APK and protected source after build
         shell: bash
         run: |
           set -euo pipefail
           test -s app/build/outputs/apk/debug/app-debug.apk
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.final
-          cmp /tmp/public.before /tmp/public.final
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
 
       - name: Commit materialized source
@@ -348,20 +165,15 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPhysicalRideConsolidator.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt \
-                  app/src/main/AndroidManifest.xml \
-                  app/build.gradle.kts
+          git add \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+            app/build.gradle.kts
           if ! git diff --cached --quiet; then
             git commit -m 'fix(agenda): clear local timeline trips 0.1.278'
             git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           fi
+          git rev-parse HEAD | tee /tmp/source-head.txt
 
       - name: Build evidence
         shell: bash
@@ -370,7 +182,7 @@ jobs:
           mkdir -p /tmp/agenda-0278
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0278/rota-certa-0.1.278-debug.apk
           cp /tmp/apk.sha256 /tmp/agenda-0278/apk.sha256
-          git rev-parse HEAD > /tmp/agenda-0278/source-head.txt
+          cp /tmp/source-head.txt /tmp/agenda-0278/source-head.txt
           printf '%s\n' 'versionName=0.1.278' 'versionCode=5571' > /tmp/agenda-0278/version.txt
 
       - uses: actions/upload-artifact@v4
