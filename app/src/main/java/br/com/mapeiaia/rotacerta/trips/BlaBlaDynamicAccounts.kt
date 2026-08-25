@@ -1977,6 +1977,27 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                   passengerRosterComplete: rosterContainers.length > 0 && !hasMore
                 };
               };
+              const looksLikeCalendarDate = (value) => {
+                const text = clean(value);
+                if (!text) return false;
+                return /\b20\d{2}-\d{1,2}-\d{1,2}\b/.test(text) ||
+                  /\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/.test(text) ||
+                  /\b(?:hoje|amanh[ãa])\b/i.test(text) ||
+                  /\b\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i.test(text);
+              };
+              const nearestPrecedingDateEvidence = (root) => {
+                const markers = Array.from(document.querySelectorAll('[data-testid*="date"], time[datetime], h1, h2, h3'));
+                for (let index = markers.length - 1; index >= 0; index--) {
+                  const node = markers[index];
+                  if (!node || node === root || (root.contains && root.contains(node))) continue;
+                  if (!(node.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+                  const structured = clean(node.getAttribute && node.getAttribute('datetime'));
+                  const visible = clean(node.innerText || node.textContent);
+                  if (looksLikeCalendarDate(structured)) return structured;
+                  if (looksLikeCalendarDate(visible)) return visible;
+                }
+                return '';
+              };
               const dateEvidence = (root) => {
                 const structured = Array.from(root.querySelectorAll('time[datetime]'))
                   .map((node) => clean(node.getAttribute('datetime')))
@@ -1984,7 +2005,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 const visible = Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
                   .map((node) => clean(node.innerText))
                   .filter(Boolean);
-                return clean(structured.concat(visible).join(' | ')).slice(0, 1200);
+                const localEvidence = structured.concat(visible);
+                if (localEvidence.some(looksLikeCalendarDate)) {
+                  return clean(localEvidence.join(' | ')).slice(0, 1200);
+                }
+                const preceding = nearestPrecedingDateEvidence(root);
+                return clean(localEvidence.concat(preceding ? [preceding] : []).join(' | ')).slice(0, 1200);
               };
               const roots = Array.from(document.querySelectorAll('[data-testid^="e2e-your-rides-trip-card-"], article[data-testid^="e2e-your-rides-trip-card-"], article'));
               const fromRoots = roots.map((root) => {
