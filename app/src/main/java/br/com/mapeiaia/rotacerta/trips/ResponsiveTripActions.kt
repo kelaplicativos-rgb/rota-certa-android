@@ -23,6 +23,7 @@ data class ResponsiveTripAction(
     val label: String,
     val outlined: Boolean = true,
     val enabled: Boolean = true,
+    val traceKey: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -44,6 +45,7 @@ fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifie
     val effectiveActions = if (agendaToolbar) {
         actions + ResponsiveTripAction(
             label = if (showPublicSearch) "Fechar consulta pública" else "Consulta pública",
+            traceKey = "public_search",
             onClick = { showPublicSearch = !showPublicSearch },
         )
     } else {
@@ -56,10 +58,14 @@ fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifie
             if (narrow) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                     effectiveActions.forEach { action ->
+                        val tracedClick = {
+                            AgendaTrace.action(context, action.traceKey, action.label)
+                            action.onClick()
+                        }
                         if (action.outlined) {
-                            OutlinedButton(action.onClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
                         } else {
-                            Button(action.onClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            Button(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
                         }
                     }
                 }
@@ -68,10 +74,14 @@ fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifie
                 val width = (maxWidth - gap * (effectiveActions.size - 1)) / effectiveActions.size
                 Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
                     effectiveActions.forEach { action ->
+                        val tracedClick = {
+                            AgendaTrace.action(context, action.traceKey, action.label)
+                            action.onClick()
+                        }
                         if (action.outlined) {
-                            OutlinedButton(action.onClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                            OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
                         } else {
-                            Button(action.onClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                            Button(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
                         }
                     }
                 }
