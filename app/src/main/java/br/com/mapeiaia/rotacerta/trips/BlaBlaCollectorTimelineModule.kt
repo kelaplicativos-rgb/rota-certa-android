@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.time.LocalDate
+
 internal data class BlaBlaSnapshotMergeResult(
     val trips: List<BlaBlaCollectorTrip>,
     val preservedMissingTrips: Int,
@@ -12,6 +14,8 @@ internal data class BlaBlaSnapshotMergeResult(
  * erase cards or passenger rows confirmed by the last good snapshot.
  */
 internal object BlaBlaCollectorTimelineModule {
+    private const val DATE_SCOPE_PREFIX = "date_scope:"
+
     fun mergeSnapshotTrips(
         previous: List<BlaBlaCollectorTrip>,
         current: List<BlaBlaCollectorTrip>,
@@ -58,11 +62,26 @@ internal object BlaBlaCollectorTimelineModule {
     }
 
 
+    fun scopeResponseToDate(
+        response: BlaBlaCollectorMonthResponse,
+        date: LocalDate,
+    ): BlaBlaCollectorMonthResponse {
+        val isoDate = date.toString()
+        return response.copy(
+            trips = response.trips.filter { trip -> trip.date == isoDate },
+            coverage = response.coverage.copy(reason = "$DATE_SCOPE_PREFIX$isoDate"),
+        )
+    }
+
+    fun isDateScoped(response: BlaBlaCollectorMonthResponse?): Boolean =
+        response?.coverage?.reason?.startsWith(DATE_SCOPE_PREFIX) == true
+
     fun recoverStartupResponse(
         persisted: BlaBlaCollectorMonthResponse?,
         dynamic: BlaBlaCollectorMonthResponse?,
     ): BlaBlaCollectorMonthResponse? {
         if (persisted?.status == "cleared") return persisted
+        if (isDateScoped(persisted)) return persisted
         if (persisted?.trips?.isNotEmpty() == true) return persisted
         if (dynamic == null || dynamic.trips.isEmpty()) return persisted
         return dynamic

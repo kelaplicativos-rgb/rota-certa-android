@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -58,6 +59,7 @@ fun BlaBlaCollectorPanel(
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
     var targetedSyncTripId by remember { mutableStateOf<String?>(null) }
+    var syncDateScope by remember { mutableStateOf<LocalDate?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -69,11 +71,27 @@ fun BlaBlaCollectorPanel(
     fun publishCombined(messagePrefix: String) {
         val accounts = registry.list()
         val response = sessionStore.combinedResponse(accounts)
-        val published = stateStore.saveResponse(response)
+        val scopeDate = syncDateScope
+        val scopedResponse = scopeDate?.let { date ->
+            BlaBlaCollectorTimelineModule.scopeResponseToDate(response, date)
+        } ?: response
+        val published = stateStore.saveResponse(
+            scopedResponse,
+            preserveOnPartial = scopeDate == null,
+        )
         onResult(published)
         refresh()
-        message = "$messagePrefix • ${published.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${published.trips.size} viagens."
+        val scopeLabel = scopeDate?.let { date ->
+            " • somente ${date.format(DateTimeFormatter.ofPattern("dd/MM"))}"
+        }.orEmpty()
+        message = "$messagePrefix$scopeLabel • ${published.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${published.trips.size} viagens."
         onChanged(message.orEmpty())
+        UnifiedDebugEventStore.record(
+            "AGENDA_SYNC_SCOPE_PUBLISHED",
+            context.packageName,
+            "scope=${if (scopeDate == null) "all" else "today"} targetDate=${scopeDate ?: "none"} source=normalized_trip_date publishedTrips=${published.trips.size}",
+        )
+        syncDateScope = null
     }
 
     fun advanceSyncQueue() {
@@ -134,6 +152,7 @@ fun BlaBlaCollectorPanel(
             } else {
                 syncing = false
                 archiving = false
+                syncDateScope = null
                 val account = registry.get(accountId)
                 message = "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
                 onChanged(message.orEmpty())
@@ -160,6 +179,7 @@ fun BlaBlaCollectorPanel(
         if (result.resultCode == Activity.RESULT_OK && !accountId.isNullOrBlank()) {
             // Read-after-write: after the exact options page verified the new value,
             // refresh only the authenticated account that owns that publication.
+            syncDateScope = null
             syncQueue = listOf(accountId)
             syncCursor = 0
             syncing = true
@@ -256,6 +276,7 @@ fun BlaBlaCollectorPanel(
             return@LaunchedEffect
         }
         handledAutoSyncToken = autoSyncToken
+        syncDateScope = null
         targetedSyncTripId = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
         syncQueue = selectedAccounts.map { it.id }
         syncCursor = 0
@@ -288,6 +309,7 @@ fun BlaBlaCollectorPanel(
                 val href = currentTrip?.trip_href
                 if (href.isNullOrBlank()) {
                     syncing = false
+                    syncDateScope = null
                     targetedSyncTripId = null
                     message = "Card exato sem link canônico; sincronização individual não iniciada."
                     onChanged(message.orEmpty())
@@ -338,6 +360,7 @@ fun BlaBlaCollectorPanel(
                 onClick = {
                     if (!launchPendingSeatSync("manual_sync_button")) {
                         targetedSyncTripId = null
+                        syncDateScope = null
                         syncQueue = accounts.map { it.id }
                         syncCursor = 0
                         syncing = true
@@ -357,6 +380,31 @@ fun BlaBlaCollectorPanel(
                         else -> "Sincronizar todas as contas"
                     },
                 )
+            }
+
+            OutlinedButton(
+                enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
+                onClick = {
+                    if (!launchPendingSeatSync("manual_sync_today_button")) {
+                        val today = LocalDate.now()
+                        targetedSyncTripId = null
+                        syncDateScope = today
+                        syncQueue = accounts.map { it.id }
+                        syncCursor = 0
+                        syncing = true
+                        archiving = false
+                        message = "Sincronizando ${accounts.size} conta(s) • Timeline somente de ${today.format(DateTimeFormatter.ofPattern("dd/MM"))}…"
+                        onChanged(message.orEmpty())
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_TODAY_ONLY_SYNC_REQUESTED",
+                            context.packageName,
+                            "accounts=${accounts.size} targetDate=$today authority=normalized_trip_date outerRelativeLabelIgnored=true",
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Sincronizar só hoje")
             }
 
             Text("A leitura usa somente a interface oficial logada. Senha não é capturada nem enviada ao Railway.")
