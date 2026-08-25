@@ -1,5 +1,5 @@
-name: Agenda 0.1.278 materialize
-# Current-source continuation of the consolidated Agenda branch. Fixes Limpar Timeline without touching FAROL or Public Search.
+name: Agenda 0.1.279 materialize
+# Minimal causal continuation of the consolidated Agenda branch: recover synchronized cards after an interrupted sync and ask before deleting local/manual trips.
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: agenda-0278-${{ github.ref }}
+  group: agenda-0279-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,14 +26,17 @@ jobs:
           fetch-depth: 0
           ref: agent/agenda-ux-passenger-publisher-0.1.276
 
-      - name: Prove authoritative Agenda baseline
+      - name: Prove authoritative Agenda 0.1.278 baseline
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'PASSENGER_UUID' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
-          grep -Fq 'selectedProfiles.any { it.outboundDays.isNotBlank() }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt
-          grep -Fq 'Quando eu estiver a caminho, envio a localização. 👍' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'versionCode = 5571' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.278"' app/build.gradle.kts
+          grep -Fq 'fun clearTimelineLocalData(): Pair<Int, Int>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
           grep -Fq 'ResponsiveTripAction("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'class BlaBlaDynamicSessionStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'class BlaBlaCollectorStateStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'PASSENGER_UUID' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
 
       - name: Protect FAROL and Public Search
         shell: bash
@@ -47,81 +50,322 @@ jobs:
             app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt \
             > /tmp/public.before
 
-      - name: Materialize complete Timeline clear 0.1.278
+      - name: Materialize Agenda Timeline recovery 0.1.279
         shell: bash
         run: |
           set -euo pipefail
           python3 <<'PY'
           from pathlib import Path
 
-          store = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt')
-          store_text = store.read_text()
-          if 'fun clearTimelineLocalData(): Pair<Int, Int>' not in store_text:
-              marker = '    fun saveBooking(booking: Booking): Booking {'
-              if store_text.count(marker) != 1:
-                  raise SystemExit('TripStore.kt: saveBooking anchor not unique')
-              method = '''    fun clearTimelineLocalData(): Pair<Int, Int> {
-                  val tripsRemoved = trips().size
-                  val bookingsRemoved = bookings().size
-                  prefs.edit()
-                      .remove(tripsKey)
-                      .remove(bookingsKey)
-                      .apply()
-                  return tripsRemoved to bookingsRemoved
+          # 1) Pure startup recovery policy: an explicit user clear is authoritative;
+          #    otherwise only an empty persisted Timeline may recover from verified session snapshots.
+          timeline_module = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt')
+          text = timeline_module.read_text()
+          if 'fun recoverStartupResponse(' not in text:
+              stripped = text.rstrip()
+              if not stripped.endswith('}'):
+                  raise SystemExit('BlaBlaCollectorTimelineModule.kt: closing object brace not found')
+              helper = '''
+
+              fun recoverStartupResponse(
+                  persisted: BlaBlaCollectorMonthResponse?,
+                  dynamic: BlaBlaCollectorMonthResponse?,
+              ): BlaBlaCollectorMonthResponse? {
+                  if (persisted?.status == "cleared") return persisted
+                  if (persisted?.trips?.isNotEmpty() == true) return persisted
+                  if (dynamic == null || dynamic.trips.isEmpty()) return persisted
+                  return dynamic
+              }
+          '''
+              timeline_module.write_text(stripped[:-1] + helper + '\n}\n')
+
+          # 2) Clear only synchronized trip snapshots while preserving account identity/session.
+          session = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt')
+          text = session.read_text()
+          if 'fun clearTripsPreservingSessions(' not in text:
+              marker = '    fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {'
+              if text.count(marker) != 1:
+                  raise SystemExit(f'BlaBlaCollectorSessionModule.kt: combinedResponse anchor count={text.count(marker)}')
+              method = '''    fun clearTripsPreservingSessions(accounts: List<BlaBlaDynamicAccount>): Pair<Int, Int> {
+                  var accountsTouched = 0
+                  var tripsRemoved = 0
+                  accounts.forEach { account ->
+                      withAccountLock(account.id) {
+                          val previous = readUnlocked(account) ?: return@withAccountLock
+                          tripsRemoved += previous.trips.size
+                          if (previous.trips.isNotEmpty() || previous.skippedTrips != 0) {
+                              accountsTouched++
+                              writeUnlocked(
+                                  account,
+                                  previous.copy(
+                                      updatedAtMillis = System.currentTimeMillis(),
+                                      trips = emptyList(),
+                                      skippedTrips = 0,
+                                  ),
+                              )
+                          }
+                      }
+                  }
+                  UnifiedDebugEventStore.record(
+                      "TIMELINE_SESSION_SNAPSHOTS_CLEARED",
+                      appContext.packageName,
+                      "accounts=${accounts.size} accountsTouched=$accountsTouched tripsRemoved=$tripsRemoved identityPreserved=true loginPreserved=true",
+                  )
+                  return accountsTouched to tripsRemoved
               }
 
           '''
-              store.write_text(store_text.replace(marker, method + marker, 1))
+              session.write_text(text.replace(marker, method + marker, 1))
 
-          timeline = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
-          text = timeline.read_text()
-          if 'val localClear = store.clearTimelineLocalData()' not in text:
-              anchor = '                archiveStore.clearExternal(physical)\n'
+          # 3) State-store recovery and synchronized-data clear authority.
+          collector = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt')
+          text = collector.read_text()
+          if 'data class BlaBlaTimelineClearResult(' not in text:
+              marker = 'class BlaBlaCollectorStateStore(context: Context) {'
+              if text.count(marker) != 1:
+                  raise SystemExit(f'TripBlaBlaCollector.kt: state store anchor count={text.count(marker)}')
+              data_class = '''internal data class BlaBlaTimelineClearResult(
+              val response: BlaBlaCollectorMonthResponse,
+              val externalTripsRemoved: Int,
+              val sessionAccountsTouched: Int,
+          )
+
+          '''
+              text = text.replace(marker, data_class + marker, 1)
+
+          if 'fun lastResponseRecoveringDynamicSessions()' not in text:
+              anchor = '''    fun lastResponse(): BlaBlaCollectorMonthResponse? = runCatching {
+                  prefs.getString(KEY_RESPONSE, null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
+              }.getOrNull()
+
+          '''
               if text.count(anchor) != 1:
-                  raise SystemExit(f'TripTimelineUi.kt: clear anchor count={text.count(anchor)}')
-              text = text.replace(anchor, anchor + '                val localClear = store.clearTimelineLocalData()\n', 1)
+                  raise SystemExit(f'TripBlaBlaCollector.kt: lastResponse anchor count={text.count(anchor)}')
+              methods = '''    fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
+                  val persisted = lastResponse()
+                  if (persisted?.status == "cleared" || persisted?.trips?.isNotEmpty() == true) return persisted
+                  val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
+                  if (accounts.isEmpty()) return persisted
+                  val dynamic = BlaBlaDynamicSessionStore(appContext).combinedResponse(accounts)
+                  val recovered = BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic)
+                  if (recovered != null && recovered != persisted) {
+                      prefs.edit().putString(KEY_RESPONSE, json.encodeToString(recovered)).apply()
+                      UnifiedDebugEventStore.record(
+                          "TIMELINE_RECOVERED_FROM_SESSION_SNAPSHOTS",
+                          appContext.packageName,
+                          "persistedTrips=${persisted?.trips?.size ?: 0} sessionTrips=${dynamic.trips.size} recoveredTrips=${recovered.trips.size} accounts=${accounts.size} explicitClear=false",
+                      )
+                  }
+                  return recovered
+              }
 
-          old_debug = '"externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}"'
-          new_debug = '"externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true"'
-          if old_debug in text:
-              text = text.replace(old_debug, new_debug, 1)
-          elif new_debug not in text:
-              raise SystemExit('TripTimelineUi.kt: debug clear contract not found')
+              fun clearSynchronizedTimelineData(): BlaBlaTimelineClearResult {
+                  val previous = lastResponse()
+                  val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
+                  val sessionClear = BlaBlaDynamicSessionStore(appContext).clearTripsPreservingSessions(accounts)
+                  val cleared = saveResponse(
+                      BlaBlaCollectorMonthResponse(
+                          status = "cleared",
+                          month = previous?.month,
+                          strategy = previous?.strategy,
+                          profiles = previous?.profiles.orEmpty(),
+                          routes = previous?.routes.orEmpty(),
+                          coverage = BlaBlaCollectorCoverage(
+                              complete_for_scope = true,
+                              global_profile_month_complete = true,
+                              reason = "cleared_by_user",
+                              past_dates_skipped = previous?.coverage?.past_dates_skipped ?: true,
+                          ),
+                      ),
+                      preserveOnPartial = false,
+                  )
+                  val removed = maxOf(previous?.trips?.size ?: 0, sessionClear.second)
+                  UnifiedDebugEventStore.record(
+                      "TIMELINE_SYNCHRONIZED_DATA_CLEARED",
+                      appContext.packageName,
+                      "externalTripsRemoved=$removed sessionAccountsTouched=${sessionClear.first} localTripsTouched=false identityPreserved=true loginPreserved=true",
+                  )
+                  return BlaBlaTimelineClearResult(
+                      response = cleared,
+                      externalTripsRemoved = removed,
+                      sessionAccountsTouched = sessionClear.first,
+                  )
+              }
 
-          old_message = 'onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")'
-          new_message = 'onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")'
-          if old_message in text:
-              text = text.replace(old_message, new_message, 1)
-          elif new_message not in text:
-              raise SystemExit('TripTimelineUi.kt: user clear message not found')
-          timeline.write_text(text)
+          '''
+              text = text.replace(anchor, anchor + methods, 1)
+          collector.write_text(text)
 
+          # 4) UI: default clear removes only BlaBlaCar; local/manual data requires explicit second choice.
+          ui = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt')
+          text = ui.read_text()
+          if 'import androidx.compose.material3.AlertDialog' not in text:
+              anchor = 'import androidx.compose.material3.Button\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit('TripTimelineUi.kt: Button import anchor not unique')
+              text = text.replace(anchor, 'import androidx.compose.material3.AlertDialog\n' + anchor, 1)
+
+          old_init = '    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }\n'
+          new_init = '    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }\n'
+          if old_init in text:
+              text = text.replace(old_init, new_init, 1)
+          elif new_init not in text:
+              raise SystemExit('TripTimelineUi.kt: collectorResponse startup anchor not found')
+
+          if 'var showTimelineClearDialog by remember' not in text:
+              anchor = new_init
+              state = '    var showTimelineClearDialog by remember { mutableStateOf(false) }\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit('TripTimelineUi.kt: collector state anchor not unique')
+              text = text.replace(anchor, anchor + state, 1)
+
+          old_action_start = '            ResponsiveTripAction("Limpar Timeline") {\n'
+          next_action = '            ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },\n'
+          if old_action_start in text:
+              start = text.index(old_action_start)
+              end = text.index(next_action, start)
+              replacement = '            ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },\n'
+              text = text[:start] + replacement + text[end:]
+          elif 'ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true }' not in text:
+              raise SystemExit('TripTimelineUi.kt: Timeline clear action not found')
+
+          if 'val clearTimeline: (Boolean) -> Unit' not in text:
+              anchor = '    ResponsiveTripActions(\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'TripTimelineUi.kt: ResponsiveTripActions anchor count={text.count(anchor)}')
+              clear_lambda = '''    val clearTimeline: (Boolean) -> Unit = { includeManual ->
+                  archiveStore.clearExternal(physical)
+                  val externalClear = collectorStore.clearSynchronizedTimelineData()
+                  val localClear = if (includeManual) store.clearTimelineLocalData() else 0 to 0
+                  collectorResponse = externalClear.response
+                  showArchived = false
+                  searchQuery = ""
+                  showTimelineClearDialog = false
+                  UnifiedDebugEventStore.record(
+                      "TIMELINE_CLEARED_BY_USER",
+                      context.packageName,
+                      "externalTripsRemoved=${externalClear.externalTripsRemoved} externalArchiveStateReset=true includeManual=$includeManual localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} sessionAccountsTouched=${externalClear.sessionAccountsTouched} settingsPreserved=true loginPreserved=true",
+                  )
+                  onChanged(
+                      if (includeManual) {
+                          "Timeline limpa por completo. Viagens BlaBlaCar, viagens manuais e reservas locais foram excluídas; configurações e login foram preservados."
+                      } else {
+                          "Viagens sincronizadas da BlaBlaCar foram removidas. Viagens manuais e reservas locais foram preservadas."
+                      },
+                  )
+              }
+
+          '''
+              text = text.replace(anchor, clear_lambda + anchor, 1)
+
+          if 'title = { Text("Limpar Timeline") }' not in text:
+              anchor = '''    if (showPublisher) {
+          '''
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'TripTimelineUi.kt: showPublisher anchor count={text.count(anchor)}')
+              dialog = '''    if (showTimelineClearDialog) {
+                  AlertDialog(
+                      onDismissRequest = { showTimelineClearDialog = false },
+                      title = { Text("Limpar Timeline") },
+                      text = {
+                          Text("Deseja apagar também as viagens feitas manualmente/por fora? Por padrão, somente as viagens sincronizadas da BlaBlaCar serão removidas.")
+                      },
+                      confirmButton = {
+                          Button(onClick = { clearTimeline(false) }) { Text("Só BlaBlaCar") }
+                      },
+                      dismissButton = {
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
+                              TextButton(onClick = { clearTimeline(true) }) { Text("BlaBlaCar + manuais") }
+                          }
+                      },
+                  )
+              }
+
+          '''
+              text = text.replace(anchor, dialog + anchor, 1)
+          ui.write_text(text)
+
+          # 5) Focused pure regression test for startup recovery authority.
+          test = Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineRecovery0279Test.kt')
+          test.write_text('''package br.com.mapeiaia.rotacerta.trips
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Test
+
+          class AgendaTimelineRecovery0279Test {
+              private val trip = BlaBlaCollectorTrip(
+                  profile_uuid = "profile-1",
+                  date = "2026-08-25",
+                  departure_time = "11:00",
+                  actual_departure = "Origem",
+                  actual_arrival = "Destino",
+                  trip_id = "trip-1",
+              )
+
+              @Test
+              fun explicitClearNeverResurrectsSessionTrips() {
+                  val persisted = BlaBlaCollectorMonthResponse(status = "cleared", trips = emptyList())
+                  val dynamic = BlaBlaCollectorMonthResponse(status = "success", trips = listOf(trip))
+
+                  assertEquals(
+                      persisted,
+                      BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic),
+                  )
+              }
+
+              @Test
+              fun emptyPersistedTimelineRecoversVerifiedSessionTrips() {
+                  val persisted = BlaBlaCollectorMonthResponse(status = "partial", trips = emptyList())
+                  val dynamic = BlaBlaCollectorMonthResponse(status = "success", trips = listOf(trip))
+
+                  assertEquals(
+                      dynamic,
+                      BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic),
+                  )
+              }
+
+              @Test
+              fun existingPersistedTimelineRemainsStartupAuthority() {
+                  val persistedTrip = trip.copy(trip_id = "persisted")
+                  val dynamicTrip = trip.copy(trip_id = "dynamic")
+                  val persisted = BlaBlaCollectorMonthResponse(status = "success", trips = listOf(persistedTrip))
+                  val dynamic = BlaBlaCollectorMonthResponse(status = "success", trips = listOf(dynamicTrip))
+
+                  assertEquals(
+                      persisted,
+                      BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic),
+                  )
+              }
+          }
+          '''.replace('          ', ''))
+
+          # 6) Version bump.
           build = Path('app/build.gradle.kts')
           build_text = build.read_text()
-          target = '        versionCode = 5571\n        versionName = "0.1.278"'
-          if target not in build_text:
-              candidates = [
-                  '        versionCode = 5570\n        versionName = "0.1.277"',
-                  '        versionCode = 5568\n        versionName = "0.1.275"',
-              ]
-              matches = [candidate for candidate in candidates if candidate in build_text]
-              if len(matches) != 1:
-                  raise SystemExit(f'app/build.gradle.kts: expected one known baseline, found {len(matches)}')
-              build.write_text(build_text.replace(matches[0], target, 1))
+          old = '        versionCode = 5571\n        versionName = "0.1.278"'
+          new = '        versionCode = 5572\n        versionName = "0.1.279"'
+          if old in build_text:
+              build.write_text(build_text.replace(old, new, 1))
+          elif new not in build_text:
+              raise SystemExit('app/build.gradle.kts: 0.1.278 baseline not found')
           PY
 
           git diff --check
-          grep -Fq 'fun clearTimelineLocalData(): Pair<Int, Int>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
-          grep -Fq '.remove(tripsKey)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
-          grep -Fq '.remove(bookingsKey)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
-          grep -Fq 'val localClear = store.clearTimelineLocalData()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'localTripsRemoved=${localClear.first}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          if grep -Fq 'localTripsPreserved=${trips.size}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then
-            echo 'Legacy local-trip preservation is still present.' >&2
+          grep -Fq 'fun recoverStartupResponse(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'fun clearTripsPreservingSessions(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'fun lastResponseRecoveringDynamicSessions()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'fun clearSynchronizedTimelineData()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions())' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("Só BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("BlaBlaCar + manuais")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'val localClear = if (includeManual) store.clearTimelineLocalData() else 0 to 0' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          if grep -Fq 'Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then
+            echo 'Legacy unconditional destructive clear message is still present.' >&2
             exit 1
           fi
-          grep -Fq 'versionCode = 5571' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.278"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5572' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.279"' app/build.gradle.kts
 
       - name: Verify protected sources remain untouched
         shell: bash
@@ -144,7 +388,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests and debug APK
+      - name: Focused unit tests and debug APK
         shell: bash
         run: |
           set -euo pipefail
@@ -166,11 +410,14 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt \
             app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineRecovery0279Test.kt \
             app/build.gradle.kts
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(agenda): clear local timeline trips 0.1.278'
+            git commit -m 'fix(agenda): recover timeline and confirm manual clear 0.1.279'
             git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           fi
           git rev-parse HEAD | tee /tmp/source-head.txt
@@ -179,14 +426,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/agenda-0278
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0278/rota-certa-0.1.278-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0278/apk.sha256
-          cp /tmp/source-head.txt /tmp/agenda-0278/source-head.txt
-          printf '%s\n' 'versionName=0.1.278' 'versionCode=5571' > /tmp/agenda-0278/version.txt
+          mkdir -p /tmp/agenda-0279
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0279/rota-certa-0.1.279-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0279/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0279/source-head.txt
+          printf '%s\n' 'versionName=0.1.279' 'versionCode=5572' > /tmp/agenda-0279/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.278-${{ github.sha }}
-          path: /tmp/agenda-0278
+          name: rota-certa-agenda-0.1.279-${{ github.sha }}
+          path: /tmp/agenda-0279
           retention-days: 14
