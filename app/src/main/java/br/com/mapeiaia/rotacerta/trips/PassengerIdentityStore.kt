@@ -56,7 +56,7 @@ data class ExternalPassengerMetadata(
         get() = validLatitude(boardingLatitude) != null && validLongitude(boardingLongitude) != null
 }
 
-internal data class PassengerRideHistory(
+data class PassengerRideHistory(
     val totalRides: Int,
     val ridesByDriverProfile: Map<String, Int>,
 )
