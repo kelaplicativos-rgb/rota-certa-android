@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          grep -Fq 'Text("Sincronizar todas as contas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'else -> "Sincronizar todas as contas"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'AGENDA_TODAY_CARD_SYNC_FINISHED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDynamicSessionIntents.sync(context, account)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDynamicSessionIntents.syncToday(context, account, dateScope)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
