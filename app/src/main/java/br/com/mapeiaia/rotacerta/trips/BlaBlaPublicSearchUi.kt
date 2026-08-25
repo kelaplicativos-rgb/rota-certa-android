@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -24,15 +25,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.abs
 
 @Composable
@@ -62,8 +64,8 @@ fun BlaBlaPublicSearchPanel(
                 ?: knownNames.joinToString(", "),
         )
     }
-    var from by remember { mutableStateOf(previous?.from ?: agendaRoute?.from.orEmpty()) }
-    var to by remember { mutableStateOf(previous?.to ?: agendaRoute?.to.orEmpty()) }
+    var from by remember { mutableStateOf(previous?.from.orEmpty()) }
+    var to by remember { mutableStateOf(previous?.to.orEmpty()) }
     var period by remember { mutableStateOf(initialPeriod) }
     var includeReverse by remember { mutableStateOf(previous?.includeReverse ?: true) }
     var running by remember { mutableStateOf(false) }
@@ -92,7 +94,7 @@ fun BlaBlaPublicSearchPanel(
         ) {
             Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Somente leitura. Usa a busca pública da BlaBlaCar em perfil WebView isolado e não altera Agenda, passageiros, vagas ou contas logadas.",
+                "Somente leitura. A Agenda sugere perfis e rota, mas a busca usa exatamente os nomes, cidades e período informados aqui.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
@@ -121,6 +123,23 @@ fun BlaBlaPublicSearchPanel(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            agendaRoute?.let { suggestion ->
+                val differs = BlaBlaPublicSearchPlanner.normalizePlace(from) != BlaBlaPublicSearchPlanner.normalizePlace(suggestion.from) ||
+                    BlaBlaPublicSearchPlanner.normalizePlace(to) != BlaBlaPublicSearchPlanner.normalizePlace(suggestion.to)
+                if (differs) {
+                    Text(
+                        "Sugestão da Agenda: ${suggestion.from} → ${suggestion.to}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            from = suggestion.from
+                            to = suggestion.to
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Usar rota sugerida da Agenda") }
+                }
+            }
             OutlinedTextField(
                 value = period,
                 onValueChange = { period = it },
@@ -135,7 +154,7 @@ fun BlaBlaPublicSearchPanel(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("Pesquisar também o sentido inverso")
-                    Text("No mês inteiro, isso audita ida e volta.", style = MaterialTheme.typography.bodySmall)
+                    Text("Varre também destino → origem.", style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = includeReverse, onCheckedChange = { includeReverse = it })
             }
@@ -201,59 +220,141 @@ fun BlaBlaPublicSearchTimelineResults(
 ) {
     val context = LocalContext.current
     val zoneId = ZoneId.systemDefault()
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
     val relevantLocalTrips = remember(response, trips) { relevantAgendaTrips(response.request, trips, zoneId) }
     val cards = remember(response.cards) {
         response.cards.sortedWith(compareBy<BlaBlaPublicSearchCard>({ it.date }, { it.departureTime.orEmpty() }, { it.driverName }))
     }
-    val missingLocal = remember(response, relevantLocalTrips) {
-        relevantLocalTrips.filter { local -> cards.none { card -> publicCardMatchesAgendaTrip(card, local, zoneId) } }
+    val cardsByDate = remember(cards) { cards.groupBy(BlaBlaPublicSearchCard::date).toSortedMap() }
+    val missingLocal = remember(response, relevantLocalTrips, cards) {
+        relevantLocalTrips.filter { local ->
+            validatedQueryCoversAgendaTrip(response, local, zoneId) &&
+                cards.none { card -> publicCardMatchesAgendaTrip(card, local, zoneId) }
+        }
+    }
+    val inconclusiveLocal = remember(response, relevantLocalTrips) {
+        relevantLocalTrips.filter { local -> !validatedQueryCoversAgendaTrip(response, local, zoneId) }
     }
 
     Card(Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text("Timeline • Consulta pública", style = MaterialTheme.typography.titleMedium)
             Text(
-                "${response.validatedQueries}/${response.queries.size} consultas validadas • ${cards.size} publicação(ões) dos nomes pesquisados.",
+                "${response.validatedQueries}/${response.queries.size} consultas validadas • ${cards.size} publicação(ões) dos perfis monitorados.",
                 style = MaterialTheme.typography.bodySmall,
             )
             if (response.failedQueries > 0) {
-                Text("⚠️ ${response.failedQueries} consulta(s) não foram validadas; ausência nessas datas não deve ser tratada como confirmação.")
+                Text(
+                    "⚠️ ${response.failedQueries} consulta(s) inconclusivas. Nessas datas/sentidos, ausência não é tratada como confirmação.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
+
+            Text("Perfis monitorados", style = MaterialTheme.typography.titleSmall)
+            response.request.targetNames
+                .distinctBy(BlaBlaPublicSearchPlanner::normalizePerson)
+                .forEach { name ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "●",
+                            color = publicProfileColor(
+                                BlaBlaPublicSearchPlanner.profileVisualSlot(name, response.request.targetNames),
+                            ),
+                        )
+                        Text(name, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+
+            Text("↑ ${response.request.from} → ${response.request.to}", style = MaterialTheme.typography.bodySmall)
+            if (response.request.includeReverse) {
+                Text("↓ ${response.request.to} → ${response.request.from}", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                "A cor identifica o perfil; a seta identifica o sentido pesquisado.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
             if (cards.isEmpty()) {
                 Text("Nenhuma publicação dos nomes informados foi encontrada nas consultas validadas.")
             }
-            cards.forEach { card ->
-                val localMatch = relevantLocalTrips.firstOrNull { publicCardMatchesAgendaTrip(card, it, zoneId) }
+
+            cardsByDate.forEach { (rawDate, dayCards) ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        val date = runCatching { LocalDate.parse(card.date).format(dateFormatter) }.getOrDefault(card.date)
-                        Text("$date • ${card.departureTime ?: "--:--"} • ${card.driverName}", style = MaterialTheme.typography.titleSmall)
-                        Text("${card.searchFrom} → ${card.searchTo}")
-                        val realRoute = listOfNotNull(card.actualDeparture, card.actualArrival).joinToString(" → ")
-                        if (realRoute.isNotBlank()) Text("Cartão: $realRoute", style = MaterialTheme.typography.bodySmall)
-                        card.price?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        if (card.flags.isNotEmpty()) Text(card.flags.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            if (localMatch != null) "✅ Corresponde a uma viagem da Agenda" else "⚠️ Publicação encontrada sem viagem correspondente na Agenda",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        card.tripHref?.let { href ->
-                            TextButton(onClick = {
-                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(href))) }
-                            }) { Text("Abrir publicação pública") }
+                        Text(publicSearchDateLabel(rawDate), style = MaterialTheme.typography.titleMedium)
+                        dayCards.forEachIndexed { index, card ->
+                            val localMatch = relevantLocalTrips.firstOrNull { publicCardMatchesAgendaTrip(card, it, zoneId) }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    "●",
+                                    color = publicProfileColor(
+                                        BlaBlaPublicSearchPlanner.profileVisualSlot(
+                                            card.driverName,
+                                            response.request.targetNames,
+                                        ),
+                                    ),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    val arrow = when (
+                                        BlaBlaPublicSearchPlanner.direction(
+                                            card.searchFrom,
+                                            card.searchTo,
+                                            response.request,
+                                        )
+                                    ) {
+                                        BlaBlaPublicSearchDirection.PRIMARY -> "↑"
+                                        BlaBlaPublicSearchDirection.REVERSE -> "↓"
+                                        BlaBlaPublicSearchDirection.UNKNOWN -> "↔"
+                                    }
+                                    Text(
+                                        "$arrow ${card.departureTime ?: "--:--"} • ${card.driverName}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    val cardRoute = publicCardRoute(card)
+                                    if (cardRoute.isNotBlank()) Text(cardRoute)
+                                    val searchedRoute = "${card.searchFrom} → ${card.searchTo}"
+                                    if (cardRoute.isNotBlank() && !publicRoutesEquivalent(cardRoute, searchedRoute)) {
+                                        Text("Busca: $searchedRoute", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    card.price?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                    if (card.flags.isNotEmpty()) {
+                                        Text(card.flags.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(
+                                        if (localMatch != null) {
+                                            "Agenda: ✅ mesma data, horário e rota"
+                                        } else {
+                                            "Agenda: ⚠️ sem correspondência por data/horário/rota"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    card.tripHref?.let { href ->
+                                        TextButton(onClick = {
+                                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(href))) }
+                                        }) { Text("Abrir publicação pública") }
+                                    }
+                                }
+                            }
+                            if (index < dayCards.lastIndex) HorizontalDivider()
                         }
                     }
                 }
             }
+
             if (missingLocal.isNotEmpty()) {
-                Text("Agenda sem correspondência pública", style = MaterialTheme.typography.titleSmall)
+                Text("Agenda sem correspondência pública confirmada", style = MaterialTheme.typography.titleSmall)
                 missingLocal.sortedBy(Trip::departureAtMillis).forEach { trip ->
                     val stops = trip.stops.sortedBy(TripStop::order)
                     val instant = Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId)
@@ -263,6 +364,21 @@ fun BlaBlaPublicSearchTimelineResults(
                     )
                 }
             }
+            if (inconclusiveLocal.isNotEmpty()) {
+                Text("Agenda em consulta inconclusiva", style = MaterialTheme.typography.titleSmall)
+                inconclusiveLocal.sortedBy(Trip::departureAtMillis).forEach { trip ->
+                    val stops = trip.stops.sortedBy(TripStop::order)
+                    val instant = Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId)
+                    Text(
+                        "⚠️ ${instant.format(DateTimeFormatter.ofPattern("dd/MM HH:mm"))} • ${stops.firstOrNull()?.name.orEmpty()} → ${stops.lastOrNull()?.name.orEmpty()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Text(
+                "Comparação com a Agenda usa data, horário e rota. A identidade do perfil vem da própria Consulta Pública.",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -290,6 +406,24 @@ internal fun relevantAgendaTrips(
     }
 }
 
+internal fun validatedQueryCoversAgendaTrip(
+    response: BlaBlaPublicSearchResponse,
+    trip: Trip,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): Boolean {
+    val stops = trip.stops.sortedBy(TripStop::order)
+    if (stops.size < 2) return false
+    val date = Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId).toLocalDate().toString()
+    val tripFrom = BlaBlaPublicSearchPlanner.normalizePlace(stops.first().name)
+    val tripTo = BlaBlaPublicSearchPlanner.normalizePlace(stops.last().name)
+    return response.queries.any { query ->
+        query.status == "validated" &&
+            query.date == date &&
+            BlaBlaPublicSearchPlanner.normalizePlace(query.from) == tripFrom &&
+            BlaBlaPublicSearchPlanner.normalizePlace(query.to) == tripTo
+    }
+}
+
 internal fun publicCardMatchesAgendaTrip(
     card: BlaBlaPublicSearchCard,
     trip: Trip,
@@ -306,4 +440,44 @@ internal fun publicCardMatchesAgendaTrip(
     if (abs(publicMinutes - localMinutes) > 45) return false
     return BlaBlaPublicSearchPlanner.normalizePlace(stops.first().name) == BlaBlaPublicSearchPlanner.normalizePlace(card.searchFrom) &&
         BlaBlaPublicSearchPlanner.normalizePlace(stops.last().name) == BlaBlaPublicSearchPlanner.normalizePlace(card.searchTo)
+}
+
+private fun publicProfileColor(slot: Int): Color {
+    val palette = listOf(
+        Color(0xFF1976D2),
+        Color(0xFFFF7A00),
+        Color(0xFF7B1FA2),
+        Color(0xFF2E7D32),
+        Color(0xFFD81B60),
+        Color(0xFF00838F),
+        Color(0xFF5D4037),
+        Color(0xFF455A64),
+    )
+    return palette[Math.floorMod(slot, palette.size)]
+}
+
+private fun publicSearchDateLabel(raw: String): String {
+    val date = runCatching { LocalDate.parse(raw) }.getOrNull() ?: return raw
+    val weekday = date.format(DateTimeFormatter.ofPattern("EEEE", Locale("pt", "BR")))
+        .lowercase(Locale("pt", "BR"))
+        .removeSuffix("-feira")
+    return "${date.format(DateTimeFormatter.ofPattern("dd/MM"))} • $weekday"
+}
+
+private fun publicCardRoute(card: BlaBlaPublicSearchCard): String {
+    val actual = listOfNotNull(
+        card.actualDeparture?.takeIf(String::isNotBlank),
+        card.actualArrival?.takeIf(String::isNotBlank),
+    )
+    return if (actual.size == 2) actual.joinToString(" → ") else "${card.searchFrom} → ${card.searchTo}"
+}
+
+private fun publicRoutesEquivalent(left: String, right: String): Boolean {
+    fun parts(raw: String): Pair<String, String>? {
+        val split = raw.split("→", limit = 2).map(String::trim)
+        if (split.size != 2) return null
+        return BlaBlaPublicSearchPlanner.normalizePlace(split[0]) to
+            BlaBlaPublicSearchPlanner.normalizePlace(split[1])
+    }
+    return parts(left) == parts(right)
 }
