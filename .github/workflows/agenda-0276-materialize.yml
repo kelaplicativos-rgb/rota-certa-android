@@ -1,5 +1,5 @@
-name: Agenda 0.1.279 materialize
-# Minimal causal continuation of the consolidated Agenda branch. FAROL and Public Search are protected and never materialized here.
+name: Agenda 0.1.280 materialize
+# Minimal continuation of the consolidated Agenda branch. FAROL and Public Search are protected and never materialized here.
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
       - agent/agenda-ux-passenger-publisher-0.1.276
     paths:
       - '.github/workflows/agenda-0276-materialize.yml'
-      - '.github/scripts/agenda_0279_materialize.py'
+      - '.github/scripts/agenda_0280_today_sync.py'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: agenda-0279-${{ github.ref }}
+  group: agenda-0280-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,11 +31,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'fun clearTimelineLocalData(): Pair<Int, Int>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
-          grep -Fq 'PASSENGER_UUID' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
+          grep -Fq 'fun recoverStartupResponse(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'Text("Sincronizar todas as contas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'class BlaBlaDynamicSessionStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
           grep -Fq 'class BlaBlaCollectorStateStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
-          if ! grep -Fq 'versionName = "0.1.278"' app/build.gradle.kts && ! grep -Fq 'versionName = "0.1.279"' app/build.gradle.kts; then
+          if ! grep -Fq 'versionName = "0.1.279"' app/build.gradle.kts && ! grep -Fq 'versionName = "0.1.280"' app/build.gradle.kts; then
             echo 'Unexpected Agenda version baseline.' >&2
             exit 1
           fi
@@ -52,23 +52,21 @@ jobs:
             app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt \
             > /tmp/public.before
 
-      - name: Materialize Agenda 0.1.279
+      - name: Materialize Agenda 0.1.280
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/agenda_0279_materialize.py
+          python3 .github/scripts/agenda_0280_today_sync.py
           git diff --check
-          grep -Fq 'fun recoverStartupResponse(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
-          grep -Fq 'fun clearTripsPreservingSessions(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
-          grep -Fq 'fun lastResponseRecoveringDynamicSessions()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
-          grep -Fq 'fun clearSynchronizedTimelineData()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
-          grep -Fq 'mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions())' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'Text("Só BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'Text("BlaBlaCar + manuais")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'val localClear = if (includeManual) store.clearTimelineLocalData() else 0 to 0' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineRecovery0279Test.kt
-          grep -Fq 'versionCode = 5572' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.279"' app/build.gradle.kts
+          grep -Fq 'fun scopeResponseToDate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'if (isDateScoped(persisted)) return persisted' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_TODAY_ONLY_SYNC_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_SYNC_SCOPE_PUBLISHED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'preserveOnPartial = scopeDate == null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTodayOnlySync0280Test.kt
+          grep -Fq 'versionCode = 5573' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.280"' app/build.gradle.kts
 
       - name: Verify protected sources remain untouched after materialization
         shell: bash
@@ -120,13 +118,11 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
             app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
-            app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineRecovery0279Test.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTodayOnlySync0280Test.kt \
             app/build.gradle.kts
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(agenda): recover timeline and confirm manual clear 0.1.279'
+            git commit -m 'feat(agenda): add today-only BlaBla sync 0.1.280'
             git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           fi
           git rev-parse HEAD | tee /tmp/source-head.txt
@@ -135,18 +131,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/agenda-0279
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0279/rota-certa-0.1.279-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0279/apk.sha256
-          cp /tmp/source-head.txt /tmp/agenda-0279/source-head.txt
+          mkdir -p /tmp/agenda-0280
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0280/rota-certa-0.1.280-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0280/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0280/source-head.txt
           printf '%s\n' \
-            'versionName=0.1.279' \
-            'versionCode=5572' \
+            'versionName=0.1.280' \
+            'versionCode=5573' \
+            'todayOnlyAuthority=normalized_trip_date' \
             'farolSha256=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a' \
-            > /tmp/agenda-0279/version.txt
+            > /tmp/agenda-0280/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.279-${{ github.sha }}
-          path: /tmp/agenda-0279
+          name: rota-certa-agenda-0.1.280-${{ github.sha }}
+          path: /tmp/agenda-0280
           retention-days: 14
