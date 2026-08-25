@@ -101,7 +101,7 @@ fun BlaBlaCollectorPanel(
         } else {
             syncing = false
             publishCombined(
-                if (syncDateScope != null) "Sincronização do card de hoje concluída" else "Sincronização + MHTML concluídos",
+                if (syncDateScope != null) "Sincronização do card de hoje concluída" else "Sincronização direta concluída",
             )
             if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
                 context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
@@ -154,10 +154,15 @@ fun BlaBlaCollectorPanel(
                     )
                     advanceSyncQueue()
                 } else if (account != null) {
-                    archiving = true
-                    message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
+                    archiving = false
+                    message = "${account.displayLabel}: leitura direta concluída ✅"
                     onChanged(message.orEmpty())
-                    archiveLauncher.launch(BlaBlaManualSeatAutomationIntents.harvest(context, account))
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_ALL_ACCOUNTS_DIRECT_SYNC_FINISHED",
+                        context.packageName,
+                        "accountPresent=true dateScope=all directCollector=true mhtmlFullAccountSkipped=true",
+                    )
+                    advanceSyncQueue()
                 } else {
                     advanceSyncQueue()
                 }
