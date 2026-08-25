@@ -432,6 +432,9 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private var verifyingCompensation = false
     private var beforeArchiveSaved = false
     private var beforeReadAttempts = 0
+    private var afterArchiveSaved = false
+    private var verifyReadAttempts = 0
+    private var verificationReloadScheduled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -495,7 +498,13 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (!BlaBlaCollectorUrlModule.isAllowed(url) || busy) return
+                if (!BlaBlaCollectorUrlModule.isAllowed(url)) return
+                if (phase == Phase.SAVING) {
+                    scheduleVerificationReload("save_navigation")
+                    return
+                }
+                if (phase == Phase.VERIFY && !BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, url)) return
+                if (busy) return
                 view.postDelayed({ handlePage() }, 700L)
             }
         }
@@ -609,17 +618,43 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                     }
                 }
             }
-            Phase.VERIFY -> archive.save(webView, account, "reliable-options-after", request.tripId) {
+            Phase.SAVING -> {
+                busy = false
+                scheduleVerificationReload("handle_page_fallback")
+            }
+            Phase.VERIFY -> {
+                if (!afterArchiveSaved) {
+                    archive.save(webView, account, "reliable-options-after", request.tripId) {
+                        afterArchiveSaved = true
+                        busy = false
+                        handlePage()
+                    }
+                    return
+                }
                 evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
-                    if (state != null && state.seats == expectedSeats && BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)) {
+                    val exactPage = state != null && BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)
+                    val verified = exactPage && state.seats == expectedSeats
+                    if (verified) {
+                        verifyReadAttempts = 0
                         if (verifyingCompensation) {
                             completeCompensation(expectedSeats, wrote = true)
                         } else {
                             completeVerified(expectedSeats, alreadyApplied = false)
                         }
-                    } else {
-                        finishPending("Alteração não confirmada após releitura; a tentativa ficou preservada para conferência idempotente.", rotate = true)
+                        return@evaluate
                     }
+                    if (verifyReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES) {
+                        verifyReadAttempts++
+                        UnifiedDebugEventStore.record(
+                            "EXTERNAL_SEAT_SYNC_RELIABLE_VERIFY_RETRY",
+                            packageName,
+                            "request=${request.id} attempt=$verifyReadAttempts observed=${state?.seats ?: -1} expected=$expectedSeats exactPage=$exactPage savePresent=${state?.savePresent ?: false}",
+                        )
+                        busy = false
+                        webView.postDelayed({ handlePage() }, RELIABLE_OPTIONS_READ_RETRY_MS)
+                        return@evaluate
+                    }
+                    finishPending("Alteração não confirmada após releituras; a tentativa ficou preservada para conferência idempotente.", rotate = true)
                 }
             }
         }
@@ -628,14 +663,31 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private fun applyTarget(before: Int, target: Int, compensation: Boolean) {
         expectedSeats = target
         verifyingCompensation = compensation
+        afterArchiveSaved = false
+        verifyReadAttempts = 0
+        verificationReloadScheduled = false
         statusView.text = "${account.displayLabel} • $before → $target vagas • salvando…"
-        phase = Phase.VERIFY
+        phase = Phase.SAVING
         webView.evaluateJavascript(applyReliableSeatsJs(target), null)
-        val distance = kotlin.math.abs(target - before).coerceAtMost(20)
+        webView.postDelayed({
+            if (phase == Phase.SAVING) scheduleVerificationReload("save_timeout")
+        }, RELIABLE_SAVE_COMPLETION_TIMEOUT_MS)
+    }
+
+    private fun scheduleVerificationReload(origin: String) {
+        if (phase != Phase.SAVING || verificationReloadScheduled) return
+        verificationReloadScheduled = true
+        phase = Phase.VERIFY
+        statusView.text = "${account.displayLabel} • confirmando $expectedSeats vaga(s) publicadas…"
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_SYNC_RELIABLE_SAVE_COMPLETED",
+            packageName,
+            "request=${request.id} origin=$origin expected=$expectedSeats writeRepeated=false",
+        )
         webView.postDelayed({
             busy = false
             webView.loadUrl(reliableOptionsUrl(request.tripId))
-        }, 1_700L + distance * 320L)
+        }, RELIABLE_SAVE_SETTLE_MS)
     }
 
     private fun completeVerified(afterSeats: Int, alreadyApplied: Boolean) {
@@ -749,7 +801,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         super.onDestroy()
     }
 
-    private enum class Phase { BEFORE, VERIFY }
+    private enum class Phase { BEFORE, SAVING, VERIFY }
 }
 
 private fun configureReliableProfiledWebView(webView: WebView, account: BlaBlaDynamicAccount) {
@@ -771,6 +823,8 @@ private fun configureReliableProfiledWebView(webView: WebView, account: BlaBlaDy
 
 private const val RELIABLE_OPTIONS_READ_MAX_RETRIES = 4
 private const val RELIABLE_OPTIONS_READ_RETRY_MS = 650L
+private const val RELIABLE_SAVE_COMPLETION_TIMEOUT_MS = 7_000L
+private const val RELIABLE_SAVE_SETTLE_MS = 650L
 
 private fun reliableOptionsUrl(tripId: String): String =
     "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
