@@ -1,8 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class AgendaMinimal0277Test {
     @Test
@@ -69,7 +69,7 @@ class AgendaMinimal0277Test {
 
         val plan = AgendaBatchPublisherPlanner.plan(draft, listOf(account), emptyList())
 
-        assertTrue(plan.errors.isEmpty(), plan.errors.joinToString())
+        assertTrue(plan.errors.joinToString(), plan.errors.isEmpty())
         assertEquals(1, plan.batches.size)
         assertEquals(AgendaPublishDirection.IDA, plan.batches.single().direction)
     }
@@ -86,7 +86,7 @@ class AgendaMinimal0277Test {
 
         val plan = AgendaBatchPublisherPlanner.plan(draft, listOf(account), emptyList())
 
-        assertTrue(plan.errors.isEmpty(), plan.errors.joinToString())
+        assertTrue(plan.errors.joinToString(), plan.errors.isEmpty())
         assertEquals(1, plan.batches.size)
         assertEquals(AgendaPublishDirection.VOLTA, plan.batches.single().direction)
     }
