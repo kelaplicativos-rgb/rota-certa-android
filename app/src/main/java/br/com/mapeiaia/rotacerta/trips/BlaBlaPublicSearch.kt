@@ -66,7 +66,15 @@ data class BlaBlaPublicSearchTask(
     val to: String,
 )
 
+internal enum class BlaBlaPublicSearchDirection {
+    PRIMARY,
+    REVERSE,
+    UNKNOWN,
+}
+
 object BlaBlaPublicSearchPlanner {
+    private const val PROFILE_VISUAL_SLOTS = 8
+
     fun tasks(request: BlaBlaPublicSearchRequest): List<BlaBlaPublicSearchTask> {
         val dates = datesFor(request.period)
         if (dates.isEmpty()) return emptyList()
@@ -90,6 +98,39 @@ object BlaBlaPublicSearchPlanner {
         val driver = normalizePerson(driverName.orEmpty())
         if (driver.isBlank()) return false
         return targets.any { normalizePerson(it) == driver }
+    }
+
+    /**
+     * Visual identity belongs to the monitored profile, never to the travel direction.
+     * Sorting normalized targets makes the slot independent from the order typed by the user.
+     */
+    internal fun profileVisualSlot(driverName: String, targets: List<String>): Int {
+        val driver = normalizePerson(driverName)
+        val normalizedTargets = targets
+            .map(::normalizePerson)
+            .filter(String::isNotBlank)
+            .distinct()
+            .sorted()
+        val index = normalizedTargets.indexOf(driver)
+        if (index >= 0) return index % PROFILE_VISUAL_SLOTS
+        return Math.floorMod(driver.hashCode(), PROFILE_VISUAL_SLOTS)
+    }
+
+    /** Primary means exactly the route entered by the user. Reverse means its inverse. */
+    internal fun direction(
+        searchFrom: String,
+        searchTo: String,
+        request: BlaBlaPublicSearchRequest,
+    ): BlaBlaPublicSearchDirection {
+        val from = normalizePlace(searchFrom)
+        val to = normalizePlace(searchTo)
+        val primaryFrom = normalizePlace(request.from)
+        val primaryTo = normalizePlace(request.to)
+        return when {
+            from == primaryFrom && to == primaryTo -> BlaBlaPublicSearchDirection.PRIMARY
+            request.includeReverse && from == primaryTo && to == primaryFrom -> BlaBlaPublicSearchDirection.REVERSE
+            else -> BlaBlaPublicSearchDirection.UNKNOWN
+        }
     }
 
     fun normalizePlace(value: String): String = Normalizer.normalize(value.substringBefore(',').trim(), Normalizer.Form.NFD)
