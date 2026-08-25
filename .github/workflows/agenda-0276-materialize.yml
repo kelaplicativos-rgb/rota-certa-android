@@ -46,6 +46,8 @@ jobs:
           def replace_once(path: str, old: str, new: str) -> None:
               p = Path(path)
               text = p.read_text()
+              if path.endswith('BlaBlaCollectorPassengerModule.kt') and 'PASSENGER_UUID' in text:
+                  return
               if new in text:
                   return
               count = text.count(old)
