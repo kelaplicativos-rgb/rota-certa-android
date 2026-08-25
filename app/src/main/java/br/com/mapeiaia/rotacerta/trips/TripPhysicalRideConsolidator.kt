@@ -166,7 +166,7 @@ object TripPhysicalRideConsolidator {
             blablaProfileUuid = external?.blablaProfileUuid,
             blablaPrice = external?.blablaPrice,
             blablaAvailability = external?.blablaAvailability,
-            blablaPassengers = group.flatMap(TripTimelineEntry::blablaPassengers).distinctBy { it.booking_href ?: "${it.name}|${it.boarding}|${it.dropoff}" },
+            blablaPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(group.flatMap(TripTimelineEntry::blablaPassengers)),
             profileId = external?.profileId ?: canonical.profileId,
             profileLabel = external?.profileLabel ?: canonical.profileLabel,
             capacity = capacity,

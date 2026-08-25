@@ -114,12 +114,17 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_ACCOUNT_ID = "blablacar_account_id"
     const val EXTRA_MODE = "blablacar_mode"
     const val EXTRA_TARGET_URL = "blablacar_target_url"
+    const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_MANAGE = "manage"
 
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
     fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+    fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
+        intent(context, account, MODE_SYNC)
+            .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
+            .putExtra(EXTRA_TARGET_URL, tripHref)
     fun manage(context: Context, account: BlaBlaDynamicAccount, tripHref: String): Intent =
         intent(context, account, MODE_MANAGE).putExtra(EXTRA_TARGET_URL, tripHref)
 
@@ -225,6 +230,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
     private var mode = BlaBlaDynamicSessionIntents.MODE_LOGIN
+    private var targetTripId = ""
+    private var targetTripHref = ""
     private var phase = Phase.IDLE
     private var candidates = emptyList<BlaBlaDomRideCandidate>()
     private val collected = mutableListOf<BlaBlaCollectorTrip>()
@@ -277,6 +284,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        targetTripId = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID)?.trim().orEmpty()
+        targetTripHref = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
+        if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
+            targetTripId = ""
+            targetTripHref = ""
+        }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
             setContentView(TextView(this).apply {
                 text = "Este Android System WebView ainda não oferece perfis múltiplos. Atualize o WebView/Chrome para usar várias contas isoladas."
@@ -509,9 +522,22 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} foundUuid=${account.profileUuid.orEmpty()} method=authenticated_profile",
                 )
             }
-            phase = Phase.RIDES
-            statusView.text = "${account.displayLabel} • lendo Suas viagens…"
-            loadTrackedUrl(RIDES_URL)
+            if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
+                currentCardTraversalKey = "id|$targetTripId"
+                candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
+                candidateIndex = 0
+                phase = Phase.DETAIL
+                UnifiedDebugEventStore.record(
+                    "AGENDA_EXACT_CARD_SYNC_STARTED",
+                    packageName,
+                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true",
+                )
+                loadCurrentCandidate()
+            } else {
+                phase = Phase.RIDES
+                statusView.text = "${account.displayLabel} • lendo Suas viagens…"
+                loadTrackedUrl(RIDES_URL)
+            }
         }
     }
 
@@ -1496,6 +1522,21 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
         val tripId = candidates.getOrNull(expectedCandidate)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()
         persistDirectTripEvidence(tripId)
+        if (targetTripId.isNotBlank()) {
+            completedCardTraversalKeys += currentCardTraversalKey
+            resolvedCardTraversalKeys += currentCardTraversalKey
+            publishTargetedTripToTimeline(tripId)
+            UnifiedDebugEventStore.record(
+                "CARD_TRAVERSAL_COMPLETE",
+                packageName,
+                "account=${account.displayLabel} order=1 tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=targeted_complete nextCardAllowed=false",
+            )
+            networkDiagnosticRecorder?.finishFirstCard("targeted_complete")
+            clearPendingCardState()
+            currentCardTraversalKey = ""
+            completeSync(collected.size)
+            return
+        }
         completedCardTraversalKeys += currentCardTraversalKey
         resolvedCardTraversalKeys += currentCardTraversalKey
         UnifiedDebugEventStore.record(
@@ -1512,6 +1553,32 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         phase = Phase.RIDES
         ridesRestorePending = ridesResumeScrollY > 0
         loadTrackedUrl(RIDES_URL)
+    }
+
+    private fun publishTargetedTripToTimeline(tripId: String) {
+        val updatedTrip = collected.lastOrNull { it.trip_id == tripId } ?: return
+        val timelineStore = BlaBlaCollectorStateStore(this)
+        val previous = timelineStore.lastResponse() ?: return
+        val merged = previous.trips.filterNot { trip ->
+            trip.profile_uuid.equals(updatedTrip.profile_uuid, ignoreCase = true) && trip.trip_id == tripId
+        } + updatedTrip
+        timelineStore.saveResponse(
+            previous.copy(
+                status = "success",
+                trips = merged.sortedWith(compareBy<BlaBlaCollectorTrip> { it.date }.thenBy { it.departure_time.orEmpty() }),
+                coverage = previous.coverage.copy(
+                    complete_for_scope = false,
+                    global_profile_month_complete = false,
+                    reason = "targeted_exact_card_sync",
+                ),
+            ),
+            preserveOnPartial = false,
+        )
+        UnifiedDebugEventStore.record(
+            "AGENDA_EXACT_CARD_TIMELINE_UPDATED",
+            packageName,
+            "profileUuidPresent=true tripIdPresent=true passengers=${updatedTrip.passengers.size}",
+        )
     }
 
     private fun persistDirectTripEvidence(tripId: String) {
@@ -1691,9 +1758,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val longitude = validLongitude(booking.boardingLongitude)
             val hasCoordinates = latitude != null && longitude != null
             passengerIdentityStore.saveExternalMetadata(
-                current.copy(
-                    passengerId = booking.passengerId,
-                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
+            current.copy(
+                externalPassengerId = booking.passengerId,
+                externalTripId = resolution.tripId,
+                externalProfileUuid = account.profileUuid.orEmpty(),
+                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode.ifBlank { current.fareCurrencyCode },
                     boardingAddress = boardingAddress.ifBlank { current.boardingAddress },
                     dropoffAddress = dropoffAddress.ifBlank { current.dropoffAddress },
@@ -1710,6 +1779,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                         current.boardingLocationCollectedAtMillis
                     },
                 ),
+            )
+        }
+        val blockedQueued = BlockedPassengerCancellationCoordinator.enqueueBlockedFromNetwork(this, account, resolution)
+        if (blockedQueued > 0) {
+            UnifiedDebugEventStore.record(
+                "BLOCKED_PASSENGER_CANCEL_QUEUED",
+                packageName,
+                "account=${account.displayLabel} tripId=${resolution.tripId} count=$blockedQueued",
             )
         }
     }

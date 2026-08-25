@@ -74,6 +74,8 @@ fun TripTimelineScreen(
     var showArchived by remember { mutableStateOf(false) }
     var showSync by remember { mutableStateOf(false) }
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
+    var autoSyncTripId by remember { mutableStateOf<String?>(null) }
+    var showPublisher by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
@@ -107,10 +109,8 @@ fun TripTimelineScreen(
     val physical = remember(merged, directionGeo) {
         TripPhysicalRideConsolidator.consolidate(merged, directionGeo)
     }
-    val today = LocalDate.now(ZoneId.systemDefault()).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    val entries = remember(physical, archiveRevision, showArchived, today) {
-        physical.filter { it.departureAtMillis >= today }
-            .filter { archiveStore.isArchived(it) == showArchived }
+    val entries = remember(physical, archiveRevision, showArchived) {
+        physical.filter { archiveStore.isArchived(it) == showArchived }
             .sortedBy(TripTimelineEntry::departureAtMillis)
     }
     val visibleEntries = remember(entries, trips, bookings, searchQuery) {
@@ -119,7 +119,7 @@ fun TripTimelineScreen(
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(if (showArchived) "Arquivadas" else "Próximas viagens", style = MaterialTheme.typography.titleLarge)
+        Text(if (showArchived) "Arquivadas" else "Todas as viagens", style = MaterialTheme.typography.titleLarge)
         TextButton(onClick = onBack) { Text("Voltar") }
     }
 
@@ -142,6 +142,7 @@ fun TripTimelineScreen(
         onNewTrip = onCreateTrip,
         onTargetSync = { profileUuid ->
             autoSyncProfileUuid = profileUuid
+            autoSyncTripId = null
             onRequestBlaBlaSync()
         },
     )
@@ -149,6 +150,7 @@ fun TripTimelineScreen(
     ResponsiveTripActions(
         listOf(
             ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
+            ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
@@ -184,6 +186,10 @@ fun TripTimelineScreen(
         ),
     )
 
+    if (showPublisher) {
+        AgendaBatchPublisherPanel(onChanged = onChanged)
+    }
+
     if (showSync) {
         BlaBlaCollectorPanel(
             trips = trips,
@@ -193,6 +199,7 @@ fun TripTimelineScreen(
             onChanged = onChanged,
             autoSyncToken = autoSyncToken,
             autoSyncProfileUuid = autoSyncProfileUuid,
+            autoSyncTripId = autoSyncTripId,
         )
     }
 
@@ -205,7 +212,7 @@ fun TripTimelineScreen(
     )
 
     if (entries.isEmpty()) {
-        Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem futura.")
+        Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada.")
         return
     }
 
@@ -241,6 +248,17 @@ fun TripTimelineScreen(
             referenceRadiusKm = directionReference.radiusKm,
             directionGeo = directionGeo,
             currentCoordinate = currentCoordinate,
+            onSyncExactCard = {
+                val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+                val tripId = entry.blablaTripId?.trim().orEmpty()
+                if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
+                    autoSyncProfileUuid = profileUuid
+                    autoSyncTripId = tripId
+                    onRequestBlaBlaSync()
+                } else {
+                    onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
+                }
+            },
         ) {
             archiveStore.setArchived(entry, !archived)
             archiveRevision++
@@ -417,6 +435,7 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
+    onSyncExactCard: () -> Unit,
     onArchive: () -> Unit,
 ) {
     val direction = timelineDirectionState(
@@ -502,6 +521,7 @@ private fun TimelineEntryCard(
                 store = store,
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
+                onSyncExactCard = onSyncExactCard,
             )
 
             ResponsiveTripActions(

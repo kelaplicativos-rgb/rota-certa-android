@@ -59,6 +59,7 @@ internal data class EnhancedPassengerCardRow(
     val boardingStopIndex: Int? = null,
     val matchedByPhone: Boolean = false,
     val probableMatch: Boolean = false,
+    val externalPassengerId: String? = null,
 )
 
 @Composable
@@ -68,6 +69,7 @@ internal fun EnhancedPassengerTimelineSection(
     store: TripStore,
     currentCoordinate: Coordinate?,
     onChanged: (String) -> Unit,
+    onSyncExactCard: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -87,7 +89,7 @@ internal fun EnhancedPassengerTimelineSection(
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
 
     if (hasExternalTripActionEvidence(entry)) {
-        TripBlaBlaTripActionRow(entry)
+        TripBlaBlaTripActionRow(entry, onSyncExactCard)
     }
 
     rows.forEachIndexed { index, passenger ->
@@ -149,17 +151,11 @@ internal fun EnhancedPassengerTimelineSection(
                 }
 
                 OutlinedButton(
-                    onClick = {
-                        if (passenger.fareMinorUnits != null) {
-                            copyPassengerFareValue(context, passenger)
-                        } else {
-                            fareEditRow = passenger
-                        }
-                    },
+                    onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
                     contentPadding = COMPACT_ACTION_PADDING,
                     modifier = Modifier.heightIn(min = 36.dp),
                 ) {
-                    Text("💰", maxLines = 1)
+                    Text("💬", maxLines = 1)
                 }
             }
 
@@ -231,11 +227,31 @@ internal fun EnhancedPassengerTimelineSection(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val canonicalProfile = passenger.passengerId?.let(passengerStore::profile)
+                ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
+            val rideHistory = canonicalProfile?.let { passengerStore.rideHistory(it.id) }
+            val identityLabel = when {
+                canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO"
+                rideHistory != null && rideHistory.totalRides > 0 -> "${rideHistory.totalRides} carona(s) registrada(s)"
+                passenger.externalPassengerId != null -> "Identidade BlaBlaCar disponível"
+                else -> null
+            }
+            identityLabel?.let { label ->
+                TextButton(
+                    onClick = {
+                        if (canonicalProfile != null) profileRow = passenger.copy(passengerId = canonicalProfile.id)
+                        else createProfileRow = passenger
+                    },
+                    contentPadding = COMPACT_NAME_PADDING,
+                ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+            }
         }
     }
 
     profileRow?.let { row ->
         val profile = passengerStore.profile(row.passengerId)
+            ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
+        val history = profile?.let { passengerStore.rideHistory(it.id) }
         AlertDialog(
             onDismissRequest = { profileRow = null },
             title = { Text("Passageiro Rota Certa") },
@@ -245,9 +261,18 @@ internal fun EnhancedPassengerTimelineSection(
                     val phone = profile?.whatsapp?.takeIf(String::isNotBlank) ?: row.phone
                     Text(phone?.takeIf(String::isNotBlank) ?: "Telefone não informado")
                     Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
+                    history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }
+                    if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)
                 }
             },
-            confirmButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    profile?.let { passengerStore.setBlocked(it.id, !it.blocked, if (!it.blocked) "Bloqueado pelo motorista" else "") }
+                    profileRow = null
+                    onChanged(if (profile?.blocked == true) "Passageiro desbloqueado." else "Passageiro bloqueado; futuras reservas com a mesma identidade serão sinalizadas e retiradas quando possível.")
+                }) { Text(if (profile?.blocked == true) "Desbloquear" else "Bloquear") }
+            },
+            dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },
         )
     }
 
@@ -267,7 +292,10 @@ internal fun EnhancedPassengerTimelineSection(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
+                    var profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
+                    row.externalPassengerId?.let { externalId ->
+                        passengerStore.linkExternalPassengerId(profile.id, externalId)?.let { linked -> profile = linked }
+                    }
                     if (linkPassengerProfile(row, profile.id, store, passengerStore)) {
                         onChanged("Cadastro do passageiro vinculado explicitamente.")
                     } else {
@@ -364,6 +392,7 @@ internal fun enhancedPassengerRows(
             fareMinorUnits = metadata?.fareMinorUnits,
             fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
             boardingAddress = metadata?.boardingAddress.orEmpty(),
+            externalPassengerId = metadata?.externalPassengerId?.takeIf(String::isNotBlank),
             dropoffAddress = metadata?.dropoffAddress.orEmpty(),
             boardingStopIndex = trip?.let { TripPassengerRouteOrder.stopIndexForLabel(it, boarding) },
         )
@@ -655,6 +684,49 @@ private fun linkPassengerProfile(
     return true
 }
 
+internal fun passengerConfirmationMessage(
+    entry: TripTimelineEntry,
+    row: EnhancedPassengerCardRow,
+    context: Context? = null,
+): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
+    val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
+    val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(departure)
+    val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
+    val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
+    val boarding = row.boardingAddress.trim().takeIf(String::isNotEmpty) ?: row.boarding?.trim().orEmpty()
+    val dropoff = row.dropoffAddress.trim().takeIf(String::isNotEmpty) ?: row.dropoff?.trim().orEmpty()
+    val lines = mutableListOf<String>()
+    lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
+    lines += ""
+    if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
+    lines += "📅 $date"
+    lines += "🕒 Saída: $time"
+    if (boarding.isNotBlank()) lines += "📍 Embarque: $boarding"
+    if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
+    lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
+    if (row.fareMinorUnits != null && context != null) {
+        val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
+        lines += "💰 $formatted"
+    }
+    lines += ""
+    lines += "Se precisar ajustar o ponto de embarque ou destino, me avise por aqui. Quando eu estiver a caminho, envio a localização. 👍"
+    return lines.joinToString("\n")
+}
+
+private fun copyPassengerConfirmationMessage(context: Context, entry: TripTimelineEntry, row: EnhancedPassengerCardRow) {
+    val message = passengerConfirmationMessage(entry, row, context)
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Confirmação da viagem", message))
+    UnifiedDebugEventStore.record(
+        "PASSENGER_CONFIRMATION_MESSAGE_COPIED",
+        context.packageName,
+        "timeline=true seats=${row.seats} farePresent=${row.fareMinorUnits != null} boardingPresent=${row.boarding?.isNotBlank() == true} dropoffPresent=${row.dropoff?.isNotBlank() == true}",
+    )
+    Toast.makeText(context, "Mensagem de confirmação copiada.", Toast.LENGTH_SHORT).show()
+}
+
 private fun copyPassengerFareValue(context: Context, row: EnhancedPassengerCardRow) {
     val amount = row.fareMinorUnits ?: return
     val localeTag = PassengerMoney.spec(context).localeTag
@@ -703,13 +775,26 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
         !entry.blablaProfileUuid.isNullOrBlank()
 
 @Composable
-private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry) {
+private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {
     val context = LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onSyncExactCard != null && !entry.blablaProfileUuid.isNullOrBlank() && !entry.blablaTripId.isNullOrBlank()) {
+            TextButton(
+                onClick = {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_EXACT_CARD_SYNC_REQUESTED",
+                        context.packageName,
+                        "profileUuidPresent=true tripIdPresent=true",
+                    )
+                    onSyncExactCard()
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text("🔄") }
+        }
         IconButton(
             onClick = {
                 if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {

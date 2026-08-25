@@ -44,6 +44,7 @@ fun BlaBlaCollectorPanel(
     onChanged: (String) -> Unit,
     autoSyncToken: Int = 0,
     autoSyncProfileUuid: String? = null,
+    autoSyncTripId: String? = null,
 ) {
     val context = LocalContext.current
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
@@ -56,6 +57,7 @@ fun BlaBlaCollectorPanel(
     var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
+    var targetedSyncTripId by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -81,6 +83,9 @@ fun BlaBlaCollectorPanel(
         } else {
             syncing = false
             publishCombined("Sincronização + MHTML concluídos")
+            if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
+                context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
+            }
         }
     }
 
@@ -101,7 +106,24 @@ fun BlaBlaCollectorPanel(
         if (syncing) {
             if (result.resultCode == Activity.RESULT_OK) {
                 val account = registry.get(accountId)
-                if (account != null) {
+                if (targetedSyncTripId != null) {
+                    syncing = false
+                    archiving = false
+                    val exactTrip = targetedSyncTripId
+                    targetedSyncTripId = null
+                    stateStore.lastResponse()?.let(onResult)
+                    refresh()
+                    message = "${account?.displayLabel ?: "Conta"}: somente o card solicitado foi sincronizado ✅"
+                    onChanged(message.orEmpty())
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_EXACT_CARD_SYNC_FINISHED",
+                        context.packageName,
+                        "tripIdPresent=${!exactTrip.isNullOrBlank()} accountPresent=${account != null} mhtmlFullAccountSkipped=true",
+                    )
+                    if (BlockedPassengerCancellationStore(context).list().isNotEmpty()) {
+                        context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
+                    }
+                } else if (account != null) {
                     archiving = true
                     message = "${account.displayLabel}: leitura concluída • baixando MHTMLs necessários…"
                     onChanged(message.orEmpty())
@@ -184,7 +206,7 @@ fun BlaBlaCollectorPanel(
         }
     }
 
-    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, syncing, archiving, manualSeatSyncing, accounts.size) {
+    LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {
         if (autoSyncToken <= handledAutoSyncToken || syncing || archiving || manualSeatSyncing) return@LaunchedEffect
 
         val pendingManualSeat = manualSeatStore.peek()
@@ -234,6 +256,7 @@ fun BlaBlaCollectorPanel(
             return@LaunchedEffect
         }
         handledAutoSyncToken = autoSyncToken
+        targetedSyncTripId = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
         syncQueue = selectedAccounts.map { it.id }
         syncCursor = 0
         syncing = true
@@ -257,7 +280,23 @@ fun BlaBlaCollectorPanel(
                 publishCombined("Sincronização concluída")
             }
         } else {
-            sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
+            val exactTripId = targetedSyncTripId
+            if (exactTripId != null) {
+                val currentTrip = stateStore.lastResponse()?.trips?.singleOrNull { trip ->
+                    trip.profile_uuid.equals(account.profileUuid, ignoreCase = true) && trip.trip_id == exactTripId
+                }
+                val href = currentTrip?.trip_href
+                if (href.isNullOrBlank()) {
+                    syncing = false
+                    targetedSyncTripId = null
+                    message = "Card exato sem link canônico; sincronização individual não iniciada."
+                    onChanged(message.orEmpty())
+                } else {
+                    sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
+                }
+            } else {
+                sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
+            }
         }
     }
 
@@ -298,6 +337,7 @@ fun BlaBlaCollectorPanel(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
                     if (!launchPendingSeatSync("manual_sync_button")) {
+                        targetedSyncTripId = null
                         syncQueue = accounts.map { it.id }
                         syncCursor = 0
                         syncing = true

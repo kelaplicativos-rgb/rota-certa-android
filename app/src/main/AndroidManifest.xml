@@ -144,6 +144,12 @@
         <activity
             android:name=".trips.BlaBlaReliableSeatSyncActivity"
             android:exported="false" />
+        <activity
+            android:name=".trips.BlaBlaBlockedPassengerCancellationActivity"
+            android:exported="false" />
+        <activity
+            android:name=".trips.AgendaBatchPublisherActivity"
+            android:exported="false" />
 
         <!-- PUBLIC_SEARCH: isolated read-only public BlaBlaCar search, no authenticated account reuse. -->
         <activity
