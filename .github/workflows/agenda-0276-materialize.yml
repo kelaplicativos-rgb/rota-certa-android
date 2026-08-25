@@ -1,5 +1,5 @@
-name: Agenda 0.1.277 materialize
-# Minimal continuation of the existing Agenda materializer: passenger UUID dedupe, concise confirmation and one-way publishing.
+name: Agenda 0.1.278 materialize
+# Minimal continuation of the existing Agenda materializer: preserve 0.1.277 and make Limpar Timeline remove local/manual trips too.
 
 on:
   push:
@@ -202,6 +202,129 @@ jobs:
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after
           cmp /tmp/public.before /tmp/public.after
 
+      - name: Materialize complete Timeline clear 0.1.278
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if new in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          store = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt'
+          replace_once(
+              store,
+              '''    fun deleteTrip(id: String) {
+                  prefs.edit()
+                      .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))
+                      .putString(bookingsKey, json.encodeToString(bookings().filterNot { it.tripId == id }))
+                      .apply()
+              }
+          ''',
+              '''    fun deleteTrip(id: String) {
+                  prefs.edit()
+                      .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))
+                      .putString(bookingsKey, json.encodeToString(bookings().filterNot { it.tripId == id }))
+                      .apply()
+              }
+
+              fun clearTimelineLocalData(): Pair<Int, Int> {
+                  val tripsRemoved = trips().size
+                  val bookingsRemoved = bookings().size
+                  prefs.edit()
+                      .remove(tripsKey)
+                      .remove(bookingsKey)
+                      .apply()
+                  return tripsRemoved to bookingsRemoved
+              }
+          ''',
+          )
+
+          timeline = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          old_clear = '''            ResponsiveTripAction("Limpar Timeline") {
+                  archiveStore.clearExternal(physical)
+                  val clearedResponse = collectorStore.saveResponse(
+                      BlaBlaCollectorMonthResponse(
+                          status = "cleared",
+                          month = collectorResponse?.month,
+                          strategy = collectorResponse?.strategy,
+                          profiles = collectorResponse?.profiles.orEmpty(),
+                          routes = collectorResponse?.routes.orEmpty(),
+                          coverage = BlaBlaCollectorCoverage(
+                              complete_for_scope = true,
+                              global_profile_month_complete = true,
+                              reason = "cleared_by_user",
+                              past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
+                          ),
+                      ),
+                      preserveOnPartial = false,
+                  )
+                  collectorResponse = clearedResponse
+                  showArchived = false
+                  searchQuery = ""
+                  UnifiedDebugEventStore.record(
+                      "TIMELINE_CLEARED_BY_USER",
+                      context.packageName,
+                      "externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",
+                  )
+                  onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")
+              },'''
+          new_clear = '''            ResponsiveTripAction("Limpar Timeline") {
+                  archiveStore.clearExternal(physical)
+                  val localClear = store.clearTimelineLocalData()
+                  val clearedResponse = collectorStore.saveResponse(
+                      BlaBlaCollectorMonthResponse(
+                          status = "cleared",
+                          month = collectorResponse?.month,
+                          strategy = collectorResponse?.strategy,
+                          profiles = collectorResponse?.profiles.orEmpty(),
+                          routes = collectorResponse?.routes.orEmpty(),
+                          coverage = BlaBlaCollectorCoverage(
+                              complete_for_scope = true,
+                              global_profile_month_complete = true,
+                              reason = "cleared_by_user",
+                              past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
+                          ),
+                      ),
+                      preserveOnPartial = false,
+                  )
+                  collectorResponse = clearedResponse
+                  showArchived = false
+                  searchQuery = ""
+                  UnifiedDebugEventStore.record(
+                      "TIMELINE_CLEARED_BY_USER",
+                      context.packageName,
+                      "externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true",
+                  )
+                  onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")
+              },'''
+          replace_once(timeline, old_clear, new_clear)
+
+          build = 'app/build.gradle.kts'
+          replace_once(build, '        versionCode = 5570\n        versionName = "0.1.277"', '        versionCode = 5571\n        versionName = "0.1.278"')
+          PY
+
+          git diff --check
+          grep -Fq 'fun clearTimelineLocalData(): Pair<Int, Int>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq '.remove(tripsKey)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq '.remove(bookingsKey)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'val localClear = store.clearTimelineLocalData()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'localTripsRemoved=${localClear.first}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          if grep -Fq 'localTripsPreserved=${trips.size}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then exit 1; fi
+          grep -Fq 'versionCode = 5571' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.278"' app/build.gradle.kts
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.timeline-clear
+          cmp /tmp/public.before /tmp/public.timeline-clear
+
       - name: Unit tests and debug APK
         shell: bash
         run: |
@@ -227,6 +350,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPhysicalRideConsolidator.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
@@ -235,7 +359,7 @@ jobs:
                   app/src/main/AndroidManifest.xml \
                   app/build.gradle.kts
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(agenda): dedupe passenger UUID and allow one-way publish 0.1.277'
+            git commit -m 'fix(agenda): clear local timeline trips 0.1.278'
             git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           fi
 
@@ -243,14 +367,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/agenda-0277
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0277/rota-certa-0.1.277-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0277/apk.sha256
-          git rev-parse HEAD > /tmp/agenda-0277/source-head.txt
-          printf '%s\n' 'versionName=0.1.277' 'versionCode=5570' > /tmp/agenda-0277/version.txt
+          mkdir -p /tmp/agenda-0278
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0278/rota-certa-0.1.278-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0278/apk.sha256
+          git rev-parse HEAD > /tmp/agenda-0278/source-head.txt
+          printf '%s\n' 'versionName=0.1.278' 'versionCode=5571' > /tmp/agenda-0278/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.277-${{ github.sha }}
-          path: /tmp/agenda-0277
+          name: rota-certa-agenda-0.1.278-${{ github.sha }}
+          path: /tmp/agenda-0278
           retention-days: 14
