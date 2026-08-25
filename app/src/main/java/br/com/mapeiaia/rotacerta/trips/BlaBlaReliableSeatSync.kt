@@ -430,6 +430,8 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private var busy = false
     private var expectedSeats = -1
     private var verifyingCompensation = false
+    private var beforeArchiveSaved = false
+    private var beforeReadAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -515,12 +517,32 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         }
         busy = true
         when (phase) {
-            Phase.BEFORE -> archive.save(webView, account, "reliable-options-before", request.tripId) {
+            Phase.BEFORE -> {
+                if (!beforeArchiveSaved) {
+                    archive.save(webView, account, "reliable-options-before", request.tripId) {
+                        beforeArchiveSaved = true
+                        busy = false
+                        handlePage()
+                    }
+                    return
+                }
                 evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
-                    if (state == null || state.seats < 0 || !state.savePresent) {
-                        finishPending("O editor de vagas não está disponível ou não pôde ser lido.", rotate = true)
+                    if (state == null || state.seats < 0) {
+                        if (beforeReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES) {
+                            beforeReadAttempts++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_SEAT_SYNC_RELIABLE_READ_RETRY",
+                                packageName,
+                                "request=${request.id} attempt=$beforeReadAttempts seats=${state?.seats ?: -1} savePresent=${state?.savePresent ?: false}",
+                            )
+                            busy = false
+                            webView.postDelayed({ handlePage() }, RELIABLE_OPTIONS_READ_RETRY_MS)
+                            return@evaluate
+                        }
+                        finishPending("O editor de vagas não está disponível ou não pôde ser lido após novas leituras.", rotate = true)
                         return@evaluate
                     }
+                    beforeReadAttempts = 0
                     if (!BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)) {
                         finishPending("A identidade da página de vagas não foi confirmada.", rotate = true)
                         return@evaluate
@@ -746,6 +768,9 @@ private fun configureReliableProfiledWebView(webView: WebView, account: BlaBlaDy
         webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
     }
 }
+
+private const val RELIABLE_OPTIONS_READ_MAX_RETRIES = 4
+private const val RELIABLE_OPTIONS_READ_RETRY_MS = 650L
 
 private fun reliableOptionsUrl(tripId: String): String =
     "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
