@@ -1,5 +1,5 @@
-name: Agenda 0.1.276 materialize
-# Re-run after minimal PassengerRideHistory visibility correction.
+name: Agenda 0.1.277 materialize
+# Minimal continuation of the existing Agenda materializer: passenger UUID dedupe, concise confirmation and one-way publishing.
 
 on:
   push:
@@ -29,15 +29,173 @@ jobs:
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.before
 
-      - name: Materialize consolidated Agenda changes
+      - name: Materialize consolidated Agenda baseline
         shell: bash
         run: |
           set -euo pipefail
           python3 -c 'from pathlib import Path; p=Path(".github/scripts/agenda_0276_materialize.py"); s=p.read_text(); old="            current.copy(\n                passengerId = booking.passengerId,\n                fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,"; new="                current.copy(\n                    passengerId = booking.passengerId,\n                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,"; assert old in s; p.write_text(s.replace(old,new,1))'
           python3 .github/scripts/agenda_0276_materialize.py
+
+      - name: Materialize minimal 0.1.277 adjustments
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if new in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          passenger = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt'
+          replace_once(
+              passenger,
+              '''        val leftHref = left.booking_href?.trim().orEmpty()
+                  val rightHref = right.booking_href?.trim().orEmpty()
+                  if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
+                      return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
+                  }
+          ''',
+              '''        val leftHref = left.booking_href?.trim().orEmpty()
+                  val rightHref = right.booking_href?.trim().orEmpty()
+                  val leftUuid = passengerUuid(leftHref)
+                  val rightUuid = passengerUuid(rightHref)
+                  if (leftUuid != null && rightUuid != null && leftUuid == rightUuid) return true
+                  if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
+                      return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
+                  }
+          ''',
+          )
+          replace_once(
+              passenger,
+              '''    private fun compatiblePlace(left: String?, right: String?): Boolean {
+          ''',
+              '''    private fun passengerUuid(raw: String): String? {
+                      if (raw.isBlank()) return null
+                      val identity = BlaBlaCollectorUrlModule.passengerIdentityKey(raw).lowercase()
+                      return identity.takeIf(PASSENGER_UUID::matches)
+                  }
+
+                  private fun compatiblePlace(left: String?, right: String?): Boolean {
+          ''',
+          )
+          replace_once(
+              passenger,
+              '''    private fun normalizeEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+                      .replace(Regex("\\p{M}+"), "")
+                      .lowercase()
+                      .replace(Regex("[^a-z0-9]+"), " ")
+                      .trim()
+          }
+          ''',
+              '''    private fun normalizeEvidence(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+                      .replace(Regex("\\p{M}+"), "")
+                      .lowercase()
+                      .replace(Regex("[^a-z0-9]+"), " ")
+                      .trim()
+
+                  private val PASSENGER_UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+          }
+          ''',
+          )
+
+          publisher = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt'
+          replace_once(
+              publisher,
+              '''        templateErrors("IDA", draft.outbound)
+                  templateErrors("VOLTA", draft.inbound)
+
+                  draft.profiles.filter(AgendaPublishProfileDraft::selected).forEach { profileDraft ->
+          ''',
+              '''        val selectedProfiles = draft.profiles.filter(AgendaPublishProfileDraft::selected)
+                  val outboundRequested = selectedProfiles.any { it.outboundDays.isNotBlank() }
+                  val inboundRequested = selectedProfiles.any { it.inboundDays.isNotBlank() }
+                  if (outboundRequested) templateErrors("IDA", draft.outbound)
+                  if (inboundRequested) templateErrors("VOLTA", draft.inbound)
+                  if (selectedProfiles.isNotEmpty() && !outboundRequested && !inboundRequested) {
+                      errors += "Informe ao menos um dia de IDA ou VOLTA."
+                  }
+
+                  selectedProfiles.forEach { profileDraft ->
+          ''',
+          )
+
+          timeline = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          old_message = '''internal fun passengerConfirmationMessage(
+              entry: TripTimelineEntry,
+              row: EnhancedPassengerCardRow,
+              context: Context? = null,
+          ): String {
+              val zone = java.time.ZoneId.systemDefault()
+              val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
+              val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
+              val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(departure)
+              val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
+              val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
+              val boarding = row.boardingAddress.trim().takeIf(String::isNotEmpty) ?: row.boarding?.trim().orEmpty()
+              val dropoff = row.dropoffAddress.trim().takeIf(String::isNotEmpty) ?: row.dropoff?.trim().orEmpty()
+              val lines = mutableListOf<String>()
+              lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
+              lines += ""
+              if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
+              lines += "📅 $date"
+              lines += "🕒 Saída: $time"
+              if (boarding.isNotBlank()) lines += "📍 Embarque: $boarding"
+              if (dropoff.isNotBlank()) lines += "🏁 Destino: $dropoff"
+              lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
+              if (row.fareMinorUnits != null && context != null) {
+                  val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
+                  lines += "💰 $formatted"
+              }
+              lines += ""
+              lines += "Se precisar ajustar o ponto de embarque ou destino, me avise por aqui. Quando eu estiver a caminho, envio a localização. 👍"
+              return lines.joinToString("\\n")
+          }
+          '''
+          new_message = '''internal fun passengerConfirmationMessage(
+              entry: TripTimelineEntry,
+              row: EnhancedPassengerCardRow,
+              context: Context? = null,
+          ): String {
+              val zone = java.time.ZoneId.systemDefault()
+              val departure = java.time.Instant.ofEpochMilli(entry.departureAtMillis).atZone(zone)
+              val date = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(departure)
+              val origin = row.boarding?.trim()?.takeIf(String::isNotEmpty) ?: entry.origin.trim()
+              val destination = row.dropoff?.trim()?.takeIf(String::isNotEmpty) ?: entry.destination.trim()
+              val lines = mutableListOf<String>()
+              lines += "Olá, ${row.name.ifBlank { "passageiro" }}! Sua viagem está confirmada ✅"
+              lines += ""
+              if (origin.isNotBlank() && destination.isNotBlank()) lines += "🚗 $origin → $destination"
+              lines += "📅 $date"
+              lines += if (row.seats == 1) "💺 1 vaga" else "💺 ${row.seats} vagas"
+              if (row.fareMinorUnits != null && context != null) {
+                  val formatted = passengerTimelineFareClipboardText(row.fareMinorUnits, row.fareCurrencyCode, PassengerMoney.spec(context).localeTag)
+                  lines += "💰 $formatted"
+              }
+              lines += ""
+              lines += "Quando eu estiver a caminho, envio a localização. 👍"
+              return lines.joinToString("\\n")
+          }
+          '''
+          replace_once(timeline, old_message, new_message)
+
+          build = 'app/build.gradle.kts'
+          replace_once(build, '        versionCode = 5569\n        versionName = "0.1.276"', '        versionCode = 5570\n        versionName = "0.1.277"')
+          PY
+
           git diff --check
-          grep -Fq 'versionCode = 5569' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.276"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5570' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.277"' app/build.gradle.kts
+          grep -Fq 'PASSENGER_UUID' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
+          grep -Fq 'selectedProfiles.any { it.outboundDays.isNotBlank() }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt
+          grep -Fq 'Quando eu estiver a caminho, envio a localização. 👍' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          if grep -Fq 'Se precisar ajustar o ponto de embarque ou destino' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt; then exit 1; fi
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after
           cmp /tmp/public.before /tmp/public.after
@@ -70,10 +228,12 @@ jobs:
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
                   app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBatchPublisher.kt \
                   app/src/main/AndroidManifest.xml \
                   app/build.gradle.kts
           if ! git diff --cached --quiet; then
-            git commit -m 'feat(agenda): consolidate cards passengers sync and publisher 0.1.276'
+            git commit -m 'fix(agenda): dedupe passenger UUID and allow one-way publish 0.1.277'
             git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           fi
 
@@ -81,14 +241,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/agenda-0276
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0276/rota-certa-0.1.276-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0276/apk.sha256
-          git rev-parse HEAD > /tmp/agenda-0276/source-head.txt
-          printf '%s\n' 'versionName=0.1.276' 'versionCode=5569' > /tmp/agenda-0276/version.txt
+          mkdir -p /tmp/agenda-0277
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0277/rota-certa-0.1.277-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0277/apk.sha256
+          git rev-parse HEAD > /tmp/agenda-0277/source-head.txt
+          printf '%s\n' 'versionName=0.1.277' 'versionCode=5570' > /tmp/agenda-0277/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.276-${{ github.sha }}
-          path: /tmp/agenda-0276
+          name: rota-certa-agenda-0.1.277-${{ github.sha }}
+          path: /tmp/agenda-0277
           retention-days: 14
