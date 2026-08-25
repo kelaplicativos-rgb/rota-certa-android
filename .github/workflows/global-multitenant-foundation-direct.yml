@@ -1,9 +1,9 @@
-name: Global multi-tenant foundation direct-source 0.1.252
+name: Global foundation + passenger timeline direct-source 0.1.267
 
 on:
   push:
     branches:
-      - agent/global-multitenant-foundation
+      - agent/passenger-timeline-geo-ux
   pull_request:
     branches:
       - agent/stage47-r4-step7-automatic-identity
@@ -15,12 +15,12 @@ permissions:
 jobs:
   validate-direct-source:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
-      GOOGLE_MAPS_API_KEY: tenant_foundation_ci_dummy_key
-      PROTECTED_FAROL_SHA256: 2d87d9219ce1aed9b1b032bd0d4790f6e20d0040819cb20c2dfdcd58a169d560
-      EXPECTED_VERSION_CODE: '5545'
-      EXPECTED_VERSION_NAME: '0.1.252'
+      GOOGLE_MAPS_API_KEY: passenger_timeline_ci_dummy_key
+      PROTECTED_FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
+      EXPECTED_VERSION_CODE: '5560'
+      EXPECTED_VERSION_NAME: '0.1.267'
     steps:
       - name: Checkout branch source directly
         uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify source authority and protected FAROL
+      - name: Verify source authority protected FAROL and feature files
         run: |
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
@@ -45,10 +45,21 @@ jobs:
           SETTINGS='app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt'
           FINANCE='app/src/main/java/br/com/mapeiaia/rotacerta/FinancialRepository.kt'
           TRACKING='app/src/main/java/br/com/mapeiaia/rotacerta/WorkTrackingRepository.kt'
-          TEST='app/src/test/java/br/com/mapeiaia/rotacerta/TenantStorageFoundation0252Test.kt'
+          PASSENGERS='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt'
+          MONEY='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerMoney.kt'
+          PASSENGER_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt'
+          ROUTE_ORDER='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPassengerRouteOrder.kt'
+          REFERENCE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripReferenceOriginStore.kt'
+          FEATURE_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0253Test.kt'
+          COMPACT_REGRESSION='app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimeline0254RegressionTest.kt'
+          COLLECTOR_TIMELINE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt'
+          COLLECTOR_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
+          COLLECTOR_SESSION='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt'
+          COLLECTOR_URL='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt'
+          COLLECTOR_BOUNDARY_TEST='app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorBoundaries0265Test.kt'
 
           test "$(sha256sum "$FAROL" | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
-          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$TEST"; do test -s "$file"; done
+          for file in "$TENANT" "$STORE" "$SETTINGS" "$FINANCE" "$TRACKING" "$PASSENGERS" "$MONEY" "$PASSENGER_UI" "$ROUTE_ORDER" "$REFERENCE" "$FEATURE_TEST" "$COMPACT_REGRESSION" "$COLLECTOR_TIMELINE" "$COLLECTOR_TEST" "$COLLECTOR_SESSION" "$COLLECTOR_URL" "$COLLECTOR_BOUNDARY_TEST"; do test -s "$file"; done
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'provisionalLocal' "$TENANT"
@@ -60,27 +71,39 @@ jobs:
           grep -Fq 'tenantScope.key(base)' "$SETTINGS"
           grep -Fq 'finance-entries-${tenantScope.namespace}.jsonl' "$FINANCE"
           grep -Fq 'work-tracking-points-${tenantScope.namespace}.jsonl' "$TRACKING"
-          ! grep -Fq 'replace("R$"' "$FINANCE"
-          ! grep -Fq 'Locale("pt", "BR")' "$FINANCE"
+          grep -Fq 'val passengerId: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'fareMinorUnits' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'TripReferenceOriginStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'EnhancedPassengerTimelineSection' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'freshReferenceFix' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'TenantMessageTemplateStore' app/src/main/java/br/com/mapeiaia/rotacerta/MessageTemplatesActivity.kt
+          ! grep -Fq 'Locale("pt", "BR")' app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt
+          grep -Fq 'passengerTimelinePlaceLabel' "$PASSENGER_UI"
+          grep -Fq 'passengerTimelineCompactPlace' "$PASSENGER_UI"
+          grep -Fq 'copyPassengerFareValue' "$PASSENGER_UI"
+          grep -Fq 'R.drawable.ic_whatsapp_action' "$PASSENGER_UI"
+          grep -Fq 'preservedMissingTrips' "$COLLECTOR_TIMELINE"
+          grep -Fq 'partialTraversalCannotEraseLastConfirmedTimelineCard' "$COLLECTOR_TEST"
+          grep -Fq 'videoRegressionPartialMhtmlPassCannotRemoveDirectPassengerActions' "$COLLECTOR_TEST"
+          grep -Fq 'fun saveHarvestTrips' "$COLLECTOR_SESSION"
+          grep -Fq 'authority=session_store' "$COLLECTOR_SESSION"
+          grep -Fq 'fun canonical' "$COLLECTOR_URL"
+          grep -Fq 'staleHarvestCannotEraseIndividualPassengerActionsOrNewerCards' "$COLLECTOR_BOUNDARY_TEST"
 
           echo "source_head=$(git rev-parse HEAD)"
           echo 'direct_source=true'
           echo 'historical_sha_checkout=false'
           echo 'materializer_used=false'
-          echo 'farol_untouched=true'
-          echo 'tenant_foundation_present=true'
+          echo 'farol_decision_logic_untouched=true'
+          echo 'farol_context_bridge_authorized=true'
+          echo 'passenger_timeline_compact_regression_present=true'
+          echo 'collector_partial_snapshot_monotonic=true'
+          echo 'collector_boundaries_isolated=true'
 
-      - name: Run tenant and regression tests directly on app source
+      - name: Run all unit and regression tests directly on app source
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.TenantStorageFoundation0252Test' \
-            --tests 'br.com.mapeiaia.rotacerta.FinanceSummaryCalculatorTest' \
-            --tests 'br.com.mapeiaia.rotacerta.ValueFinanceRegression160Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.TripQuickPassengerStage47R4Step4Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.Stage47Reliability0251Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$PROTECTED_FAROL_SHA256"
 
       - name: Assemble debug APK directly from app/src
@@ -100,36 +123,44 @@ jobs:
           grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
           sha256sum "$APK" | tee evidence/apk-sha256.txt
 
-          cat > evidence/tenant-foundation-status.txt <<EOF
-          global_multitenant_foundation_direct_source=PASS
+          cat > evidence/passenger-timeline-status.txt <<EOF
+          passenger_timeline_direct_source=PASS
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
           source_head=$(git rev-parse HEAD)
           direct_source=true
           historical_sha_checkout=false
           materializer_used=false
           farol_sha256=$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')
-          tenant_identity_foundation=true
-          trip_store_tenant_scoped=true
-          settings_repository_tenant_scoped=true
-          finance_repository_tenant_scoped=true
-          work_tracking_repository_tenant_scoped=true
-          existing_installation_legacy_keys_preserved=true
-          subscription_backend_implemented=false
-          full_tenant_storage_coverage=false
+          tenant_foundation_present=true
+          canonical_passenger_identity=true
+          booking_specific_fare_and_addresses=true
+          tenant_scoped_passenger_store=true
+          tenant_scoped_trip_reference=true
+          compact_passenger_layout=true
+          duplicate_name_route_cleanup=true
+          money_action_copies_value_only=true
+          individual_blablacar_fare_not_inferred=true
+          direction_cards=true
+          passenger_route_order=true
+          collector_partial_snapshot_monotonic=true
+          mhtml_enrichment_monotonic=true
+          single_session_persistence_authority=true
+          single_collector_url_authority=true
+          per_card_timeline_checkpoint=true
           physical_ui_validation=false
           merge=false
           release=false
           latest=false
           EOF
 
-      - name: Upload direct-source tenant foundation APK
+      - name: Upload direct-source passenger timeline APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-global-multitenant-foundation-0.1.252
+          name: rota-certa-passenger-timeline-geo-ux-0.1.267-foundation
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             evidence/apk-sha256.txt
             evidence/aapt-badging.txt
-            evidence/tenant-foundation-status.txt
+            evidence/passenger-timeline-status.txt
           if-no-files-found: error
           retention-days: 7

@@ -258,7 +258,7 @@ internal object BlaBlaPassengerRosterReconciler {
         )
     }
 
-    private fun matches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
+    internal fun matches(left: BlaBlaCollectorPassenger, right: BlaBlaCollectorPassenger): Boolean {
         val leftHref = left.booking_href?.trim().orEmpty()
         val rightHref = right.booking_href?.trim().orEmpty()
         if (leftHref.isNotBlank() && rightHref.isNotBlank()) return leftHref == rightHref
@@ -405,8 +405,24 @@ class BlaBlaCollectorStateStore(context: Context) {
         prefs.getString(KEY_RESPONSE, null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
     }.getOrNull()
 
-    fun saveResponse(response: BlaBlaCollectorMonthResponse) {
-        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(response)).apply()
+    fun saveResponse(
+        response: BlaBlaCollectorMonthResponse,
+        preserveOnPartial: Boolean = true,
+    ): BlaBlaCollectorMonthResponse {
+        val effective = BlaBlaCollectorTimelineModule.mergePublishedResponse(
+            previous = lastResponse(),
+            incoming = response,
+            preserveOnPartial = preserveOnPartial,
+        )
+        if (effective.trips != response.trips) {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_PARTIAL_RESPONSE_PRESERVED",
+                appContext.packageName,
+                "status=${response.status} incomingTrips=${response.trips.size} publishedTrips=${effective.trips.size} incomingPassengers=${response.trips.sumOf { it.passengers.size }} publishedPassengers=${effective.trips.sumOf { it.passengers.size }}",
+            )
+        }
+        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(effective)).apply()
+        return effective
     }
 
     fun lastProfile1(): String = prefs.getString(KEY_PROFILE1, "").orEmpty()
@@ -504,8 +520,8 @@ object BlaBlaTimelineAdapter {
                 merged += external.copy(
                     tripId = local.tripId,
                     localTripId = local.localTripId ?: local.tripId,
-                    origin = external.origin,
-                    destination = external.destination,
+                    origin = local.origin,
+                    destination = local.destination,
                     status = if (external.status == TripStatus.FULL) TripStatus.FULL else local.status,
                     capacity = local.capacity,
                     minimumOccupiedSeats = maxOf(local.minimumOccupiedSeats, external.minimumOccupiedSeats),

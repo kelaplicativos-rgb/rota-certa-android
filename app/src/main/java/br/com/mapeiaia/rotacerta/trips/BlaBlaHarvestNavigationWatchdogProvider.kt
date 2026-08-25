@@ -18,6 +18,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.lang.reflect.Method
 import java.util.WeakHashMap
 
 /**
@@ -30,10 +31,21 @@ import java.util.WeakHashMap
  * wrapper around the harvester's existing WebViewClient and, after a bounded
  * timeout, delivers the missing completion callback back to that same client.
  *
- * Automatic harvesting is passenger-focused. When the policy disables the
- * published-seat lookup, edit/options links are suppressed only on the trip
- * detail DOM before the existing activity reads it. Passenger links remain
- * untouched. The explicit manual seat-sync Activity is not wrapped here.
+ * Automatic harvesting is passenger-focused. Published-seat Editar/Lugares work
+ * is not part of the automatic path. The provider strips those actions from trip
+ * detail pages and also fail-closes if an old state-machine target still tries to
+ * navigate there. The explicit manual seat-sync Activity is not wrapped here.
+ *
+ * Navigation identity includes the canonical id query parameter when present.
+ * This is required because current BlaBlaCar trip pages commonly share the same
+ * /rides/offer path while the strong trip identity lives in ?id=... . Treating
+ * path alone as identity lets a late callback from trip N leak into trip N+1.
+ *
+ * The existing activity keeps its conservative delayed read as a fallback. This
+ * wrapper asks the same private state machine to probe earlier after a verified
+ * page completion. If the DOM is not ready, the activity's existing bounded
+ * retries remain authoritative; no evidence is fabricated and no identity check
+ * is bypassed.
  *
  * No route, city, account, passenger, capacity or locale is hardcoded here.
  * The wrapper does not open external dialers and preserves the existing tel:
@@ -80,7 +92,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         UnifiedDebugEventStore.record(
             "HARVEST_NAVIGATION_WATCHDOG_ATTACHED",
             activity.packageName,
-            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP}",
+            "timeoutMs=$NAVIGATION_TIMEOUT_MS directSource=true syntheticPageFinished=true automaticSeatLookup=${BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP} strongQueryIdentity=true fastProbeMs=${BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS}",
         )
     }
 
@@ -116,6 +128,8 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         private var generation = 0L
         private var expectedUrl: String? = null
         private var disposed = false
+        private val handlePageMethod: Method? by lazy { privateMethod("handlePage") }
+        private val finishHarvestMethod: Method? by lazy { privateMethod("finishHarvest") }
 
         fun armInitialNavigation() {
             arm(webView.url ?: RIDES_URL)
@@ -129,6 +143,22 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            if (
+                !BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+                BlaBlaHarvestNavigationIdentity.isEditOrOptionsHref(url)
+            ) {
+                handler.removeCallbacksAndMessages(null)
+                generation++
+                expectedUrl = null
+                view.stopLoading()
+                val completed = invokePrivate(finishHarvestMethod, "finishHarvest")
+                UnifiedDebugEventStore.record(
+                    "HARVEST_PUBLISHED_SEAT_PHASE_SHORT_CIRCUITED",
+                    appContext.packageName,
+                    "automatic=true path=${safePath(url)} publishedSeatLookup=false completed=$completed externalWrite=false",
+                )
+                if (completed) return
+            }
             arm(url)
             delegate.onPageStarted(view, url, favicon)
         }
@@ -140,7 +170,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 UnifiedDebugEventStore.record(
                     "HARVEST_STALE_PAGE_FINISHED_IGNORED",
                     appContext.packageName,
-                    "currentPath=${safePath(current)} stalePath=${safePath(url)}",
+                    "currentPath=${safePath(current)} stalePath=${safePath(url)} strongQueryIdentity=true",
                 )
                 return
             }
@@ -170,7 +200,7 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP ||
                 !isTripDetailUrl(url)
             ) {
-                delegate.onPageFinished(view, url)
+                deliverDelegateAndAccelerate(view, url)
                 return
             }
             val deliveredGeneration = generation
@@ -180,17 +210,36 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                     UnifiedDebugEventStore.record(
                         "HARVEST_STALE_PAGE_FINISHED_IGNORED",
                         appContext.packageName,
-                        "currentPath=${safePath(view.url)} stalePath=${safePath(url)} seatLookupSuppression=true",
+                        "currentPath=${safePath(view.url)} stalePath=${safePath(url)} seatLookupSuppression=true strongQueryIdentity=true",
                     )
                     return@evaluateJavascript
                 }
                 UnifiedDebugEventStore.record(
                     "HARVEST_SEAT_OPTIONS_SKIPPED",
                     appContext.packageName,
-                    "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic",
+                    "automatic=true tripDetail=true editLinkSuppressed=true publishedSeatLookup=false capacityAuthority=rota_certa_config syntheticPageFinished=$synthetic strongQueryIdentity=true",
                 )
-                delegate.onPageFinished(view, url)
+                deliverDelegateAndAccelerate(view, url)
             }
+        }
+
+        private fun deliverDelegateAndAccelerate(view: WebView, url: String) {
+            delegate.onPageFinished(view, url)
+            scheduleFastProbe(view, url)
+        }
+
+        private fun scheduleFastProbe(view: WebView, url: String) {
+            val expectedGeneration = generation
+            handler.postDelayed({
+                if (disposed || activity.isFinishing || activity.isDestroyed) return@postDelayed
+                if (generation != expectedGeneration || !sameNavigationUrl(view.url, url)) return@postDelayed
+                val invoked = invokePrivate(handlePageMethod, "handlePage")
+                UnifiedDebugEventStore.record(
+                    "HARVEST_FAST_DOM_PROBE",
+                    appContext.packageName,
+                    "delayMs=${BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS} path=${safePath(url)} invoked=$invoked fallbackPreserved=true",
+                )
+            }, BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS)
         }
 
         private fun arm(url: String?) {
@@ -215,6 +264,32 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 deliverPageFinished(webView, current, synthetic = true)
             }, NAVIGATION_TIMEOUT_MS)
         }
+
+        private fun privateMethod(name: String): Method? = runCatching {
+            activity.javaClass.getDeclaredMethod(name).apply { isAccessible = true }
+        }.getOrElse {
+            UnifiedDebugEventStore.record(
+                "HARVEST_FAST_PATH_REFLECTION_UNAVAILABLE",
+                appContext.packageName,
+                "method=$name fallbackPreserved=true",
+            )
+            null
+        }
+
+        private fun invokePrivate(method: Method?, name: String): Boolean {
+            if (method == null) return false
+            return runCatching {
+                method.invoke(activity)
+                true
+            }.getOrElse {
+                UnifiedDebugEventStore.record(
+                    "HARVEST_FAST_PATH_REFLECTION_FAILED",
+                    appContext.packageName,
+                    "method=$name fallbackPreserved=true error=${it.javaClass.simpleName}",
+                )
+                false
+            }
+        }
     }
 
     companion object {
@@ -222,42 +297,47 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private val SUPPRESS_EDIT_LINKS_JS = """
             (function() {
+              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
               Array.from(document.querySelectorAll('a[href]')).forEach((anchor) => {
-                const href = anchor.getAttribute('href') || '';
-                if (/\/rides\/offer\/edit\//i.test(href)) {
-                  anchor.removeAttribute('href');
+                const rawHref = anchor.getAttribute('href') || '';
+                let path = '';
+                try { path = new URL(rawHref, location.href).pathname.replace(/\/+$/, ''); } catch (_) {}
+                const text = clean(anchor.innerText || anchor.textContent);
+                const editPath = /^\/rides\/offer\/edit(?:\/|$)/i.test(path);
+                const editAction = /editar sua carona|lugares e op[cç][õo]es|op[cç][õo]es de passageiros/i.test(text);
+                if (editPath || editAction) {
                   anchor.setAttribute('data-rotacerta-automatic-seat-lookup', 'disabled');
+                  anchor.removeAttribute('href');
                 }
               });
               return 'ok';
             })();
         """.trimIndent()
 
-        private fun isBlaBlaUrl(value: String?): Boolean =
-            value?.startsWith("https://www.blablacar.com.br/", ignoreCase = true) == true
+        private fun isBlaBlaUrl(value: String?): Boolean = BlaBlaCollectorUrlModule.isAllowed(value)
 
         private fun isTripDetailUrl(value: String?): Boolean {
             if (!isBlaBlaUrl(value)) return false
             val parsed = runCatching { Uri.parse(value) }.getOrNull() ?: return false
             val path = parsed.path.orEmpty().trimEnd('/')
-            if (path.contains("/rides/offer/edit/", ignoreCase = true)) return false
+            if (path.equals("/rides/offer/edit", ignoreCase = true) || path.startsWith("/rides/offer/edit/", ignoreCase = true)) return false
             if (path.contains("/passenger/", ignoreCase = true) || path.contains("/booking/", ignoreCase = true)) return false
             if (path.equals("/rides/offer", ignoreCase = true)) return true
             return Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path) ||
                 Regex("/trip/[^/?#]+", RegexOption.IGNORE_CASE).containsMatchIn(path)
         }
 
-        private fun sameNavigationUrl(left: String?, right: String?): Boolean {
-            if (left.isNullOrBlank() || right.isNullOrBlank()) return false
-            val a = runCatching { Uri.parse(left) }.getOrNull()
-            val b = runCatching { Uri.parse(right) }.getOrNull()
-            return a?.scheme.equals(b?.scheme, ignoreCase = true) &&
-                a?.host.equals(b?.host, ignoreCase = true) &&
-                a?.path.orEmpty().trimEnd('/') == b?.path.orEmpty().trimEnd('/')
-        }
+        private fun sameNavigationUrl(left: String?, right: String?): Boolean =
+            BlaBlaHarvestNavigationIdentity.same(left, right)
 
         private fun safePath(value: String?): String = runCatching {
-            Uri.parse(value).path.orEmpty().take(160)
+            val parsed = Uri.parse(value)
+            val id = parsed.getQueryParameter("id")?.takeIf(String::isNotBlank)
+            if (id == null) {
+                parsed.path.orEmpty().take(160)
+            } else {
+                "${parsed.path.orEmpty().take(100)}?id=${id.take(54)}"
+            }
         }.getOrDefault("")
     }
 }

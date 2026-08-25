@@ -1,0 +1,214 @@
+name: Agenda collector causal PR patch once
+
+on:
+  pull_request:
+    branches:
+      - agent/global-multitenant-foundation
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-causal-patch:
+    if: ${{ github.event.pull_request.head.ref == 'agent/passenger-timeline-geo-ux' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: kelaplicativos-rgb/rota-certa-android
+          ref: agent/passenger-timeline-geo-ux
+          fetch-depth: 1
+
+      - name: Apply exact Agenda collector corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt; then
+            echo 'causal patch already present'
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          dynamic = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          test262 = 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt'
+          test264 = 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt'
+          gradle = 'app/build.gradle.kts'
+
+          replace_once(
+              dynamic,
+              '''            val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+            if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                tripRosterReadAttempts++
+                statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                webView.postDelayed({
+                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                }, ROSTER_RETRY_MS)
+                return@evaluate
+            }
+            if (!editLinkMatches) {
+                skipped++
+                UnifiedDebugEventStore.record(
+                    "TRIP_REJECTED",
+                    packageName,
+                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                )
+                advanceCandidate(expectedSync, expectedCandidate)
+                return@evaluate
+            }
+''',
+              '''            if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+                val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
+                if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                    tripRosterReadAttempts++
+                    statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                    webView.postDelayed({
+                        captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                    }, ROSTER_RETRY_MS)
+                    return@evaluate
+                }
+                if (!editLinkMatches) {
+                    skipped++
+                    UnifiedDebugEventStore.record(
+                        "TRIP_REJECTED",
+                        packageName,
+                        "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
+                    )
+                    advanceCandidate(expectedSync, expectedCandidate)
+                    return@evaluate
+                }
+            }
+''',
+          )
+
+          replace_once(
+              dynamic,
+              '''        loadCurrentTripEdit(expectedSync, expectedCandidate)
+    }
+
+    private fun openPendingPassengerCard(''',
+              '''        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            loadCurrentTripEdit(expectedSync, expectedCandidate)
+        } else {
+            UnifiedDebugEventStore.record(
+                "AUTOMATIC_SEAT_LOOKUP_SKIPPED",
+                packageName,
+                "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} reason=policy_disabled manualSeatSyncPreserved=true",
+            )
+            finalizeCurrentTrip(expectedSync, expectedCandidate)
+        }
+    }
+
+    private fun openPendingPassengerCard(''',
+          )
+
+          replace_once(
+              dynamic,
+              '''        val seatState = BlaBlaCollectorSeatModule.state(
+            tripId = candidateTripId,
+            editHref = pendingEditHref,
+            optionsHref = pendingOptionsHref,
+            publishedSeats = pendingPublishedSeats,
+        )
+        if (!BlaBlaCollectorSeatModule.complete(seatState)) {
+            skipped++
+            blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
+            return
+        }
+''',
+              '''        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            val seatState = BlaBlaCollectorSeatModule.state(
+                tripId = candidateTripId,
+                editHref = pendingEditHref,
+                optionsHref = pendingOptionsHref,
+                publishedSeats = pendingPublishedSeats,
+            )
+            if (!BlaBlaCollectorSeatModule.complete(seatState)) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "seat_module_incomplete_or_mismatched")
+                return
+            }
+        }
+''',
+          )
+
+          replace_once(
+              test262,
+              '''    fun visualPassengerCardWinsOverDirectHref() {
+        assertEquals(
+            BlaBlaDirectPassengerStep.PASSENGER_CARD,''',
+              '''    fun canonicalReservationHrefWinsOverVisualPassengerCard() {
+        assertEquals(
+            BlaBlaDirectPassengerStep.RESERVATION_URL,''',
+          )
+
+          replace_once(
+              test264,
+              '''    fun passengerNavigationPrioritizesVisibleCardBeforeReservationUrl() {
+        val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
+            passengerPresent = true,
+            hasBookingHref = true,
+            needsReservationPage = true,
+            hasPassengerCard = true,
+        )
+
+        assertEquals(BlaBlaDirectPassengerStep.PASSENGER_CARD, step)
+    }
+
+    @Test
+    fun seatModuleRequiresEditOptionsAndSeatCountFromSameTrip() {''',
+              '''    fun passengerNavigationPrioritizesCanonicalReservationUrlOverVisibleCard() {
+        val step = BlaBlaCollectorPassengerNavigationModule.nextStep(
+            passengerPresent = true,
+            hasBookingHref = true,
+            needsReservationPage = true,
+            hasPassengerCard = true,
+        )
+
+        assertEquals(BlaBlaDirectPassengerStep.RESERVATION_URL, step)
+    }
+
+    @Test
+    fun automaticPublishedSeatLookupRemainsOutsideNormalSync() {
+        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
+    }
+
+    @Test
+    fun seatModuleRequiresEditOptionsAndSeatCountFromSameTrip() {''',
+          )
+
+          replace_once(gradle, '        versionCode = 5564\n        versionName = "0.1.271"', '        versionCode = 5565\n        versionName = "0.1.272"')
+          PY
+
+          git diff --check
+          grep -Fq 'AUTOMATIC_SEAT_LOOKUP_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'automaticPublishedSeatLookupRemainsOutsideNormalSync' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt
+          grep -Fq 'versionCode = 5565' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.272"' app/build.gradle.kts
+
+      - name: Persist patch on work branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'no patch to persist'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectCollector0262Test.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorModules0264Test.kt \
+                  app/build.gradle.kts
+          git commit -m '[agenda-auto-seat-fix] fix(agenda): keep network-first trips without automatic seat lookup'
+          git push origin HEAD:agent/passenger-timeline-geo-ux
