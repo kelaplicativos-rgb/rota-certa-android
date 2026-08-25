@@ -1,0 +1,193 @@
+name: Agenda 0.1.283 reliable seat read fix
+
+on:
+  push:
+    branches:
+      - agent/agenda-ux-passenger-publisher-0.1.276
+    paths:
+      - '.github/workflows/agenda-0283-reliable-seat-read-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0283-reliable-seat-read-fix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-ux-passenger-publisher-0.1.276
+          fetch-depth: 0
+
+      - name: Prove authoritative failing baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "c1b9685ce27e28e9e274ad0474db2704e7454ef8"
+          grep -Fq 'versionCode = 5575' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.282"' app/build.gradle.kts
+          grep -Fq 'state == null || state.seats < 0 || !state.savePresent' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'optionsReadAttempts < MAX_OPTIONS_READ_ATTEMPTS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Apply physical-test causal fix only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt')
+          text = source.read_text()
+
+          old_fields = '''    private var expectedSeats = -1
+    private var verifyingCompensation = false
+'''
+          new_fields = '''    private var expectedSeats = -1
+    private var verifyingCompensation = false
+    private var beforeArchiveSaved = false
+    private var beforeReadAttempts = 0
+'''
+          if text.count(old_fields) != 1:
+              raise SystemExit(f'expected one state-field baseline, got {text.count(old_fields)}')
+          text = text.replace(old_fields, new_fields, 1)
+
+          old_before = '''            Phase.BEFORE -> archive.save(webView, account, "reliable-options-before", request.tripId) {
+                evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
+                    if (state == null || state.seats < 0 || !state.savePresent) {
+                        finishPending("O editor de vagas não está disponível ou não pôde ser lido.", rotate = true)
+                        return@evaluate
+                    }
+'''
+          new_before = '''            Phase.BEFORE -> {
+                if (!beforeArchiveSaved) {
+                    archive.save(webView, account, "reliable-options-before", request.tripId) {
+                        beforeArchiveSaved = true
+                        busy = false
+                        handlePage()
+                    }
+                    return
+                }
+                evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
+                    if (state == null || state.seats < 0) {
+                        if (beforeReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES) {
+                            beforeReadAttempts++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_SEAT_SYNC_RELIABLE_READ_RETRY",
+                                packageName,
+                                "request=${request.id} attempt=$beforeReadAttempts seats=${state?.seats ?: -1} savePresent=${state?.savePresent ?: false}",
+                            )
+                            busy = false
+                            webView.postDelayed({ handlePage() }, RELIABLE_OPTIONS_READ_RETRY_MS)
+                            return@evaluate
+                        }
+                        finishPending("O editor de vagas não está disponível ou não pôde ser lido após novas leituras.", rotate = true)
+                        return@evaluate
+                    }
+                    beforeReadAttempts = 0
+'''
+          if text.count(old_before) != 1:
+              raise SystemExit(f'expected one reliable BEFORE baseline, got {text.count(old_before)}')
+          text = text.replace(old_before, new_before, 1)
+
+          marker = '''private fun reliableOptionsUrl(tripId: String): String =
+    "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
+'''
+          replacement = '''private const val RELIABLE_OPTIONS_READ_MAX_RETRIES = 4
+private const val RELIABLE_OPTIONS_READ_RETRY_MS = 650L
+
+private fun reliableOptionsUrl(tripId: String): String =
+    "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
+'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'expected one reliable options URL marker, got {text.count(marker)}')
+          text = text.replace(marker, replacement, 1)
+          source.write_text(text)
+
+          gradle = Path('app/build.gradle.kts')
+          gradle_text = gradle.read_text()
+          if gradle_text.count('versionCode = 5575') != 1 or gradle_text.count('versionName = "0.1.282"') != 1:
+              raise SystemExit('unexpected app version baseline')
+          gradle_text = gradle_text.replace('versionCode = 5575', 'versionCode = 5576', 1)
+          gradle_text = gradle_text.replace('versionName = "0.1.282"', 'versionName = "0.1.283"', 1)
+          gradle.write_text(gradle_text)
+          PY
+
+          git diff --check
+          grep -Fq 'private var beforeArchiveSaved = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'beforeReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'EXTERNAL_SEAT_SYNC_RELIABLE_READ_RETRY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'if (state == null || state.seats < 0)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          if grep -Fq 'state == null || state.seats < 0 || !state.savePresent' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt; then
+            echo 'Invalid savePresent prerequisite remains in reliable reader.' >&2
+            exit 1
+          fi
+          grep -Fq 'versionCode = 5576' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.283"' app/build.gradle.kts
+
+      - name: Verify protected scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          git diff --name-only | sort | tee /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested causal fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          git commit -m 'fix(agenda): retry reliable seat editor reads 0.1.283'
+          git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Build evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0283
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0283/rota-certa-0.1.283-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0283/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0283/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.283' \
+            'versionCode=5576' \
+            'cause=reliable_reader_required_save_or_one_shot_dom_read' \
+            'fix=single_archive_bounded_dom_reread_without_save_prerequisite' \
+            'idempotencyPolicyPreserved=true' \
+            'farolUntouched=true' > /tmp/agenda-0283/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.283-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0283
