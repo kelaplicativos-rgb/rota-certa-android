@@ -116,7 +116,7 @@ if "fun lastResponseRecoveringDynamicSessions()" not in text:
         return recovered
     }
 
-    fun clearSynchronizedTimelineData(): BlaBlaTimelineClearResult {
+    internal fun clearSynchronizedTimelineData(): BlaBlaTimelineClearResult {
         val previous = lastResponse()
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
         val sessionClear = BlaBlaDynamicSessionStore(appContext).clearTripsPreservingSessions(accounts)
