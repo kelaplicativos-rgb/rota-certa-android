@@ -384,6 +384,12 @@ object BlaBlaCollectorScope {
         .replace(Regex("\\p{M}+"), "").lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
 }
 
+internal data class BlaBlaTimelineClearResult(
+    val response: BlaBlaCollectorMonthResponse,
+    val externalTripsRemoved: Int,
+    val sessionAccountsTouched: Int,
+)
+
 class BlaBlaCollectorStateStore(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -404,6 +410,57 @@ class BlaBlaCollectorStateStore(context: Context) {
     fun lastResponse(): BlaBlaCollectorMonthResponse? = runCatching {
         prefs.getString(KEY_RESPONSE, null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
     }.getOrNull()
+
+    fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
+        val persisted = lastResponse()
+        if (persisted?.status == "cleared" || persisted?.trips?.isNotEmpty() == true) return persisted
+        val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
+        if (accounts.isEmpty()) return persisted
+        val dynamic = BlaBlaDynamicSessionStore(appContext).combinedResponse(accounts)
+        val recovered = BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic)
+        if (recovered != null && recovered != persisted) {
+            prefs.edit().putString(KEY_RESPONSE, json.encodeToString(recovered)).apply()
+            UnifiedDebugEventStore.record(
+                "TIMELINE_RECOVERED_FROM_SESSION_SNAPSHOTS",
+                appContext.packageName,
+                "persistedTrips=${persisted?.trips?.size ?: 0} sessionTrips=${dynamic.trips.size} recoveredTrips=${recovered.trips.size} accounts=${accounts.size} explicitClear=false",
+            )
+        }
+        return recovered
+    }
+
+    internal fun clearSynchronizedTimelineData(): BlaBlaTimelineClearResult {
+        val previous = lastResponse()
+        val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
+        val sessionClear = BlaBlaDynamicSessionStore(appContext).clearTripsPreservingSessions(accounts)
+        val cleared = saveResponse(
+            BlaBlaCollectorMonthResponse(
+                status = "cleared",
+                month = previous?.month,
+                strategy = previous?.strategy,
+                profiles = previous?.profiles.orEmpty(),
+                routes = previous?.routes.orEmpty(),
+                coverage = BlaBlaCollectorCoverage(
+                    complete_for_scope = true,
+                    global_profile_month_complete = true,
+                    reason = "cleared_by_user",
+                    past_dates_skipped = previous?.coverage?.past_dates_skipped ?: true,
+                ),
+            ),
+            preserveOnPartial = false,
+        )
+        val removed = maxOf(previous?.trips?.size ?: 0, sessionClear.second)
+        UnifiedDebugEventStore.record(
+            "TIMELINE_SYNCHRONIZED_DATA_CLEARED",
+            appContext.packageName,
+            "externalTripsRemoved=$removed sessionAccountsTouched=${sessionClear.first} localTripsTouched=false identityPreserved=true loginPreserved=true",
+        )
+        return BlaBlaTimelineClearResult(
+            response = cleared,
+            externalTripsRemoved = removed,
+            sessionAccountsTouched = sessionClear.first,
+        )
+    }
 
     fun saveResponse(
         response: BlaBlaCollectorMonthResponse,

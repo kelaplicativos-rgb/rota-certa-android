@@ -153,6 +153,34 @@ class BlaBlaDynamicSessionStore(context: Context) {
         replacement
     }
 
+    fun clearTripsPreservingSessions(accounts: List<BlaBlaDynamicAccount>): Pair<Int, Int> {
+        var accountsTouched = 0
+        var tripsRemoved = 0
+        accounts.forEach { account ->
+            withAccountLock(account.id) {
+                val previous = readUnlocked(account) ?: return@withAccountLock
+                tripsRemoved += previous.trips.size
+                if (previous.trips.isNotEmpty() || previous.skippedTrips != 0) {
+                    accountsTouched++
+                    writeUnlocked(
+                        account,
+                        previous.copy(
+                            updatedAtMillis = System.currentTimeMillis(),
+                            trips = emptyList(),
+                            skippedTrips = 0,
+                        ),
+                    )
+                }
+            }
+        }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_SESSION_SNAPSHOTS_CLEARED",
+            appContext.packageName,
+            "accounts=${accounts.size} accountsTouched=$accountsTouched tripsRemoved=$tripsRemoved identityPreserved=true loginPreserved=true",
+        )
+        return accountsTouched to tripsRemoved
+    }
+
     fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {
         val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
         val verified = snapshots.filter { (account, snapshot) ->

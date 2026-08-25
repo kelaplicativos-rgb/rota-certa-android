@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,7 +70,8 @@ fun TripTimelineScreen(
     val archiveStore = remember(context) { TripTimelineArchiveStore(context) }
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
-    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponse()) }
+    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }
+    var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
     var showSync by remember { mutableStateOf(false) }
@@ -147,6 +149,28 @@ fun TripTimelineScreen(
         },
     )
 
+    val clearTimeline: (Boolean) -> Unit = { includeManual ->
+        archiveStore.clearExternal(physical)
+        val externalClear = collectorStore.clearSynchronizedTimelineData()
+        val localClear = if (includeManual) store.clearTimelineLocalData() else 0 to 0
+        collectorResponse = externalClear.response
+        showArchived = false
+        searchQuery = ""
+        showTimelineClearDialog = false
+        UnifiedDebugEventStore.record(
+            "TIMELINE_CLEARED_BY_USER",
+            context.packageName,
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} externalArchiveStateReset=true includeManual=$includeManual localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} sessionAccountsTouched=${externalClear.sessionAccountsTouched} settingsPreserved=true loginPreserved=true",
+        )
+        onChanged(
+            if (includeManual) {
+                "Timeline limpa por completo. Viagens BlaBlaCar, viagens manuais e reservas locais foram excluídas; configurações e login foram preservados."
+            } else {
+                "Viagens sincronizadas da BlaBlaCar foram removidas. Viagens manuais e reservas locais foram preservadas."
+            },
+        )
+    }
+
     ResponsiveTripActions(
         listOf(
             ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
@@ -154,38 +178,29 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
-            ResponsiveTripAction("Limpar Timeline") {
-                archiveStore.clearExternal(physical)
-                val localClear = store.clearTimelineLocalData()
-                val clearedResponse = collectorStore.saveResponse(
-                    BlaBlaCollectorMonthResponse(
-                        status = "cleared",
-                        month = collectorResponse?.month,
-                        strategy = collectorResponse?.strategy,
-                        profiles = collectorResponse?.profiles.orEmpty(),
-                        routes = collectorResponse?.routes.orEmpty(),
-                        coverage = BlaBlaCollectorCoverage(
-                            complete_for_scope = true,
-                            global_profile_month_complete = true,
-                            reason = "cleared_by_user",
-                            past_dates_skipped = collectorResponse?.coverage?.past_dates_skipped ?: true,
-                        ),
-                    ),
-                    preserveOnPartial = false,
-                )
-                collectorResponse = clearedResponse
-                showArchived = false
-                searchQuery = ""
-                UnifiedDebugEventStore.record(
-                    "TIMELINE_CLEARED_BY_USER",
-                    context.packageName,
-                    "externalTripsRemoved=true externalArchiveStateReset=true localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} settingsPreserved=true loginPreserved=true",
-                )
-                onChanged("Timeline limpa por completo. Viagens locais/manuais, reservas locais e viagens sincronizadas foram excluídas; configurações e login foram preservados.")
-            },
+            ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
     )
+
+    if (showTimelineClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showTimelineClearDialog = false },
+            title = { Text("Limpar Timeline") },
+            text = {
+                Text("Deseja apagar também as viagens feitas manualmente/por fora? Por padrão, somente as viagens sincronizadas da BlaBlaCar serão removidas.")
+            },
+            confirmButton = {
+                Button(onClick = { clearTimeline(false) }) { Text("Só BlaBlaCar") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
+                    TextButton(onClick = { clearTimeline(true) }) { Text("BlaBlaCar + manuais") }
+                }
+            },
+        )
+    }
 
     if (showPublisher) {
         AgendaBatchPublisherPanel(onChanged = onChanged)

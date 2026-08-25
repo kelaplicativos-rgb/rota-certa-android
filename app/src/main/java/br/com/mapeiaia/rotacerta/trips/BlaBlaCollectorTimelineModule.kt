@@ -56,4 +56,16 @@ internal object BlaBlaCollectorTimelineModule {
         val merged = mergeSnapshotTrips(previous.trips, incoming.trips, authoritativeComplete = false)
         return incoming.copy(trips = merged.trips)
     }
+
+
+    fun recoverStartupResponse(
+        persisted: BlaBlaCollectorMonthResponse?,
+        dynamic: BlaBlaCollectorMonthResponse?,
+    ): BlaBlaCollectorMonthResponse? {
+        if (persisted?.status == "cleared") return persisted
+        if (persisted?.trips?.isNotEmpty() == true) return persisted
+        if (dynamic == null || dynamic.trips.isEmpty()) return persisted
+        return dynamic
+    }
+
 }
