@@ -47,12 +47,14 @@ jobs:
           fi
           printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
 
-      - name: Prove Agenda global trace contract
+      - name: Prove Agenda trace and normalization diagnostic contract
         shell: bash
         run: |
           set -euo pipefail
           TRACE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt
           ACTIONS=app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          NORMALIZER=app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
+          DIAG_TEST=app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomNormalizationDiagnostic0274Test.kt
           test -f "$TRACE"
           grep -Fq 'class AgendaTraceProvider : ContentProvider()' "$TRACE"
           grep -Fq 'activity.javaClass.name.startsWith(AGENDA_PACKAGE_PREFIX)' "$TRACE"
@@ -61,8 +63,17 @@ jobs:
           grep -Fq 'UnifiedDebugEventStore.record' "$TRACE"
           grep -Fq 'android:name=".trips.AgendaTraceProvider"' app/src/main/AndroidManifest.xml
           grep -Fq 'AgendaTrace.action(context, action.traceKey, action.label)' "$ACTIONS"
-          grep -Fq 'versionCode = 5566' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.273"' app/build.gradle.kts
+          test -f "$NORMALIZER"
+          test -f "$DIAG_TEST"
+          grep -Fq 'internal fun diagnoseTrip(' "$NORMALIZER"
+          grep -Fq 'TRIP_NORMALIZATION_REJECTED' "$NORMALIZER"
+          grep -Fq 'date_unparseable' "$NORMALIZER"
+          grep -Fq 'departure_time_unparseable' "$NORMALIZER"
+          grep -Fq 'origin_missing' "$NORMALIZER"
+          grep -Fq 'destination_missing' "$NORMALIZER"
+          grep -Fq 'trip_id_mismatch' "$NORMALIZER"
+          grep -Fq 'versionCode = 5567' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.274"' app/build.gradle.kts
 
       - name: Record protected FAROL before build
         shell: bash
