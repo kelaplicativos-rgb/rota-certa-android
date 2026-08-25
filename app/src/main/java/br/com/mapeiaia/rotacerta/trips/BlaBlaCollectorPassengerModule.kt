@@ -126,6 +126,9 @@ internal object BlaBlaCollectorPassengerModule {
     ): Boolean {
         val leftHref = left.booking_href?.trim().orEmpty()
         val rightHref = right.booking_href?.trim().orEmpty()
+        val leftUuid = passengerUuid(leftHref)
+        val rightUuid = passengerUuid(rightHref)
+        if (leftUuid != null && rightUuid != null && leftUuid == rightUuid) return true
         if (leftHref.isNotBlank() && rightHref.isNotBlank()) {
             return BlaBlaCollectorUrlModule.samePassengerPage(leftHref, rightHref)
         }
@@ -141,6 +144,12 @@ internal object BlaBlaCollectorPassengerModule {
             compatiblePlace(left.dropoff, right.dropoff)
     }
 
+    private fun passengerUuid(raw: String): String? {
+        if (raw.isBlank()) return null
+        val identity = BlaBlaCollectorUrlModule.passengerIdentityKey(raw).lowercase()
+        return identity.takeIf(PASSENGER_UUID::matches)
+    }
+
     private fun compatiblePlace(left: String?, right: String?): Boolean {
         val first = normalizeEvidence(left.orEmpty())
         val second = normalizeEvidence(right.orEmpty())
@@ -152,6 +161,8 @@ internal object BlaBlaCollectorPassengerModule {
         .lowercase()
         .replace(Regex("[^a-z0-9]+"), " ")
         .trim()
+
+    private val PASSENGER_UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 }
 
 internal fun blaBlaDirectRosterState(
