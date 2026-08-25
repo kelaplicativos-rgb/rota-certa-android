@@ -1,0 +1,145 @@
+name: Agenda 0.1.282 direct all-accounts sync
+
+on:
+  push:
+    branches: [agent/agenda-ux-passenger-publisher-0.1.276]
+    paths:
+      - '.github/workflows/agenda-0282-all-accounts-direct-sync.yml'
+      - '.github/scripts/agenda_0282_all_accounts_direct_sync.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0282-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-ux-passenger-publisher-0.1.276
+
+      - name: Prove authoritative Agenda baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Sincronizar todas as contas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_TODAY_CARD_SYNC_FINISHED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.sync(context, account)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.syncToday(context, account, dateScope)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'passengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(source.detail.passengers)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'versionCode = 5574' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.281"' app/build.gradle.kts
+
+      - name: Protect FAROL and Public Search
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.before
+
+      - name: Materialize Agenda 0.1.282
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0282_all_accounts_direct_sync.py
+          git diff --check
+          grep -Fq 'AGENDA_ALL_ACCOUNTS_DIRECT_SYNC_FINISHED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'dateScope=all directCollector=true mhtmlFullAccountSkipped=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Sincronização direta concluída' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_TODAY_CARD_SYNC_FINISHED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'mhtmlFullAccountSkipped=true noLaterCardsVisited=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.syncToday(context, account, dateScope)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.sync(context, account)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          if grep -Fq 'archiveLauncher.launch(BlaBlaManualSeatAutomationIntents.harvest(context, account))' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt; then
+            echo 'Legacy automatic full-account MHTML pass is still reachable.' >&2
+            exit 1
+          fi
+          grep -Fq 'versionCode = 5575' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.282"' app/build.gradle.kts
+
+      - name: Verify protected sources after materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after
+          cmp /tmp/public.before /tmp/public.after
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK and protected sources after build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          sha256sum \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after-build
+          cmp /tmp/public.before /tmp/public.after-build
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+            app/build.gradle.kts
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix(agenda): reuse direct collector for all-account sync 0.1.282'
+            git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
+          fi
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Build evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0282
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0282/rota-certa-0.1.282-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0282/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0282/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.282' \
+            'versionCode=5575' \
+            'allAccountsSource=authenticated_direct_collector' \
+            'allAccountsFullMhtmlSkipped=true' \
+            'todayOnlyFlowPreserved=true' \
+            'farolSha256=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a' \
+            > /tmp/agenda-0282/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.282-${{ github.sha }}
+          path: /tmp/agenda-0282
+          retention-days: 14
