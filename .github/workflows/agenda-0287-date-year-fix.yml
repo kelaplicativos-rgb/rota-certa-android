@@ -1,0 +1,81 @@
+name: Agenda 0.1.287 explicit year fix
+
+on:
+  push:
+    branches:
+      - agent/agenda-date-year-fix
+    paths:
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateYear0287Test.kt'
+      - '.github/workflows/agenda-0287-date-year-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0287-date-year-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact Agenda fix scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5580' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.287"' app/build.gradle.kts
+          grep -Fq 'BlaBlaDateYear0287Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateYear0287Test.kt
+          grep -Fq 'Seg. 28 Jun. 2027' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateYear0287Test.kt
+          grep -Fq 'Qua. 30 Jun. 2027' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateYear0287Test.kt
+          grep -Fq '([a-zçãáâéêíóôõú]{3,12})\\.?\\s*' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused regression test and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --tests br.com.mapeiaia.rotacerta.trips.BlaBlaDateYear0287Test :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          git rev-parse HEAD | tee source-head.txt
+          printf '%s\n' 'versionName=0.1.287' 'versionCode=5580' > app-version.txt
+
+      - name: Prove protected FAROL unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp app/build/outputs/apk/debug/app-debug.apk artifact/rota-certa-0.1.287-debug.apk
+          cp apk.sha256 source-head.txt app-version.txt artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.287-date-year-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: artifact
