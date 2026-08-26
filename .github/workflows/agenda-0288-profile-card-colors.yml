@@ -33,14 +33,14 @@ jobs:
           grep -Fq 'versionName = "0.1.287"' app/build.gradle.kts
           grep -Fq 'val cardColor = when (direction)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test -f .github/scripts/agenda_0288_profile_card_colors.py
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
       - name: Materialize minimal profile color UX
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKdWkgPSBQYXRoKCdhcHAvc3JjL21haW4vamF2YS9ici9jb20vbWFwZWlhaWEvcm90YWNlcnRhL3RyaXBzL1RyaXBUaW1lbGluZVVpLmt0JykKZ3JhZGxlID0gUGF0aCgnYXBwL2J1aWxkLmdyYWRsZS5rdHMnKQp0ZXN0ID0gUGF0aCgnYXBwL3NyYy90ZXN0L2phdmEvYnIvY29tL21hcGVpYWlhL3JvdGFjZXJ0YS90cmlwcy9UcmlwVGltZWxpbmVQcm9maWxlQ29sb3JzMDI4OFRlc3Qua3QnKQoKdGV4dCA9IHVpLnJlYWRfdGV4dCgpCgpkZWYgcmVwbGFjZV9vbmNlKG9sZDogc3RyLCBuZXc6IHN0cikgLT4gTm9uZToKICAgIGdsb2JhbCB0ZXh0CiAgICBjb3VudCA9IHRleHQuY291bnQob2xkKQogICAgaWYgY291bnQgIT0gMToKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KGYnZXhwZWN0ZWQgZXhhY3RseSBvbmUgVUkgbWF0Y2gsIGdvdCB7Y291bnR9OiB7b2xkWzo4MF0hcn0nKQogICAgdGV4dCA9IHRleHQucmVwbGFjZShvbGQsIG5ldywgMSkKCnJlcGxhY2Vfb25jZSgKICAgICcgICAgdmFsIHZpc2libGVFbnRyaWVzID0gcmVtZW1iZXIoZW50cmllcywgdHJpcHMsIGJvb2tpbmdzLCBzZWFyY2hRdWVyeSkge1xuJwogICAgJyAgICAgICAgZmlsdGVyVGltZWxpbmVFbnRyaWVzKGVudHJpZXMsIHRyaXBzLCBib29raW5ncywgc2VhcmNoUXVlcnkpXG4nCiAgICAnICAgIH1cbicKICAgICcgICAgdmFsIGZvcm1hdHRlciA9IHJlbWVtYmVyIHsgRGF0ZVRpbWVGb3JtYXR0ZXIub2ZQYXR0ZXJuKCJFRUUsIGRkIE1NTSB5eXl5IOKAoiBISDptbSIsIExvY2FsZS5nZXREZWZhdWx0KCkpIH1cbicsCiAgICAnICAgIHZhbCB2aXNpYmxlRW50cmllcyA9IHJlbWVtYmVyKGVudHJpZXMsIHRyaXBzLCBib29raW5ncywgc2VhcmNoUXVlcnkpIHtcbi' | base64 -d > /tmp/agenda0288.py
-          python3 /tmp/agenda0288.py
+          python3 .github/scripts/agenda_0288_profile_card_colors.py
           git diff --check
           grep -Fq 'val profileColors = timelineProfileCardColors(profileColorSlot, dark)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
