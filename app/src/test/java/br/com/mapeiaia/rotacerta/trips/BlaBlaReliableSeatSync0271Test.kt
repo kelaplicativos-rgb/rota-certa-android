@@ -72,6 +72,32 @@ class BlaBlaReliableSeatSync0271Test {
     }
 
     @Test
+    fun threeSeatPrivateBookingReducesFourToOne() {
+        val decision = BlaBlaReliableSeatSyncPolicy.decide(
+            currentSeats = 4,
+            canAdd = true,
+            canRemove = true,
+            seatDelta = -3,
+            attempt = null,
+        )
+        assertEquals(BlaBlaReliableSeatSyncAction.APPLY_TARGET, decision.action)
+        assertEquals(1, decision.targetSeats)
+    }
+
+    @Test
+    fun threeSeatCancellationRestoresOneToFour() {
+        val decision = BlaBlaReliableSeatSyncPolicy.decide(
+            currentSeats = 1,
+            canAdd = true,
+            canRemove = true,
+            seatDelta = 3,
+            attempt = null,
+        )
+        assertEquals(BlaBlaReliableSeatSyncAction.APPLY_TARGET, decision.action)
+        assertEquals(4, decision.targetSeats)
+    }
+
+    @Test
     fun cancellationBeforeUncertainDecreaseLandedNeedsNoExternalWrite() {
         val attempt = attempt(before = 4, target = 3, delta = -1, compensate = true)
         val decision = BlaBlaReliableSeatSyncPolicy.decide(

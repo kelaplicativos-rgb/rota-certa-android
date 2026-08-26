@@ -87,6 +87,7 @@ internal fun EnhancedPassengerTimelineSection(
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -289,6 +290,16 @@ internal fun EnhancedPassengerTimelineSection(
         val profile = passengerStore.profile(row.passengerId)
             ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
         val history = profile?.let { passengerStore.rideHistory(it.id) }
+        val manualBooking = trip?.let { currentTrip ->
+            row.localBookingId?.let { bookingId ->
+                store.bookingsFor(currentTrip.id).firstOrNull { booking ->
+                    booking.id == bookingId &&
+                        booking.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        booking.capacityClaimType == CapacityClaimType.PASSENGER &&
+                        booking.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                }
+            }
+        }
         AlertDialog(
             onDismissRequest = { profileRow = null },
             title = { Text("Passageiro Rota Certa") },
@@ -300,6 +311,12 @@ internal fun EnhancedPassengerTimelineSection(
                     Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
                     history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }
                     if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)
+                    if (manualBooking != null) {
+                        TextButton(onClick = {
+                            cancelManualRow = row
+                            profileRow = null
+                        }) { Text("Cancelar / excluir desta viagem") }
+                    }
                 }
             },
             confirmButton = {
@@ -310,6 +327,54 @@ internal fun EnhancedPassengerTimelineSection(
                 }) { Text(if (profile?.blocked == true) "Desbloquear" else "Bloquear") }
             },
             dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },
+        )
+    }
+
+    cancelManualRow?.let { row ->
+        val currentTrip = trip
+        val booking = currentTrip?.let { selectedTrip ->
+            row.localBookingId?.let { bookingId ->
+                store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
+                    candidate.id == bookingId &&
+                        candidate.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
+                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { cancelManualRow = null },
+            title = { Text("Cancelar passageiro desta viagem?") },
+            text = {
+                Text(
+                    "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = currentTrip != null && booking != null,
+                    onClick = {
+                        val selectedTrip = currentTrip ?: return@TextButton
+                        val selectedBooking = booking ?: return@TextButton
+                        store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                        val cancellation = BlaBlaReliableSeatSyncBridge.onManualBookingCancelled(
+                            context = context,
+                            trip = selectedTrip,
+                            booking = selectedBooking,
+                            explicitTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
+                        )
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_MANUAL_PASSENGER_CANCELLED",
+                            context.packageName,
+                            "timeline=true seats=${selectedBooking.seats} shouldSync=${cancellation.shouldSync}",
+                        )
+                        cancelManualRow = null
+                        onChanged(cancellation.message)
+                        if (cancellation.shouldSync) onSyncExactCard?.invoke()
+                    },
+                ) { Text("Cancelar e devolver vaga(s)") }
+            },
+            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Manter passageiro") } },
         )
     }
 
