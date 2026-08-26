@@ -108,12 +108,12 @@ jobs:
           echo 'security_boundaries=PASS'
 
       - name: Deploy Firebase production
-        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): production deploy retry' }}"
+        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): retry with firebase-tools 15.22.1' }}"
         shell: bash
         working-directory: trip-platform
         run: |
           set -euo pipefail
-          npx --yes firebase-tools@latest deploy \
+          npx --yes firebase-tools@15.22.1 deploy \
             --project rota-certa-7ccc8 \
             --only firestore:rules,functions,hosting \
             --non-interactive
