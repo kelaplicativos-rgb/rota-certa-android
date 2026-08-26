@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseappcheck.googleapis.com https://www.google.com/recaptcha/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
   <title>Rota Certa — Agenda de Viagens</title>
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#161616;background:#f4f5f7}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:0 auto;padding:24px 16px 56px}.brand{font-weight:800;font-size:14px;letter-spacing:.04em}.card{background:white;border-radius:18px;padding:18px;margin-top:14px;box-shadow:0 4px 18px #0000000c}.muted{color:#666;font-size:14px}.route{display:grid;gap:8px;margin-top:14px}.stop{padding-left:12px;border-left:3px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}label{font-size:13px;font-weight:700;display:grid;gap:6px}input,select,button{font:inherit;padding:12px;border-radius:12px;border:1px solid #c9cbd1;background:white}button{border:0;background:#171717;color:white;font-weight:800;cursor:pointer;min-height:52px;font-size:16px}input,select{min-height:52px;font-size:17px}.bookingStep{font-size:20px;margin:18px 0 8px}.summary{font-size:17px;line-height:1.55;padding:12px;background:#f7f8fa;border-radius:12px}.secondary{background:#eef0f3;color:#171717}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.error{color:#a50000}.success{color:#0b6b2c}.hidden{display:none}.availability{font-size:15px;font-weight:750;margin:12px 0}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef0f3;font-size:12px}.agendaTrip{display:block;color:inherit;text-decoration:none;border:1px solid #e1e3e7;border-radius:14px;padding:14px;margin-top:10px}.agendaTrip:hover{border-color:#9fa3aa}.agendaRoute{font-weight:750}.agendaMeta{margin-top:5px;color:#666;font-size:13px}h1{font-size:26px;margin:6px 0 0}h2{font-size:18px;margin:0 0 12px}</style>
@@ -86,6 +86,11 @@
     <p class="muted">O Google Agenda é um espelho opcional da viagem. Vagas, reservas e cancelamentos em tempo real são controlados pela Agenda Pública do Rota Certa.</p>
   </section>
 </main>
+<script src="/__/firebase/8.10.1/firebase-app.js"></script>
+<script src="/__/firebase/8.10.1/firebase-app-check.js"></script>
+<script src="/__/firebase/8.10.1/firebase-auth.js"></script>
+<script src="/__/firebase/init.js"></script>
+<script src="/firebase-security.js"></script>
 <script src="/app.js" defer></script>
 </body>
 </html>
