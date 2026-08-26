@@ -37,13 +37,25 @@ data class BlaBlaManualSeatSyncRequest(
     val id: String = UUID.randomUUID().toString(),
     val profileUuid: String,
     val tripId: String,
-    /** Negative removes externally offered places; positive gives them back. */
+    /** Legacy delta retained only for requests persisted before 0.1.292. */
     val seatDelta: Int,
+    /** Absolute number of places that should be published after current segment reconciliation. */
+    val desiredPublishedSeats: Int? = null,
+    val desiredStateReason: String = "",
     val localTripId: String,
     val localBookingId: String,
     val source: String,
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
+
+internal object BlaBlaDesiredSeatQueuePolicy {
+    fun replacePublication(
+        current: List<BlaBlaManualSeatSyncRequest>,
+        request: BlaBlaManualSeatSyncRequest,
+    ): List<BlaBlaManualSeatSyncRequest> = current.filterNot { queued ->
+        queued.profileUuid.equals(request.profileUuid, ignoreCase = true) && queued.tripId == request.tripId
+    } + request
+}
 
 class BlaBlaManualSeatSyncRequestStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -53,10 +65,29 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
         json.decodeFromString<List<BlaBlaManualSeatSyncRequest>>(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
     }.getOrDefault(emptyList())
 
+    fun get(id: String): BlaBlaManualSeatSyncRequest? = list().firstOrNull { it.id == id }
+
     fun peek(): BlaBlaManualSeatSyncRequest? = list().firstOrNull()
 
     fun enqueue(request: BlaBlaManualSeatSyncRequest) {
         save(list() + request)
+    }
+
+    /** Latest desired state replaces older work for the same strong publication identity. */
+    fun replacePublication(request: BlaBlaManualSeatSyncRequest): List<String> {
+        val current = list()
+        val stale = current.filter { queued ->
+            queued.profileUuid.equals(request.profileUuid, ignoreCase = true) && queued.tripId == request.tripId
+        }
+        save(BlaBlaDesiredSeatQueuePolicy.replacePublication(current, request))
+        return stale.map(BlaBlaManualSeatSyncRequest::id)
+    }
+
+    fun discardLegacyDeltaRequests(): List<String> {
+        val current = list()
+        val legacy = current.filter { it.desiredPublishedSeats == null }
+        if (legacy.isNotEmpty()) save(current.filter { it.desiredPublishedSeats != null })
+        return legacy.map(BlaBlaManualSeatSyncRequest::id)
     }
 
     fun remove(id: String) {

@@ -224,7 +224,13 @@ fun BlaBlaPublicSearchTimelineResults(
     val cards = remember(response.cards) {
         response.cards.sortedWith(compareBy<BlaBlaPublicSearchCard>({ it.date }, { it.departureTime.orEmpty() }, { it.driverName }))
     }
-    val cardsByDate = remember(cards) { cards.groupBy(BlaBlaPublicSearchCard::date).toSortedMap() }
+    val calendarDays = remember(cards, response.request.period) {
+        agendaCalendarDaysForPeriod(
+            period = response.request.period,
+            items = cards,
+            dateOf = { card -> runCatching { LocalDate.parse(card.date) }.getOrNull() },
+        )
+    }
     val missingLocal = remember(response, relevantLocalTrips, cards) {
         relevantLocalTrips.filter { local ->
             validatedQueryCoversAgendaTrip(response, local, zoneId) &&
@@ -280,13 +286,15 @@ fun BlaBlaPublicSearchTimelineResults(
                 Text("Nenhuma publicação dos nomes informados foi encontrada nas consultas validadas.")
             }
 
-            cardsByDate.forEach { (rawDate, dayCards) ->
+            calendarDays.forEach { day ->
+                AgendaCalendarDayLine(day.date)
+                val dayCards = day.items
+                if (dayCards.isNotEmpty()) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(publicSearchDateLabel(rawDate), style = MaterialTheme.typography.titleMedium)
                         dayCards.forEachIndexed { index, card ->
                             val localMatch = relevantLocalTrips.firstOrNull { publicCardMatchesAgendaTrip(card, it, zoneId) }
                             Row(
@@ -353,6 +361,7 @@ fun BlaBlaPublicSearchTimelineResults(
                 }
             }
 
+            }
             if (missingLocal.isNotEmpty()) {
                 Text("Agenda sem correspondência pública confirmada", style = MaterialTheme.typography.titleSmall)
                 missingLocal.sortedBy(Trip::departureAtMillis).forEach { trip ->

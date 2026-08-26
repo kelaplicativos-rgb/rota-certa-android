@@ -54,6 +54,9 @@ internal fun timelineStrongExternalTripKey(entry: TripTimelineEntry): String? {
 internal fun timelineExternalBackingTripId(entry: TripTimelineEntry): String? =
     timelineStrongExternalTripKey(entry)?.let { "timeline-ext-${sha256Short0256(it, 24)}" }
 
+internal fun timelineManualPassengerOccupancyKnown(entry: TripTimelineEntry): Boolean =
+    timelineStrongExternalTripKey(entry) == null || entry.blablaPassengerRosterComplete == true
+
 internal fun timelinePhysicalTripMatches(entry: TripTimelineEntry, trips: List<Trip>): List<Trip> = trips.filter { trip ->
     kotlin.math.abs(trip.departureAtMillis - entry.departureAtMillis) <= 45L * 60L * 1000L &&
         trip.stops.sortedBy(TripStop::order).let { stops ->
@@ -203,13 +206,29 @@ internal fun planTimelineExternalCapacityClaims(
     val mappedExternalBySegment = IntArray(segmentCount)
     var mappedPassengerSeats = 0
     val passengerSeatEvidence = entry.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
+    val activeManualPassengers = existingBookings.filter { booking ->
+        booking.tripId == trip.id &&
+            booking.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+            booking.capacityClaimType == CapacityClaimType.PASSENGER &&
+            booking.seats > 0 &&
+            isActive(booking)
+    }
     entry.blablaPassengers.forEach { passenger ->
         val seats = passenger.seats.coerceAtLeast(1)
         val boardingIndex = timelineStopIndexForLabel0256(stops, passengerTimelinePlaceLabel(passenger.name, passenger.boarding))
         val dropoffIndex = timelineStopIndexForLabel0256(stops, passengerTimelinePlaceLabel(passenger.name, passenger.dropoff))
         if (boardingIndex >= 0 && dropoffIndex > boardingIndex) {
             mappedPassengerSeats += seats
-            for (segment in boardingIndex until dropoffIndex) mappedExternalBySegment[segment] += seats
+            val externalPhone = passenger.phone?.filter(Char::isDigit)?.takeIf { it.length >= 8 }
+            val exactLocalMirror = externalPhone != null && activeManualPassengers.any { booking ->
+                val localPhone = booking.passengerContact.filter(Char::isDigit)
+                val localFrom = stops.indexOfFirst { it.id == booking.boardingStopId }
+                val localTo = stops.indexOfFirst { it.id == booking.dropoffStopId }
+                localPhone == externalPhone && booking.seats == seats && localFrom == boardingIndex && localTo == dropoffIndex
+            }
+            if (!exactLocalMirror) {
+                for (segment in boardingIndex until dropoffIndex) mappedExternalBySegment[segment] += seats
+            }
         }
     }
 
@@ -251,11 +270,54 @@ internal fun planTimelineExternalCapacityClaims(
     }
 }
 
+internal fun isTimelineExternalCapacityClaim(booking: Booking): Boolean =
+    booking.capacityClaimType == CapacityClaimType.RESERVED_SEAT &&
+        booking.sourceReference.startsWith(EXTERNAL_CAPACITY_PREFIX)
+
+internal data class TimelineSeatSyncPlan(
+    val loads: List<SegmentLoad>,
+    val desiredPublishedSeats: Int,
+    val localTripId: String,
+)
+
+/**
+ * Computes the single publication target from the bottleneck of the already-existing
+ * per-segment physical engine. External roster must be complete; otherwise we fail
+ * closed instead of inventing segment availability.
+ */
+internal fun timelineDesiredSeatSyncPlan(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+    store: TripStore,
+): TimelineSeatSyncPlan? {
+    if (timelineStrongExternalTripKey(entry) == null || entry.capacity !in 1..999) return null
+    if (entry.blablaPassengerRosterComplete != true) return null
+
+    val base = when {
+        trip != null -> trip.copy(capacity = entry.capacity)
+        else -> buildTimelineExternalBackingTrip(entry, entry.capacity)
+    }
+    val working = augmentExternalBackingStops(base, entry).copy(capacity = entry.capacity)
+    val existing = trip?.let { store.bookingsFor(it.id) }.orEmpty()
+    val localClaims = existing.filterNot(::isTimelineExternalCapacityClaim)
+    val externalClaims = planTimelineExternalCapacityClaims(entry, working, localClaims)
+    val loads = SeatAvailabilityEngine.segmentLoads(working, localClaims + externalClaims)
+    if (loads.isEmpty()) return null
+    return TimelineSeatSyncPlan(
+        loads = loads,
+        desiredPublishedSeats = loads.minOf(SegmentLoad::availableSeats).coerceIn(0, entry.capacity),
+        localTripId = working.id,
+    )
+}
+
 internal fun prepareTimelineTripForPassenger(
     entry: TripTimelineEntry,
     store: TripStore,
 ): TimelinePassengerTripPreparation {
     val strongExternal = timelineStrongExternalTripKey(entry)
+    require(timelineManualPassengerOccupancyKnown(entry)) {
+        "A ocupação BlaBlaCar deste card ainda não foi lida por completo. Sincronize este card antes de adicionar passageiro por fora."
+    }
     val allTrips = store.trips()
     val deterministicId = timelineExternalBackingTripId(entry)
     val direct = entry.localTripId?.let(store::getTrip)
@@ -277,13 +339,10 @@ internal fun prepareTimelineTripForPassenger(
     if (strongExternal != null) {
         trip = augmentExternalBackingStops(trip, entry)
         if (trip.status == TripStatus.DRAFT) trip = trip.copy(status = if (entry.status == TripStatus.FULL) TripStatus.FULL else TripStatus.PUBLISHED)
-        if (trip.capacity !in 1..999 && entry.capacity in 1..999) trip = trip.copy(capacity = entry.capacity)
+        if (entry.capacity in 1..999 && trip.capacity != entry.capacity) trip = trip.copy(capacity = entry.capacity)
         trip = store.saveTrip(trip)
 
-        val previousClaims = store.bookingsFor(trip.id).filter {
-            it.capacityClaimType == CapacityClaimType.RESERVED_SEAT &&
-                it.sourceReference.startsWith(EXTERNAL_CAPACITY_PREFIX)
-        }
+        val previousClaims = store.bookingsFor(trip.id).filter(::isTimelineExternalCapacityClaim)
         val desired = planTimelineExternalCapacityClaims(entry, trip, store.bookingsFor(trip.id))
         val desiredIds = desired.map(Booking::id).toSet()
         previousClaims.filterNot { it.id in desiredIds }.forEach { store.deleteBooking(it.id) }
@@ -296,13 +355,54 @@ internal fun prepareTimelineTripForPassenger(
 }
 
 @Composable
+internal fun TimelineCardQuickPassengerDialog(
+    entry: TripTimelineEntry,
+    trip: Trip,
+    store: TripStore,
+    onChanged: (String) -> Unit,
+    onTargetSync: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
+    val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Adicionar passageiro") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${entry.profileLabel} • $date", style = MaterialTheme.typography.labelLarge)
+                Text("${entry.origin} → ${entry.destination}")
+                Text(
+                    "Passageiros adicionados aqui ocupam a Agenda imediatamente. A sincronização externa recalcula o estado desejado por trecho e ajusta somente as vagas da publicação exata.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                QuickPassengerPanel(
+                    trip = trip,
+                    store = store,
+                    onChanged = onChanged,
+                    onBlaBlaSyncRequested = if (timelineStrongExternalTripKey(entry) != null) onTargetSync else null,
+                    externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
+                    onSaved = onDismiss,
+                    showExistingPassengers = true,
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+    )
+}
+
+@Composable
 internal fun GlobalPassengerFlowPanel(
     entries: List<TripTimelineEntry>,
     store: TripStore,
     formatter: DateTimeFormatter,
     onChanged: (String) -> Unit,
     onNewTrip: () -> Unit,
-    onTargetSync: (String?) -> Unit,
+    onTargetSync: (TripTimelineEntry, Trip) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     var chooseTrip by remember { mutableStateOf(false) }
@@ -345,7 +445,7 @@ internal fun GlobalPassengerFlowPanel(
                             store = store,
                             onChanged = onChanged,
                             onBlaBlaSyncRequested = if (timelineStrongExternalTripKey(entry) != null) {
-                                { onTargetSync(canonicalTimelineProfileUuid(entry)) }
+                                { onTargetSync(entry, trip) }
                             } else null,
                             externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
                             onSaved = { open = false },

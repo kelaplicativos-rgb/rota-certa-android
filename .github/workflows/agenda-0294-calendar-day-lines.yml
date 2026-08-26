@@ -1,0 +1,137 @@
+name: Agenda 0.1.294 sequential calendar day lines
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0294-calendar-day-lines.yml'
+      - '.github/scripts/agenda_0294_calendar_day_lines.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0294-calendar-day-lines-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove real 0.1.293 baseline and existing UI anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5586' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.293"' app/build.gradle.kts
+          grep -Fq 'visibleEntries.forEach { entry ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'val cardsByDate = remember(cards)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'Text(publicSearchDateLabel(rawDate)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize minimal sequential-day UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0294_calendar_day_lines.py
+          sed -i '/import androidx.compose.foundation.layout.weight/d' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
+          git diff --check
+          grep -Fq 'versionCode = 5587' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.294"' app/build.gradle.kts
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'timelineCalendarDays.forEach { day ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'AgendaCalendarDayLine(day.date)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'agendaCalendarDaysForPeriod(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'calendarDays.forEach { day ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'Text(publicSearchDateLabel(rawDate)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'sexta-feira, 4 de setembro de 2026' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+
+      - name: Protect FAROL and exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused Timeline and Public Search regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.AgendaCalendarDayLines0294Test \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
+            --no-daemon --stacktrace
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Commit tested 0.1.294 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          git commit -m 'feat(agenda): show sequential day lines between cards 0.1.294'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0294
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0294/rota-certa-0.1.294-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0294/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0294/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.294' \
+            'versionCode=5587' \
+            'timelineSequentialDays=true' \
+            'publicSearchSequentialDays=true' \
+            'emptyDayRendersDateLineOnly=true' \
+            'dateLineOutsideCardBorder=true' \
+            'sharedCalendarGenerator=true' \
+            'farolUntouched=true' > /tmp/agenda-0294/visual-contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.294-calendar-day-lines-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0294

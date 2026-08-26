@@ -11,12 +11,12 @@ class Stage47Reliability0251Test {
     }
 
     @Test
-    fun configuredVehicleCapacityFillsOnlyMissingCapacity() {
+    fun configuredVehicleCapacityIsPhysicalAuthorityForAllTimelineEntries() {
         val external = entry(id = "external", capacity = 0, rosterComplete = true)
-        val explicit = entry(id = "local", capacity = 6, rosterComplete = true)
-        val updated = applyConfiguredVehicleCapacity(listOf(external, explicit), 4)
+        val staleOrExternal = entry(id = "local", capacity = 6, rosterComplete = true)
+        val updated = applyConfiguredVehicleCapacity(listOf(external, staleOrExternal), 4)
         assertEquals(4, updated[0].capacity)
-        assertEquals(6, updated[1].capacity)
+        assertEquals(4, updated[1].capacity)
     }
 
     @Test

@@ -119,6 +119,18 @@ fun TripTimelineScreen(
     val visibleEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
+    val timelineCalendarDays = remember(visibleEntries) {
+        agendaCalendarDaysForItems(visibleEntries) { entry ->
+            Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        }
+    }
+    val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
+    val profileColorSlots = remember(entries, registeredProfileUuids) {
+        timelineProfileColorSlots(
+            registeredProfileUuids = registeredProfileUuids,
+            observedProfileIdentities = entries.map(::timelineProfileIdentity),
+        )
+    }
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -143,10 +155,20 @@ fun TripTimelineScreen(
         formatter = formatter,
         onChanged = onChanged,
         onNewTrip = onCreateTrip,
-        onTargetSync = { profileUuid ->
-            autoSyncProfileUuid = profileUuid
-            autoSyncTripId = null
-            onRequestBlaBlaSync()
+        onTargetSync = { entry, selectedTrip ->
+            val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+                context = context,
+                entry = entry,
+                trip = selectedTrip,
+                store = store,
+                reason = "automatic_global_passenger_change",
+            )
+            onChanged(result.message)
+            if (result.shouldSync) {
+                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
+                autoSyncTripId = null
+                onRequestBlaBlaSync()
+            }
         },
     )
 
@@ -248,7 +270,9 @@ fun TripTimelineScreen(
         return
     }
 
-    visibleEntries.forEach { entry ->
+    timelineCalendarDays.forEach { day ->
+        AgendaCalendarDayLine(day.date)
+        day.items.forEach { entry ->
         val trip = entry.localTripId?.let(store::getTrip)
             ?: store.getTrip(entry.tripId)
             ?: findExistingTimelineBackingTrip(entry, store.trips())
@@ -258,6 +282,7 @@ fun TripTimelineScreen(
             trip = trip,
             store = store,
             formatter = formatter,
+            profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
             archived = archived,
             onManageLocal = onManageLocal,
             onChanged = onChanged,
@@ -265,6 +290,11 @@ fun TripTimelineScreen(
             referenceRadiusKm = directionReference.radiusKm,
             directionGeo = directionGeo,
             currentCoordinate = currentCoordinate,
+            onManualSeatSyncRequested = {
+                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
+                autoSyncTripId = null
+                onRequestBlaBlaSync()
+            },
             onSyncExactCard = {
                 val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
                 val tripId = entry.blablaTripId?.trim().orEmpty()
@@ -281,6 +311,7 @@ fun TripTimelineScreen(
             archiveRevision++
             onChanged(if (archived) "Viagem restaurada." else "Viagem arquivada sem cancelar a publicação.")
         }
+    }
     }
 }
 
@@ -414,7 +445,7 @@ internal fun applyConfiguredVehicleCapacity(
     vehicleCapacity: Int,
 ): List<TripTimelineEntry> {
     if (vehicleCapacity !in 1..999) return entries
-    return entries.map { entry -> if (entry.capacity > 0) entry else entry.copy(capacity = vehicleCapacity) }
+    return entries.map { entry -> if (entry.capacity == vehicleCapacity) entry else entry.copy(capacity = vehicleCapacity) }
 }
 
 internal enum class TimelineOccupancyReadState {
@@ -439,12 +470,54 @@ internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccup
     else -> TimelineOccupancyReadState.PENDING
 }
 
+internal fun timelineProfileIdentity(entry: TripTimelineEntry): String =
+    entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+        ?: entry.profileId.trim().lowercase().takeIf(String::isNotEmpty)
+        ?: entry.profileLabel.trim().lowercase()
+
+internal fun timelineProfileColorSlots(
+    registeredProfileUuids: List<String>,
+    observedProfileIdentities: List<String>,
+): Map<String, Int> {
+    val ordered = linkedSetOf<String>()
+    registeredProfileUuids
+        .map { it.trim().lowercase() }
+        .filter(String::isNotEmpty)
+        .forEach { ordered += it }
+    observedProfileIdentities
+        .map { it.trim().lowercase() }
+        .filter(String::isNotEmpty)
+        .forEach { ordered += it }
+    return ordered.withIndex().associate { indexed -> indexed.value to indexed.index }
+}
+
+private data class TimelineProfileCardColors(
+    val background: Color,
+    val border: Color,
+)
+
+private fun timelineProfileCardColors(slot: Int, dark: Boolean): TimelineProfileCardColors = when (slot % 12) {
+    0 -> if (dark) TimelineProfileCardColors(Color(0xFF172A46), Color(0xFF6EA0E8)) else TimelineProfileCardColors(Color(0xFFE7F0FF), Color(0xFF4F7FC7))
+    1 -> if (dark) TimelineProfileCardColors(Color(0xFF183221), Color(0xFF6CAE7C)) else TimelineProfileCardColors(Color(0xFFE3F4E8), Color(0xFF4F8A62))
+    2 -> if (dark) TimelineProfileCardColors(Color(0xFF2D2140), Color(0xFFA886DD)) else TimelineProfileCardColors(Color(0xFFF0E8FF), Color(0xFF7A5DB4))
+    3 -> if (dark) TimelineProfileCardColors(Color(0xFF3B2A14), Color(0xFFD5A052)) else TimelineProfileCardColors(Color(0xFFFFF0D9), Color(0xFFB47728))
+    4 -> if (dark) TimelineProfileCardColors(Color(0xFF3A1F2A), Color(0xFFD47E9D)) else TimelineProfileCardColors(Color(0xFFFCE7EE), Color(0xFFAD5C7A))
+    5 -> if (dark) TimelineProfileCardColors(Color(0xFF163432), Color(0xFF65AAA4)) else TimelineProfileCardColors(Color(0xFFDFF4F2), Color(0xFF4B8B86))
+    6 -> if (dark) TimelineProfileCardColors(Color(0xFF222640), Color(0xFF858ED6)) else TimelineProfileCardColors(Color(0xFFE8E9FF), Color(0xFF626BB5))
+    7 -> if (dark) TimelineProfileCardColors(Color(0xFF2B3019), Color(0xFFA3B665)) else TimelineProfileCardColors(Color(0xFFEFF3DA), Color(0xFF7B8A44))
+    8 -> if (dark) TimelineProfileCardColors(Color(0xFF15313A), Color(0xFF63A9BE)) else TimelineProfileCardColors(Color(0xFFE0F3F8), Color(0xFF4E8798))
+    9 -> if (dark) TimelineProfileCardColors(Color(0xFF39251D), Color(0xFFC88E72)) else TimelineProfileCardColors(Color(0xFFF8EAE3), Color(0xFFA96D50))
+    10 -> if (dark) TimelineProfileCardColors(Color(0xFF30223A), Color(0xFFB184C9)) else TimelineProfileCardColors(Color(0xFFF3E8F8), Color(0xFF8D5EA5))
+    else -> if (dark) TimelineProfileCardColors(Color(0xFF29302F), Color(0xFF8FA7A3)) else TimelineProfileCardColors(Color(0xFFE9F0EF), Color(0xFF6E8984))
+}
+
 @Composable
 private fun TimelineEntryCard(
     entry: TripTimelineEntry,
     trip: Trip?,
     store: TripStore,
     formatter: DateTimeFormatter,
+    profileColorSlot: Int,
     archived: Boolean,
     onManageLocal: (String) -> Unit,
     onChanged: (String) -> Unit,
@@ -452,6 +525,7 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
+    onManualSeatSyncRequested: () -> Unit,
     onSyncExactCard: () -> Unit,
     onArchive: () -> Unit,
 ) {
@@ -462,13 +536,23 @@ private fun TimelineEntryCard(
         reference = referenceCoordinate,
         radiusKm = referenceRadiusKm,
     )
+    val context = LocalContext.current
     val dark = isSystemInDarkTheme()
-    val cardColor = when (direction) {
-        TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF17351F) else Color(0xFFDDF3E3)
-        TimelineDirectionState.INBOUND -> if (dark) Color(0xFF3B291F) else Color(0xFFFFE4D6)
-        TimelineDirectionState.NEUTRAL,
-        TimelineDirectionState.UNKNOWN,
-        -> MaterialTheme.colorScheme.surface
+    val profileColors = timelineProfileCardColors(profileColorSlot, dark)
+    val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
+    var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
+    var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
+
+    fun requestSeatOnlySync(selectedTrip: Trip?, reason: String) {
+        val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+            context = context,
+            entry = entry,
+            trip = selectedTrip,
+            store = store,
+            reason = reason,
+        )
+        onChanged(result.message)
+        if (result.shouldSync) onManualSeatSyncRequested()
     }
 
     Card(
@@ -476,8 +560,8 @@ private fun TimelineEntryCard(
             .fillMaxWidth()
             .padding(vertical = 6.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = profileColors.background),
+        border = BorderStroke(1.dp, profileColors.border),
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
@@ -507,7 +591,7 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
-            val occupied = entry.maximumOccupiedSeats
+            val occupied = seatPlan?.loads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
                     val free = (entry.capacity - occupied).coerceAtLeast(0)
@@ -521,6 +605,10 @@ private fun TimelineEntryCard(
                     Text("BlaBlaCar: 0 lugares reservados ${statusMark(entry)}")
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
+            }
+
+            TextButton(onClick = { showSeatDetails = true }) {
+                Text(if (seatPlan != null) "💺 ${seatPlan.desiredPublishedSeats}" else "💺 ⏳")
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
@@ -543,6 +631,14 @@ private fun TimelineEntryCard(
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
                 onSyncExactCard = onSyncExactCard,
+                onSyncSeatsOnly = { requestSeatOnlySync(trip, "manual_card_shortcut") },
+                onAddManualPassenger = {
+                    runCatching { prepareTimelineTripForPassenger(entry, store) }
+                        .onSuccess { preparation -> directPassengerTrip = preparation.trip }
+                        .onFailure { error ->
+                            onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
+                        }
+                },
             )
 
             ResponsiveTripActions(
@@ -551,6 +647,37 @@ private fun TimelineEntryCard(
                 ),
             )
         }
+    }
+
+    if (showSeatDetails) {
+        AlertDialog(
+            onDismissRequest = { showSeatDetails = false },
+            title = { Text("VAGAS POR TRECHO") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (seatPlan == null) {
+                        Text("Leitura por trecho pendente. O Rota Certa não vai inventar disponibilidade enquanto os passageiros externos não estiverem completos.")
+                    } else {
+                        seatPlan.loads.forEach { load ->
+                            Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
+                        }
+                        Text("💺 ${seatPlan.desiredPublishedSeats} = menor disponibilidade física relevante", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSeatDetails = false }) { Text("Fechar") } },
+        )
+    }
+
+    directPassengerTrip?.let { selectedTrip ->
+        TimelineCardQuickPassengerDialog(
+            entry = entry,
+            trip = selectedTrip,
+            store = store,
+            onChanged = onChanged,
+            onTargetSync = { requestSeatOnlySync(selectedTrip, "automatic_after_passenger_change") },
+            onDismiss = { directPassengerTrip = null },
+        )
     }
 }
 

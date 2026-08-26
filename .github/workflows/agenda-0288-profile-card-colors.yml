@@ -1,0 +1,114 @@
+name: Agenda 0.1.288 profile card colors
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0288-profile-card-colors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0288-profile-card-colors-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove exact Agenda baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5580' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.287"' app/build.gradle.kts
+          grep -Fq 'val cardColor = when (direction)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test -f .github/scripts/agenda_0288_profile_card_colors.py
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize minimal profile color UX
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0288_profile_card_colors.py
+          git diff --check
+          grep -Fq 'val profileColors = timelineProfileCardColors(profileColorSlot, dark)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'border = BorderStroke(1.dp, profileColors.border)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'versionCode = 5581' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.288"' app/build.gradle.kts
+
+      - name: Protect FAROL and exact scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineProfileColors0288Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused regression and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --tests br.com.mapeiaia.rotacerta.trips.TripTimelineProfileColors0288Test :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineProfileColors0288Test.kt
+          git commit -m 'feat(agenda): color timeline cards by profile 0.1.288'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0288
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0288/rota-certa-0.1.288-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0288/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0288/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.288' \
+            'versionCode=5581' \
+            'ux=profile-specific soft background plus matching border' \
+            'directionChipPreserved=true' \
+            'profileOrder=dynamic account registry order then observed profiles' \
+            'paletteSlots=12' \
+            'farolUntouched=true' > /tmp/agenda-0288/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.288-profile-colors-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0288

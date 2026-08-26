@@ -51,6 +51,7 @@ fun BlaBlaCollectorPanel(
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
+    val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var syncing by remember { mutableStateOf(false) }
     var archiving by remember { mutableStateOf(false) }
@@ -193,22 +194,21 @@ fun BlaBlaCollectorPanel(
             ?: if (result.resultCode == Activity.RESULT_OK) "Sincronizado externamente ✅" else "Sincronização externa pendente ⚠️"
         message = seatMessage
         onChanged(seatMessage)
-        if (result.resultCode == Activity.RESULT_OK && !accountId.isNullOrBlank()) {
-            // Read-after-write: after the exact options page verified the new value,
-            // refresh only the authenticated account that owns that publication.
-            syncDateScope = null
-            syncQueue = listOf(accountId)
-            syncCursor = 0
-            syncing = true
-            archiving = false
-        }
+        // Seat-only writer already reloads the exact options page and verifies the
+        // published number. Do not chain a full trip/account collector sync here.
+        refresh()
     }
 
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
     val accounts = registry.list()
 
+    fun pendingSeatRequest(): BlaBlaManualSeatSyncRequest? =
+        BlaBlaReliableSeatQueuePolicy.select(manualSeatStore.list()) { requestId ->
+            manualSeatAttemptStore.get(requestId) != null
+        }
+
     fun pendingSeatTarget(): Pair<BlaBlaManualSeatSyncRequest, BlaBlaDynamicAccount>? {
-        val pending = manualSeatStore.peek() ?: return null
+        val pending = pendingSeatRequest() ?: return null
         val target = accounts.singleOrNull { account ->
             account.profileUuid?.equals(pending.profileUuid, ignoreCase = true) == true
         } ?: return null
@@ -218,7 +218,9 @@ fun BlaBlaCollectorPanel(
     fun launchPendingSeatSync(origin: String): Boolean {
         val (pending, target) = pendingSeatTarget() ?: return false
         manualSeatSyncing = true
-        message = if (pending.seatDelta < 0) {
+        message = pending.desiredPublishedSeats?.let { desired ->
+            "Sincronizando somente as vagas desta publicação • alvo atual: $desired…"
+        } ?: if (pending.seatDelta < 0) {
             "Ajustando ${-pending.seatDelta} vaga(s) na publicação correta…"
         } else {
             "Devolvendo ${pending.seatDelta} vaga(s) à publicação correta…"
@@ -227,15 +229,24 @@ fun BlaBlaCollectorPanel(
         UnifiedDebugEventStore.record(
             "EXTERNAL_SEAT_SYNC_RELIABLE_LAUNCH",
             context.packageName,
-            "origin=$origin request=${pending.id} delta=${pending.seatDelta} profileUuidPresent=true tripIdPresent=true",
+            "origin=$origin request=${pending.id} delta=${pending.seatDelta} desired=${pending.desiredPublishedSeats ?: -1} profileUuidPresent=true tripIdPresent=true",
         )
-        seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target))
+        seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target, pending.id))
         return true
     }
 
     // Discard snapshots from the old hard-coded two-account candidate. The
     // dynamic registry is authoritative from this version onward and starts empty.
     LaunchedEffect(Unit) {
+        val retired = manualSeatStore.discardLegacyDeltaRequests()
+        retired.forEach(manualSeatAttemptStore::clear)
+        if (retired.isNotEmpty()) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_LEGACY_DELTA_RETIRED",
+                context.packageName,
+                "count=${retired.size} reason=desired_state_migration",
+            )
+        }
         if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
             val clean = sessionStore.combinedResponse(registry.list())
             val published = stateStore.saveResponse(clean, preserveOnPartial = false)
@@ -246,7 +257,7 @@ fun BlaBlaCollectorPanel(
     LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {
         if (autoSyncToken <= handledAutoSyncToken || syncing || archiving || manualSeatSyncing) return@LaunchedEffect
 
-        val pendingManualSeat = manualSeatStore.peek()
+        val pendingManualSeat = pendingSeatRequest()
         if (pendingManualSeat != null) {
             val target = accounts.singleOrNull { account ->
                 account.profileUuid?.equals(pendingManualSeat.profileUuid, ignoreCase = true) == true

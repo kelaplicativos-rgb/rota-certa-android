@@ -119,6 +119,117 @@ internal class BlaBlaManualSeatSyncAttemptStore(context: Context) {
     }
 }
 
+@Serializable
+internal enum class BlaBlaPublicationSeatSyncVisualState {
+    AVAILABLE,
+    SYNCING,
+    SYNCED,
+    PENDING,
+    ERROR,
+}
+
+@Serializable
+internal data class BlaBlaPublicationSeatSyncState(
+    val profileUuid: String,
+    val tripId: String,
+    val desiredPublishedSeats: Int? = null,
+    val lastObservedPublishedSeats: Int? = null,
+    val state: BlaBlaPublicationSeatSyncVisualState = BlaBlaPublicationSeatSyncVisualState.AVAILABLE,
+    val message: String = "Sincronizar somente as vagas deste card",
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
+internal class BlaBlaPublicationSeatSyncStateStore(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    fun get(profileUuid: String, tripId: String): BlaBlaPublicationSeatSyncState? = list().firstOrNull {
+        it.profileUuid.equals(profileUuid, ignoreCase = true) && it.tripId == tripId
+    }
+
+    fun markDesired(profileUuid: String, tripId: String, desired: Int, message: String) = update(
+        BlaBlaPublicationSeatSyncState(
+            profileUuid = profileUuid,
+            tripId = tripId,
+            desiredPublishedSeats = desired,
+            state = BlaBlaPublicationSeatSyncVisualState.PENDING,
+            message = message,
+        ),
+    )
+
+    fun markSyncing(profileUuid: String, tripId: String, desired: Int) = mutate(profileUuid, tripId) { current ->
+        (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
+            desiredPublishedSeats = desired,
+            state = BlaBlaPublicationSeatSyncVisualState.SYNCING,
+            message = "Sincronizando somente as vagas…",
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
+    fun markObserved(profileUuid: String, tripId: String, observed: Int) = mutate(profileUuid, tripId) { current ->
+        (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
+            lastObservedPublishedSeats = observed,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
+    fun markSynced(
+        profileUuid: String,
+        tripId: String,
+        value: Int,
+        message: String = "Vagas sincronizadas ✅",
+    ) = mutate(profileUuid, tripId) { current ->
+        (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
+            desiredPublishedSeats = current?.desiredPublishedSeats ?: value,
+            lastObservedPublishedSeats = value,
+            state = BlaBlaPublicationSeatSyncVisualState.SYNCED,
+            message = message,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
+    fun markPending(profileUuid: String, tripId: String, message: String, desired: Int? = null) = mutate(profileUuid, tripId) { current ->
+        (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
+            desiredPublishedSeats = desired ?: current?.desiredPublishedSeats,
+            state = BlaBlaPublicationSeatSyncVisualState.PENDING,
+            message = message,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
+    fun markError(profileUuid: String, tripId: String, message: String) = mutate(profileUuid, tripId) { current ->
+        (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
+            state = BlaBlaPublicationSeatSyncVisualState.ERROR,
+            message = message,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
+    private fun mutate(
+        profileUuid: String,
+        tripId: String,
+        transform: (BlaBlaPublicationSeatSyncState?) -> BlaBlaPublicationSeatSyncState,
+    ) {
+        update(transform(get(profileUuid, tripId)))
+    }
+
+    private fun update(value: BlaBlaPublicationSeatSyncState) {
+        val next = list().filterNot {
+            it.profileUuid.equals(value.profileUuid, ignoreCase = true) && it.tripId == value.tripId
+        } + value
+        prefs.edit().putString(KEY, json.encodeToString(next)).apply()
+    }
+
+    private fun list(): List<BlaBlaPublicationSeatSyncState> = runCatching {
+        json.decodeFromString<List<BlaBlaPublicationSeatSyncState>>(prefs.getString(KEY, "[]") ?: "[]")
+    }.getOrDefault(emptyList())
+
+    companion object {
+        private const val PREFS = "rota_certa_blablacar_publication_seat_sync_state_v1"
+        private const val KEY = "states"
+    }
+}
+
 internal enum class BlaBlaReliableSeatSyncAction {
     APPLY_TARGET,
     COMPLETE_ALREADY_APPLIED,
@@ -133,6 +244,28 @@ internal data class BlaBlaReliableSeatSyncDecision(
     val action: BlaBlaReliableSeatSyncAction,
     val targetSeats: Int? = null,
 )
+
+internal object BlaBlaReliableSeatQueuePolicy {
+    fun select(
+        queue: List<BlaBlaManualSeatSyncRequest>,
+        hasPersistedAttempt: (String) -> Boolean,
+    ): BlaBlaManualSeatSyncRequest? =
+        queue.firstOrNull { !hasPersistedAttempt(it.id) } ?: queue.firstOrNull()
+}
+
+internal object BlaBlaReliableSeatRequestSelector {
+    /**
+     * If the launcher supplied an id, only that exact request is valid.
+     * The legacy first-item fallback is retained only for callers without an id.
+     */
+    fun select(
+        queue: List<BlaBlaManualSeatSyncRequest>,
+        requestId: String?,
+    ): BlaBlaManualSeatSyncRequest? {
+        val exactId = requestId?.trim()?.takeIf(String::isNotEmpty)
+        return if (exactId == null) queue.firstOrNull() else queue.firstOrNull { it.id == exactId }
+    }
+}
 
 /** Pure retry/idempotency policy used by the Activity and unit tests. */
 internal object BlaBlaReliableSeatSyncPolicy {
@@ -197,11 +330,43 @@ internal object BlaBlaReliableSeatSyncPolicy {
             else -> BlaBlaReliableSeatSyncDecision(BlaBlaReliableSeatSyncAction.PENDING_UNAVAILABLE)
         }
     }
+
+    fun decideDesired(
+        currentSeats: Int,
+        canAdd: Boolean,
+        canRemove: Boolean,
+        desiredPublishedSeats: Int,
+    ): BlaBlaReliableSeatSyncDecision {
+        if (currentSeats < 0 || desiredPublishedSeats < 0) {
+            return BlaBlaReliableSeatSyncDecision(BlaBlaReliableSeatSyncAction.INVALID)
+        }
+        return when {
+            currentSeats == desiredPublishedSeats -> BlaBlaReliableSeatSyncDecision(
+                BlaBlaReliableSeatSyncAction.COMPLETE_ALREADY_APPLIED,
+                desiredPublishedSeats,
+            )
+            currentSeats > desiredPublishedSeats && canRemove -> BlaBlaReliableSeatSyncDecision(
+                BlaBlaReliableSeatSyncAction.APPLY_TARGET,
+                desiredPublishedSeats,
+            )
+            currentSeats < desiredPublishedSeats && canAdd -> BlaBlaReliableSeatSyncDecision(
+                BlaBlaReliableSeatSyncAction.APPLY_TARGET,
+                desiredPublishedSeats,
+            )
+            else -> BlaBlaReliableSeatSyncDecision(BlaBlaReliableSeatSyncAction.PENDING_UNAVAILABLE, desiredPublishedSeats)
+        }
+    }
 }
 
 data class BlaBlaManualSeatCancellationResult(
     val shouldSync: Boolean,
     val message: String,
+)
+
+data class BlaBlaDesiredSeatSyncRequestResult(
+    val shouldSync: Boolean,
+    val message: String,
+    val desiredPublishedSeats: Int? = null,
 )
 
 /**
@@ -220,6 +385,52 @@ object BlaBlaReliableSeatSyncBridge {
             ?: BlaBlaTripIdentity.externalTripIdFromHref(entry.blablaTripHref)
             ?: return null
         return BlaBlaManualSeatExternalTarget(profile, tripId)
+    }
+
+    fun enqueueDesiredStateForTimeline(
+        context: Context,
+        entry: TripTimelineEntry,
+        trip: Trip?,
+        store: TripStore,
+        reason: String,
+    ): BlaBlaDesiredSeatSyncRequestResult {
+        val target = targetForTimeline(entry) ?: return BlaBlaDesiredSeatSyncRequestResult(
+            shouldSync = false,
+            message = "Vagas aguardando sincronização ⚠️ • identidade forte da publicação indisponível.",
+        )
+        val statusStore = BlaBlaPublicationSeatSyncStateStore(context)
+        val plan = timelineDesiredSeatSyncPlan(entry, trip, store)
+        if (plan == null) {
+            val message = if (entry.blablaPassengerRosterComplete != true) {
+                "Vagas aguardando sincronização ⚠️ • passageiros externos ainda aguardam leitura completa por trecho."
+            } else {
+                "Vagas aguardando sincronização ⚠️ • não foi possível calcular o estado físico por trecho."
+            }
+            statusStore.markPending(target.profileUuid, target.tripId, message)
+            return BlaBlaDesiredSeatSyncRequestResult(false, message)
+        }
+
+        val requestStore = BlaBlaManualSeatSyncRequestStore(context)
+        val attemptStore = BlaBlaManualSeatSyncAttemptStore(context)
+        val request = BlaBlaManualSeatSyncRequest(
+            profileUuid = target.profileUuid,
+            tripId = target.tripId,
+            seatDelta = 0,
+            desiredPublishedSeats = plan.desiredPublishedSeats,
+            desiredStateReason = reason,
+            localTripId = plan.localTripId,
+            localBookingId = "desired:${target.profileUuid}:${target.tripId}",
+            source = "DESIRED_STATE",
+        )
+        requestStore.replacePublication(request).forEach(attemptStore::clear)
+        val message = "Estado desejado calculado: ${plan.desiredPublishedSeats} vaga(s) • conferindo somente as vagas da publicação correta…"
+        statusStore.markDesired(target.profileUuid, target.tripId, plan.desiredPublishedSeats, message)
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_DESIRED_STATE_QUEUED",
+            context.packageName,
+            "reason=$reason desired=${plan.desiredPublishedSeats} segments=${plan.loads.size} profileUuidPresent=true tripIdPresent=true request=${request.id}",
+        )
+        return BlaBlaDesiredSeatSyncRequestResult(true, message, plan.desiredPublishedSeats)
     }
 
     fun enqueueForManualBooking(
@@ -405,9 +616,15 @@ object BlaBlaReliableSeatSyncBridge {
 }
 
 object BlaBlaReliableSeatSyncIntents {
-    fun seatSync(context: Context, account: BlaBlaDynamicAccount): Intent =
-        Intent(context, BlaBlaReliableSeatSyncActivity::class.java)
-            .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
+    const val EXTRA_REQUEST_ID = "blablacar_seat_sync_request_id"
+
+    fun seatSync(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        requestId: String? = null,
+    ): Intent = Intent(context, BlaBlaReliableSeatSyncActivity::class.java)
+        .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
+        .apply { requestId?.trim()?.takeIf(String::isNotEmpty)?.let { putExtra(EXTRA_REQUEST_ID, it) } }
 }
 
 /**
@@ -422,6 +639,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private lateinit var attemptStore: BlaBlaManualSeatSyncAttemptStore
     private lateinit var bindingStore: BlaBlaManualSeatBookingBindingStore
     private lateinit var ledger: BlaBlaManualSeatSyncLedger
+    private lateinit var publicationSeatStateStore: BlaBlaPublicationSeatSyncStateStore
     private lateinit var request: BlaBlaManualSeatSyncRequest
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
@@ -443,25 +661,48 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         attemptStore = BlaBlaManualSeatSyncAttemptStore(this)
         bindingStore = BlaBlaManualSeatBookingBindingStore(this)
         ledger = BlaBlaManualSeatSyncLedger(this)
+        publicationSeatStateStore = BlaBlaPublicationSeatSyncStateStore(this)
         account = registry.get(intent?.getStringExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finishPending("Conta BlaBlaCar não encontrada.", rotate = false)
             return
         }
-        request = requestStore.peek() ?: run {
-            finishPending("Nenhuma sincronização manual pendente.", rotate = false)
+        val requestedId = intent?.getStringExtra(BlaBlaReliableSeatSyncIntents.EXTRA_REQUEST_ID)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+        request = BlaBlaReliableSeatRequestSelector.select(requestStore.list(), requestedId) ?: run {
+            finishPending(
+                if (requestedId == null) "Nenhuma sincronização manual pendente." else "A sincronização selecionada não está mais pendente.",
+                rotate = false,
+            )
             return
         }
         if (!account.profileUuid.equals(request.profileUuid, ignoreCase = true)) {
             finishPending("UUID da conta não corresponde à publicação.", rotate = false)
             return
         }
-        if (request.source !in setOf(BookingSource.PRIVATE.name, BookingSource.OTHER.name) || request.seatDelta == 0) {
-            finishInvalid("Operação externa inválida; ela foi descartada para não bloquear a fila.")
+        val desiredPublishedSeats = request.desiredPublishedSeats
+        if (desiredPublishedSeats == null && (request.source !in setOf(BookingSource.PRIVATE.name, BookingSource.OTHER.name) || request.seatDelta == 0)) {
+            finishInvalid("Operação externa legada inválida; ela foi descartada para não bloquear a fila.")
+            return
+        }
+        if (desiredPublishedSeats != null && desiredPublishedSeats < 0) {
+            finishInvalid("Estado desejado de vagas inválido.")
+            return
+        }
+        if (desiredPublishedSeats != null) {
+            publicationSeatStateStore.markSyncing(request.profileUuid, request.tripId, desiredPublishedSeats)
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            finishPending(
+                "O Android System WebView não oferece o perfil autenticado isolado desta conta; nenhuma vaga foi alterada.",
+                rotate = true,
+            )
             return
         }
 
-        val ledgerEntry = ledger.entry(request.localBookingId)
+        val ledgerEntry = if (desiredPublishedSeats == null) ledger.entry(request.localBookingId) else null
         if (
+            desiredPublishedSeats == null &&
             request.seatDelta < 0 &&
             ledgerEntry != null &&
             ledgerEntry.externallyReducedSeats == -request.seatDelta &&
@@ -471,7 +712,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             completeNoOp("Redução externa desse passageiro já estava confirmada.")
             return
         }
-        if (request.seatDelta > 0) {
+        if (desiredPublishedSeats == null && request.seatDelta > 0) {
             if (ledgerEntry == null) {
                 completeNoOp("A vaga já foi devolvida ou não havia redução externa comprovada.")
                 return
@@ -513,7 +754,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         UnifiedDebugEventStore.record(
             "EXTERNAL_SEAT_SYNC_RELIABLE_START",
             packageName,
-            "request=${request.id} booking=${request.localBookingId} delta=${request.seatDelta} tripIdPresent=true profileUuidPresent=true",
+            "request=${request.id} booking=${request.localBookingId} delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} tripIdPresent=true profileUuidPresent=true",
         )
         webView.loadUrl(reliableOptionsUrl(request.tripId))
     }
@@ -561,7 +802,17 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         finishPending("A tentativa persistida não corresponde mais a esta operação.", rotate = true)
                         return@evaluate
                     }
-                    val decision = BlaBlaReliableSeatSyncPolicy.decide(
+                    request.desiredPublishedSeats?.let { desired ->
+                        publicationSeatStateStore.markObserved(request.profileUuid, request.tripId, state.seats)
+                    }
+                    val decision = request.desiredPublishedSeats?.let { desired ->
+                        BlaBlaReliableSeatSyncPolicy.decideDesired(
+                            currentSeats = state.seats,
+                            canAdd = state.canAdd,
+                            canRemove = state.canRemove,
+                            desiredPublishedSeats = desired,
+                        )
+                    } ?: BlaBlaReliableSeatSyncPolicy.decide(
                         currentSeats = state.seats,
                         canAdd = state.canAdd,
                         canRemove = state.canRemove,
@@ -571,7 +822,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                     UnifiedDebugEventStore.record(
                         "EXTERNAL_SEAT_SYNC_RELIABLE_DECISION",
                         packageName,
-                        "request=${request.id} current=${state.seats} delta=${request.seatDelta} action=${decision.action.name} target=${decision.targetSeats ?: -1} attempt=${existingAttempt != null} compensation=${existingAttempt?.compensateAfterCancellation == true}",
+                        "request=${request.id} current=${state.seats} delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} action=${decision.action.name} target=${decision.targetSeats ?: -1} attempt=${existingAttempt != null} compensation=${existingAttempt?.compensateAfterCancellation == true}",
                     )
                     when (decision.action) {
                         BlaBlaReliableSeatSyncAction.COMPLETE_ALREADY_APPLIED -> completeVerified(decision.targetSeats ?: state.seats, alreadyApplied = true)
@@ -691,7 +942,15 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     }
 
     private fun completeVerified(afterSeats: Int, alreadyApplied: Boolean) {
-        if (request.seatDelta < 0) {
+        val desiredRequest = request.desiredPublishedSeats != null
+        val verifiedMessage = if (desiredRequest && alreadyApplied) {
+            "Nenhuma alteração necessária ✅ • $afterSeats vaga(s) já publicadas"
+        } else {
+            "Vagas sincronizadas ✅ • $afterSeats vaga(s) publicadas"
+        }
+        if (desiredRequest) {
+            publicationSeatStateStore.markSynced(request.profileUuid, request.tripId, afterSeats, verifiedMessage)
+        } else if (request.seatDelta < 0) {
             ledger.markVerifiedDecrease(request)
         } else {
             ledger.clearAfterVerifiedReverse(request.localBookingId)
@@ -702,13 +961,13 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         UnifiedDebugEventStore.record(
             "EXTERNAL_SEAT_SYNC_RELIABLE_VERIFIED",
             packageName,
-            "request=${request.id} booking=${request.localBookingId} after=$afterSeats delta=${request.seatDelta} alreadyApplied=$alreadyApplied ledger=true",
+            "request=${request.id} booking=${request.localBookingId} after=$afterSeats delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} alreadyApplied=$alreadyApplied ledger=${request.desiredPublishedSeats == null}",
         )
         setResult(
             RESULT_OK,
             Intent()
                 .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
-                .putExtra("seat_sync_message", "Sincronizado externamente ✅ • $afterSeats vaga(s) publicadas"),
+                .putExtra("seat_sync_message", verifiedMessage),
         )
         finish()
     }
@@ -736,7 +995,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         if (::request.isInitialized) {
             requestStore.remove(request.id)
             attemptStore.clear(request.id)
-            if (request.seatDelta > 0) bindingStore.remove(request.localBookingId)
+            if (request.desiredPublishedSeats != null) {
+                publicationSeatStateStore.markSynced(request.profileUuid, request.tripId, request.desiredPublishedSeats!!)
+            } else if (request.seatDelta > 0) {
+                bindingStore.remove(request.localBookingId)
+            }
         }
         setResult(
             RESULT_OK,
@@ -751,6 +1014,9 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         if (::request.isInitialized) {
             requestStore.remove(request.id)
             attemptStore.clear(request.id)
+            if (request.desiredPublishedSeats != null && ::publicationSeatStateStore.isInitialized) {
+                publicationSeatStateStore.markError(request.profileUuid, request.tripId, "Falha ao sincronizar vagas ❌ • $message")
+            }
         }
         setResult(RESULT_CANCELED, Intent().putExtra("seat_sync_message", message))
         finish()
@@ -758,6 +1024,14 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
 
     private fun finishPending(message: String, rotate: Boolean) {
         if (::request.isInitialized) {
+            if (request.desiredPublishedSeats != null && ::publicationSeatStateStore.isInitialized) {
+                publicationSeatStateStore.markPending(
+                    request.profileUuid,
+                    request.tripId,
+                    "Vagas aguardando sincronização ⚠️ • $message",
+                    request.desiredPublishedSeats,
+                )
+            }
             UnifiedDebugEventStore.record(
                 "EXTERNAL_SEAT_SYNC_RELIABLE_PENDING",
                 packageName,
@@ -783,7 +1057,8 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             attempt.localBookingId == request.localBookingId &&
             attempt.profileUuid.equals(request.profileUuid, ignoreCase = true) &&
             attempt.tripId == request.tripId &&
-            attempt.seatDelta == request.seatDelta
+            attempt.seatDelta == request.seatDelta &&
+            (request.desiredPublishedSeats == null || attempt.targetSeats == request.desiredPublishedSeats)
 
     private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
         webView.evaluateJavascript(script) { encoded ->

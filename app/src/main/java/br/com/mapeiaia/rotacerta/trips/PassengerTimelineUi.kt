@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,10 +72,15 @@ internal fun EnhancedPassengerTimelineSection(
     currentCoordinate: Coordinate?,
     onChanged: (String) -> Unit,
     onSyncExactCard: (() -> Unit)? = null,
+    onSyncSeatsOnly: (() -> Unit)? = null,
+    onAddManualPassenger: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
+    if (hasExternalTripActionEvidence(entry)) {
+        TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
+    }
     if (rawRows.isEmpty()) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
@@ -83,14 +90,12 @@ internal fun EnhancedPassengerTimelineSection(
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var editManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
-
-    if (hasExternalTripActionEvidence(entry)) {
-        TripBlaBlaTripActionRow(entry, onSyncExactCard)
-    }
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
@@ -289,6 +294,16 @@ internal fun EnhancedPassengerTimelineSection(
         val profile = passengerStore.profile(row.passengerId)
             ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
         val history = profile?.let { passengerStore.rideHistory(it.id) }
+        val manualBooking = trip?.let { currentTrip ->
+            row.localBookingId?.let { bookingId ->
+                store.bookingsFor(currentTrip.id).firstOrNull { booking ->
+                    booking.id == bookingId &&
+                        booking.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        booking.capacityClaimType == CapacityClaimType.PASSENGER &&
+                        booking.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                }
+            }
+        }
         AlertDialog(
             onDismissRequest = { profileRow = null },
             title = { Text("Passageiro Rota Certa") },
@@ -300,6 +315,16 @@ internal fun EnhancedPassengerTimelineSection(
                     Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
                     history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }
                     if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)
+                    if (manualBooking != null) {
+                        TextButton(onClick = {
+                            editManualRow = row
+                            profileRow = null
+                        }) { Text("Editar lugares / trecho") }
+                        TextButton(onClick = {
+                            cancelManualRow = row
+                            profileRow = null
+                        }) { Text("Cancelar / excluir desta viagem") }
+                    }
                 }
             },
             confirmButton = {
@@ -310,6 +335,79 @@ internal fun EnhancedPassengerTimelineSection(
                 }) { Text(if (profile?.blocked == true) "Desbloquear" else "Bloquear") }
             },
             dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },
+        )
+    }
+
+    editManualRow?.let { row ->
+        val currentTrip = trip
+        val booking = currentTrip?.let { selectedTrip ->
+            row.localBookingId?.let { bookingId ->
+                store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
+                    candidate.id == bookingId &&
+                        candidate.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
+                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                }
+            }
+        }
+        if (currentTrip != null && booking != null) {
+            ManualPassengerOccupancyEditorDialog(
+                trip = currentTrip,
+                booking = booking,
+                existingBookings = store.bookingsFor(currentTrip.id),
+                onDismiss = { editManualRow = null },
+                onSave = { updated ->
+                    store.saveBooking(updated)
+                    editManualRow = null
+                    onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
+                    onSyncSeatsOnly?.invoke()
+                },
+                onError = onChanged,
+            )
+        } else {
+            editManualRow = null
+        }
+    }
+
+    cancelManualRow?.let { row ->
+        val currentTrip = trip
+        val booking = currentTrip?.let { selectedTrip ->
+            row.localBookingId?.let { bookingId ->
+                store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
+                    candidate.id == bookingId &&
+                        candidate.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
+                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { cancelManualRow = null },
+            title = { Text("Cancelar passageiro desta viagem?") },
+            text = {
+                Text(
+                    "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = currentTrip != null && booking != null,
+                    onClick = {
+                        val selectedTrip = currentTrip ?: return@TextButton
+                        val selectedBooking = booking ?: return@TextButton
+                        store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_MANUAL_PASSENGER_CANCELLED",
+                            context.packageName,
+                            "timeline=true seats=${selectedBooking.seats} desiredStateRecalculation=true",
+                        )
+                        cancelManualRow = null
+                        onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
+                        onSyncSeatsOnly?.invoke()
+                    },
+                ) { Text("Cancelar e devolver vaga(s)") }
+            },
+            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Manter passageiro") } },
         )
     }
 
@@ -608,6 +706,103 @@ private fun PassengerAddressEditorDialog(
 }
 
 @Composable
+private fun ManualPassengerOccupancyEditorDialog(
+    trip: Trip,
+    booking: Booking,
+    existingBookings: List<Booking>,
+    onDismiss: () -> Unit,
+    onSave: (Booking) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val stops = trip.stops.sortedBy(TripStop::order)
+    var seats by remember(booking.id) { mutableStateOf(booking.seats) }
+    var fromId by remember(booking.id) { mutableStateOf(booking.boardingStopId) }
+    var toId by remember(booking.id) { mutableStateOf(booking.dropoffStopId) }
+    var fromOpen by remember(booking.id) { mutableStateOf(false) }
+    var toOpen by remember(booking.id) { mutableStateOf(false) }
+    val fromIndex = stops.indexOfFirst { it.id == fromId }
+    val toIndex = stops.indexOfFirst { it.id == toId }
+    val valid = fromIndex >= 0 && toIndex > fromIndex
+    val availability = if (valid) runCatching {
+        SeatAvailabilityEngine.availability(
+            trip,
+            existingBookings.filterNot { it.id == booking.id },
+            fromId,
+            toId,
+            seats,
+        )
+    }.getOrNull() else null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar lugares / trecho") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(booking.passengerName)
+                Column {
+                    OutlinedButton(onClick = { fromOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Embarque: ${stops.firstOrNull { it.id == fromId }?.name ?: "Selecionar"}")
+                    }
+                    DropdownMenu(expanded = fromOpen, onDismissRequest = { fromOpen = false }) {
+                        stops.dropLast(1).forEach { stop ->
+                            DropdownMenuItem(
+                                text = { Text(stop.name) },
+                                onClick = {
+                                    fromId = stop.id
+                                    if (stops.indexOfFirst { it.id == toId } <= stop.order) toId = ""
+                                    fromOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
+                Column {
+                    OutlinedButton(enabled = fromIndex >= 0, onClick = { toOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Destino: ${stops.firstOrNull { it.id == toId }?.name ?: "Selecionar"}")
+                    }
+                    DropdownMenu(expanded = toOpen, onDismissRequest = { toOpen = false }) {
+                        stops.filterIndexed { index, _ -> fromIndex >= 0 && index > fromIndex }.forEach { stop ->
+                            DropdownMenuItem(text = { Text(stop.name) }, onClick = { toId = stop.id; toOpen = false })
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { if (seats > 1) seats-- }) { Text("−") }
+                    Text(if (seats == 1) "1 lugar" else "$seats lugares")
+                    OutlinedButton(onClick = { if (seats < trip.capacity) seats++ }) { Text("+") }
+                }
+                Text(
+                    when {
+                        !valid -> "Selecione embarque e destino."
+                        availability?.canBook == true -> "${availability.availableSeats} vaga(s) disponíveis neste trecho antes da alteração."
+                        else -> "Sem capacidade física para essa alteração."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid && availability?.canBook == true,
+                onClick = {
+                    runCatching {
+                        QuickPassengerEngine.updateManualBooking(
+                            trip = trip,
+                            existingBookings = existingBookings,
+                            booking = booking,
+                            boardingStopId = fromId,
+                            dropoffStopId = toId,
+                            seats = seats,
+                        )
+                    }.onSuccess(onSave).onFailure { onError(it.message ?: "Não foi possível atualizar o passageiro.") }
+                },
+            ) { Text("Salvar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+@Composable
 private fun PassengerFareEditorDialog(
     row: EnhancedPassengerCardRow,
     onDismiss: () -> Unit,
@@ -806,13 +1001,56 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
         !entry.blablaProfileUuid.isNullOrBlank()
 
 @Composable
-private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {
+private fun TripBlaBlaTripActionRow(
+    entry: TripTimelineEntry,
+    onSyncExactCard: (() -> Unit)?,
+    onSyncSeatsOnly: (() -> Unit)?,
+    onAddManualPassenger: (() -> Unit)?,
+) {
     val context = LocalContext.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val target = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry)
+    val seatStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
+    val seatState = target?.let { seatStateStore.get(it.profileUuid, it.tripId) }
+    val seatLabel = when (seatState?.state) {
+        BlaBlaPublicationSeatSyncVisualState.SYNCING -> "💺⏳"
+        BlaBlaPublicationSeatSyncVisualState.SYNCED -> "💺✅"
+        BlaBlaPublicationSeatSyncVisualState.PENDING -> "💺⚠️"
+        BlaBlaPublicationSeatSyncVisualState.ERROR -> "💺❌"
+        BlaBlaPublicationSeatSyncVisualState.AVAILABLE, null -> "💺🔄"
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+        if (onAddManualPassenger != null) {
+            TextButton(
+                onClick = {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_CARD_MANUAL_PASSENGER_OPEN",
+                        context.packageName,
+                        "timeline=true externalPublication=true",
+                    )
+                    onAddManualPassenger()
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text("👤➕") }
+        }
+        if (onSyncSeatsOnly != null && target != null) {
+            TextButton(
+                enabled = seatState?.state != BlaBlaPublicationSeatSyncVisualState.SYNCING,
+                onClick = {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_SEAT_ONLY_SYNC_REQUESTED",
+                        context.packageName,
+                        "profileUuidPresent=true tripIdPresent=true",
+                    )
+                    onSyncSeatsOnly()
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text(seatLabel) }
+        }
         if (onSyncExactCard != null && !entry.blablaProfileUuid.isNullOrBlank() && !entry.blablaTripId.isNullOrBlank()) {
             TextButton(
                 onClick = {
@@ -845,6 +1083,12 @@ private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (
                 modifier = Modifier.size(24.dp),
             )
         }
+        }
+        Text(
+            seatState?.message ?: "💺🔄 Sincronizar somente as vagas deste card",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
