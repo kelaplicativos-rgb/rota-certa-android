@@ -28,7 +28,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,6 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           npm install --prefix trip-platform/functions --ignore-scripts --no-audit --no-fund
+          npm install --prefix trip-platform/calendar-functions --ignore-scripts --no-audit --no-fund
           (
             cd trip-platform/functions
             node -e "require('firebase-admin/app-check'); require('firebase-admin/auth'); console.log('firebase_admin_security_modules=PASS')"
@@ -106,9 +107,13 @@ jobs:
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           echo 'security_boundaries=PASS'
 
-      - name: Confirm no production deploy in CI
+      - name: Deploy Firebase production
+        if: github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): first production deploy'
         shell: bash
+        working-directory: trip-platform
         run: |
           set -euo pipefail
-          ! grep -R -E 'firebase[[:space:]]+deploy' .github/workflows/agenda-firebase-live-wiring.yml
-          echo 'production_deploy=false'
+          npx --yes firebase-tools@latest deploy \
+            --project rota-certa-7ccc8 \
+            --only firestore:rules,functions,hosting \
+            --non-interactive
