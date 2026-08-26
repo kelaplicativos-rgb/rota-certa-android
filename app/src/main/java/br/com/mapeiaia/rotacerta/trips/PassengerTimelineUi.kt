@@ -70,10 +70,14 @@ internal fun EnhancedPassengerTimelineSection(
     currentCoordinate: Coordinate?,
     onChanged: (String) -> Unit,
     onSyncExactCard: (() -> Unit)? = null,
+    onAddManualPassenger: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
+    if (hasExternalTripActionEvidence(entry)) {
+        TripBlaBlaTripActionRow(entry, onSyncExactCard, onAddManualPassenger)
+    }
     if (rawRows.isEmpty()) return
 
     val progress = trip?.let { TripPassengerRouteOrder.progress(it, currentCoordinate) }
@@ -87,10 +91,6 @@ internal fun EnhancedPassengerTimelineSection(
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
-
-    if (hasExternalTripActionEvidence(entry)) {
-        TripBlaBlaTripActionRow(entry, onSyncExactCard)
-    }
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
@@ -806,13 +806,30 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
         !entry.blablaProfileUuid.isNullOrBlank()
 
 @Composable
-private fun TripBlaBlaTripActionRow(entry: TripTimelineEntry, onSyncExactCard: (() -> Unit)?) {
+private fun TripBlaBlaTripActionRow(
+    entry: TripTimelineEntry,
+    onSyncExactCard: (() -> Unit)?,
+    onAddManualPassenger: (() -> Unit)?,
+) {
     val context = LocalContext.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (onAddManualPassenger != null) {
+            TextButton(
+                onClick = {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_CARD_MANUAL_PASSENGER_OPEN",
+                        context.packageName,
+                        "timeline=true externalPublication=true",
+                    )
+                    onAddManualPassenger()
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text("👤➕") }
+        }
         if (onSyncExactCard != null && !entry.blablaProfileUuid.isNullOrBlank() && !entry.blablaTripId.isNullOrBlank()) {
             TextButton(
                 onClick = {

@@ -273,6 +273,11 @@ fun TripTimelineScreen(
             referenceRadiusKm = directionReference.radiusKm,
             directionGeo = directionGeo,
             currentCoordinate = currentCoordinate,
+            onManualSeatSyncRequested = {
+                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
+                autoSyncTripId = null
+                onRequestBlaBlaSync()
+            },
             onSyncExactCard = {
                 val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
                 val tripId = entry.blablaTripId?.trim().orEmpty()
@@ -502,6 +507,7 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
+    onManualSeatSyncRequested: () -> Unit,
     onSyncExactCard: () -> Unit,
     onArchive: () -> Unit,
 ) {
@@ -514,6 +520,7 @@ private fun TimelineEntryCard(
     )
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
+    var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
 
     Card(
         modifier = Modifier
@@ -587,6 +594,13 @@ private fun TimelineEntryCard(
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
                 onSyncExactCard = onSyncExactCard,
+                onAddManualPassenger = {
+                    runCatching { prepareTimelineTripForPassenger(entry, store) }
+                        .onSuccess { preparation -> directPassengerTrip = preparation.trip }
+                        .onFailure { error ->
+                            onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
+                        }
+                },
             )
 
             ResponsiveTripActions(
@@ -595,6 +609,17 @@ private fun TimelineEntryCard(
                 ),
             )
         }
+    }
+
+    directPassengerTrip?.let { selectedTrip ->
+        TimelineCardQuickPassengerDialog(
+            entry = entry,
+            trip = selectedTrip,
+            store = store,
+            onChanged = onChanged,
+            onTargetSync = onManualSeatSyncRequested,
+            onDismiss = { directPassengerTrip = null },
+        )
     }
 }
 

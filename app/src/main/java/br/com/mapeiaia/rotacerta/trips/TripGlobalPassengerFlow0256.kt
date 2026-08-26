@@ -296,6 +296,47 @@ internal fun prepareTimelineTripForPassenger(
 }
 
 @Composable
+internal fun TimelineCardQuickPassengerDialog(
+    entry: TripTimelineEntry,
+    trip: Trip,
+    store: TripStore,
+    onChanged: (String) -> Unit,
+    onTargetSync: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
+    val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Adicionar passageiro") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${entry.profileLabel} • $date", style = MaterialTheme.typography.labelLarge)
+                Text("${entry.origin} → ${entry.destination}")
+                Text(
+                    "Passageiros adicionados aqui ocupam a Agenda imediatamente. Quando esta publicação BlaBlaCar tem identidade forte, salvar reduz as vagas externas e remover devolve somente uma redução já comprovada.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                QuickPassengerPanel(
+                    trip = trip,
+                    store = store,
+                    onChanged = onChanged,
+                    onBlaBlaSyncRequested = if (timelineStrongExternalTripKey(entry) != null) onTargetSync else null,
+                    externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
+                    onSaved = onDismiss,
+                    showExistingPassengers = true,
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar") } },
+    )
+}
+
+@Composable
 internal fun GlobalPassengerFlowPanel(
     entries: List<TripTimelineEntry>,
     store: TripStore,
