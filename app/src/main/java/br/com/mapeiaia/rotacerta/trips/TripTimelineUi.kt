@@ -119,6 +119,11 @@ fun TripTimelineScreen(
     val visibleEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
+    val timelineCalendarDays = remember(visibleEntries) {
+        agendaCalendarDaysForItems(visibleEntries) { entry ->
+            Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        }
+    }
     val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
         timelineProfileColorSlots(
@@ -265,7 +270,9 @@ fun TripTimelineScreen(
         return
     }
 
-    visibleEntries.forEach { entry ->
+    timelineCalendarDays.forEach { day ->
+        AgendaCalendarDayLine(day.date)
+        day.items.forEach { entry ->
         val trip = entry.localTripId?.let(store::getTrip)
             ?: store.getTrip(entry.tripId)
             ?: findExistingTimelineBackingTrip(entry, store.trips())
@@ -304,6 +311,7 @@ fun TripTimelineScreen(
             archiveRevision++
             onChanged(if (archived) "Viagem restaurada." else "Viagem arquivada sem cancelar a publicação.")
         }
+    }
     }
 }
 
