@@ -51,6 +51,7 @@ fun BlaBlaCollectorPanel(
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
+    val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var syncing by remember { mutableStateOf(false) }
     var archiving by remember { mutableStateOf(false) }
@@ -207,8 +208,13 @@ fun BlaBlaCollectorPanel(
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
     val accounts = registry.list()
 
+    fun pendingSeatRequest(): BlaBlaManualSeatSyncRequest? =
+        BlaBlaReliableSeatQueuePolicy.select(manualSeatStore.list()) { requestId ->
+            manualSeatAttemptStore.get(requestId) != null
+        }
+
     fun pendingSeatTarget(): Pair<BlaBlaManualSeatSyncRequest, BlaBlaDynamicAccount>? {
-        val pending = manualSeatStore.peek() ?: return null
+        val pending = pendingSeatRequest() ?: return null
         val target = accounts.singleOrNull { account ->
             account.profileUuid?.equals(pending.profileUuid, ignoreCase = true) == true
         } ?: return null
@@ -246,7 +252,7 @@ fun BlaBlaCollectorPanel(
     LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {
         if (autoSyncToken <= handledAutoSyncToken || syncing || archiving || manualSeatSyncing) return@LaunchedEffect
 
-        val pendingManualSeat = manualSeatStore.peek()
+        val pendingManualSeat = pendingSeatRequest()
         if (pendingManualSeat != null) {
             val target = accounts.singleOrNull { account ->
                 account.profileUuid?.equals(pendingManualSeat.profileUuid, ignoreCase = true) == true

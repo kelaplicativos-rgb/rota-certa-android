@@ -134,6 +134,14 @@ internal data class BlaBlaReliableSeatSyncDecision(
     val targetSeats: Int? = null,
 )
 
+internal object BlaBlaReliableSeatQueuePolicy {
+    fun select(
+        queue: List<BlaBlaManualSeatSyncRequest>,
+        hasPersistedAttempt: (String) -> Boolean,
+    ): BlaBlaManualSeatSyncRequest? =
+        queue.firstOrNull { !hasPersistedAttempt(it.id) } ?: queue.firstOrNull()
+}
+
 /** Pure retry/idempotency policy used by the Activity and unit tests. */
 internal object BlaBlaReliableSeatSyncPolicy {
     fun decide(

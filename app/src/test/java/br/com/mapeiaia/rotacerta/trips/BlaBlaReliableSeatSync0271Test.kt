@@ -126,6 +126,27 @@ class BlaBlaReliableSeatSync0271Test {
     }
 
     @Test
+    fun freshRequestIsPreferredOverRetainedAttempt() {
+        val retained = request(id = "retained", bookingId = "booking-old", delta = -3, createdAt = 1L)
+        val fresh = request(id = "fresh", bookingId = "booking-new", delta = -1, createdAt = 2L)
+
+        val selected = BlaBlaReliableSeatQueuePolicy.select(listOf(retained, fresh)) { requestId ->
+            requestId == retained.id
+        }
+
+        assertEquals(fresh.id, selected?.id)
+    }
+
+    @Test
+    fun retainedAttemptStillRunsWhenItIsTheOnlyPendingRequest() {
+        val retained = request(id = "retained", bookingId = "booking-old", delta = -3, createdAt = 1L)
+
+        val selected = BlaBlaReliableSeatQueuePolicy.select(listOf(retained)) { true }
+
+        assertEquals(retained.id, selected?.id)
+    }
+
+    @Test
     fun unavailableEditorKeepsOperationPending() {
         val decision = BlaBlaReliableSeatSyncPolicy.decide(
             currentSeats = 4,
@@ -136,6 +157,22 @@ class BlaBlaReliableSeatSync0271Test {
         )
         assertEquals(BlaBlaReliableSeatSyncAction.PENDING_UNAVAILABLE, decision.action)
     }
+
+    private fun request(
+        id: String,
+        bookingId: String,
+        delta: Int,
+        createdAt: Long,
+    ) = BlaBlaManualSeatSyncRequest(
+        id = id,
+        profileUuid = "7371f028-9c55-4903-8444-308015823efd",
+        tripId = "trip-1",
+        seatDelta = delta,
+        localTripId = "local-trip-1",
+        localBookingId = bookingId,
+        source = BookingSource.PRIVATE.name,
+        createdAtMillis = createdAt,
+    )
 
     private fun attempt(
         before: Int,
