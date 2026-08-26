@@ -427,7 +427,7 @@ internal fun applyConfiguredVehicleCapacity(
     vehicleCapacity: Int,
 ): List<TripTimelineEntry> {
     if (vehicleCapacity !in 1..999) return entries
-    return entries.map { entry -> if (entry.capacity > 0) entry else entry.copy(capacity = vehicleCapacity) }
+    return entries.map { entry -> if (entry.capacity == vehicleCapacity) entry else entry.copy(capacity = vehicleCapacity) }
 }
 
 internal enum class TimelineOccupancyReadState {
@@ -518,9 +518,24 @@ private fun TimelineEntryCard(
         reference = referenceCoordinate,
         radiusKm = referenceRadiusKm,
     )
+    val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
+    val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
+    var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
+
+    fun requestSeatOnlySync(selectedTrip: Trip?, reason: String) {
+        val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+            context = context,
+            entry = entry,
+            trip = selectedTrip,
+            store = store,
+            reason = reason,
+        )
+        onChanged(result.message)
+        if (result.shouldSync) onManualSeatSyncRequested()
+    }
 
     Card(
         modifier = Modifier
@@ -574,6 +589,10 @@ private fun TimelineEntryCard(
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
 
+            TextButton(onClick = { showSeatDetails = true }) {
+                Text(if (seatPlan != null) "💺 ${seatPlan.desiredPublishedSeats}" else "💺 ⏳")
+            }
+
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
                 "${sourceShort(source)} $seats"
             }
@@ -594,6 +613,7 @@ private fun TimelineEntryCard(
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
                 onSyncExactCard = onSyncExactCard,
+                onSyncSeatsOnly = { requestSeatOnlySync(trip, "manual_card_shortcut") },
                 onAddManualPassenger = {
                     runCatching { prepareTimelineTripForPassenger(entry, store) }
                         .onSuccess { preparation -> directPassengerTrip = preparation.trip }
@@ -611,13 +631,33 @@ private fun TimelineEntryCard(
         }
     }
 
+    if (showSeatDetails) {
+        AlertDialog(
+            onDismissRequest = { showSeatDetails = false },
+            title = { Text("VAGAS POR TRECHO") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (seatPlan == null) {
+                        Text("Leitura por trecho pendente. O Rota Certa não vai inventar disponibilidade enquanto os passageiros externos não estiverem completos.")
+                    } else {
+                        seatPlan.loads.forEach { load ->
+                            Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
+                        }
+                        Text("💺 ${seatPlan.desiredPublishedSeats} = menor disponibilidade física relevante", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSeatDetails = false }) { Text("Fechar") } },
+        )
+    }
+
     directPassengerTrip?.let { selectedTrip ->
         TimelineCardQuickPassengerDialog(
             entry = entry,
             trip = selectedTrip,
             store = store,
             onChanged = onChanged,
-            onTargetSync = onManualSeatSyncRequested,
+            onTargetSync = { requestSeatOnlySync(selectedTrip, "automatic_after_passenger_change") },
             onDismiss = { directPassengerTrip = null },
         )
     }

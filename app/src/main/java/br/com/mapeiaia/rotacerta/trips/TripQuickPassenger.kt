@@ -148,6 +148,37 @@ object QuickPassengerEngine {
         return plan
     }
 
+    fun updateManualBooking(
+        trip: Trip,
+        existingBookings: List<Booking>,
+        booking: Booking,
+        boardingStopId: String,
+        dropoffStopId: String,
+        seats: Int,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Booking {
+        require(booking.tripId == trip.id) { "A reserva pertence a outra viagem." }
+        require(booking.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER)) { "Somente passageiro manual pode ser editado aqui." }
+        require(booking.capacityClaimType == CapacityClaimType.PASSENGER) { "A reserva não representa um passageiro." }
+        require(seats in 1..trip.capacity) { "Quantidade de lugares inválida." }
+        val availability = SeatAvailabilityEngine.availability(
+            trip = trip,
+            bookings = existingBookings.filterNot { it.id == booking.id },
+            boardingStopId = boardingStopId,
+            dropoffStopId = dropoffStopId,
+            requestedSeats = seats,
+            nowMillis = nowMillis,
+        )
+        require(availability.canBook) { "Somente ${availability.availableSeats} vaga(s) disponível(is) nesse trecho." }
+        return booking.copy(
+            boardingStopId = boardingStopId,
+            dropoffStopId = dropoffStopId,
+            seats = seats,
+            status = BookingStatus.CONFIRMED,
+            updatedAtMillis = nowMillis,
+        )
+    }
+
     fun activeReservedSeatLinks(bookings: List<Booking>, nowMillis: Long = System.currentTimeMillis()): List<Booking> =
         bookings.filter { booking ->
             booking.capacityClaimType == CapacityClaimType.RESERVED_SEAT &&

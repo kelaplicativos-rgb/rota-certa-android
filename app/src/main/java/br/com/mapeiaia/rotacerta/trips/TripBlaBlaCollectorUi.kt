@@ -194,15 +194,9 @@ fun BlaBlaCollectorPanel(
             ?: if (result.resultCode == Activity.RESULT_OK) "Sincronizado externamente ✅" else "Sincronização externa pendente ⚠️"
         message = seatMessage
         onChanged(seatMessage)
-        if (result.resultCode == Activity.RESULT_OK && !accountId.isNullOrBlank()) {
-            // Read-after-write: after the exact options page verified the new value,
-            // refresh only the authenticated account that owns that publication.
-            syncDateScope = null
-            syncQueue = listOf(accountId)
-            syncCursor = 0
-            syncing = true
-            archiving = false
-        }
+        // Seat-only writer already reloads the exact options page and verifies the
+        // published number. Do not chain a full trip/account collector sync here.
+        refresh()
     }
 
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
@@ -242,6 +236,15 @@ fun BlaBlaCollectorPanel(
     // Discard snapshots from the old hard-coded two-account candidate. The
     // dynamic registry is authoritative from this version onward and starts empty.
     LaunchedEffect(Unit) {
+        val retired = manualSeatStore.discardLegacyDeltaRequests()
+        retired.forEach(manualSeatAttemptStore::clear)
+        if (retired.isNotEmpty()) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_LEGACY_DELTA_RETIRED",
+                context.packageName,
+                "count=${retired.size} reason=desired_state_migration",
+            )
+        }
         if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
             val clean = sessionStore.combinedResponse(registry.list())
             val published = stateStore.saveResponse(clean, preserveOnPartial = false)
