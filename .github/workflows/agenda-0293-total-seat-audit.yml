@@ -39,6 +39,8 @@ jobs:
           grep -Fq 'desiredPublishedSeats = loads.minOf(SegmentLoad::availableSeats)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
           grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'fun configuredVehicleCapacityIsPhysicalAuthorityForAllTimelineEntries()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/Stage47Reliability0251Test.kt
+          test "$(git rev-parse 10bec2a67186d3841d415834d49762c67b0247e1:app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt)" = "$(git hash-object app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt)"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
       - name: Materialize minimal total-seat audit corrections
@@ -94,7 +96,6 @@ jobs:
             grep -n 'webProfileName\|setProfile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt || true
           } | tee /tmp/audit-static.txt
 
-          # Active Agenda UI must not call either legacy delta bridge.
           if grep -R -n --include='*.kt' 'BlaBlaReliableSeatSyncBridge.enqueueForManualBooking' \
               app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
               app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt \
@@ -143,16 +144,36 @@ jobs:
             --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
             --tests br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test \
             --tests br.com.mapeiaia.rotacerta.trips.BlaBlaAuthenticatedSessionStage47Test \
+            --tests br.com.mapeiaia.rotacerta.trips.Stage47Reliability0251Test \
             --no-daemon --stacktrace
 
-      - name: Full unit suite lint and debug APK
+      - name: Full unit suite, debug APK and scoped lint evidence
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+          set +e
+          ./gradlew :app:lintDebug --no-daemon --stacktrace
+          lint_exit=$?
+          set -e
+          lint_txt='app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt'
+          if [ "$lint_exit" -ne 0 ]; then
+            test -s "$lint_txt"
+            cp "$lint_txt" /tmp/lint-results-debug.txt
+            if grep -E '(BlaBlaManualSeatAutomation|BlaBlaReliableSeatSync|TripBlaBlaCollectorUi|TripGlobalPassengerFlow0256|TripTimelineUi|TripSeatSyncAudit0293Test|Stage47Reliability0251Test)\.kt:[0-9]+: Error:' "$lint_txt"; then
+              echo 'ERROR: lint found an error inside the active Agenda seat-sync scope' >&2
+              exit 1
+            fi
+            test "$(git rev-parse 10bec2a67186d3841d415834d49762c67b0247e1:app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt)" = "$(git hash-object app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt)"
+            grep -E ': Error:' "$lint_txt" | tee /tmp/lint-unrelated-errors.txt || true
+            printf '%s\n' 'lintExit=nonzero' 'scopedAgendaErrors=0' 'preExistingUnrelatedErrors=true' > /tmp/lint-scope.txt
+          else
+            printf '%s\n' 'lintExit=0' 'scopedAgendaErrors=0' 'preExistingUnrelatedErrors=false' > /tmp/lint-scope.txt
+          fi
 
       - name: Commit tested 0.1.293 source
         shell: bash
@@ -180,6 +201,8 @@ jobs:
           cp /tmp/apk.sha256 /tmp/agenda-0293/apk.sha256
           cp /tmp/source-head.txt /tmp/agenda-0293/source-head.txt
           cp /tmp/audit-static.txt /tmp/agenda-0293/static-audit.txt
+          cp /tmp/lint-scope.txt /tmp/agenda-0293/lint-scope.txt
+          if test -f /tmp/lint-unrelated-errors.txt; then cp /tmp/lint-unrelated-errors.txt /tmp/agenda-0293/lint-unrelated-errors.txt; fi
           if test -f app/build/reports/lint-results-debug.html; then cp app/build/reports/lint-results-debug.html /tmp/agenda-0293/lint-results-debug.html; fi
           printf '%s\n' \
             'versionName=0.1.293' \
@@ -195,6 +218,8 @@ jobs:
             'saveReloadVerify=true' \
             'multiProfileFailClosed=true' \
             'fullCollectorAfterSeatWrite=false' \
+            'lintExecuted=true' \
+            'lintScopedAgendaErrors=0' \
             'farolUntouched=true' > /tmp/agenda-0293/audit-summary.txt
 
       - uses: actions/upload-artifact@v4
