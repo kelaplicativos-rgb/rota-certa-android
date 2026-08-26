@@ -1,0 +1,205 @@
+name: Agenda 0.1.293 total seat audit
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0293-total-seat-audit.yml'
+      - '.github/scripts/agenda_0293_total_seat_audit.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0293-total-seat-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove authoritative 0.1.292 baseline and known integration gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5585' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.292"' app/build.gradle.kts
+          grep -Fq 'onTargetSync: (String?) -> Unit' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq '{ onTargetSync(canonicalTimelineProfileUuid(entry)) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'request = requestStore.peek()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'BlaBlaReliableSeatSyncIntents.seatSync(context, target)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'desiredPublishedSeats = loads.minOf(SegmentLoad::availableSeats)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize minimal total-seat audit corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0293_total_seat_audit.py
+          git diff --check
+          grep -Fq 'versionCode = 5586' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.293"' app/build.gradle.kts
+          grep -Fq 'onTargetSync: (TripTimelineEntry, Trip) -> Unit' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq '{ onTargetSync(entry, trip) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          test "$(grep -c 'BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt)" -ge 2
+          grep -Fq 'BlaBlaReliableSeatSyncIntents.seatSync(context, target, pending.id)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaReliableSeatRequestSelector.select(requestStore.list(), requestedId)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'Nenhuma alteração necessária ✅' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq '!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'WebViewCompat.setProfile(webView, account.webProfileName)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'BlaBlaHarvestAssociation.optionsPageMatches(request.tripId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'Do not chain a full trip/account collector sync here.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'seatPlan?.loads?.maxOfOrNull(SegmentLoad::occupiedSeats)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripSeatSyncAudit0293Test.kt
+
+      - name: Static audit of dangerous and competing seat paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'ROTA CERTA 0.1.293 STATIC SEAT AUDIT'
+            echo
+            echo '== Legacy coordinator definitions/call sites =='
+            grep -R -n --include='*.kt' 'BlaBlaManualSeatSyncCoordinator' app/src/main/java || true
+            echo
+            echo '== Legacy reliable delta bridge call sites =='
+            grep -R -n --include='*.kt' 'BlaBlaReliableSeatSyncBridge.enqueueForManualBooking' app/src/main/java || true
+            grep -R -n --include='*.kt' 'BlaBlaReliableSeatSyncBridge.onManualBookingCancelled' app/src/main/java || true
+            echo
+            echo '== Desired-state bridge call sites =='
+            grep -R -n --include='*.kt' 'enqueueDesiredStateForTimeline' app/src/main/java || true
+            echo
+            echo '== Potential blind +/- patterns =='
+            grep -R -n -E --include='*.kt' 'availableSeats(\+\+|--)|seats[[:space:]]*[+-][[:space:]]*1|seats[[:space:]]*(\+=|-=)[[:space:]]*1' app/src/main/java || true
+            echo
+            echo '== DOM increment/decrement terms (expected only as control discovery) =='
+            grep -R -n -E --include='*.kt' 'decrement|increment' app/src/main/java/br/com/mapeiaia/rotacerta/trips || true
+            echo
+            echo '== Exact options editor and verification anchors =='
+            grep -n 'reliableOptionsUrl\|optionsPageMatches\|expectedSeats\|completeVerified' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt || true
+            echo
+            echo '== Profile/session anchors =='
+            grep -n 'webProfileName\|setProfile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt || true
+          } | tee /tmp/audit-static.txt
+
+          # Active Agenda UI must not call either legacy delta bridge.
+          if grep -R -n --include='*.kt' 'BlaBlaReliableSeatSyncBridge.enqueueForManualBooking' \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt; then
+            echo 'ERROR: active Agenda UI still calls legacy delta bridge' >&2
+            exit 1
+          fi
+          if grep -R -n --include='*.kt' 'BlaBlaManualSeatSyncCoordinator.enqueueForManualBooking' app/src/main/java; then
+            echo 'ERROR: legacy coordinator still has an active qualified call site' >&2
+            exit 1
+          fi
+
+      - name: Protect FAROL and exact implementation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripSeatSyncAudit0293Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused seat/passenger/identity regression matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.TripSeatSyncAudit0293Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripSegmentSeatSync0292Test \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaReliableSeatSync0271Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaAuthenticatedSessionStage47Test \
+            --no-daemon --stacktrace
+
+      - name: Full unit suite lint and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Commit tested 0.1.293 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripSeatSyncAudit0293Test.kt
+          git commit -m 'fix(agenda): unify automatic and manual desired seat sync 0.1.293'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare audit evidence and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0293
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0293/rota-certa-0.1.293-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0293/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0293/source-head.txt
+          cp /tmp/audit-static.txt /tmp/agenda-0293/static-audit.txt
+          if test -f app/build/reports/lint-results-debug.html; then cp app/build/reports/lint-results-debug.html /tmp/agenda-0293/lint-results-debug.html; fi
+          printf '%s\n' \
+            'versionName=0.1.293' \
+            'versionCode=5586' \
+            'physicalCapacityAuthority=rota_certa' \
+            'segmentEngine=SeatAvailabilityEngine' \
+            'automaticSeatTrigger=desired_state_bridge' \
+            'manualSeatTrigger=desired_state_bridge' \
+            'externalSeatWrite=absolute_desired_state' \
+            'exactQueueRequestId=true' \
+            'strongIdentity=profile_uuid_plus_trip_id' \
+            'seatOnlyEditor=true' \
+            'saveReloadVerify=true' \
+            'multiProfileFailClosed=true' \
+            'fullCollectorAfterSeatWrite=false' \
+            'farolUntouched=true' > /tmp/agenda-0293/audit-summary.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.293-total-seat-audit-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0293
