@@ -54,6 +54,9 @@ internal fun timelineStrongExternalTripKey(entry: TripTimelineEntry): String? {
 internal fun timelineExternalBackingTripId(entry: TripTimelineEntry): String? =
     timelineStrongExternalTripKey(entry)?.let { "timeline-ext-${sha256Short0256(it, 24)}" }
 
+internal fun timelineManualPassengerOccupancyKnown(entry: TripTimelineEntry): Boolean =
+    timelineStrongExternalTripKey(entry) == null || entry.blablaPassengerRosterComplete == true
+
 internal fun timelinePhysicalTripMatches(entry: TripTimelineEntry, trips: List<Trip>): List<Trip> = trips.filter { trip ->
     kotlin.math.abs(trip.departureAtMillis - entry.departureAtMillis) <= 45L * 60L * 1000L &&
         trip.stops.sortedBy(TripStop::order).let { stops ->
@@ -312,6 +315,9 @@ internal fun prepareTimelineTripForPassenger(
     store: TripStore,
 ): TimelinePassengerTripPreparation {
     val strongExternal = timelineStrongExternalTripKey(entry)
+    require(timelineManualPassengerOccupancyKnown(entry)) {
+        "A ocupação BlaBlaCar deste card ainda não foi lida por completo. Sincronize este card antes de adicionar passageiro por fora."
+    }
     val allTrips = store.trips()
     val deterministicId = timelineExternalBackingTripId(entry)
     val direct = entry.localTripId?.let(store::getTrip)
