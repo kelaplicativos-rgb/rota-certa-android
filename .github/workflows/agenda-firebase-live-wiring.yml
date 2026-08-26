@@ -8,6 +8,13 @@ on:
       - 'trip-platform/**'
       - '.github/workflows/agenda-firebase-live-wiring.yml'
       - 'docs/AGENDA_FIREBASE_LIVE_WIRING.md'
+  pull_request:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - 'trip-platform/**'
+      - '.github/workflows/agenda-firebase-live-wiring.yml'
+      - 'docs/AGENDA_FIREBASE_LIVE_WIRING.md'
   workflow_dispatch:
 
 permissions:
