@@ -1,0 +1,161 @@
+name: Agenda 0.1.296 public booking
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - '.github/workflows/agenda-0296-public-booking.yml'
+      - '.github/scripts/agenda_0296_public_booking.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0296-public-booking-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-backend-web-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-public-booking-0.1.296
+
+      - name: Prove real 0.1.295 baseline and existing engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5588' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.295"' app/build.gradle.kts
+          grep -Fq 'object SeatAvailabilityEngine' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'enqueueDesiredStateForTimeline' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'desiredPublishedSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'Firebase Hosting' docs/STAGE47_AGENDA_VIAGENS_RESERVAS_0.1.227.md
+          grep -Fq 'db.runTransaction' trip-platform/functions/index.js
+          grep -Fq 'allow read, write: if false' trip-platform/firestore.rules
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize public booking extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0296_public_booking.py
+          git diff --check
+          grep -Fq 'versionCode = 5589' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
+          grep -Fq 'publicBookingEnabled: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'PublicBookingRemoteSync0296' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
+          grep -Fq 'idempotencyFingerprint' trip-platform/functions/index.js
+          grep -Fq 'CONFIRME SUA VIAGEM' trip-platform/public/index.html
+
+      - name: Protect FAROL and exact implementation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicBooking0296Test.kt' \
+            'trip-platform/functions/index.js' \
+            'trip-platform/functions/test/public-booking-0296.test.js' \
+            'trip-platform/public/app.js' \
+            'trip-platform/public/index.html' | sort > /tmp/expected.txt
+          echo '--- changed'; cat /tmp/changed.txt
+          echo '--- expected'; cat /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend and public web contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js | tee /tmp/backend-tests.txt
+          grep -Fq 'deny-by-default' trip-platform/firestore.rules || grep -Fq 'allow read, write: if false' trip-platform/firestore.rules
+          grep -Fq '"/v1/**"' trip-platform/firebase.json
+          grep -Fq 'southamerica-east1' trip-platform/firebase.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Full Android tests lint and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Commit tested 0.1.296 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicBooking0296Test.kt \
+                  trip-platform/functions/index.js \
+                  trip-platform/functions/test/public-booking-0296.test.js \
+                  trip-platform/public/app.js \
+                  trip-platform/public/index.html
+          git commit -m 'feat(agenda): add safe public passenger booking 0.1.296'
+          git push origin HEAD:agent/agenda-public-booking-0.1.296
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare installable and platform evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0296
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0296/rota-certa-0.1.296-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0296/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0296/source-head.txt
+          cp /tmp/backend-tests.txt /tmp/agenda-0296/backend-tests.txt
+          cp /tmp/gradle.txt /tmp/agenda-0296/gradle-validation.txt
+          tar -czf /tmp/agenda-0296/rota-certa-public-booking-platform-0.1.296.tar.gz trip-platform
+          printf '%s\n' \
+            'versionName=0.1.296' \
+            'versionCode=5589' \
+            'publicBookingOptIn=true' \
+            'backendSegmentTransaction=true' \
+            'backendIdempotency=true' \
+            'doubleTapSameIntentOneBooking=true' \
+            'brazilWhatsappRequired=true' \
+            'publicTripToken=true' \
+            'automaticRemoteBookingPull=true' \
+            'existingSeatSyncEngineReused=true' \
+            'firestoreDirectAccessDenied=true' \
+            'firebaseProductionDeployNotPerformed=true' \
+            'physicalTestPending=true' \
+            'farolUntouched=true' > /tmp/agenda-0296/public-booking-contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.296-public-booking-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0296
