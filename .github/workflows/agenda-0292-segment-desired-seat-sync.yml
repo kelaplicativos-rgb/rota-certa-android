@@ -45,11 +45,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/agenda_0292_segment_desired_seat_sync.py
+          sed -i 's/^internal data class BlaBlaDesiredSeatSyncRequestResult/data class BlaBlaDesiredSeatSyncRequestResult/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
           git diff --check
           grep -Fq 'versionCode = 5585' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.292"' app/build.gradle.kts
           grep -Fq 'val desiredPublishedSeats: Int? = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
           grep -Fq 'fun decideDesired(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'data class BlaBlaDesiredSeatSyncRequestResult' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          ! grep -Fq 'internal data class BlaBlaDesiredSeatSyncRequestResult' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
           grep -Fq 'enqueueDesiredStateForTimeline' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
           grep -Fq 'desiredPublishedSeats = loads.minOf(SegmentLoad::availableSeats)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'VAGAS POR TRECHO' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
