@@ -16,21 +16,53 @@
   },
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "headers": [
       {
         "source": "**",
         "headers": [
-          {"key": "X-Content-Type-Options", "value": "nosniff"},
-          {"key": "Referrer-Policy", "value": "no-referrer"},
-          {"key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()"}
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "no-referrer"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "geolocation=(), microphone=(), camera=()"
+          },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseappcheck.googleapis.com https://www.google.com/recaptcha/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+          }
         ]
       }
     ],
     "rewrites": [
-      {"source": "/v1/**", "function": {"functionId": "tripApi", "region": "southamerica-east1"}},
-      {"source": "/calendar/**", "function": {"functionId": "tripCalendarFeed", "region": "southamerica-east1"}},
-      {"source": "**", "destination": "/index.html"}
+      {
+        "source": "/v1/**",
+        "function": {
+          "functionId": "tripApi",
+          "region": "southamerica-east1"
+        }
+      },
+      {
+        "source": "/calendar/**",
+        "function": {
+          "functionId": "tripCalendarFeed",
+          "region": "southamerica-east1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
     ]
   }
 }
