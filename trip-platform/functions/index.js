@@ -3,12 +3,15 @@
 const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getAppCheck } = require("firebase-admin/app-check");
+const { getAuth } = require("firebase-admin/auth");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
 initializeApp();
 const db = getFirestore();
 const driverTokenSecret = defineSecret("ROTA_CERTA_DRIVER_TOKEN");
+const PUBLIC_WEB_APP_ID = "1:353336964879:web:e7e6924d865a221d99f07a";
 
 const PUBLIC_STATUSES = new Set(["PUBLISHED", "FULL", "STARTING", "ACTIVE"]);
 const DRIVER_MUTABLE_STATUSES = new Set(["DRAFT", "PUBLISHED", "FULL", "STARTING", "ACTIVE", "COMPLETED", "CANCELLED"]);
@@ -27,6 +30,30 @@ function json(res, status, body) {
 
 function fail(res, status, code, message) {
   return json(res, status, { error: code, message });
+}
+
+async function requirePublicFirebaseClient(req, res) {
+  const appCheckToken = String(req.get("X-Firebase-AppCheck") || "").trim();
+  const authorization = String(req.get("Authorization") || "");
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!appCheckToken || !match) {
+    fail(res, 401, "public_attestation_required", "Não foi possível validar este navegador.");
+    return null;
+  }
+  try {
+    const [appCheckResult, authToken] = await Promise.all([
+      getAppCheck().verifyToken(appCheckToken),
+      getAuth().verifyIdToken(match[1]),
+    ]);
+    if (appCheckResult.appId !== PUBLIC_WEB_APP_ID || !authToken.uid) {
+      fail(res, 401, "public_attestation_invalid", "Não foi possível validar este navegador.");
+      return null;
+    }
+    return { uid: authToken.uid, appId: appCheckResult.appId };
+  } catch (_) {
+    fail(res, 401, "public_attestation_invalid", "Não foi possível validar este navegador.");
+    return null;
+  }
 }
 
 function safeEqual(a, b) {
@@ -449,6 +476,7 @@ function publicCancellationToken(token, idempotencyKey) {
 }
 
 async function createBooking(req, res, token) {
+  if (!(await requirePublicFirebaseClient(req, res))) return;
   await enforceBookingRateLimit(req);
   const passengerName = cleanText(req.body && req.body.passengerName, 120);
   const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
@@ -562,6 +590,7 @@ async function createBooking(req, res, token) {
 }
 
 async function cancelPublicBooking(req, res, token, bookingId) {
+  if (!(await requirePublicFirebaseClient(req, res))) return;
   const cancellationToken = cleanText(req.body && req.body.cancellationToken, 120);
   const suppliedHash = crypto.createHash("sha256").update(cancellationToken).digest("hex");
   const tripRef = db.collection("trips").doc(token);
