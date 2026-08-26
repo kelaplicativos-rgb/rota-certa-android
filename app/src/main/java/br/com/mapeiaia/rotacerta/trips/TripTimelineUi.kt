@@ -119,6 +119,13 @@ fun TripTimelineScreen(
     val visibleEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
+    val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
+    val profileColorSlots = remember(entries, registeredProfileUuids) {
+        timelineProfileColorSlots(
+            registeredProfileUuids = registeredProfileUuids,
+            observedProfileIdentities = entries.map(::timelineProfileIdentity),
+        )
+    }
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -258,6 +265,7 @@ fun TripTimelineScreen(
             trip = trip,
             store = store,
             formatter = formatter,
+            profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
             archived = archived,
             onManageLocal = onManageLocal,
             onChanged = onChanged,
@@ -439,12 +447,54 @@ internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccup
     else -> TimelineOccupancyReadState.PENDING
 }
 
+internal fun timelineProfileIdentity(entry: TripTimelineEntry): String =
+    entry.blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+        ?: entry.profileId.trim().lowercase().takeIf(String::isNotEmpty)
+        ?: entry.profileLabel.trim().lowercase()
+
+internal fun timelineProfileColorSlots(
+    registeredProfileUuids: List<String>,
+    observedProfileIdentities: List<String>,
+): Map<String, Int> {
+    val ordered = linkedSetOf<String>()
+    registeredProfileUuids
+        .map { it.trim().lowercase() }
+        .filter(String::isNotEmpty)
+        .forEach { ordered += it }
+    observedProfileIdentities
+        .map { it.trim().lowercase() }
+        .filter(String::isNotEmpty)
+        .forEach { ordered += it }
+    return ordered.withIndex().associate { indexed -> indexed.value to indexed.index }
+}
+
+private data class TimelineProfileCardColors(
+    val background: Color,
+    val border: Color,
+)
+
+private fun timelineProfileCardColors(slot: Int, dark: Boolean): TimelineProfileCardColors = when (slot % 12) {
+    0 -> if (dark) TimelineProfileCardColors(Color(0xFF172A46), Color(0xFF6EA0E8)) else TimelineProfileCardColors(Color(0xFFE7F0FF), Color(0xFF4F7FC7))
+    1 -> if (dark) TimelineProfileCardColors(Color(0xFF183221), Color(0xFF6CAE7C)) else TimelineProfileCardColors(Color(0xFFE3F4E8), Color(0xFF4F8A62))
+    2 -> if (dark) TimelineProfileCardColors(Color(0xFF2D2140), Color(0xFFA886DD)) else TimelineProfileCardColors(Color(0xFFF0E8FF), Color(0xFF7A5DB4))
+    3 -> if (dark) TimelineProfileCardColors(Color(0xFF3B2A14), Color(0xFFD5A052)) else TimelineProfileCardColors(Color(0xFFFFF0D9), Color(0xFFB47728))
+    4 -> if (dark) TimelineProfileCardColors(Color(0xFF3A1F2A), Color(0xFFD47E9D)) else TimelineProfileCardColors(Color(0xFFFCE7EE), Color(0xFFAD5C7A))
+    5 -> if (dark) TimelineProfileCardColors(Color(0xFF163432), Color(0xFF65AAA4)) else TimelineProfileCardColors(Color(0xFFDFF4F2), Color(0xFF4B8B86))
+    6 -> if (dark) TimelineProfileCardColors(Color(0xFF222640), Color(0xFF858ED6)) else TimelineProfileCardColors(Color(0xFFE8E9FF), Color(0xFF626BB5))
+    7 -> if (dark) TimelineProfileCardColors(Color(0xFF2B3019), Color(0xFFA3B665)) else TimelineProfileCardColors(Color(0xFFEFF3DA), Color(0xFF7B8A44))
+    8 -> if (dark) TimelineProfileCardColors(Color(0xFF15313A), Color(0xFF63A9BE)) else TimelineProfileCardColors(Color(0xFFE0F3F8), Color(0xFF4E8798))
+    9 -> if (dark) TimelineProfileCardColors(Color(0xFF39251D), Color(0xFFC88E72)) else TimelineProfileCardColors(Color(0xFFF8EAE3), Color(0xFFA96D50))
+    10 -> if (dark) TimelineProfileCardColors(Color(0xFF30223A), Color(0xFFB184C9)) else TimelineProfileCardColors(Color(0xFFF3E8F8), Color(0xFF8D5EA5))
+    else -> if (dark) TimelineProfileCardColors(Color(0xFF29302F), Color(0xFF8FA7A3)) else TimelineProfileCardColors(Color(0xFFE9F0EF), Color(0xFF6E8984))
+}
+
 @Composable
 private fun TimelineEntryCard(
     entry: TripTimelineEntry,
     trip: Trip?,
     store: TripStore,
     formatter: DateTimeFormatter,
+    profileColorSlot: Int,
     archived: Boolean,
     onManageLocal: (String) -> Unit,
     onChanged: (String) -> Unit,
@@ -463,21 +513,15 @@ private fun TimelineEntryCard(
         radiusKm = referenceRadiusKm,
     )
     val dark = isSystemInDarkTheme()
-    val cardColor = when (direction) {
-        TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF17351F) else Color(0xFFDDF3E3)
-        TimelineDirectionState.INBOUND -> if (dark) Color(0xFF3B291F) else Color(0xFFFFE4D6)
-        TimelineDirectionState.NEUTRAL,
-        TimelineDirectionState.UNKNOWN,
-        -> MaterialTheme.colorScheme.surface
-    }
+    val profileColors = timelineProfileCardColors(profileColorSlot, dark)
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = profileColors.background),
+        border = BorderStroke(1.dp, profileColors.border),
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
