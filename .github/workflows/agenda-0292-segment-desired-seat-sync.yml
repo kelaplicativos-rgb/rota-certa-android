@@ -1,0 +1,147 @@
+name: Agenda 0.1.292 segment desired seat sync
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0292-segment-desired-seat-sync.yml'
+      - '.github/scripts/agenda_0292_segment_desired_seat_sync.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0292-segment-desired-seat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove 0.1.291 physical-defect baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5584' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.291"' app/build.gradle.kts
+          grep -Fq 'val seatDelta: Int' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          ! grep -Fq 'desiredPublishedSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          grep -Fq 'seatDelta = -plan.passenger.seats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          test -f .github/scripts/agenda_0292_segment_desired_seat_sync.py
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize desired-state segment sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0292_segment_desired_seat_sync.py
+          git diff --check
+          grep -Fq 'versionCode = 5585' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.292"' app/build.gradle.kts
+          grep -Fq 'val desiredPublishedSeats: Int? = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          grep -Fq 'fun decideDesired(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'enqueueDesiredStateForTimeline' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'desiredPublishedSeats = loads.minOf(SegmentLoad::availableSeats)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'VAGAS POR TRECHO' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '"💺🔄"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'Editar lugares / trecho' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'Do not chain a full trip/account collector sync here.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          ! grep -Fq 'seatDelta = -plan.passenger.seats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+
+      - name: Protect FAROL and exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassenger.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripSegmentSeatSync0292Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused segment, desired-state, card-action tests and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.TripSegmentSeatSync0292Test \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaReliableSeatSync0271Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test \
+            :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassenger.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripSegmentSeatSync0292Test.kt
+          git commit -m 'fix(agenda): sync desired seats from segment occupancy 0.1.292'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0292
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0292/rota-certa-0.1.292-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0292/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0292/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.292' \
+            'versionCode=5585' \
+            'physicalCapacityAuthority=rota_certa' \
+            'segmentEngine=SeatAvailabilityEngine' \
+            'externalSeatWrite=absolute_desired_state' \
+            'manualSeatShortcut=seat_only' \
+            'seatOnlyFullCollectorChaining=false' \
+            'oneByOneStepperPreserved=true' \
+            'farolUntouched=true' > /tmp/agenda-0292/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.292-segment-desired-seat-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0292
