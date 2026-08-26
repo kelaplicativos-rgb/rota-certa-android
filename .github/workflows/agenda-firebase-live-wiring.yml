@@ -108,7 +108,7 @@ jobs:
           echo 'security_boundaries=PASS'
 
       - name: Deploy Firebase production
-        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): diagnose WIF and retry on Node 24' }}"
+        if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'deploy(firebase):') }}"
         shell: bash
         working-directory: trip-platform
         run: |
