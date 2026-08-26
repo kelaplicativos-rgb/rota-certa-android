@@ -60,7 +60,7 @@ object BlaBlaDomNormalizer {
     private val timeRegex = Regex("(?<!\\d)([01]?\\d|2[0-3]):[0-5]\\d(?!\\d)")
     private val isoDateRegex = Regex("(?<!\\d)(20\\d{2})-(0?[1-9]|1[0-2])-([0-2]?\\d|3[01])(?!\\d)")
     private val numericDateRegex = Regex("(?<!\\d)([0-2]?\\d|3[01])[/.-](0?[1-9]|1[0-2])(?:[/.-](20\\d{2}|\\d{2}))?(?!\\d)")
-    private val monthDateRegex = Regex("(?i)([0-2]?\\d|3[01])\\s*(?:de\\s+)?([a-zçãáâéêíóôõú]{3,12})(?:\\s*(?:de\\s+)?(20\\d{2}))?")
+    private val monthDateRegex = Regex("(?i)([0-2]?\\d|3[01])\\s*(?:de\\s+)?([a-zçãáâéêíóôõú]{3,12})\\.?\\s*(?:(?:de\\s+)?(20\\d{2}))?")
     private val months = mapOf(
         "jan" to 1, "janeiro" to 1,
         "fev" to 2, "fevereiro" to 2,
