@@ -42,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/agenda_0294_calendar_day_lines.py
+          sed -i '/import androidx.compose.foundation.layout.weight/d' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
           git diff --check
           grep -Fq 'versionCode = 5587' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.294"' app/build.gradle.kts
