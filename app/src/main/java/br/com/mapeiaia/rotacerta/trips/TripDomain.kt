@@ -62,6 +62,8 @@ data class Trip(
     val notes: String = "",
     val remoteId: String? = null,
     val publicUrl: String? = null,
+    /** Public passenger portal is opt-in. A synchronized BlaBlaCar card is never exposed automatically. */
+    val publicBookingEnabled: Boolean = false,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )

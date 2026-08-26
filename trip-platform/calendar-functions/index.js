@@ -18,6 +18,19 @@ function safeEqual(a, b) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
+function sha256Hex(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function normalizeUsername(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
 function escapeIcs(value) {
   return String(value || "")
     .replace(/\\/g, "\\\\")
@@ -42,6 +55,8 @@ function publicTrip(id, trip) {
     segmentLoads: Array.isArray(trip.segmentLoads) ? trip.segmentLoads : [],
     notes: trip.notes || "",
     publicUrl: trip.publicUrl || null,
+    driverUsername: trip.driverUsername || "",
+    driverDisplayName: trip.driverDisplayName || "",
     updatedAtMillis: trip.updatedAtMillis || null,
   };
 }
@@ -67,44 +82,70 @@ function tripEvent(id, trip) {
   ].filter(Boolean).join("\r\n");
 }
 
-async function upcomingTrips() {
+async function driverAgenda(usernameRaw, agendaToken) {
+  const username = normalizeUsername(usernameRaw);
+  if (!username || !agendaToken) return null;
+  const driverRef = db.collection("tripDrivers").doc(username);
+  const driverSnap = await driverRef.get();
+  if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) return null;
+  const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  const documents = snapshot.docs
+    .filter((doc) => {
+      const trip = doc.data();
+      return allowedStatuses.has(trip.status) && trip.publicBookingEnabled === true && Number(trip.departureAtMillis || 0) >= cutoff;
+    })
+    .sort((a, b) => Number(a.data().departureAtMillis || 0) - Number(b.data().departureAtMillis || 0))
+    .slice(0, 100);
+  return { username, driver: driverSnap.data(), documents };
+}
+
+async function legacyAgenda(supplied) {
+  if (!safeEqual(supplied, publicCalendarToken.value())) return null;
   const snapshot = await db.collection("trips")
     .where("departureAtMillis", ">=", Date.now() - 6 * 60 * 60 * 1000)
     .orderBy("departureAtMillis", "asc")
     .limit(100)
     .get();
-  return snapshot.docs.filter((doc) => allowedStatuses.has(doc.data().status));
+  return {
+    username: "",
+    driver: { displayName: "Rota Certa" },
+    documents: snapshot.docs.filter((doc) => allowedStatuses.has(doc.data().status)),
+  };
 }
 
 exports.tripCalendarFeed = onRequest(
   { secrets: [publicCalendarToken], region: "southamerica-east1" },
   async (req, res) => {
     const path = (req.path || req.url || "").split("?")[0];
-    const match = path.match(/\/calendar\/([A-Za-z0-9_-]{16,120})\.(ics|json)$/);
-    const supplied = match ? match[1] : "";
-    const format = match ? match[2] : "";
-    if (!safeEqual(supplied, publicCalendarToken.value())) {
-      return res.status(404).set("Cache-Control", "no-store").send("Not found");
-    }
+    const scoped = path.match(/\/calendar\/([a-z0-9-]{3,32})\/([A-Za-z0-9_-]{16,120})\.(ics|json)$/);
+    const legacy = path.match(/\/calendar\/([A-Za-z0-9_-]{16,120})\.(ics|json)$/);
     try {
-      const documents = await upcomingTrips();
+      const agenda = scoped
+        ? await driverAgenda(scoped[1], scoped[2])
+        : legacy
+          ? await legacyAgenda(legacy[1])
+          : null;
+      if (!agenda) return res.status(404).set("Cache-Control", "no-store").send("Not found");
+      const format = scoped ? scoped[3] : legacy[2];
       if (format === "json") {
-        const trips = documents.map((doc) => publicTrip(doc.id, doc.data()));
+        const trips = agenda.documents.map((doc) => publicTrip(doc.id, doc.data()));
         return res.status(200)
           .set("Content-Type", "application/json; charset=utf-8")
           .set("Cache-Control", "public, max-age=30")
           .set("X-Content-Type-Options", "nosniff")
           .set("Referrer-Policy", "no-referrer")
-          .send(JSON.stringify({ trips }));
+          .send(JSON.stringify({ driver: { username: agenda.username, displayName: agenda.driver.displayName || agenda.username }, trips }));
       }
-      const events = documents.map((doc) => tripEvent(doc.id, doc.data()));
+      const events = agenda.documents.map((doc) => tripEvent(doc.id, doc.data()));
+      const calendarName = agenda.driver.displayName ? `Rota Certa — ${agenda.driver.displayName}` : "Rota Certa — Viagens";
       const body = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Rota Certa//Agenda Pública de Viagens//PT-BR",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        "X-WR-CALNAME:Rota Certa — Viagens",
+        `X-WR-CALNAME:${escapeIcs(calendarName)}`,
         ...events,
         "END:VCALENDAR",
         "",

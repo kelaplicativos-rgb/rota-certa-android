@@ -4,12 +4,30 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const driverUsername = (params.get("motorista") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+let driverDisplayName = "";
 let trip = null;
 let confirmedBooking = null;
+let pendingBooking = null;
 
 function show(id, visible = true) { $(id).classList.toggle("hidden", !visible); }
 function setError(message) { $("error").textContent = message; show("error", true); show("loading", false); }
 function formatDate(ms) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(ms)); }
+function formatDay(ms) { return new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(new Date(ms)).toUpperCase().replace(/\./g, ""); }
+function normalizeWhatsapp(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
+  return digits.length === 10 || digits.length === 11 ? `+55${digits}` : "";
+}
+function maskWhatsapp(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length > 11) digits = digits.slice(2);
+  digits = digits.slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0,2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0,2)}) ${digits.slice(2,6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0,2)}) ${digits.slice(2,7)}-${digits.slice(7)}`;
+}
 function orderedStops() { return [...(trip?.stops || [])].sort((a, b) => a.order - b.order); }
 
 function seatRange(item) {
@@ -28,12 +46,23 @@ function availableFor(fromIndex, toIndex) {
   return Math.max(0, available);
 }
 
+function fareFor(fromIndex, toIndex) {
+  if (!trip || fromIndex < 0 || toIndex <= fromIndex) return 0;
+  const stops = orderedStops();
+  return stops.slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+}
+
+function formatMoney(cents) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.max(0, Number(cents || 0)) / 100);
+}
+
 async function loadAgenda() {
-  if (agendaToken.length < 16) return setError("Link de agenda inválido.");
+  if (driverUsername.length < 3 || agendaToken.length < 16) return setError("Link de agenda inválido.");
   try {
-    const response = await fetch(`/calendar/${encodeURIComponent(agendaToken)}.json`, { headers: { Accept: "application/json" } });
+    const response = await fetch(`/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`, { headers: { Accept: "application/json" } });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
+    driverDisplayName = body.driver?.displayName || driverUsername;
     renderAgenda(Array.isArray(body.trips) ? body.trips : []);
   } catch (error) {
     setError(error.message || "Não foi possível carregar a agenda.");
@@ -43,6 +72,7 @@ async function loadAgenda() {
 function renderAgenda(trips) {
   show("loading", false);
   show("agenda", true);
+  $("driverName").textContent = driverDisplayName ? `Motorista: ${driverDisplayName}` : "";
   const container = $("agendaTrips");
   container.innerHTML = "";
   if (!trips.length) {
@@ -55,10 +85,11 @@ function renderAgenda(trips) {
   trips.forEach((item) => {
     const link = document.createElement("a");
     link.className = "agendaTrip";
-    link.href = `/?trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+    const owner = item.driverUsername || driverUsername;
+    link.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
     const route = document.createElement("div");
     route.className = "agendaRoute";
-    route.textContent = item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ");
+    route.textContent = `${formatDay(item.departureAtMillis)} — ${item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ")}`;
     const meta = document.createElement("div");
     meta.className = "agendaMeta";
     const range = seatRange(item);
@@ -72,8 +103,8 @@ function renderAgenda(trips) {
 }
 
 async function shareCalendarFeed() {
-  if (agendaToken.length < 16) return;
-  const url = `${location.origin}/calendar/${encodeURIComponent(agendaToken)}.ics`;
+  if (driverUsername.length < 3 || agendaToken.length < 16) return;
+  const url = `${location.origin}/calendar/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}.ics`;
   const payload = { title: "Rota Certa — Agenda de Viagens", text: "Calendário público somente com viagens publicadas.", url };
   try {
     if (navigator.share) {
@@ -95,10 +126,10 @@ function refreshSelectors() {
   const stops = orderedStops();
   const boarding = $("boarding");
   const dropoff = $("dropoff");
-  const fromIndex = Math.max(0, boarding.selectedIndex);
+  const fromIndex = stops.findIndex((stop) => stop.id === boarding.value);
   dropoff.innerHTML = "";
   stops.forEach((stop, index) => {
-    if (index <= fromIndex) return;
+    if (index <= fromIndex || availableFor(fromIndex, index) < 1) return;
     const option = document.createElement("option");
     option.value = stop.id;
     option.textContent = stop.name;
@@ -113,8 +144,23 @@ function refreshAvailability() {
   const fromIndex = stops.findIndex((s) => s.id === $("boarding").value);
   const toIndex = stops.findIndex((s) => s.id === $("dropoff").value);
   const available = availableFor(fromIndex, toIndex);
-  $("availability").textContent = `${available} lugar(es) disponível(is) neste trecho`;
-  $("reserve").disabled = available < Number($("seats").value || 1);
+  const farePerSeatCents = fareFor(fromIndex, toIndex);
+  const seatsInput = $("seats");
+  seatsInput.max = String(Math.max(1, available));
+  let requested = Number(seatsInput.value || 1);
+  if (!Number.isInteger(requested) || requested < 1) {
+    requested = 1;
+    seatsInput.value = "1";
+  }
+  if (available > 0 && requested > available) {
+    requested = available;
+    seatsInput.value = String(available);
+  }
+  const fareText = farePerSeatCents > 0 ? ` • ${formatMoney(farePerSeatCents)} por pessoa` : "";
+  $("availability").textContent = available > 0
+    ? `${available} lugar(es) disponível(is) neste trecho${fareText}`
+    : "Sem vagas neste trecho. Escolha outro embarque ou destino.";
+  $("reserve").disabled = available < 1 || requested > available || !$("dropoff").value;
 }
 
 async function loadTrip() {
@@ -134,6 +180,9 @@ function renderTrip() {
   show("loading", false);
   show("trip", true);
   show("booking", true);
+  show("cancelBooking", true);
+  driverDisplayName = trip.driverDisplayName || driverDisplayName || driverUsername;
+  $("driverName").textContent = driverDisplayName ? `Motorista: ${driverDisplayName}` : "";
   $("status").textContent = trip.status === "FULL" ? "Lotação por trechos" : "Reservas abertas";
   $("title").textContent = trip.title;
   $("departure").textContent = `Saída prevista: ${formatDate(trip.departureAtMillis)}`;
@@ -164,50 +213,147 @@ function renderTrip() {
     boarding.appendChild(option);
   });
   refreshSelectors();
+  restoreCancellation();
+  restoreExistingBooking();
+}
+
+function cancellationStorageKey() { return `rotacerta-booking-trip-${tripToken}`; }
+
+function restoreCancellation() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(cancellationStorageKey()) || "null"); } catch (_) {}
+  if (!saved?.bookingId || !saved?.cancellationToken) return;
+  $("cancelBookingId").value = saved.bookingId;
+  $("cancelToken").value = saved.cancellationToken;
+  show("cancelBooking", true);
+}
+
+function restoreExistingBooking() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(cancellationStorageKey()) || "null"); } catch (_) {}
+  if (!saved?.bookingId || !saved?.cancellationToken) return;
+  confirmedBooking = saved;
+  $("confirmationText").textContent = "Sua reserva já está confirmada neste aparelho.";
+  $("cancelCode").textContent = saved.cancellationToken;
+  show("confirmed", true);
+  show("booking", false);
+  show("review", false);
+}
+
+function requestIdentity(payload) {
+  const fingerprint = JSON.stringify(payload);
+  const key = `rotacerta-booking-intent-${tripToken}`;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) {}
+  if (saved?.fingerprint === fingerprint && saved?.idempotencyKey) return saved.idempotencyKey;
+  const idempotencyKey = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "_");
+  try { localStorage.setItem(key, JSON.stringify({ fingerprint, idempotencyKey })); } catch (_) {}
+  return idempotencyKey;
+}
+
+function reviewBooking() {
+  if (!trip) return;
+  const name = $("name").value.trim();
+  const passengerContact = normalizeWhatsapp($("contact").value);
+  const seats = Number($("seats").value || 0);
+  if (!name) return void ($("bookingMessage").textContent = "Informe seu nome.");
+  if (!passengerContact) return void ($("bookingMessage").textContent = "Informe seu WhatsApp com DDD.");
+  if (!$("boarding").value || !$("dropoff").value || seats < 1) return void ($("bookingMessage").textContent = "Escolha um trecho com vagas.");
+  pendingBooking = { passengerName: name, passengerContact, boardingStopId: $("boarding").value, dropoffStopId: $("dropoff").value, seats };
+  const stops = orderedStops();
+  const fromIndex = stops.findIndex((s) => s.id === pendingBooking.boardingStopId);
+  const toIndex = stops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
+  const from = stops[fromIndex]?.name || "Embarque";
+  const to = stops[toIndex]?.name || "Destino";
+  const farePerSeatCents = fareFor(fromIndex, toIndex);
+  const totalFareCents = farePerSeatCents * seats;
+  const fareText = farePerSeatCents > 0 ? ` • ${formatMoney(farePerSeatCents)} por pessoa • total ${formatMoney(totalFareCents)}` : "";
+  $("reviewText").textContent = `${formatDate(trip.departureAtMillis)} • ${from} → ${to} • ${seats} lugar(es)${fareText} • ${name}`;
+  show("review", true);
+  $("review").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function reserve() {
-  if (!trip) return;
-  const name = $("name").value.trim();
-  const contact = $("contact").value.trim();
-  const seats = Number($("seats").value || 1);
-  if (!name) {
-    $("bookingMessage").textContent = "Informe seu nome.";
-    return;
-  }
-  $("reserve").disabled = true;
-  $("bookingMessage").textContent = "Confirmando sem ultrapassar a capacidade do trecho…";
+  if (!trip || !pendingBooking) return;
+  $("confirmReserve").disabled = true;
+  $("reviewMessage").textContent = "Confirmando sua vaga…";
+  const idempotencyKey = requestIdentity(pendingBooking);
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        passengerName: name,
-        passengerContact: contact,
-        boardingStopId: $("boarding").value,
-        dropoffStopId: $("dropoff").value,
-        seats,
-      }),
+      headers: { "Content-Type": "application/json", Accept: "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ ...pendingBooking, idempotencyKey }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível reservar.");
     confirmedBooking = {
       bookingId: body.bookingId,
       cancellationToken: body.cancellationToken,
-      boardingStopId: $("boarding").value,
-      dropoffStopId: $("dropoff").value,
-      seats,
-    };
-    try { localStorage.setItem(`rotacerta-booking-${body.bookingId}`, JSON.stringify({ trip: tripToken, cancellationToken: body.cancellationToken })); } catch (_) {}
+      boardingStopId: pendingBooking.boardingStopId,
+      dropoffStopId: pendingBooking.dropoffStopId,
+        seats: pendingBooking.seats,
+        farePerSeatCents: Number(body.farePerSeatCents || 0),
+        totalFareCents: Number(body.totalFareCents || 0),
+      };
+    try {
+      localStorage.setItem(`rotacerta-booking-${body.bookingId}`, JSON.stringify({ trip: tripToken, cancellationToken: body.cancellationToken }));
+      localStorage.setItem(cancellationStorageKey(), JSON.stringify(confirmedBooking));
+    } catch (_) {}
+    $("cancelBookingId").value = body.bookingId;
+    $("cancelToken").value = body.cancellationToken;
     $("bookingMessage").textContent = "";
-    $("confirmationText").textContent = `Reserva ${body.bookingId} confirmada para ${seats} lugar(es).`;
+    $("reviewMessage").textContent = "";
+      const confirmedFare = Number(body.totalFareCents || 0) > 0 ? ` Valor total: ${formatMoney(body.totalFareCents)}.` : "";
+      $("confirmationText").textContent = body.replayed
+        ? `✅ Esta reserva já estava confirmada. Nenhuma duplicata foi criada.${confirmedFare}`
+        : `✅ Reserva confirmada para ${pendingBooking.seats} lugar(es).${confirmedFare}`;
     $("cancelCode").textContent = body.cancellationToken;
     show("confirmed", true);
     show("booking", false);
+    show("review", false);
+    show("cancelBooking", true);
     trip.segmentLoads = recomputeLoadsAfterBooking(trip.segmentLoads || [], confirmedBooking);
+    pendingBooking = null;
   } catch (error) {
-    $("bookingMessage").textContent = error.message || "Falha ao confirmar reserva.";
-    refreshAvailability();
+    $("reviewMessage").textContent = error.message || "Falha ao confirmar reserva.";
+    await loadTrip();
+  } finally {
+    $("confirmReserve").disabled = false;
+  }
+}
+
+async function cancelReservation() {
+  const bookingId = $("cancelBookingId").value.trim();
+  const cancellationToken = $("cancelToken").value.trim();
+  if (!tripToken || !bookingId || !cancellationToken) {
+    $("cancelMessage").textContent = "Informe a reserva e o código particular de cancelamento.";
+    return;
+  }
+  $("cancelReservation").disabled = true;
+  $("cancelMessage").textContent = "Cancelando e liberando as vagas do trecho…";
+  try {
+    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ cancellationToken }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
+    try {
+      localStorage.removeItem(cancellationStorageKey());
+      localStorage.removeItem(`rotacerta-booking-${bookingId}`);
+      localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+    } catch (_) {}
+    confirmedBooking = null;
+    $("cancelBookingId").value = "";
+    $("cancelToken").value = "";
+    $("cancelMessage").textContent = "Reserva cancelada. As vagas foram liberadas.";
+    show("confirmed", false);
+    await loadTrip();
+  } catch (error) {
+    $("cancelMessage").textContent = error.message || "Falha ao cancelar a reserva.";
+  } finally {
+    $("cancelReservation").disabled = false;
   }
 }
 
@@ -285,8 +431,13 @@ function downloadIcs() {
 
 $("boarding").addEventListener("change", refreshSelectors);
 $("dropoff").addEventListener("change", refreshAvailability);
+$("seats").addEventListener("input", refreshAvailability);
 $("seats").addEventListener("change", refreshAvailability);
-$("reserve").addEventListener("click", reserve);
+$("contact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("reserve").addEventListener("click", reviewBooking);
+$("confirmReserve").addEventListener("click", reserve);
+$("editReservation").addEventListener("click", () => show("review", false));
+$("cancelReservation").addEventListener("click", cancelReservation);
 $("googleCalendar").addEventListener("click", openGoogleCalendar);
 $("downloadIcs").addEventListener("click", downloadIcs);
 $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
