@@ -1,18 +1,18 @@
-name: Agenda 0.1.285 restore passenger card shortcuts
+name: Agenda 0.1.286 timeline card borders
 
 on:
   push:
     branches: [agent/agenda-ux-passenger-publisher-0.1.276]
     paths:
       - '.github/workflows/agenda-0282-all-accounts-direct-sync.yml'
-      - '.github/scripts/agenda_0285_restore_card_shortcuts.py'
+      - '.github/scripts/agenda_0286_timeline_card_border.py'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: agenda-0285-card-shortcuts-${{ github.ref }}
+  group: agenda-0286-timeline-card-border-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,33 +25,32 @@ jobs:
           fetch-depth: 0
           ref: agent/agenda-ux-passenger-publisher-0.1.276
 
-      - name: Prove shortcut regression baseline
+      - name: Prove border baseline
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'versionCode = 5577' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.284"' app/build.gradle.kts
-          grep -Fq 'onClick = { copyPassengerConfirmationMessage(context, entry, passenger) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          if grep -Fq '// 0.1.285: restored compact per-passenger shortcuts from the proven pre-regression row.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt; then
-            echo '0.1.285 shortcut restoration already present in baseline' >&2
+          grep -Fq 'versionCode = 5578' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.285"' app/build.gradle.kts
+          grep -Fq 'private fun TimelineEntryCard(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'colors = CardDefaults.cardColors(containerColor = cardColor),' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          if grep -Fq 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt; then
+            echo 'timeline card border already present in baseline' >&2
             exit 1
           fi
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
-      - name: Materialize minimal shortcut restoration
+      - name: Materialize minimal timeline card border
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/agenda_0285_restore_card_shortcuts.py
+          python3 .github/scripts/agenda_0286_timeline_card_border.py
           git diff --check
-          grep -Fq '// 0.1.285: restored compact per-passenger shortcuts from the proven pre-regression row.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'contentDescription = "Abrir viagem no BlaBlaCar"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'fareEditRow = passenger' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'copyPassengerFareValue(context, passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'copyPassengerConfirmationMessage(context, entry, passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'versionCode = 5578' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.285"' app/build.gradle.kts
+          grep -Fq 'import androidx.compose.foundation.BorderStroke' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '.padding(vertical = 6.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'shape = RoundedCornerShape(14.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'versionCode = 5579' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.286"' app/build.gradle.kts
 
       - name: Protect FAROL and scope
         shell: bash
@@ -59,7 +58,7 @@ jobs:
           set -euo pipefail
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           git diff --name-only | sort > /tmp/changed.txt
-          printf '%s\n' 'app/build.gradle.kts' 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt' | sort > /tmp/expected.txt
+          printf '%s\n' 'app/build.gradle.kts' 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' | sort > /tmp/expected.txt
           cmp /tmp/expected.txt /tmp/changed.txt
 
       - uses: actions/setup-java@v4
@@ -84,8 +83,8 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          git commit -m 'fix(agenda): restore passenger card shortcuts 0.1.285'
+          git add app/build.gradle.kts app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          git commit -m 'fix(agenda): add timeline card borders 0.1.286'
           git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
           git rev-parse HEAD | tee /tmp/source-head.txt
 
@@ -93,20 +92,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/agenda-0285
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0285/rota-certa-0.1.285-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0285/apk.sha256
-          cp /tmp/source-head.txt /tmp/agenda-0285/source-head.txt
+          mkdir -p /tmp/agenda-0286
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0286/rota-certa-0.1.286-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0286/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0286/source-head.txt
           printf '%s\n' \
-            'versionName=0.1.285' \
-            'versionCode=5578' \
-            'cause=per-passenger BlaBlaCar and fare shortcuts were removed by prior UI consolidations' \
-            'fix=restore BlaBlaCar publication and fare shortcuts inside every passenger row while preserving WhatsApp, passenger, confirmation and GPS actions' \
-            'farolUntouched=true' > /tmp/agenda-0285/version.txt
+            'versionName=0.1.286' \
+            'versionCode=5579' \
+            'cause=adjacent timeline cards had no visible outline or vertical separation' \
+            'fix=1dp outlineVariant border plus 14dp rounded shape and 6dp vertical spacing on TimelineEntryCard only' \
+            'seatSyncUntouched=true' \
+            'passengerShortcutsUntouched=true' \
+            'farolUntouched=true' > /tmp/agenda-0286/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.285-shortcuts-${{ github.sha }}
+          name: rota-certa-agenda-0.1.286-card-border-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
-          path: /tmp/agenda-0285
+          path: /tmp/agenda-0286
