@@ -1,0 +1,125 @@
+name: Agenda 0.1.290 manual passenger cancel restore
+
+on:
+  push:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/workflows/agenda-0290-manual-passenger-cancel-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0290-manual-passenger-cancel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-profile-card-colors-0.1.288
+
+      - name: Prove exact 0.1.289 Agenda baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5582' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.289"' app/build.gradle.kts
+          grep -Fq 'title = { Text("Passageiro Rota Certa") }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          ! grep -Fq 'Cancelar / excluir desta viagem' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'fun verifiedCancellationAddsSeatBack()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          test -f .github/scripts/agenda_0290_manual_passenger_cancel_restore.py
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Materialize cancellation and three-seat restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0290_manual_passenger_cancel_restore.py
+          git diff --check
+          grep -Fq 'versionCode = 5583' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.290"' app/build.gradle.kts
+          grep -Fq 'Cancelar / excluir desta viagem' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'Cancelar e devolver vaga(s)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'BlaBlaReliableSeatSyncBridge.onManualBookingCancelled(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'if (cancellation.shouldSync) onSyncExactCard?.invoke()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'fun threeSeatPrivateBookingReducesFourToOne()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          grep -Fq 'fun threeSeatCancellationRestoresOneToFour()' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          grep -Fq 'const button = current > target ? c.remove : c.add;' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'setTimeout(step, 280);' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+
+      - name: Protect FAROL and exact source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused seat regressions and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaReliableSeatSync0271Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test \
+            --tests br.com.mapeiaia.rotacerta.trips.TripTimelineExternalQuickPassengerStage47Test \
+            :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync0271Test.kt
+          git commit -m 'feat(agenda): cancel manual passenger and restore seats 0.1.290'
+          git push origin HEAD:agent/agenda-profile-card-colors-0.1.288
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Prepare APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0290
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0290/rota-certa-0.1.290-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0290/apk.sha256
+          cp /tmp/source-head.txt /tmp/agenda-0290/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.290' \
+            'versionCode=5583' \
+            'manualPassengerCancelFromCard=true' \
+            'manualPassengerProfilePreserved=true' \
+            'threeSeatDecrease=4_to_1' \
+            'threeSeatCancellationRestore=1_to_4' \
+            'reliableSeatTargetVerified=true' \
+            'farolUntouched=true' > /tmp/agenda-0290/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.290-cancel-restore-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0290
