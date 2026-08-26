@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -81,6 +82,7 @@ class DeviceLocationService(private val context: Context) {
     private val client = LocationServices.getFusedLocationProviderClient(context)
 
     /** Existing operational position lookup. A cached fix is acceptable for passive timeline progress. */
+    @SuppressLint("MissingPermission")
     suspend fun currentCoordinate(): Coordinate? {
         if (!hasLocationPermission()) return null
         val location = client
@@ -95,6 +97,7 @@ class DeviceLocationService(private val context: Context) {
      * Captures a reference point that may persist for days. A stale or very imprecise
      * cached fix is rejected instead of silently redefining the driver's origin.
      */
+    @SuppressLint("MissingPermission")
     suspend fun freshReferenceFix(
         maxAgeMillis: Long = 2L * 60L * 1_000L,
         maxAccuracyMeters: Float = 1_500f,
