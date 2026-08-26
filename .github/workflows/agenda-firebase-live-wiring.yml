@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: agenda-firebase-live-wiring-${{ github.ref }}
@@ -33,6 +34,27 @@ jobs:
         with:
           ref: agent/agenda-firebase-live-wiring
           fetch-depth: 0
+
+      - name: Authenticate to Google Cloud with Workload Identity
+        id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/353336964879/locations/global/workloadIdentityPools/rota-certa-github/providers/github-actions
+          service_account: rota-certa-github-deploy@rota-certa-7ccc8.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Verify Google Cloud authentication
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Confirm active Google Cloud identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          test "$ACTIVE_ACCOUNT" = "rota-certa-github-deploy@rota-certa-7ccc8.iam.gserviceaccount.com"
+          test "$(gcloud config get-value project 2>/dev/null)" = "rota-certa-7ccc8"
+          echo "workload_identity_auth=PASS"
 
       - uses: actions/setup-node@v4
         with:
