@@ -123,6 +123,29 @@ internal fun EnhancedPassengerTimelineSection(
                     )
                 }
 
+                // 0.1.285: restored compact per-passenger shortcuts from the proven pre-regression row.
+                externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {
+                    IconButton(
+                        onClick = {
+                            if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                                Toast.makeText(
+                                    context,
+                                    "Conta BlaBlaCar desta viagem não está conectada.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_blablacar_action),
+                            contentDescription = "Abrir viagem no BlaBlaCar",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+
                 TextButton(
                     onClick = {
                         val externalTarget = externalPassengerTarget(passenger)
@@ -148,6 +171,20 @@ internal fun EnhancedPassengerTimelineSection(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        if (passenger.fareMinorUnits != null) {
+                            copyPassengerFareValue(context, passenger)
+                        } else {
+                            fareEditRow = passenger
+                        }
+                    },
+                    contentPadding = COMPACT_ACTION_PADDING,
+                    modifier = Modifier.heightIn(min = 36.dp),
+                ) {
+                    Text("💰", maxLines = 1)
                 }
 
                 OutlinedButton(
