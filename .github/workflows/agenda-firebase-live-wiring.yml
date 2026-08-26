@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Validate JavaScript and Firebase contracts
         shell: bash
@@ -108,12 +108,33 @@ jobs:
           echo 'security_boundaries=PASS'
 
       - name: Deploy Firebase production
-        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): retry with firebase-tools 15.22.1' }}"
+        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): diagnose WIF and retry on Node 24' }}"
         shell: bash
         working-directory: trip-platform
         run: |
           set -euo pipefail
-          npx --yes firebase-tools@15.22.1 deploy \
+          CLI_DIR="$RUNNER_TEMP/firebase-cli"
+          mkdir -p "$CLI_DIR"
+          npm install --prefix "$CLI_DIR" firebase-tools@15.28.1 --ignore-scripts --no-audit --no-fund
+          node - "$CLI_DIR" <<'NODE'
+          const path = require('path');
+          const cliDir = process.argv[2];
+          const { GoogleAuth } = require(path.join(cliDir, 'node_modules', 'google-auth-library'));
+          (async () => {
+            const auth = new GoogleAuth({
+              scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+              projectId: 'rota-certa-7ccc8',
+            });
+            const token = await auth.getAccessToken();
+            if (!token) throw new Error('ADC returned no access token');
+            console.log('firebase_cli_adc=PASS');
+          })().catch((err) => {
+            console.error('firebase_cli_adc=FAIL', err && err.message ? err.message : String(err));
+            process.exit(1);
+          });
+          NODE
+          "$CLI_DIR/node_modules/.bin/firebase" deploy \
             --project rota-certa-7ccc8 \
             --only firestore:rules,functions,hosting \
-            --non-interactive
+            --non-interactive \
+            --debug
