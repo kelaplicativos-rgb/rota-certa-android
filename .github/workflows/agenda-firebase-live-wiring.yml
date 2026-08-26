@@ -108,7 +108,7 @@ jobs:
           echo 'security_boundaries=PASS'
 
       - name: Deploy Firebase production
-        if: github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): first production deploy'
+        if: "${{ github.event_name == 'push' && github.event.head_commit.message == 'deploy(firebase): production deploy retry' }}"
         shell: bash
         working-directory: trip-platform
         run: |
