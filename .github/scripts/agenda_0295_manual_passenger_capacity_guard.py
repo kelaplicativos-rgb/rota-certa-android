@@ -93,6 +93,7 @@ class ManualPassengerCapacityGuard0295Test {
         capacity = 4,
         minimumOccupiedSeats = 0,
         maximumOccupiedSeats = 0,
+        sourcePassengerSeats = emptyMap(),
         blablaTripId = "publication-295",
         blablaTripHref = "https://www.blablacar.com.br/rides/offer/publication-295",
         blablaProfileUuid = "11111111-1111-4111-8111-111111111111",
