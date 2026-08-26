@@ -1,0 +1,26 @@
+name: Agenda 0.1.296 public booking PR gate
+
+on:
+  pull_request:
+    branches:
+      - agent/agenda-profile-card-colors-0.1.288
+    paths:
+      - '.github/scripts/agenda_0296_public_booking.py'
+      - '.github/workflows/agenda-0296-public-booking.yml'
+      - '.github/workflows/agenda-0296-pr-trigger.yml'
+      - 'app/**'
+      - 'trip-platform/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-main-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record PR validation handoff
+        run: |
+          echo 'Public booking PR gate is active.'
+          echo 'The authoritative build remains agenda-0296-public-booking.yml on the work branch.'

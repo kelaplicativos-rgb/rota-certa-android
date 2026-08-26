@@ -67,6 +67,8 @@ data class PublicBookingRequest(
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
+    /** Stable per user intent so retries/double taps converge to one backend Booking. */
+    val idempotencyKey: String = "",
 )
 
 @Serializable

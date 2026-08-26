@@ -7,12 +7,13 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
   <title>Rota Certa — Agenda de Viagens</title>
   <style>
-    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#161616;background:#f4f5f7}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:0 auto;padding:24px 16px 56px}.brand{font-weight:800;font-size:14px;letter-spacing:.04em}.card{background:white;border-radius:18px;padding:18px;margin-top:14px;box-shadow:0 4px 18px #0000000c}.muted{color:#666;font-size:14px}.route{display:grid;gap:8px;margin-top:14px}.stop{padding-left:12px;border-left:3px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}label{font-size:13px;font-weight:700;display:grid;gap:6px}input,select,button{font:inherit;padding:12px;border-radius:12px;border:1px solid #c9cbd1;background:white}button{border:0;background:#171717;color:white;font-weight:750;cursor:pointer}.secondary{background:#eef0f3;color:#171717}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.error{color:#a50000}.success{color:#0b6b2c}.hidden{display:none}.availability{font-size:15px;font-weight:750;margin:12px 0}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef0f3;font-size:12px}.agendaTrip{display:block;color:inherit;text-decoration:none;border:1px solid #e1e3e7;border-radius:14px;padding:14px;margin-top:10px}.agendaTrip:hover{border-color:#9fa3aa}.agendaRoute{font-weight:750}.agendaMeta{margin-top:5px;color:#666;font-size:13px}h1{font-size:26px;margin:6px 0 0}h2{font-size:18px;margin:0 0 12px}</style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#161616;background:#f4f5f7}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:0 auto;padding:24px 16px 56px}.brand{font-weight:800;font-size:14px;letter-spacing:.04em}.card{background:white;border-radius:18px;padding:18px;margin-top:14px;box-shadow:0 4px 18px #0000000c}.muted{color:#666;font-size:14px}.route{display:grid;gap:8px;margin-top:14px}.stop{padding-left:12px;border-left:3px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}label{font-size:13px;font-weight:700;display:grid;gap:6px}input,select,button{font:inherit;padding:12px;border-radius:12px;border:1px solid #c9cbd1;background:white}button{border:0;background:#171717;color:white;font-weight:800;cursor:pointer;min-height:52px;font-size:16px}input,select{min-height:52px;font-size:17px}.bookingStep{font-size:20px;margin:18px 0 8px}.summary{font-size:17px;line-height:1.55;padding:12px;background:#f7f8fa;border-radius:12px}.secondary{background:#eef0f3;color:#171717}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.error{color:#a50000}.success{color:#0b6b2c}.hidden{display:none}.availability{font-size:15px;font-weight:750;margin:12px 0}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef0f3;font-size:12px}.agendaTrip{display:block;color:inherit;text-decoration:none;border:1px solid #e1e3e7;border-radius:14px;padding:14px;margin-top:10px}.agendaTrip:hover{border-color:#9fa3aa}.agendaRoute{font-weight:750}.agendaMeta{margin-top:5px;color:#666;font-size:13px}h1{font-size:26px;margin:6px 0 0}h2{font-size:18px;margin:0 0 12px}</style>
 </head>
 <body>
 <main>
   <div class="brand">ROTA CERTA</div>
   <h1>Agenda de Viagens</h1>
+  <p id="driverName" class="muted"></p>
   <p class="muted">Consulte somente as viagens publicadas pelo motorista. A agenda pessoal dele não é compartilhada.</p>
 
   <section id="loading" class="card">Carregando agenda…</section>
@@ -37,23 +38,44 @@
   </section>
 
   <section id="booking" class="card hidden">
-    <h2>Solicitar vaga</h2>
-    <div class="grid">
-      <label>Embarque<select id="boarding"></select></label>
-      <label>Desembarque<select id="dropoff"></select></label>
-    </div>
+    <h2>Reserve sua viagem</h2>
+    <p class="bookingStep"><strong>1. Onde você embarca?</strong></p>
+    <label>Embarque<select id="boarding"></select></label>
+    <p class="bookingStep"><strong>2. Onde você vai descer?</strong></p>
+    <label>Desembarque<select id="dropoff"></select></label>
     <div id="availability" class="availability"></div>
-    <div class="grid">
-      <label>Seu nome<input id="name" autocomplete="name" maxlength="120" required></label>
-      <label>Contato opcional<input id="contact" autocomplete="email" maxlength="180" placeholder="WhatsApp ou e-mail"></label>
-    </div>
-    <label style="margin-top:10px">Quantidade de lugares<select id="seats"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-    <div class="actions"><button id="reserve">Confirmar reserva</button></div>
+    <p class="bookingStep"><strong>3. Quantos lugares?</strong></p>
+    <label>Quantidade de lugares<input id="seats" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+    <p class="bookingStep"><strong>4. Seus dados</strong></p>
+    <label>Qual é o seu nome?<input id="name" autocomplete="name" maxlength="120" required></label>
+    <label style="margin-top:10px">Qual é o seu WhatsApp?<input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required></label>
+    <div class="actions"><button id="reserve">REVISAR RESERVA</button></div>
     <p id="bookingMessage" class="muted"></p>
   </section>
 
+  <section id="review" class="card hidden">
+    <h2>CONFIRME SUA VIAGEM</h2>
+    <p id="reviewText" class="summary"></p>
+    <div class="actions">
+      <button id="confirmReserve">CONFIRMAR RESERVA</button>
+      <button id="editReservation" class="secondary">Voltar e corrigir</button>
+    </div>
+    <p id="reviewMessage" class="muted"></p>
+  </section>
+
+  <section id="cancelBooking" class="card hidden">
+    <h2>Cancelar minha reserva</h2>
+    <p class="muted">Somente quem possui o número da reserva e o código particular recebido na confirmação consegue cancelar.</p>
+    <div class="grid">
+      <label>Número da reserva<input id="cancelBookingId" autocomplete="off"></label>
+      <label>Código particular<input id="cancelToken" autocomplete="off"></label>
+    </div>
+    <div class="actions"><button id="cancelReservation" class="secondary">Cancelar minha reserva</button></div>
+    <p id="cancelMessage" class="muted"></p>
+  </section>
+
   <section id="confirmed" class="card hidden">
-    <h2>Reserva confirmada</h2>
+    <h2>✅ RESERVA CONFIRMADA</h2>
     <p id="confirmationText" class="success"></p>
     <p class="muted">Guarde o código de cancelamento. Ele é particular e não aparece para outros passageiros.</p>
     <code id="cancelCode"></code>
@@ -61,6 +83,7 @@
       <button id="googleCalendar">Adicionar ao Google Agenda</button>
       <button id="downloadIcs" class="secondary">Baixar ICS</button>
     </div>
+    <p class="muted">O Google Agenda é um espelho opcional da viagem. Vagas, reservas e cancelamentos em tempo real são controlados pela Agenda Pública do Rota Certa.</p>
   </section>
 </main>
 <script src="/app.js" defer></script>

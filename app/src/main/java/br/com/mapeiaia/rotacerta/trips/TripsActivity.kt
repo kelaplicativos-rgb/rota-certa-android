@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
@@ -87,6 +88,15 @@ private fun TripApp(
         trips = store.trips()
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+        if (result.importedCount > 0) {
+            refresh()
+            message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
+            if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+        }
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -350,6 +360,28 @@ private fun TripCard(
                     OutlinedButton(onClick = { TripCalendarBridge.shareIcs(activity, trip) }) { Text("ICS") }
                 }
                 val settings = store.onlineSettings()
+                if (trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
+                    OutlinedButton(onClick = {
+                        val next = trip.copy(publicBookingEnabled = !trip.publicBookingEnabled)
+                        store.saveTrip(next)
+                        if (settings.configured && next.remoteId != null) {
+                            scope.launch {
+                                runCatching { TripRemoteApi(settings).update(next) }
+                                    .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
+                                    .onFailure { onChanged("Estado salvo no Rota Certa, mas ainda não sincronizado online: ${it.message}") }
+                            }
+                        } else {
+                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. Publique/sincronize online para compartilhar." else "Reservas pelo link desativadas.")
+                        }
+                    }) { Text(if (trip.publicBookingEnabled) "Reservas pelo link: ATIVADAS" else "Reservas pelo link: DESATIVADAS") }
+                    if (trip.publicBookingEnabled && !trip.publicUrl.isNullOrBlank()) {
+                        OutlinedButton(onClick = {
+                            if (!TripPublicBookingLink0296.share(activity, trip.publicUrl.orEmpty())) {
+                                onChanged("Link público ainda não está disponível.")
+                            }
+                        }) { Text("📲 Compartilhar reservas") }
+                    }
+                }
                 if (settings.configured && trip.status != TripStatus.DRAFT && trip.status != TripStatus.CANCELLED) {
                     Button(onClick = {
                         scope.launch {
@@ -472,6 +504,8 @@ private fun OnlineSettingsEditor(
     onSave: (TripOnlineSettings) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val linkedProfiles = remember(context) { BlaBlaDynamicAccountRegistry(context).list() }
     var api by remember { mutableStateOf(initial.apiBaseUrl) }
     var publicBase by remember { mutableStateOf(initial.publicBaseUrl) }
     var token by remember { mutableStateOf(initial.driverToken) }
@@ -483,6 +517,11 @@ private fun OnlineSettingsEditor(
     val registrationScope = rememberCoroutineScope()
     Text("Integração online", style = MaterialTheme.typography.titleLarge)
     Text("Sem essas credenciais, nenhuma informação é enviada para servidor algum. O módulo local continua operacional.")
+    Text("Conta do motorista", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Existe uma única conta de motorista. A chave privada, o token público e o link da agenda pertencem ao motorista e valem para todos os perfis vinculados.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     OutlinedTextField(api, { api = it.trim() }, label = { Text("API HTTPS") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(publicBase, { publicBase = it.trim() }, label = { Text("URL pública") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverName, { driverName = it }, label = { Text("Nome público do motorista") }, modifier = Modifier.fillMaxWidth())
@@ -501,6 +540,36 @@ private fun OnlineSettingsEditor(
         label = { Text("Token público da agenda de viagens") },
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(4.dp))
+    Text("Perfis vinculados", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Um motorista pode usar vários perfis. Cada perfil mantém sua identidade, sua posição e suas viagens de forma independente.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (linkedProfiles.isEmpty()) {
+        Text("Nenhum perfil BlaBlaCar vinculado neste aparelho.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        linkedProfiles.forEach { profile ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(profile.displayLabel, style = MaterialTheme.typography.titleSmall)
+                    val identityStatus = when {
+                        !profile.profileName.isNullOrBlank() && !profile.profileUuid.isNullOrBlank() -> "${profile.profileName} • identidade vinculada"
+                        !profile.profileUuid.isNullOrBlank() -> "Identidade vinculada"
+                        else -> "Perfil aguardando confirmação de identidade"
+                    }
+                    Text(identityStatus, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+    Text(
+        "Vincular outro perfil não cria outro motorista e não gera outra chave privada ou outro token da agenda.",
+        style = MaterialTheme.typography.bodySmall,
     )
     registrationMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (token.isBlank()) {
