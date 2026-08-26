@@ -218,7 +218,9 @@ fun BlaBlaCollectorPanel(
     fun launchPendingSeatSync(origin: String): Boolean {
         val (pending, target) = pendingSeatTarget() ?: return false
         manualSeatSyncing = true
-        message = if (pending.seatDelta < 0) {
+        message = pending.desiredPublishedSeats?.let { desired ->
+            "Sincronizando somente as vagas desta publicação • alvo atual: $desired…"
+        } ?: if (pending.seatDelta < 0) {
             "Ajustando ${-pending.seatDelta} vaga(s) na publicação correta…"
         } else {
             "Devolvendo ${pending.seatDelta} vaga(s) à publicação correta…"
@@ -227,9 +229,9 @@ fun BlaBlaCollectorPanel(
         UnifiedDebugEventStore.record(
             "EXTERNAL_SEAT_SYNC_RELIABLE_LAUNCH",
             context.packageName,
-            "origin=$origin request=${pending.id} delta=${pending.seatDelta} profileUuidPresent=true tripIdPresent=true",
+            "origin=$origin request=${pending.id} delta=${pending.seatDelta} desired=${pending.desiredPublishedSeats ?: -1} profileUuidPresent=true tripIdPresent=true",
         )
-        seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target))
+        seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target, pending.id))
         return true
     }
 

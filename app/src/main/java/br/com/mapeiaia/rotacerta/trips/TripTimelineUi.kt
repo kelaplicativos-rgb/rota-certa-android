@@ -150,10 +150,20 @@ fun TripTimelineScreen(
         formatter = formatter,
         onChanged = onChanged,
         onNewTrip = onCreateTrip,
-        onTargetSync = { profileUuid ->
-            autoSyncProfileUuid = profileUuid
-            autoSyncTripId = null
-            onRequestBlaBlaSync()
+        onTargetSync = { entry, selectedTrip ->
+            val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+                context = context,
+                entry = entry,
+                trip = selectedTrip,
+                store = store,
+                reason = "automatic_global_passenger_change",
+            )
+            onChanged(result.message)
+            if (result.shouldSync) {
+                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
+                autoSyncTripId = null
+                onRequestBlaBlaSync()
+            }
         },
     )
 
@@ -573,7 +583,7 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
-            val occupied = entry.maximumOccupiedSeats
+            val occupied = seatPlan?.loads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
                     val free = (entry.capacity - occupied).coerceAtLeast(0)

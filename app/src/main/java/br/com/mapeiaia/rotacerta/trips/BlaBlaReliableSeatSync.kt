@@ -173,12 +173,17 @@ internal class BlaBlaPublicationSeatSyncStateStore(context: Context) {
         )
     }
 
-    fun markSynced(profileUuid: String, tripId: String, value: Int) = mutate(profileUuid, tripId) { current ->
+    fun markSynced(
+        profileUuid: String,
+        tripId: String,
+        value: Int,
+        message: String = "Vagas sincronizadas ✅",
+    ) = mutate(profileUuid, tripId) { current ->
         (current ?: BlaBlaPublicationSeatSyncState(profileUuid, tripId)).copy(
             desiredPublishedSeats = current?.desiredPublishedSeats ?: value,
             lastObservedPublishedSeats = value,
             state = BlaBlaPublicationSeatSyncVisualState.SYNCED,
-            message = "Vagas sincronizadas ✅",
+            message = message,
             updatedAtMillis = System.currentTimeMillis(),
         )
     }
@@ -246,6 +251,20 @@ internal object BlaBlaReliableSeatQueuePolicy {
         hasPersistedAttempt: (String) -> Boolean,
     ): BlaBlaManualSeatSyncRequest? =
         queue.firstOrNull { !hasPersistedAttempt(it.id) } ?: queue.firstOrNull()
+}
+
+internal object BlaBlaReliableSeatRequestSelector {
+    /**
+     * If the launcher supplied an id, only that exact request is valid.
+     * The legacy first-item fallback is retained only for callers without an id.
+     */
+    fun select(
+        queue: List<BlaBlaManualSeatSyncRequest>,
+        requestId: String?,
+    ): BlaBlaManualSeatSyncRequest? {
+        val exactId = requestId?.trim()?.takeIf(String::isNotEmpty)
+        return if (exactId == null) queue.firstOrNull() else queue.firstOrNull { it.id == exactId }
+    }
 }
 
 /** Pure retry/idempotency policy used by the Activity and unit tests. */
@@ -597,9 +616,15 @@ object BlaBlaReliableSeatSyncBridge {
 }
 
 object BlaBlaReliableSeatSyncIntents {
-    fun seatSync(context: Context, account: BlaBlaDynamicAccount): Intent =
-        Intent(context, BlaBlaReliableSeatSyncActivity::class.java)
-            .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
+    const val EXTRA_REQUEST_ID = "blablacar_seat_sync_request_id"
+
+    fun seatSync(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        requestId: String? = null,
+    ): Intent = Intent(context, BlaBlaReliableSeatSyncActivity::class.java)
+        .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
+        .apply { requestId?.trim()?.takeIf(String::isNotEmpty)?.let { putExtra(EXTRA_REQUEST_ID, it) } }
 }
 
 /**
@@ -641,8 +666,14 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             finishPending("Conta BlaBlaCar não encontrada.", rotate = false)
             return
         }
-        request = requestStore.peek() ?: run {
-            finishPending("Nenhuma sincronização manual pendente.", rotate = false)
+        val requestedId = intent?.getStringExtra(BlaBlaReliableSeatSyncIntents.EXTRA_REQUEST_ID)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+        request = BlaBlaReliableSeatRequestSelector.select(requestStore.list(), requestedId) ?: run {
+            finishPending(
+                if (requestedId == null) "Nenhuma sincronização manual pendente." else "A sincronização selecionada não está mais pendente.",
+                rotate = false,
+            )
             return
         }
         if (!account.profileUuid.equals(request.profileUuid, ignoreCase = true)) {
@@ -660,6 +691,13 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         }
         if (desiredPublishedSeats != null) {
             publicationSeatStateStore.markSyncing(request.profileUuid, request.tripId, desiredPublishedSeats)
+        }
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            finishPending(
+                "O Android System WebView não oferece o perfil autenticado isolado desta conta; nenhuma vaga foi alterada.",
+                rotate = true,
+            )
+            return
         }
 
         val ledgerEntry = if (desiredPublishedSeats == null) ledger.entry(request.localBookingId) else null
@@ -904,8 +942,14 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     }
 
     private fun completeVerified(afterSeats: Int, alreadyApplied: Boolean) {
-        if (request.desiredPublishedSeats != null) {
-            publicationSeatStateStore.markSynced(request.profileUuid, request.tripId, afterSeats)
+        val desiredRequest = request.desiredPublishedSeats != null
+        val verifiedMessage = if (desiredRequest && alreadyApplied) {
+            "Nenhuma alteração necessária ✅ • $afterSeats vaga(s) já publicadas"
+        } else {
+            "Vagas sincronizadas ✅ • $afterSeats vaga(s) publicadas"
+        }
+        if (desiredRequest) {
+            publicationSeatStateStore.markSynced(request.profileUuid, request.tripId, afterSeats, verifiedMessage)
         } else if (request.seatDelta < 0) {
             ledger.markVerifiedDecrease(request)
         } else {
@@ -923,7 +967,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             RESULT_OK,
             Intent()
                 .putExtra(BlaBlaManualSeatAutomationIntents.EXTRA_ACCOUNT_ID, account.id)
-                .putExtra("seat_sync_message", "Sincronizado externamente ✅ • $afterSeats vaga(s) publicadas"),
+                .putExtra("seat_sync_message", verifiedMessage),
         )
         finish()
     }

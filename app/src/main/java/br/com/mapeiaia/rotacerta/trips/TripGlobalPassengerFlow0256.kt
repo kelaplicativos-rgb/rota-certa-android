@@ -396,7 +396,7 @@ internal fun GlobalPassengerFlowPanel(
     formatter: DateTimeFormatter,
     onChanged: (String) -> Unit,
     onNewTrip: () -> Unit,
-    onTargetSync: (String?) -> Unit,
+    onTargetSync: (TripTimelineEntry, Trip) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     var chooseTrip by remember { mutableStateOf(false) }
@@ -439,7 +439,7 @@ internal fun GlobalPassengerFlowPanel(
                             store = store,
                             onChanged = onChanged,
                             onBlaBlaSyncRequested = if (timelineStrongExternalTripKey(entry) != null) {
-                                { onTargetSync(canonicalTimelineProfileUuid(entry)) }
+                                { onTargetSync(entry, trip) }
                             } else null,
                             externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
                             onSaved = { open = false },

@@ -48,6 +48,15 @@ data class BlaBlaManualSeatSyncRequest(
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
+internal object BlaBlaDesiredSeatQueuePolicy {
+    fun replacePublication(
+        current: List<BlaBlaManualSeatSyncRequest>,
+        request: BlaBlaManualSeatSyncRequest,
+    ): List<BlaBlaManualSeatSyncRequest> = current.filterNot { queued ->
+        queued.profileUuid.equals(request.profileUuid, ignoreCase = true) && queued.tripId == request.tripId
+    } + request
+}
+
 class BlaBlaManualSeatSyncRequestStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -55,6 +64,8 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
     fun list(): List<BlaBlaManualSeatSyncRequest> = runCatching {
         json.decodeFromString<List<BlaBlaManualSeatSyncRequest>>(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
     }.getOrDefault(emptyList())
+
+    fun get(id: String): BlaBlaManualSeatSyncRequest? = list().firstOrNull { it.id == id }
 
     fun peek(): BlaBlaManualSeatSyncRequest? = list().firstOrNull()
 
@@ -68,9 +79,7 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
         val stale = current.filter { queued ->
             queued.profileUuid.equals(request.profileUuid, ignoreCase = true) && queued.tripId == request.tripId
         }
-        save(current.filterNot { queued ->
-            queued.profileUuid.equals(request.profileUuid, ignoreCase = true) && queued.tripId == request.tripId
-        } + request)
+        save(BlaBlaDesiredSeatQueuePolicy.replacePublication(current, request))
         return stale.map(BlaBlaManualSeatSyncRequest::id)
     }
 
