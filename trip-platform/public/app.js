@@ -56,6 +56,18 @@ function formatMoney(cents) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.max(0, Number(cents || 0)) / 100);
 }
 
+async function protectedPublicFetch(url, options) {
+  const security = window.RotaCertaFirebaseSecurity;
+  if (!security || !security.fetchProtected) {
+    throw new Error("Não foi possível iniciar a validação de segurança deste navegador.");
+  }
+  try {
+    return await security.fetchProtected(url, options);
+  } catch (_) {
+    throw new Error("Não foi possível validar este navegador. Atualize a página e tente novamente.");
+  }
+}
+
 async function loadAgenda() {
   if (driverUsername.length < 3 || agendaToken.length < 16) return setError("Link de agenda inválido.");
   try {
@@ -279,7 +291,7 @@ async function reserve() {
   $("reviewMessage").textContent = "Confirmando sua vaga…";
   const idempotencyKey = requestIdentity(pendingBooking);
   try {
-    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
+    const response = await protectedPublicFetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ ...pendingBooking, idempotencyKey }),
@@ -332,7 +344,7 @@ async function cancelReservation() {
   $("cancelReservation").disabled = true;
   $("cancelMessage").textContent = "Cancelando e liberando as vagas do trecho…";
   try {
-    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+    const response = await protectedPublicFetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ cancellationToken }),
