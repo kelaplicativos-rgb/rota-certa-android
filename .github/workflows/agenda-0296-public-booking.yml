@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/agenda-0296-public-booking.yml'
       - '.github/scripts/agenda_0296_public_booking.py'
+      - '.github/scripts/agenda_0296_multi_profile_driver_ui.py'
   workflow_dispatch:
 
 permissions:
@@ -40,11 +41,12 @@ jobs:
           grep -Fq 'allow read, write: if false' trip-platform/firestore.rules
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
-      - name: Materialize public booking extension
+      - name: Materialize public booking and one-driver multi-profile settings
         shell: bash
         run: |
           set -euo pipefail
           python3 .github/scripts/agenda_0296_public_booking.py
+          python3 .github/scripts/agenda_0296_multi_profile_driver_ui.py
           git diff --check
           grep -Fq 'versionCode = 5589' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.296"' app/build.gradle.kts
@@ -52,6 +54,10 @@ jobs:
           grep -Fq 'PublicBookingRemoteSync0296' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           grep -Fq 'idempotencyFingerprint' trip-platform/functions/index.js
           grep -Fq 'CONFIRME SUA VIAGEM' trip-platform/public/index.html
+          grep -Fq 'Text("Conta do motorista"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Text("Perfis vinculados"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'BlaBlaDynamicAccountRegistry(context).list()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'não gera outra chave privada ou outro token da agenda' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
 
       - name: Protect FAROL and exact implementation scope
         shell: bash
@@ -122,7 +128,7 @@ jobs:
                   trip-platform/functions/test/public-booking-0296.test.js \
                   trip-platform/public/app.js \
                   trip-platform/public/index.html
-          git commit -m 'feat(agenda): add safe public passenger booking 0.1.296'
+          git commit -m 'feat(agenda): add safe public booking and linked profiles 0.1.296'
           git push origin HEAD:agent/agenda-public-booking-0.1.296
           git rev-parse HEAD | tee /tmp/source-head.txt
 
@@ -148,6 +154,13 @@ jobs:
             'publicTripToken=true' \
             'automaticRemoteBookingPull=true' \
             'existingSeatSyncEngineReused=true' \
+            'onePhysicalDriver=true' \
+            'linkedProfilesDynamic=true' \
+            'driverPrivateKeySharedAcrossProfiles=true' \
+            'publicAgendaTokenSharedAcrossProfiles=true' \
+            'profileIdentityIndependent=true' \
+            'profilePositionIndependent=true' \
+            'profileTripsIndependent=true' \
             'firestoreDirectAccessDenied=true' \
             'firebaseProductionDeployNotPerformed=true' \
             'physicalTestPending=true' \
