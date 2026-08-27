@@ -6,6 +6,9 @@ const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const driverUsername = (params.get("motorista") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
 const portalMode = params.get("portal") === "1";
+const requestedBoardingStopId = (params.get("embarque") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-9_-]/g, "");
+const requestedSeats = Math.max(1, Math.min(9, Number(params.get("lugares") || 1) || 1));
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -16,6 +19,27 @@ let editingExistingBooking = false;
 let passengerSessionToken = (() => {
   try { return localStorage.getItem("rotacerta-passenger-session") || ""; } catch (_) { return ""; }
 })();
+let passengerSessionContact = (() => {
+  try { return localStorage.getItem("rotacerta-passenger-contact") || ""; } catch (_) { return ""; }
+})();
+let agendaTripsCache = [];
+let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agenda");
+let locationPickerTarget = "from";
+let calendarPickerTarget = "departure";
+let seatPickerDraft = 1;
+
+function localTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+const searchState = {
+  from: "",
+  to: "",
+  departure: localTodayKey(),
+  returnDate: "",
+  seats: 1,
+};
 
 const publicDebugSessionId = (() => {
   try {
@@ -57,7 +81,7 @@ function tracePublicAction(event, details = {}) {
   } catch (_) {}
 }
 
-const mainSections = ["agenda", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
+const mainSections = ["accessGate", "agenda", "locationPicker", "calendarPicker", "seatPicker", "searchResults", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
 
 function show(id, visible = true) {
   const node = $(id);
@@ -205,13 +229,141 @@ function defaultDriverMessage() {
   return `Olá, ${driverDisplayName || "motorista"}. Estou falando pela Agenda Pública do Rota Certa sobre a viagem ${from} → ${to}, ${formatDate(trip.departureAtMillis)}.`;
 }
 
+
+function authenticatedHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (passengerSessionToken) headers.Authorization = `Bearer ${passengerSessionToken}`;
+  return headers;
+}
+
+function savePassengerContact(contact) {
+  passengerSessionContact = normalizeWhatsapp(contact || "");
+  try {
+    if (passengerSessionContact) localStorage.setItem("rotacerta-passenger-contact", passengerSessionContact);
+    else localStorage.removeItem("rotacerta-passenger-contact");
+  } catch (_) {}
+}
+
+function updateAuthenticatedChrome() {
+  show("openPassengerPortal", Boolean(passengerSessionToken));
+}
+
+function showAccessGate(destination = pendingAuthDestination, message = "") {
+  pendingAuthDestination = destination || "agenda";
+  showOnly("accessGate");
+  updateAuthenticatedChrome();
+  show("accessLoginBox", true);
+  show("accessSignupBox", false);
+  $("accessMessage").textContent = message;
+  if (passengerSessionContact && !$("accessContact").value) $("accessContact").value = maskWhatsapp(passengerSessionContact);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function validatePassengerSession() {
+  if (!passengerSessionToken) return false;
+  try {
+    const response = await fetch("/v1/passenger/me", { headers: authenticatedHeaders({ Accept: "application/json" }) });
+    const body = await response.json();
+    if (!response.ok) {
+      savePassengerSession("");
+      savePassengerContact("");
+      return false;
+    }
+    savePassengerContact(body.passengerContact || passengerSessionContact);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function continueAfterAuthentication() {
+  updateAuthenticatedChrome();
+  if (pendingAuthDestination === "portal") return openPassengerPortal();
+  if (pendingAuthDestination === "trip" && tripToken) return loadTrip();
+  if (agendaToken) return loadAgenda();
+  return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+}
+
+async function loginAccessGate() {
+  const passengerContact = normalizeWhatsapp($("accessContact").value);
+  const password = $("accessPassword").value;
+  if (!passengerContact || password.length < 8) {
+    $("accessMessage").textContent = "Informe seu WhatsApp com DDD e sua senha.";
+    return;
+  }
+  $("accessLogin").disabled = true;
+  $("accessMessage").textContent = "Entrando…";
+  try {
+    const response = await fetch("/v1/passenger/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ passengerContact, password }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
+    savePassengerSession(body.sessionToken);
+    savePassengerContact(body.passengerContact || passengerContact);
+    $("accessPassword").value = "";
+    await continueAfterAuthentication();
+  } catch (error) {
+    $("accessMessage").textContent = error.message || "Falha ao entrar.";
+  } finally {
+    $("accessLogin").disabled = false;
+  }
+}
+
+function openSignupGate() {
+  const current = normalizeWhatsapp($("accessContact").value);
+  if (current) $("signupContact").value = maskWhatsapp(current);
+  show("accessLoginBox", false);
+  show("accessSignupBox", true);
+  $("signupMessage").textContent = "";
+}
+
+function backToLoginGate() {
+  const current = normalizeWhatsapp($("signupContact").value);
+  if (current) $("accessContact").value = maskWhatsapp(current);
+  show("accessSignupBox", false);
+  show("accessLoginBox", true);
+  $("accessMessage").textContent = "";
+}
+
+async function signupAccessGate() {
+  const passengerContact = normalizeWhatsapp($("signupContact").value);
+  const password = $("signupPassword").value;
+  const confirmation = $("signupPasswordConfirm").value;
+  if (!passengerContact) return void ($("signupMessage").textContent = "Informe seu WhatsApp com DDD.");
+  if (password.length < 8 || password.length > 72) return void ($("signupMessage").textContent = "Use uma senha de 8 a 72 caracteres.");
+  if (password !== confirmation) return void ($("signupMessage").textContent = "As duas senhas precisam ser iguais.");
+  $("accessSignup").disabled = true;
+  $("signupMessage").textContent = "Criando seu acesso…";
+  try {
+    const response = await fetch("/v1/passenger/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ passengerContact, password }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível criar o acesso.");
+    savePassengerSession(body.sessionToken);
+    savePassengerContact(body.passengerContact || passengerContact);
+    $("signupPassword").value = "";
+    $("signupPasswordConfirm").value = "";
+    await continueAfterAuthentication();
+  } catch (error) {
+    $("signupMessage").textContent = error.message || "Falha ao criar o acesso.";
+  } finally {
+    $("accessSignup").disabled = false;
+  }
+}
+
 async function loadAgenda() {
   if (driverUsername.length < 3 || agendaToken.length < 16) return setError("Link de agenda inválido.");
   let statusCode = 0;
   try {
     const response = await fetch(
       `/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`,
-      { headers: { Accept: "application/json" } },
+      { headers: authenticatedHeaders({ Accept: "application/json" }) },
     );
     statusCode = response.status;
     const body = await response.json();
@@ -219,7 +371,8 @@ async function loadAgenda() {
     driverProfile = body.driver || {};
     driverDisplayName = driverProfile.displayName || driverUsername;
     tracePublicAction("PUBLIC_AGENDA_LOADED", { statusCode });
-    renderAgenda(Array.isArray(body.trips) ? body.trips : []);
+    agendaTripsCache = Array.isArray(body.trips) ? body.trips : [];
+    renderAgenda(agendaTripsCache);
   } catch (error) {
     tracePublicAction("PUBLIC_AGENDA_LOAD_FAILED", { statusCode, reason: "client_load_error" });
     setError(error.message || "Não foi possível carregar a agenda.");
