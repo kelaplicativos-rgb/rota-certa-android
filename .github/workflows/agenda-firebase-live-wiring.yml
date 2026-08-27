@@ -1,0 +1,166 @@
+name: Agenda Firebase live wiring
+
+on:
+  push:
+    branches:
+      - agent/agenda-firebase-live-wiring
+    paths:
+      - 'trip-platform/**'
+      - '.github/workflows/agenda-firebase-live-wiring.yml'
+      - 'docs/AGENDA_FIREBASE_LIVE_WIRING.md'
+  pull_request:
+    branches:
+      - agent/agenda-public-booking-0.1.296
+    paths:
+      - 'trip-platform/**'
+      - '.github/workflows/agenda-firebase-live-wiring.yml'
+      - 'docs/AGENDA_FIREBASE_LIVE_WIRING.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: agenda-firebase-live-wiring-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-firebase-live-wiring
+          fetch-depth: 0
+
+      - name: Authenticate to Google Cloud with Workload Identity
+        id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/353336964879/locations/global/workloadIdentityPools/rota-certa-github/providers/github-actions
+          service_account: rota-certa-github-deploy@rota-certa-7ccc8.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Verify Google Cloud authentication
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Confirm active Google Cloud identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          test "$ACTIVE_ACCOUNT" = "rota-certa-github-deploy@rota-certa-7ccc8.iam.gserviceaccount.com"
+          test "$(gcloud config get-value project 2>/dev/null)" = "rota-certa-7ccc8"
+          echo "workload_identity_auth=PASS"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate JavaScript and Firebase contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/calendar-functions/index.js
+          node --check trip-platform/public/app.js
+          node --check trip-platform/public/firebase-security.js
+          node --test trip-platform/functions/test/*.test.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('trip-platform/firebase.json').read_text())
+          rc=json.loads(Path('trip-platform/.firebaserc').read_text())
+          assert rc['projects']['default']=='rota-certa-7ccc8'
+          assert cfg['hosting']['public']=='public'
+          assert any(r.get('source')=='/v1/**' for r in cfg['hosting']['rewrites'])
+          assert any(r.get('source')=='/calendar/**' for r in cfg['hosting']['rewrites'])
+          print('firebase_source_contract=PASS')
+          PY
+
+      - name: Resolve Firebase backend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix trip-platform/functions --ignore-scripts --no-audit --no-fund
+          npm install --prefix trip-platform/calendar-functions --ignore-scripts --no-audit --no-fund
+          (
+            cd trip-platform/functions
+            node -e "require('firebase-admin/app-check'); require('firebase-admin/auth'); console.log('firebase_admin_security_modules=PASS')"
+          )
+
+      - name: Prove security boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'allow read, write: if false' trip-platform/firestore.rules
+          grep -Fq 'getAppCheck().verifyToken(appCheckToken)' trip-platform/functions/index.js
+          grep -Fq 'getAuth().verifyIdToken(match[1])' trip-platform/functions/index.js
+          grep -Fq '1:353336964879:web:e7e6924d865a221d99f07a' trip-platform/functions/index.js
+          grep -Fq 'ReCaptchaEnterpriseProvider' trip-platform/public/firebase-security.js
+          grep -Fq 'signInAnonymously()' trip-platform/public/firebase-security.js
+          grep -Fq '/__/firebase/init.js' trip-platform/public/index.html
+          ! grep -R -E 'AIza[0-9A-Za-z_-]{20,}' trip-platform/public
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          echo 'security_boundaries=PASS'
+
+      - name: Ensure Cloud Functions service identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_NUMBER="353336964879"
+          SERVICE="cloudfunctions.googleapis.com"
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "x-goog-user-project: rota-certa-7ccc8" \
+            "https://serviceusage.googleapis.com/v1beta1/projects/$PROJECT_NUMBER/services/$SERVICE:generateServiceIdentity" \
+            -d '{}')"
+          python3 - "$RESPONSE" <<'PY'
+          import json, sys
+          data=json.loads(sys.argv[1])
+          email=(data.get("response") or {}).get("email","")
+          expected="service-353336964879@gcf-admin-robot.iam.gserviceaccount.com"
+          if email and email != expected:
+              raise SystemExit(f"unexpected Cloud Functions service identity: {email}")
+          print("cloud_functions_service_identity=REQUESTED")
+          PY
+          sleep 10
+
+      - name: Deploy Firebase production
+        if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'deploy(firebase):') }}"
+        shell: bash
+        working-directory: trip-platform
+        run: |
+          set -euo pipefail
+          CLI_DIR="$RUNNER_TEMP/firebase-cli"
+          mkdir -p "$CLI_DIR"
+          npm install --prefix "$CLI_DIR" firebase-tools@15.28.1 --ignore-scripts --no-audit --no-fund
+          node - "$CLI_DIR" <<'NODE'
+          const path = require('path');
+          const cliDir = process.argv[2];
+          const { GoogleAuth } = require(path.join(cliDir, 'node_modules', 'google-auth-library'));
+          (async () => {
+            const auth = new GoogleAuth({
+              scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+              projectId: 'rota-certa-7ccc8',
+            });
+            const token = await auth.getAccessToken();
+            if (!token) throw new Error('ADC returned no access token');
+            console.log('firebase_cli_adc=PASS');
+          })().catch((err) => {
+            console.error('firebase_cli_adc=FAIL', err && err.message ? err.message : String(err));
+            process.exit(1);
+          });
+          NODE
+          "$CLI_DIR/node_modules/.bin/firebase" deploy \
+            --project rota-certa-7ccc8 \
+            --only firestore:rules,functions,hosting \
+            --non-interactive \
+            --force \
+            --debug

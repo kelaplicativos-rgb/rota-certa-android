@@ -105,6 +105,10 @@ internal class BlaBlaManualSeatSyncAttemptStore(context: Context) {
         saveAll(list().filterNot { it.requestId == requestId })
     }
 
+    fun clearAll() {
+        saveAll(emptyList())
+    }
+
     private fun list(): List<BlaBlaManualSeatSyncAttempt> = runCatching {
         json.decodeFromString<List<BlaBlaManualSeatSyncAttempt>>(prefs.getString(KEY, "[]") ?: "[]")
     }.getOrDefault(emptyList())
@@ -203,6 +207,21 @@ internal class BlaBlaPublicationSeatSyncStateStore(context: Context) {
             message = message,
             updatedAtMillis = System.currentTimeMillis(),
         )
+    }
+
+    fun clearPendingStates(): Int {
+        val current = list()
+        val next = current.filterNot {
+            it.state in setOf(
+                BlaBlaPublicationSeatSyncVisualState.PENDING,
+                BlaBlaPublicationSeatSyncVisualState.SYNCING,
+                BlaBlaPublicationSeatSyncVisualState.ERROR,
+            )
+        }
+        if (next.size != current.size) {
+            prefs.edit().putString(KEY, json.encodeToString(next)).apply()
+        }
+        return current.size - next.size
     }
 
     private fun mutate(

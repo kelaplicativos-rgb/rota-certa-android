@@ -94,6 +94,13 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
         save(list().filterNot { it.id == id })
     }
 
+    /** User-facing escape hatch: clears only pending external seat writes. */
+    fun clearAll(): List<String> {
+        val ids = list().map(BlaBlaManualSeatSyncRequest::id)
+        if (ids.isNotEmpty()) save(emptyList())
+        return ids
+    }
+
     private fun save(queue: List<BlaBlaManualSeatSyncRequest>) {
         prefs.edit().putString(KEY_QUEUE, json.encodeToString(queue)).apply()
     }
