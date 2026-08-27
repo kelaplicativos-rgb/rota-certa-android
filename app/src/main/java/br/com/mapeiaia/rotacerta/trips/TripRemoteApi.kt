@@ -304,6 +304,40 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun updateProtectedDriverBooking(
+        remoteTripId: String,
+        booking: Booking,
+    ): DriverBookingUpsertResponse = request(
+        method = "PUT",
+        path = "/v1/driver/trips/$remoteTripId/bookings/${booking.id}/admin",
+        body = json.encodeToString(
+            DriverBookingUpsertRequest(
+                passengerName = booking.passengerName,
+                passengerContact = booking.passengerContact,
+                boardingStopId = booking.boardingStopId,
+                dropoffStopId = booking.dropoffStopId,
+                seats = booking.seats,
+                status = booking.status.name,
+                holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                source = booking.source,
+                capacityClaimType = booking.capacityClaimType,
+                sourceReference = booking.sourceReference,
+                occupancyGroupId = booking.occupancyGroupId,
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
+    suspend fun cancelProtectedDriverBooking(
+        remoteTripId: String,
+        bookingId: String,
+    ): DriverBookingUpsertResponse = request(
+        method = "POST",
+        path = "/v1/driver/trips/$remoteTripId/bookings/$bookingId/admin/cancel",
+        body = "{}",
+        requireDriverToken = true,
+    )
+
     suspend fun createPublicBooking(
         publicToken: String,
         request: PublicBookingRequest,
