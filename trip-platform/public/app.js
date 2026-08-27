@@ -9,6 +9,7 @@ const portalMode = params.get("portal") === "1";
 const requestedBoardingStopId = (params.get("embarque") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const requestedSeats = Math.max(1, Math.min(9, Number(params.get("lugares") || 1) || 1));
+const referralCode = (params.get("ref") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -27,6 +28,8 @@ let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agen
 let locationPickerTarget = "from";
 let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
+let passengerCreditBalanceCents = 0;
+let passengerMustChangePassword = false;
 
 function localTodayKey() {
   const now = new Date();
@@ -253,7 +256,7 @@ function showAccessGate(destination = pendingAuthDestination, message = "") {
   showOnly("accessGate");
   updateAuthenticatedChrome();
   show("accessLoginBox", true);
-  show("accessSignupBox", false);
+  show("referralRequestBox", Boolean(referralCode && driverUsername));
   $("accessMessage").textContent = message;
   if (passengerSessionContact && !$("accessContact").value) $("accessContact").value = maskWhatsapp(passengerSessionContact);
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -270,6 +273,7 @@ async function validatePassengerSession() {
       return false;
     }
     savePassengerContact(body.passengerContact || passengerSessionContact);
+    passengerMustChangePassword = body.mustChangePassword === true;
     return true;
   } catch (_) {
     return false;
@@ -297,12 +301,13 @@ async function loginAccessGate() {
     const response = await fetch("/v1/passenger/session", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, password }),
+      body: JSON.stringify({ passengerContact, password, driverUsername }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
     savePassengerSession(body.sessionToken);
     savePassengerContact(body.passengerContact || passengerContact);
+    passengerMustChangePassword = body.mustChangePassword === true;
     $("accessPassword").value = "";
     await continueAfterAuthentication();
   } catch (error) {
@@ -312,48 +317,29 @@ async function loginAccessGate() {
   }
 }
 
-function openSignupGate() {
-  const current = normalizeWhatsapp($("accessContact").value);
-  if (current) $("signupContact").value = maskWhatsapp(current);
-  show("accessLoginBox", false);
-  show("accessSignupBox", true);
-  $("signupMessage").textContent = "";
-}
-
-function backToLoginGate() {
-  const current = normalizeWhatsapp($("signupContact").value);
-  if (current) $("accessContact").value = maskWhatsapp(current);
-  show("accessSignupBox", false);
-  show("accessLoginBox", true);
-  $("accessMessage").textContent = "";
-}
-
-async function signupAccessGate() {
-  const passengerContact = normalizeWhatsapp($("signupContact").value);
-  const password = $("signupPassword").value;
-  const confirmation = $("signupPasswordConfirm").value;
-  if (!passengerContact) return void ($("signupMessage").textContent = "Informe seu WhatsApp com DDD.");
-  if (password.length < 8 || password.length > 72) return void ($("signupMessage").textContent = "Use uma senha de 8 a 72 caracteres.");
-  if (password !== confirmation) return void ($("signupMessage").textContent = "As duas senhas precisam ser iguais.");
-  $("accessSignup").disabled = true;
-  $("signupMessage").textContent = "Criando seu acesso…";
+async function requestReferralInvite() {
+  if (!referralCode || !driverUsername) return;
+  const displayName = $("referralRequestName").value.trim();
+  const passengerContact = normalizeWhatsapp($("referralRequestContact").value);
+  if (!displayName || !passengerContact) {
+    $("referralRequestMessage").textContent = "Informe seu nome e WhatsApp com DDD.";
+    return;
+  }
+  $("referralRequestSubmit").disabled = true;
+  $("referralRequestMessage").textContent = "Enviando sua solicitação…";
   try {
-    const response = await fetch("/v1/passenger/signup", {
+    const response = await fetch("/v1/public/referrals/request", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, password }),
+      body: JSON.stringify({ driverUsername, referralCode, displayName, passengerContact }),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.message || "Não foi possível criar o acesso.");
-    savePassengerSession(body.sessionToken);
-    savePassengerContact(body.passengerContact || passengerContact);
-    $("signupPassword").value = "";
-    $("signupPasswordConfirm").value = "";
-    await continueAfterAuthentication();
+    if (!response.ok) throw new Error(body.message || "Não foi possível solicitar o convite.");
+    $("referralRequestMessage").textContent = "Solicitação enviada. Aguarde o motorista liberar seu acesso e enviar sua senha temporária.";
+    $("referralRequestSubmit").disabled = true;
   } catch (error) {
-    $("signupMessage").textContent = error.message || "Falha ao criar o acesso.";
-  } finally {
-    $("accessSignup").disabled = false;
+    $("referralRequestMessage").textContent = error.message || "Falha ao solicitar o convite.";
+    $("referralRequestSubmit").disabled = false;
   }
 }
 
