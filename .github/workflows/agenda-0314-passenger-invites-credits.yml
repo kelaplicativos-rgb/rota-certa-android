@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.314 passenger invites credits
+name: Rota Certa 0.1.315 clean portal installable
 
 on:
   push:
@@ -21,14 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/passenger-invites-credits-0.1.314
+          ref: agent/passenger-portal-clean-search-install-0.1.315
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate 0.1.314 invite credits contracts
+      - name: Validate 0.1.315 portal, search and install contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -46,9 +46,14 @@ jobs:
           grep -Fq 'id="passengerPortal"' trip-platform/public/index.html
           grep -Fq 'vaga(s) até' trip-platform/public/app.js
           grep -Fq 'id="accessGate"' trip-platform/public/index.html
-          grep -Fq 'id="searchFrom"' trip-platform/public/index.html
+          grep -Fq 'id="searchFromInput"' trip-platform/public/index.html
           grep -Fq 'id="searchReturn"' trip-platform/public/index.html
-          grep -Fq 'navigator.geolocation.getCurrentPosition' trip-platform/public/app.js
+          ! grep -Fq 'navigator.geolocation' trip-platform/public/app.js
+          ! grep -Fq 'getCurrentPosition(' trip-platform/public/app.js
+          ! grep -Fq 'Usar localização atual' trip-platform/public/index.html
+          ! grep -Fq 'Usar o local digitado' trip-platform/public/index.html
+          grep -Fq 'passengerAreaEntry' trip-platform/public/index.html
+          grep -Fq 'Reservas e conta' trip-platform/public/index.html
           grep -Fq 'bootstrapAuthenticatedExperience' trip-platform/public/app.js
           grep -Fq 'availableForTripSegment' trip-platform/public/app.js
           grep -Fq 'passenger_invite_required' trip-platform/functions/index.js
@@ -62,8 +67,8 @@ jobs:
           grep -Fq '👥 Passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Acesso somente por convite' trip-platform/public/index.html
           grep -Fq 'Indique e ganhe créditos' trip-platform/public/index.html
-          grep -Fq 'versionCode = 5607' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.314"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5608' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.315"' app/build.gradle.kts
 
       - name: Verify FAROL was not changed
         shell: bash
@@ -129,26 +134,27 @@ jobs:
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5607'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.314'" /tmp/aapt.txt
+          grep -Fq "versionCode='5608'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.315'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0314 trip-platform/public/downloads
-          cp "$APK" /tmp/0314/rota-certa-0.1.314-universal.apk
-          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.314-universal.apk
-          cp /tmp/apk.sha256 /tmp/0314/apk.sha256
-          cp /tmp/aapt.txt /tmp/0314/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0314/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0314/gradle.txt
-          git rev-parse HEAD > /tmp/0314/source-head.txt
+          mkdir -p /tmp/0315 trip-platform/public/downloads
+          cp "$APK" /tmp/0315/rota-certa-0.1.315-universal.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.315-universal.apk
+          cp /tmp/apk.sha256 /tmp/0315/apk.sha256
+          cp /tmp/aapt.txt /tmp/0315/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0315/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0315/gradle.txt
+          git rev-parse HEAD > /tmp/0315/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.314-passenger-invites-credits
+          name: rota-certa-0.1.315-passenger-invites-credits
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0314
+          path: /tmp/0315
 
       - name: Publish direct APK release
         env:
@@ -156,14 +162,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG=ci-0.1.314-passenger-invites-credits
-          APK=/tmp/0314/rota-certa-0.1.314-universal.apk
+          TAG=ci-0.1.315-clean-portal-installable
+          APK=/tmp/0315/rota-certa-0.1.315-universal.apk
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" "$APK" --prerelease --title "Rota Certa 0.1.314 — passageiros, indicações e créditos" --notes "APK de teste com administração central de passageiros, acesso somente por convite, senha temporária, indicações com aprovação do motorista e créditos acumulativos usados como desconto nas viagens." --repo "$GITHUB_REPOSITORY"
+            gh release create "$TAG" "$APK" --prerelease --title "Rota Certa 0.1.315 — portal limpo e atualização instalável" --notes "APK de teste baseado na 0.1.314 instalada, com Minha área visível, busca web limpa sem GPS, identidade visual própria do Rota Certa e assinatura compatível para atualização." --repo "$GITHUB_REPOSITORY"
           fi
-          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/rota-certa-0.1.314-universal.apk"
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/rota-certa-0.1.315-universal.apk"
           curl --fail --location --retry 6 --retry-all-errors -o /tmp/downloaded.apk "$URL"
           test "$(sha256sum /tmp/downloaded.apk | awk '{print $1}')" = "$(sha256sum "$APK" | awk '{print $1}')"
           echo "DIRECT_APK_URL=$URL"
@@ -196,9 +202,15 @@ jobs:
             BUST="$(date +%s%N)-$attempt"
             if curl --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js \
               && grep -Fq 'bootstrapAuthenticatedExperience' /tmp/live-app.js \
-              && grep -Fq 'navigator.geolocation.getCurrentPosition' /tmp/live-app.js \
+              && ! grep -Fq 'navigator.geolocation' /tmp/live-app.js \
+              && ! grep -Fq 'getCurrentPosition(' /tmp/live-app.js \
               && grep -Fq 'sharePassengerReferral' /tmp/live-app.js \
-              && grep -Fq 'creditToUseCents' /tmp/live-app.js; then
+              && grep -Fq 'creditToUseCents' /tmp/live-app.js \
+              && curl --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html \
+              && grep -Fq 'passengerAreaEntry' /tmp/live-index.html \
+              && grep -Fq 'id="searchFromInput"' /tmp/live-index.html \
+              && ! grep -Fq 'Usar localização atual' /tmp/live-index.html \
+              && ! grep -Fq 'Usar o local digitado' /tmp/live-index.html; then
               LIVE_OK=1
               break
             fi
@@ -206,11 +218,11 @@ jobs:
           done
           test "$LIVE_OK" = "1"
 
-          EXPECTED="$(sha256sum /tmp/0314/rota-certa-0.1.314-universal.apk | awk '{print $1}')"
+          EXPECTED="$(sha256sum /tmp/0315/rota-certa-0.1.315-universal.apk | awk '{print $1}')"
           APK_OK=0
           for attempt in $(seq 1 12); do
             BUST="$(date +%s%N)-$attempt"
-            if curl --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.314-universal.apk?v=$BUST" -o /tmp/hosted.apk; then
+            if curl --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.315-universal.apk?v=$BUST" -o /tmp/hosted.apk; then
               ACTUAL="$(sha256sum /tmp/hosted.apk | awk '{print $1}')"
               if [ "$ACTUAL" = "$EXPECTED" ]; then
                 APK_OK=1
@@ -220,4 +232,4 @@ jobs:
             sleep 5
           done
           test "$APK_OK" = "1"
-          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.314-universal.apk"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.315-universal.apk"
