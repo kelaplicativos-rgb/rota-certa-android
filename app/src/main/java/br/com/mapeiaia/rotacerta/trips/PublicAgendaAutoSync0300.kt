@@ -116,8 +116,18 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         val capacity = configuredVehicleCapacity.takeIf { it in 1..999 } ?: 4
-        val externalTrips = BlaBlaCollectorStateStore(context)
-            .lastResponseRecoveringDynamicSessions()
+        val connectedAccounts = BlaBlaDynamicAccountRegistry(context).list()
+        val allConnectedResponse = if (connectedAccounts.isNotEmpty()) {
+            BlaBlaDynamicSessionStore(context).combinedResponse(connectedAccounts)
+        } else {
+            BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
+        }
+        UnifiedDebugEventStore.record(
+            "PUBLIC_AGENDA_ALL_CONNECTED_ACCOUNTS",
+            context.packageName,
+            "accounts=${connectedAccounts.size} trips=${allConnectedResponse?.trips?.size ?: 0} selectionFilter=false",
+        )
+        val externalTrips = allConnectedResponse
             ?.trips
             .orEmpty()
             .asSequence()
