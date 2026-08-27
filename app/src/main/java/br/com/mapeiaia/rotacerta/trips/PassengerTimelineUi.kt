@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import br.com.mapeiaia.rotacerta.Coordinate
 import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
+import kotlinx.coroutines.launch
 
 internal data class EnhancedPassengerCardRow(
     val name: String,
@@ -77,6 +79,7 @@ internal fun EnhancedPassengerTimelineSection(
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
+    val scope = rememberCoroutineScope()
     val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
     if (hasExternalTripActionEvidence(entry)) {
         TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
@@ -298,7 +301,7 @@ internal fun EnhancedPassengerTimelineSection(
             row.localBookingId?.let { bookingId ->
                 store.bookingsFor(currentTrip.id).firstOrNull { booking ->
                     booking.id == bookingId &&
-                        booking.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        booking.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         booking.capacityClaimType == CapacityClaimType.PASSENGER &&
                         booking.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
                 }
@@ -344,7 +347,7 @@ internal fun EnhancedPassengerTimelineSection(
             row.localBookingId?.let { bookingId ->
                 store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
                     candidate.id == bookingId &&
-                        candidate.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        candidate.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
                         candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
                 }
@@ -357,10 +360,30 @@ internal fun EnhancedPassengerTimelineSection(
                 existingBookings = store.bookingsFor(currentTrip.id),
                 onDismiss = { editManualRow = null },
                 onSave = { updated ->
-                    store.saveBooking(updated)
-                    editManualRow = null
-                    onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
-                    onSyncSeatsOnly?.invoke()
+                    if (updated.source == BookingSource.ROTA_CERTA) {
+                        val remoteTripId = currentTrip.remoteId
+                        if (remoteTripId.isNullOrBlank()) {
+                            onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda Pública antes de editar.")
+                        } else {
+                            scope.launch {
+                                runCatching {
+                                    TripRemoteApi(store.onlineSettings()).updateProtectedDriverBooking(remoteTripId, updated)
+                                }.onSuccess {
+                                    store.saveBooking(updated)
+                                    editManualRow = null
+                                    onChanged("Reserva Rota Certa atualizada pelo painel administrativo. Vagas por trecho recalculadas.")
+                                    onSyncSeatsOnly?.invoke()
+                                }.onFailure { error ->
+                                    onChanged("Não foi possível atualizar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
+                                }
+                            }
+                        }
+                    } else {
+                        store.saveBooking(updated)
+                        editManualRow = null
+                        onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
+                        onSyncSeatsOnly?.invoke()
+                    }
                 },
                 onError = onChanged,
             )
@@ -375,7 +398,7 @@ internal fun EnhancedPassengerTimelineSection(
             row.localBookingId?.let { bookingId ->
                 store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
                     candidate.id == bookingId &&
-                        candidate.source in setOf(BookingSource.PRIVATE, BookingSource.OTHER) &&
+                        candidate.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
                         candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
                 }
@@ -386,7 +409,11 @@ internal fun EnhancedPassengerTimelineSection(
             title = { Text("Cancelar passageiro desta viagem?") },
             text = {
                 Text(
-                    "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir.",
+                    if (booking?.source == BookingSource.ROTA_CERTA) {
+                        "A reserva feita pelo Rota Certa será cancelada pelo painel administrativo e as vagas serão recalculadas em todos os trechos afetados."
+                    } else {
+                        "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir."
+                    },
                 )
             },
             confirmButton = {
@@ -395,15 +422,40 @@ internal fun EnhancedPassengerTimelineSection(
                     onClick = {
                         val selectedTrip = currentTrip ?: return@TextButton
                         val selectedBooking = booking ?: return@TextButton
-                        store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_MANUAL_PASSENGER_CANCELLED",
-                            context.packageName,
-                            "timeline=true seats=${selectedBooking.seats} desiredStateRecalculation=true",
-                        )
-                        cancelManualRow = null
-                        onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
-                        onSyncSeatsOnly?.invoke()
+                        if (selectedBooking.source == BookingSource.ROTA_CERTA) {
+                            val remoteTripId = selectedTrip.remoteId
+                            if (remoteTripId.isNullOrBlank()) {
+                                onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda Pública antes de cancelar.")
+                                return@TextButton
+                            }
+                            scope.launch {
+                                runCatching {
+                                    TripRemoteApi(store.onlineSettings()).cancelProtectedDriverBooking(remoteTripId, selectedBooking.id)
+                                }.onSuccess {
+                                    store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                                    UnifiedDebugEventStore.record(
+                                        "AGENDA_ROTA_CERTA_ADMIN_CANCELLED",
+                                        context.packageName,
+                                        "timeline=true seats=${selectedBooking.seats} protectedRoute=true",
+                                    )
+                                    cancelManualRow = null
+                                    onChanged("Reserva Rota Certa cancelada pelo painel administrativo. Vagas por trecho recalculadas.")
+                                    onSyncSeatsOnly?.invoke()
+                                }.onFailure { error ->
+                                    onChanged("Não foi possível cancelar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
+                                }
+                            }
+                        } else {
+                            store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_MANUAL_PASSENGER_CANCELLED",
+                                context.packageName,
+                                "timeline=true seats=${selectedBooking.seats} desiredStateRecalculation=true",
+                            )
+                            cancelManualRow = null
+                            onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
+                            onSyncSeatsOnly?.invoke()
+                        }
                     },
                 ) { Text("Cancelar e devolver vaga(s)") }
             },
