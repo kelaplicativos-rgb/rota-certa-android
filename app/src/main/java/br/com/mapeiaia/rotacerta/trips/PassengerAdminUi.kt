@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
@@ -59,6 +60,7 @@ fun PassengerAdminScreen(
     var temporaryPassword by remember { mutableStateOf<String?>(null) }
     var temporaryPasswordFor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
+    var historyProfileId by remember { mutableStateOf<String?>(null) }
     val settings = store.onlineSettings()
 
     val localProfiles = remember(revision) { passengerStore.profiles() }
@@ -218,8 +220,20 @@ fun PassengerAdminScreen(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Text(candidate.displayName.ifBlank { "Passageiro" }, style = MaterialTheme.typography.titleMedium)
+                val localProfile = candidate.localProfile
+                Text(
+                    (if (localProfile?.blocked == true) "🚫 " else "") + candidate.displayName.ifBlank { "Passageiro" },
+                    style = MaterialTheme.typography.titleMedium,
+                )
                 Text(candidate.whatsapp.ifBlank { "WhatsApp não informado" })
+                localProfile?.let { profile ->
+                    val durableHistory = passengerStore.persistentHistory(profile.id)
+                    Text(
+                        "${durableHistory?.totalRides ?: passengerStore.rideHistory(profile.id).totalRides} viagem(ns) • ${profile.externalPassengerIds.size} UUID(s) externo(s)",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (profile.blocked) Text("🚫 Persona non grata no seu carro", color = MaterialTheme.colorScheme.error)
+                }
                 Text(passengerAccessLabel(access), style = MaterialTheme.typography.bodySmall)
                 if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
                 access?.referredByContact?.takeIf(String::isNotBlank)?.let {
@@ -232,6 +246,21 @@ fun PassengerAdminScreen(
                     )
                 }
                 HorizontalDivider()
+                if (candidate.localProfile != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { historyProfileId = candidate.localProfile.id }) { Text("Histórico") }
+                        OutlinedButton(onClick = {
+                            val current = candidate.localProfile
+                            passengerStore.setBlocked(
+                                current.id,
+                                !current.blocked,
+                                if (!current.blocked) "Persona non grata marcada pelo motorista" else "",
+                            )
+                            revision++
+                            onChanged(if (current.blocked) "Passageiro liberado para o carro." else "🚫 Passageiro marcado como persona non grata.")
+                        }) { Text(if (candidate.localProfile.blocked) "Liberar no carro" else "🚫 Bloquear no carro") }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when (access?.status) {
                         "ACTIVE" -> {
@@ -315,6 +344,41 @@ fun PassengerAdminScreen(
                 }
             }
         }
+    }
+
+    historyProfileId?.let { profileId ->
+        val history = passengerStore.persistentHistory(profileId)
+        AlertDialog(
+            onDismissRequest = { historyProfileId = null },
+            title = { Text("Histórico do passageiro") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (history == null) {
+                        Text("Histórico não encontrado.")
+                    } else {
+                        val profile = history.profile
+                        Text((if (profile.blocked) "🚫 " else "") + profile.displayName, style = MaterialTheme.typography.titleMedium)
+                        Text(profile.whatsapp.ifBlank { "Telefone não informado" })
+                        Text("${history.totalRides} viagem(ns) registrada(s)")
+                        if (profile.externalPassengerIds.isNotEmpty()) {
+                            Text("UUID(s): " + profile.externalPassengerIds.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+                        }
+                        history.observations.take(15).forEach { observation ->
+                            val whenText = java.time.Instant.ofEpochMilli(observation.observedAtMillis)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                            val details = listOf(
+                                observation.displayName.takeIf(String::isNotBlank),
+                                observation.whatsapp.takeIf(String::isNotBlank),
+                                observation.photoUrl.takeIf(String::isNotBlank)?.let { "foto registrada" },
+                            ).filterNotNull().joinToString(" • ")
+                            Text("• $whenText — $details", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { historyProfileId = null }) { Text("Fechar") } },
+        )
     }
 }
 
