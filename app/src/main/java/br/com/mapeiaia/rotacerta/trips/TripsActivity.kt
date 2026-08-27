@@ -689,8 +689,6 @@ private fun OnlineSettingsEditor(
                         driverUsername = normalizedUsername,
                         driverWhatsapp = driverWhatsapp.trim(),
                         driverPhotoUrl = driverPhotoUrl.trim(),
-                        driverPhotoUrl = driverPhotoUrl.trim(),
-                        driverPhotoUrl = driverPhotoUrl.trim(),
                         driverPublicAbout = driverAbout.trim(),
                         driverPublicRating = driverRating.trim(),
                         driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
