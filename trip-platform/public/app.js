@@ -1093,13 +1093,21 @@ function prepareBookingSelectors() {
     option.textContent = stop.name;
     boarding.appendChild(option);
   });
+  if (requestedBoardingStopId && stops.some((stop) => stop.id === requestedBoardingStopId)) boarding.value = requestedBoardingStopId;
   refreshSelectors();
+  if (requestedDropoffStopId && [...$("dropoff").options].some((option) => option.value === requestedDropoffStopId)) $("dropoff").value = requestedDropoffStopId;
+  $("seats").value = String(requestedSeats);
+  refreshAvailability();
 }
 
 function openBookingFlow() {
   if (!trip || isFullTrip(trip) || trip.canReserve === false) return;
   editingExistingBooking = false;
   $("confirmReserve").textContent = "Fazer pedido de reserva";
+  if (passengerSessionContact) {
+    $("contact").value = maskWhatsapp(passengerSessionContact);
+    $("contact").readOnly = true;
+  }
   showOnly("booking");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1252,6 +1260,7 @@ async function reserve() {
         "Content-Type": "application/json",
         Accept: "application/json",
         "Idempotency-Key": idempotencyKey,
+        ...(passengerSessionToken ? { Authorization: `Bearer ${passengerSessionToken}` } : {}),
       },
       body: JSON.stringify({ ...pendingBooking, idempotencyKey }),
     });
@@ -1437,7 +1446,7 @@ async function updateExistingReservation() {
 async function refreshTripSilently() {
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}`, {
-      headers: { Accept: "application/json" },
+      headers: authenticatedHeaders({ Accept: "application/json" }),
     });
     if (!response.ok) return;
     const body = await response.json();
@@ -1615,19 +1624,16 @@ function savePassengerSession(token) {
     if (passengerSessionToken) localStorage.setItem("rotacerta-passenger-session", passengerSessionToken);
     else localStorage.removeItem("rotacerta-passenger-session");
   } catch (_) {}
+  updateAuthenticatedChrome();
 }
 
 function openPassengerPortal() {
+  if (!passengerSessionToken) return showAccessGate("portal");
   showOnly("passengerPortal");
   $("portalMessage").textContent = "";
-  const knownContact = confirmedBooking?.passengerContact || "";
-  if (knownContact && !$("portalContact").value) $("portalContact").value = maskWhatsapp(knownContact);
-  if (passengerSessionToken) {
-    loadPassengerBookings();
-  } else {
-    show("portalLoginBox", true);
-    show("portalAuthenticated", false);
-  }
+  show("portalLoginBox", false);
+  show("portalAuthenticated", true);
+  loadPassengerBookings();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1649,6 +1655,7 @@ async function loginPassengerPortal() {
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
     savePassengerSession(body.sessionToken);
+    savePassengerContact(body.passengerContact || passengerContact);
     $("portalPassword").value = "";
     $("portalMessage").textContent = "";
     await loadPassengerBookings();
@@ -1856,11 +1863,10 @@ async function loadPassengerBookings() {
 
 function logoutPassengerPortal() {
   savePassengerSession("");
+  savePassengerContact("");
   $("portalPassword").value = "";
-  $("portalMessage").textContent = "Acesso encerrado neste aparelho.";
-  show("portalLoginBox", true);
-  show("portalAuthenticated", false);
   $("portalBookings").innerHTML = "";
+  showAccessGate(portalMode ? "portal" : (tripToken ? "trip" : "agenda"), "Acesso encerrado neste aparelho.");
 }
 
 function closePassengerPortal() {
@@ -1886,6 +1892,31 @@ function goBackToAgenda() {
   }
 }
 
+$("accessLogin").addEventListener("click", loginAccessGate);
+$("accessShowSignup").addEventListener("click", openSignupGate);
+$("accessBackLogin").addEventListener("click", backToLoginGate);
+$("accessSignup").addEventListener("click", signupAccessGate);
+$("accessContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("signupContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("searchFrom").addEventListener("click", () => openLocationPicker("from"));
+$("searchTo").addEventListener("click", () => openLocationPicker("to"));
+$("searchSwap").addEventListener("click", swapSearchRoute);
+$("searchDeparture").addEventListener("click", () => openCalendarPicker("departure"));
+$("searchReturn").addEventListener("click", () => openCalendarPicker("returnDate"));
+$("searchSeats").addEventListener("click", openSeatPicker);
+$("searchSubmit").addEventListener("click", submitTripSearch);
+$("locationBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
+$("locationQuery").addEventListener("input", renderLocationSuggestions);
+$("locationQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") useTypedSearchLocation(); });
+$("useTypedLocation").addEventListener("click", useTypedSearchLocation);
+$("useCurrentLocation").addEventListener("click", useCurrentSearchLocation);
+$("calendarBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
+$("calendarNoReturn").addEventListener("click", clearReturnDate);
+$("seatBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
+$("seatMinus").addEventListener("click", () => changeSeatPicker(-1));
+$("seatPlus").addEventListener("click", () => changeSeatPicker(1));
+$("seatConfirm").addEventListener("click", confirmSeatPicker);
+$("resultsBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
 $("openPassengerPortal").addEventListener("click", openPassengerPortal);
 $("portalBack").addEventListener("click", closePassengerPortal);
 $("portalLogin").addEventListener("click", loginPassengerPortal);
@@ -1936,12 +1967,12 @@ $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
 
 tracePublicAction("PUBLIC_LINK_OPENED");
 
-if (portalMode) {
-  openPassengerPortal();
-} else if (tripToken) {
-  loadTrip();
-} else if (agendaToken) {
-  loadAgenda();
-} else {
-  setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+async function bootstrapAuthenticatedExperience() {
+  updateAuthenticatedChrome();
+  if (!portalMode && !tripToken && !agendaToken) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+  const valid = await validatePassengerSession();
+  if (!valid) return showAccessGate(pendingAuthDestination);
+  await continueAfterAuthentication();
 }
+
+bootstrapAuthenticatedExperience();
