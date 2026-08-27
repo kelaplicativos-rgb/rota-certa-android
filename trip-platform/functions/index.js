@@ -577,9 +577,20 @@ async function ensureDriverPublicAgenda(req, res) {
   if (!snap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
 
   const data = snap.data();
+  const storedHash = cleanText(data.agendaTokenHash, 128);
   const tokenIsCurrent = suppliedToken.length >= 16 &&
-    safeEqual(sha256Hex(suppliedToken), data.agendaTokenHash || "");
-  const publicAgendaToken = tokenIsCurrent ? suppliedToken : crypto.randomBytes(24).toString("base64url");
+    storedHash &&
+    safeEqual(sha256Hex(suppliedToken), storedHash);
+
+  if (!tokenIsCurrent) {
+    return fail(
+      res,
+      409,
+      "agenda_token_mismatch",
+      "O token da agenda não confere. O link atual foi preservado. Use a ação explícita Gerar novo link para substituí-lo.",
+    );
+  }
+  const publicAgendaToken = suppliedToken;
 
   let driverWhatsapp = "";
   try {
@@ -605,7 +616,6 @@ async function ensureDriverPublicAgenda(req, res) {
     paymentInstructions: cleanText(req.body && req.body.paymentInstructions, 240),
     updatedAtMillis: Date.now(),
   };
-  if (!tokenIsCurrent) publicProfileUpdate.agendaTokenHash = sha256Hex(publicAgendaToken);
   await ref.update(publicProfileUpdate);
 
   return json(res, 200, {
@@ -614,7 +624,39 @@ async function ensureDriverPublicAgenda(req, res) {
     publicAgendaToken,
     publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
     calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
-    repaired: !tokenIsCurrent,
+    repaired: false,
+  });
+}
+
+async function regenerateDriverPublicAgenda(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) {
+    return fail(res, 409, "driver_identity_required", "Cadastre um nome de usuário do motorista para usar a agenda pública.");
+  }
+
+  const confirmation = cleanText(req.body && req.body.confirmation, 80);
+  if (confirmation !== "REGENERATE_PUBLIC_AGENDA_LINK") {
+    return fail(res, 400, "explicit_confirmation_required", "Confirmação explícita obrigatória para gerar um novo link.");
+  }
+
+  const ref = db.collection("tripDrivers").doc(driver.username);
+  const snap = await ref.get();
+  if (!snap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
+
+  const publicAgendaToken = crypto.randomBytes(24).toString("base64url");
+  await ref.update({
+    agendaTokenHash: sha256Hex(publicAgendaToken),
+    updatedAtMillis: Date.now(),
+  });
+
+  return json(res, 200, {
+    displayName: cleanText(snap.data().displayName, 120) || driver.displayName,
+    username: driver.username,
+    publicAgendaToken,
+    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
+    calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
+    repaired: true,
   });
 }
 
@@ -1247,6 +1289,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
+    if (req.method === "POST" && path === "/v1/driver/agenda/regenerate") return await regenerateDriverPublicAgenda(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
     }
