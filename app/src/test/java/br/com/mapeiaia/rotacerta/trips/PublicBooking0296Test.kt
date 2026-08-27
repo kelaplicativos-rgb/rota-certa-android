@@ -17,6 +17,21 @@ class PublicBooking0296Test {
     }
 
     @Test
+    fun agendaEnsureResponseCarriesValidatedPublicToken() {
+        val response = DriverAgendaEnsureResponse(
+            displayName = "Viagem Certa",
+            username = "viagem-certa",
+            publicAgendaToken = "abcdefghijklmnop",
+            publicAgendaUrl = "https://example.test/?motorista=viagem-certa&agenda=abcdefghijklmnop",
+            calendarUrl = "https://example.test/calendar/viagem-certa/abcdefghijklmnop.ics",
+            repaired = true,
+        )
+        assertEquals("viagem-certa", response.username)
+        assertEquals("abcdefghijklmnop", response.publicAgendaToken)
+        assertEquals(true, response.repaired)
+    }
+
+    @Test
     fun remotePublicBookingMapsToSameLocalBookingDomain() {
         val remote = RemoteBooking(
             id = "public_booking_1",
