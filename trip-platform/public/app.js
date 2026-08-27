@@ -90,6 +90,18 @@ function formatMoney(cents) {
     .format(Math.max(0, Number(cents || 0)) / 100);
 }
 
+function durationFor(item) {
+  const stops = orderedStops(item);
+  if (!stops.length) return "";
+  const start = Number(stops[0]?.plannedDepartureMillis || stops[0]?.plannedArrivalMillis || item?.departureAtMillis || 0);
+  const end = Number(stops[stops.length - 1]?.plannedArrivalMillis || stops[stops.length - 1]?.plannedDepartureMillis || 0);
+  if (!start || !end || end <= start) return "";
+  const minutes = Math.round((end - start) / 60000);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? `${hours}h${String(rest).padStart(2, "0")}` : `${minutes} min`;
+}
+
 function normalizeWhatsapp(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
@@ -275,6 +287,13 @@ function renderAgenda(trips) {
         : `🪑 ${range.minimum}–${range.maximum} vagas`);
 
     meta.append(time, seats);
+    const duration = durationFor(item);
+    if (duration) {
+      const durationPill = document.createElement("span");
+      durationPill.className = "bigPill";
+      durationPill.textContent = `⏱ ${duration}`;
+      meta.appendChild(durationPill);
+    }
 
     const bottom = document.createElement("div");
     bottom.className = "agendaBottom";
@@ -413,6 +432,15 @@ function renderTimeline() {
 
 function renderDriverProfile() {
   $("driverCardName").textContent = driverDisplayName || "Motorista Rota Certa";
+  const photo = $("driverPhoto");
+  if (driverProfile.photoUrl && String(driverProfile.photoUrl).startsWith("https://")) {
+    photo.src = driverProfile.photoUrl;
+    photo.alt = `Foto de ${driverDisplayName || "motorista"}`;
+    show("driverPhoto", true);
+  } else {
+    photo.removeAttribute("src");
+    show("driverPhoto", false);
+  }
 
   const ratingParts = [];
   if (driverProfile.rating) ratingParts.push(`★ ${driverProfile.rating}`);
@@ -472,6 +500,8 @@ function renderTripFacts() {
 
   addFact("Saída", formatDate(trip.departureAtMillis));
   addFact("Capacidade", `${trip.capacity} lugar(es)`);
+  const duration = durationFor(trip);
+  if (duration) addFact("Duração prevista", duration);
 
   const fare = fullFareFor(trip);
   if (fare > 0) addFact("Valor no trajeto completo", formatMoney(fare));
