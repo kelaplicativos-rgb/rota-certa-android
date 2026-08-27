@@ -2002,11 +2002,9 @@ function goBackToAgenda() {
 }
 
 $("accessLogin").addEventListener("click", loginAccessGate);
-$("accessShowSignup").addEventListener("click", openSignupGate);
-$("accessBackLogin").addEventListener("click", backToLoginGate);
-$("accessSignup").addEventListener("click", signupAccessGate);
 $("accessContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
-$("signupContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("referralRequestContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("referralRequestSubmit").addEventListener("click", requestReferralInvite);
 $("searchFrom").addEventListener("click", () => openLocationPicker("from"));
 $("searchTo").addEventListener("click", () => openLocationPicker("to"));
 $("searchSwap").addEventListener("click", swapSearchRoute);
@@ -2030,7 +2028,8 @@ $("openPassengerPortal").addEventListener("click", openPassengerPortal);
 $("portalBack").addEventListener("click", closePassengerPortal);
 $("portalLogin").addEventListener("click", loginPassengerPortal);
 $("portalLogout").addEventListener("click", logoutPassengerPortal);
-$("portalRegister").addEventListener("click", registerPassengerPortal);
+$("portalReferralShare").addEventListener("click", sharePassengerReferral);
+$("portalChangePassword").addEventListener("click", changePassengerPortalPassword);
 $("portalContact").addEventListener("input", (event) => {
   event.target.value = maskWhatsapp(event.target.value);
 });
@@ -2078,7 +2077,8 @@ tracePublicAction("PUBLIC_LINK_OPENED");
 
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
-  if (!portalMode && !tripToken && !agendaToken) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+  if (!portalMode && !tripToken && !agendaToken && !referralCode) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+  if (referralCode && !tripToken && !agendaToken) return showAccessGate("agenda");
   const valid = await validatePassengerSession();
   if (!valid) return showAccessGate(pendingAuthDestination);
   await continueAfterAuthentication();
