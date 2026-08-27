@@ -978,6 +978,61 @@ async function refundCreditsForCancelledTrip(token) {
   return refunded;
 }
 
+async function reconcileBookingCreditAfterFareChange(token, bookingId) {
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const preview = await Promise.all([tripRef.get(), bookingRef.get()]);
+  if (!preview[0].exists || !preview[1].exists) return;
+  const trip = preview[0].data();
+  const booking = preview[1].data();
+  const driverUsername = normalizeUsername(trip.driverUsername || "");
+  const passengerContact = cleanText(booking.passengerContact, 40);
+  if (!driverUsername || !passengerContact) return;
+  const ledgerRef = passengerCreditLedgerRef(driverUsername, passengerContact);
+  const entryRef = ledgerRef.collection("entries").doc(`fare_adjust_${sha256Hex(`${token}:${bookingId}:${booking.updatedAtMillis || 0}`).slice(0, 40)}`);
+  await db.runTransaction(async (tx) => {
+    const [freshBooking, ledgerSnap, entrySnap] = await Promise.all([tx.get(bookingRef), tx.get(ledgerRef), tx.get(entryRef)]);
+    if (!freshBooking.exists) return;
+    const current = freshBooking.data();
+    const totalFareCents = Math.max(0, Number(current.totalFareCents || 0));
+    const creditAppliedCents = Math.max(0, Number(current.creditAppliedCents || 0));
+    const nextApplied = Math.min(creditAppliedCents, totalFareCents);
+    const excess = Math.max(0, creditAppliedCents - nextApplied);
+    const amountDueCents = Math.max(0, totalFareCents - nextApplied);
+    if (excess <= 0) {
+      if (Number(current.amountDueCents || 0) !== amountDueCents) {
+        tx.update(bookingRef, { amountDueCents, updatedAtMillis: Date.now() });
+      }
+      return;
+    }
+    const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
+    const now = Date.now();
+    tx.set(ledgerRef, {
+      driverUsername,
+      passengerContact,
+      balanceCents: Math.max(0, Number(ledger.balanceCents || 0)) + excess,
+      earnedCents: Math.max(0, Number(ledger.earnedCents || 0)),
+      spentCents: Math.max(0, Number(ledger.spentCents || 0)),
+      updatedAtMillis: now,
+      createdAtMillis: Number(ledger.createdAtMillis || now),
+    }, { merge: true });
+    if (!entrySnap.exists) {
+      tx.create(entryRef, {
+        type: "BOOKING_CREDIT_ADJUSTMENT_REFUND",
+        amountCents: excess,
+        tripToken: token,
+        bookingId,
+        createdAtMillis: now,
+      });
+    }
+    tx.update(bookingRef, {
+      creditAppliedCents: nextApplied,
+      amountDueCents,
+      updatedAtMillis: now,
+    });
+  });
+}
+
 async function updateDriverTrip(req, res, token) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -1857,6 +1912,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       };
     });
 
+    await reconcileBookingCreditAfterFareChange(token, bookingId);
     await appendPublicDebugEvent({
       driverUsername: result.driverUsername || debugDriverUsername,
       event: "PUBLIC_RESERVATION_CHANGED",
@@ -1974,6 +2030,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       };
     });
     if (cancelOnly) await refundBookingCreditsIfNeeded(token, bookingId);
+    else await reconcileBookingCreditAfterFareChange(token, bookingId);
     return json(res, 200, {
       booking: result.booking,
       segmentLoads: result.segmentLoads,
@@ -2045,8 +2102,13 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
         availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
       };
     });
+    await reconcileBookingCreditAfterFareChange(token, bookingId);
+    const refreshed = await bookingRef.get();
+    const safeBooking = refreshed.exists ? { id: bookingId, ...refreshed.data() } : result.booking;
+    delete safeBooking.cancellationHash;
+    delete safeBooking.idempotencyFingerprint;
     return json(res, 200, {
-      booking: result.booking,
+      booking: safeBooking,
       availableSeats: result.availableSeats,
       changed: true,
     });
