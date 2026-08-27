@@ -52,6 +52,7 @@ fun BlaBlaCollectorPanel(
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
     val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
+    val publicationSeatStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var syncing by remember { mutableStateOf(false) }
     var archiving by remember { mutableStateOf(false) }
@@ -235,6 +236,25 @@ fun BlaBlaCollectorPanel(
         return true
     }
 
+    fun clearPendingSeatSyncs() {
+        val clearedRequests = manualSeatStore.clearAll()
+        manualSeatAttemptStore.clearAll()
+        val clearedVisualStates = publicationSeatStateStore.clearPendingStates()
+        manualSeatSyncing = false
+        message = if (clearedRequests.isEmpty() && clearedVisualStates == 0) {
+            "Não havia vagas pendentes para limpar."
+        } else {
+            "Pendências de vagas limpas ✅ • a sincronização normal continua liberada."
+        }
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_PENDING_QUEUE_CLEARED",
+            context.packageName,
+            "requests=${clearedRequests.size} visualStates=$clearedVisualStates userInitiated=true bookingsPreserved=true profilesPreserved=true",
+        )
+        onChanged(message.orEmpty())
+        refresh()
+    }
+
     // Discard snapshots from the old hard-coded two-account candidate. The
     // dynamic registry is authoritative from this version onward and starts empty.
     LaunchedEffect(Unit) {
@@ -257,24 +277,30 @@ fun BlaBlaCollectorPanel(
     LaunchedEffect(autoSyncToken, autoSyncProfileUuid, autoSyncTripId, syncing, archiving, manualSeatSyncing, accounts.size) {
         if (autoSyncToken <= handledAutoSyncToken || syncing || archiving || manualSeatSyncing) return@LaunchedEffect
 
-        val pendingManualSeat = pendingSeatRequest()
+        val requestedProfile = autoSyncProfileUuid?.trim()?.takeIf(String::isNotEmpty)
+        val requestedTrip = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
+        val pendingManualSeat = if (requestedProfile == null) null else {
+            pendingSeatRequest()?.takeIf { pending ->
+                pending.profileUuid.equals(requestedProfile, ignoreCase = true) &&
+                    (requestedTrip == null || pending.tripId == requestedTrip)
+            }
+        }
         if (pendingManualSeat != null) {
             val target = accounts.singleOrNull { account ->
                 account.profileUuid?.equals(pendingManualSeat.profileUuid, ignoreCase = true) == true
             }
-            if (target == null) {
-                message = "Vaga interna atualizada • sincronização externa pendente ⚠️ • perfil UUID não resolvido."
-                onChanged(message.orEmpty())
-                UnifiedDebugEventStore.record(
-                    "EXTERNAL_SEAT_SYNC_PENDING",
-                    context.packageName,
-                    "reason=target_profile_unresolved request=${pendingManualSeat.id} manual=true retained=true",
-                )
+            if (target != null) {
+                handledAutoSyncToken = autoSyncToken
+                launchPendingSeatSync("automatic_after_booking_change")
                 return@LaunchedEffect
             }
-            handledAutoSyncToken = autoSyncToken
-            launchPendingSeatSync("automatic_after_booking_change")
-            return@LaunchedEffect
+            message = "Vaga interna atualizada • pendência externa preservada sem bloquear a sincronização normal."
+            onChanged(message.orEmpty())
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_SYNC_PENDING",
+                context.packageName,
+                "reason=target_profile_unresolved request=${pendingManualSeat.id} manual=true retained=true normalSyncContinues=true",
+            )
         }
 
         if (accounts.isEmpty()) {
@@ -287,7 +313,6 @@ fun BlaBlaCollectorPanel(
             )
             return@LaunchedEffect
         }
-        val requestedProfile = autoSyncProfileUuid?.trim()?.takeIf(String::isNotEmpty)
         val selectedAccounts = if (requestedProfile == null) {
             accounts
         } else {
@@ -389,16 +414,14 @@ fun BlaBlaCollectorPanel(
             Button(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
-                    if (!launchPendingSeatSync("manual_sync_button")) {
-                        targetedSyncTripId = null
-                        syncDateScope = null
-                        syncQueue = accounts.map { it.id }
-                        syncCursor = 0
-                        syncing = true
-                        archiving = false
-                        message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
-                        onChanged(message.orEmpty())
-                    }
+                    targetedSyncTripId = null
+                    syncDateScope = null
+                    syncQueue = accounts.map { it.id }
+                    syncCursor = 0
+                    syncing = true
+                    archiving = false
+                    message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
+                    onChanged(message.orEmpty())
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -407,31 +430,43 @@ fun BlaBlaCollectorPanel(
                         manualSeatSyncing -> "Sincronizando lugares…"
                         archiving -> "Baixando MHTMLs…"
                         syncing -> "Sincronizando…"
-                        manualSeatStore.peek() != null -> "Tentar vagas pendentes"
                         else -> "Sincronizar todas as contas"
                     },
                 )
             }
 
+            val pendingSeatCount = manualSeatStore.list().size
+            if (pendingSeatCount > 0) {
+                Text("Vagas pendentes: $pendingSeatCount • isso não bloqueia as outras sincronizações.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
+                        onClick = { launchPendingSeatSync("manual_pending_button") },
+                    ) { Text("Tentar vagas pendentes") }
+                    TextButton(
+                        enabled = !syncing && !archiving && !manualSeatSyncing,
+                        onClick = { clearPendingSeatSyncs() },
+                    ) { Text("Limpar pendências") }
+                }
+            }
+
             OutlinedButton(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
-                    if (!launchPendingSeatSync("manual_sync_today_button")) {
-                        val today = LocalDate.now()
-                        targetedSyncTripId = null
-                        syncDateScope = today
-                        syncQueue = accounts.map { it.id }
-                        syncCursor = 0
-                        syncing = true
-                        archiving = false
-                        message = "Sincronizando somente o card de hoje (${today.format(DateTimeFormatter.ofPattern("dd/MM"))})…"
-                        onChanged(message.orEmpty())
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_TODAY_ONLY_SYNC_REQUESTED",
-                            context.packageName,
-                            "accounts=${accounts.size} targetDate=$today authority=normalized_trip_date outerRelativeLabelIgnored=true",
-                        )
-                    }
+                    val today = LocalDate.now()
+                    targetedSyncTripId = null
+                    syncDateScope = today
+                    syncQueue = accounts.map { it.id }
+                    syncCursor = 0
+                    syncing = true
+                    archiving = false
+                    message = "Sincronizando somente o card de hoje (${today.format(DateTimeFormatter.ofPattern("dd/MM"))})…"
+                    onChanged(message.orEmpty())
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_TODAY_ONLY_SYNC_REQUESTED",
+                        context.packageName,
+                        "accounts=${accounts.size} targetDate=$today authority=normalized_trip_date outerRelativeLabelIgnored=true pendingSeatQueueDoesNotBlock=true",
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
