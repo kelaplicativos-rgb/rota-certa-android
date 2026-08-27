@@ -1123,6 +1123,70 @@ async function getPublicTrip(res, req, token) {
   });
 }
 
+function normalizeBrazilWhatsapp(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
+  if (!/^\d{10,11}$/.test(digits)) {
+    throw Object.assign(new Error("Informe um WhatsApp brasileiro com DDD."), { httpStatus: 400, code: "invalid_whatsapp" });
+  }
+  const ddd = Number(digits.slice(0, 2));
+  if (ddd < 11 || ddd > 99) {
+    throw Object.assign(new Error("Informe um DDD brasileiro válido."), { httpStatus: 400, code: "invalid_whatsapp" });
+  }
+  return `+55${digits}`;
+}
+
+function publicBookingIdempotencyKey(req) {
+  const value = cleanText(req.get("Idempotency-Key") || (req.body && req.body.idempotencyKey), 128);
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(value)) {
+    throw Object.assign(new Error("Identificador seguro da tentativa ausente."), { httpStatus: 400, code: "idempotency_key_required" });
+  }
+  return value;
+}
+
+function publicBookingId(token, idempotencyKey) {
+  return `public_${sha256Hex(`${token}:${idempotencyKey}`).slice(0, 48)}`;
+}
+
+function publicBookingFingerprint(payload) {
+  return sha256Hex(JSON.stringify(payload));
+}
+
+function publicCancellationToken(token, idempotencyKey) {
+  const secret = driverTokenSecret.value() || "";
+  if (!secret) throw Object.assign(new Error("Servidor de reservas não está ativado."), { httpStatus: 503, code: "booking_secret_unavailable" });
+  return crypto.createHmac("sha256", secret).update(`${token}:${idempotencyKey}:cancel`).digest("base64url");
+}
+
+function passengerPassword(value) {
+  const password = String(value || "");
+  if (password.length < 8 || password.length > 72) {
+    throw Object.assign(new Error("A senha precisa ter entre 8 e 72 caracteres."), { httpStatus: 400, code: "invalid_password" });
+  }
+  return password;
+}
+
+function passengerPasswordDigest(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString("hex");
+}
+
+function temporaryPassengerPassword() {
+  return String(crypto.randomInt(10_000_000, 100_000_000));
+}
+
+function driverPassengerAccessId(driverUsername, passengerContact) {
+  const username = normalizeUsername(driverUsername);
+  return `${username}_${sha256Hex(passengerContact).slice(0, 40)}`;
+}
+
+function driverPassengerAccessRef(driverUsername, passengerContact) {
+  return db.collection("driverPassengerAccess").doc(driverPassengerAccessId(driverUsername, passengerContact));
+}
+
+function passengerCreditLedgerRef(driverUsername, passengerContact) {
+  return db.collection("passengerCreditLedgers").doc(driverPassengerAccessId(driverUsername, passengerContact));
+}
+
 async function passengerAccessFor(driverUsername, passengerContact) {
   const username = normalizeUsername(driverUsername);
   if (!username || !passengerContact) return null;
