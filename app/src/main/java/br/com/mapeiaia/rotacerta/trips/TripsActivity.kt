@@ -67,7 +67,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, CREATE, SETTINGS }
+private enum class TripScreen { LIST, TIMELINE, CREATE, SETTINGS, PASSENGERS }
 
 @Composable
 private fun TripApp(
@@ -171,11 +171,17 @@ private fun TripApp(
                         message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
                     },
                     onOpenOnlineSettings = { screen = TripScreen.SETTINGS },
+                    onOpenPassengers = { screen = TripScreen.PASSENGERS },
                     onManageLocal = { tripId ->
                         selectedId = tripId
                         screen = TripScreen.LIST
                     },
                     onBack = { activity.finish() },
+                )
+                TripScreen.PASSENGERS -> PassengerAdminScreen(
+                    store = store,
+                    onBack = { screen = TripScreen.TIMELINE },
+                    onChanged = { text -> refresh(); message = text },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
