@@ -101,7 +101,6 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
         val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
         if (result.importedCount > 0) {
             refresh()
@@ -119,6 +118,7 @@ private fun TripApp(
                 store = store,
                 configuredVehicleCapacity = appSettings.vehicleCapacity,
             )
+            runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
             if (result.localPublished + result.externalPublished > 0) {
                 refresh()
                 message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
