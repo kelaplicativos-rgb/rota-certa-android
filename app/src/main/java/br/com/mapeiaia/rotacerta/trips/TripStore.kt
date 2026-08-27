@@ -22,6 +22,7 @@ class TripStore(context: Context) {
     private val tripsKey = tenantScope.key(KEY_TRIPS)
     private val bookingsKey = tenantScope.key(KEY_BOOKINGS)
     private val onlineKey = tenantScope.key(KEY_ONLINE)
+    private val publicExternalBindingsKey = tenantScope.key(KEY_PUBLIC_EXTERNAL_BINDINGS)
     private val secretStore = TripSecretStore(appContext, tenantScope)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -33,6 +34,23 @@ class TripStore(context: Context) {
     fun bookingsFor(tripId: String): List<Booking> = bookings().filter { it.tripId == tripId }
 
     fun getTrip(id: String): Trip? = trips().firstOrNull { it.id == id }
+
+    fun publicExternalBindings(): List<PublicExternalTripBinding> =
+        decode<List<PublicExternalTripBinding>>(prefs.getString(publicExternalBindingsKey, null)).orEmpty()
+            .sortedByDescending(PublicExternalTripBinding::departureAtMillis)
+
+    fun publicExternalBinding(remoteTripId: String): PublicExternalTripBinding? =
+        publicExternalBindings().firstOrNull { it.remoteTripId == remoteTripId }
+
+    fun publicExternalBindingFor(entry: TripTimelineEntry): PublicExternalTripBinding? =
+        publicExternalBindings().firstOrNull { it.matches(entry) }
+
+    fun savePublicExternalBinding(binding: PublicExternalTripBinding): PublicExternalTripBinding {
+        val normalized = binding.copy(updatedAtMillis = System.currentTimeMillis())
+        val current = publicExternalBindings().filterNot { it.remoteTripId == normalized.remoteTripId }
+        prefs.edit().putString(publicExternalBindingsKey, json.encodeToString(listOf(normalized) + current)).apply()
+        return normalized
+    }
 
     fun saveTrip(trip: Trip): Trip {
         val normalized = trip.copy(updatedAtMillis = System.currentTimeMillis())
@@ -126,8 +144,61 @@ class TripStore(context: Context) {
         private const val KEY_TRIPS = "trips"
         private const val KEY_BOOKINGS = "bookings"
         private const val KEY_ONLINE = "online_settings"
+        private const val KEY_PUBLIC_EXTERNAL_BINDINGS = "public_external_bindings_v1"
     }
 }
+
+@kotlinx.serialization.Serializable
+data class PublicExternalTripBinding(
+    val remoteTripId: String,
+    val publicToken: String,
+    val bookingTripId: String,
+    val profileUuid: String = "",
+    val blablaTripId: String = "",
+    val blablaTripHref: String = "",
+    val title: String,
+    val departureAtMillis: Long,
+    val capacity: Int,
+    val stops: List<TripStop>,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+) {
+    fun matches(entry: TripTimelineEntry): Boolean {
+        val entryProfile = entry.blablaProfileUuid.orEmpty().trim().lowercase()
+        val entryTripId = entry.blablaTripId.orEmpty().trim()
+        if (profileUuid.isNotBlank() && blablaTripId.isNotBlank() &&
+            entryProfile == profileUuid.trim().lowercase() && entryTripId == blablaTripId.trim()
+        ) return true
+
+        val leftHref = blablaTripHref.substringBefore("&search_uuid=").trim()
+        val rightHref = entry.blablaTripHref.orEmpty().substringBefore("&search_uuid=").trim()
+        if (profileUuid.isNotBlank() && leftHref.isNotBlank() &&
+            entryProfile == profileUuid.trim().lowercase() && leftHref == rightHref
+        ) return true
+
+        return kotlin.math.abs(entry.departureAtMillis - departureAtMillis) <= 45L * 60L * 1000L &&
+            normalizeBindingPlace(entry.origin) == normalizeBindingPlace(stops.minByOrNull(TripStop::order)?.name.orEmpty()) &&
+            normalizeBindingPlace(entry.destination) == normalizeBindingPlace(stops.maxByOrNull(TripStop::order)?.name.orEmpty())
+    }
+
+    fun asTrip(): Trip = Trip(
+        id = bookingTripId,
+        title = title,
+        departureAtMillis = departureAtMillis,
+        capacity = capacity,
+        status = TripStatus.PUBLISHED,
+        stops = stops,
+        publicToken = publicToken,
+        remoteId = remoteTripId,
+        publicBookingEnabled = true,
+    )
+}
+
+private fun normalizeBindingPlace(value: String): String = java.text.Normalizer
+    .normalize(value.substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
+    .replace(Regex("\\p{M}+"), "")
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), " ")
+    .trim()
 
 @kotlinx.serialization.Serializable
 data class TripOnlineSettings(
