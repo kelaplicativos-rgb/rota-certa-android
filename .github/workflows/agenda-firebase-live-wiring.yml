@@ -162,4 +162,5 @@ jobs:
             --project rota-certa-7ccc8 \
             --only firestore:rules,functions,hosting \
             --non-interactive \
+            --force \
             --debug
