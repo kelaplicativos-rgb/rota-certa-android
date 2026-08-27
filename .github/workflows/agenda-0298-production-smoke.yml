@@ -1,0 +1,33 @@
+name: Agenda 0.1.298 production smoke
+
+on:
+  push:
+    branches:
+      - agent/agenda-firebase-live-wiring
+    paths:
+      - '.github/workflows/agenda-0298-production-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify production health and simple booking UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://rota-certa-7ccc8.web.app/v1/health > /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+          grep -Fq '"service":"rota-certa-trips"' /tmp/health.json
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://rota-certa-7ccc8.web.app/ > /tmp/index.html
+          grep -Fq 'rota-certa-public-ui-version" content="0.1.298' /tmp/index.html
+          grep -Fq 'Reserve sua viagem' /tmp/index.html
+          grep -Fq 'Onde você vai embarcar?' /tmp/index.html
+          grep -Fq 'Quantas pessoas vão viajar?' /tmp/index.html
+          grep -Fq 'CONFIRMAR RESERVA' /tmp/index.html
+          grep -Fq 'Mais opções' /tmp/index.html
+          echo 'production_simple_booking_smoke=PASS'
