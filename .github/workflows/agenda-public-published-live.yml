@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
-          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive
+          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
 
       - name: Smoke production health
         shell: bash
@@ -72,3 +72,12 @@ jobs:
           set -euo pipefail
           curl --retry 8 --retry-delay 5 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/health.json
           grep -Fq '"ok":true' /tmp/health.json
+          curl --retry 8 --retry-delay 5 --fail --silent --show-error 'https://rota-certa-7ccc8.web.app/v1/public/drivers/viagem-certa/WlaYvVil5AlaNHbEthN-oBbb5JSIIQgJ/agenda' > /tmp/agenda.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/agenda.json'))
+          print('public_agenda_driver=', data.get('driver',{}).get('username'))
+          print('public_agenda_trip_count=', len(data.get('trips',[])))
+          for trip in data.get('trips',[])[:5]:
+              print('trip=', trip.get('departureAtMillis'), trip.get('title'), trip.get('status'))
+          PY
