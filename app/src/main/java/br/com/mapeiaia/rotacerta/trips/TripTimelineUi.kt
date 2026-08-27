@@ -587,6 +587,7 @@ private fun TimelineEntryCard(
         radiusKm = referenceRadiusKm,
     )
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
     val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
@@ -691,10 +692,37 @@ private fun TimelineEntryCard(
                 },
             )
 
+            val canCompleteRemoteTrip =
+                trip?.remoteId != null &&
+                    entry.departureAtMillis <= System.currentTimeMillis() &&
+                    trip.status !in setOf(TripStatus.COMPLETED, TripStatus.CANCELLED)
             ResponsiveTripActions(
-                listOf(
-                    ResponsiveTripAction(if (archived) "Restaurar" else "Arquivar") { onArchive() },
-                ),
+                buildList {
+                    add(ResponsiveTripAction(if (archived) "Restaurar" else "Arquivar") { onArchive() })
+                    if (canCompleteRemoteTrip) {
+                        add(
+                            ResponsiveTripAction("Concluir viagem") {
+                                val target = trip ?: return@ResponsiveTripAction
+                                val settings = store.onlineSettings()
+                                if (!settings.configured) {
+                                    onChanged("Integração online necessária para concluir a viagem.")
+                                    return@ResponsiveTripAction
+                                }
+                                scope.launch {
+                                    runCatching {
+                                        val completed = target.copy(status = TripStatus.COMPLETED)
+                                        TripRemoteApi(settings).update(completed)
+                                        if (store.getTrip(target.id) != null) store.saveTrip(completed)
+                                    }.onSuccess {
+                                        onChanged("Viagem concluída. Créditos de indicações elegíveis foram processados.")
+                                    }.onFailure { error ->
+                                        onChanged("Não foi possível concluir a viagem: ${error.message ?: "erro de conexão"}")
+                                    }
+                                }
+                            },
+                        )
+                    }
+                },
             )
         }
     }
