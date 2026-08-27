@@ -44,6 +44,14 @@ jobs:
           grep -Fq 'vaga(s) até' trip-platform/public/app.js
           grep -Fq 'versionCode = 5604' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.311"' app/build.gradle.kts
+          # Public browser agenda must remain location-free and use Rota Certa's neutral identity.
+          ! grep -Fq 'navigator.geolocation' trip-platform/public/app.js
+          ! grep -Fq 'getCurrentPosition(' trip-platform/public/app.js
+          ! grep -Fq 'Cidade, estação, local' trip-platform/public/index.html
+          ! grep -Fq '>Procurar<' trip-platform/public/index.html
+          ! grep -Fq -- '--blue:' trip-platform/public/index.html
+          grep -Fq -- '--accent:#171717' trip-platform/public/index.html
+          grep -Fq 'geolocation=()' trip-platform/firebase.json
 
       - name: Verify FAROL was not changed
         shell: bash
@@ -172,6 +180,13 @@ jobs:
           curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
           curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/app.js" -o /tmp/live-app.js
           grep -Fq 'loginPassengerPortal' /tmp/live-app.js
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/" -o /tmp/live-index.html
+          ! grep -Fq 'navigator.geolocation' /tmp/live-app.js
+          ! grep -Fq 'getCurrentPosition(' /tmp/live-app.js
+          ! grep -Fq 'Cidade, estação, local' /tmp/live-index.html
+          ! grep -Fq '>Procurar<' /tmp/live-index.html
+          ! grep -Fq -- '--blue:' /tmp/live-index.html
+          grep -Fq -- '--accent:#171717' /tmp/live-index.html
           curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.311-universal.apk" -o /tmp/hosted.apk
           test "$(sha256sum /tmp/hosted.apk | awk '{print $1}')" = "$(sha256sum /tmp/0311/rota-certa-0.1.311-universal.apk | awk '{print $1}')"
           echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.311-universal.apk"

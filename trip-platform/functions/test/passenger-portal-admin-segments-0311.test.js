@@ -42,3 +42,15 @@ test("public web exposes passenger reservation management", () => {
   assert.ok(web.includes("registerPassengerPortal"));
   assert.ok(web.includes("vaga(s) até"));
 });
+
+
+test("public agenda stays clean neutral and browser-geolocation free", () => {
+  assert.ok(!html.includes("--blue:"));
+  assert.ok(!html.includes("Cidade, estação, local"));
+  assert.ok(!html.includes(">Procurar<"));
+  assert.ok(!web.includes("navigator.geolocation"));
+  assert.ok(!web.includes("getCurrentPosition("));
+  assert.ok(html.includes("--accent:#171717"));
+  assert.ok(html.includes(".primary{background:#171717;color:#fff}"));
+  assert.ok(html.includes(".agendaArrow{font-size:30px;color:var(--ink)"));
+});
