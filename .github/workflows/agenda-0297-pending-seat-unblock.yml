@@ -1,0 +1,78 @@
+name: Agenda 0.1.297 pending seat unblock build
+
+on:
+  push:
+    branches:
+      - agent/agenda-firebase-live-wiring
+    paths:
+      - '.github/workflows/agenda-0297-pending-seat-unblock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0297-pending-seat-unblock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-firebase-live-wiring
+          fetch-depth: 0
+
+      - name: Verify unblock source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5590' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.297"' app/build.gradle.kts
+          grep -Fq 'Text("Tentar vagas pendentes")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Limpar pendências")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'else -> "Sincronizar todas as contas"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'fun clearAll(): List<String>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt
+          grep -Fq 'fun clearPendingStates(): Int' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          grep -Fq 'pendingSeatQueueDoesNotBlock=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests lint and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk > /tmp/apk.sha256
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0297
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0297/rota-certa-0.1.297-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0297/apk.sha256
+          printf '%s\n' \
+            'versionName=0.1.297' \
+            'pendingSeatQueueDoesNotBlockNormalSync=true' \
+            'pendingSeatRetrySeparate=true' \
+            'pendingSeatClearUserAction=true' \
+            'bookingsPreservedOnPendingClear=true' \
+            'profilesPreservedOnPendingClear=true' > /tmp/agenda-0297/contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.297-pending-seat-unblock-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0297
