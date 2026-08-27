@@ -92,6 +92,8 @@ internal fun OnlineSettingsEditor(
     val context = LocalContext.current
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val profileStore = remember(context) { BlaBlaPublicProfileStore(context) }
+    val initialResolvedProfile = remember(context, initial) { PublicDriverProfileResolver(context).resolve(initial) }
+    val migrateLegacyHybrid = initial.publicProfileMode == PublicDriverProfileMode.HYBRID
     var linkedProfiles by remember { mutableStateOf(registry.list()) }
     var profileRefreshRevision by remember { mutableStateOf(0) }
     var profileSyncMessage by remember { mutableStateOf<String?>(null) }
@@ -100,23 +102,23 @@ internal fun OnlineSettingsEditor(
     var publicBase by remember { mutableStateOf(initial.publicBaseUrl) }
     var token by remember { mutableStateOf(initial.driverToken) }
     var calendarToken by remember { mutableStateOf(initial.publicCalendarToken) }
-    var driverName by remember { mutableStateOf(initial.driverDisplayName) }
+    var driverName by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.displayName else initial.driverDisplayName) }
     var driverUsername by remember { mutableStateOf(initial.driverUsername) }
     var driverWhatsapp by remember { mutableStateOf(initial.driverWhatsapp) }
-    var driverPhotoUrl by remember { mutableStateOf(initial.driverPhotoUrl) }
-    var driverAbout by remember { mutableStateOf(initial.driverPublicAbout) }
-    var driverRating by remember { mutableStateOf(initial.driverPublicRating) }
-    var driverReviewCount by remember { mutableStateOf(initial.driverPublicReviewCount.toString()) }
-    var driverBadge by remember { mutableStateOf(initial.driverPublicBadge) }
-    var vehicleMakeModel by remember { mutableStateOf(initial.vehicleMakeModel) }
-    var vehicleColor by remember { mutableStateOf(initial.vehicleColor) }
-    var vehicleAmenities by remember { mutableStateOf(initial.vehicleAmenities) }
-    var driverPreferences by remember { mutableStateOf(initial.driverPreferences) }
+    var driverPhotoUrl by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.photoUrl else initial.driverPhotoUrl) }
+    var driverAbout by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.about else initial.driverPublicAbout) }
+    var driverRating by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.rating else initial.driverPublicRating) }
+    var driverReviewCount by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.reviewCount?.toString().orEmpty() else initial.driverPublicReviewCount.toString()) }
+    var driverBadge by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.badge else initial.driverPublicBadge) }
+    var vehicleMakeModel by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.vehicleMakeModel else initial.vehicleMakeModel) }
+    var vehicleColor by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.vehicleColor else initial.vehicleColor) }
+    var vehicleAmenities by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.amenities else initial.vehicleAmenities) }
+    var driverPreferences by remember { mutableStateOf(if (migrateLegacyHybrid) initialResolvedProfile.preferences else initial.driverPreferences) }
     var paymentInstructions by remember { mutableStateOf(initial.paymentInstructions) }
     var googleCalendarUrl by remember { mutableStateOf(initial.googleCalendarPublicUrl) }
-    var publicProfileMode by remember { mutableStateOf(initial.publicProfileMode) }
+    var publicProfileMode by remember { mutableStateOf(if (initial.publicProfileMode == PublicDriverProfileMode.BLABLACAR) PublicDriverProfileMode.BLABLACAR else PublicDriverProfileMode.MANUAL) }
     var selectedPublicProfileAccountId by remember { mutableStateOf(initial.selectedPublicProfileAccountId) }
-    var publicProfileOverrideFields by remember { mutableStateOf(initial.publicProfileOverrideFields) }
+    var publicProfileOverrideFields by remember { mutableStateOf(emptySet<String>()) }
     var registrationMessage by remember { mutableStateOf<String?>(null) }
     var linkActionMessage by remember { mutableStateOf<String?>(null) }
     var confirmRegenerateLink by remember { mutableStateOf(false) }
@@ -133,10 +135,15 @@ internal fun OnlineSettingsEditor(
     val profileSyncLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         linkedProfiles = registry.list()
         profileRefreshRevision++
+        val reviews = result.data?.getIntExtra("public_profile_review_count", 0) ?: 0
         profileSyncMessage = if (result.resultCode == android.app.Activity.RESULT_OK) {
-            "Perfil sincronizado. Os dados confirmados foram atualizados."
+            if (reviews > 0) {
+                "Dados do motorista atualizados • $reviews avaliação(ões) detalhada(s) capturada(s)."
+            } else {
+                "Dados do motorista atualizados. Nenhuma avaliação detalhada nova foi encontrada nesta leitura."
+            }
         } else {
-            "Sincronização encerrada sem substituir os últimos dados confirmados."
+            "Leitura do perfil encerrada sem substituir os últimos dados confirmados."
         }
     }
 
@@ -161,7 +168,7 @@ internal fun OnlineSettingsEditor(
         googleCalendarPublicUrl = googleCalendarUrl.trim(),
         publicProfileMode = publicProfileMode,
         selectedPublicProfileAccountId = selectedPublicProfileAccountId,
-        publicProfileOverrideFields = publicProfileOverrideFields.intersect(PublicDriverProfileFields.profileControlled),
+        publicProfileOverrideFields = emptySet(),
     )
 
     Text("Integração online", style = MaterialTheme.typography.titleLarge)
@@ -178,31 +185,25 @@ internal fun OnlineSettingsEditor(
 
     HorizontalDivider()
     Text("Dados públicos do motorista", style = MaterialTheme.typography.titleMedium)
-    Text("Fonte dos dados", style = MaterialTheme.typography.titleSmall)
+    Text("Como o motorista aparecerá na Agenda Pública", style = MaterialTheme.typography.titleSmall)
+    Text("Escolha uma única identidade pública. Isso não filtra as viagens: todos os cards de todas as contas BlaBlaCar conectadas entram automaticamente na Timeline e na Agenda Pública.")
     if (publicProfileMode == PublicDriverProfileMode.BLABLACAR) {
-        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("✓ Usar dados da BlaBlaCar") }
+        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("✓ Usar um perfil da BlaBlaCar") }
     } else {
         OutlinedButton(onClick = { publicProfileMode = PublicDriverProfileMode.BLABLACAR }, modifier = Modifier.fillMaxWidth()) {
-            Text("Usar dados da BlaBlaCar")
+            Text("Usar um perfil da BlaBlaCar")
         }
     }
     if (publicProfileMode == PublicDriverProfileMode.MANUAL) {
-        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("✓ Usar meus próprios dados") }
+        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("✓ Criar meu perfil personalizado") }
     } else {
         OutlinedButton(onClick = { publicProfileMode = PublicDriverProfileMode.MANUAL }, modifier = Modifier.fillMaxWidth()) {
-            Text("Usar meus próprios dados")
-        }
-    }
-    if (publicProfileMode == PublicDriverProfileMode.HYBRID) {
-        Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("✓ BlaBlaCar + personalizar") }
-    } else {
-        OutlinedButton(onClick = { publicProfileMode = PublicDriverProfileMode.HYBRID }, modifier = Modifier.fillMaxWidth()) {
-            Text("BlaBlaCar + personalizar")
+            Text("Criar meu perfil personalizado")
         }
     }
 
     if (publicProfileMode != PublicDriverProfileMode.MANUAL) {
-        Text("Perfil exibido na Agenda Pública", style = MaterialTheme.typography.titleSmall)
+        Text("Perfil BlaBlaCar usado nos dados do motorista", style = MaterialTheme.typography.titleSmall)
         if (linkedProfiles.isEmpty()) {
             Text("Nenhum perfil BlaBlaCar vinculado neste aparelho.")
         } else {
@@ -221,13 +222,17 @@ internal fun OnlineSettingsEditor(
             Button(
                 enabled = !linkRotationInFlight,
                 onClick = {
-                    profileSyncMessage = "Sincronizando ${profile.displayLabel}…"
-                    profileSyncLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, profile))
+                    profileSyncMessage = "Buscando foto, nota, avaliações e demais dados de ${profile.displayLabel}…"
+                    profileSyncLauncher.launch(BlaBlaDynamicSessionIntents.profile(context, profile))
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sincronizar perfil selecionado") }
+            ) { Text("Atualizar dados deste perfil") }
         }
         profileSyncMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Text(
+            "Esta escolha serve somente para foto, nome, nota, avaliações, selo e outros dados do motorista. As viagens não dependem desta seleção.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         when {
             selectedProfile == null -> Text("Selecione o perfil que será exibido.")
             selectedProfile.profileUuid.isNullOrBlank() -> Text("Sincronize para confirmar o UUID antes de publicar.")
@@ -236,6 +241,9 @@ internal fun OnlineSettingsEditor(
                     .atZone(ZoneId.systemDefault())
                     .format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
                 Text("✓ Identidade confirmada • última sincronização $whenText")
+                if (automaticSnapshot.reviews.isNotEmpty()) {
+                    Text("${automaticSnapshot.reviews.size} avaliação(ões) detalhada(s) disponível(is) para a Agenda Pública.")
+                }
             }
             else -> Text("UUID confirmado, mas ainda sem dados públicos confirmados. Dados de outro perfil não serão usados.")
         }
