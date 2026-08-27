@@ -192,7 +192,6 @@ private fun TripApp(
                                 runCatching {
                                     val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken)
                                     val validated = saved.copy(
-                                        publicCalendarToken = response.publicAgendaToken,
                                         driverDisplayName = response.displayName.ifBlank { saved.driverDisplayName },
                                         driverUsername = response.username.ifBlank { saved.driverUsername },
                                     )
@@ -225,7 +224,6 @@ private fun TripApp(
                                     runCatching {
                                         val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken)
                                         val validated = onlineSettings.copy(
-                                            publicCalendarToken = response.publicAgendaToken,
                                             driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
                                             driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
                                         )
@@ -233,11 +231,7 @@ private fun TripApp(
                                         response to validated
                                     }.onSuccess { (response, validated) ->
                                         if (TripCalendarBridge.sharePublicAgenda(activity, validated)) {
-                                            message = if (response.repaired) {
-                                                "Link da Agenda Pública corrigido no servidor e pronto para compartilhar."
-                                            } else {
-                                                "Link da Agenda Pública validado e pronto para compartilhar."
-                                            }
+                                            message = "Link da Agenda Pública validado e pronto para compartilhar."
                                         } else {
                                             message = "Não foi possível montar o link público validado."
                                         }
@@ -608,6 +602,7 @@ private fun OnlineSettingsEditor(
     var googleCalendarUrl by remember { mutableStateOf(initial.googleCalendarPublicUrl) }
     var registrationMessage by remember { mutableStateOf<String?>(null) }
     var linkActionMessage by remember { mutableStateOf<String?>(null) }
+    var confirmRegenerateLink by remember { mutableStateOf(false) }
     val registrationScope = rememberCoroutineScope()
     Text("Integração online", style = MaterialTheme.typography.titleLarge)
     Text("Sem essas credenciais, nenhuma informação é enviada para servidor algum. O módulo local continua operacional.")
@@ -718,7 +713,7 @@ private fun OnlineSettingsEditor(
             }
         }) { Text("Gerar meu link exclusivo") }
     } else {
-        val preview = TripOnlineSettings(
+        val currentSettings = TripOnlineSettings(
             apiBaseUrl = api.trimEnd('/'),
             publicBaseUrl = publicBase.trimEnd('/'),
             driverToken = token,
@@ -737,7 +732,8 @@ private fun OnlineSettingsEditor(
             driverPreferences = driverPreferences.trim(),
             paymentInstructions = paymentInstructions.trim(),
             googleCalendarPublicUrl = googleCalendarUrl.trim(),
-        ).publicAgendaUrl
+        )
+        val preview = currentSettings.publicAgendaUrl
         preview?.let { agendaUrl ->
             Text("Seu link da agenda", style = MaterialTheme.typography.titleMedium)
             Text(agendaUrl, style = MaterialTheme.typography.bodyLarge)
@@ -765,6 +761,54 @@ private fun OnlineSettingsEditor(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Copiar link") }
             linkActionMessage?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { confirmRegenerateLink = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Gerar novo link") }
+
+            if (confirmRegenerateLink) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Atenção", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Gerar um novo link invalida imediatamente o link atual. Faça isso somente se realmente quiser substituir o endereço da agenda.",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Button(
+                            onClick = {
+                                registrationScope.launch {
+                                    linkActionMessage = "Gerando novo link…"
+                                    runCatching {
+                                        TripRemoteApi(currentSettings).regeneratePublicAgenda()
+                                    }.onSuccess { response ->
+                                        val regenerated = currentSettings.copy(
+                                            publicCalendarToken = response.publicAgendaToken,
+                                            driverDisplayName = response.displayName.ifBlank { currentSettings.driverDisplayName },
+                                            driverUsername = response.username.ifBlank { currentSettings.driverUsername },
+                                        )
+                                        calendarToken = regenerated.publicCalendarToken
+                                        confirmRegenerateLink = false
+                                        linkActionMessage = "Novo link gerado. O link anterior deixou de funcionar."
+                                        onSave(regenerated)
+                                    }.onFailure {
+                                        linkActionMessage = "Não foi possível gerar um novo link: ${it.message ?: "erro de conexão"}"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Confirmar novo link") }
+                        TextButton(
+                            onClick = { confirmRegenerateLink = false },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Cancelar") }
+                    }
+                }
+            }
         }
     }
     Spacer(Modifier.height(4.dp))
