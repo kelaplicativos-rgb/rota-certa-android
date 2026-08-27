@@ -364,7 +364,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const trips = snapshot.docs
     .map((doc) => safePublicTrip(doc.id, doc.data()))
-    .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.publicBookingEnabled === true && Number(trip.departureAtMillis) > Date.now())
+    .filter((trip) => PUBLIC_STATUSES.has(trip.status) && Number(trip.departureAtMillis) > Date.now())
     .sort((a, b) => Number(a.departureAtMillis) - Number(b.departureAtMillis))
     .slice(0, 100);
   return json(res, 200, {
@@ -438,7 +438,7 @@ async function getPublicTrip(res, token) {
   const snap = await db.collection("trips").doc(token).get();
   if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const data = snap.data();
-  if (!PUBLIC_STATUSES.has(data.status) || data.publicBookingEnabled !== true) {
+  if (!PUBLIC_STATUSES.has(data.status)) {
     return fail(res, 404, "trip_not_available", "Esta viagem não está mais disponível para reserva.");
   }
   if (Number(data.departureAtMillis || 0) <= Date.now()) {
@@ -512,7 +512,7 @@ async function createBooking(req, res, token) {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
       const trip = tripSnap.data();
-      if (!PUBLIC_STATUSES.has(trip.status) || trip.publicBookingEnabled !== true) {
+      if (!PUBLIC_STATUSES.has(trip.status)) {
         throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
       }
       if (Number(trip.departureAtMillis || 0) <= Date.now()) {
