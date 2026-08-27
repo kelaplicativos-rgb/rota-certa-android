@@ -413,20 +413,23 @@ class BlaBlaCollectorStateStore(context: Context) {
 
     fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
         val persisted = lastResponse()
-        if (persisted?.status == "cleared" || persisted?.trips?.isNotEmpty() == true) return persisted
+        if (persisted?.status == "cleared") return persisted
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
         if (accounts.isEmpty()) return persisted
+
+        // Dynamic per-account snapshots are the canonical source for the Timeline.
+        // Rebuild from every connected account so a one-account/profile refresh can
+        // never hide the cards already confirmed for the other connected accounts.
         val dynamic = BlaBlaDynamicSessionStore(appContext).combinedResponse(accounts)
-        val recovered = BlaBlaCollectorTimelineModule.recoverStartupResponse(persisted, dynamic)
-        if (recovered != null && recovered != persisted) {
-            prefs.edit().putString(KEY_RESPONSE, json.encodeToString(recovered)).apply()
-            UnifiedDebugEventStore.record(
-                "TIMELINE_RECOVERED_FROM_SESSION_SNAPSHOTS",
-                appContext.packageName,
-                "persistedTrips=${persisted?.trips?.size ?: 0} sessionTrips=${dynamic.trips.size} recoveredTrips=${recovered.trips.size} accounts=${accounts.size} explicitClear=false",
-            )
-        }
-        return recovered
+        if (dynamic.trips.isEmpty()) return persisted
+
+        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(dynamic)).apply()
+        UnifiedDebugEventStore.record(
+            "TIMELINE_REBUILT_FROM_ALL_CONNECTED_ACCOUNTS",
+            appContext.packageName,
+            "persistedTrips=${persisted?.trips?.size ?: 0} combinedTrips=${dynamic.trips.size} accounts=${accounts.size} explicitClear=false",
+        )
+        return dynamic
     }
 
     internal fun clearSynchronizedTimelineData(): BlaBlaTimelineClearResult {
