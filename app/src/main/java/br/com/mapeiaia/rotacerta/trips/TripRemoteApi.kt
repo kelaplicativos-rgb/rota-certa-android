@@ -45,6 +45,7 @@ data class DriverPushTokenResponse(
 data class DriverAgendaEnsureRequest(
     val publicAgendaToken: String = "",
     val driverWhatsapp: String = "",
+    val driverPhotoUrl: String = "",
     val driverPublicAbout: String = "",
     val driverPublicRating: String = "",
     val driverPublicReviewCount: Int = 0,
@@ -184,6 +185,7 @@ class TripRemoteApi(
             DriverAgendaEnsureRequest(
                 publicAgendaToken = publicAgendaToken.trim(),
                 driverWhatsapp = settings.driverWhatsapp.trim(),
+                driverPhotoUrl = settings.driverPhotoUrl.trim(),
                 driverPublicAbout = settings.driverPublicAbout.trim(),
                 driverPublicRating = settings.driverPublicRating.trim(),
                 driverPublicReviewCount = settings.driverPublicReviewCount.coerceAtLeast(0),
