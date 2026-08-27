@@ -31,6 +31,25 @@ function normalizeUsername(value) {
     .slice(0, 32);
 }
 
+async function agendaHashForDriver(username, driverSnap) {
+  const linkRef = db.collection("tripPublicAgendaLinks").doc(username);
+  const linkSnap = await linkRef.get();
+  if (linkSnap.exists) return String(linkSnap.data().tokenHash || "");
+  const legacyHash = String((driverSnap && driverSnap.exists && driverSnap.data().agendaTokenHash) || "");
+  if (!legacyHash) return "";
+  const now = Date.now();
+  await linkRef.create({
+    driverUsername: username,
+    tokenHash: legacyHash,
+    generation: 1,
+    migratedFromLegacy: true,
+    createdAtMillis: now,
+    updatedAtMillis: now,
+  }).catch(() => {});
+  const after = await linkRef.get();
+  return after.exists ? String(after.data().tokenHash || "") : legacyHash;
+}
+
 function escapeIcs(value) {
   return String(value || "")
     .replace(/\\/g, "\\\\")
@@ -87,7 +106,8 @@ async function driverAgenda(usernameRaw, agendaToken) {
   if (!username || !agendaToken) return null;
   const driverRef = db.collection("tripDrivers").doc(username);
   const driverSnap = await driverRef.get();
-  if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) return null;
+  const agendaHash = driverSnap.exists ? await agendaHashForDriver(username, driverSnap) : "";
+  if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), agendaHash)) return null;
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const documents = snapshot.docs
