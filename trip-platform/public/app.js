@@ -1094,6 +1094,8 @@ function openBookingFlow() {
     $("contact").value = maskWhatsapp(passengerSessionContact);
     $("contact").readOnly = true;
   }
+  $("creditToUse").value = "0";
+  loadPassengerCredits();
   showOnly("booking");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1619,6 +1621,8 @@ function openPassengerPortal() {
   $("portalMessage").textContent = "";
   show("portalLoginBox", false);
   show("portalAuthenticated", true);
+  if (passengerMustChangePassword) $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
+  loadPassengerCredits();
   loadPassengerBookings();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1636,12 +1640,13 @@ async function loginPassengerPortal() {
     const response = await fetch("/v1/passenger/session", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, password }),
+      body: JSON.stringify({ passengerContact, password, driverUsername }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
     savePassengerSession(body.sessionToken);
     savePassengerContact(body.passengerContact || passengerContact);
+    passengerMustChangePassword = body.mustChangePassword === true;
     $("portalPassword").value = "";
     $("portalMessage").textContent = "";
     await loadPassengerBookings();
@@ -1690,6 +1695,99 @@ async function registerPassengerPortal() {
 
 function portalStopName(tripItem, stopId) {
   return orderedStops(tripItem).find((stop) => stop.id === stopId)?.name || "Parada";
+}
+
+
+async function loadPassengerCredits() {
+  if (!passengerSessionToken || !driverUsername) return;
+  try {
+    const response = await fetch(`/v1/passenger/me/credits?driverUsername=${encodeURIComponent(driverUsername)}`, { headers: portalHeaders() });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível carregar seus créditos.");
+    passengerCreditBalanceCents = Math.max(0, Number(body.balanceCents || 0));
+    $("portalCreditBalance").textContent = formatMoney(passengerCreditBalanceCents);
+    $("portalReferralInfo").textContent = Number(body.referralCreditCents || 0) > 0
+      ? `Cada indicação elegível concluída rende ${formatMoney(body.referralCreditCents)} em créditos.`
+      : "O motorista ainda não definiu créditos por indicação.";
+    $("bookingCreditBalance").textContent = formatMoney(passengerCreditBalanceCents);
+    show("bookingCreditBox", passengerCreditBalanceCents > 0);
+    const entries = $("portalCreditEntries");
+    entries.innerHTML = "";
+    (Array.isArray(body.entries) ? body.entries : []).slice(0, 12).forEach((entry) => {
+      const p = document.createElement("p");
+      p.className = "muted";
+      const amount = Number(entry.amountCents || 0);
+      const label = entry.type === "REFERRAL_EARNED"
+        ? `Indicação concluída${entry.referredPassengerName ? ` • ${entry.referredPassengerName}` : ""}`
+        : entry.type === "BOOKING_CREDIT_USED"
+          ? "Créditos usados em viagem"
+          : entry.type === "BOOKING_CREDIT_REFUND"
+            ? "Créditos devolvidos"
+            : "Movimentação de créditos";
+      p.textContent = `${amount >= 0 ? "+" : "−"} ${formatMoney(Math.abs(amount))} • ${label}`;
+      entries.appendChild(p);
+    });
+    if (!entries.children.length) entries.innerHTML = '<p class="muted">Você ainda não possui movimentações de créditos.</p>';
+  } catch (error) {
+    $("portalReferralMessage").textContent = error.message || "Falha ao carregar créditos.";
+  }
+}
+
+async function sharePassengerReferral() {
+  if (!passengerSessionToken || !driverUsername) return;
+  $("portalReferralShare").disabled = true;
+  $("portalReferralMessage").textContent = "Criando seu convite…";
+  try {
+    const response = await fetch("/v1/passenger/me/referral", {
+      method: "POST",
+      headers: portalHeaders(),
+      body: JSON.stringify({ driverUsername }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível criar o convite.");
+    const query = new URLSearchParams({ motorista: driverUsername, ref: body.referralCode });
+    if (agendaToken) query.set("agenda", agendaToken);
+    const link = `${location.origin}/?${query.toString()}`;
+    const shareData = { title: "Rota Certa", text: "Fui eu quem te indicou para a Agenda Rota Certa. Solicite seu convite por este link:", url: link };
+    if (navigator.share) await navigator.share(shareData);
+    else {
+      await navigator.clipboard.writeText(link);
+      $("portalReferralMessage").textContent = "Link de indicação copiado.";
+      return;
+    }
+    $("portalReferralMessage").textContent = "Convite compartilhado.";
+  } catch (error) {
+    if (error && error.name === "AbortError") $("portalReferralMessage").textContent = "";
+    else $("portalReferralMessage").textContent = error.message || "Falha ao compartilhar convite.";
+  } finally {
+    $("portalReferralShare").disabled = false;
+  }
+}
+
+async function changePassengerPortalPassword() {
+  const password = $("portalNewPassword").value;
+  if (password.length < 8 || password.length > 72) {
+    $("portalPasswordMessage").textContent = "Use uma senha de 8 a 72 caracteres.";
+    return;
+  }
+  $("portalChangePassword").disabled = true;
+  $("portalPasswordMessage").textContent = "Alterando senha…";
+  try {
+    const response = await fetch("/v1/passenger/me/password", {
+      method: "POST",
+      headers: portalHeaders(),
+      body: JSON.stringify({ password }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível alterar a senha.");
+    passengerMustChangePassword = false;
+    $("portalNewPassword").value = "";
+    $("portalPasswordMessage").textContent = "Senha alterada com sucesso.";
+  } catch (error) {
+    $("portalPasswordMessage").textContent = error.message || "Falha ao alterar a senha.";
+  } finally {
+    $("portalChangePassword").disabled = false;
+  }
 }
 
 function renderPassengerBookings(entries) {
@@ -1838,6 +1936,7 @@ async function loadPassengerBookings() {
     }
     if (!response.ok) throw new Error(body.message || "Não foi possível carregar as reservas.");
     renderPassengerBookings(Array.isArray(body.bookings) ? body.bookings : []);
+    await loadPassengerCredits();
   } catch (error) {
     container.innerHTML = "";
     const message = document.createElement("p");
