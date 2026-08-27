@@ -1743,23 +1743,29 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             blockCurrentCard(expectedSync, expectedCandidate, "detail_trip_id_mismatch")
             return
         }
-        val trip = BlaBlaDomNormalizer.toTrip(
+        val normalizedTrip = BlaBlaDomNormalizer.toTrip(
             account = definition,
             candidate = candidate,
             detail = enrichedDetail,
             today = LocalDate.now(),
             authenticatedProfileSessionVerified = identityConfirmedThisSync,
         )
-        if (trip == null || !identityConfirmedThisSync) {
+        if (normalizedTrip == null || !identityConfirmedThisSync) {
             skipped++
             blockCurrentCard(expectedSync, expectedCandidate, "trip_fields_unparseable")
             return
         }
+        val trip = normalizedTrip.copy(
+            itinerary_stops = result.itineraryStops
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .distinct(),
+        )
         collected += trip
         UnifiedDebugEventStore.record(
             "TRIP_ACCEPTED",
             packageName,
-            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${pendingPublishedSeats ?: -1} sequential=true",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} itineraryStops=${trip.itinerary_stops.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${pendingPublishedSeats ?: -1} sequential=true",
         )
         completeCurrentCard(expectedSync, expectedCandidate)
     }
