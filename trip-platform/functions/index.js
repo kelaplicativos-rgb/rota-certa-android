@@ -1049,6 +1049,47 @@ async function requirePassengerSession(req, res) {
   };
 }
 
+
+async function signupPassengerAccount(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  let password;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    password = passengerPassword(req.body && req.body.password);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_account", error.message || "Dados de acesso inválidos.");
+  }
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const salt = crypto.randomBytes(16).toString("hex");
+  const passwordHash = passengerPasswordDigest(password, salt);
+  const now = Date.now();
+  try {
+    await db.runTransaction(async (tx) => {
+      const accountSnap = await tx.get(accountRef);
+      if (accountSnap.exists) throw Object.assign(new Error("Este WhatsApp já possui acesso. Use Entrar."), { httpStatus: 409, code: "account_exists" });
+      tx.create(accountRef, {
+        passengerContact,
+        passwordSalt: salt,
+        passwordHash,
+        signupSource: "PUBLIC_AGENDA",
+        createdAtMillis: now,
+        updatedAtMillis: now,
+      });
+    });
+    const session = await createPassengerSession(passengerContact);
+    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "account_create_failed", error.message || "Não foi possível criar o acesso.");
+  }
+}
+
+async function getPassengerMe(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  return json(res, 200, { passengerContact: session.passengerContact });
+}
+
 async function registerPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
   let passengerContact;
@@ -1095,7 +1136,7 @@ async function registerPassengerAccount(req, res) {
       writePassengerBookingIndex(tx, passengerContact, tripToken, bookingId, now);
     });
     const session = await createPassengerSession(passengerContact);
-    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis });
+    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "account_create_failed", error.message || "Não foi possível criar o acesso.");
   }
@@ -1119,7 +1160,7 @@ async function loginPassengerAccount(req, res) {
     return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
   }
   const session = await createPassengerSession(passengerContact);
-  return json(res, 200, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis });
+  return json(res, 200, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
 }
 
 async function listPassengerBookings(req, res) {
@@ -1758,8 +1799,10 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/session") return await loginPassengerAccount(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me") return await getPassengerMe(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
