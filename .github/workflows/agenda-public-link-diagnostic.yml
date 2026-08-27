@@ -1,0 +1,58 @@
+name: Agenda public link diagnostic
+
+on:
+  push:
+    branches:
+      - agent/agenda-firebase-live-wiring
+    paths:
+      - '.github/workflows/agenda-public-link-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/353336964879/locations/global/workloadIdentityPools/rota-certa-github/providers/github-actions'
+          service_account: 'rota-certa-github-deploy@rota-certa-7ccc8.iam.gserviceaccount.com'
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Check public agenda registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_AGENDA_HASH='d0ad1f3f2bb2f64ee7ffc5d9aa19b538226e7d0ae42a13ba106871afd71798f0'
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          HTTP_CODE="$(curl -sS -o /tmp/driver.json -w "%{http_code}" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-user-project: rota-certa-7ccc8" \
+            "https://firestore.googleapis.com/v1/projects/rota-certa-7ccc8/databases/(default)/documents/tripDrivers/viagem-certa")"
+          echo "firestore_http=$HTTP_CODE"
+          python3 - <<'PY'
+          import json, os
+          expected = 'd0ad1f3f2bb2f64ee7ffc5d9aa19b538226e7d0ae42a13ba106871afd71798f0'
+          with open('/tmp/driver.json', encoding='utf-8') as f:
+              data = json.load(f)
+          if 'error' in data:
+              print('driver_document=ERROR')
+              print('error_code=' + str(data['error'].get('code')))
+              raise SystemExit(1)
+          fields = data.get('fields', {})
+          stored = fields.get('agendaTokenHash', {}).get('stringValue', '')
+          driver_hash = fields.get('driverTokenHash', {}).get('stringValue', '')
+          print('driver_document=FOUND')
+          print('agenda_hash_present=' + str(bool(stored)).lower())
+          print('driver_hash_present=' + str(bool(driver_hash)).lower())
+          print('candidate_token_matches=' + str(stored == expected).lower())
+          if stored != expected:
+              raise SystemExit(2)
+          PY
