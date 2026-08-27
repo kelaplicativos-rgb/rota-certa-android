@@ -103,6 +103,8 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("__rotaCertaNetworkTripSource"))
         assertTrue(script.contains("rememberNetworkTripSources(parsed)"))
         assertTrue(script.contains("trip_offer_encrypted_id"))
+        assertTrue(script.contains("root.waypoints"))
+        assertTrue(script.contains("waypointsComplete"))
         assertTrue(script.contains("pickup_waypoint"))
         assertTrue(script.contains("dropoff_waypoint"))
         assertEquals(1, script.windowCount("window.fetch = function"))
