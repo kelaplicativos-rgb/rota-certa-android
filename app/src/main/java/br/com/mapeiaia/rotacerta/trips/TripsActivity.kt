@@ -179,10 +179,30 @@ private fun TripApp(
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
-                    onSave = {
-                        store.saveOnlineSettings(it)
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
                         screen = TripScreen.TIMELINE
-                        message = if (it.configured) "Integração online configurada." else "Configuração salva; modo online ainda desativado."
+                        if (saved.configured) {
+                            message = "Salvando Integração online…"
+                            shareScope.launch {
+                                runCatching {
+                                    val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken)
+                                    val validated = saved.copy(
+                                        publicCalendarToken = response.publicAgendaToken,
+                                        driverDisplayName = response.displayName.ifBlank { saved.driverDisplayName },
+                                        driverUsername = response.username.ifBlank { saved.driverUsername },
+                                    )
+                                    store.saveOnlineSettings(validated)
+                                    validated
+                                }.onSuccess {
+                                    message = "Integração online salva e perfil público atualizado."
+                                }.onFailure {
+                                    message = "Configuração salva no aparelho, mas o perfil público ainda não sincronizou: ${it.message ?: "erro de conexão"}"
+                                }
+                            }
+                        } else {
+                            message = "Configuração salva; modo online ainda desativado."
+                        }
                     },
                     onCancel = { screen = TripScreen.TIMELINE },
                 )
@@ -570,6 +590,17 @@ private fun OnlineSettingsEditor(
     var calendarToken by remember { mutableStateOf(initial.publicCalendarToken) }
     var driverName by remember { mutableStateOf(initial.driverDisplayName) }
     var driverUsername by remember { mutableStateOf(initial.driverUsername) }
+    var driverWhatsapp by remember { mutableStateOf(initial.driverWhatsapp) }
+    var driverPhotoUrl by remember { mutableStateOf(initial.driverPhotoUrl) }
+    var driverAbout by remember { mutableStateOf(initial.driverPublicAbout) }
+    var driverRating by remember { mutableStateOf(initial.driverPublicRating) }
+    var driverReviewCount by remember { mutableStateOf(initial.driverPublicReviewCount.toString()) }
+    var driverBadge by remember { mutableStateOf(initial.driverPublicBadge) }
+    var vehicleMakeModel by remember { mutableStateOf(initial.vehicleMakeModel) }
+    var vehicleColor by remember { mutableStateOf(initial.vehicleColor) }
+    var vehicleAmenities by remember { mutableStateOf(initial.vehicleAmenities) }
+    var driverPreferences by remember { mutableStateOf(initial.driverPreferences) }
+    var paymentInstructions by remember { mutableStateOf(initial.paymentInstructions) }
     var googleCalendarUrl by remember { mutableStateOf(initial.googleCalendarPublicUrl) }
     var registrationMessage by remember { mutableStateOf<String?>(null) }
     val registrationScope = rememberCoroutineScope()
@@ -584,6 +615,19 @@ private fun OnlineSettingsEditor(
     OutlinedTextField(publicBase, { publicBase = it.trim() }, label = { Text("URL pública") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverName, { driverName = it }, label = { Text("Nome público do motorista") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverUsername, { driverUsername = DriverIdentityRules.normalizeUsername(it) }, label = { Text("Nome de usuário no link") }, modifier = Modifier.fillMaxWidth(), enabled = token.isBlank())
+    Text("Dados públicos mostrados ao passageiro", style = MaterialTheme.typography.titleMedium)
+    Text("Preencha somente informações verdadeiras. Campos vazios não aparecem na Agenda Pública.")
+    OutlinedTextField(driverWhatsapp, { driverWhatsapp = it.filter { ch -> ch.isDigit() || ch == '+' || ch == '(' || ch == ')' || ch == '-' || ch == ' ' }.take(24) }, label = { Text("WhatsApp do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverPhotoUrl, { driverPhotoUrl = it.trim().take(500) }, label = { Text("Foto pública do motorista — URL HTTPS opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverAbout, { driverAbout = it.take(320) }, label = { Text("Apresentação do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverRating, { driverRating = it.take(12) }, label = { Text("Nota pública — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverReviewCount, { driverReviewCount = it.filter(Char::isDigit).take(7) }, label = { Text("Quantidade de avaliações — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverBadge, { driverBadge = it.take(80) }, label = { Text("Selo ou destaque — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(vehicleMakeModel, { vehicleMakeModel = it.take(120) }, label = { Text("Veículo — marca/modelo — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(vehicleColor, { vehicleColor = it.take(60) }, label = { Text("Cor do veículo — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(vehicleAmenities, { vehicleAmenities = it.take(240) }, label = { Text("Comodidades — ex.: Ar-condicionado, USB") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverPreferences, { driverPreferences = it.take(240) }, label = { Text("Preferências — ex.: Não fumar, animais") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(paymentInstructions, { paymentInstructions = it.take(240) }, label = { Text("Pagamento — ex.: Pix ou dinheiro no carro") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(googleCalendarUrl, { googleCalendarUrl = it.trim() }, label = { Text("Link público do Google Agenda — opcional") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
         token,
@@ -638,7 +682,24 @@ private fun OnlineSettingsEditor(
             } else {
                 driverUsername = normalizedUsername
                 registrationScope.launch {
-                    val candidate = TripOnlineSettings(apiBaseUrl = api.trimEnd('/'), publicBaseUrl = publicBase.trimEnd('/'), driverDisplayName = driverName.trim(), driverUsername = normalizedUsername, googleCalendarPublicUrl = googleCalendarUrl.trim())
+                    val candidate = TripOnlineSettings(
+                        apiBaseUrl = api.trimEnd('/'),
+                        publicBaseUrl = publicBase.trimEnd('/'),
+                        driverDisplayName = driverName.trim(),
+                        driverUsername = normalizedUsername,
+                        driverWhatsapp = driverWhatsapp.trim(),
+                        driverPhotoUrl = driverPhotoUrl.trim(),
+                        driverPublicAbout = driverAbout.trim(),
+                        driverPublicRating = driverRating.trim(),
+                        driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
+                        driverPublicBadge = driverBadge.trim(),
+                        vehicleMakeModel = vehicleMakeModel.trim(),
+                        vehicleColor = vehicleColor.trim(),
+                        vehicleAmenities = vehicleAmenities.trim(),
+                        driverPreferences = driverPreferences.trim(),
+                        paymentInstructions = paymentInstructions.trim(),
+                        googleCalendarPublicUrl = googleCalendarUrl.trim(),
+                    )
                     runCatching { TripRemoteApi(candidate).registerDriver(driverName.trim(), normalizedUsername) }
                         .onSuccess { response ->
                             driverName = response.displayName
@@ -652,7 +713,26 @@ private fun OnlineSettingsEditor(
             }
         }) { Text("Gerar meu link exclusivo") }
     } else {
-        val preview = TripOnlineSettings(apiBaseUrl = api.trimEnd('/'), publicBaseUrl = publicBase.trimEnd('/'), driverToken = token, publicCalendarToken = calendarToken, driverDisplayName = driverName.trim(), driverUsername = driverUsername, googleCalendarPublicUrl = googleCalendarUrl.trim()).publicAgendaUrl
+        val preview = TripOnlineSettings(
+            apiBaseUrl = api.trimEnd('/'),
+            publicBaseUrl = publicBase.trimEnd('/'),
+            driverToken = token,
+            publicCalendarToken = calendarToken,
+            driverDisplayName = driverName.trim(),
+            driverUsername = driverUsername,
+            driverWhatsapp = driverWhatsapp.trim(),
+            driverPhotoUrl = driverPhotoUrl.trim(),
+            driverPublicAbout = driverAbout.trim(),
+            driverPublicRating = driverRating.trim(),
+            driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
+            driverPublicBadge = driverBadge.trim(),
+            vehicleMakeModel = vehicleMakeModel.trim(),
+            vehicleColor = vehicleColor.trim(),
+            vehicleAmenities = vehicleAmenities.trim(),
+            driverPreferences = driverPreferences.trim(),
+            paymentInstructions = paymentInstructions.trim(),
+            googleCalendarPublicUrl = googleCalendarUrl.trim(),
+        ).publicAgendaUrl
         preview?.let { Text("Seu link: $it", style = MaterialTheme.typography.bodySmall) }
     }
     Spacer(Modifier.height(4.dp))
@@ -666,6 +746,17 @@ private fun OnlineSettingsEditor(
                     publicCalendarToken = calendarToken.trim(),
                     driverDisplayName = driverName.trim(),
                     driverUsername = DriverIdentityRules.normalizeUsername(driverUsername),
+                    driverWhatsapp = driverWhatsapp.trim(),
+                    driverPhotoUrl = driverPhotoUrl.trim(),
+                    driverPublicAbout = driverAbout.trim(),
+                    driverPublicRating = driverRating.trim(),
+                    driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
+                    driverPublicBadge = driverBadge.trim(),
+                    vehicleMakeModel = vehicleMakeModel.trim(),
+                    vehicleColor = vehicleColor.trim(),
+                    vehicleAmenities = vehicleAmenities.trim(),
+                    driverPreferences = driverPreferences.trim(),
+                    paymentInstructions = paymentInstructions.trim(),
                     googleCalendarPublicUrl = googleCalendarUrl.trim(),
                 ),
             )

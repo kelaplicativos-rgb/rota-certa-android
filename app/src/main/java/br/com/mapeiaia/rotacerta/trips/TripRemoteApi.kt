@@ -44,6 +44,17 @@ data class DriverPushTokenResponse(
 @Serializable
 data class DriverAgendaEnsureRequest(
     val publicAgendaToken: String = "",
+    val driverWhatsapp: String = "",
+    val driverPhotoUrl: String = "",
+    val driverPublicAbout: String = "",
+    val driverPublicRating: String = "",
+    val driverPublicReviewCount: Int = 0,
+    val driverPublicBadge: String = "",
+    val vehicleMakeModel: String = "",
+    val vehicleColor: String = "",
+    val vehicleAmenities: String = "",
+    val driverPreferences: String = "",
+    val paymentInstructions: String = "",
 )
 
 @Serializable
@@ -170,7 +181,22 @@ class TripRemoteApi(
     suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse = request(
         method = "POST",
         path = "/v1/driver/agenda/ensure",
-        body = json.encodeToString(DriverAgendaEnsureRequest(publicAgendaToken.trim())),
+        body = json.encodeToString(
+            DriverAgendaEnsureRequest(
+                publicAgendaToken = publicAgendaToken.trim(),
+                driverWhatsapp = settings.driverWhatsapp.trim(),
+                driverPhotoUrl = settings.driverPhotoUrl.trim(),
+                driverPublicAbout = settings.driverPublicAbout.trim(),
+                driverPublicRating = settings.driverPublicRating.trim(),
+                driverPublicReviewCount = settings.driverPublicReviewCount.coerceAtLeast(0),
+                driverPublicBadge = settings.driverPublicBadge.trim(),
+                vehicleMakeModel = settings.vehicleMakeModel.trim(),
+                vehicleColor = settings.vehicleColor.trim(),
+                vehicleAmenities = settings.vehicleAmenities.trim(),
+                driverPreferences = settings.driverPreferences.trim(),
+                paymentInstructions = settings.paymentInstructions.trim(),
+            ),
+        ),
         requireDriverToken = true,
     )
 

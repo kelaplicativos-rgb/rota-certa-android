@@ -35,6 +35,33 @@ internal object PublicAgendaAutoSync0300 {
         if (!settings.configured) return PublicAgendaAutoSyncResult()
 
         val api = TripRemoteApi(settings)
+        runCatching { api.ensurePublicAgenda(settings.publicCalendarToken) }
+            .onSuccess { response ->
+                if (
+                    response.publicAgendaToken.isNotBlank() &&
+                    response.publicAgendaToken != settings.publicCalendarToken
+                ) {
+                    store.saveOnlineSettings(
+                        settings.copy(
+                            publicCalendarToken = response.publicAgendaToken,
+                            driverDisplayName = response.displayName.ifBlank { settings.driverDisplayName },
+                            driverUsername = response.username.ifBlank { settings.driverUsername },
+                        ),
+                    )
+                }
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_DRIVER_PROFILE_SYNCED",
+                    context.packageName,
+                    "whatsappConfigured=${settings.driverWhatsapp.isNotBlank()} vehicleConfigured=${settings.vehicleMakeModel.isNotBlank()} paymentConfigured=${settings.paymentInstructions.isNotBlank()}",
+                )
+            }
+            .onFailure { error ->
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_DRIVER_PROFILE_SYNC_FAILED",
+                    context.packageName,
+                    "reason=${error.javaClass.simpleName}",
+                )
+            }
         var localPublished = 0
         var externalPublished = 0
         var seatClaimsSynced = 0

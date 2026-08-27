@@ -38,9 +38,10 @@ test("mobile portal reviews before confirmation and limits seats dynamically", (
   assert.match(web, /normalizeWhatsapp/);
   assert.match(web, /requestIdentity/);
   assert.match(web, /body\.replayed/);
-  assert.match(html, /CONFIRME SUA VIAGEM/);
-  assert.match(html, /Qual é o seu WhatsApp/);
-  assert.match(html, /✅ RESERVA CONFIRMADA/);
+  assert.match(html, /Confira os detalhes do seu pedido de reserva/);
+  assert.match(html, /Seu WhatsApp/);
+  assert.match(html, /✅ Reserva confirmada/);
+  assert.match(html, /Fazer pedido de reserva/);
 });
 
 
