@@ -25,7 +25,6 @@ let passengerSessionContact = (() => {
 })();
 let agendaTripsCache = [];
 let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agenda");
-let locationPickerTarget = "from";
 let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
 let passengerCreditBalanceCents = 0;
@@ -84,7 +83,7 @@ function tracePublicAction(event, details = {}) {
   } catch (_) {}
 }
 
-const mainSections = ["accessGate", "agenda", "locationPicker", "calendarPicker", "seatPicker", "searchResults", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
+const mainSections = ["accessGate", "agenda", "calendarPicker", "seatPicker", "searchResults", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
 
 function show(id, visible = true) {
   const node = $(id);
@@ -384,125 +383,15 @@ function formatSearchDate(key) {
 }
 
 function updateSearchUi() {
-  const put = (id, value, placeholder) => {
-    const node = $(id);
-    node.textContent = value || placeholder;
-    node.classList.toggle("searchPlaceholder", !value);
-  };
-  put("searchFromValue", searchState.from, "Cidade, estação, local");
-  put("searchToValue", searchState.to, "Cidade, estação, local");
+  const fromInput = $("searchFromInput");
+  const toInput = $("searchToInput");
+  if (fromInput && fromInput.value !== searchState.from) fromInput.value = searchState.from;
+  if (toInput && toInput.value !== searchState.to) toInput.value = searchState.to;
   $("searchDepartureValue").textContent = formatSearchDate(searchState.departure);
-  put("searchReturnValue", searchState.returnDate ? formatSearchDate(searchState.returnDate) : "", "Data");
+  const returnValue = $("searchReturnValue");
+  returnValue.textContent = searchState.returnDate ? formatSearchDate(searchState.returnDate) : "Data";
+  returnValue.classList.toggle("searchPlaceholder", !searchState.returnDate);
   $("searchSeatsValue").textContent = searchState.seats === 1 ? "1 passageiro" : `${searchState.seats} passageiros`;
-}
-
-function agendaLocationSuggestions(query = "") {
-  const needle = normalizeSearchText(query);
-  const seen = new Set();
-  const results = [];
-  agendaTripsCache.forEach((item) => orderedStops(item).forEach((stop) => {
-    const name = String(stop.name || "").trim();
-    const address = String(stop.address || "").trim();
-    if (!name) return;
-    const haystack = normalizeSearchText(`${name} ${address}`);
-    if (needle && !haystack.includes(needle)) return;
-    const lat = Number(stop.latitude);
-    const lon = Number(stop.longitude);
-    const key = `${normalizeSearchText(name)}|${Number.isFinite(lat) ? lat.toFixed(4) : ""}|${Number.isFinite(lon) ? lon.toFixed(4) : ""}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    results.push({ name, address, latitude: Number.isFinite(lat) ? lat : null, longitude: Number.isFinite(lon) ? lon : null });
-  }));
-  return results.sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).slice(0, 40);
-}
-
-function renderLocationSuggestions() {
-  const container = $("locationSuggestions");
-  container.innerHTML = "";
-  const suggestions = agendaLocationSuggestions($("locationQuery").value);
-  if (!suggestions.length) {
-    const empty = document.createElement("div");
-    empty.className = "resultEmpty";
-    empty.textContent = "Nenhum ponto da agenda corresponde ao que foi digitado. Você ainda pode usar o local digitado e procurar.";
-    container.appendChild(empty);
-    return;
-  }
-  suggestions.forEach((suggestion) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "suggestionButton";
-    const name = document.createElement("span");
-    name.className = "suggestionName";
-    name.textContent = suggestion.name;
-    const address = document.createElement("span");
-    address.className = "suggestionAddress";
-    address.textContent = suggestion.address && suggestion.address !== suggestion.name ? suggestion.address : "Trecho disponível na agenda";
-    button.append(name, address);
-    button.addEventListener("click", () => selectSearchLocation(suggestion.name));
-    container.appendChild(button);
-  });
-}
-
-function openLocationPicker(target) {
-  locationPickerTarget = target;
-  $("locationQuery").value = searchState[target] || "";
-  $("locationMessage").textContent = "";
-  renderLocationSuggestions();
-  showOnly("locationPicker");
-  setTimeout(() => $("locationQuery").focus(), 0);
-}
-
-function selectSearchLocation(value) {
-  const chosen = String(value || "").trim();
-  if (!chosen) return void ($("locationMessage").textContent = "Digite ou escolha um local.");
-  searchState[locationPickerTarget] = chosen;
-  updateSearchUi();
-  renderAgenda(agendaTripsCache);
-}
-
-function useTypedSearchLocation() {
-  selectSearchLocation($("locationQuery").value);
-}
-
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const toRad = (value) => value * Math.PI / 180;
-  const r = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * r * Math.asin(Math.sqrt(a));
-}
-
-function useCurrentSearchLocation() {
-  if (!navigator.geolocation) {
-    $("locationMessage").textContent = "Este navegador não disponibiliza localização por GPS.";
-    return;
-  }
-  $("useCurrentLocation").disabled = true;
-  $("locationMessage").textContent = "Buscando sua localização…";
-  navigator.geolocation.getCurrentPosition((position) => {
-    const candidates = agendaLocationSuggestions("").filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude));
-    if (!candidates.length) {
-      $("locationMessage").textContent = "As viagens publicadas ainda não possuem coordenadas suficientes para usar o GPS.";
-      $("useCurrentLocation").disabled = false;
-      return;
-    }
-    const ranked = candidates.map((item) => ({ ...item, distanceKm: haversineKm(position.coords.latitude, position.coords.longitude, item.latitude, item.longitude) }))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-    const nearest = ranked[0];
-    if (!nearest || nearest.distanceKm > 40) {
-      $("locationMessage").textContent = "Sua localização atual não está próxima de um ponto disponível nas viagens publicadas.";
-      $("useCurrentLocation").disabled = false;
-      return;
-    }
-    $("useCurrentLocation").disabled = false;
-    selectSearchLocation(nearest.name);
-  }, (error) => {
-    $("useCurrentLocation").disabled = false;
-    $("locationMessage").textContent = error && error.code === 1
-      ? "Permita o acesso à localização para usar o GPS."
-      : "Não foi possível obter sua localização agora.";
-  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
 }
 
 function openCalendarPicker(target) {
@@ -672,6 +561,8 @@ function renderDirectionResult(containerId, titleText, result) {
 }
 
 function submitTripSearch() {
+  searchState.from = String($("searchFromInput")?.value || searchState.from || "").trim();
+  searchState.to = String($("searchToInput")?.value || searchState.to || "").trim();
   $("searchMessage").textContent = "";
   if (!searchState.from || !searchState.to) {
     $("searchMessage").textContent = "Informe De e Para para procurar.";
@@ -2005,18 +1896,14 @@ $("accessLogin").addEventListener("click", loginAccessGate);
 $("accessContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
 $("referralRequestContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
 $("referralRequestSubmit").addEventListener("click", requestReferralInvite);
-$("searchFrom").addEventListener("click", () => openLocationPicker("from"));
-$("searchTo").addEventListener("click", () => openLocationPicker("to"));
-$("searchSwap").addEventListener("click", swapSearchRoute);
+$("searchFromInput").addEventListener("input", (event) => { searchState.from = event.target.value; $("searchMessage").textContent = ""; });
+$("searchToInput").addEventListener("input", (event) => { searchState.to = event.target.value; $("searchMessage").textContent = ""; });
+$("searchFromInput").addEventListener("keydown", (event) => { if (event.key === "Enter") submitTripSearch(); });
+$("searchToInput").addEventListener("keydown", (event) => { if (event.key === "Enter") submitTripSearch(); });
 $("searchDeparture").addEventListener("click", () => openCalendarPicker("departure"));
 $("searchReturn").addEventListener("click", () => openCalendarPicker("returnDate"));
 $("searchSeats").addEventListener("click", openSeatPicker);
 $("searchSubmit").addEventListener("click", submitTripSearch);
-$("locationBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
-$("locationQuery").addEventListener("input", renderLocationSuggestions);
-$("locationQuery").addEventListener("keydown", (event) => { if (event.key === "Enter") useTypedSearchLocation(); });
-$("useTypedLocation").addEventListener("click", useTypedSearchLocation);
-$("useCurrentLocation").addEventListener("click", useCurrentSearchLocation);
 $("calendarBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
 $("calendarNoReturn").addEventListener("click", clearReturnDate);
 $("seatBack").addEventListener("click", () => renderAgenda(agendaTripsCache));

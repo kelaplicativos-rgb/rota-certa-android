@@ -27,13 +27,12 @@ test("first-time passenger access is now invite-only before searching", () => {
   assert.match(api, /passenger_invite_required/);
 });
 
-test("search filter exposes route GPS dates seats and same public cards", () => {
-  for (const marker of ["searchFrom", "searchTo", "searchDeparture", "searchReturn", "searchSeats", "searchSubmit"]) {
+test("search filter uses simple browser fields without GPS and keeps dates seats and public cards", () => {
+  for (const marker of ["searchFromInput", "searchToInput", "searchDeparture", "searchReturn", "searchSeats", "searchSubmit"]) {
     assert.match(html, new RegExp(`id="${marker}"`));
   }
-  assert.match(html, /Usar localização atual/);
-  assert.match(web, /navigator\.geolocation\.getCurrentPosition/);
-  assert.match(web, /agendaLocationSuggestions/);
+  assert.doesNotMatch(html, /Usar localização atual|Usar o local digitado/);
+  assert.doesNotMatch(web, /navigator\.geolocation|getCurrentPosition\(/);
   assert.match(web, /renderCalendarMonths/);
   assert.match(web, /openCalendarPicker\("departure"\)/);
   assert.match(web, /openCalendarPicker\("returnDate"\)/);
