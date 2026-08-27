@@ -76,25 +76,20 @@
         <p id="accessMessage" class="muted"></p>
         <div class="authActions">
           <button id="accessLogin" class="primary" type="button">Entrar</button>
-          <button id="accessShowSignup" class="secondary" type="button">Criar meu acesso</button>
         </div>
+        <p class="authHint"><strong>Acesso somente por convite.</strong> Você precisa ser liberado pelo motorista para entrar nesta agenda.</p>
       </div>
-      <div id="accessSignupBox" class="hidden">
-        <label>WhatsApp
-          <input id="signupContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
+      <div id="referralRequestBox" class="hidden">
+        <h2>Você recebeu uma indicação</h2>
+        <p class="authHint">Envie seus dados. O motorista decide se libera seu acesso.</p>
+        <label>Seu nome
+          <input id="referralRequestName" autocomplete="name" maxlength="120">
         </label>
-        <label>Crie uma senha
-          <input id="signupPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+        <label>Seu WhatsApp
+          <input id="referralRequestContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
         </label>
-        <label>Repita a senha
-          <input id="signupPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="72">
-        </label>
-        <p id="signupMessage" class="muted"></p>
-        <div class="authActions">
-          <button id="accessSignup" class="primary" type="button">Criar acesso e entrar</button>
-          <button id="accessBackLogin" class="secondary" type="button">Já tenho acesso</button>
-        </div>
-        <p class="authHint">Este acesso identifica suas reservas pelo número de WhatsApp informado.</p>
+        <p id="referralRequestMessage" class="muted"></p>
+        <button id="referralRequestSubmit" class="secondary" type="button">Solicitar convite</button>
       </div>
     </div>
   </section>
@@ -227,9 +222,30 @@
         <button id="portalLogin" class="primary" type="button">Entrar</button>
       </div>
       <div id="portalAuthenticated" class="hidden">
+        <div class="card">
+          <h2>Meus créditos</h2>
+          <div id="portalCreditBalance" class="priceTotal">R$ 0,00</div>
+          <p class="muted">Créditos recebidos por indicações podem ser usados como desconto em viagens futuras.</p>
+          <div id="portalCreditEntries"></div>
+        </div>
+        <div class="card">
+          <h2>Indique e ganhe créditos</h2>
+          <p id="portalReferralInfo" class="muted"></p>
+          <button id="portalReferralShare" class="secondary" type="button">Compartilhar convite</button>
+          <p id="portalReferralMessage" class="muted"></p>
+        </div>
+        <div class="card">
+          <h2>Senha</h2>
+          <label>Nova senha
+            <input id="portalNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+          </label>
+          <button id="portalChangePassword" class="secondary" type="button">Alterar minha senha</button>
+          <p id="portalPasswordMessage" class="muted"></p>
+        </div>
         <div class="actions">
           <button id="portalLogout" class="secondary" type="button">Sair deste acesso</button>
         </div>
+        <h2>Minhas reservas</h2>
         <div id="portalBookings"></div>
       </div>
     </div>
@@ -258,6 +274,14 @@
       <label>Seu WhatsApp
         <input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required>
       </label>
+      <div id="bookingCreditBox" class="card hidden">
+        <h2>Usar meus créditos</h2>
+        <p>Saldo disponível: <strong id="bookingCreditBalance">R$ 0,00</strong></p>
+        <label>Quanto deseja usar?
+          <input id="creditToUse" type="number" min="0" step="0.01" value="0" inputmode="decimal">
+        </label>
+        <p class="muted">O desconto nunca ultrapassa o valor desta viagem.</p>
+      </div>
 
       <p id="bookingMessage" class="muted"></p>
       <button id="reserve" class="primary">Continuar</button>
@@ -322,13 +346,8 @@
       </div>
     </div>
     <div class="card">
-      <h2>Use suas reservas em qualquer aparelho</h2>
-      <p class="stepIntro">Crie uma senha para acessar esta reserva depois usando apenas seu WhatsApp e a senha.</p>
-      <label>Crie uma senha
-        <input id="portalCreatePassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
-      </label>
-      <p id="portalCreateMessage" class="muted"></p>
-      <button id="portalRegister" class="secondary" type="button">Criar meu acesso</button>
+      <h2>Reserva vinculada ao seu acesso</h2>
+      <p class="stepIntro">Você pode consultar, alterar ou cancelar esta reserva em <strong>Minhas reservas</strong>.</p>
     </div>
   </section>
 
