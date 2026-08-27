@@ -379,12 +379,352 @@ async function loadAgenda() {
   }
 }
 
+
+function normalizeSearchText(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function dateKeyFromMillis(ms) {
+  const date = new Date(Number(ms || 0));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatSearchDate(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key || ""))) return "Data";
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (key === localTodayKey()) return "Hoje";
+  return new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(date).replace(/\.$/, "");
+}
+
+function updateSearchUi() {
+  const put = (id, value, placeholder) => {
+    const node = $(id);
+    node.textContent = value || placeholder;
+    node.classList.toggle("searchPlaceholder", !value);
+  };
+  put("searchFromValue", searchState.from, "Cidade, estação, local");
+  put("searchToValue", searchState.to, "Cidade, estação, local");
+  $("searchDepartureValue").textContent = formatSearchDate(searchState.departure);
+  put("searchReturnValue", searchState.returnDate ? formatSearchDate(searchState.returnDate) : "", "Data");
+  $("searchSeatsValue").textContent = searchState.seats === 1 ? "1 passageiro" : `${searchState.seats} passageiros`;
+}
+
+function agendaLocationSuggestions(query = "") {
+  const needle = normalizeSearchText(query);
+  const seen = new Set();
+  const results = [];
+  agendaTripsCache.forEach((item) => orderedStops(item).forEach((stop) => {
+    const name = String(stop.name || "").trim();
+    const address = String(stop.address || "").trim();
+    if (!name) return;
+    const haystack = normalizeSearchText(`${name} ${address}`);
+    if (needle && !haystack.includes(needle)) return;
+    const lat = Number(stop.latitude);
+    const lon = Number(stop.longitude);
+    const key = `${normalizeSearchText(name)}|${Number.isFinite(lat) ? lat.toFixed(4) : ""}|${Number.isFinite(lon) ? lon.toFixed(4) : ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    results.push({ name, address, latitude: Number.isFinite(lat) ? lat : null, longitude: Number.isFinite(lon) ? lon : null });
+  }));
+  return results.sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).slice(0, 40);
+}
+
+function renderLocationSuggestions() {
+  const container = $("locationSuggestions");
+  container.innerHTML = "";
+  const suggestions = agendaLocationSuggestions($("locationQuery").value);
+  if (!suggestions.length) {
+    const empty = document.createElement("div");
+    empty.className = "resultEmpty";
+    empty.textContent = "Nenhum ponto da agenda corresponde ao que foi digitado. Você ainda pode usar o local digitado e procurar.";
+    container.appendChild(empty);
+    return;
+  }
+  suggestions.forEach((suggestion) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "suggestionButton";
+    const name = document.createElement("span");
+    name.className = "suggestionName";
+    name.textContent = suggestion.name;
+    const address = document.createElement("span");
+    address.className = "suggestionAddress";
+    address.textContent = suggestion.address && suggestion.address !== suggestion.name ? suggestion.address : "Trecho disponível na agenda";
+    button.append(name, address);
+    button.addEventListener("click", () => selectSearchLocation(suggestion.name));
+    container.appendChild(button);
+  });
+}
+
+function openLocationPicker(target) {
+  locationPickerTarget = target;
+  $("locationQuery").value = searchState[target] || "";
+  $("locationMessage").textContent = "";
+  renderLocationSuggestions();
+  showOnly("locationPicker");
+  setTimeout(() => $("locationQuery").focus(), 0);
+}
+
+function selectSearchLocation(value) {
+  const chosen = String(value || "").trim();
+  if (!chosen) return void ($("locationMessage").textContent = "Digite ou escolha um local.");
+  searchState[locationPickerTarget] = chosen;
+  updateSearchUi();
+  renderAgenda(agendaTripsCache);
+}
+
+function useTypedSearchLocation() {
+  selectSearchLocation($("locationQuery").value);
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRad = (value) => value * Math.PI / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(a));
+}
+
+function useCurrentSearchLocation() {
+  if (!navigator.geolocation) {
+    $("locationMessage").textContent = "Este navegador não disponibiliza localização por GPS.";
+    return;
+  }
+  $("useCurrentLocation").disabled = true;
+  $("locationMessage").textContent = "Buscando sua localização…";
+  navigator.geolocation.getCurrentPosition((position) => {
+    const candidates = agendaLocationSuggestions("").filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude));
+    if (!candidates.length) {
+      $("locationMessage").textContent = "As viagens publicadas ainda não possuem coordenadas suficientes para usar o GPS.";
+      $("useCurrentLocation").disabled = false;
+      return;
+    }
+    const ranked = candidates.map((item) => ({ ...item, distanceKm: haversineKm(position.coords.latitude, position.coords.longitude, item.latitude, item.longitude) }))
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+    const nearest = ranked[0];
+    if (!nearest || nearest.distanceKm > 40) {
+      $("locationMessage").textContent = "Sua localização atual não está próxima de um ponto disponível nas viagens publicadas.";
+      $("useCurrentLocation").disabled = false;
+      return;
+    }
+    $("useCurrentLocation").disabled = false;
+    selectSearchLocation(nearest.name);
+  }, (error) => {
+    $("useCurrentLocation").disabled = false;
+    $("locationMessage").textContent = error && error.code === 1
+      ? "Permita o acesso à localização para usar o GPS."
+      : "Não foi possível obter sua localização agora.";
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+function openCalendarPicker(target) {
+  calendarPickerTarget = target;
+  $("calendarTitle").textContent = target === "returnDate" ? "Quando você volta?" : "Quando você vai?";
+  show("calendarNoReturn", target === "returnDate");
+  renderCalendarMonths();
+  showOnly("calendarPicker");
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function renderCalendarMonths() {
+  const container = $("calendarMonths");
+  container.innerHTML = "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let minimum = today;
+  if (calendarPickerTarget === "returnDate" && searchState.departure) {
+    const [y, m, d] = searchState.departure.split("-").map(Number);
+    minimum = new Date(y, m - 1, d);
+  }
+  const monthStart = new Date(minimum.getFullYear(), minimum.getMonth(), 1);
+  const selected = calendarPickerTarget === "returnDate" ? searchState.returnDate : searchState.departure;
+  const week = ["D", "S", "T", "Q", "Q", "S", "S"];
+  for (let offset = 0; offset < 12; offset += 1) {
+    const first = new Date(monthStart.getFullYear(), monthStart.getMonth() + offset, 1);
+    const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const card = document.createElement("div");
+    card.className = "calendarMonth";
+    const title = document.createElement("h2");
+    title.className = "calendarMonthTitle";
+    title.textContent = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(first);
+    const weekRow = document.createElement("div");
+    weekRow.className = "calendarWeek";
+    week.forEach((label) => { const span = document.createElement("span"); span.textContent = label; weekRow.appendChild(span); });
+    const grid = document.createElement("div");
+    grid.className = "calendarGrid";
+    for (let blank = 0; blank < first.getDay(); blank += 1) {
+      const cell = document.createElement("span");
+      cell.className = "calendarBlank";
+      grid.appendChild(cell);
+    }
+    for (let day = 1; day <= lastDay; day += 1) {
+      const date = new Date(first.getFullYear(), first.getMonth(), day);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "calendarDay" + (key === selected ? " calendarDaySelected" : "");
+      button.textContent = String(day);
+      button.disabled = date < minimum;
+      button.addEventListener("click", () => selectCalendarDate(key));
+      grid.appendChild(button);
+    }
+    card.append(title, weekRow, grid);
+    container.appendChild(card);
+  }
+}
+
+function selectCalendarDate(key) {
+  if (calendarPickerTarget === "returnDate") searchState.returnDate = key;
+  else {
+    searchState.departure = key;
+    if (searchState.returnDate && searchState.returnDate < key) searchState.returnDate = "";
+  }
+  updateSearchUi();
+  renderAgenda(agendaTripsCache);
+}
+
+function clearReturnDate() {
+  searchState.returnDate = "";
+  updateSearchUi();
+  renderAgenda(agendaTripsCache);
+}
+
+function openSeatPicker() {
+  seatPickerDraft = searchState.seats;
+  $("seatPickerValue").textContent = String(seatPickerDraft);
+  showOnly("seatPicker");
+}
+
+function maxAgendaCapacity() {
+  return Math.max(1, Math.min(9, ...agendaTripsCache.map((item) => Number(item.capacity || 1))));
+}
+
+function changeSeatPicker(delta) {
+  seatPickerDraft = Math.max(1, Math.min(maxAgendaCapacity(), seatPickerDraft + delta));
+  $("seatPickerValue").textContent = String(seatPickerDraft);
+}
+
+function confirmSeatPicker() {
+  searchState.seats = seatPickerDraft;
+  updateSearchUi();
+  renderAgenda(agendaTripsCache);
+}
+
+function stopMatchesSearch(stop, query) {
+  const needle = normalizeSearchText(query);
+  if (!needle) return false;
+  const name = normalizeSearchText(stop && stop.name);
+  const address = normalizeSearchText(stop && stop.address);
+  return name === needle || name.includes(needle) || address.includes(needle);
+}
+
+function availableForTripSegment(item, fromIndex, toIndex) {
+  if (fromIndex < 0 || toIndex <= fromIndex) return 0;
+  let available = Number(item.capacity || 0);
+  for (let index = fromIndex; index < toIndex; index += 1) {
+    available = Math.min(available, Number(item.capacity || 0) - Number((item.segmentLoads || [])[index] || 0));
+  }
+  return Math.max(0, available);
+}
+
+function matchTripSegment(item, fromQuery, toQuery) {
+  const stops = orderedStops(item);
+  const fromIndex = stops.findIndex((stop) => stopMatchesSearch(stop, fromQuery));
+  if (fromIndex < 0) return null;
+  const toIndex = stops.findIndex((stop, index) => index > fromIndex && stopMatchesSearch(stop, toQuery));
+  if (toIndex < 0) return null;
+  return { item, fromIndex, toIndex, available: availableForTripSegment(item, fromIndex, toIndex) };
+}
+
+function searchDirection(fromQuery, toQuery, dateKey, seats) {
+  const routeMatches = agendaTripsCache.map((item) => matchTripSegment(item, fromQuery, toQuery)).filter(Boolean);
+  if (!routeMatches.length) {
+    return { matches: [], reason: "O local informado não faz parte do percurso disponível nesta data." };
+  }
+  const dated = routeMatches.filter((entry) => dateKeyFromMillis(entry.item.departureAtMillis) === dateKey);
+  if (!dated.length) {
+    return { matches: [], reason: "Nenhuma viagem publicada para esse trecho nessa data." };
+  }
+  const available = dated.filter((entry) => entry.available >= seats && !isFullTrip(entry.item));
+  if (!available.length) {
+    return { matches: [], reason: `Não há ${seats} lugar(es) disponível(is) nesse trecho para essa data.` };
+  }
+  return { matches: available, reason: "" };
+}
+
+function renderSearchSummary() {
+  const summary = $("searchSummary");
+  summary.innerHTML = "";
+  const route = document.createElement("div");
+  route.className = "searchSummaryRoute";
+  route.textContent = `${searchState.from} → ${searchState.to}`;
+  const meta = document.createElement("div");
+  meta.className = "searchSummaryMeta";
+  const parts = [formatSearchDate(searchState.departure), searchState.seats === 1 ? "1 passageiro" : `${searchState.seats} passageiros`];
+  if (searchState.returnDate) parts.push(`volta ${formatSearchDate(searchState.returnDate)}`);
+  meta.textContent = parts.join(" • ");
+  summary.append(route, meta);
+}
+
+function renderDirectionResult(containerId, titleText, result) {
+  const container = $(containerId);
+  container.innerHTML = "";
+  const title = document.createElement("h2");
+  title.className = "resultSectionTitle";
+  title.textContent = titleText;
+  container.appendChild(title);
+  if (!result.matches.length) {
+    const empty = document.createElement("div");
+    empty.className = "resultEmpty";
+    empty.textContent = `Nenhuma viagem encontrada para esse trecho. ${result.reason}`;
+    container.appendChild(empty);
+    return;
+  }
+  renderAgendaCards(result.matches, container, true);
+}
+
+function submitTripSearch() {
+  $("searchMessage").textContent = "";
+  if (!searchState.from || !searchState.to) {
+    $("searchMessage").textContent = "Informe De e Para para procurar.";
+    return;
+  }
+  if (normalizeSearchText(searchState.from) === normalizeSearchText(searchState.to)) {
+    $("searchMessage").textContent = "Origem e destino precisam ser diferentes.";
+    return;
+  }
+  const outbound = searchDirection(searchState.from, searchState.to, searchState.departure, searchState.seats);
+  const returning = searchState.returnDate
+    ? searchDirection(searchState.to, searchState.from, searchState.returnDate, searchState.seats)
+    : null;
+  renderSearchSummary();
+  renderDirectionResult("outboundResult", "Ida", outbound);
+  if (returning) {
+    show("returnResult", true);
+    renderDirectionResult("returnResult", "Volta", returning);
+  } else {
+    show("returnResult", false);
+    $("returnResult").innerHTML = "";
+  }
+  showOnly("searchResults");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function swapSearchRoute() {
+  const previous = searchState.from;
+  searchState.from = searchState.to;
+  searchState.to = previous;
+  updateSearchUi();
+}
+
 function renderAgenda(trips) {
   showOnly("agenda");
   $("driverName").textContent = driverDisplayName ? `Viagens com ${driverDisplayName}` : "Próximas viagens";
+  updateSearchUi();
   const container = $("agendaTrips");
   container.innerHTML = "";
-
   if (!trips.length) {
     const empty = document.createElement("div");
     empty.className = "card muted";
@@ -392,8 +732,12 @@ function renderAgenda(trips) {
     container.appendChild(empty);
     return;
   }
+  renderAgendaCards(trips.map((item) => ({ item })), container, false);
+}
 
-  trips.forEach((item) => {
+function renderAgendaCards(entries, container, filtered = false) {
+  entries.forEach((entry) => {
+    const item = entry.item || entry;
     const full = isFullTrip(item);
     const range = seatRange(item);
     const stops = orderedStops(item);
@@ -408,41 +752,40 @@ function renderAgenda(trips) {
       card.setAttribute("tabindex", "-1");
     } else {
       const owner = item.driverUsername || driverUsername;
-      card.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+      const next = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
+      if (filtered && Number.isInteger(entry.fromIndex) && Number.isInteger(entry.toIndex)) {
+        next.set("embarque", stops[entry.fromIndex]?.id || "");
+        next.set("destino", stops[entry.toIndex]?.id || "");
+        next.set("lugares", String(searchState.seats));
+      }
+      card.href = `/?${next.toString()}`;
       card.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
     }
 
     const date = document.createElement("div");
     date.className = "agendaDate";
     date.textContent = formatDateOnly(item.departureAtMillis);
-
     const routeFrom = document.createElement("div");
     routeFrom.className = "agendaRouteLine";
     routeFrom.textContent = from;
-
     const arrow = document.createElement("div");
     arrow.className = "agendaArrow";
     arrow.textContent = "↓";
-
     const routeTo = document.createElement("div");
     routeTo.className = "agendaRouteLine";
     routeTo.textContent = to;
-
     const meta = document.createElement("div");
     meta.className = "agendaMetaRow";
-
     const time = document.createElement("span");
     time.className = "bigPill";
     time.textContent = `🕘 ${formatTime(item.departureAtMillis)}`;
-
     const seats = document.createElement("span");
     seats.className = "bigPill";
-    seats.textContent = full
-      ? "🪑 0 vagas"
-      : (range.minimum === range.maximum
-        ? `🪑 ${range.maximum} vaga(s)`
-        : `🪑 ${range.minimum}–${range.maximum} vagas`);
-
+    if (filtered && Number.isFinite(Number(entry.available))) {
+      seats.textContent = `🪑 ${Math.max(0, Number(entry.available))} vaga(s) neste trecho`;
+    } else {
+      seats.textContent = full ? "🪑 0 vagas" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
+    }
     meta.append(time, seats);
     const duration = durationFor(item);
     if (duration) {
@@ -451,7 +794,6 @@ function renderAgenda(trips) {
       durationPill.textContent = `⏱ ${duration}`;
       meta.appendChild(durationPill);
     }
-
     const bottom = document.createElement("div");
     bottom.className = "agendaBottom";
     const driver = document.createElement("div");
@@ -461,18 +803,15 @@ function renderAgenda(trips) {
     price.className = "priceMini";
     price.textContent = fare > 0 ? formatMoney(fare) : "";
     bottom.append(driver, price);
-
     const action = document.createElement("div");
     action.className = "agendaAction";
     action.textContent = full ? "CHEIO" : "VER DETALHES";
-
     if (full) {
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
       fullWord.textContent = "Cheio";
       bottom.appendChild(fullWord);
     }
-
     card.append(date, routeFrom, arrow, routeTo, meta, bottom, action);
     container.appendChild(card);
   });
@@ -484,7 +823,7 @@ async function loadTrip() {
   try {
     const response = await fetch(
       `/v1/public/trips/${encodeURIComponent(tripToken)}`,
-      { headers: { Accept: "application/json" } },
+      { headers: authenticatedHeaders({ Accept: "application/json" }) },
     );
     statusCode = response.status;
     const body = await response.json();
