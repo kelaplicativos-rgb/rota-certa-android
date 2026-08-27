@@ -10,6 +10,44 @@ let trip = null;
 let confirmedBooking = null;
 let pendingBooking = null;
 
+const publicDebugSessionId = (() => {
+  try {
+    const key = "rotacerta-public-debug-session";
+    const current = sessionStorage.getItem(key);
+    if (current && /^[A-Za-z0-9_-]{16,80}$/.test(current)) return current;
+    const next = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80);
+    sessionStorage.setItem(key, next);
+    return next;
+  } catch (_) {
+    return `s_${Date.now()}_${Math.random().toString(36).slice(2)}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80);
+  }
+})();
+
+function tracePublicAction(event, details = {}) {
+  const payload = {
+    event,
+    sessionId: publicDebugSessionId,
+    screen: tripToken ? "trip" : (agendaToken ? "agenda" : "unknown"),
+    tripToken: tripToken || "",
+    agendaToken: tripToken ? "" : (agendaToken || ""),
+    driverUsername: driverUsername || "",
+    statusCode: Number(details.statusCode || 0),
+    reason: String(details.reason || "").slice(0, 80),
+    seats: Number(details.seats || 0),
+    fromIndex: Number.isInteger(details.fromIndex) ? details.fromIndex : -1,
+    toIndex: Number.isInteger(details.toIndex) ? details.toIndex : -1,
+    replayed: details.replayed === true,
+  };
+  try {
+    fetch("/v1/public/debug/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (_) {}
+}
+
 function show(id, visible = true) { $(id).classList.toggle("hidden", !visible); }
 function setError(message) { $("error").textContent = message; show("error", true); show("loading", false); }
 function formatDate(ms) { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(ms)); }
@@ -58,13 +96,17 @@ function formatMoney(cents) {
 
 async function loadAgenda() {
   if (driverUsername.length < 3 || agendaToken.length < 16) return setError("Link de agenda inválido.");
+  let statusCode = 0;
   try {
     const response = await fetch(`/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`, { headers: { Accept: "application/json" } });
+    statusCode = response.status;
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
     driverDisplayName = body.driver?.displayName || driverUsername;
+    tracePublicAction("PUBLIC_AGENDA_LOADED", { statusCode });
     renderAgenda(Array.isArray(body.trips) ? body.trips : []);
   } catch (error) {
+    tracePublicAction("PUBLIC_AGENDA_LOAD_FAILED", { statusCode, reason: "client_load_error" });
     setError(error.message || "Não foi possível carregar a agenda.");
   }
 }
@@ -98,6 +140,7 @@ function renderAgenda(trips) {
       : `vagas por trecho: ${range.minimum}–${range.maximum}/${item.capacity}`;
     meta.textContent = `${formatDate(item.departureAtMillis)} • ${seats}`;
     link.append(route, meta);
+    link.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
     container.appendChild(link);
   });
 }
@@ -138,6 +181,18 @@ function refreshSelectors() {
   refreshAvailability();
 }
 
+function traceSearchChanged() {
+  if (!trip) return;
+  const stops = orderedStops();
+  const fromIndex = stops.findIndex((s) => s.id === $("boarding").value);
+  const toIndex = stops.findIndex((s) => s.id === $("dropoff").value);
+  tracePublicAction("PUBLIC_SEARCH_CHANGED", {
+    seats: Number($("seats").value || 0),
+    fromIndex,
+    toIndex,
+  });
+}
+
 function refreshAvailability() {
   if (!trip) return;
   const stops = orderedStops();
@@ -165,13 +220,17 @@ function refreshAvailability() {
 
 async function loadTrip() {
   if (tripToken.length < 16) return setError("Link de viagem inválido.");
+  let statusCode = 0;
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}`, { headers: { Accept: "application/json" } });
+    statusCode = response.status;
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Viagem indisponível.");
     trip = body;
+    tracePublicAction("PUBLIC_TRIP_LOADED", { statusCode });
     renderTrip();
   } catch (error) {
+    tracePublicAction("PUBLIC_TRIP_LOAD_FAILED", { statusCode, reason: "client_load_error" });
     setError(error.message || "Não foi possível carregar a viagem.");
   }
 }
@@ -261,6 +320,9 @@ function reviewBooking() {
   if (!$("boarding").value || !$("dropoff").value || seats < 1) return void ($("bookingMessage").textContent = "Escolha um trecho com vagas.");
   pendingBooking = { passengerName: name, passengerContact, boardingStopId: $("boarding").value, dropoffStopId: $("dropoff").value, seats };
   const stops = orderedStops();
+  const debugFromIndex = stops.findIndex((s) => s.id === pendingBooking.boardingStopId);
+  const debugToIndex = stops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
+  tracePublicAction("PUBLIC_RESERVATION_STARTED", { seats, fromIndex: debugFromIndex, toIndex: debugToIndex });
   const fromIndex = stops.findIndex((s) => s.id === pendingBooking.boardingStopId);
   const toIndex = stops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
   const from = stops[fromIndex]?.name || "Embarque";
@@ -278,12 +340,22 @@ async function reserve() {
   $("confirmReserve").disabled = true;
   $("reviewMessage").textContent = "Confirmando sua vaga…";
   const idempotencyKey = requestIdentity(pendingBooking);
+  const debugStops = orderedStops();
+  const debugFromIndex = debugStops.findIndex((s) => s.id === pendingBooking.boardingStopId);
+  const debugToIndex = debugStops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
+  let statusCode = 0;
+  tracePublicAction("PUBLIC_RESERVATION_REQUEST_SENT", {
+    seats: pendingBooking.seats,
+    fromIndex: debugFromIndex,
+    toIndex: debugToIndex,
+  });
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({ ...pendingBooking, idempotencyKey }),
     });
+    statusCode = response.status;
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível reservar.");
     confirmedBooking = {
@@ -313,8 +385,28 @@ async function reserve() {
     show("review", false);
     show("cancelBooking", true);
     trip.segmentLoads = recomputeLoadsAfterBooking(trip.segmentLoads || [], confirmedBooking);
+    tracePublicAction("PUBLIC_RESERVATION_CREATED", {
+      statusCode,
+      seats: confirmedBooking.seats,
+      fromIndex: debugFromIndex,
+      toIndex: debugToIndex,
+      replayed: body.replayed === true,
+    });
+    tracePublicAction("PUBLIC_SEATS_UPDATED", {
+      statusCode,
+      seats: confirmedBooking.seats,
+      fromIndex: debugFromIndex,
+      toIndex: debugToIndex,
+    });
     pendingBooking = null;
   } catch (error) {
+    tracePublicAction("PUBLIC_RESERVATION_FAILED", {
+      statusCode,
+      reason: statusCode ? `http_${statusCode}` : "network_or_client_error",
+      seats: pendingBooking?.seats || 0,
+      fromIndex: debugFromIndex,
+      toIndex: debugToIndex,
+    });
     $("reviewMessage").textContent = error.message || "Falha ao confirmar reserva.";
     await loadTrip();
   } finally {
@@ -331,12 +423,15 @@ async function cancelReservation() {
   }
   $("cancelReservation").disabled = true;
   $("cancelMessage").textContent = "Cancelando e liberando as vagas do trecho…";
+  let statusCode = 0;
+  tracePublicAction("PUBLIC_RESERVATION_CANCEL_STARTED");
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ cancellationToken }),
     });
+    statusCode = response.status;
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
     try {
@@ -348,9 +443,15 @@ async function cancelReservation() {
     $("cancelBookingId").value = "";
     $("cancelToken").value = "";
     $("cancelMessage").textContent = "Reserva cancelada. As vagas foram liberadas.";
+    tracePublicAction("PUBLIC_RESERVATION_CANCELLED", { statusCode });
+    tracePublicAction("PUBLIC_SEATS_UPDATED", { statusCode });
     show("confirmed", false);
     await loadTrip();
   } catch (error) {
+    tracePublicAction("PUBLIC_RESERVATION_CANCEL_FAILED", {
+      statusCode,
+      reason: statusCode ? `http_${statusCode}` : "network_or_client_error",
+    });
     $("cancelMessage").textContent = error.message || "Falha ao cancelar a reserva.";
   } finally {
     $("cancelReservation").disabled = false;
@@ -429,10 +530,10 @@ function downloadIcs() {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-$("boarding").addEventListener("change", refreshSelectors);
-$("dropoff").addEventListener("change", refreshAvailability);
+$("boarding").addEventListener("change", () => { refreshSelectors(); traceSearchChanged(); });
+$("dropoff").addEventListener("change", () => { refreshAvailability(); traceSearchChanged(); });
 $("seats").addEventListener("input", refreshAvailability);
-$("seats").addEventListener("change", refreshAvailability);
+$("seats").addEventListener("change", () => { refreshAvailability(); traceSearchChanged(); });
 $("contact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
 $("reserve").addEventListener("click", reviewBooking);
 $("confirmReserve").addEventListener("click", reserve);
@@ -441,6 +542,8 @@ $("cancelReservation").addEventListener("click", cancelReservation);
 $("googleCalendar").addEventListener("click", openGoogleCalendar);
 $("downloadIcs").addEventListener("click", downloadIcs);
 $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
+
+tracePublicAction("PUBLIC_LINK_OPENED");
 
 if (tripToken) {
   loadTrip();
