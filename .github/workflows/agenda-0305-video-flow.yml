@@ -14,6 +14,7 @@ on:
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicVideoFlow0305Test.kt'
       - 'trip-platform/functions/index.js'
       - 'trip-platform/functions/test/public-video-flow-0305.test.js'
+      - 'trip-platform/functions/test/public-booking-0296.test.js'
       - 'trip-platform/functions/test/public-capacity-fidelity-0303.test.js'
       - 'trip-platform/public/app.js'
       - 'trip-platform/public/index.html'
