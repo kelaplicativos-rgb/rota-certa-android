@@ -45,7 +45,9 @@ jobs:
           grep -Fq 'PUBLIC_AGENDA_LOCAL_CAPACITY_SYNCED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'filterNot { it.source == BookingSource.ROTA_CERTA }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'trip.status === "FULL"' trip-platform/functions/index.js
-          grep -Fq 'LOTADO • 0 vagas' trip-platform/public/app.js
+          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
+          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
+          grep -Fq 'pointer-events:none' trip-platform/public/index.html
 
       - uses: actions/setup-java@v4
         with:
