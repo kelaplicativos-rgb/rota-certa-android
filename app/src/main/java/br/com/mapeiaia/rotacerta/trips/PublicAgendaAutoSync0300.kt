@@ -151,19 +151,7 @@ internal object PublicAgendaAutoSync0300 {
         localTrip: Trip,
         localBookings: List<Booking>,
     ): Int {
-        val mirrors = localBookings
-            .filterNot { it.source == BookingSource.ROTA_CERTA }
-            .map { booking ->
-                val fingerprint = sha256(booking.id).take(32)
-                booking.copy(
-                    id = "mirror-$fingerprint",
-                    tripId = localTrip.id,
-                    passengerName = "Ocupação sincronizada",
-                    passengerContact = "",
-                    sourceReference = "$LOCAL_MIRROR_PREFIX$fingerprint",
-                    occupancyGroupId = booking.occupancyGroupId ?: "local:$fingerprint",
-                )
-            }
+        val mirrors = localCapacityMirrors(localTrip, localBookings)
 
         val currentMirrorIds = mirrors.map(Booking::id).toSet()
         val remoteMirrorBookings = api.listBookings(remoteTripId).bookings
@@ -193,6 +181,23 @@ internal object PublicAgendaAutoSync0300 {
 
         return synced
     }
+
+    internal fun localCapacityMirrors(
+        localTrip: Trip,
+        localBookings: List<Booking>,
+    ): List<Booking> = localBookings
+        .filterNot { it.source == BookingSource.ROTA_CERTA }
+        .map { booking ->
+            val fingerprint = sha256(booking.id).take(32)
+            booking.copy(
+                id = "mirror-$fingerprint",
+                tripId = localTrip.id,
+                passengerName = "Ocupação sincronizada",
+                passengerContact = "",
+                sourceReference = "$LOCAL_MIRROR_PREFIX$fingerprint",
+                occupancyGroupId = booking.occupancyGroupId ?: "local:$fingerprint",
+            )
+        }
 
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
