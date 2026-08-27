@@ -174,6 +174,7 @@ data class ResolvedPublicDriverProfile(
     val paymentInstructions: String = "",
     val sourceMode: PublicDriverProfileMode = PublicDriverProfileMode.MANUAL,
     val selectedProfileUuid: String = "",
+    val automaticProfileAvailable: Boolean = false,
     val automaticProfileLastSyncedAtMillis: Long? = null,
     val overrideFields: Set<String> = emptySet(),
 ) {
@@ -196,22 +197,16 @@ data class ResolvedPublicDriverProfile(
     }
 }
 
-class PublicDriverProfileResolver(context: Context) {
-    private val registry = BlaBlaDynamicAccountRegistry(context)
-    private val snapshots = BlaBlaPublicProfileStore(context)
-
-    fun resolve(settings: TripOnlineSettings): ResolvedPublicDriverProfile {
+internal object PublicDriverProfilePolicy {
+    fun resolve(
+        settings: TripOnlineSettings,
+        selectedProfileUuid: String,
+        automatic: BlaBlaPublicProfileSnapshot?,
+    ): ResolvedPublicDriverProfile {
         if (settings.publicProfileMode == PublicDriverProfileMode.MANUAL) {
             return ResolvedPublicDriverProfile.manual(settings)
         }
-        val account = registry.get(settings.selectedPublicProfileAccountId)
-        val automatic = account?.let { snapshots.read(it.id) }?.takeIf { snapshot ->
-            snapshot.identityVerified &&
-                !account.profileUuid.isNullOrBlank() &&
-                snapshot.profileUuid.equals(account.profileUuid, ignoreCase = true)
-        }
-
-        val overrides = settings.publicProfileOverrideFields
+        val overrides = settings.publicProfileOverrideFields.intersect(PublicDriverProfileFields.profileControlled)
         fun text(field: String, automaticValue: String, manualValue: String): String = when (settings.publicProfileMode) {
             PublicDriverProfileMode.MANUAL -> manualValue
             PublicDriverProfileMode.BLABLACAR -> automaticValue
@@ -239,9 +234,29 @@ class PublicDriverProfileResolver(context: Context) {
             preferences = text(PublicDriverProfileFields.PREFERENCES, automatic?.preferences.orEmpty(), settings.driverPreferences),
             paymentInstructions = settings.paymentInstructions,
             sourceMode = settings.publicProfileMode,
-            selectedProfileUuid = automatic?.profileUuid.orEmpty(),
+            selectedProfileUuid = selectedProfileUuid,
+            automaticProfileAvailable = automatic != null,
             automaticProfileLastSyncedAtMillis = automatic?.lastSyncedAtMillis,
             overrideFields = if (settings.publicProfileMode == PublicDriverProfileMode.HYBRID) overrides else emptySet(),
+        )
+    }
+}
+
+class PublicDriverProfileResolver(context: Context) {
+    private val registry = BlaBlaDynamicAccountRegistry(context)
+    private val snapshots = BlaBlaPublicProfileStore(context)
+
+    fun resolve(settings: TripOnlineSettings): ResolvedPublicDriverProfile {
+        val account = registry.get(settings.selectedPublicProfileAccountId)
+        val automatic = account?.let { snapshots.read(it.id) }?.takeIf { snapshot ->
+            snapshot.identityVerified &&
+                !account.profileUuid.isNullOrBlank() &&
+                snapshot.profileUuid.equals(account.profileUuid, ignoreCase = true)
+        }
+        return PublicDriverProfilePolicy.resolve(
+            settings = settings,
+            selectedProfileUuid = account?.profileUuid.orEmpty(),
+            automatic = automatic,
         )
     }
 }
