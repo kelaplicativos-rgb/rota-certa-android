@@ -614,6 +614,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const MAX_ARRAY = 18;
           const MAX_NODES = 420;
           const MAX_SOURCE_BOOKINGS = 48;
+          const MAX_SOURCE_WAYPOINTS = 48;
           const MAX_SOURCE_TRIPS = 24;
           const networkTripSources = new Map();
           Object.defineProperty(window, '__rotaCertaNetworkTripSource', {
@@ -701,6 +702,10 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             if (!Array.isArray(root.bookings)) return;
             const tripId = sourceText(root.trip_offer_encrypted_id, 160).toLowerCase();
             if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
+            const rawWaypoints = Array.isArray(root.waypoints) ? root.waypoints : [];
+            const waypoints = rawWaypoints.slice(0, MAX_SOURCE_WAYPOINTS).map(function(rawWaypoint) {
+              return sourceWaypoint(rawWaypoint);
+            });
             const bookings = root.bookings.slice(0, MAX_SOURCE_BOOKINGS).map(function(rawBooking) {
               const booking = sourceObject(rawBooking);
               const passenger = sourceObject(booking.passenger);
@@ -724,7 +729,9 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             networkTripSources.set(tripId, {
               tripId: tripId,
               bookingsComplete: root.bookings.length <= MAX_SOURCE_BOOKINGS,
-              bookings: bookings
+              bookings: bookings,
+              waypointsComplete: rawWaypoints.length >= 2 && rawWaypoints.length <= MAX_SOURCE_WAYPOINTS,
+              waypoints: waypoints
             });
           }
 
