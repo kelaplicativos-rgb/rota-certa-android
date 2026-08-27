@@ -14,6 +14,12 @@ internal data class PublicAgendaAutoSyncResult(
     val failures: Int = 0,
 )
 
+internal data class PublicAgendaExternalTrip(
+    val trip: Trip,
+    val bookedSeats: Int,
+    val sourceReference: String,
+)
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -65,20 +71,19 @@ internal object PublicAgendaAutoSync0300 {
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { toPublicTrip(it, capacity, nowMillis) }
             .filterNot { synthesized ->
-                localTrips.any { local -> samePhysicalTrip(local, synthesized) }
+                localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
             }
-            .distinctBy(Trip::publicToken)
+            .distinctBy { it.trip.publicToken }
             .take(100)
             .toList()
 
-        externalTrips.forEach { publicTrip ->
+        externalTrips.forEach { synthesized ->
+            val publicTrip = synthesized.trip
             runCatching {
                 val response = runCatching { api.publish(publicTrip) }.getOrElse {
                     api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
                 }
-                val source = publicTrip.notes.removePrefix(SOURCE_PREFIX)
-                val bookedSeats = source.substringAfter(SEATS_MARKER, "0").substringBefore('|').toIntOrNull() ?: 0
-                if (bookedSeats > 0) {
+                if (synthesized.bookedSeats > 0) {
                     val ordered = publicTrip.stops.sortedBy(TripStop::order)
                     val claim = Booking(
                         id = "blablacar-${publicTrip.publicToken.take(40)}",
@@ -86,11 +91,11 @@ internal object PublicAgendaAutoSync0300 {
                         passengerName = "Vagas já ocupadas na BlaBlaCar",
                         boardingStopId = ordered.first().id,
                         dropoffStopId = ordered.last().id,
-                        seats = bookedSeats.coerceAtMost(publicTrip.capacity),
+                        seats = synthesized.bookedSeats.coerceAtMost(publicTrip.capacity),
                         status = BookingStatus.CONFIRMED,
                         source = BookingSource.BLABLACAR,
                         capacityClaimType = CapacityClaimType.RESERVED_SEAT,
-                        sourceReference = source.substringAfter(SOURCE_MARKER, "").substringBefore('|'),
+                        sourceReference = synthesized.sourceReference,
                         occupancyGroupId = "blablacar:${publicTrip.publicToken}",
                     )
                     api.upsertDriverBooking(response.tripId, claim)
@@ -116,7 +121,7 @@ internal object PublicAgendaAutoSync0300 {
         capacity: Int,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
-    ): Trip? {
+    ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
         if (departure <= nowMillis) return null
 
@@ -137,7 +142,7 @@ internal object PublicAgendaAutoSync0300 {
         val booked = source.booked_seats.coerceAtLeast(source.passengers.sumOf { it.seats.coerceAtLeast(1) })
         val priceCents = parsePriceCents(source.price)
 
-        return Trip(
+        val trip = Trip(
             id = "public:$token",
             title = "${shortPlace(origin)} → ${shortPlace(destination)}",
             departureAtMillis = departure,
@@ -161,9 +166,14 @@ internal object PublicAgendaAutoSync0300 {
                 ),
             ),
             publicToken = token,
-            notes = "$SOURCE_PREFIX$SEATS_MARKER${booked.coerceAtMost(safeCapacity)}|$SOURCE_MARKER${source.trip_id.orEmpty().ifBlank { source.trip_href.orEmpty() }}|",
+            notes = "",
             remoteId = token,
             publicBookingEnabled = true,
+        )
+        return PublicAgendaExternalTrip(
+            trip = trip,
+            bookedSeats = booked.coerceAtMost(safeCapacity),
+            sourceReference = source.trip_id.orEmpty().ifBlank { source.trip_href.orEmpty() }.ifBlank { "BLABLACAR:$token" },
         )
     }
 
@@ -225,7 +235,4 @@ internal object PublicAgendaAutoSync0300 {
     )
 
     private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
-    private const val SOURCE_PREFIX = "__RC_PUBLIC_SYNC__"
-    private const val SEATS_MARKER = "seats="
-    private const val SOURCE_MARKER = "source="
 }
