@@ -44,6 +44,10 @@ data class DriverPushTokenResponse(
 @Serializable
 data class DriverAgendaEnsureRequest(
     val publicAgendaToken: String = "",
+    val publicProfileMode: String = PublicDriverProfileMode.MANUAL.name,
+    val selectedPublicProfileUuid: String = "",
+    val publicProfileLastSyncedAtMillis: Long? = null,
+    val publicProfileOverrideFields: List<String> = emptyList(),
     val driverWhatsapp: String = "",
     val driverPhotoUrl: String = "",
     val driverPublicAbout: String = "",
@@ -60,6 +64,8 @@ data class DriverAgendaEnsureRequest(
 @Serializable
 data class DriverAgendaRegenerateRequest(
     val confirmation: String = "REGENERATE_PUBLIC_AGENDA_LINK",
+    val currentPublicAgendaToken: String,
+    val rotationId: String,
 )
 
 @Serializable
@@ -183,32 +189,50 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
-    suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse = request(
+    suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse =
+        ensurePublicAgenda(publicAgendaToken, ResolvedPublicDriverProfile.manual(settings))
+
+    suspend fun ensurePublicAgenda(
+        publicAgendaToken: String,
+        publicProfile: ResolvedPublicDriverProfile,
+    ): DriverAgendaEnsureResponse = request(
         method = "POST",
         path = "/v1/driver/agenda/ensure",
         body = json.encodeToString(
             DriverAgendaEnsureRequest(
                 publicAgendaToken = publicAgendaToken.trim(),
-                driverWhatsapp = settings.driverWhatsapp.trim(),
-                driverPhotoUrl = settings.driverPhotoUrl.trim(),
-                driverPublicAbout = settings.driverPublicAbout.trim(),
-                driverPublicRating = settings.driverPublicRating.trim(),
-                driverPublicReviewCount = settings.driverPublicReviewCount.coerceAtLeast(0),
-                driverPublicBadge = settings.driverPublicBadge.trim(),
-                vehicleMakeModel = settings.vehicleMakeModel.trim(),
-                vehicleColor = settings.vehicleColor.trim(),
-                vehicleAmenities = settings.vehicleAmenities.trim(),
-                driverPreferences = settings.driverPreferences.trim(),
-                paymentInstructions = settings.paymentInstructions.trim(),
+                publicProfileMode = publicProfile.sourceMode.name,
+                selectedPublicProfileUuid = publicProfile.selectedProfileUuid.trim(),
+                publicProfileLastSyncedAtMillis = publicProfile.automaticProfileLastSyncedAtMillis,
+                publicProfileOverrideFields = publicProfile.overrideFields.sorted(),
+                driverWhatsapp = publicProfile.whatsapp.trim(),
+                driverPhotoUrl = publicProfile.photoUrl.trim(),
+                driverPublicAbout = publicProfile.about.trim(),
+                driverPublicRating = publicProfile.rating.trim(),
+                driverPublicReviewCount = publicProfile.reviewCount?.coerceAtLeast(0) ?: 0,
+                driverPublicBadge = publicProfile.badge.trim(),
+                vehicleMakeModel = publicProfile.vehicleMakeModel.trim(),
+                vehicleColor = publicProfile.vehicleColor.trim(),
+                vehicleAmenities = publicProfile.amenities.trim(),
+                driverPreferences = publicProfile.preferences.trim(),
+                paymentInstructions = publicProfile.paymentInstructions.trim(),
             ),
         ),
         requireDriverToken = true,
     )
 
-    suspend fun regeneratePublicAgenda(): DriverAgendaEnsureResponse = request(
+    suspend fun regeneratePublicAgenda(
+        currentPublicAgendaToken: String,
+        rotationId: String,
+    ): DriverAgendaEnsureResponse = request(
         method = "POST",
         path = "/v1/driver/agenda/regenerate",
-        body = json.encodeToString(DriverAgendaRegenerateRequest()),
+        body = json.encodeToString(
+            DriverAgendaRegenerateRequest(
+                currentPublicAgendaToken = currentPublicAgendaToken.trim(),
+                rotationId = rotationId.trim(),
+            ),
+        ),
         requireDriverToken = true,
     )
 
