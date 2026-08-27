@@ -34,6 +34,14 @@ internal object PublicDriverProfileFields {
 }
 
 @Serializable
+data class BlaBlaPublicReview(
+    val author: String = "",
+    val rating: String = "",
+    val dateLabel: String = "",
+    val text: String = "",
+)
+
+@Serializable
 data class BlaBlaPublicProfileSnapshot(
     val accountId: String,
     val profileUuid: String,
@@ -47,6 +55,7 @@ data class BlaBlaPublicProfileSnapshot(
     val vehicleColor: String = "",
     val amenities: String = "",
     val preferences: String = "",
+    val reviews: List<BlaBlaPublicReview> = emptyList(),
     val identityVerified: Boolean = true,
     val lastSyncedAtMillis: Long = System.currentTimeMillis(),
 )
@@ -63,6 +72,7 @@ internal data class BlaBlaPublicProfileCapture(
     val vehicleColor: String = "",
     val amenities: String = "",
     val preferences: String = "",
+    val reviews: List<BlaBlaPublicReview> = emptyList(),
 )
 
 internal sealed class BlaBlaPublicProfileMergeResult {
@@ -87,6 +97,18 @@ internal object BlaBlaPublicProfileModule {
             it.accountId == accountId && it.profileUuid.equals(expected, ignoreCase = true)
         }
         fun keep(incoming: String, old: String): String = incoming.trim().takeIf(String::isNotEmpty) ?: old
+        val cleanedReviews = capture.reviews
+            .map { review ->
+                review.copy(
+                    author = review.author.trim().take(120),
+                    rating = review.rating.trim().take(20),
+                    dateLabel = review.dateLabel.trim().take(80),
+                    text = review.text.trim().take(600),
+                )
+            }
+            .filter { it.author.isNotBlank() || it.text.isNotBlank() }
+            .distinctBy { "${it.author.lowercase()}|${it.dateLabel.lowercase()}|${it.text.lowercase()}" }
+            .take(60)
         val snapshot = BlaBlaPublicProfileSnapshot(
             accountId = accountId,
             profileUuid = expected,
@@ -100,6 +122,7 @@ internal object BlaBlaPublicProfileModule {
             vehicleColor = keep(capture.vehicleColor, prior?.vehicleColor.orEmpty()),
             amenities = keep(capture.amenities, prior?.amenities.orEmpty()),
             preferences = keep(capture.preferences, prior?.preferences.orEmpty()),
+            reviews = cleanedReviews.takeIf(List<BlaBlaPublicReview>::isNotEmpty) ?: prior?.reviews.orEmpty(),
             identityVerified = true,
             lastSyncedAtMillis = nowMillis,
         )
@@ -171,6 +194,7 @@ data class ResolvedPublicDriverProfile(
     val vehicleColor: String = "",
     val amenities: String = "",
     val preferences: String = "",
+    val reviews: List<BlaBlaPublicReview> = emptyList(),
     val paymentInstructions: String = "",
     val sourceMode: PublicDriverProfileMode = PublicDriverProfileMode.MANUAL,
     val selectedProfileUuid: String = "",
@@ -191,6 +215,7 @@ data class ResolvedPublicDriverProfile(
             vehicleColor = settings.vehicleColor,
             amenities = settings.vehicleAmenities,
             preferences = settings.driverPreferences,
+            reviews = emptyList(),
             paymentInstructions = settings.paymentInstructions,
             sourceMode = PublicDriverProfileMode.MANUAL,
         )
@@ -232,6 +257,7 @@ internal object PublicDriverProfilePolicy {
             vehicleColor = text(PublicDriverProfileFields.VEHICLE_COLOR, automatic?.vehicleColor.orEmpty(), settings.vehicleColor),
             amenities = text(PublicDriverProfileFields.AMENITIES, automatic?.amenities.orEmpty(), settings.vehicleAmenities),
             preferences = text(PublicDriverProfileFields.PREFERENCES, automatic?.preferences.orEmpty(), settings.driverPreferences),
+            reviews = automatic?.reviews.orEmpty(),
             paymentInstructions = settings.paymentInstructions,
             sourceMode = settings.publicProfileMode,
             selectedProfileUuid = selectedProfileUuid,
