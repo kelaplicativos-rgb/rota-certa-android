@@ -591,6 +591,9 @@ async function ensureDriverPublicAgenda(req, res) {
 
   const publicProfileUpdate = {
     driverWhatsapp,
+    driverPhotoUrl: cleanText(req.body && req.body.driverPhotoUrl, 500).startsWith("https://")
+      ? cleanText(req.body && req.body.driverPhotoUrl, 500)
+      : "",
     driverPublicAbout: cleanText(req.body && req.body.driverPublicAbout, 320),
     driverPublicRating: cleanText(req.body && req.body.driverPublicRating, 20),
     driverPublicReviewCount: Math.max(0, Math.min(9999999, Number(req.body && req.body.driverPublicReviewCount || 0) || 0)),
@@ -629,6 +632,9 @@ function safePublicDriverProfile(data, username = "") {
     displayName: cleanText(driver.displayName, 120),
     username: normalizeUsername(username || driver.username || ""),
     whatsapp: cleanText(driver.driverWhatsapp, 24),
+    photoUrl: cleanText(driver.driverPhotoUrl, 500).startsWith("https://")
+      ? cleanText(driver.driverPhotoUrl, 500)
+      : "",
     about: cleanText(driver.driverPublicAbout, 320),
     rating: cleanText(driver.driverPublicRating, 20),
     reviewCount: Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0),
