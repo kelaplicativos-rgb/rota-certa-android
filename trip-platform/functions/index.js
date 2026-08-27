@@ -277,8 +277,8 @@ async function recordPublicBrowserDebugEvent(req, res) {
     reason: req.body && req.body.reason,
     statusCode: Number(req.body && req.body.statusCode || 0),
     seats: Number(req.body && req.body.seats || 0),
-    fromIndex: Number(req.body && req.body.fromIndex ?? -1),
-    toIndex: Number(req.body && req.body.toIndex ?? -1),
+    fromIndex: Number((req.body && req.body.fromIndex) ?? -1),
+    toIndex: Number((req.body && req.body.toIndex) ?? -1),
     replayed: req.body && req.body.replayed === true,
   });
   return res.status(204).send("");
