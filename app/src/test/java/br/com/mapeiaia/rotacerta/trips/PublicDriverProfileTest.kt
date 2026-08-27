@@ -115,6 +115,49 @@ class PublicDriverProfileTest {
     }
 
     @Test
+    fun detailedReviewsArePreservedOnPartialRefreshOfSameUuid() {
+        val previous = BlaBlaPublicProfileSnapshot(
+            accountId = "a",
+            profileUuid = uuidA,
+            reviews = listOf(
+                BlaBlaPublicReview(author = "Passageiro A", rating = "5", dateLabel = "2026", text = "Boa viagem"),
+            ),
+            lastSyncedAtMillis = 10L,
+        )
+        val result = BlaBlaPublicProfileModule.mergeConfirmed(
+            accountId = "a",
+            expectedUuid = uuidA,
+            previous = previous,
+            capture = BlaBlaPublicProfileCapture(
+                observedProfileUuid = uuidA,
+                profileName = "Nome atualizado",
+                reviews = emptyList(),
+            ),
+            nowMillis = 20L,
+        )
+        val accepted = assertIs<BlaBlaPublicProfileMergeResult.Accepted>(result).snapshot
+        assertEquals(1, accepted.reviews.size)
+        assertEquals("Passageiro A", accepted.reviews.single().author)
+    }
+
+    @Test
+    fun automaticModeCarriesOnlySelectedProfilesVerifiedReviews() {
+        val settings = TripOnlineSettings(publicProfileMode = PublicDriverProfileMode.BLABLACAR)
+        val automatic = BlaBlaPublicProfileSnapshot(
+            accountId = "b",
+            profileUuid = uuidB,
+            profileName = "Perfil B",
+            reviews = listOf(
+                BlaBlaPublicReview(author = "Passageiro B", text = "Avaliação B"),
+            ),
+        )
+        val resolved = PublicDriverProfilePolicy.resolve(settings, uuidB, automatic)
+        assertEquals(uuidB, resolved.selectedProfileUuid)
+        assertEquals(1, resolved.reviews.size)
+        assertEquals("Passageiro B", resolved.reviews.single().author)
+    }
+
+    @Test
     fun hybridOverrideSurvivesAutomaticRefresh() {
         val settings = TripOnlineSettings(
             driverDisplayName = "Manual",
