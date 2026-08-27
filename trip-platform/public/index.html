@@ -2,89 +2,203 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://wa.me https://api.whatsapp.com https://calendar.google.com; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
   <title>Rota Certa — Agenda de Viagens</title>
   <style>
-    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#161616;background:#f4f5f7}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:0 auto;padding:24px 16px 56px}.brand{font-weight:800;font-size:14px;letter-spacing:.04em}.card{background:white;border-radius:18px;padding:18px;margin-top:14px;box-shadow:0 4px 18px #0000000c}.muted{color:#666;font-size:14px}.route{display:grid;gap:8px;margin-top:14px}.stop{padding-left:12px;border-left:3px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}label{font-size:13px;font-weight:700;display:grid;gap:6px}input,select,button{font:inherit;padding:12px;border-radius:12px;border:1px solid #c9cbd1;background:white}button{border:0;background:#171717;color:white;font-weight:800;cursor:pointer;min-height:52px;font-size:16px}input,select{min-height:52px;font-size:17px}.bookingStep{font-size:20px;margin:18px 0 8px}.summary{font-size:17px;line-height:1.55;padding:12px;background:#f7f8fa;border-radius:12px}.secondary{background:#eef0f3;color:#171717}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.error{color:#a50000}.success{color:#0b6b2c}.hidden{display:none}.availability{font-size:15px;font-weight:750;margin:12px 0}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef0f3;font-size:12px}.agendaTrip{display:block;color:inherit;text-decoration:none;border:1px solid #e1e3e7;border-radius:18px;padding:16px;margin-top:12px;background:#fff;transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}.agendaTrip[href]:hover{border-color:#9fa3aa;box-shadow:0 5px 18px #0000000d}.agendaTrip[href]:active{transform:scale(.995)}.agendaTripFull{cursor:not-allowed;background:#f3f4f6;border-color:#dfe1e5;color:#a2a7b0;box-shadow:none;pointer-events:none;user-select:none}.agendaTripTop{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.agendaRoute{font-weight:800;font-size:18px;line-height:1.3}.agendaState{flex:0 0 auto;font-size:16px;font-weight:900}.agendaStateOpen{color:#1367c5}.agendaStateFull{color:#1b2d4f}.agendaMeta{margin-top:8px;color:#666;font-size:14px;font-weight:650}.agendaTripFull .agendaMeta{color:#a2a7b0}.agendaAction{margin-top:14px;min-height:52px;border-radius:14px;background:#171717;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:900;letter-spacing:.01em}.agendaActionFull{background:#e3e5e9;color:#8d939d}.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}h1{font-size:26px;margin:6px 0 0}h2{font-size:18px;margin:0 0 12px}</style>
+    :root{
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      color:#171717;background:#f5f6f8;
+      --ink:#171717;--muted:#5d626a;--line:#dde0e5;--soft:#eef0f4;--ok:#0c7a39;--danger:#9b1c1c;--blue:#0b63c7;
+    }
+    *{box-sizing:border-box}html{font-size:18px}body{margin:0;background:#f5f6f8}button,input,select,textarea{font:inherit}
+    main{max-width:760px;margin:0 auto;padding:22px 16px 120px}.hidden{display:none!important}
+    .brand{font-size:18px;font-weight:900;letter-spacing:.06em}.pageTitle{font-size:32px;line-height:1.15;margin:8px 0 6px;font-weight:900}
+    .lead{font-size:20px;line-height:1.45;color:var(--muted);margin:4px 0 18px}.muted{color:var(--muted);font-size:18px;line-height:1.5}
+    .card{background:#fff;border-radius:24px;padding:22px;margin-top:16px;box-shadow:0 5px 22px #0000000b;border:1px solid #ebedf0}
+    .error{color:var(--danger);font-weight:800;font-size:20px}.success{color:var(--ok);font-size:20px;font-weight:800}
+    h1,h2,h3,p{overflow-wrap:anywhere}h2{font-size:26px;line-height:1.25;margin:0 0 14px}h3{font-size:21px;margin:0 0 10px}
+    .agendaTrip{display:block;color:inherit;text-decoration:none;border:2px solid var(--line);border-radius:26px;padding:22px;margin-top:18px;background:#fff}
+    .agendaTrip[href]{cursor:pointer}.agendaTrip[href]:active{transform:scale(.995)}.agendaTripFull{background:#f0f1f3;color:#9a9ea5;cursor:not-allowed;pointer-events:none;user-select:none}
+    .agendaDate{font-size:23px;font-weight:900;margin-bottom:18px}.agendaRouteLine{font-size:30px;line-height:1.15;font-weight:900}.agendaArrow{font-size:30px;color:#6f42c1;margin:4px 0}
+    .agendaMetaRow{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 10px}.bigPill{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:#f1effb;font-size:19px;font-weight:900}
+    .agendaBottom{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;flex-wrap:wrap}.driverMini{font-size:20px;font-weight:800}.priceMini{font-size:24px;font-weight:900}
+    .agendaAction{margin-top:18px;min-height:64px;border-radius:18px;background:#171717;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:950}
+    .agendaTripFull .agendaAction{background:#dadde2;color:#6d737c}.fullWord{color:#102a52;font-size:28px;font-weight:950}
+    .tripHead{display:flex;align-items:center;justify-content:space-between;gap:12px}.backButton{border:0;background:transparent;font-size:20px;font-weight:900;padding:8px 0;cursor:pointer}
+    .statusPill{display:inline-flex;padding:9px 13px;border-radius:999px;background:#eef1f5;font-size:19px;font-weight:900}.statusFull{background:#eceff3;color:#183252}
+    .tripDate{font-size:24px;font-weight:900;margin-top:18px}.tripRoute{font-size:32px;line-height:1.16;font-weight:950;margin:16px 0}.tripRouteArrow{display:block;color:#6840bd;padding:3px 0}
+    .timeline{display:grid;gap:0;margin-top:16px}.timelineStop{display:grid;grid-template-columns:92px 22px 1fr;gap:12px;min-height:92px}
+    .time{font-size:22px;font-weight:900}.dotCol{position:relative;display:flex;justify-content:center}.dot{width:16px;height:16px;border:4px solid #b9bec7;border-radius:50%;background:#fff;z-index:2;margin-top:5px}
+    .dotCol:after{content:"";position:absolute;width:4px;background:#d0d4da;top:20px;bottom:-5px}.timelineStop:last-child .dotCol:after{display:none}
+    .stopName{font-size:24px;font-weight:900}.stopAddress{font-size:18px;line-height:1.4;color:var(--muted);margin-top:4px}
+    .factGrid{display:grid;gap:10px}.fact{padding:14px 0;border-bottom:1px solid #eceef1;font-size:19px;line-height:1.45}.fact:last-child{border-bottom:0}.fact strong{font-weight:950}
+    .driverName{font-size:27px;font-weight:950}.driverLine{font-size:20px;line-height:1.5;margin-top:6px}.tagWrap{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}.tag{padding:9px 12px;background:#f0f2f5;border-radius:999px;font-size:18px;font-weight:800}
+    .whatsapp{display:flex;align-items:center;justify-content:center;text-align:center;min-height:62px;border-radius:18px;background:#16a34a;color:#fff;text-decoration:none;font-size:21px;font-weight:950;margin-top:16px}
+    .primary,.secondary,.dangerButton{width:100%;min-height:64px;border-radius:18px;border:0;font-size:21px;font-weight:950;padding:14px 18px;cursor:pointer}
+    .primary{background:#171717;color:#fff}.secondary{background:#eef0f4;color:#171717}.dangerButton{background:#f6e9e9;color:#8b1616}.primary:disabled{background:#c8ccd2;color:#70757d;cursor:not-allowed}
+    .stickyCta{position:fixed;left:0;right:0;bottom:0;background:#ffffffef;backdrop-filter:blur(10px);border-top:1px solid #dfe2e7;padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:20}
+    .stickyInner{max-width:728px;margin:0 auto}.stickyCta .primary{box-shadow:0 7px 22px #00000020}
+    label{display:grid;gap:8px;font-size:20px;font-weight:900;margin-top:18px}input,select,textarea{width:100%;min-height:62px;border:2px solid #cfd3da;border-radius:16px;padding:14px 16px;background:#fff;font-size:20px;color:#171717}
+    textarea{min-height:130px;resize:vertical;line-height:1.45}.availability{font-size:20px;font-weight:900;line-height:1.4;margin-top:14px}
+    .stepTitle{font-size:28px;font-weight:950;margin:0 0 6px}.stepIntro{font-size:19px;color:var(--muted);line-height:1.5}
+    .reviewBlock{padding:18px 0;border-bottom:1px solid #e7e9ed}.reviewBlock:last-child{border-bottom:0}.reviewLabel{font-size:19px;color:var(--muted);font-weight:800}.reviewValue{font-size:23px;line-height:1.35;font-weight:900;margin-top:5px}
+    .priceTotal{font-size:30px;font-weight:950}.codeBox{display:block;background:#f1f3f5;border-radius:14px;padding:14px;font-size:20px;overflow-wrap:anywhere}
+    .actions{display:grid;gap:12px;margin-top:16px}.calendarAction{margin-top:12px}.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    @media(max-width:480px){html{font-size:17px}.pageTitle{font-size:30px}.agendaRouteLine,.tripRoute{font-size:29px}.timelineStop{grid-template-columns:78px 20px 1fr}.time{font-size:20px}.stopName{font-size:22px}}
+  </style>
 </head>
 <body>
 <main>
   <div class="brand">ROTA CERTA</div>
-  <h1>Agenda de Viagens</h1>
-  <p id="driverName" class="muted"></p>
-  <p class="muted">Consulte somente as viagens publicadas pelo motorista. A agenda pessoal dele não é compartilhada.</p>
 
-  <section id="loading" class="card">Carregando agenda…</section>
+  <section id="loading" class="card">Carregando…</section>
   <section id="error" class="card error hidden"></section>
 
-  <section id="agenda" class="card hidden">
-    <h2>Próximas viagens</h2>
-    <p class="muted">Escolha uma viagem para consultar os trechos disponíveis e solicitar sua vaga.</p>
+  <section id="agenda" class="hidden">
+    <h1 class="pageTitle">Escolha sua viagem</h1>
+    <p id="driverName" class="lead"></p>
+    <p class="lead">Veja a data, a rota, o horário e as vagas. Viagem cheia fica indisponível.</p>
     <div id="agendaTrips"></div>
-    <div class="actions">
-      <button id="subscribeCalendar">Compartilhar link do calendário (.ics)</button>
+    <div class="card">
+      <button id="subscribeCalendar" class="secondary">Compartilhar calendário das viagens</button>
     </div>
-    <p class="muted">O link contém somente viagens publicadas. Para assinar por URL no Google Agenda, use o Google Calendar em um navegador de computador e a opção “A partir de URL”. Passageiros e compromissos pessoais não fazem parte desse calendário.</p>
   </section>
 
-  <section id="trip" class="card hidden">
-    <span id="status" class="pill"></span>
-    <h2 id="title" style="margin-top:10px"></h2>
-    <div id="departure" class="muted"></div>
-    <div id="route" class="route"></div>
-    <p id="notes" class="muted"></p>
-  </section>
-
-  <section id="booking" class="card hidden">
-    <h2>Reserve sua viagem</h2>
-    <p class="bookingStep"><strong>1. Onde você embarca?</strong></p>
-    <label>Embarque<select id="boarding"></select></label>
-    <p class="bookingStep"><strong>2. Onde você vai descer?</strong></p>
-    <label>Desembarque<select id="dropoff"></select></label>
-    <div id="availability" class="availability"></div>
-    <p class="bookingStep"><strong>3. Quantos lugares?</strong></p>
-    <label>Quantidade de lugares<input id="seats" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-    <p class="bookingStep"><strong>4. Seus dados</strong></p>
-    <label>Qual é o seu nome?<input id="name" autocomplete="name" maxlength="120" required></label>
-    <label style="margin-top:10px">Qual é o seu WhatsApp?<input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required></label>
-    <div class="actions"><button id="reserve">REVISAR RESERVA</button></div>
-    <p id="bookingMessage" class="muted"></p>
-  </section>
-
-  <section id="review" class="card hidden">
-    <h2>CONFIRME SUA VIAGEM</h2>
-    <p id="reviewText" class="summary"></p>
-    <div class="actions">
-      <button id="confirmReserve">CONFIRMAR RESERVA</button>
-      <button id="editReservation" class="secondary">Voltar e corrigir</button>
+  <section id="trip" class="hidden">
+    <div class="tripHead">
+      <button id="backToAgenda" class="backButton" type="button">‹ Voltar</button>
+      <span id="status" class="statusPill"></span>
     </div>
+
+    <div class="card">
+      <div id="tripDate" class="tripDate"></div>
+      <div id="tripRouteTitle" class="tripRoute"></div>
+      <div id="tripAvailability" class="bigPill"></div>
+      <div id="tripPrice" class="priceMini" style="margin-top:16px"></div>
+      <div id="routeTimeline" class="timeline"></div>
+    </div>
+
+    <section id="driverCard" class="card">
+      <h2>Seu motorista</h2>
+      <div id="driverCardName" class="driverName"></div>
+      <div id="driverRatingLine" class="driverLine hidden"></div>
+      <div id="driverBadgeLine" class="driverLine hidden"></div>
+      <div id="driverAbout" class="driverLine hidden"></div>
+      <div id="driverTags" class="tagWrap"></div>
+      <a id="driverWhatsappTrip" class="whatsapp hidden" rel="noopener noreferrer">Falar com o motorista no WhatsApp</a>
+    </section>
+
+    <section id="tripDetailsCard" class="card">
+      <h2>Detalhes da viagem</h2>
+      <div id="tripFacts" class="factGrid"></div>
+      <p id="notes" class="muted hidden"></p>
+    </section>
+
+    <div id="tripSticky" class="stickyCta hidden">
+      <div class="stickyInner"><button id="startBooking" class="primary">Fazer pedido de reserva</button></div>
+    </div>
+  </section>
+
+  <section id="booking" class="hidden">
+    <button id="backToTrip" class="backButton" type="button">‹ Voltar aos detalhes</button>
+    <div class="card">
+      <h1 class="stepTitle">Seu pedido de reserva</h1>
+      <p class="stepIntro">Preencha só o necessário. Tudo grande e simples.</p>
+
+      <label>Onde você embarca?
+        <select id="boarding"></select>
+      </label>
+      <label>Onde você vai descer?
+        <select id="dropoff"></select>
+      </label>
+      <div id="availability" class="availability"></div>
+
+      <label>Quantos lugares?
+        <input id="seats" type="number" min="1" step="1" value="1" inputmode="numeric">
+      </label>
+      <label>Seu nome
+        <input id="name" autocomplete="name" maxlength="120" required>
+      </label>
+      <label>Seu WhatsApp
+        <input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required>
+      </label>
+
+      <p id="bookingMessage" class="muted"></p>
+      <button id="reserve" class="primary">Continuar</button>
+    </div>
+  </section>
+
+  <section id="review" class="hidden">
+    <button id="editReservation" class="backButton" type="button">‹ Voltar e corrigir</button>
+    <div class="card">
+      <h1 class="stepTitle">Confira os detalhes do seu pedido de reserva</h1>
+      <p class="stepIntro">Confira tudo antes de enviar.</p>
+
+      <div class="reviewBlock">
+        <div class="reviewLabel">Viagem</div>
+        <div id="reviewRoute" class="reviewValue"></div>
+        <div id="reviewDate" class="muted"></div>
+      </div>
+      <div class="reviewBlock">
+        <div class="reviewLabel">Embarque e destino</div>
+        <div id="reviewStops" class="reviewValue"></div>
+      </div>
+      <div class="reviewBlock">
+        <div class="reviewLabel">Lugares</div>
+        <div id="reviewSeats" class="reviewValue"></div>
+      </div>
+      <div class="reviewBlock">
+        <div class="reviewLabel">Resumo do preço</div>
+        <div id="reviewPrice" class="priceTotal"></div>
+      </div>
+      <div class="reviewBlock">
+        <div class="reviewLabel">Pagamento</div>
+        <div id="reviewPayment" class="reviewValue"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="messageHeading">Mande uma mensagem para o motorista</h2>
+      <p class="stepIntro">Você pode ajustar a mensagem antes de abrir o WhatsApp.</p>
+      <textarea id="messageToDriver" maxlength="600"></textarea>
+      <a id="driverWhatsappReview" class="whatsapp hidden" rel="noopener noreferrer">Enviar mensagem no WhatsApp</a>
+      <p id="whatsappUnavailable" class="muted hidden">O motorista ainda não cadastrou um WhatsApp válido em Integração online.</p>
+    </div>
+
     <p id="reviewMessage" class="muted"></p>
+    <div class="stickyCta">
+      <div class="stickyInner"><button id="confirmReserve" class="primary">Fazer pedido de reserva</button></div>
+    </div>
   </section>
 
-  <section id="cancelBooking" class="card hidden">
-    <h2>Cancelar minha reserva</h2>
-    <p class="muted">Somente quem possui o número da reserva e o código particular recebido na confirmação consegue cancelar.</p>
-    <div class="grid">
+  <section id="confirmed" class="hidden">
+    <div class="card">
+      <h1 class="stepTitle">✅ Reserva confirmada</h1>
+      <p id="confirmationText" class="success"></p>
+      <p class="muted">Guarde este código particular. Ele permite alterar ou cancelar sua reserva neste aparelho.</p>
+      <code id="cancelCode" class="codeBox"></code>
+      <div class="actions">
+        <a id="driverWhatsappConfirmed" class="whatsapp hidden" rel="noopener noreferrer">Falar com o motorista no WhatsApp</a>
+        <button id="changeReservation" class="secondary">Alterar minha reserva</button>
+        <button id="showCancel" class="dangerButton">Cancelar minha reserva</button>
+        <button id="googleCalendar" class="primary calendarAction">Adicionar ao Google Agenda</button>
+        <button id="downloadIcs" class="secondary">Baixar ICS</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="cancelBooking" class="hidden">
+    <button id="cancelBack" class="backButton" type="button">‹ Voltar</button>
+    <div class="card">
+      <h1 class="stepTitle">Cancelar minha reserva</h1>
+      <p class="stepIntro">Confira os dados e confirme o cancelamento.</p>
       <label>Número da reserva<input id="cancelBookingId" autocomplete="off"></label>
       <label>Código particular<input id="cancelToken" autocomplete="off"></label>
+      <p id="cancelMessage" class="muted"></p>
+      <button id="cancelReservation" class="dangerButton">Confirmar cancelamento</button>
     </div>
-    <div class="actions"><button id="cancelReservation" class="secondary">Cancelar minha reserva</button></div>
-    <p id="cancelMessage" class="muted"></p>
-  </section>
-
-  <section id="confirmed" class="card hidden">
-    <h2>✅ RESERVA CONFIRMADA</h2>
-    <p id="confirmationText" class="success"></p>
-    <p class="muted">Guarde o código de cancelamento. Ele é particular e não aparece para outros passageiros.</p>
-    <code id="cancelCode"></code>
-    <div class="actions">
-      <button id="changeReservation" class="secondary">Alterar minha reserva</button>
-      <button id="googleCalendar">Adicionar ao Google Agenda</button>
-      <button id="downloadIcs" class="secondary">Baixar ICS</button>
-    </div>
-    <p class="muted">O Google Agenda é um espelho opcional da viagem. Vagas, reservas e cancelamentos em tempo real são controlados pela Agenda Pública do Rota Certa.</p>
   </section>
 </main>
 <script src="/app.js" defer></script>
