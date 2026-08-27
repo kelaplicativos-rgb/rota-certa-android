@@ -142,6 +142,15 @@ private data class DynamicIdentityEvidence(
     val profileLinks: List<String> = emptyList(),
     val observedUuids: List<String> = emptyList(),
     val visibleName: String = "",
+    val photoUrl: String = "",
+    val about: String = "",
+    val rating: String = "",
+    val reviewCount: Int? = null,
+    val badge: String = "",
+    val vehicleMakeModel: String = "",
+    val vehicleColor: String = "",
+    val amenities: String = "",
+    val preferences: String = "",
     val domHtml: String = "",
 )
 
@@ -229,6 +238,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var store: BlaBlaDynamicSessionStore
     private lateinit var passengerIdentityStore: PassengerIdentityStore
+    private lateinit var publicProfileStore: BlaBlaPublicProfileStore
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
@@ -283,6 +293,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         registry = BlaBlaDynamicAccountRegistry(this)
         store = BlaBlaDynamicSessionStore(this)
         passengerIdentityStore = PassengerIdentityStore(this)
+        publicProfileStore = BlaBlaPublicProfileStore(this)
         account = registry.get(intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finish()
             return
@@ -520,6 +531,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 } else {
                     bindIdentityFromLinks(it.profileLinks, it.visibleName)?.let { updated -> account = updated }
                 }
+                if (identityConfirmedThisSync) persistPublicProfileEvidence(it)
                 UnifiedDebugEventStore.record(
                     "IDENTITY_EVIDENCE",
                     packageName,
@@ -559,6 +571,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val updated = bindIdentityFromLinks(evidence.profileLinks, evidence.visibleName)
             if (updated != null) {
                 account = updated
+                persistPublicProfileEvidence(evidence)
                 store.markSeen(account, webView.url.orEmpty())
                 statusView.text = "${account.displayLabel} • UUID confirmado ✅"
             }
@@ -1861,6 +1874,35 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return true
     }
 
+    private fun persistPublicProfileEvidence(evidence: DynamicIdentityEvidence) {
+        val expectedUuid = account.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return
+        val observed = evidence.observedUuids.map(String::lowercase).toSet()
+        if (expectedUuid !in observed) {
+            UnifiedDebugEventStore.record(
+                "PROFILE_UUID_MISMATCH",
+                packageName,
+                "account=${account.displayLabel} expectedUuidPresent=true observedCount=${observed.size}",
+            )
+            return
+        }
+        publicProfileStore.mergeConfirmed(
+            account = account,
+            capture = BlaBlaPublicProfileCapture(
+                observedProfileUuid = expectedUuid,
+                profileName = evidence.visibleName,
+                photoUrl = evidence.photoUrl,
+                about = evidence.about,
+                rating = evidence.rating,
+                reviewCount = evidence.reviewCount,
+                badge = evidence.badge,
+                vehicleMakeModel = evidence.vehicleMakeModel,
+                vehicleColor = evidence.vehicleColor,
+                amenities = evidence.amenities,
+                preferences = evidence.preferences,
+            ),
+        )
+    }
+
     private fun bindIdentityFromLinks(links: List<String>, visibleName: String): BlaBlaDynamicAccount? {
         val found = BlaBlaCollectorIdentityModule.uuids(links)
         val currentUuid = account.profileUuid?.lowercase()
@@ -1986,7 +2028,30 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .map((a) => a.href || '')
                 .filter((href) => uuid.test(href) && /(profile|user|member)/i.test(href));
               if (uuid.test(location.href)) links.push(location.href);
-              const nameNode = document.querySelector('[data-testid*="profile-name"], [data-testid*="driver-name"]');
+              const nameNode = document.querySelector('[data-testid*="profile-name"], [data-testid*="driver-name"], h1');
+              const photoNode = document.querySelector(
+                '[data-testid*="profile"] img[src^="http"], [data-testid*="avatar"] img[src^="http"], img[alt][src^="http"]'
+              );
+              const aboutNode = document.querySelector(
+                '[data-testid*="about"], [data-testid*="bio"], [data-testid*="description"], [aria-label*="apresenta" i]'
+              );
+              const ratingNode = document.querySelector(
+                '[data-testid*="rating"], [aria-label*="nota" i], [aria-label*="avalia" i]'
+              );
+              const ratingEvidence = clean(ratingNode && (ratingNode.innerText || ratingNode.getAttribute('aria-label')));
+              const ratingMatch = ratingEvidence.match(/\b([0-5](?:[.,]\d{1,2})?)\b/);
+              const reviewNode = document.querySelector(
+                '[data-testid*="review"], [data-testid*="evaluation"], [aria-label*="avalia" i]'
+              );
+              const reviewEvidence = clean(reviewNode && (reviewNode.innerText || reviewNode.getAttribute('aria-label')));
+              const reviewMatch = reviewEvidence.match(/(\d{1,7})\s*(?:avalia|opini|review)/i);
+              const badgeNode = document.querySelector(
+                '[data-testid*="badge"], [data-testid*="verified"], [data-testid*="ambassador"], [aria-label*="verific" i]'
+              );
+              const vehicleNode = document.querySelector('[data-testid*="vehicle"], [data-testid*="car"]');
+              const colorNode = document.querySelector('[data-testid*="vehicle-color"], [data-testid*="car-color"]');
+              const amenitiesNode = document.querySelector('[data-testid*="amenit"], [data-testid*="comfort"]');
+              const preferencesNode = document.querySelector('[data-testid*="prefer"], [data-testid*="rule"]');
               const resourceUrls = (performance && performance.getEntriesByType)
                 ? performance.getEntriesByType('resource').map((entry) => entry.name || '')
                 : [];
@@ -2008,6 +2073,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 profileLinks: Array.from(new Set(links)),
                 observedUuids: observedUuids,
                 visibleName: clean(nameNode && nameNode.innerText),
+                photoUrl: clean(photoNode && (photoNode.currentSrc || photoNode.src)),
+                about: clean(aboutNode && aboutNode.innerText).slice(0, 320),
+                rating: ratingMatch ? ratingMatch[1].replace(',', '.') : '',
+                reviewCount: reviewMatch ? Number(reviewMatch[1]) : null,
+                badge: clean(badgeNode && (badgeNode.innerText || badgeNode.getAttribute('aria-label'))).slice(0, 80),
+                vehicleMakeModel: clean(vehicleNode && vehicleNode.innerText).slice(0, 120),
+                vehicleColor: clean(colorNode && colorNode.innerText).slice(0, 60),
+                amenities: clean(amenitiesNode && amenitiesNode.innerText).slice(0, 240),
+                preferences: clean(preferencesNode && preferencesNode.innerText).slice(0, 240),
                 domHtml: html.slice(0, 350000)
               });
             })();
