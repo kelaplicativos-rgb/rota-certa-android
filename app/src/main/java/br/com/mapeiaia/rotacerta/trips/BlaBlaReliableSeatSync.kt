@@ -105,6 +105,10 @@ internal class BlaBlaManualSeatSyncAttemptStore(context: Context) {
         saveAll(list().filterNot { it.requestId == requestId })
     }
 
+    fun clearAll() {
+        saveAll(emptyList())
+    }
+
     private fun list(): List<BlaBlaManualSeatSyncAttempt> = runCatching {
         json.decodeFromString<List<BlaBlaManualSeatSyncAttempt>>(prefs.getString(KEY, "[]") ?: "[]")
     }.getOrDefault(emptyList())
