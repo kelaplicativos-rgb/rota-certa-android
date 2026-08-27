@@ -36,6 +36,9 @@ function profileBody(extra = {}) {
     driverPublicAbout: "Descrição A",
     driverPublicRating: "4.9",
     driverPublicReviewCount: 99,
+    driverPublicReviews: [
+      { author: "Passageiro A", rating: "5", dateLabel: "2026", text: "Ótima viagem" },
+    ],
     driverPublicBadge: "Verificado",
     vehicleMakeModel: "Carro A",
     vehicleColor: "Prata",
@@ -149,13 +152,14 @@ test("normal profile updates cannot rotate the public link entity", () => {
   assert.match(calendar, /tripPublicAgendaLinks/);
 });
 
-test("Android UI exposes three source modes, selected profile, per-field reset and stable link", () => {
-  assert.match(ui, /Usar dados da BlaBlaCar/);
-  assert.match(ui, /Usar meus próprios dados/);
-  assert.match(ui, /BlaBlaCar \+ personalizar/);
-  assert.match(ui, /Perfil exibido na Agenda Pública/);
-  assert.match(ui, /Voltar ao automático/);
-  assert.match(ui, /WhatsApp e pagamento nunca são sobrescritos/);
+test("Android UI separates one public driver identity from all-account trip cards", () => {
+  assert.match(ui, /Usar um perfil da BlaBlaCar/);
+  assert.match(ui, /Criar meu perfil personalizado/);
+  assert.match(ui, /todos os cards de todas as contas BlaBlaCar conectadas/);
+  assert.match(ui, /Perfil BlaBlaCar usado nos dados do motorista/);
+  assert.match(ui, /Atualizar dados deste perfil/);
+  assert.match(ui, /As viagens não dependem desta seleção/);
+  assert.doesNotMatch(ui, /BlaBlaCar \+ personalizar/);
   assert.match(ui, /O token não muda ao salvar dados/);
   assert.match(publicProfileKt, /PublicDriverProfilePolicy/);
 });
@@ -166,4 +170,37 @@ test("BlaBlaCar public profile persistence is UUID-gated and monotonic", () => {
   assert.match(dynamicAccounts, /PROFILE_UUID_MISMATCH/);
   assert.match(publicProfileKt, /incoming\.trim\(\)\.takeIf\(String::isNotEmpty\) \?: old/);
   assert.match(publicProfileKt, /capture\.reviewCount \?: prior\?\.reviewCount/);
+});
+
+test("profile-only synchronization visits the public profile and reviews without filtering trips", () => {
+  assert.match(dynamicAccounts, /MODE_PROFILE/);
+  assert.match(dynamicAccounts, /capturePublicProfilePage/);
+  assert.match(dynamicAccounts, /captureProfileReviewsPage/);
+  assert.match(dynamicAccounts, /public_profile_review_count/);
+  assert.match(dynamicAccounts, /trustedDriverProfileLinks/);
+});
+
+test("backend preserves same-profile reviews on partial refresh and clears them when switching identity", () => {
+  const same = profilePolicy.buildProfileUpdate({
+    body: profileBody({ publicProfileLastSyncedAtMillis: 0, driverPublicReviews: [] }),
+    current: { selectedPublicProfileUuid: uuidA, driverPublicReviews: [{ author: "Anterior", text: "Preservar" }] },
+    driverWhatsapp: "",
+  });
+  assert.equal(Object.hasOwn(same.update, "driverPublicReviews"), false);
+
+  const switched = profilePolicy.buildProfileUpdate({
+    body: profileBody({ selectedPublicProfileUuid: uuidB, publicProfileLastSyncedAtMillis: 0 }),
+    current: { selectedPublicProfileUuid: uuidA, driverPublicReviews: [{ author: "Perfil A", text: "Não pode vazar" }] },
+    driverWhatsapp: "",
+  });
+  assert.deepEqual(switched.update.driverPublicReviews, []);
+});
+
+test("manual profile clears BlaBlaCar detailed reviews", () => {
+  const manual = profilePolicy.buildProfileUpdate({
+    body: profileBody({ publicProfileMode: "MANUAL" }),
+    current: { selectedPublicProfileUuid: uuidA, driverPublicReviews: [{ author: "A", text: "B" }] },
+    driverWhatsapp: "",
+  });
+  assert.deepEqual(manual.update.driverPublicReviews, []);
 });
