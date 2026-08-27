@@ -524,16 +524,34 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
   if (!username || !agendaToken) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   const driverSnap = await db.collection("tripDrivers").doc(username).get();
   if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) {
+    if (driverSnap.exists) {
+      await appendPublicDebugEvent({
+        driverUsername: username,
+        event: "PUBLIC_AGENDA_LOAD_FAILED",
+        source: "server",
+        agendaToken,
+        screen: "agenda",
+        reason: "agenda_not_found",
+        statusCode: 404,
+      }).catch(() => {});
+    }
     return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   }
   const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
-  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const trips = snapshot.docs
     .map((doc) => safePublicTrip(doc.id, doc.data()))
     .filter((trip) => PUBLIC_STATUSES.has(trip.status) && Number(trip.departureAtMillis) > Date.now())
     .sort((a, b) => Number(a.departureAtMillis) - Number(b.departureAtMillis))
     .slice(0, 100);
+  await appendPublicDebugEvent({
+    driverUsername: username,
+    event: "PUBLIC_AGENDA_LOADED",
+    source: "server",
+    agendaToken,
+    screen: "agenda",
+    statusCode: 200,
+  }).catch(() => {});
   return json(res, 200, {
     driver: { displayName: cleanText(driver.displayName, 120), username },
     trips,
@@ -605,12 +623,39 @@ async function getPublicTrip(res, token) {
   const snap = await db.collection("trips").doc(token).get();
   if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const data = snap.data();
+  const driverUsername = normalizeUsername(data.driverUsername || "");
   if (!PUBLIC_STATUSES.has(data.status)) {
+    await appendPublicDebugEvent({
+      driverUsername,
+      event: "PUBLIC_TRIP_LOAD_FAILED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      reason: "trip_not_available",
+      statusCode: 404,
+    }).catch(() => {});
     return fail(res, 404, "trip_not_available", "Esta viagem não está mais disponível para reserva.");
   }
   if (Number(data.departureAtMillis || 0) <= Date.now()) {
+    await appendPublicDebugEvent({
+      driverUsername,
+      event: "PUBLIC_TRIP_LOAD_FAILED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      reason: "trip_departed",
+      statusCode: 409,
+    }).catch(() => {});
     return fail(res, 409, "trip_departed", "Esta viagem já saiu e não aceita novas reservas.");
   }
+  await appendPublicDebugEvent({
+    driverUsername,
+    event: "PUBLIC_TRIP_LOADED",
+    source: "server",
+    tripToken: token,
+    screen: "trip",
+    statusCode: 200,
+  }).catch(() => {});
   return json(res, 200, safePublicTrip(token, data));
 }
 
@@ -651,6 +696,7 @@ function publicCancellationToken(token, idempotencyKey) {
 
 async function createBooking(req, res, token) {
   await enforceBookingRateLimit(req);
+  let debugDriverUsername = "";
   const passengerName = cleanText(req.body && req.body.passengerName, 120);
   const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
   const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
@@ -679,6 +725,7 @@ async function createBooking(req, res, token) {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
       const trip = tripSnap.data();
+      debugDriverUsername = normalizeUsername(trip.driverUsername || "");
       if (!PUBLIC_STATUSES.has(trip.status)) {
         throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
       }
@@ -697,6 +744,7 @@ async function createBooking(req, res, token) {
           availableSeats: null,
           farePerSeatCents: Number(existingData.farePerSeatCents || 0),
           totalFareCents: Number(existingData.totalFareCents || 0),
+          driverUsername: debugDriverUsername,
         };
       }
 
@@ -747,9 +795,30 @@ async function createBooking(req, res, token) {
         availableSeats: availableForSegmentRange(trip, reconciled, fromIndex, toIndex),
         farePerSeatCents,
         totalFareCents,
+        driverUsername: debugDriverUsername,
       };
     });
-    return json(res, result.replayed ? 200 : 201, {
+    const statusCode = result.replayed ? 200 : 201;
+    await appendPublicDebugEvent({
+      driverUsername: result.driverUsername || debugDriverUsername,
+      event: "PUBLIC_RESERVATION_CREATED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode,
+      seats,
+      replayed: result.replayed,
+    }).catch(() => {});
+    await appendPublicDebugEvent({
+      driverUsername: result.driverUsername || debugDriverUsername,
+      event: "PUBLIC_SEATS_UPDATED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode,
+      seats,
+    }).catch(() => {});
+    return json(res, statusCode, {
       bookingId,
       cancellationToken,
       availableSeats: result.availableSeats,
@@ -758,12 +827,23 @@ async function createBooking(req, res, token) {
       replayed: result.replayed,
     });
   } catch (error) {
+    await appendPublicDebugEvent({
+      driverUsername: debugDriverUsername,
+      event: "PUBLIC_RESERVATION_FAILED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      reason: error.code || "booking_failed",
+      statusCode: error.httpStatus || 400,
+      seats,
+    }).catch(() => {});
     return fail(res, error.httpStatus || 400, error.code || "booking_failed", error.message || "Falha ao reservar.");
   }
 }
 
 async function cancelPublicBooking(req, res, token, bookingId) {
   const cancellationToken = cleanText(req.body && req.body.cancellationToken, 120);
+  let debugDriverUsername = "";
   const suppliedHash = crypto.createHash("sha256").update(cancellationToken).digest("hex");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
@@ -772,6 +852,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
       const trip = tripSnap.data();
+      debugDriverUsername = normalizeUsername(trip.driverUsername || "");
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const booking = records.find((record) => record.id === bookingId);
@@ -790,8 +871,33 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         updatedAtMillis: now,
       });
     });
+    await appendPublicDebugEvent({
+      driverUsername: debugDriverUsername,
+      event: "PUBLIC_RESERVATION_CANCELLED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode: 200,
+    }).catch(() => {});
+    await appendPublicDebugEvent({
+      driverUsername: debugDriverUsername,
+      event: "PUBLIC_SEATS_UPDATED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode: 200,
+    }).catch(() => {});
     return json(res, 200, { cancelled: true });
   } catch (error) {
+    await appendPublicDebugEvent({
+      driverUsername: debugDriverUsername,
+      event: "PUBLIC_RESERVATION_CANCEL_FAILED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      reason: error.code || "cancel_failed",
+      statusCode: error.httpStatus || 400,
+    }).catch(() => {});
     return fail(res, error.httpStatus || 400, error.code || "cancel_failed", error.message || "Falha ao cancelar reserva.");
   }
 }
