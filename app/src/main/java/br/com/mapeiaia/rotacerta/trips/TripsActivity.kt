@@ -639,9 +639,10 @@ private fun OnlineSettingsEditor(
     OutlinedTextField(
         calendarToken,
         { calendarToken = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' } },
-        label = { Text("Token público da agenda de viagens") },
+        label = { Text("Token público da agenda de viagens — fixo") },
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
+        enabled = token.isBlank(),
     )
     Spacer(Modifier.height(4.dp))
     Text("Perfis vinculados", style = MaterialTheme.typography.titleMedium)
