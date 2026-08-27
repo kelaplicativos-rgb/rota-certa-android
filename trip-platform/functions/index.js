@@ -1420,14 +1420,17 @@ async function requestPassengerReferralInvite(req, res) {
   if (existing.exists && existing.data().status === "ACTIVE") {
     return fail(res, 409, "access_already_active", "Este WhatsApp já possui acesso à agenda.");
   }
+  const existingData = existing.exists ? existing.data() : {};
+  const firstReferrer = cleanText(existingData.referredByContact, 40) || cleanText(referral.referrerContact, 40);
+  const firstReferralCode = cleanText(existingData.referralCode, 80) || referralCode;
   await ref.set({
     driverUsername,
     passengerContact,
-    displayName,
-    status: existing.exists && existing.data().status === "BLOCKED" ? "BLOCKED" : "PENDING",
-    referredByContact: cleanText(referral.referrerContact, 40),
-    referralCode,
-    createdAtMillis: existing.exists ? Number(existing.data().createdAtMillis || now) : now,
+    displayName: cleanText(existingData.displayName, 120) || displayName,
+    status: existing.exists && existingData.status === "BLOCKED" ? "BLOCKED" : "PENDING",
+    referredByContact: firstReferrer,
+    referralCode: firstReferralCode,
+    createdAtMillis: existing.exists ? Number(existingData.createdAtMillis || now) : now,
     updatedAtMillis: now,
   }, { merge: true });
   return json(res, 201, { requested: true });
