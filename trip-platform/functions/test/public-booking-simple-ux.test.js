@@ -39,7 +39,7 @@ test("confirmation keeps technical calendar and cancellation actions secondary",
   assert.match(html, /✅ RESERVA CONFIRMADA/);
   assert.match(html, /Guarde este código caso precise cancelar/);
   assert.match(html, /Precisa cancelar uma reserva\?/);
-  assert.match(html, /Adicionar ao meu calendário/);
+  assert.match(html, /Adicionar ao Google Agenda/);
   assert.match(html, /Baixar arquivo de calendário/);
 });
 
