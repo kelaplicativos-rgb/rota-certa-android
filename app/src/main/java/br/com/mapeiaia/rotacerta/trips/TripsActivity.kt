@@ -1,10 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -37,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.SettingsRepository
@@ -190,7 +186,8 @@ private fun TripApp(
                             message = "Salvando Integração online…"
                             shareScope.launch {
                                 runCatching {
-                                    val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken)
+                                    val resolvedProfile = PublicDriverProfileResolver(activity).resolve(saved)
+                                    val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken, resolvedProfile)
                                     val validated = saved.copy(
                                         driverDisplayName = response.displayName.ifBlank { saved.driverDisplayName },
                                         driverUsername = response.username.ifBlank { saved.driverUsername },
@@ -207,6 +204,9 @@ private fun TripApp(
                             message = "Configuração salva; modo online ainda desativado."
                         }
                     },
+                    onRotateLink = { expected, replacement ->
+                        store.replacePublicAgendaLinkAfterConfirmedRotation(expected, replacement)
+                    },
                     onCancel = { screen = TripScreen.TIMELINE },
                 )
                 TripScreen.LIST -> {
@@ -222,7 +222,8 @@ private fun TripApp(
                                 message = "Validando seu link público…"
                                 shareScope.launch {
                                     runCatching {
-                                        val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken)
+                                        val resolvedProfile = PublicDriverProfileResolver(activity).resolve(onlineSettings)
+                                        val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken, resolvedProfile)
                                         val validated = onlineSettings.copy(
                                             driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
                                             driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
@@ -573,271 +574,3 @@ private fun parseFareCents(value: String): Long? {
 }
 
 private fun formatFare(cents: Long): String = String.format(Locale("pt", "BR"), "R$ %.2f", cents.coerceAtLeast(0L) / 100.0)
-
-@Composable
-private fun OnlineSettingsEditor(
-    initial: TripOnlineSettings,
-    onSave: (TripOnlineSettings) -> Unit,
-    onCancel: () -> Unit,
-) {
-    val context = LocalContext.current
-    val linkedProfiles = remember(context) { BlaBlaDynamicAccountRegistry(context).list() }
-    var api by remember { mutableStateOf(initial.apiBaseUrl) }
-    var publicBase by remember { mutableStateOf(initial.publicBaseUrl) }
-    var token by remember { mutableStateOf(initial.driverToken) }
-    var calendarToken by remember { mutableStateOf(initial.publicCalendarToken) }
-    var driverName by remember { mutableStateOf(initial.driverDisplayName) }
-    var driverUsername by remember { mutableStateOf(initial.driverUsername) }
-    var driverWhatsapp by remember { mutableStateOf(initial.driverWhatsapp) }
-    var driverPhotoUrl by remember { mutableStateOf(initial.driverPhotoUrl) }
-    var driverAbout by remember { mutableStateOf(initial.driverPublicAbout) }
-    var driverRating by remember { mutableStateOf(initial.driverPublicRating) }
-    var driverReviewCount by remember { mutableStateOf(initial.driverPublicReviewCount.toString()) }
-    var driverBadge by remember { mutableStateOf(initial.driverPublicBadge) }
-    var vehicleMakeModel by remember { mutableStateOf(initial.vehicleMakeModel) }
-    var vehicleColor by remember { mutableStateOf(initial.vehicleColor) }
-    var vehicleAmenities by remember { mutableStateOf(initial.vehicleAmenities) }
-    var driverPreferences by remember { mutableStateOf(initial.driverPreferences) }
-    var paymentInstructions by remember { mutableStateOf(initial.paymentInstructions) }
-    var googleCalendarUrl by remember { mutableStateOf(initial.googleCalendarPublicUrl) }
-    var registrationMessage by remember { mutableStateOf<String?>(null) }
-    var linkActionMessage by remember { mutableStateOf<String?>(null) }
-    var confirmRegenerateLink by remember { mutableStateOf(false) }
-    val registrationScope = rememberCoroutineScope()
-    Text("Integração online", style = MaterialTheme.typography.titleLarge)
-    Text("Sem essas credenciais, nenhuma informação é enviada para servidor algum. O módulo local continua operacional.")
-    Text("Conta do motorista", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "Existe uma única conta de motorista. A chave privada, o token público e o link da agenda pertencem ao motorista e valem para todos os perfis vinculados.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    OutlinedTextField(api, { api = it.trim() }, label = { Text("API HTTPS") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(publicBase, { publicBase = it.trim() }, label = { Text("URL pública") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverName, { driverName = it }, label = { Text("Nome público do motorista") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverUsername, { driverUsername = DriverIdentityRules.normalizeUsername(it) }, label = { Text("Nome de usuário no link") }, modifier = Modifier.fillMaxWidth(), enabled = token.isBlank())
-    Text("Dados públicos mostrados ao passageiro", style = MaterialTheme.typography.titleMedium)
-    Text("Preencha somente informações verdadeiras. Campos vazios não aparecem na Agenda Pública.")
-    OutlinedTextField(driverWhatsapp, { driverWhatsapp = it.filter { ch -> ch.isDigit() || ch == '+' || ch == '(' || ch == ')' || ch == '-' || ch == ' ' }.take(24) }, label = { Text("WhatsApp do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverPhotoUrl, { driverPhotoUrl = it.trim().take(500) }, label = { Text("Foto pública do motorista — URL HTTPS opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverAbout, { driverAbout = it.take(320) }, label = { Text("Apresentação do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverRating, { driverRating = it.take(12) }, label = { Text("Nota pública — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverReviewCount, { driverReviewCount = it.filter(Char::isDigit).take(7) }, label = { Text("Quantidade de avaliações — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverBadge, { driverBadge = it.take(80) }, label = { Text("Selo ou destaque — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(vehicleMakeModel, { vehicleMakeModel = it.take(120) }, label = { Text("Veículo — marca/modelo — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(vehicleColor, { vehicleColor = it.take(60) }, label = { Text("Cor do veículo — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(vehicleAmenities, { vehicleAmenities = it.take(240) }, label = { Text("Comodidades — ex.: Ar-condicionado, USB") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(driverPreferences, { driverPreferences = it.take(240) }, label = { Text("Preferências — ex.: Não fumar, animais") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(paymentInstructions, { paymentInstructions = it.take(240) }, label = { Text("Pagamento — ex.: Pix ou dinheiro no carro") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(googleCalendarUrl, { googleCalendarUrl = it.trim() }, label = { Text("Link público do Google Agenda — opcional") }, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(
-        token,
-        { token = it },
-        label = { Text("Chave privada do motorista") },
-        visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        calendarToken,
-        { calendarToken = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' } },
-        label = { Text("Token público da agenda de viagens — fixo") },
-        visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-        enabled = token.isBlank(),
-    )
-    Spacer(Modifier.height(4.dp))
-    Text("Perfis vinculados", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "Um motorista pode usar vários perfis. Cada perfil mantém sua identidade, sua posição e suas viagens de forma independente.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    if (linkedProfiles.isEmpty()) {
-        Text("Nenhum perfil BlaBlaCar vinculado neste aparelho.", style = MaterialTheme.typography.bodySmall)
-    } else {
-        linkedProfiles.forEach { profile ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(profile.displayLabel, style = MaterialTheme.typography.titleSmall)
-                    val identityStatus = when {
-                        !profile.profileName.isNullOrBlank() && !profile.profileUuid.isNullOrBlank() -> "${profile.profileName} • identidade vinculada"
-                        !profile.profileUuid.isNullOrBlank() -> "Identidade vinculada"
-                        else -> "Perfil aguardando confirmação de identidade"
-                    }
-                    Text(identityStatus, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-    Text(
-        "Vincular outro perfil não cria outro motorista e não gera outra chave privada ou outro token da agenda.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    registrationMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    if (token.isBlank()) {
-        Button(enabled = api.startsWith("https://") && publicBase.startsWith("https://") && driverName.isNotBlank(), onClick = {
-            val normalizedUsername = DriverIdentityRules.normalizeUsername(driverUsername.ifBlank { driverName })
-            if (!DriverIdentityRules.isValidUsername(normalizedUsername)) {
-                registrationMessage = "Escolha um nome de usuário com pelo menos 3 caracteres."
-            } else {
-                driverUsername = normalizedUsername
-                registrationScope.launch {
-                    val candidate = TripOnlineSettings(
-                        apiBaseUrl = api.trimEnd('/'),
-                        publicBaseUrl = publicBase.trimEnd('/'),
-                        driverDisplayName = driverName.trim(),
-                        driverUsername = normalizedUsername,
-                        driverWhatsapp = driverWhatsapp.trim(),
-                        driverPhotoUrl = driverPhotoUrl.trim(),
-                        driverPublicAbout = driverAbout.trim(),
-                        driverPublicRating = driverRating.trim(),
-                        driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
-                        driverPublicBadge = driverBadge.trim(),
-                        vehicleMakeModel = vehicleMakeModel.trim(),
-                        vehicleColor = vehicleColor.trim(),
-                        vehicleAmenities = vehicleAmenities.trim(),
-                        driverPreferences = driverPreferences.trim(),
-                        paymentInstructions = paymentInstructions.trim(),
-                        googleCalendarPublicUrl = googleCalendarUrl.trim(),
-                    )
-                    runCatching { TripRemoteApi(candidate).registerDriver(driverName.trim(), normalizedUsername) }
-                        .onSuccess { response ->
-                            driverName = response.displayName
-                            driverUsername = response.username
-                            token = response.driverToken
-                            calendarToken = response.publicAgendaToken
-                            registrationMessage = "Link exclusivo gerado: ${response.publicAgendaUrl}"
-                        }
-                        .onFailure { registrationMessage = "Não foi possível gerar o link: ${it.message}" }
-                }
-            }
-        }) { Text("Gerar meu link exclusivo") }
-    } else {
-        val currentSettings = TripOnlineSettings(
-            apiBaseUrl = api.trimEnd('/'),
-            publicBaseUrl = publicBase.trimEnd('/'),
-            driverToken = token,
-            publicCalendarToken = calendarToken,
-            driverDisplayName = driverName.trim(),
-            driverUsername = driverUsername,
-            driverWhatsapp = driverWhatsapp.trim(),
-            driverPhotoUrl = driverPhotoUrl.trim(),
-            driverPublicAbout = driverAbout.trim(),
-            driverPublicRating = driverRating.trim(),
-            driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
-            driverPublicBadge = driverBadge.trim(),
-            vehicleMakeModel = vehicleMakeModel.trim(),
-            vehicleColor = vehicleColor.trim(),
-            vehicleAmenities = vehicleAmenities.trim(),
-            driverPreferences = driverPreferences.trim(),
-            paymentInstructions = paymentInstructions.trim(),
-            googleCalendarPublicUrl = googleCalendarUrl.trim(),
-        )
-        val preview = currentSettings.publicAgendaUrl
-        preview?.let { agendaUrl ->
-            Text("Seu link da agenda", style = MaterialTheme.typography.titleMedium)
-            Text(agendaUrl, style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(4.dp))
-            Button(
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(agendaUrl)),
-                        )
-                    }.onSuccess {
-                        linkActionMessage = "Abrindo sua agenda…"
-                    }.onFailure {
-                        linkActionMessage = "Não foi possível abrir o link neste aparelho."
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Abrir agenda") }
-            OutlinedButton(
-                onClick = {
-                    val clipboard = context.getSystemService(ClipboardManager::class.java)
-                    clipboard?.setPrimaryClip(ClipData.newPlainText("Link da Agenda Rota Certa", agendaUrl))
-                    linkActionMessage = if (clipboard != null) "Link copiado." else "Não foi possível copiar o link."
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Copiar link") }
-            linkActionMessage?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
-
-            Spacer(Modifier.height(10.dp))
-            OutlinedButton(
-                onClick = { confirmRegenerateLink = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Gerar novo link") }
-
-            if (confirmRegenerateLink) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text("Atenção", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Gerar um novo link invalida imediatamente o link atual. Faça isso somente se realmente quiser substituir o endereço da agenda.",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Button(
-                            onClick = {
-                                registrationScope.launch {
-                                    linkActionMessage = "Gerando novo link…"
-                                    runCatching {
-                                        TripRemoteApi(currentSettings).regeneratePublicAgenda()
-                                    }.onSuccess { response ->
-                                        val regenerated = currentSettings.copy(
-                                            publicCalendarToken = response.publicAgendaToken,
-                                            driverDisplayName = response.displayName.ifBlank { currentSettings.driverDisplayName },
-                                            driverUsername = response.username.ifBlank { currentSettings.driverUsername },
-                                        )
-                                        calendarToken = regenerated.publicCalendarToken
-                                        confirmRegenerateLink = false
-                                        linkActionMessage = "Novo link gerado. O link anterior deixou de funcionar."
-                                        onSave(regenerated)
-                                    }.onFailure {
-                                        linkActionMessage = "Não foi possível gerar um novo link: ${it.message ?: "erro de conexão"}"
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Confirmar novo link") }
-                        TextButton(
-                            onClick = { confirmRegenerateLink = false },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Cancelar") }
-                    }
-                }
-            }
-        }
-    }
-    Spacer(Modifier.height(4.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = {
-            onSave(
-                TripOnlineSettings(
-                    apiBaseUrl = api.trimEnd('/'),
-                    publicBaseUrl = publicBase.trimEnd('/'),
-                    driverToken = token.trim(),
-                    publicCalendarToken = calendarToken.trim(),
-                    driverDisplayName = driverName.trim(),
-                    driverUsername = DriverIdentityRules.normalizeUsername(driverUsername),
-                    driverWhatsapp = driverWhatsapp.trim(),
-                    driverPhotoUrl = driverPhotoUrl.trim(),
-                    driverPublicAbout = driverAbout.trim(),
-                    driverPublicRating = driverRating.trim(),
-                    driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
-                    driverPublicBadge = driverBadge.trim(),
-                    vehicleMakeModel = vehicleMakeModel.trim(),
-                    vehicleColor = vehicleColor.trim(),
-                    vehicleAmenities = vehicleAmenities.trim(),
-                    driverPreferences = driverPreferences.trim(),
-                    paymentInstructions = paymentInstructions.trim(),
-                    googleCalendarPublicUrl = googleCalendarUrl.trim(),
-                ),
-            )
-        }) { Text("Salvar") }
-        TextButton(onClick = onCancel) { Text("Voltar") }
-    }
-}
