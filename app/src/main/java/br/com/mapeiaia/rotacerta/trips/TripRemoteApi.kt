@@ -30,6 +30,21 @@ data class DriverRegistrationResponse(
 )
 
 @Serializable
+data class DriverAgendaEnsureRequest(
+    val publicAgendaToken: String = "",
+)
+
+@Serializable
+data class DriverAgendaEnsureResponse(
+    val displayName: String,
+    val username: String,
+    val publicAgendaToken: String,
+    val publicAgendaUrl: String,
+    val calendarUrl: String,
+    val repaired: Boolean = false,
+)
+
+@Serializable
 data class RemoteBookingResponse(
     val bookingId: String,
     val cancellationToken: String? = null,
@@ -104,6 +119,13 @@ class TripRemoteApi(
         path = "/v1/drivers/register",
         body = json.encodeToString(DriverRegistrationRequest(displayName.trim(), username.trim())),
         requireDriverToken = false,
+    )
+
+    suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse = request(
+        method = "POST",
+        path = "/v1/driver/agenda/ensure",
+        body = json.encodeToString(DriverAgendaEnsureRequest(publicAgendaToken.trim())),
+        requireDriverToken = true,
     )
 
     suspend fun publish(trip: Trip): PublishedTripResponse = request(
