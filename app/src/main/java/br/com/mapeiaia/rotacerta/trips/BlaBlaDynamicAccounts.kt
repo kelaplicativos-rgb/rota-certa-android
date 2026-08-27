@@ -82,9 +82,11 @@ class BlaBlaDynamicAccountRegistry(context: Context) {
         val normalizedUuid = uuid.trim().lowercase()
         val current = list()
         val account = current.firstOrNull { it.id == id } ?: return null
+        val cleanName = BlaBlaDriverProfileNamePolicy.normalize(name)
+        val previousCleanName = BlaBlaDriverProfileNamePolicy.normalize(account.profileName)
         val updated = account.copy(
             profileUuid = normalizedUuid,
-            profileName = name?.trim()?.takeIf(String::isNotEmpty) ?: account.profileName,
+            profileName = cleanName ?: previousCleanName,
         )
         save(current.map { if (it.id == id) updated else it })
         return updated
@@ -2218,7 +2220,20 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .map((a) => a.href || '')
                 .filter((href) => uuid.test(href) && /(profile|user|member)/i.test(href));
               if (uuid.test(location.href)) links.push(location.href);
-              const nameNode = document.querySelector('[data-testid*="profile-name"], [data-testid*="driver-name"], h1');
+              const explicitNameNode = document.querySelector(
+                '[data-testid*="profile-name"], [data-testid*="driver-name"], [data-testid*="member-name"], [aria-label*="perfil" i] [data-testid*="name"]'
+              );
+              const profileAnchor = Array.from(document.querySelectorAll('a[href]')).find((anchor) => {
+                const href = anchor.href || '';
+                return uuid.test(href) && /(profile|user|member)/i.test(href);
+              });
+              const profileAnchorImage = profileAnchor && profileAnchor.querySelector('img[alt]');
+              const nameCandidate = clean(
+                (explicitNameNode && explicitNameNode.innerText) ||
+                (profileAnchor && profileAnchor.innerText) ||
+                (profileAnchorImage && profileAnchorImage.getAttribute('alt')) ||
+                ''
+              );
               const photoNode = document.querySelector(
                 '[data-testid*="profile"] img[src^="http"], [data-testid*="avatar"] img[src^="http"], img[alt][src^="http"]'
               );
@@ -2283,7 +2298,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
               return JSON.stringify({
                 profileLinks: Array.from(new Set(links)),
                 observedUuids: observedUuids,
-                visibleName: clean(nameNode && nameNode.innerText),
+                visibleName: nameCandidate,
                 photoUrl: clean(photoNode && (photoNode.currentSrc || photoNode.src)),
                 about: clean(aboutNode && aboutNode.innerText).slice(0, 320),
                 rating: ratingMatch ? ratingMatch[1].replace(',', '.') : '',
