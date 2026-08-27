@@ -130,33 +130,55 @@ function renderAgenda(trips) {
     return;
   }
   trips.forEach((item) => {
-    const link = document.createElement("a");
-    link.className = "agendaTrip";
+    const range = seatRange(item);
+    const isFull = item.isFull === true || item.status === "FULL" || item.canReserve === false || (range.minimum === 0 && range.maximum === 0);
+    const card = document.createElement(isFull ? "article" : "a");
+    card.className = isFull ? "agendaTrip agendaTripFull" : "agendaTrip";
     const owner = item.driverUsername || driverUsername;
-    link.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+
+    if (isFull) {
+      card.setAttribute("aria-disabled", "true");
+      card.setAttribute("tabindex", "-1");
+    } else {
+      card.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+      card.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    }
+
+    const top = document.createElement("div");
+    top.className = "agendaTripTop";
+
     const route = document.createElement("div");
     route.className = "agendaRoute";
-    route.textContent = `${formatDay(item.departureAtMillis)} — ${item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ")}`;
+    route.textContent = item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ");
+
+    const state = document.createElement("span");
+    state.className = isFull ? "agendaState agendaStateFull" : "agendaState agendaStateOpen";
+    state.textContent = isFull ? "Cheio" : "Disponível";
+
+    top.append(route, state);
+
     const meta = document.createElement("div");
     meta.className = "agendaMeta";
-    const range = seatRange(item);
-    const isFull = item.isFull === true || item.status === "FULL" || (range.minimum === 0 && range.maximum === 0);
     const seats = isFull
-      ? "LOTADO • 0 vagas"
+      ? "0 vagas"
       : (range.minimum === range.maximum
         ? `${range.maximum} vaga(s) livre(s)`
         : `vagas por trecho: ${range.minimum}–${range.maximum}`);
     meta.textContent = `${formatDate(item.departureAtMillis)} • ${seats}`;
-    link.append(route, meta);
-    if (isFull || item.canReserve === false) {
-      link.removeAttribute("href");
-      link.setAttribute("aria-disabled", "true");
-      link.classList.add("agendaTripFull");
-      link.addEventListener("click", (event) => event.preventDefault());
-    } else {
-      link.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
-    }
-    container.appendChild(link);
+
+    const action = document.createElement("div");
+    action.className = isFull ? "agendaAction agendaActionFull" : "agendaAction";
+    action.textContent = isFull ? "CHEIO" : "RESERVAR";
+    action.setAttribute("aria-hidden", "true");
+
+    const sr = document.createElement("span");
+    sr.className = "srOnly";
+    sr.textContent = isFull
+      ? "Viagem cheia. Reserva indisponível."
+      : "Abrir viagem para reservar.";
+
+    card.append(top, meta, action, sr);
+    container.appendChild(card);
   });
 }
 
