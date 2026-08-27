@@ -69,6 +69,11 @@ function maskWhatsapp(value) {
 function orderedStops() { return [...(trip?.stops || [])].sort((a, b) => a.order - b.order); }
 
 function seatRange(item) {
+  const serverMinimum = Number(item.availableSeatsMinimum);
+  const serverMaximum = Number(item.availableSeatsMaximum);
+  if (Number.isFinite(serverMinimum) && Number.isFinite(serverMaximum)) {
+    return { minimum: Math.max(0, serverMinimum), maximum: Math.max(0, serverMaximum) };
+  }
   const loads = Array.isArray(item.segmentLoads) ? item.segmentLoads.map(Number) : [];
   if (!loads.length) return { minimum: item.capacity, maximum: item.capacity };
   const available = loads.map((load) => Math.max(0, Number(item.capacity) - load));
@@ -135,12 +140,22 @@ function renderAgenda(trips) {
     const meta = document.createElement("div");
     meta.className = "agendaMeta";
     const range = seatRange(item);
-    const seats = range.minimum === range.maximum
-      ? `${range.maximum}/${item.capacity} vagas livres`
-      : `vagas por trecho: ${range.minimum}–${range.maximum}/${item.capacity}`;
+    const isFull = item.isFull === true || item.status === "FULL" || (range.minimum === 0 && range.maximum === 0);
+    const seats = isFull
+      ? "LOTADO • 0 vagas"
+      : (range.minimum === range.maximum
+        ? `${range.maximum} vaga(s) livre(s)`
+        : `vagas por trecho: ${range.minimum}–${range.maximum}`);
     meta.textContent = `${formatDate(item.departureAtMillis)} • ${seats}`;
     link.append(route, meta);
-    link.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    if (isFull || item.canReserve === false) {
+      link.removeAttribute("href");
+      link.setAttribute("aria-disabled", "true");
+      link.classList.add("agendaTripFull");
+      link.addEventListener("click", (event) => event.preventDefault());
+    } else {
+      link.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    }
     container.appendChild(link);
   });
 }
@@ -238,11 +253,13 @@ async function loadTrip() {
 function renderTrip() {
   show("loading", false);
   show("trip", true);
-  show("booking", true);
+  const tripRange = seatRange(trip);
+  const tripFull = trip.isFull === true || trip.status === "FULL" || (tripRange.minimum === 0 && tripRange.maximum === 0);
+  show("booking", !tripFull && trip.canReserve !== false);
   show("cancelBooking", true);
   driverDisplayName = trip.driverDisplayName || driverDisplayName || driverUsername;
   $("driverName").textContent = driverDisplayName ? `Motorista: ${driverDisplayName}` : "";
-  $("status").textContent = trip.status === "FULL" ? "Lotação por trechos" : "Reservas abertas";
+  $("status").textContent = tripFull ? "LOTADO • sem vagas" : "Reservas abertas";
   $("title").textContent = trip.title;
   $("departure").textContent = `Saída prevista: ${formatDate(trip.departureAtMillis)}`;
   $("notes").textContent = trip.notes || "";
