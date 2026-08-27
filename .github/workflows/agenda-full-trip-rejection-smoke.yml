@@ -1,0 +1,77 @@
+name: Agenda full-trip rejection smoke
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-capacity-fidelity-0.1.303
+    paths:
+      - '.github/workflows/agenda-full-trip-rejection-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reject-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify a full trip rejects booking
+        shell: bash
+        env:
+          BASE: https://rota-certa-7ccc8.web.app
+          DRIVER: viagem-certa
+          AGENDA: WlaYvVil5AlaNHbEthN-oBbb5JSIIQgJ
+        run: |
+          set -euo pipefail
+
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error             "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda"             -H 'Accept: application/json' > /tmp/agenda.json
+
+          node <<'NODE'
+          const fs=require('fs');
+          const agenda=JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const trips=Array.isArray(agenda.trips)?agenda.trips:[];
+          const full=trips
+            .filter(t=>t && (t.isFull===true || t.status==="FULL" || Number(t.availableSeatsMaximum)===0))
+            .sort((a,b)=>Number(a.departureAtMillis||0)-Number(b.departureAtMillis||0))[0];
+          if(!full){
+            console.error('NO_FULL_TRIP_FOUND');
+            process.exit(4);
+          }
+          const stops=Array.isArray(full.stops)?full.stops:[];
+          if(stops.length<2) process.exit(5);
+          const selected={
+            tripId:full.tripId||full.publicToken,
+            title:full.title,
+            status:full.status,
+            isFull:full.isFull===true,
+            canReserve:full.canReserve,
+            availableSeatsMinimum:Number(full.availableSeatsMinimum),
+            availableSeatsMaximum:Number(full.availableSeatsMaximum),
+            boardingStopId:stops[0].id,
+            dropoffStopId:stops[stops.length-1].id
+          };
+          fs.writeFileSync('/tmp/full.json',JSON.stringify(selected));
+          console.log('FULL_TRIP='+selected.title);
+          console.log('FULL_STATUS='+selected.status);
+          console.log('FULL_IS_FULL='+selected.isFull);
+          console.log('FULL_CAN_RESERVE='+selected.canReserve);
+          console.log('FULL_AVAILABLE_MIN='+selected.availableSeatsMinimum);
+          console.log('FULL_AVAILABLE_MAX='+selected.availableSeatsMaximum);
+          NODE
+
+          TRIP_ID="$(node -p "require('/tmp/full.json').tripId")"
+          BOARD="$(node -p "require('/tmp/full.json').boardingStopId")"
+          DROP="$(node -p "require('/tmp/full.json').dropoffStopId")"
+          IDEM="full_reject_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$(date +%s)"
+
+          node -e 'require("fs").writeFileSync("/tmp/request.json",JSON.stringify({passengerName:"Teste lotado",passengerContact:"1100000000",boardingStopId:process.argv[1],dropoffStopId:process.argv[2],seats:1,idempotencyKey:process.argv[3]}))' "$BOARD" "$DROP" "$IDEM"
+
+          HTTP="$(curl --silent --show-error             -o /tmp/response.json -w '%{http_code}'             -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings"             -H 'Content-Type: application/json'             -H 'Accept: application/json'             -H "Idempotency-Key: $IDEM"             --data-binary @/tmp/request.json)"
+
+          echo "BOOKING_HTTP=$HTTP"
+          node -e 'const x=require("/tmp/response.json"); console.log("BOOKING_CODE="+String(x.code||"")); console.log("BOOKING_MESSAGE="+String(x.message||""))'
+
+          test "$HTTP" = "409"
+          node -e 'const x=require("/tmp/response.json"); if(String(x.message||"")!=="Esta viagem está lotada."){process.exit(6)}'
+          echo "FULL_TRIP_REJECTION=PASS"

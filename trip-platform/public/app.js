@@ -69,6 +69,11 @@ function maskWhatsapp(value) {
 function orderedStops() { return [...(trip?.stops || [])].sort((a, b) => a.order - b.order); }
 
 function seatRange(item) {
+  const serverMinimum = Number(item.availableSeatsMinimum);
+  const serverMaximum = Number(item.availableSeatsMaximum);
+  if (Number.isFinite(serverMinimum) && Number.isFinite(serverMaximum)) {
+    return { minimum: Math.max(0, serverMinimum), maximum: Math.max(0, serverMaximum) };
+  }
   const loads = Array.isArray(item.segmentLoads) ? item.segmentLoads.map(Number) : [];
   if (!loads.length) return { minimum: item.capacity, maximum: item.capacity };
   const available = loads.map((load) => Math.max(0, Number(item.capacity) - load));
@@ -125,23 +130,55 @@ function renderAgenda(trips) {
     return;
   }
   trips.forEach((item) => {
-    const link = document.createElement("a");
-    link.className = "agendaTrip";
+    const range = seatRange(item);
+    const isFull = item.isFull === true || item.status === "FULL" || item.canReserve === false || (range.minimum === 0 && range.maximum === 0);
+    const card = document.createElement(isFull ? "article" : "a");
+    card.className = isFull ? "agendaTrip agendaTripFull" : "agendaTrip";
     const owner = item.driverUsername || driverUsername;
-    link.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+
+    if (isFull) {
+      card.setAttribute("aria-disabled", "true");
+      card.setAttribute("tabindex", "-1");
+    } else {
+      card.href = `/?motorista=${encodeURIComponent(owner)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+      card.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    }
+
+    const top = document.createElement("div");
+    top.className = "agendaTripTop";
+
     const route = document.createElement("div");
     route.className = "agendaRoute";
-    route.textContent = `${formatDay(item.departureAtMillis)} — ${item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ")}`;
+    route.textContent = item.title || (item.stops || []).map((stop) => stop.name).filter(Boolean).join(" → ");
+
+    const state = document.createElement("span");
+    state.className = isFull ? "agendaState agendaStateFull" : "agendaState agendaStateOpen";
+    state.textContent = isFull ? "Cheio" : "Disponível";
+
+    top.append(route, state);
+
     const meta = document.createElement("div");
     meta.className = "agendaMeta";
-    const range = seatRange(item);
-    const seats = range.minimum === range.maximum
-      ? `${range.maximum}/${item.capacity} vagas livres`
-      : `vagas por trecho: ${range.minimum}–${range.maximum}/${item.capacity}`;
+    const seats = isFull
+      ? "0 vagas"
+      : (range.minimum === range.maximum
+        ? `${range.maximum} vaga(s) livre(s)`
+        : `vagas por trecho: ${range.minimum}–${range.maximum}`);
     meta.textContent = `${formatDate(item.departureAtMillis)} • ${seats}`;
-    link.append(route, meta);
-    link.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
-    container.appendChild(link);
+
+    const action = document.createElement("div");
+    action.className = isFull ? "agendaAction agendaActionFull" : "agendaAction";
+    action.textContent = isFull ? "CHEIO" : "RESERVAR";
+    action.setAttribute("aria-hidden", "true");
+
+    const sr = document.createElement("span");
+    sr.className = "srOnly";
+    sr.textContent = isFull
+      ? "Viagem cheia. Reserva indisponível."
+      : "Abrir viagem para reservar.";
+
+    card.append(top, meta, action, sr);
+    container.appendChild(card);
   });
 }
 
@@ -238,11 +275,13 @@ async function loadTrip() {
 function renderTrip() {
   show("loading", false);
   show("trip", true);
-  show("booking", true);
+  const tripRange = seatRange(trip);
+  const tripFull = trip.isFull === true || trip.status === "FULL" || (tripRange.minimum === 0 && tripRange.maximum === 0);
+  show("booking", !tripFull && trip.canReserve !== false);
   show("cancelBooking", true);
   driverDisplayName = trip.driverDisplayName || driverDisplayName || driverUsername;
   $("driverName").textContent = driverDisplayName ? `Motorista: ${driverDisplayName}` : "";
-  $("status").textContent = trip.status === "FULL" ? "Lotação por trechos" : "Reservas abertas";
+  $("status").textContent = tripFull ? "LOTADO • sem vagas" : "Reservas abertas";
   $("title").textContent = trip.title;
   $("departure").textContent = `Saída prevista: ${formatDate(trip.departureAtMillis)}`;
   $("notes").textContent = trip.notes || "";

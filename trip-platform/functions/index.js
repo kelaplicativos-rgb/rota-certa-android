@@ -140,15 +140,26 @@ function normalizeDriverTrip(raw, previous = null) {
 }
 
 function safePublicTrip(token, data) {
+  const capacity = Math.max(0, Number(data.capacity || 0));
+  const expectedSegments = Math.max(0, (Array.isArray(data.stops) ? data.stops.length : 0) - 1);
+  const segmentLoads = Array.isArray(data.segmentLoads)
+    ? data.segmentLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
+    : [];
+  const availability = capacityAvailabilityRange({ capacity }, segmentLoads);
+  const fullyOccupied = data.status === "FULL" || (segmentLoads.length === expectedSegments && expectedSegments > 0 && segmentLoads.every((load) => load >= capacity));
   return {
     tripId: token,
     publicToken: token,
     title: data.title,
     departureAtMillis: data.departureAtMillis,
-    capacity: data.capacity,
-    status: data.status,
+    capacity,
+    status: fullyOccupied ? "FULL" : data.status,
     stops: data.stops,
-    segmentLoads: data.segmentLoads || [],
+    segmentLoads,
+    availableSeatsMinimum: fullyOccupied ? 0 : availability.minimum,
+    availableSeatsMaximum: fullyOccupied ? 0 : availability.maximum,
+    isFull: fullyOccupied,
+    canReserve: data.publicBookingEnabled === true && !fullyOccupied && availability.maximum > 0,
     publicBookingEnabled: data.publicBookingEnabled === true,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
@@ -728,6 +739,9 @@ async function createBooking(req, res, token) {
       debugDriverUsername = normalizeUsername(trip.driverUsername || "");
       if (!PUBLIC_STATUSES.has(trip.status)) {
         throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
+      }
+      if (trip.status === "FULL") {
+        throw Object.assign(new Error("Esta viagem está lotada."), { httpStatus: 409, code: "trip_full" });
       }
       if (Number(trip.departureAtMillis || 0) <= Date.now()) {
         throw Object.assign(new Error("Esta viagem já saiu."), { httpStatus: 409, code: "trip_departed" });

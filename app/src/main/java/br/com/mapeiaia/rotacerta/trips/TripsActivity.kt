@@ -73,6 +73,7 @@ private fun TripApp(
     var trips by remember { mutableStateOf(store.trips()) }
     var bookings by remember { mutableStateOf(store.bookings()) }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
+    var publicAgendaSyncRevision by remember { mutableStateOf(0) }
     var screen by remember {
         mutableStateOf(
             when {
@@ -95,12 +96,13 @@ private fun TripApp(
         val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
         if (result.importedCount > 0) {
             refresh()
+            publicAgendaSyncRevision++
             message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
             if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity) {
+    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity, publicAgendaSyncRevision) {
         val online = store.onlineSettings()
         if (online.configured) {
             val result = PublicAgendaAutoSync0300.sync(
@@ -110,7 +112,7 @@ private fun TripApp(
             )
             if (result.localPublished + result.externalPublished > 0) {
                 refresh()
-                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) disponível(is) no link."
+                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
             } else if (result.failures > 0) {
                 message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
             }
@@ -141,6 +143,7 @@ private fun TripApp(
                     onSave = { trip ->
                         store.saveTrip(trip)
                         refresh()
+                        publicAgendaSyncRevision++
                         selectedId = trip.id
                         screen = TripScreen.TIMELINE
                         message = "Viagem criada. Publique quando estiver pronta."
@@ -150,7 +153,7 @@ private fun TripApp(
                     trips = trips,
                     bookings = bookings,
                     store = store,
-                    onChanged = { text -> refresh(); message = text },
+                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
                     autoSyncToken = autoBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
                     onCreateTrip = { screen = TripScreen.CREATE },
@@ -227,7 +230,7 @@ private fun TripApp(
                                 trip = trip,
                                 expanded = selectedId == trip.id,
                                 onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
-                                onChanged = { text -> refresh(); message = text },
+                                onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
                                 onRequestBlaBlaSync = {
                                     autoBlaBlaSyncToken++
                                     screen = TripScreen.TIMELINE
