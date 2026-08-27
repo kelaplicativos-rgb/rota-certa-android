@@ -1,6 +1,10 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -603,6 +607,7 @@ private fun OnlineSettingsEditor(
     var paymentInstructions by remember { mutableStateOf(initial.paymentInstructions) }
     var googleCalendarUrl by remember { mutableStateOf(initial.googleCalendarPublicUrl) }
     var registrationMessage by remember { mutableStateOf<String?>(null) }
+    var linkActionMessage by remember { mutableStateOf<String?>(null) }
     val registrationScope = rememberCoroutineScope()
     Text("Integração online", style = MaterialTheme.typography.titleLarge)
     Text("Sem essas credenciais, nenhuma informação é enviada para servidor algum. O módulo local continua operacional.")
@@ -733,7 +738,34 @@ private fun OnlineSettingsEditor(
             paymentInstructions = paymentInstructions.trim(),
             googleCalendarPublicUrl = googleCalendarUrl.trim(),
         ).publicAgendaUrl
-        preview?.let { Text("Seu link: $it", style = MaterialTheme.typography.bodySmall) }
+        preview?.let { agendaUrl ->
+            Text("Seu link da agenda", style = MaterialTheme.typography.titleMedium)
+            Text(agendaUrl, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(4.dp))
+            Button(
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(agendaUrl)),
+                        )
+                    }.onSuccess {
+                        linkActionMessage = "Abrindo sua agenda…"
+                    }.onFailure {
+                        linkActionMessage = "Não foi possível abrir o link neste aparelho."
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Abrir agenda") }
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Link da Agenda Rota Certa", agendaUrl))
+                    linkActionMessage = if (clipboard != null) "Link copiado." else "Não foi possível copiar o link."
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Copiar link") }
+            linkActionMessage?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+        }
     }
     Spacer(Modifier.height(4.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
