@@ -63,6 +63,7 @@ fun TripTimelineScreen(
     onCreateTrip: () -> Unit,
     onPinShortcut: () -> Unit,
     onOpenOnlineSettings: () -> Unit,
+    onOpenPassengers: () -> Unit,
     onBack: () -> Unit,
     onManageLocal: (String) -> Unit,
 ) {
@@ -206,6 +207,7 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
             ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
+            ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
             ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
