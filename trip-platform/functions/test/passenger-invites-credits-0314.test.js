@@ -29,7 +29,8 @@ test("driver can administer invited passengers and temporary passwords", () => {
 
 test("referrals require driver approval and earn configured credits once", () => {
   assert.match(api, /requestPassengerReferralInvite/);
-  assert.match(api, /status: existing\.exists && existing\.data\(\)\.status === "BLOCKED" \? "BLOCKED" : "PENDING"/);
+  assert.match(api, /status: existing\.exists && existingData\.status === "BLOCKED" \? "BLOCKED" : "PENDING"/);
+  assert.match(api, /firstReferrer = cleanText\(existingData\.referredByContact/);
   assert.match(api, /processReferralCreditsForCompletedTrip/);
   assert.match(api, /referralRewardGrantedAtMillis/);
   assert.match(api, /REFERRAL_EARNED/);
