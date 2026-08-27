@@ -80,6 +80,8 @@ data class BlaBlaCollectorTrip(
     val trip_id: String? = null,
     val uuid_validation: String = "unknown",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
+    /** Ordered itinerary labels captured from the exact BlaBlaCar trip. Empty means not observed. */
+    val itinerary_stops: List<String> = emptyList(),
     val booked_seats: Int = 0,
     val passenger_roster_complete: Boolean = false,
     val identity_conflict: Boolean = false,
