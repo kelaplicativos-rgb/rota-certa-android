@@ -807,6 +807,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
     }
     return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   }
+  const authorized = await requirePassengerDriverAccess(req, res, username);
+  if (!authorized) return;
   const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const trips = snapshot.docs
@@ -1016,11 +1018,13 @@ async function updateDriverTrip(req, res, token) {
   }
 }
 
-async function getPublicTrip(res, token) {
+async function getPublicTrip(res, req, token) {
   const snap = await db.collection("trips").doc(token).get();
   if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const data = snap.data();
   const driverUsername = normalizeUsername(data.driverUsername || "");
+  const authorized = await requirePassengerDriverAccess(req, res, driverUsername);
+  if (!authorized) return;
   if (!PUBLIC_STATUSES.has(data.status)) {
     await appendPublicDebugEvent({
       driverUsername,
@@ -1062,70 +1066,6 @@ async function getPublicTrip(res, token) {
     ...safePublicTrip(token, data),
     driver: publicDriver,
   });
-}
-
-function normalizeBrazilWhatsapp(value) {
-  let digits = String(value || "").replace(/\D/g, "");
-  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
-  if (!/^\d{10,11}$/.test(digits)) {
-    throw Object.assign(new Error("Informe um WhatsApp brasileiro com DDD."), { httpStatus: 400, code: "invalid_whatsapp" });
-  }
-  const ddd = Number(digits.slice(0, 2));
-  if (ddd < 11 || ddd > 99) {
-    throw Object.assign(new Error("Informe um DDD brasileiro válido."), { httpStatus: 400, code: "invalid_whatsapp" });
-  }
-  return `+55${digits}`;
-}
-
-function publicBookingIdempotencyKey(req) {
-  const value = cleanText(req.get("Idempotency-Key") || (req.body && req.body.idempotencyKey), 128);
-  if (!/^[A-Za-z0-9_-]{16,128}$/.test(value)) {
-    throw Object.assign(new Error("Identificador seguro da tentativa ausente."), { httpStatus: 400, code: "idempotency_key_required" });
-  }
-  return value;
-}
-
-function publicBookingId(token, idempotencyKey) {
-  return `public_${sha256Hex(`${token}:${idempotencyKey}`).slice(0, 48)}`;
-}
-
-function publicBookingFingerprint(payload) {
-  return sha256Hex(JSON.stringify(payload));
-}
-
-function publicCancellationToken(token, idempotencyKey) {
-  const secret = driverTokenSecret.value() || "";
-  if (!secret) throw Object.assign(new Error("Servidor de reservas não está ativado."), { httpStatus: 503, code: "booking_secret_unavailable" });
-  return crypto.createHmac("sha256", secret).update(`${token}:${idempotencyKey}:cancel`).digest("base64url");
-}
-
-function passengerPassword(value) {
-  const password = String(value || "");
-  if (password.length < 8 || password.length > 72) {
-    throw Object.assign(new Error("A senha precisa ter entre 8 e 72 caracteres."), { httpStatus: 400, code: "invalid_password" });
-  }
-  return password;
-}
-
-function passengerPasswordDigest(password, salt) {
-  return crypto.scryptSync(password, salt, 64).toString("hex");
-}
-
-function temporaryPassengerPassword() {
-  return String(crypto.randomInt(10_000_000, 100_000_000));
-}
-
-function driverPassengerAccessId(driverUsername, passengerContact) {
-  const username = normalizeUsername(driverUsername);
-  return `${username}_${sha256Hex(passengerContact).slice(0, 40)}`;
-}
-
-function driverPassengerAccessRef(driverUsername, passengerContact) {
-  return db.collection("driverPassengerAccess").doc(driverPassengerAccessId(driverUsername, passengerContact));
-}
-
-function passengerCreditLedgerRef(driverUsername, passengerContact) {
-  return db.collection("passengerCreditLedgers").doc(driverPassengerAccessId(driverUsername, passengerContact));
 }
 
 async function passengerAccessFor(driverUsername, passengerContact) {
@@ -1561,13 +1501,19 @@ async function listPassengerBookings(req, res) {
 
 async function createBooking(req, res, token) {
   await enforceBookingRateLimit(req);
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
   let debugDriverUsername = "";
   const passengerName = cleanText(req.body && req.body.passengerName, 120);
   const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
   const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
   const seats = Number(req.body && req.body.seats);
+  const requestedCreditCents = Number(req.body && req.body.creditToUseCents || 0);
   if (!passengerName) return fail(res, 400, "passenger_name_required", "Informe seu nome.");
   if (!Number.isInteger(seats) || seats < 1 || seats > 999) return fail(res, 400, "invalid_seats", "Quantidade de lugares inválida.");
+  if (!Number.isInteger(requestedCreditCents) || requestedCreditCents < 0 || requestedCreditCents > 1_000_000) {
+    return fail(res, 400, "invalid_credit_amount", "Valor de créditos inválido.");
+  }
 
   let passengerContact;
   let idempotencyKey;
@@ -1577,6 +1523,9 @@ async function createBooking(req, res, token) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_booking", error.message || "Reserva inválida.");
   }
+  if (passengerContact !== session.passengerContact) {
+    return fail(res, 403, "booking_contact_mismatch", "A reserva precisa usar o WhatsApp do seu acesso.");
+  }
 
   const bookingId = publicBookingId(token, idempotencyKey);
   const cancellationToken = publicCancellationToken(token, idempotencyKey);
@@ -1584,6 +1533,13 @@ async function createBooking(req, res, token) {
   const fingerprint = publicBookingFingerprint({ passengerName, passengerContact, boardingStopId, dropoffStopId, seats });
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
+  debugDriverUsername = normalizeUsername(authTrip.data().driverUsername || "");
+  const authorized = await requirePassengerDriverAccess(req, res, debugDriverUsername, session);
+  if (!authorized) return;
+  const ledgerRef = passengerCreditLedgerRef(debugDriverUsername, passengerContact);
+  const ledgerEntryRef = ledgerRef.collection("entries").doc(`booking_${bookingId}`);
 
   try {
     const result = await db.runTransaction(async (tx) => {
@@ -1613,12 +1569,17 @@ async function createBooking(req, res, token) {
           availableSeats: null,
           farePerSeatCents: Number(existingData.farePerSeatCents || 0),
           totalFareCents: Number(existingData.totalFareCents || 0),
+          creditAppliedCents: Number(existingData.creditAppliedCents || 0),
+          amountDueCents: Number(existingData.amountDueCents ?? existingData.totalFareCents ?? 0),
           driverUsername: debugDriverUsername,
           tripTitle: cleanText(trip.title, 180),
         };
       }
 
-      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const [bookingsSnap, ledgerSnap] = await Promise.all([
+        tx.get(tripRef.collection("bookings")),
+        tx.get(ledgerRef),
+      ]);
       const existing = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
       const currentLoads = reconciledSegmentLoads(trip, existing);
@@ -1628,6 +1589,10 @@ async function createBooking(req, res, token) {
       }
       const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
       const totalFareCents = farePerSeatCents * seats;
+      const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
+      const balanceCents = Math.max(0, Number(ledger.balanceCents || 0));
+      const creditAppliedCents = Math.min(requestedCreditCents, balanceCents, totalFareCents);
+      const amountDueCents = Math.max(0, totalFareCents - creditAppliedCents);
       const now = Date.now();
       const candidate = {
         id: bookingId,
@@ -1646,6 +1611,8 @@ async function createBooking(req, res, token) {
         idempotencyFingerprint: fingerprint,
         farePerSeatCents,
         totalFareCents,
+        creditAppliedCents,
+        amountDueCents,
         createdAtMillis: now,
         updatedAtMillis: now,
       };
@@ -1654,6 +1621,24 @@ async function createBooking(req, res, token) {
       const candidatePersisted = { ...candidate };
       delete candidatePersisted.id;
       tx.create(bookingRef, candidatePersisted);
+      if (creditAppliedCents > 0) {
+        tx.set(ledgerRef, {
+          driverUsername: debugDriverUsername,
+          passengerContact,
+          balanceCents: balanceCents - creditAppliedCents,
+          earnedCents: Math.max(0, Number(ledger.earnedCents || 0)),
+          spentCents: Math.max(0, Number(ledger.spentCents || 0)) + creditAppliedCents,
+          updatedAtMillis: now,
+          createdAtMillis: Number(ledger.createdAtMillis || now),
+        }, { merge: true });
+        tx.create(ledgerEntryRef, {
+          type: "BOOKING_CREDIT_USED",
+          amountCents: -creditAppliedCents,
+          tripToken: token,
+          bookingId,
+          createdAtMillis: now,
+        });
+      }
       writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
       tx.update(tripRef, {
         segmentLoads: reconciled,
@@ -1666,6 +1651,8 @@ async function createBooking(req, res, token) {
         availableSeats: availableForSegmentRange(trip, reconciled, fromIndex, toIndex),
         farePerSeatCents,
         totalFareCents,
+        creditAppliedCents,
+        amountDueCents,
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
       };
@@ -1706,6 +1693,8 @@ async function createBooking(req, res, token) {
       availableSeats: result.availableSeats,
       farePerSeatCents: result.farePerSeatCents,
       totalFareCents: result.totalFareCents,
+      creditAppliedCents: result.creditAppliedCents,
+      amountDueCents: result.amountDueCents,
       replayed: result.replayed,
     });
   } catch (error) {
