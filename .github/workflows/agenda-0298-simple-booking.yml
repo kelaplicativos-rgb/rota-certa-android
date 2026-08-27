@@ -1,0 +1,88 @@
+name: Agenda 0.1.298 simple booking build
+
+on:
+  push:
+    branches:
+      - agent/agenda-firebase-live-wiring
+    paths:
+      - '.github/workflows/agenda-0298-simple-booking.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0298-simple-booking-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-firebase-live-wiring
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate public booking UX and backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5591' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.298"' app/build.gradle.kts
+          grep -Fq 'Reserve sua viagem' trip-platform/public/index.html
+          grep -Fq 'Onde você vai embarcar?' trip-platform/public/index.html
+          grep -Fq 'Quantas pessoas vão viajar?' trip-platform/public/index.html
+          grep -Fq 'CONFIRMAR RESERVA' trip-platform/public/index.html
+          grep -Fq 'requestIdentity(pendingBooking)' trip-platform/public/app.js
+          grep -Fq 'protectedPublicFetch' trip-platform/public/app.js
+          node --check trip-platform/public/app.js
+          node --check trip-platform/public/firebase-security.js
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/*.test.js
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android unit tests lint and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk > /tmp/apk.sha256
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0298
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0298/rota-certa-0.1.298-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0298/apk.sha256
+          printf '%s\n' \
+            'versionName=0.1.298' \
+            'simplePublicBooking=true' \
+            'largeTouchTargets=true' \
+            'oneQuestionAtATime=true' \
+            'idempotentBookingPreserved=true' \
+            'appCheckPreserved=true' \
+            'firestoreDenyByDefault=true' \
+            'pendingSeatQueueDoesNotBlockNormalSync=true' > /tmp/agenda-0298/contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.298-simple-booking-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/agenda-0298
