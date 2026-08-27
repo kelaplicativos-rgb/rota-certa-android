@@ -581,12 +581,29 @@ async function ensureDriverPublicAgenda(req, res) {
     safeEqual(sha256Hex(suppliedToken), data.agendaTokenHash || "");
   const publicAgendaToken = tokenIsCurrent ? suppliedToken : crypto.randomBytes(24).toString("base64url");
 
-  if (!tokenIsCurrent) {
-    await ref.update({
-      agendaTokenHash: sha256Hex(publicAgendaToken),
-      updatedAtMillis: Date.now(),
-    });
+  let driverWhatsapp = "";
+  try {
+    const rawWhatsapp = cleanText(req.body && req.body.driverWhatsapp, 40);
+    driverWhatsapp = rawWhatsapp ? normalizeBrazilWhatsapp(rawWhatsapp) : "";
+  } catch (error) {
+    return fail(res, 400, error.code || "invalid_whatsapp", error.message);
   }
+
+  const publicProfileUpdate = {
+    driverWhatsapp,
+    driverPublicAbout: cleanText(req.body && req.body.driverPublicAbout, 320),
+    driverPublicRating: cleanText(req.body && req.body.driverPublicRating, 20),
+    driverPublicReviewCount: Math.max(0, Math.min(9999999, Number(req.body && req.body.driverPublicReviewCount || 0) || 0)),
+    driverPublicBadge: cleanText(req.body && req.body.driverPublicBadge, 80),
+    vehicleMakeModel: cleanText(req.body && req.body.vehicleMakeModel, 120),
+    vehicleColor: cleanText(req.body && req.body.vehicleColor, 60),
+    vehicleAmenities: cleanText(req.body && req.body.vehicleAmenities, 240),
+    driverPreferences: cleanText(req.body && req.body.driverPreferences, 240),
+    paymentInstructions: cleanText(req.body && req.body.paymentInstructions, 240),
+    updatedAtMillis: Date.now(),
+  };
+  if (!tokenIsCurrent) publicProfileUpdate.agendaTokenHash = sha256Hex(publicAgendaToken);
+  await ref.update(publicProfileUpdate);
 
   return json(res, 200, {
     displayName: cleanText(data.displayName, 120) || driver.displayName,
@@ -596,6 +613,34 @@ async function ensureDriverPublicAgenda(req, res) {
     calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
     repaired: !tokenIsCurrent,
   });
+}
+
+function splitPublicList(value) {
+  return cleanText(value, 240)
+    .split(/[;,\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function safePublicDriverProfile(data, username = "") {
+  const driver = data || {};
+  return {
+    displayName: cleanText(driver.displayName, 120),
+    username: normalizeUsername(username || driver.username || ""),
+    whatsapp: cleanText(driver.driverWhatsapp, 24),
+    about: cleanText(driver.driverPublicAbout, 320),
+    rating: cleanText(driver.driverPublicRating, 20),
+    reviewCount: Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0),
+    badge: cleanText(driver.driverPublicBadge, 80),
+    vehicle: {
+      makeModel: cleanText(driver.vehicleMakeModel, 120),
+      color: cleanText(driver.vehicleColor, 60),
+    },
+    amenities: splitPublicList(driver.vehicleAmenities),
+    preferences: splitPublicList(driver.driverPreferences),
+    paymentInstructions: cleanText(driver.paymentInstructions, 240),
+  };
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
@@ -632,7 +677,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
     statusCode: 200,
   }).catch(() => {});
   return json(res, 200, {
-    driver: { displayName: cleanText(driver.displayName, 120), username },
+    driver: safePublicDriverProfile(driver, username),
     trips,
   });
 }
@@ -735,7 +780,15 @@ async function getPublicTrip(res, token) {
     screen: "trip",
     statusCode: 200,
   }).catch(() => {});
-  return json(res, 200, safePublicTrip(token, data));
+  let publicDriver = safePublicDriverProfile(data, driverUsername);
+  if (driverUsername) {
+    const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get().catch(() => null);
+    if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
+  }
+  return json(res, 200, {
+    ...safePublicTrip(token, data),
+    driver: publicDriver,
+  });
 }
 
 function normalizeBrazilWhatsapp(value) {
