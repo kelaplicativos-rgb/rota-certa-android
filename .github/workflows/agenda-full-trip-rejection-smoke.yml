@@ -73,5 +73,5 @@ jobs:
           node -e 'const x=require("/tmp/response.json"); console.log("BOOKING_CODE="+String(x.code||"")); console.log("BOOKING_MESSAGE="+String(x.message||""))'
 
           test "$HTTP" = "409"
-          node -e 'const x=require("/tmp/response.json"); if(x.code!=="trip_full" && x.code!=="trip_closed"){process.exit(6)}'
+          node -e 'const x=require("/tmp/response.json"); if(String(x.message||"")!=="Esta viagem está lotada."){process.exit(6)}'
           echo "FULL_TRIP_REJECTION=PASS"
