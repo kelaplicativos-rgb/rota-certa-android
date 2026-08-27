@@ -1,0 +1,187 @@
+name: Agenda 0.1.305 full video booking flow
+
+on:
+  push:
+    branches:
+      - agent/public-booking-video-flow-0.1.305
+    paths:
+      - '.github/workflows/agenda-0305-video-flow.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicVideoFlow0305Test.kt'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/public-video-flow-0305.test.js'
+      - 'trip-platform/functions/test/public-capacity-fidelity-0303.test.js'
+      - 'trip-platform/public/app.js'
+      - 'trip-platform/public/index.html'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/public-booking-video-flow-0.1.305
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase service account
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase service account secret is missing."
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Validate full public journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+          grep -Fq 'Confira os detalhes do seu pedido de reserva' trip-platform/public/index.html
+          grep -Fq 'Resumo do preço' trip-platform/public/index.html
+          grep -Fq 'Mande uma mensagem para o motorista' trip-platform/public/index.html
+          grep -Fq 'driverWhatsappReview' trip-platform/public/index.html
+          grep -Fq 'https://wa.me/' trip-platform/public/app.js
+          grep -Fq 'driverWhatsapp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'paymentInstructions' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+
+      - name: Ensure Firebase Android SDK config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/android-apps.txt || true
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/android-apps.txt | head -1 || true)"
+          test -n "$APP_ID"
+          npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test lint and build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "versionCode='5598'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.305'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0305
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0305/rota-certa-0.1.305-video-flow.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0305/apk.sha256
+          cp /tmp/aapt.txt /tmp/agenda-0305/aapt.txt
+          cp /tmp/apksigner.txt /tmp/agenda-0305/apksigner.txt
+          cp /tmp/gradle.txt /tmp/agenda-0305/gradle.txt
+          git rev-parse HEAD > /tmp/agenda-0305/source-head.txt
+          printf "%s\n"             "versionName=0.1.305"             "videoFlowComplete=true"             "largeTypography=true"             "driverWhatsappFromOnlineSettings=true"             "fullTripsNonClickable=true"             "realtimeNotificationsPreserved=true" > /tmp/agenda-0305/contract.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.305-video-flow
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/agenda-0305
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/public-booking-video-flow-0.1.305
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy backend and public portal
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+
+      - name: Smoke production video flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | grep -F '"ok":true'
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error https://rota-certa-7ccc8.web.app/ > /tmp/live-index.html
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error https://rota-certa-7ccc8.web.app/app.js > /tmp/live-app.js
+          grep -Fq 'Confira os detalhes do seu pedido de reserva' /tmp/live-index.html
+          grep -Fq 'Resumo do preço' /tmp/live-index.html
+          grep -Fq 'driverWhatsappReview' /tmp/live-index.html
+          grep -Fq 'https://wa.me/' /tmp/live-app.js
+          grep -Fq 'showOnly("review")' /tmp/live-app.js
+          echo "VIDEO_FLOW_0305=PASS"
