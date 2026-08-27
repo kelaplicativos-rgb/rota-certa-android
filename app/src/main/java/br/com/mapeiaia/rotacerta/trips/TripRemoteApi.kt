@@ -58,6 +58,11 @@ data class DriverAgendaEnsureRequest(
 )
 
 @Serializable
+data class DriverAgendaRegenerateRequest(
+    val confirmation: String = "REGENERATE_PUBLIC_AGENDA_LINK",
+)
+
+@Serializable
 data class DriverAgendaEnsureResponse(
     val displayName: String,
     val username: String,
@@ -197,6 +202,13 @@ class TripRemoteApi(
                 paymentInstructions = settings.paymentInstructions.trim(),
             ),
         ),
+        requireDriverToken = true,
+    )
+
+    suspend fun regeneratePublicAgenda(): DriverAgendaEnsureResponse = request(
+        method = "POST",
+        path = "/v1/driver/agenda/regenerate",
+        body = json.encodeToString(DriverAgendaRegenerateRequest()),
         requireDriverToken = true,
     )
 

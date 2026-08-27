@@ -37,22 +37,15 @@ internal object PublicAgendaAutoSync0300 {
         val api = TripRemoteApi(settings)
         runCatching { api.ensurePublicAgenda(settings.publicCalendarToken) }
             .onSuccess { response ->
-                if (
-                    response.publicAgendaToken.isNotBlank() &&
-                    response.publicAgendaToken != settings.publicCalendarToken
-                ) {
-                    store.saveOnlineSettings(
-                        settings.copy(
-                            publicCalendarToken = response.publicAgendaToken,
-                            driverDisplayName = response.displayName.ifBlank { settings.driverDisplayName },
-                            driverUsername = response.username.ifBlank { settings.driverUsername },
-                        ),
-                    )
-                }
+                val updated = settings.copy(
+                    driverDisplayName = response.displayName.ifBlank { settings.driverDisplayName },
+                    driverUsername = response.username.ifBlank { settings.driverUsername },
+                )
+                if (updated != settings) store.saveOnlineSettings(updated)
                 UnifiedDebugEventStore.record(
                     "PUBLIC_DRIVER_PROFILE_SYNCED",
                     context.packageName,
-                    "whatsappConfigured=${settings.driverWhatsapp.isNotBlank()} vehicleConfigured=${settings.vehicleMakeModel.isNotBlank()} paymentConfigured=${settings.paymentInstructions.isNotBlank()}",
+                    "stableAgendaToken=true whatsappConfigured=${settings.driverWhatsapp.isNotBlank()} vehicleConfigured=${settings.vehicleMakeModel.isNotBlank()} paymentConfigured=${settings.paymentInstructions.isNotBlank()}",
                 )
             }
             .onFailure { error ->
