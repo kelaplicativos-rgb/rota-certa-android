@@ -52,6 +52,7 @@
 <body>
 <main>
   <div class="brand">ROTA CERTA</div>
+  <button id="openPassengerPortal" class="backButton" type="button">Minhas reservas</button>
 
   <section id="loading" class="card">Carregando…</section>
   <section id="error" class="card error hidden"></section>
@@ -102,6 +103,30 @@
 
     <div id="tripSticky" class="stickyCta hidden">
       <div class="stickyInner"><button id="startBooking" class="primary">Fazer pedido de reserva</button></div>
+    </div>
+  </section>
+
+  <section id="passengerPortal" class="hidden">
+    <button id="portalBack" class="backButton" type="button">‹ Voltar</button>
+    <div class="card">
+      <h1 class="stepTitle">Minhas reservas</h1>
+      <p class="stepIntro">Entre com seu WhatsApp e sua senha para consultar, alterar ou cancelar suas reservas em qualquer aparelho.</p>
+      <div id="portalLoginBox">
+        <label>Seu WhatsApp
+          <input id="portalContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
+        </label>
+        <label>Sua senha
+          <input id="portalPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
+        </label>
+        <p id="portalMessage" class="muted"></p>
+        <button id="portalLogin" class="primary" type="button">Entrar</button>
+      </div>
+      <div id="portalAuthenticated" class="hidden">
+        <div class="actions">
+          <button id="portalLogout" class="secondary" type="button">Sair deste acesso</button>
+        </div>
+        <div id="portalBookings"></div>
+      </div>
     </div>
   </section>
 
@@ -190,6 +215,15 @@
         <button id="googleCalendar" class="primary calendarAction">Adicionar ao Google Agenda</button>
         <button id="downloadIcs" class="secondary">Baixar ICS</button>
       </div>
+    </div>
+    <div class="card">
+      <h2>Use suas reservas em qualquer aparelho</h2>
+      <p class="stepIntro">Crie uma senha para acessar esta reserva depois usando apenas seu WhatsApp e a senha.</p>
+      <label>Crie uma senha
+        <input id="portalCreatePassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+      </label>
+      <p id="portalCreateMessage" class="muted"></p>
+      <button id="portalRegister" class="secondary" type="button">Criar meu acesso</button>
     </div>
   </section>
 
