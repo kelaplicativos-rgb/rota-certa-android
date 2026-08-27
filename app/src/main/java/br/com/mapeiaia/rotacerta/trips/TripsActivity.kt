@@ -179,10 +179,30 @@ private fun TripApp(
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
-                    onSave = {
-                        store.saveOnlineSettings(it)
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
                         screen = TripScreen.TIMELINE
-                        message = if (it.configured) "Integração online configurada." else "Configuração salva; modo online ainda desativado."
+                        if (saved.configured) {
+                            message = "Salvando Integração online…"
+                            shareScope.launch {
+                                runCatching {
+                                    val response = TripRemoteApi(saved).ensurePublicAgenda(saved.publicCalendarToken)
+                                    val validated = saved.copy(
+                                        publicCalendarToken = response.publicAgendaToken,
+                                        driverDisplayName = response.displayName.ifBlank { saved.driverDisplayName },
+                                        driverUsername = response.username.ifBlank { saved.driverUsername },
+                                    )
+                                    store.saveOnlineSettings(validated)
+                                    validated
+                                }.onSuccess {
+                                    message = "Integração online salva e perfil público atualizado."
+                                }.onFailure {
+                                    message = "Configuração salva no aparelho, mas o perfil público ainda não sincronizou: ${it.message ?: "erro de conexão"}"
+                                }
+                            }
+                        } else {
+                            message = "Configuração salva; modo online ainda desativado."
+                        }
                     },
                     onCancel = { screen = TripScreen.TIMELINE },
                 )
