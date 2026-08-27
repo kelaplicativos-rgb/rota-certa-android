@@ -1766,6 +1766,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       statusCode: 200,
     }).catch(() => {});
     if (result.changed) {
+      await refundBookingCreditsIfNeeded(token, bookingId);
       await sendDriverBookingPush({
         driverUsername: result.driverUsername || debugDriverUsername,
         event: "reservation_cancelled",
@@ -1972,6 +1973,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         availableSeats: fromIndex >= 0 ? availableForSegmentRange(trip, loads, fromIndex, toIndex) : null,
       };
     });
+    if (cancelOnly) await refundBookingCreditsIfNeeded(token, bookingId);
     return json(res, 200, {
       booking: result.booking,
       segmentLoads: result.segmentLoads,
@@ -2083,6 +2085,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       });
     });
+    await refundBookingCreditsIfNeeded(token, bookingId);
     return json(res, 200, { cancelled: true });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_booking_cancel_failed", error.message || "Não foi possível cancelar a reserva.");
@@ -2162,7 +2165,16 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/session") return await loginPassengerAccount(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me") return await getPassengerMe(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/me/password") return await changePassengerPassword(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me/credits") return await getPassengerCredits(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/me/referral") return await createPassengerReferral(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
+    if (req.method === "POST" && path === "/v1/public/referrals/request") return await requestPassengerReferralInvite(req, res);
+    if (req.method === "GET" && path === "/v1/driver/passengers") return await listDriverPassengers(req, res);
+    if (req.method === "POST" && path === "/v1/driver/passengers/invite") return await inviteDriverPassenger(req, res);
+    if (req.method === "POST" && path === "/v1/driver/passengers/block") return await setDriverPassengerBlocked(req, res);
+    if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
@@ -2186,7 +2198,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
       return await getPublicDriverAgenda(res, req, parts[3], parts[4]);
     }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && req.method === "GET") {
-      return await getPublicTrip(res, parts[3]);
+      return await getPublicTrip(res, req, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "POST") {
       return await createBooking(req, res, parts[3]);
