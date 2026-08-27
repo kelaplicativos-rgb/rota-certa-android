@@ -6,6 +6,8 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { buildProfileUpdate } = require("./public-profile-policy");
+const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 
 initializeApp();
 const db = getFirestore();
@@ -331,7 +333,8 @@ async function resolvePublicDebugTarget(body) {
   const agendaToken = cleanText(body && body.agendaToken, 80).replace(/[^A-Za-z0-9_-]/g, "");
   if (driverUsername.length >= 3 && agendaToken.length >= 16) {
     const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get();
-    if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) return null;
+    const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(driverUsername, driverSnap) : "";
+    if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) return null;
     return { driverUsername, tripToken: "", agendaToken };
   }
   return null;
@@ -532,6 +535,30 @@ function publicAgendaLinkRef(username) {
   return db.collection("tripPublicAgendaLinks").doc(normalizeUsername(username));
 }
 
+async function publicAgendaLinkHash(username, driverSnapInput = null) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return "";
+  const linkRef = publicAgendaLinkRef(normalized);
+  const linkSnap = await linkRef.get();
+  if (linkSnap.exists) return cleanText(linkSnap.data().tokenHash, 128);
+
+  const driverSnap = driverSnapInput || await db.collection("tripDrivers").doc(normalized).get();
+  if (!driverSnap.exists) return "";
+  const legacyHash = cleanText(driverSnap.data().agendaTokenHash, 128);
+  if (!legacyHash) return "";
+  const now = Date.now();
+  await linkRef.create({
+    driverUsername: normalized,
+    tokenHash: legacyHash,
+    generation: 1,
+    migratedFromLegacy: true,
+    createdAtMillis: now,
+    updatedAtMillis: now,
+  }).catch(() => {});
+  const after = await linkRef.get();
+  return after.exists ? cleanText(after.data().tokenHash, 128) : legacyHash;
+}
+
 async function registerDriver(req, res) {
   await enforceBookingRateLimit(req);
   const displayName = cleanText(req.body && req.body.displayName, 120);
@@ -545,19 +572,22 @@ async function registerDriver(req, res) {
   const now = Date.now();
   try {
     await db.runTransaction(async (tx) => {
-      const [existing, existingLink] = await Promise.all([tx.get(ref), tx.get(linkRef)]);
+      const existing = await tx.get(ref);
+      const existingLink = await tx.get(linkRef);
       if (existing.exists || existingLink.exists) throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      const agendaTokenHash = sha256Hex(publicAgendaToken);
       tx.create(ref, {
         username,
         displayName,
         driverTokenHash: sha256Hex(driverToken),
-        agendaTokenHash: sha256Hex(publicAgendaToken),
+        agendaTokenHash,
+        publicProfileMode: "MANUAL",
         createdAtMillis: now,
         updatedAtMillis: now,
       });
       tx.create(linkRef, {
         driverUsername: username,
-        tokenHash: sha256Hex(publicAgendaToken),
+        tokenHash: agendaTokenHash,
         generation: 1,
         createdAtMillis: now,
         updatedAtMillis: now,
@@ -583,18 +613,15 @@ async function ensureDriverPublicAgenda(req, res) {
     return fail(res, 409, "driver_identity_required", "Cadastre um nome de usuário do motorista para usar a agenda pública.");
   }
 
-  const suppliedToken = cleanText(req.body && req.body.publicAgendaToken, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const suppliedToken = cleanIdentifier(req.body && req.body.publicAgendaToken);
   const ref = db.collection("tripDrivers").doc(driver.username);
   const snap = await ref.get();
   if (!snap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
-
   const data = snap.data();
-  const storedHash = cleanText(data.agendaTokenHash, 128);
-  const tokenIsCurrent = suppliedToken.length >= 16 &&
-    storedHash &&
-    safeEqual(sha256Hex(suppliedToken), storedHash);
-
+  const storedHash = await publicAgendaLinkHash(driver.username, snap);
+  const tokenIsCurrent = tokenMatches(suppliedToken, storedHash);
   if (!tokenIsCurrent) {
+    console.warn("PUBLIC_LINK_UPDATE_REJECTED", { driverUsername: driver.username, reason: "mismatch" });
     return fail(
       res,
       409,
@@ -602,7 +629,6 @@ async function ensureDriverPublicAgenda(req, res) {
       "O token da agenda não confere. O link atual foi preservado. Use a ação explícita Gerar novo link para substituí-lo.",
     );
   }
-  const publicAgendaToken = suppliedToken;
 
   let driverWhatsapp = "";
   try {
@@ -612,30 +638,28 @@ async function ensureDriverPublicAgenda(req, res) {
     return fail(res, 400, error.code || "invalid_whatsapp", error.message);
   }
 
-  const publicProfileUpdate = {
+  const profilePlan = buildProfileUpdate({
+    body: req.body || {},
+    current: data,
     driverWhatsapp,
-    driverPhotoUrl: cleanText(req.body && req.body.driverPhotoUrl, 500).startsWith("https://")
-      ? cleanText(req.body && req.body.driverPhotoUrl, 500)
-      : "",
-    driverPublicAbout: cleanText(req.body && req.body.driverPublicAbout, 320),
-    driverPublicRating: cleanText(req.body && req.body.driverPublicRating, 20),
-    driverPublicReviewCount: Math.max(0, Math.min(9999999, Number(req.body && req.body.driverPublicReviewCount || 0) || 0)),
-    driverPublicBadge: cleanText(req.body && req.body.driverPublicBadge, 80),
-    vehicleMakeModel: cleanText(req.body && req.body.vehicleMakeModel, 120),
-    vehicleColor: cleanText(req.body && req.body.vehicleColor, 60),
-    vehicleAmenities: cleanText(req.body && req.body.vehicleAmenities, 240),
-    driverPreferences: cleanText(req.body && req.body.driverPreferences, 240),
-    paymentInstructions: cleanText(req.body && req.body.paymentInstructions, 240),
-    updatedAtMillis: Date.now(),
-  };
-  await ref.update(publicProfileUpdate);
+  });
+  if (!profilePlan.ok) {
+    return fail(res, 409, profilePlan.code, "Selecione e valide um perfil BlaBlaCar antes de publicar esses dados.");
+  }
+  const update = { ...profilePlan.update, updatedAtMillis: Date.now() };
+  await ref.update(update);
+  console.log("PUBLIC_LINK_PRESERVED", {
+    driverUsername: driver.username,
+    profileMode: profilePlan.mode,
+    automaticProfileConfirmed: profilePlan.lastSyncedAtMillis > 0,
+  });
 
   return json(res, 200, {
-    displayName: cleanText(data.displayName, 120) || driver.displayName,
+    displayName: cleanText(update.displayName, 120) || cleanText(data.displayName, 120) || driver.displayName,
     username: driver.username,
-    publicAgendaToken,
-    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
-    calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
+    publicAgendaToken: suppliedToken,
+    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, suppliedToken),
+    calendarUrl: publicCalendarUrlFor(req, driver.username, suppliedToken),
     repaired: false,
   });
 }
@@ -651,25 +675,73 @@ async function regenerateDriverPublicAgenda(req, res) {
   if (confirmation !== "REGENERATE_PUBLIC_AGENDA_LINK") {
     return fail(res, 400, "explicit_confirmation_required", "Confirmação explícita obrigatória para gerar um novo link.");
   }
+  const currentToken = cleanIdentifier(req.body && req.body.currentPublicAgendaToken);
+  const rotationId = cleanIdentifier(req.body && req.body.rotationId, 100);
+  if (currentToken.length < 16 || rotationId.length < 16) {
+    return fail(res, 400, "rotation_context_required", "Contexto seguro da rotação ausente.");
+  }
+  const rotationSecret = driverTokenSecret.value() || "";
+  if (!rotationSecret) return fail(res, 503, "rotation_secret_unavailable", "Serviço de rotação temporariamente indisponível.");
 
-  const ref = db.collection("tripDrivers").doc(driver.username);
-  const snap = await ref.get();
-  if (!snap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
+  const driverRef = db.collection("tripDrivers").doc(driver.username);
+  const linkRef = publicAgendaLinkRef(driver.username);
+  const rotationIdHash = sha256Hex(rotationId);
+  const publicAgendaToken = deriveRotationToken(rotationSecret, driver.username, rotationId);
+  const nextTokenHash = sha256Hex(publicAgendaToken);
 
-  const publicAgendaToken = crypto.randomBytes(24).toString("base64url");
-  await ref.update({
-    agendaTokenHash: sha256Hex(publicAgendaToken),
-    updatedAtMillis: Date.now(),
-  });
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const driverSnap = await tx.get(driverRef);
+      const linkSnap = await tx.get(linkRef);
+      if (!driverSnap.exists) throw Object.assign(new Error("Motorista não encontrado."), { httpStatus: 404, code: "driver_not_found" });
 
-  return json(res, 200, {
-    displayName: cleanText(snap.data().displayName, 120) || driver.displayName,
-    username: driver.username,
-    publicAgendaToken,
-    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
-    calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
-    repaired: true,
-  });
+      let link = linkSnap.exists ? linkSnap.data() : null;
+      if (!link) {
+        const legacyHash = cleanText(driverSnap.data().agendaTokenHash, 128);
+        if (!legacyHash) throw Object.assign(new Error("Link público não cadastrado."), { httpStatus: 409, code: "agenda_link_missing" });
+        link = { tokenHash: legacyHash, generation: 1 };
+      }
+      const currentHash = cleanText(link.tokenHash, 128);
+      if (cleanText(link.lastRotationIdHash, 128) === rotationIdHash && safeEqual(currentHash, nextTokenHash)) {
+        return {
+          displayName: cleanText(driverSnap.data().displayName, 120) || driver.displayName,
+          generation: Math.max(1, Number(link.generation || 1)),
+        };
+      }
+      if (!tokenMatches(currentToken, currentHash)) {
+        throw Object.assign(new Error("O link mudou antes desta confirmação. Reabra a tela e tente novamente."), {
+          httpStatus: 409,
+          code: "agenda_rotation_conflict",
+        });
+      }
+      const generation = Math.max(1, Number(link.generation || 1)) + 1;
+      tx.set(linkRef, {
+        driverUsername: driver.username,
+        tokenHash: nextTokenHash,
+        generation,
+        lastRotationIdHash: rotationIdHash,
+        migratedFromLegacy: !linkSnap.exists,
+        updatedAtMillis: Date.now(),
+        ...(!linkSnap.exists ? { createdAtMillis: Date.now() } : {}),
+      }, { merge: true });
+      tx.update(driverRef, { agendaTokenHash: nextTokenHash, updatedAtMillis: Date.now() });
+      return {
+        displayName: cleanText(driverSnap.data().displayName, 120) || driver.displayName,
+        generation,
+      };
+    });
+    console.log("PUBLIC_LINK_ROTATED", { driverUsername: driver.username, generation: result.generation });
+    return json(res, 200, {
+      displayName: result.displayName,
+      username: driver.username,
+      publicAgendaToken,
+      publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
+      calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
+      repaired: true,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 500, error.code || "agenda_rotation_failed", error.message || "Falha ao gerar o novo link.");
+  }
 }
 
 function splitPublicList(value) {
@@ -707,7 +779,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
   const username = normalizeUsername(usernameRaw);
   if (!username || !agendaToken) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   const driverSnap = await db.collection("tripDrivers").doc(username).get();
-  if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) {
+  const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(username, driverSnap) : "";
+  if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) {
     if (driverSnap.exists) {
       await appendPublicDebugEvent({
         driverUsername: username,
