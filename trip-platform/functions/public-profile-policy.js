@@ -40,6 +40,25 @@ function normalizeOverrides(value) {
     .slice(0, PUBLIC_PROFILE_OVERRIDE_FIELDS.size);
 }
 
+function normalizeReviews(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value.map((raw) => ({
+    author: clean(raw && raw.author, 120),
+    rating: clean(raw && raw.rating, 20),
+    dateLabel: clean(raw && raw.dateLabel, 80),
+    text: clean(raw && raw.text, 600),
+  }))
+    .filter((review) => review.author || review.text)
+    .filter((review) => {
+      const key = `${review.author.toLowerCase()}|${review.dateLabel.toLowerCase()}|${review.text.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 60);
+}
+
 function resolvedFields(body) {
   const source = body || {};
   return {
@@ -48,6 +67,7 @@ function resolvedFields(body) {
     driverPublicAbout: clean(source.driverPublicAbout, 320),
     driverPublicRating: clean(source.driverPublicRating, 20),
     driverPublicReviewCount: Math.max(0, Math.min(9999999, Number(source.driverPublicReviewCount || 0) || 0)),
+    driverPublicReviews: normalizeReviews(source.driverPublicReviews),
     driverPublicBadge: clean(source.driverPublicBadge, 80),
     vehicleMakeModel: clean(source.vehicleMakeModel, 120),
     vehicleColor: clean(source.vehicleColor, 60),
@@ -88,6 +108,7 @@ function buildProfileUpdate({ body, current = {}, driverWhatsapp = "" }) {
 
   if (mode === "MANUAL") {
     Object.assign(update, resolved, {
+      driverPublicReviews: [],
       selectedPublicProfileUuid: "",
       publicProfileLastSyncedAtMillis: 0,
     });
@@ -106,6 +127,7 @@ function buildProfileUpdate({ body, current = {}, driverWhatsapp = "" }) {
     if (mode === "HYBRID") applyOverrides(update, resolved, overrides);
   } else {
     clearNonOverridden(update, resolved, mode === "HYBRID" ? overrides : []);
+    update.driverPublicReviews = [];
     update.publicProfileLastSyncedAtMillis = 0;
   }
   return { ok: true, mode, selectedUuid, lastSyncedAtMillis, overrides, update };
@@ -117,6 +139,7 @@ module.exports = {
   normalizeMode,
   normalizeUuid,
   normalizeOverrides,
+  normalizeReviews,
   resolvedFields,
   buildProfileUpdate,
 };
