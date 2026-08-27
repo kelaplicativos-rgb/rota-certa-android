@@ -45,11 +45,12 @@ test("mobile portal reviews before confirmation and limits seats dynamically", (
 });
 
 
-test("driver can validate or self-heal the public agenda token before sharing", () => {
+test("driver validates the permanent public agenda token before sharing without self-healing", () => {
   assert.match(api, /async function ensureDriverPublicAgenda/);
-  assert.match(api, /publicAgendaToken/);
+  assert.match(api, /publicAgendaLinkHash/);
   assert.match(api, /tokenIsCurrent/);
-  assert.match(api, /agendaTokenHash: sha256Hex\(publicAgendaToken\)/);
+  assert.match(api, /agenda_token_mismatch/);
+  assert.match(api, /PUBLIC_LINK_PRESERVED/);
   assert.match(api, /\/v1\/driver\/agenda\/ensure/);
-  assert.match(api, /repaired: !tokenIsCurrent/);
+  assert.match(api, /repaired: false/);
 });
