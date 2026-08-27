@@ -212,7 +212,8 @@ internal fun OnlineSettingsEditor(
                     onClick = { selectedPublicProfileAccountId = profile.id },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    val label = profile.profileName?.takeIf(String::isNotBlank) ?: profile.displayLabel
+                    val label = BlaBlaDriverProfileNamePolicy.normalize(profile.profileName)
+                        ?: profile.displayLabel
                     val suffix = if (profile.profileUuid.isNullOrBlank()) " • UUID pendente" else ""
                     Text(if (profile.id == selectedPublicProfileAccountId) "✓ $label$suffix" else "$label$suffix")
                 }
