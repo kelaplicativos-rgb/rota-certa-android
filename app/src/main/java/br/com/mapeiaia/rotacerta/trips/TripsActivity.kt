@@ -591,6 +591,7 @@ private fun OnlineSettingsEditor(
     var driverName by remember { mutableStateOf(initial.driverDisplayName) }
     var driverUsername by remember { mutableStateOf(initial.driverUsername) }
     var driverWhatsapp by remember { mutableStateOf(initial.driverWhatsapp) }
+    var driverPhotoUrl by remember { mutableStateOf(initial.driverPhotoUrl) }
     var driverAbout by remember { mutableStateOf(initial.driverPublicAbout) }
     var driverRating by remember { mutableStateOf(initial.driverPublicRating) }
     var driverReviewCount by remember { mutableStateOf(initial.driverPublicReviewCount.toString()) }
@@ -617,6 +618,7 @@ private fun OnlineSettingsEditor(
     Text("Dados públicos mostrados ao passageiro", style = MaterialTheme.typography.titleMedium)
     Text("Preencha somente informações verdadeiras. Campos vazios não aparecem na Agenda Pública.")
     OutlinedTextField(driverWhatsapp, { driverWhatsapp = it.filter { ch -> ch.isDigit() || ch == '+' || ch == '(' || ch == ')' || ch == '-' || ch == ' ' }.take(24) }, label = { Text("WhatsApp do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(driverPhotoUrl, { driverPhotoUrl = it.trim().take(500) }, label = { Text("Foto pública do motorista — URL HTTPS opcional") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverAbout, { driverAbout = it.take(320) }, label = { Text("Apresentação do motorista — opcional") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverRating, { driverRating = it.take(12) }, label = { Text("Nota pública — opcional") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(driverReviewCount, { driverReviewCount = it.filter(Char::isDigit).take(7) }, label = { Text("Quantidade de avaliações — opcional") }, modifier = Modifier.fillMaxWidth())
@@ -686,6 +688,9 @@ private fun OnlineSettingsEditor(
                         driverDisplayName = driverName.trim(),
                         driverUsername = normalizedUsername,
                         driverWhatsapp = driverWhatsapp.trim(),
+                        driverPhotoUrl = driverPhotoUrl.trim(),
+                        driverPhotoUrl = driverPhotoUrl.trim(),
+                        driverPhotoUrl = driverPhotoUrl.trim(),
                         driverPublicAbout = driverAbout.trim(),
                         driverPublicRating = driverRating.trim(),
                         driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
@@ -718,6 +723,7 @@ private fun OnlineSettingsEditor(
             driverDisplayName = driverName.trim(),
             driverUsername = driverUsername,
             driverWhatsapp = driverWhatsapp.trim(),
+            driverPhotoUrl = driverPhotoUrl.trim(),
             driverPublicAbout = driverAbout.trim(),
             driverPublicRating = driverRating.trim(),
             driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
@@ -743,6 +749,7 @@ private fun OnlineSettingsEditor(
                     driverDisplayName = driverName.trim(),
                     driverUsername = DriverIdentityRules.normalizeUsername(driverUsername),
                     driverWhatsapp = driverWhatsapp.trim(),
+                    driverPhotoUrl = driverPhotoUrl.trim(),
                     driverPublicAbout = driverAbout.trim(),
                     driverPublicRating = driverRating.trim(),
                     driverPublicReviewCount = driverReviewCount.toIntOrNull() ?: 0,
