@@ -14,12 +14,36 @@ permissions:
 jobs:
   seat-change:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       BASE: https://rota-certa-7ccc8.web.app
       DRIVER: viagem-certa
-      AGENDA: WlaYvVil5AlaNHbEthN-oBbb5JSIIQgJ
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase credential missing"
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Install firebase admin
+        shell: bash
+        run: npm install --no-save firebase-admin@13.4.0
+
       - name: Create change seats reduce and cancel
         shell: bash
         run: |
@@ -36,36 +60,53 @@ jobs:
           }
           trap cleanup EXIT
 
-          curl --retry 6 --retry-delay 2 --fail --silent --show-error             "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda"             -H 'Accept: application/json' > /tmp/agenda.json
-
           node <<'NODE'
           const fs=require('fs');
-          const agenda=JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
-          const trips=Array.isArray(agenda.trips)?agenda.trips:[];
-          const candidates=trips
-            .filter(t => t && t.isFull!==true && t.status!=="FULL" && t.canReserve!==false)
-            .filter(t => Number(t.availableSeatsMinimum ?? -1) >= 2)
-            .sort((a,b)=>Number(a.departureAtMillis||0)-Number(b.departureAtMillis||0));
-          if(!candidates.length){
-            console.error('NO_TRIP_WITH_TWO_SEATS');
-            process.exit(4);
-          }
-          const t=candidates[0];
-          const stops=Array.isArray(t.stops)?[...t.stops].sort((a,b)=>Number(a.order)-Number(b.order)):[];
-          if(stops.length<2) process.exit(5);
-          const selected={
-            tripId:t.tripId||t.publicToken,
-            title:t.title||'',
-            beforeMin:Number(t.availableSeatsMinimum),
-            beforeMax:Number(t.availableSeatsMaximum),
-            capacity:Number(t.capacity||0),
-            boardingStopId:stops[0].id,
-            dropoffStopId:stops[stops.length-1].id
-          };
-          fs.writeFileSync('/tmp/selected.json',JSON.stringify(selected));
-          console.log('SELECTED_TRIP='+selected.title);
-          console.log('BEFORE_AVAILABLE_MIN='+selected.beforeMin);
-          console.log('BEFORE_AVAILABLE_MAX='+selected.beforeMax);
+          const admin=require('firebase-admin');
+          admin.initializeApp();
+          const db=admin.firestore();
+          (async()=>{
+            const snap=await db.collection('trips').get();
+            const now=Date.now();
+            const candidates=[];
+            for(const doc of snap.docs){
+              const t=doc.data()||{};
+              if(String(t.driverUsername||'').toLowerCase()!=='viagem-certa') continue;
+              if(Number(t.departureAtMillis||0)<=now) continue;
+              if(t.publicBookingEnabled!==true) continue;
+              if(String(t.status||'')==='FULL') continue;
+              const stops=Array.isArray(t.stops)?[...t.stops].sort((a,b)=>Number(a.order)-Number(b.order)):[];
+              if(stops.length<2) continue;
+              const expected=stops.length-1;
+              const loads=Array.isArray(t.segmentLoads)?t.segmentLoads.slice(0,expected).map(x=>Math.max(0,Number(x||0))):[];
+              if(loads.length!==expected) continue;
+              const capacity=Math.max(0,Number(t.capacity||0));
+              const available=loads.map(load=>Math.max(0,capacity-load));
+              const min=Math.min(...available);
+              const max=Math.max(...available);
+              if(min<2) continue;
+              candidates.push({
+                tripId:doc.id,
+                title:String(t.title||''),
+                beforeMin:min,
+                beforeMax:max,
+                capacity,
+                departureAtMillis:Number(t.departureAtMillis||0),
+                boardingStopId:String(stops[0].id||''),
+                dropoffStopId:String(stops[stops.length-1].id||'')
+              });
+            }
+            candidates.sort((a,b)=>a.departureAtMillis-b.departureAtMillis);
+            if(!candidates.length){
+              console.error('NO_TRIP_WITH_TWO_SEATS');
+              process.exit(4);
+            }
+            const selected=candidates[0];
+            fs.writeFileSync('/tmp/selected.json',JSON.stringify(selected));
+            console.log('SELECTED_TRIP='+selected.title);
+            console.log('BEFORE_AVAILABLE_MIN='+selected.beforeMin);
+            console.log('BEFORE_AVAILABLE_MAX='+selected.beforeMax);
+          })().catch(e=>{console.error('DISCOVERY_FAILED='+e.name);process.exit(5)});
           NODE
 
           TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
@@ -106,7 +147,6 @@ jobs:
           UPDATE2_HTTP="$(curl --silent --show-error -o /tmp/update2-response.json -w '%{http_code}'             -X PUT "$BASE/v1/public/trips/$TRIP_ID/bookings/$BOOKING_ID"             -H 'Content-Type: application/json'             -H 'Accept: application/json'             --data-binary @/tmp/update2.json)"
           echo "UPDATE_TO_2_HTTP=$UPDATE2_HTTP"
           test "$UPDATE2_HTTP" = "200"
-
           node -e 'const x=require("/tmp/update2-response.json"); if(x.changed!==true) process.exit(8); console.log("UPDATE_TO_2_RESPONSE=PASS")'
 
           curl --retry 4 --retry-delay 1 --fail --silent --show-error             "$BASE/v1/public/trips/$TRIP_ID" -H 'Accept: application/json' > /tmp/after-update2.json
