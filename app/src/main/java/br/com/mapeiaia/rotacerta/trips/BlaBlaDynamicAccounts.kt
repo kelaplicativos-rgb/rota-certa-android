@@ -59,9 +59,23 @@ class BlaBlaDynamicAccountRegistry(context: Context) {
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    fun list(): List<BlaBlaDynamicAccount> = runCatching {
-        json.decodeFromString<List<BlaBlaDynamicAccount>>(prefs.getString(KEY_ACCOUNTS, "[]") ?: "[]")
-    }.getOrDefault(emptyList())
+    fun list(): List<BlaBlaDynamicAccount> {
+        val decoded = runCatching {
+            json.decodeFromString<List<BlaBlaDynamicAccount>>(prefs.getString(KEY_ACCOUNTS, "[]") ?: "[]")
+        }.getOrDefault(emptyList())
+        val sanitized = decoded.map { account ->
+            account.copy(profileName = BlaBlaDriverProfileNamePolicy.normalize(account.profileName))
+        }
+        if (sanitized != decoded) {
+            save(sanitized)
+            UnifiedDebugEventStore.record(
+                "PROFILE_NAME_CONTAMINATION_CLEANED",
+                appContext.packageName,
+                "accounts=${decoded.size} cleaned=${decoded.zip(sanitized).count { (before, after) -> before.profileName != after.profileName }}",
+            )
+        }
+        return sanitized
+    }
 
     fun get(id: String?): BlaBlaDynamicAccount? = id?.let { wanted -> list().firstOrNull { it.id == wanted } }
 
