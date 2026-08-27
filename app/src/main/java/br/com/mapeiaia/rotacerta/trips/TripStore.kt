@@ -25,6 +25,7 @@ class TripStore(context: Context) {
     private val publicExternalBindingsKey = tenantScope.key(KEY_PUBLIC_EXTERNAL_BINDINGS)
     private val secretStore = TripSecretStore(appContext, tenantScope)
     private val publicAgendaLinkStore = PublicAgendaLinkStore(appContext, tenantScope)
+    private val passengerIdentityStore = PassengerIdentityStore(appContext)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null)).orEmpty()
@@ -94,7 +95,11 @@ class TripStore(context: Context) {
         } else {
             booking
         }
-        val normalized = withPreservedLocalMetadata.copy(updatedAtMillis = System.currentTimeMillis())
+        val identity = passengerIdentityStore.ensureLocalBookingProfile(withPreservedLocalMetadata)
+        val normalized = withPreservedLocalMetadata.copy(
+            passengerId = identity?.id ?: withPreservedLocalMetadata.passengerId,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
         val current = all.filterNot { it.id == normalized.id }
         prefs.edit().putString(bookingsKey, json.encodeToString(listOf(normalized) + current)).apply()
         refreshTripStatus(normalized.tripId)
