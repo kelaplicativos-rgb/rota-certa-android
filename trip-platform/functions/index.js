@@ -528,6 +528,10 @@ function publicCalendarUrlFor(req, username, agendaToken) {
   return base ? `${base}${path}` : path;
 }
 
+function publicAgendaLinkRef(username) {
+  return db.collection("tripPublicAgendaLinks").doc(normalizeUsername(username));
+}
+
 async function registerDriver(req, res) {
   await enforceBookingRateLimit(req);
   const displayName = cleanText(req.body && req.body.displayName, 120);
