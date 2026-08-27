@@ -24,6 +24,7 @@ class TripStore(context: Context) {
     private val onlineKey = tenantScope.key(KEY_ONLINE)
     private val publicExternalBindingsKey = tenantScope.key(KEY_PUBLIC_EXTERNAL_BINDINGS)
     private val secretStore = TripSecretStore(appContext, tenantScope)
+    private val publicAgendaLinkStore = PublicAgendaLinkStore(appContext, tenantScope)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null)).orEmpty()
@@ -108,14 +109,27 @@ class TripStore(context: Context) {
 
     fun onlineSettings(): TripOnlineSettings {
         val publicSettings = decode<TripOnlineSettings>(prefs.getString(onlineKey, null)) ?: TripOnlineSettings()
-        return publicSettings.copy(driverToken = secretStore.driverToken())
+        val stablePublicAgendaToken = publicAgendaLinkStore.currentOrMigrate(publicSettings.publicCalendarToken)
+        return publicSettings.copy(
+            driverToken = secretStore.driverToken(),
+            publicCalendarToken = stablePublicAgendaToken,
+        )
     }
 
     fun saveOnlineSettings(settings: TripOnlineSettings) {
         secretStore.saveDriverToken(settings.driverToken)
-        val withoutAdministrativeSecret = settings.copy(driverToken = "")
+        val stablePublicAgendaToken = publicAgendaLinkStore.currentOrMigrate(settings.publicCalendarToken)
+        val withoutAdministrativeSecret = settings.copy(
+            driverToken = "",
+            publicCalendarToken = stablePublicAgendaToken,
+        )
         prefs.edit().putString(onlineKey, json.encodeToString(withoutAdministrativeSecret)).apply()
     }
+
+    fun replacePublicAgendaLinkAfterConfirmedRotation(
+        expectedCurrent: String,
+        replacement: String,
+    ): Boolean = publicAgendaLinkStore.replaceAfterConfirmedRotation(expectedCurrent, replacement)
 
     fun clearOnlineCredentials() {
         secretStore.clear()
@@ -220,6 +234,9 @@ data class TripOnlineSettings(
     val driverPreferences: String = "",
     val paymentInstructions: String = "",
     val googleCalendarPublicUrl: String = "",
+    val publicProfileMode: PublicDriverProfileMode = PublicDriverProfileMode.MANUAL,
+    val selectedPublicProfileAccountId: String = "",
+    val publicProfileOverrideFields: Set<String> = emptySet(),
 ) {
     val configured: Boolean
         get() = apiBaseUrl.startsWith("https://") && driverToken.isNotBlank()
@@ -239,6 +256,50 @@ data class TripOnlineSettings(
 
     val googleCalendarMirrorUrl: String?
         get() = googleCalendarPublicUrl.trim().takeIf { it.startsWith("https://") }
+}
+
+internal class PublicAgendaLinkStore(
+    context: Context,
+    tenantScope: TenantStorageScope,
+) {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val valueKey = tenantScope.key(KEY_VALUE)
+    private val generationKey = tenantScope.key(KEY_GENERATION)
+
+    @Synchronized
+    fun currentOrMigrate(legacyValue: String = ""): String {
+        val current = prefs.getString(valueKey, "").orEmpty().trim()
+        if (current.isNotBlank()) return current
+        val candidate = normalize(legacyValue)
+        if (candidate.length < MIN_LENGTH) return ""
+        prefs.edit().putString(valueKey, candidate).apply()
+        return candidate
+    }
+
+    @Synchronized
+    fun replaceAfterConfirmedRotation(expectedCurrentRaw: String, replacementRaw: String): Boolean {
+        val expected = normalize(expectedCurrentRaw)
+        val replacement = normalize(replacementRaw)
+        if (expected.length < MIN_LENGTH || replacement.length < MIN_LENGTH || replacement == expected) return false
+        val current = prefs.getString(valueKey, "").orEmpty().trim()
+        if (current != expected) return false
+        return prefs.edit()
+            .putString(valueKey, replacement)
+            .putLong(generationKey, generation() + 1L)
+            .commit()
+    }
+
+    fun generation(): Long = prefs.getLong(generationKey, 1L).coerceAtLeast(1L)
+
+    private fun normalize(value: String): String =
+        value.trim().filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(120)
+
+    companion object {
+        private const val PREFS = "rota_certa_public_agenda_link_v1"
+        private const val KEY_VALUE = "public_agenda_identifier"
+        private const val KEY_GENERATION = "generation"
+        private const val MIN_LENGTH = 16
+    }
 }
 
 private class TripSecretStore(
