@@ -122,7 +122,7 @@ internal object BlaBlaPublicProfileModule {
             vehicleColor = keep(capture.vehicleColor, prior?.vehicleColor.orEmpty()),
             amenities = keep(capture.amenities, prior?.amenities.orEmpty()),
             preferences = keep(capture.preferences, prior?.preferences.orEmpty()),
-            reviews = cleanedReviews.takeIf(List<BlaBlaPublicReview>::isNotEmpty) ?: prior?.reviews.orEmpty(),
+            reviews = cleanedReviews.takeIf { it.isNotEmpty() } ?: prior?.reviews.orEmpty(),
             identityVerified = true,
             lastSyncedAtMillis = nowMillis,
         )
