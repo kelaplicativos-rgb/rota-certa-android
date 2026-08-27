@@ -46,13 +46,58 @@
     .reviewBlock{padding:18px 0;border-bottom:1px solid #e7e9ed}.reviewBlock:last-child{border-bottom:0}.reviewLabel{font-size:19px;color:var(--muted);font-weight:800}.reviewValue{font-size:23px;line-height:1.35;font-weight:900;margin-top:5px}
     .priceTotal{font-size:30px;font-weight:950}.codeBox{display:block;background:#f1f3f5;border-radius:14px;padding:14px;font-size:20px;overflow-wrap:anywhere}
     .actions{display:grid;gap:12px;margin-top:16px}.calendarAction{margin-top:12px}.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+    .authCard{max-width:560px;margin:42px auto 0}.authActions{display:grid;gap:12px;margin-top:18px}.authHint{font-size:17px;line-height:1.45;color:var(--muted);margin-top:12px}
+    .searchShell{border:4px solid #0879df;border-radius:32px;overflow:hidden;background:#fff;margin-top:18px}.searchRouteRow,.searchDateRow,.searchPassengersRow{position:relative;border-bottom:1px solid #dfe3e8}.searchFieldButton{width:100%;border:0;background:#fff;text-align:left;padding:18px 72px 18px 20px;cursor:pointer}.searchLabel{display:block;font-size:20px;font-weight:950;color:#4f6582}.searchValue{display:block;font-size:25px;line-height:1.25;font-weight:500;color:#17253c;margin-top:4px}.searchPlaceholder{color:#5e6f86}.swapButton{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:1px solid #d9e0e8;background:#fff;font-size:24px;font-weight:900;color:#0879df;cursor:pointer}.searchDateRow{display:grid;grid-template-columns:1fr 1fr}.searchDateRow .searchFieldButton:first-child{border-right:1px solid #dfe3e8}.searchPassengersRow .searchFieldButton{padding-right:20px}.searchSubmit{width:100%;min-height:78px;border:0;background:#0879df;color:#fff;font-size:27px;font-weight:950;cursor:pointer}.searchSubmit:active{filter:brightness(.96)}
+    .pickerPage{min-height:70vh}.pickerHeader{display:flex;align-items:center;gap:14px;margin-bottom:16px}.pickerHeader .backButton{font-size:30px}.pickerSearch{position:sticky;top:0;background:#f5f6f8;padding:8px 0 12px;z-index:4}.locationCurrent{display:flex;align-items:center;gap:12px;width:100%;border:0;background:#fff;border-radius:18px;padding:18px;text-align:left;font-size:21px;font-weight:900;cursor:pointer;margin-top:12px}.locationIcon{font-size:28px;color:#0879df}.suggestionList{display:grid;gap:10px;margin-top:14px}.suggestionButton{width:100%;border:1px solid #e1e5ea;background:#fff;border-radius:18px;padding:16px;text-align:left;cursor:pointer}.suggestionName{display:block;font-size:21px;font-weight:900}.suggestionAddress{display:block;font-size:16px;color:var(--muted);margin-top:4px}.pickerMessage{font-size:17px;color:var(--muted);margin:12px 0}.manualLocation{margin-top:12px}
+    .calendarToolbar{display:flex;gap:10px;margin:10px 0 18px}.calendarMonths{display:grid;gap:26px}.calendarMonth{background:#fff;border-radius:22px;padding:18px}.calendarMonthTitle{font-size:23px;font-weight:950;margin:0 0 14px;text-transform:capitalize}.calendarWeek,.calendarGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center}.calendarWeek span{font-size:14px;color:var(--muted);font-weight:900;padding:5px 0}.calendarDay{aspect-ratio:1;border:0;border-radius:50%;background:transparent;font-size:17px;cursor:pointer;color:var(--ink)}.calendarDay:hover{background:#eef4fb}.calendarDay:disabled{color:#c4c8cf;cursor:not-allowed}.calendarDaySelected{background:#0879df!important;color:#fff!important;font-weight:950}.calendarBlank{aspect-ratio:1}
+    .seatPickerCard{max-width:560px;margin:34px auto}.seatStepper{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px 4px}.seatStepperButton{width:64px;height:64px;border-radius:50%;border:2px solid #0879df;background:#fff;color:#0879df;font-size:36px;font-weight:700;cursor:pointer}.seatStepperValue{font-size:46px;font-weight:950}.seatPickerConfirm{margin-top:12px}
+    .searchSummary{background:#fff;border-radius:20px;padding:16px 18px;margin:12px 0 18px;border:1px solid #e2e5e9}.searchSummaryRoute{font-size:24px;font-weight:950}.searchSummaryMeta{font-size:17px;color:var(--muted);margin-top:5px}.resultSectionTitle{font-size:25px;font-weight:950;margin:22px 0 6px}.resultEmpty{background:#fff;border:1px solid #e3e6ea;border-radius:18px;padding:18px;color:var(--muted);font-size:18px;line-height:1.45}
     @media(max-width:480px){html{font-size:17px}.pageTitle{font-size:30px}.agendaRouteLine,.tripRoute{font-size:29px}.timelineStop{grid-template-columns:78px 20px 1fr}.time{font-size:20px}.stopName{font-size:22px}}
   </style>
 </head>
 <body>
 <main>
   <div class="brand">ROTA CERTA</div>
-  <button id="openPassengerPortal" class="backButton" type="button">Minhas reservas</button>
+  <button id="openPassengerPortal" class="backButton hidden" type="button">Minhas reservas</button>
+
+
+  <section id="accessGate" class="hidden">
+    <div class="card authCard">
+      <h1 class="pageTitle">Entre para buscar sua viagem</h1>
+      <p class="lead">Use seu WhatsApp e sua senha para acessar a Agenda Pública do Rota Certa.</p>
+      <div id="accessLoginBox">
+        <label>WhatsApp
+          <input id="accessContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
+        </label>
+        <label>Senha
+          <input id="accessPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
+        </label>
+        <p id="accessMessage" class="muted"></p>
+        <div class="authActions">
+          <button id="accessLogin" class="primary" type="button">Entrar</button>
+          <button id="accessShowSignup" class="secondary" type="button">Criar meu acesso</button>
+        </div>
+      </div>
+      <div id="accessSignupBox" class="hidden">
+        <label>WhatsApp
+          <input id="signupContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
+        </label>
+        <label>Crie uma senha
+          <input id="signupPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+        </label>
+        <label>Repita a senha
+          <input id="signupPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+        </label>
+        <p id="signupMessage" class="muted"></p>
+        <div class="authActions">
+          <button id="accessSignup" class="primary" type="button">Criar acesso e entrar</button>
+          <button id="accessBackLogin" class="secondary" type="button">Já tenho acesso</button>
+        </div>
+        <p class="authHint">Este acesso identifica suas reservas pelo número de WhatsApp informado.</p>
+      </div>
+    </div>
+  </section>
 
   <section id="loading" class="card">Carregando…</section>
   <section id="error" class="card error hidden"></section>
@@ -60,11 +105,71 @@
   <section id="agenda" class="hidden">
     <h1 class="pageTitle">Escolha sua viagem</h1>
     <p id="driverName" class="lead"></p>
-    <p class="lead">Veja a data, a rota, o horário e as vagas. Viagem cheia fica indisponível.</p>
+    <div class="searchShell" aria-label="Filtro de viagens">
+      <div class="searchRouteRow">
+        <button id="searchFrom" class="searchFieldButton" type="button">
+          <span class="searchLabel">De</span><span id="searchFromValue" class="searchValue searchPlaceholder">Cidade, estação, local</span>
+        </button>
+        <button id="searchSwap" class="swapButton" type="button" aria-label="Inverter origem e destino">⇅</button>
+      </div>
+      <div class="searchRouteRow">
+        <button id="searchTo" class="searchFieldButton" type="button">
+          <span class="searchLabel">Para</span><span id="searchToValue" class="searchValue searchPlaceholder">Cidade, estação, local</span>
+        </button>
+      </div>
+      <div class="searchDateRow">
+        <button id="searchDeparture" class="searchFieldButton" type="button"><span class="searchLabel">Partida</span><span id="searchDepartureValue" class="searchValue">Hoje</span></button>
+        <button id="searchReturn" class="searchFieldButton" type="button"><span class="searchLabel">Volta</span><span id="searchReturnValue" class="searchValue searchPlaceholder">Data</span></button>
+      </div>
+      <div class="searchPassengersRow">
+        <button id="searchSeats" class="searchFieldButton" type="button"><span class="searchLabel">Passageiros</span><span id="searchSeatsValue" class="searchValue">1 passageiro</span></button>
+      </div>
+      <button id="searchSubmit" class="searchSubmit" type="button">Procurar</button>
+    </div>
+    <p id="searchMessage" class="muted"></p>
+    <p class="lead">Ou veja todas as próximas viagens publicadas logo abaixo.</p>
     <div id="agendaTrips"></div>
     <div class="card">
       <button id="subscribeCalendar" class="secondary">Compartilhar calendário das viagens</button>
     </div>
+  </section>
+
+  <section id="locationPicker" class="hidden pickerPage">
+    <div class="pickerHeader"><button id="locationBack" class="backButton" type="button">‹</button><h1 class="stepTitle">Escolha o local</h1></div>
+    <div class="pickerSearch">
+      <input id="locationQuery" autocomplete="off" placeholder="Cidade, estação, local">
+      <button id="useCurrentLocation" class="locationCurrent" type="button"><span class="locationIcon">⌖</span><span>Usar localização atual</span></button>
+      <button id="useTypedLocation" class="secondary manualLocation" type="button">Usar o local digitado</button>
+      <p id="locationMessage" class="pickerMessage"></p>
+    </div>
+    <div id="locationSuggestions" class="suggestionList"></div>
+  </section>
+
+  <section id="calendarPicker" class="hidden pickerPage">
+    <div class="pickerHeader"><button id="calendarBack" class="backButton" type="button">‹</button><h1 id="calendarTitle" class="stepTitle">Quando você vai?</h1></div>
+    <div class="calendarToolbar"><button id="calendarNoReturn" class="secondary hidden" type="button">Sem volta</button></div>
+    <div id="calendarMonths" class="calendarMonths"></div>
+  </section>
+
+  <section id="seatPicker" class="hidden pickerPage">
+    <div class="pickerHeader"><button id="seatBack" class="backButton" type="button">‹</button><h1 class="stepTitle">Quantos lugares?</h1></div>
+    <div class="card seatPickerCard">
+      <p class="lead">Selecione quantos lugares você precisa.</p>
+      <div class="seatStepper">
+        <button id="seatMinus" class="seatStepperButton" type="button" aria-label="Diminuir">−</button>
+        <span id="seatPickerValue" class="seatStepperValue">1</span>
+        <button id="seatPlus" class="seatStepperButton" type="button" aria-label="Aumentar">+</button>
+      </div>
+      <button id="seatConfirm" class="primary seatPickerConfirm" type="button">Confirmar</button>
+    </div>
+  </section>
+
+  <section id="searchResults" class="hidden">
+    <button id="resultsBack" class="backButton" type="button">‹ Alterar busca</button>
+    <h1 class="pageTitle">Viagens encontradas</h1>
+    <div id="searchSummary" class="searchSummary"></div>
+    <div id="outboundResult"></div>
+    <div id="returnResult"></div>
   </section>
 
   <section id="trip" class="hidden">
