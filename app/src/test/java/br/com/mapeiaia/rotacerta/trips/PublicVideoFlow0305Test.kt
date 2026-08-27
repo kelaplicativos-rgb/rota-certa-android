@@ -15,6 +15,7 @@ class PublicVideoFlow0305Test {
             driverDisplayName = "Motorista",
             driverUsername = "motorista",
             driverWhatsapp = "(11) 99999-9999",
+            driverPhotoUrl = "https://example.test/driver.jpg",
             driverPublicAbout = "Viagens com conforto.",
             driverPublicRating = "4,9",
             driverPublicReviewCount = 123,
@@ -28,6 +29,7 @@ class PublicVideoFlow0305Test {
 
         assertTrue(settings.configured)
         assertEquals("(11) 99999-9999", settings.driverWhatsapp)
+        assertEquals("https://example.test/driver.jpg", settings.driverPhotoUrl)
         assertEquals("4,9", settings.driverPublicRating)
         assertEquals(123, settings.driverPublicReviewCount)
         assertEquals("Pix ou dinheiro no carro", settings.paymentInstructions)
