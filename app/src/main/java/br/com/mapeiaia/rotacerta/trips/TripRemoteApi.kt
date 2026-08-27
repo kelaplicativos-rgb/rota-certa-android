@@ -42,6 +42,14 @@ data class DriverPushTokenResponse(
 )
 
 @Serializable
+data class DriverPublicReviewPayload(
+    val author: String = "",
+    val rating: String = "",
+    val dateLabel: String = "",
+    val text: String = "",
+)
+
+@Serializable
 data class DriverAgendaEnsureRequest(
     val publicAgendaToken: String = "",
     val publicProfileMode: String = PublicDriverProfileMode.MANUAL.name,
@@ -54,6 +62,7 @@ data class DriverAgendaEnsureRequest(
     val driverPublicAbout: String = "",
     val driverPublicRating: String = "",
     val driverPublicReviewCount: Int = 0,
+    val driverPublicReviews: List<DriverPublicReviewPayload> = emptyList(),
     val driverPublicBadge: String = "",
     val vehicleMakeModel: String = "",
     val vehicleColor: String = "",
@@ -212,6 +221,14 @@ class TripRemoteApi(
                 driverPublicAbout = publicProfile.about.trim(),
                 driverPublicRating = publicProfile.rating.trim(),
                 driverPublicReviewCount = publicProfile.reviewCount?.coerceAtLeast(0) ?: 0,
+                driverPublicReviews = publicProfile.reviews.map { review ->
+                    DriverPublicReviewPayload(
+                        author = review.author.trim(),
+                        rating = review.rating.trim(),
+                        dateLabel = review.dateLabel.trim(),
+                        text = review.text.trim(),
+                    )
+                },
                 driverPublicBadge = publicProfile.badge.trim(),
                 vehicleMakeModel = publicProfile.vehicleMakeModel.trim(),
                 vehicleColor = publicProfile.vehicleColor.trim(),
