@@ -541,16 +541,24 @@ async function registerDriver(req, res) {
   const driverToken = crypto.randomBytes(32).toString("base64url");
   const publicAgendaToken = crypto.randomBytes(24).toString("base64url");
   const ref = db.collection("tripDrivers").doc(username);
+  const linkRef = publicAgendaLinkRef(username);
   const now = Date.now();
   try {
     await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
-      if (existing.exists) throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      const [existing, existingLink] = await Promise.all([tx.get(ref), tx.get(linkRef)]);
+      if (existing.exists || existingLink.exists) throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
       tx.create(ref, {
         username,
         displayName,
         driverTokenHash: sha256Hex(driverToken),
         agendaTokenHash: sha256Hex(publicAgendaToken),
+        createdAtMillis: now,
+        updatedAtMillis: now,
+      });
+      tx.create(linkRef, {
+        driverUsername: username,
+        tokenHash: sha256Hex(publicAgendaToken),
+        generation: 1,
         createdAtMillis: now,
         updatedAtMillis: now,
       });
