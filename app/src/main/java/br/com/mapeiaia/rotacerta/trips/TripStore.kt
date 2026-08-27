@@ -208,6 +208,16 @@ data class TripOnlineSettings(
     val publicCalendarToken: String = "",
     val driverDisplayName: String = "",
     val driverUsername: String = "",
+    val driverWhatsapp: String = "",
+    val driverPublicAbout: String = "",
+    val driverPublicRating: String = "",
+    val driverPublicReviewCount: Int = 0,
+    val driverPublicBadge: String = "",
+    val vehicleMakeModel: String = "",
+    val vehicleColor: String = "",
+    val vehicleAmenities: String = "",
+    val driverPreferences: String = "",
+    val paymentInstructions: String = "",
     val googleCalendarPublicUrl: String = "",
 ) {
     val configured: Boolean
