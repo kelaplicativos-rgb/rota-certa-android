@@ -998,6 +998,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     explicitEmptyRoster = resolution.explicitEmpty,
                     rosterHasMore = false,
                     rosterTerminalEvidence = true,
+                    itineraryStops = if (resolution.itineraryAuthoritative) {
+                        resolution.itineraryStops
+                    } else {
+                        result.itineraryStops
+                    },
                 )
             } ?: result).let { source ->
                 source.copy(
@@ -1011,7 +1016,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_NETWORK_SOURCE_APPLIED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} exactTrip=true rosterComplete=true piiLogged=false",
+                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterComplete=true piiLogged=false",
                 )
             }
             val rosterSignature = directRosterSignature(sourceBackedResult)
