@@ -97,6 +97,10 @@ internal object BlaBlaPublicProfileModule {
             it.accountId == accountId && it.profileUuid.equals(expected, ignoreCase = true)
         }
         fun keep(incoming: String, old: String): String = incoming.trim().takeIf(String::isNotEmpty) ?: old
+        fun keepProfileName(incoming: String, old: String): String =
+            BlaBlaDriverProfileNamePolicy.normalize(incoming)
+                ?: BlaBlaDriverProfileNamePolicy.normalize(old)
+                ?: ""
         val cleanedReviews = capture.reviews
             .map { review ->
                 review.copy(
@@ -112,7 +116,7 @@ internal object BlaBlaPublicProfileModule {
         val snapshot = BlaBlaPublicProfileSnapshot(
             accountId = accountId,
             profileUuid = expected,
-            profileName = keep(capture.profileName, prior?.profileName.orEmpty()),
+            profileName = keepProfileName(capture.profileName, prior?.profileName.orEmpty()),
             photoUrl = capture.photoUrl.trim().takeIf { it.startsWith("https://") } ?: prior?.photoUrl.orEmpty(),
             about = keep(capture.about, prior?.about.orEmpty()),
             rating = keep(capture.rating, prior?.rating.orEmpty()),
@@ -138,7 +142,10 @@ class BlaBlaPublicProfileStore(context: Context) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun read(accountId: String): BlaBlaPublicProfileSnapshot? =
-        all().firstOrNull { it.accountId == accountId }
+        all().firstOrNull { it.accountId == accountId }?.let { snapshot ->
+            val sanitizedName = BlaBlaDriverProfileNamePolicy.normalize(snapshot.profileName).orEmpty()
+            if (sanitizedName == snapshot.profileName) snapshot else snapshot.copy(profileName = sanitizedName)
+        }
 
     fun all(): List<BlaBlaPublicProfileSnapshot> = runCatching {
         json.decodeFromString<List<BlaBlaPublicProfileSnapshot>>(prefs.getString(key, "[]") ?: "[]")
