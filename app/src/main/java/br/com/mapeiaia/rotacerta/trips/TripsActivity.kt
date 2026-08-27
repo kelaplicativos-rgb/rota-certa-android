@@ -100,6 +100,23 @@ private fun TripApp(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity) {
+        val online = store.onlineSettings()
+        if (online.configured) {
+            val result = PublicAgendaAutoSync0300.sync(
+                context = activity,
+                store = store,
+                configuredVehicleCapacity = appSettings.vehicleCapacity,
+            )
+            if (result.localPublished + result.externalPublished > 0) {
+                refresh()
+                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) disponível(is) no link."
+            } else if (result.failures > 0) {
+                message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
+            }
+        }
+    }
+
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         Column(
             modifier = Modifier
