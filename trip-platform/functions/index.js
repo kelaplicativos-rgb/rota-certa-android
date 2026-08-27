@@ -972,6 +972,182 @@ function publicCancellationToken(token, idempotencyKey) {
   return crypto.createHmac("sha256", secret).update(`${token}:${idempotencyKey}:cancel`).digest("base64url");
 }
 
+function passengerPassword(value) {
+  const password = String(value || "");
+  if (password.length < 8 || password.length > 72) {
+    throw Object.assign(new Error("A senha precisa ter entre 8 e 72 caracteres."), { httpStatus: 400, code: "invalid_password" });
+  }
+  return password;
+}
+
+function passengerPasswordDigest(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString("hex");
+}
+
+function passengerBookingIndexRef(passengerContact, tripToken, bookingId) {
+  const contactHash = sha256Hex(passengerContact);
+  const refId = sha256Hex(`${tripToken}:${bookingId}`).slice(0, 48);
+  return db.collection("passengerBookingIndex").doc(contactHash).collection("bookings").doc(refId);
+}
+
+function writePassengerBookingIndex(tx, passengerContact, tripToken, bookingId, updatedAtMillis = Date.now()) {
+  if (!passengerContact || !tripToken || !bookingId) return;
+  tx.set(
+    passengerBookingIndexRef(passengerContact, tripToken, bookingId),
+    { tripToken, bookingId, updatedAtMillis },
+    { merge: true },
+  );
+}
+
+function movePassengerBookingIndex(tx, previousContact, nextContact, tripToken, bookingId, updatedAtMillis = Date.now()) {
+  if (previousContact && previousContact !== nextContact) {
+    tx.delete(passengerBookingIndexRef(previousContact, tripToken, bookingId));
+  }
+  writePassengerBookingIndex(tx, nextContact, tripToken, bookingId, updatedAtMillis);
+}
+
+function passengerSessionToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+async function createPassengerSession(passengerContact) {
+  const token = passengerSessionToken();
+  const tokenHash = sha256Hex(token);
+  const now = Date.now();
+  const expiresAtMillis = now + 30 * 24 * 60 * 60 * 1000;
+  await db.collection("passengerSessions").doc(tokenHash).set({
+    contactHash: sha256Hex(passengerContact),
+    passengerContact,
+    createdAtMillis: now,
+    expiresAtMillis,
+  });
+  return { token, expiresAtMillis };
+}
+
+async function requirePassengerSession(req, res) {
+  const authorization = cleanText(req.get("Authorization"), 400);
+  const match = /^Bearer\s+([A-Za-z0-9_-]{32,200})$/i.exec(authorization);
+  if (!match) {
+    fail(res, 401, "passenger_auth_required", "Entre com seu telefone e senha.");
+    return null;
+  }
+  const sessionRef = db.collection("passengerSessions").doc(sha256Hex(match[1]));
+  const snap = await sessionRef.get();
+  if (!snap.exists) {
+    fail(res, 401, "passenger_session_invalid", "Sua sessão não é válida. Entre novamente.");
+    return null;
+  }
+  const data = snap.data();
+  if (Number(data.expiresAtMillis || 0) <= Date.now()) {
+    await sessionRef.delete().catch(() => {});
+    fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
+    return null;
+  }
+  return {
+    passengerContact: cleanText(data.passengerContact, 40),
+    contactHash: cleanText(data.contactHash, 80),
+  };
+}
+
+async function registerPassengerAccount(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  let password;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    password = passengerPassword(req.body && req.body.password);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_account", error.message || "Dados de acesso inválidos.");
+  }
+  const tripToken = cleanText(req.body && req.body.tripToken, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const bookingId = cleanText(req.body && req.body.bookingId, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const cancellationToken = cleanText(req.body && req.body.cancellationToken, 160);
+  if (!tripToken || !bookingId || !cancellationToken) {
+    return fail(res, 400, "booking_proof_required", "Confirme uma reserva sua para criar o acesso.");
+  }
+
+  const tripRef = db.collection("trips").doc(tripToken);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const salt = crypto.randomBytes(16).toString("hex");
+  const passwordHash = passengerPasswordDigest(password, salt);
+  const now = Date.now();
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [tripSnap, bookingSnap, accountSnap] = await Promise.all([
+        tx.get(tripRef),
+        tx.get(bookingRef),
+        tx.get(accountRef),
+      ]);
+      if (!tripSnap.exists || !bookingSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const booking = bookingSnap.data();
+      if (booking.passengerContact !== passengerContact) throw Object.assign(new Error("O telefone não corresponde a esta reserva."), { httpStatus: 403, code: "booking_contact_mismatch" });
+      if (!safeEqual(sha256Hex(cancellationToken), booking.cancellationHash || "")) throw Object.assign(new Error("Código particular inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
+      if (accountSnap.exists) throw Object.assign(new Error("Este telefone já possui acesso. Use Entrar."), { httpStatus: 409, code: "account_exists" });
+      tx.create(accountRef, {
+        passengerContact,
+        passwordSalt: salt,
+        passwordHash,
+        createdAtMillis: now,
+        updatedAtMillis: now,
+      });
+      writePassengerBookingIndex(tx, passengerContact, tripToken, bookingId, now);
+    });
+    const session = await createPassengerSession(passengerContact);
+    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "account_create_failed", error.message || "Não foi possível criar o acesso.");
+  }
+}
+
+async function loginPassengerAccount(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  let password;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    password = passengerPassword(req.body && req.body.password);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", "Telefone ou senha inválidos.");
+  }
+  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
+  if (!accountSnap.exists) return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
+  const account = accountSnap.data();
+  const supplied = passengerPasswordDigest(password, cleanText(account.passwordSalt, 80));
+  if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
+    return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
+  }
+  const session = await createPassengerSession(passengerContact);
+  return json(res, 200, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis });
+}
+
+async function listPassengerBookings(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const snapshot = await db.collection("passengerBookingIndex").doc(session.contactHash)
+    .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get();
+  const entries = await Promise.all(snapshot.docs.map(async (doc) => {
+    const ref = doc.data();
+    const tripToken = cleanText(ref.tripToken, 120);
+    const bookingId = cleanText(ref.bookingId, 120);
+    if (!tripToken || !bookingId) return null;
+    const tripRef = db.collection("trips").doc(tripToken);
+    const [tripSnap, bookingSnap] = await Promise.all([
+      tripRef.get(),
+      tripRef.collection("bookings").doc(bookingId).get(),
+    ]);
+    if (!tripSnap.exists || !bookingSnap.exists) return null;
+    const booking = bookingSnap.data();
+    if (booking.passengerContact !== session.passengerContact) return null;
+    const safeBooking = { id: bookingId, ...booking };
+    delete safeBooking.cancellationHash;
+    delete safeBooking.idempotencyFingerprint;
+    return { trip: safePublicTrip(tripToken, tripSnap.data()), booking: safeBooking };
+  }));
+  return json(res, 200, { bookings: entries.filter(Boolean) });
+}
+
 async function createBooking(req, res, token) {
   await enforceBookingRateLimit(req);
   let debugDriverUsername = "";
@@ -1020,6 +1196,7 @@ async function createBooking(req, res, token) {
         if (!safeEqual(existingData.idempotencyFingerprint || "", fingerprint)) {
           throw Object.assign(new Error("Esta tentativa já foi usada para outra reserva."), { httpStatus: 409, code: "idempotency_conflict" });
         }
+        writePassengerBookingIndex(tx, existingData.passengerContact || passengerContact, token, bookingId, Date.now());
         return {
           replayed: true,
           availableSeats: null,
@@ -1066,6 +1243,7 @@ async function createBooking(req, res, token) {
       const candidatePersisted = { ...candidate };
       delete candidatePersisted.id;
       tx.create(bookingRef, candidatePersisted);
+      writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
       tx.update(tripRef, {
         segmentLoads: reconciled,
         bookingsCount: existing.length + 1,
@@ -1264,6 +1442,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const updatedPersisted = { ...updated };
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
+      movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
       tx.update(tripRef, {
         segmentLoads: loads,
         status: statusForReconciledLoads(trip, loads),
@@ -1312,6 +1491,201 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "booking_update_failed", error.message || "Falha ao alterar reserva.");
+  }
+}
+
+async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly = false) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      const trip = tripSnap.data();
+      if (trip.driverUsername && trip.driverUsername !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const previous = records.find((record) => record.id === bookingId);
+      if (!previous) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (!(previous.source === "ROTA_CERTA" || previous.cancellationHash)) {
+        throw Object.assign(new Error("Esta rota administrativa é exclusiva para reservas protegidas do Rota Certa."), { httpStatus: 409, code: "not_protected_booking" });
+      }
+      if (!cancelOnly && (previous.status === "CANCELLED" || previous.status === "EXPIRED")) {
+        throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
+      }
+
+      const now = Date.now();
+      let updated;
+      let fromIndex = -1;
+      let toIndex = -1;
+      if (cancelOnly) {
+        updated = { ...previous, status: "CANCELLED", updatedAtMillis: now };
+      } else {
+        const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
+        const passengerContact = req.body && req.body.passengerContact
+          ? normalizeBrazilWhatsapp(req.body.passengerContact)
+          : previous.passengerContact;
+        const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80) || previous.boardingStopId;
+        const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80) || previous.dropoffStopId;
+        const seats = req.body && req.body.seats != null ? Number(req.body.seats) : Number(previous.seats || 0);
+        if (!passengerName) throw Object.assign(new Error("Informe o nome do passageiro."), { httpStatus: 400, code: "passenger_name_required" });
+        if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+        ({ fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId));
+        const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+        updated = {
+          ...previous,
+          passengerName,
+          passengerContact,
+          boardingStopId,
+          dropoffStopId,
+          seats,
+          farePerSeatCents,
+          totalFareCents: farePerSeatCents * seats,
+          updatedAtMillis: now,
+        };
+        movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
+      }
+
+      const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
+      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      assertNoOverbooking(trip, loads);
+      const persisted = { ...updated };
+      delete persisted.id;
+      tx.set(bookingRef, persisted, { merge: true });
+      tx.update(tripRef, {
+        segmentLoads: loads,
+        status: statusForReconciledLoads(trip, loads),
+        updatedAtMillis: now,
+      });
+      const safeBooking = { ...updated };
+      delete safeBooking.cancellationHash;
+      delete safeBooking.idempotencyFingerprint;
+      return {
+        booking: safeBooking,
+        segmentLoads: loads,
+        availableSeats: fromIndex >= 0 ? availableForSegmentRange(trip, loads, fromIndex, toIndex) : null,
+      };
+    });
+    return json(res, 200, {
+      booking: result.booking,
+      segmentLoads: result.segmentLoads,
+      availableSeats: result.availableSeats,
+      changed: true,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "protected_booking_admin_failed", error.message || "Falha ao administrar a reserva.");
+  }
+}
+
+async function updatePassengerBooking(req, res, token, bookingIdRaw) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const trip = tripSnap.data();
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const previous = records.find((record) => record.id === bookingId);
+      if (!previous || previous.passengerContact !== session.passengerContact) {
+        throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
+      }
+      if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
+        throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
+      }
+      const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
+      const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80) || previous.boardingStopId;
+      const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80) || previous.dropoffStopId;
+      const seats = req.body && req.body.seats != null ? Number(req.body.seats) : Number(previous.seats || 0);
+      if (!passengerName) throw Object.assign(new Error("Informe seu nome."), { httpStatus: 400, code: "passenger_name_required" });
+      if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+      const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+      const now = Date.now();
+      const updated = {
+        ...previous,
+        passengerName,
+        boardingStopId,
+        dropoffStopId,
+        seats,
+        farePerSeatCents,
+        totalFareCents: farePerSeatCents * seats,
+        updatedAtMillis: now,
+      };
+      const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
+      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      assertNoOverbooking(trip, loads);
+      const persisted = { ...updated };
+      delete persisted.id;
+      tx.set(bookingRef, persisted, { merge: true });
+      writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      tx.update(tripRef, {
+        segmentLoads: loads,
+        status: statusForReconciledLoads(trip, loads),
+        updatedAtMillis: now,
+      });
+      const safeBooking = { ...updated };
+      delete safeBooking.cancellationHash;
+      delete safeBooking.idempotencyFingerprint;
+      return {
+        booking: safeBooking,
+        availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+      };
+    });
+    return json(res, 200, {
+      booking: result.booking,
+      availableSeats: result.availableSeats,
+      changed: true,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "passenger_booking_update_failed", error.message || "Não foi possível alterar a reserva.");
+  }
+}
+
+async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const trip = tripSnap.data();
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const previous = records.find((record) => record.id === bookingId);
+      if (!previous || previous.passengerContact !== session.passengerContact) {
+        throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
+      }
+      const now = Date.now();
+      const updated = { ...previous, status: "CANCELLED", updatedAtMillis: now };
+      const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
+      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      assertNoOverbooking(trip, loads);
+      tx.update(bookingRef, { status: "CANCELLED", updatedAtMillis: now });
+      writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      tx.update(tripRef, {
+        segmentLoads: loads,
+        status: statusForReconciledLoads(trip, loads),
+        updatedAtMillis: now,
+      });
+    });
+    return json(res, 200, { cancelled: true });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "passenger_booking_cancel_failed", error.message || "Não foi possível cancelar a reserva.");
   }
 }
 
@@ -1384,6 +1758,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/session") return await loginPassengerAccount(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
@@ -1393,6 +1770,12 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "PUT") {
       return await upsertDriverCapacityBooking(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "admin" && req.method === "PUT") {
+      return await mutateProtectedBooking(req, res, parts[3], parts[5], false);
+    }
+    if (parts.length === 8 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "admin" && parts[7] === "cancel" && req.method === "POST") {
+      return await mutateProtectedBooking(req, res, parts[3], parts[5], true);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
@@ -1411,6 +1794,12 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
       return await cancelPublicBooking(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 6 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "bookings" && req.method === "PUT") {
+      return await updatePassengerBooking(req, res, parts[4], parts[5]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
+      return await cancelPassengerBooking(req, res, parts[4], parts[5]);
     }
     if (path === "/v1/health" && req.method === "GET") return json(res, 200, { ok: true, service: "rota-certa-trips", version: "stage47" });
     return fail(res, 404, "not_found", "Endpoint não encontrado.");
