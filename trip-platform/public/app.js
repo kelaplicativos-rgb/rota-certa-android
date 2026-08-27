@@ -1164,9 +1164,23 @@ function reviewBooking() {
 
   if (!name) return void ($("bookingMessage").textContent = "Informe seu nome.");
   if (!passengerContact) return void ($("bookingMessage").textContent = "Informe seu WhatsApp com DDD.");
+  if (passengerSessionContact && passengerContact !== passengerSessionContact) {
+    return void ($("bookingMessage").textContent = "Use o mesmo WhatsApp do seu acesso.");
+  }
   if (!$("boarding").value || !$("dropoff").value || seats < 1) {
     return void ($("bookingMessage").textContent = "Escolha um trecho com vagas.");
   }
+
+  const stops = orderedStops();
+  const fromIndex = stops.findIndex((s) => s.id === $("boarding").value);
+  const toIndex = stops.findIndex((s) => s.id === $("dropoff").value);
+  const from = stops[fromIndex]?.name || "Embarque";
+  const to = stops[toIndex]?.name || "Destino";
+  const farePerSeatCents = fareFor(fromIndex, toIndex);
+  const totalFareCents = farePerSeatCents * seats;
+  const requestedCreditCents = Math.max(0, Math.round(Number($("creditToUse").value || 0) * 100));
+  const creditToUseCents = editingExistingBooking ? 0 : Math.min(requestedCreditCents, passengerCreditBalanceCents, totalFareCents);
+  const amountDueCents = Math.max(0, totalFareCents - creditToUseCents);
 
   pendingBooking = {
     passengerName: name,
@@ -1174,15 +1188,8 @@ function reviewBooking() {
     boardingStopId: $("boarding").value,
     dropoffStopId: $("dropoff").value,
     seats,
+    creditToUseCents,
   };
-
-  const stops = orderedStops();
-  const fromIndex = stops.findIndex((s) => s.id === pendingBooking.boardingStopId);
-  const toIndex = stops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
-  const from = stops[fromIndex]?.name || "Embarque";
-  const to = stops[toIndex]?.name || "Destino";
-  const farePerSeatCents = fareFor(fromIndex, toIndex);
-  const totalFareCents = farePerSeatCents * seats;
 
   tracePublicAction("PUBLIC_RESERVATION_STARTED", { seats, fromIndex, toIndex });
 
@@ -1190,8 +1197,16 @@ function reviewBooking() {
   $("reviewDate").textContent = formatDate(trip.departureAtMillis);
   $("reviewStops").textContent = `${from} → ${to}`;
   $("reviewSeats").textContent = seats === 1 ? "1 lugar" : `${seats} lugares`;
-  $("reviewPrice").textContent = totalFareCents > 0 ? formatMoney(totalFareCents) : "Valor não informado";
-  $("reviewPayment").textContent = driverProfile.paymentInstructions || "Forma de pagamento não informada pelo motorista.";
+  if (totalFareCents > 0) {
+    $("reviewPrice").textContent = creditToUseCents > 0
+      ? `${formatMoney(totalFareCents)} • créditos −${formatMoney(creditToUseCents)} • a pagar ${formatMoney(amountDueCents)}`
+      : formatMoney(totalFareCents);
+  } else {
+    $("reviewPrice").textContent = "Valor não informado";
+  }
+  $("reviewPayment").textContent = amountDueCents === 0 && totalFareCents > 0
+    ? "Esta viagem ficará integralmente coberta pelos seus créditos."
+    : (driverProfile.paymentInstructions || "Forma de pagamento não informada pelo motorista.");
 
   const suggested = `Olá, ${driverDisplayName || "motorista"}. Sou ${name}. Fiz um pedido para ${from} → ${to}, ${formatDate(trip.departureAtMillis)}, para ${seats} lugar(es).`;
   $("messageToDriver").value = suggested;
@@ -1266,6 +1281,8 @@ async function reserve() {
       seats: pendingBooking.seats,
       farePerSeatCents: Number(body.farePerSeatCents || 0),
       totalFareCents: Number(body.totalFareCents || 0),
+      creditAppliedCents: Number(body.creditAppliedCents || 0),
+      amountDueCents: Number(body.amountDueCents || 0),
     };
 
     try {
@@ -1280,8 +1297,13 @@ async function reserve() {
     $("cancelToken").value = body.cancellationToken;
     $("cancelCode").textContent = body.cancellationToken;
 
-    const confirmedFare = Number(body.totalFareCents || 0) > 0
-      ? ` Valor total: ${formatMoney(body.totalFareCents)}.`
+    const total = Number(body.totalFareCents || 0);
+    const credits = Number(body.creditAppliedCents || 0);
+    const due = Number(body.amountDueCents || 0);
+    const confirmedFare = total > 0
+      ? credits > 0
+        ? ` Valor da viagem: ${formatMoney(total)}. Créditos usados: ${formatMoney(credits)}. A pagar: ${formatMoney(due)}.`
+        : ` Valor total: ${formatMoney(total)}.`
       : "";
     $("confirmationText").textContent = body.replayed
       ? `Esta reserva já estava confirmada. Nenhuma duplicata foi criada.${confirmedFare}`
@@ -1307,6 +1329,8 @@ async function reserve() {
       `Olá, ${driverDisplayName || "motorista"}. Minha reserva pelo Rota Certa foi confirmada. Reserva ${confirmedBooking.bookingId}.`;
     setWhatsappLink($("driverWhatsappConfirmed"), confirmationWhatsappMessage);
 
+    passengerCreditBalanceCents = Math.max(0, passengerCreditBalanceCents - credits);
+    loadPassengerCredits();
     pendingBooking = null;
     showOnly("confirmed");
     window.scrollTo({ top: 0, behavior: "smooth" });
