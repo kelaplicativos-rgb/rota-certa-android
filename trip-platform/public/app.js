@@ -5,6 +5,7 @@ const params = new URLSearchParams(location.search);
 const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const driverUsername = (params.get("motorista") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+const portalMode = params.get("portal") === "1";
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -12,6 +13,9 @@ let trip = null;
 let confirmedBooking = null;
 let pendingBooking = null;
 let editingExistingBooking = false;
+let passengerSessionToken = (() => {
+  try { return localStorage.getItem("rotacerta-passenger-session") || ""; } catch (_) { return ""; }
+})();
 
 const publicDebugSessionId = (() => {
   try {
@@ -53,7 +57,7 @@ function tracePublicAction(event, details = {}) {
   } catch (_) {}
 }
 
-const mainSections = ["agenda", "trip", "booking", "review", "confirmed", "cancelBooking"];
+const mainSections = ["agenda", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
 
 function show(id, visible = true) {
   const node = $(id);
@@ -423,6 +427,15 @@ function renderTimeline() {
       address.className = "stopAddress";
       address.textContent = stop.address;
       detail.appendChild(address);
+    }
+    const loads = Array.isArray(trip.segmentLoads) ? trip.segmentLoads : [];
+    if (index < orderedStops().length - 1 && Number.isFinite(Number(loads[index]))) {
+      const next = orderedStops()[index + 1];
+      const available = Math.max(0, Number(trip.capacity || 0) - Number(loads[index] || 0));
+      const segment = document.createElement("div");
+      segment.className = "stopAddress";
+      segment.textContent = `${available} vaga(s) até ${next?.name || "a próxima parada"}`;
+      detail.appendChild(segment);
     }
 
     row.append(time, dotCol, detail);
@@ -1095,6 +1108,279 @@ async function shareCalendarFeed() {
   location.href = url;
 }
 
+
+function portalHeaders() {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${passengerSessionToken}`,
+  };
+}
+
+function savePassengerSession(token) {
+  passengerSessionToken = String(token || "");
+  try {
+    if (passengerSessionToken) localStorage.setItem("rotacerta-passenger-session", passengerSessionToken);
+    else localStorage.removeItem("rotacerta-passenger-session");
+  } catch (_) {}
+}
+
+function openPassengerPortal() {
+  showOnly("passengerPortal");
+  $("portalMessage").textContent = "";
+  const knownContact = confirmedBooking?.passengerContact || "";
+  if (knownContact && !$("portalContact").value) $("portalContact").value = maskWhatsapp(knownContact);
+  if (passengerSessionToken) {
+    loadPassengerBookings();
+  } else {
+    show("portalLoginBox", true);
+    show("portalAuthenticated", false);
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function loginPassengerPortal() {
+  const passengerContact = normalizeWhatsapp($("portalContact").value);
+  const password = $("portalPassword").value;
+  if (!passengerContact || password.length < 8) {
+    $("portalMessage").textContent = "Informe seu WhatsApp com DDD e sua senha.";
+    return;
+  }
+  $("portalLogin").disabled = true;
+  $("portalMessage").textContent = "Entrando…";
+  try {
+    const response = await fetch("/v1/passenger/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ passengerContact, password }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
+    savePassengerSession(body.sessionToken);
+    $("portalPassword").value = "";
+    $("portalMessage").textContent = "";
+    await loadPassengerBookings();
+  } catch (error) {
+    $("portalMessage").textContent = error.message || "Falha ao entrar.";
+  } finally {
+    $("portalLogin").disabled = false;
+  }
+}
+
+async function registerPassengerPortal() {
+  const password = $("portalCreatePassword").value;
+  if (!confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken || !confirmedBooking?.passengerContact || !tripToken) {
+    $("portalCreateMessage").textContent = "Abra a reserva confirmada neste aparelho para criar o acesso.";
+    return;
+  }
+  if (password.length < 8 || password.length > 72) {
+    $("portalCreateMessage").textContent = "Use uma senha de 8 a 72 caracteres.";
+    return;
+  }
+  $("portalRegister").disabled = true;
+  $("portalCreateMessage").textContent = "Criando acesso…";
+  try {
+    const response = await fetch("/v1/passenger/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        passengerContact: confirmedBooking.passengerContact,
+        password,
+        tripToken,
+        bookingId: confirmedBooking.bookingId,
+        cancellationToken: confirmedBooking.cancellationToken,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível criar o acesso.");
+    savePassengerSession(body.sessionToken);
+    $("portalCreatePassword").value = "";
+    $("portalCreateMessage").textContent = "Acesso criado. Agora esta reserva pode ser consultada em qualquer aparelho.";
+  } catch (error) {
+    $("portalCreateMessage").textContent = error.message || "Falha ao criar o acesso.";
+  } finally {
+    $("portalRegister").disabled = false;
+  }
+}
+
+function portalStopName(tripItem, stopId) {
+  return orderedStops(tripItem).find((stop) => stop.id === stopId)?.name || "Parada";
+}
+
+function renderPassengerBookings(entries) {
+  const container = $("portalBookings");
+  container.innerHTML = "";
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nenhuma reserva vinculada a este acesso.";
+    container.appendChild(empty);
+    return;
+  }
+
+  entries.forEach(({ trip: tripItem, booking }) => {
+    const card = document.createElement("article");
+    card.className = "agendaTrip";
+    const route = document.createElement("div");
+    route.className = "agendaDate";
+    route.textContent = `${portalStopName(tripItem, booking.boardingStopId)} → ${portalStopName(tripItem, booking.dropoffStopId)}`;
+    const when = document.createElement("p");
+    when.className = "muted";
+    when.textContent = formatDate(tripItem.departureAtMillis);
+    const status = document.createElement("div");
+    status.className = "bigPill";
+    status.textContent = `${booking.status || "CONFIRMED"} • ${booking.seats || 1} lugar(es)`;
+    card.append(route, when, status);
+
+    const active = !["CANCELLED", "EXPIRED"].includes(String(booking.status || ""));
+    if (active) {
+      const stops = orderedStops(tripItem);
+      const fromSelect = document.createElement("select");
+      const toSelect = document.createElement("select");
+      stops.slice(0, -1).forEach((stop) => {
+        const option = document.createElement("option");
+        option.value = stop.id;
+        option.textContent = `Embarque: ${stop.name}`;
+        option.selected = stop.id === booking.boardingStopId;
+        fromSelect.appendChild(option);
+      });
+      const refreshTo = () => {
+        const fromIndex = stops.findIndex((stop) => stop.id === fromSelect.value);
+        const current = toSelect.value || booking.dropoffStopId;
+        toSelect.innerHTML = "";
+        stops.forEach((stop, index) => {
+          if (index <= fromIndex) return;
+          const option = document.createElement("option");
+          option.value = stop.id;
+          option.textContent = `Destino: ${stop.name}`;
+          option.selected = stop.id === current;
+          toSelect.appendChild(option);
+        });
+      };
+      fromSelect.addEventListener("change", refreshTo);
+      refreshTo();
+
+      const seatsInput = document.createElement("input");
+      seatsInput.type = "number";
+      seatsInput.min = "1";
+      seatsInput.max = String(Math.max(1, Number(tripItem.capacity || 1)));
+      seatsInput.value = String(Math.max(1, Number(booking.seats || 1)));
+      seatsInput.inputMode = "numeric";
+
+      const message = document.createElement("p");
+      message.className = "muted";
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "secondary";
+      save.textContent = "Salvar alteração";
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        message.textContent = "Salvando…";
+        try {
+          const token = tripItem.publicToken || tripItem.tripId;
+          const response = await fetch(
+            `/v1/passenger/me/bookings/${encodeURIComponent(token)}/${encodeURIComponent(booking.id)}`,
+            {
+              method: "PUT",
+              headers: portalHeaders(),
+              body: JSON.stringify({
+                passengerName: booking.passengerName,
+                boardingStopId: fromSelect.value,
+                dropoffStopId: toSelect.value,
+                seats: Number(seatsInput.value || 1),
+              }),
+            },
+          );
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.message || "Não foi possível alterar.");
+          message.textContent = "Reserva alterada.";
+          await loadPassengerBookings();
+        } catch (error) {
+          message.textContent = error.message || "Falha ao alterar.";
+        } finally {
+          save.disabled = false;
+        }
+      });
+
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "dangerButton";
+      cancel.textContent = "Cancelar reserva";
+      cancel.addEventListener("click", async () => {
+        if (!window.confirm("Cancelar esta reserva e liberar as vagas?")) return;
+        cancel.disabled = true;
+        message.textContent = "Cancelando…";
+        try {
+          const token = tripItem.publicToken || tripItem.tripId;
+          const response = await fetch(
+            `/v1/passenger/me/bookings/${encodeURIComponent(token)}/${encodeURIComponent(booking.id)}/cancel`,
+            { method: "POST", headers: portalHeaders(), body: "{}" },
+          );
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
+          await loadPassengerBookings();
+        } catch (error) {
+          message.textContent = error.message || "Falha ao cancelar.";
+        } finally {
+          cancel.disabled = false;
+        }
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.append(fromSelect, toSelect, seatsInput, save, cancel, message);
+      card.appendChild(actions);
+    }
+    container.appendChild(card);
+  });
+}
+
+async function loadPassengerBookings() {
+  if (!passengerSessionToken) return;
+  show("portalLoginBox", false);
+  show("portalAuthenticated", true);
+  const container = $("portalBookings");
+  container.innerHTML = '<p class="muted">Carregando reservas…</p>';
+  try {
+    const response = await fetch("/v1/passenger/me/bookings", { headers: portalHeaders() });
+    const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      show("portalLoginBox", true);
+      show("portalAuthenticated", false);
+      $("portalMessage").textContent = body.message || "Entre novamente.";
+      return;
+    }
+    if (!response.ok) throw new Error(body.message || "Não foi possível carregar as reservas.");
+    renderPassengerBookings(Array.isArray(body.bookings) ? body.bookings : []);
+  } catch (error) {
+    container.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "muted";
+    message.textContent = error.message || "Falha ao carregar reservas.";
+    container.appendChild(message);
+  }
+}
+
+function logoutPassengerPortal() {
+  savePassengerSession("");
+  $("portalPassword").value = "";
+  $("portalMessage").textContent = "Acesso encerrado neste aparelho.";
+  show("portalLoginBox", true);
+  show("portalAuthenticated", false);
+  $("portalBookings").innerHTML = "";
+}
+
+function closePassengerPortal() {
+  if (trip) {
+    renderTrip();
+  } else if (agendaToken) {
+    loadAgenda();
+  } else {
+    history.back();
+  }
+}
+
 function goBackToTrip() {
   if (!trip) return;
   renderTrip();
@@ -1108,6 +1394,14 @@ function goBackToAgenda() {
   }
 }
 
+$("openPassengerPortal").addEventListener("click", openPassengerPortal);
+$("portalBack").addEventListener("click", closePassengerPortal);
+$("portalLogin").addEventListener("click", loginPassengerPortal);
+$("portalLogout").addEventListener("click", logoutPassengerPortal);
+$("portalRegister").addEventListener("click", registerPassengerPortal);
+$("portalContact").addEventListener("input", (event) => {
+  event.target.value = maskWhatsapp(event.target.value);
+});
 $("driverRatingLine").addEventListener("click", toggleDriverReviews);
 $("boarding").addEventListener("change", () => {
   refreshSelectors();
@@ -1150,7 +1444,9 @@ $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
 
 tracePublicAction("PUBLIC_LINK_OPENED");
 
-if (tripToken) {
+if (portalMode) {
+  openPassengerPortal();
+} else if (tripToken) {
   loadTrip();
 } else if (agendaToken) {
   loadAgenda();
