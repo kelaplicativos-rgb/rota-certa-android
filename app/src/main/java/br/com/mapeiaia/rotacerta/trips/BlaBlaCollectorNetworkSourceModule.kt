@@ -31,6 +31,8 @@ internal data class BlaBlaNetworkTripSourceEvidence(
     val tripId: String = "",
     val bookingsComplete: Boolean = false,
     val bookings: List<BlaBlaNetworkBookingSourceEvidence> = emptyList(),
+    val waypointsComplete: Boolean = false,
+    val waypoints: List<BlaBlaNetworkWaypointSourceEvidence> = emptyList(),
 )
 
 internal data class BlaBlaNetworkResolvedBooking(
@@ -47,6 +49,8 @@ internal data class BlaBlaNetworkResolvedBooking(
 internal data class BlaBlaNetworkTripResolution(
     val tripId: String,
     val bookings: List<BlaBlaNetworkResolvedBooking>,
+    val itineraryStops: List<String>,
+    val itineraryAuthoritative: Boolean,
 ) {
     val passengers: List<BlaBlaCollectorPassenger>
         get() = bookings.map(BlaBlaNetworkResolvedBooking::passenger)
@@ -62,6 +66,7 @@ internal data class BlaBlaNetworkTripResolution(
  */
 internal object BlaBlaCollectorNetworkSourceModule {
     private const val MAX_BOOKINGS = 48
+    private const val MAX_WAYPOINTS = 48
     private val stableIdRegex = Regex("[A-Za-z0-9_-]{8,160}")
 
     fun resolve(
@@ -78,7 +83,14 @@ internal object BlaBlaCollectorNetworkSourceModule {
             resolveBooking(sourceTripId, booking) ?: return null
         }
         if (resolved.map(BlaBlaNetworkResolvedBooking::passengerId).distinct().size != resolved.size) return null
-        return BlaBlaNetworkTripResolution(tripId = sourceTripId, bookings = resolved)
+
+        val itineraryStops = resolveItinerary(evidence)
+        return BlaBlaNetworkTripResolution(
+            tripId = sourceTripId,
+            bookings = resolved,
+            itineraryStops = itineraryStops,
+            itineraryAuthoritative = evidence.waypointsComplete && itineraryStops.size >= 2,
+        )
     }
 
     fun parseCanonicalMinorUnits(rawAmount: String?, rawCurrencyCode: String?): Long? {
@@ -96,6 +108,20 @@ internal object BlaBlaCollectorNetworkSourceModule {
                 .longValueExact()
                 .takeIf { it in 1L..1_000_000_000_000L }
         }.getOrNull()
+    }
+
+    private fun resolveItinerary(evidence: BlaBlaNetworkTripSourceEvidence): List<String> {
+        if (!evidence.waypointsComplete || evidence.waypoints.size !in 2..MAX_WAYPOINTS) return emptyList()
+        return evidence.waypoints
+            .map { waypoint -> waypoint.routeLabel() }
+            .filter(String::isNotBlank)
+            .fold(mutableListOf()) { ordered, label ->
+                if (ordered.lastOrNull() != label) ordered += label
+                ordered
+            }
+            .toList()
+            .takeIf { it.size >= 2 }
+            .orEmpty()
     }
 
     private fun resolveBooking(
