@@ -115,7 +115,7 @@ internal object BlaBlaCollectorNetworkSourceModule {
         return evidence.waypoints
             .map { waypoint -> waypoint.routeLabel() }
             .filter(String::isNotBlank)
-            .fold(mutableListOf()) { ordered, label ->
+            .fold(mutableListOf<String>()) { ordered, label ->
                 if (ordered.lastOrNull() != label) ordered += label
                 ordered
             }
