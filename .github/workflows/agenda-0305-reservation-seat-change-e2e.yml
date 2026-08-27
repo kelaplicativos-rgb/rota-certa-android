@@ -106,7 +106,12 @@ jobs:
             console.log('SELECTED_TRIP='+selected.title);
             console.log('BEFORE_AVAILABLE_MIN='+selected.beforeMin);
             console.log('BEFORE_AVAILABLE_MAX='+selected.beforeMax);
-          })().catch(e=>{console.error('DISCOVERY_FAILED='+e.name);process.exit(5)});
+          })().catch(e=>{
+            const code=String(e && (e.code || e.name) || 'Error').slice(0,80);
+            const message=String(e && e.message || '').replace(/[\r\n]+/g,' ').slice(0,240);
+            console.error('DISCOVERY_FAILED='+code+':'+message);
+            process.exit(5);
+          });
           NODE
 
           TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
