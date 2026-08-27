@@ -68,15 +68,11 @@ class TripStore(context: Context) {
             .apply()
     }
 
-    fun clearTimelineLocalData(): Pair<Int, Int> {
-        val tripsRemoved = trips().size
-        val bookingsRemoved = bookings().size
-        prefs.edit()
-            .remove(tripsKey)
-            .remove(bookingsKey)
-            .apply()
-        return tripsRemoved to bookingsRemoved
-    }
+    /**
+     * Historical compatibility shim. Timeline cleanup must never delete canonical local trips,
+     * bookings or passenger history. Visual cleanup is handled by TripTimelineArchiveStore.
+     */
+    fun clearTimelineLocalData(): Pair<Int, Int> = 0 to 0
 
     fun saveBooking(booking: Booking): Booking {
         val all = bookings()
