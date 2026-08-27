@@ -19,6 +19,7 @@ internal data class PublicAgendaExternalTrip(
     val trip: Trip,
     val bookedSeats: Int,
     val sourceReference: String,
+    val capacityClaims: List<Booking> = emptyList(),
     val profileUuid: String = "",
     val blablaTripId: String = "",
     val blablaTripHref: String = "",
@@ -146,24 +147,12 @@ internal object PublicAgendaAutoSync0300 {
                 val response = runCatching { api.publish(publicTrip) }.getOrElse {
                     api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
                 }
-                if (synthesized.bookedSeats > 0) {
-                    val ordered = publicTrip.stops.sortedBy(TripStop::order)
-                    val claim = Booking(
-                        id = "blablacar-${publicTrip.publicToken.take(40)}",
-                        tripId = publicTrip.id,
-                        passengerName = "Vagas já ocupadas na BlaBlaCar",
-                        boardingStopId = ordered.first().id,
-                        dropoffStopId = ordered.last().id,
-                        seats = synthesized.bookedSeats.coerceAtMost(publicTrip.capacity),
-                        status = BookingStatus.CONFIRMED,
-                        source = BookingSource.BLABLACAR,
-                        capacityClaimType = CapacityClaimType.RESERVED_SEAT,
-                        sourceReference = synthesized.sourceReference,
-                        occupancyGroupId = "blablacar:${publicTrip.publicToken}",
-                    )
-                    api.upsertDriverBooking(response.tripId, claim)
-                    seatClaimsSynced++
-                }
+                seatClaimsSynced += syncExternalCapacityClaims(
+                    api = api,
+                    remoteTripId = response.tripId,
+                    publicTrip = publicTrip,
+                    claims = synthesized.capacityClaims,
+                )
                 response
             }.onSuccess { response ->
                 store.savePublicExternalBinding(
@@ -253,6 +242,40 @@ internal object PublicAgendaAutoSync0300 {
             )
         }
 
+    private suspend fun syncExternalCapacityClaims(
+        api: TripRemoteApi,
+        remoteTripId: String,
+        publicTrip: Trip,
+        claims: List<Booking>,
+    ): Int {
+        val currentIds = claims.map(Booking::id).toSet()
+        val legacyId = "blablacar-${publicTrip.publicToken.take(40)}"
+        val remoteMirrors = api.listBookings(remoteTripId).bookings.filter { remote ->
+            remote.source == BookingSource.BLABLACAR &&
+                (remote.sourceReference.startsWith(EXTERNAL_MIRROR_PREFIX) || remote.id == legacyId)
+        }
+        var synced = 0
+        remoteMirrors
+            .filterNot { it.id in currentIds }
+            .filterNot { it.status == BookingStatus.CANCELLED.name || it.status == BookingStatus.EXPIRED.name }
+            .forEach { stale ->
+                api.upsertDriverBooking(
+                    remoteTripId,
+                    stale.toLocalBooking(publicTrip.id).copy(
+                        passengerName = "Ocupação BlaBlaCar sincronizada",
+                        passengerContact = "",
+                        status = BookingStatus.CANCELLED,
+                    ),
+                )
+                synced++
+            }
+        claims.forEach { claim ->
+            api.upsertDriverBooking(remoteTripId, claim)
+            synced++
+        }
+        return synced
+    }
+
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
         capacity: Int,
@@ -276,8 +299,31 @@ internal object PublicAgendaAutoSync0300 {
         val identity = stableIdentity(source)
         val token = "bb${sha256(identity).take(30)}"
         val safeCapacity = capacity.coerceIn(1, 999)
-        val booked = source.booked_seats.coerceAtLeast(source.passengers.sumOf { it.seats.coerceAtLeast(1) })
-        val priceCents = parsePriceCents(source.price)
+        val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
+        val observedBooked = source.booked_seats.coerceAtLeast(passengerSeats)
+        val booked = if (source.availability.equals("full", true)) {
+            observedBooked.coerceAtLeast(safeCapacity)
+        } else {
+            observedBooked
+        }.coerceAtMost(safeCapacity)
+
+        val stopLabels = buildObservedStopLabels(origin, destination, source.itinerary_stops)
+        val wholeTripPriceCents = parsePriceCents(source.price)
+        val stops = stopLabels.mapIndexed { index, label ->
+            val isFirst = index == 0
+            val isLast = index == stopLabels.lastIndex
+            TripStop(
+                id = "stop-$index-$token",
+                order = index,
+                name = shortPlace(label),
+                address = label,
+                plannedDepartureMillis = departure.takeIf { isFirst },
+                plannedArrivalMillis = arrival.takeIf { isLast },
+                // A single BlaBlaCar price is a whole-trip observation. Never distribute it
+                // over intermediate segments because that would invent per-segment prices.
+                priceToNextCents = wholeTripPriceCents.takeIf { stopLabels.size == 2 && isFirst } ?: 0L,
+            )
+        }
 
         val trip = Trip(
             id = "public:$token",
@@ -285,36 +331,114 @@ internal object PublicAgendaAutoSync0300 {
             departureAtMillis = departure,
             capacity = safeCapacity,
             status = if (source.availability.equals("full", true) || booked >= safeCapacity) TripStatus.FULL else TripStatus.PUBLISHED,
-            stops = listOf(
-                TripStop(
-                    id = "origin-$token",
-                    order = 0,
-                    name = shortPlace(origin),
-                    address = origin,
-                    plannedDepartureMillis = departure,
-                    priceToNextCents = priceCents,
-                ),
-                TripStop(
-                    id = "destination-$token",
-                    order = 1,
-                    name = shortPlace(destination),
-                    address = destination,
-                    plannedArrivalMillis = arrival,
-                ),
-            ),
+            stops = stops,
             publicToken = token,
             notes = "",
             remoteId = token,
             publicBookingEnabled = true,
         )
+        val sourceReference = source.trip_id.orEmpty()
+            .ifBlank { source.trip_href.orEmpty() }
+            .ifBlank { "BLABLACAR:$token" }
+        val claims = externalCapacityClaims(source, trip, booked, sourceReference)
         return PublicAgendaExternalTrip(
             trip = trip,
-            bookedSeats = booked.coerceAtMost(safeCapacity),
-            sourceReference = source.trip_id.orEmpty().ifBlank { source.trip_href.orEmpty() }.ifBlank { "BLABLACAR:$token" },
+            bookedSeats = booked,
+            sourceReference = sourceReference,
+            capacityClaims = claims,
             profileUuid = source.profile_uuid.trim(),
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),
         )
+    }
+
+    internal fun buildObservedStopLabels(
+        origin: String,
+        destination: String,
+        itineraryStops: List<String>,
+    ): List<String> {
+        val result = mutableListOf<String>()
+        fun addObserved(raw: String) {
+            val value = raw.trim().takeIf(String::isNotBlank) ?: return
+            val key = normalizePlace(value)
+            if (key.isBlank() || result.any { normalizePlace(it) == key }) return
+            result += value
+        }
+        addObserved(origin)
+        itineraryStops.forEach(::addObserved)
+        addObserved(destination)
+
+        val originKey = normalizePlace(origin)
+        val destinationKey = normalizePlace(destination)
+        val middle = result.filter {
+            val key = normalizePlace(it)
+            key != originKey && key != destinationKey
+        }
+        return listOf(origin) + middle + listOf(destination)
+    }
+
+    internal fun externalCapacityClaims(
+        source: BlaBlaCollectorTrip,
+        trip: Trip,
+        bookedSeats: Int,
+        sourceReference: String,
+    ): List<Booking> {
+        val stops = trip.stops.sortedBy(TripStop::order)
+        if (stops.size < 2 || bookedSeats <= 0) return emptyList()
+        val first = stops.first()
+        val last = stops.last()
+        fun stopFor(label: String?): TripStop? {
+            val key = label?.takeIf(String::isNotBlank)?.let(::normalizePlace).orEmpty()
+            if (key.isBlank()) return null
+            return stops.firstOrNull { normalizePlace(it.name) == key || normalizePlace(it.address) == key }
+        }
+
+        val claims = mutableListOf<Booking>()
+        var representedSeats = 0
+        source.passengers.forEachIndexed { index, passenger ->
+            val seats = passenger.seats.coerceAtLeast(1)
+            if (representedSeats >= bookedSeats) return@forEachIndexed
+            val effectiveSeats = seats.coerceAtMost(bookedSeats - representedSeats)
+            val from = stopFor(passenger.boarding)
+            val to = stopFor(passenger.dropoff)
+            val fromIndex = from?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            val toIndex = to?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            val boarding = if (fromIndex >= 0 && toIndex > fromIndex) from!! else first
+            val dropoff = if (fromIndex >= 0 && toIndex > fromIndex) to!! else last
+            val claimId = "bbp-${trip.publicToken.take(32)}-$index"
+            claims += Booking(
+                id = claimId,
+                tripId = trip.id,
+                passengerName = passenger.name.ifBlank { "Passageiro BlaBlaCar" },
+                boardingStopId = boarding.id,
+                dropoffStopId = dropoff.id,
+                seats = effectiveSeats,
+                status = BookingStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+                capacityClaimType = CapacityClaimType.PASSENGER,
+                sourceReference = "$EXTERNAL_MIRROR_PREFIX${sourceReference.take(180)}:passenger:$index",
+                occupancyGroupId = "blablacar:${trip.publicToken}:passenger:$index",
+            )
+            representedSeats += effectiveSeats
+        }
+
+        val residual = (bookedSeats - representedSeats).coerceAtLeast(0)
+        if (residual > 0) {
+            claims += Booking(
+                id = "bbr-${trip.publicToken.take(36)}",
+                tripId = trip.id,
+                passengerName = "Ocupação BlaBlaCar",
+                boardingStopId = first.id,
+                dropoffStopId = last.id,
+                seats = residual,
+                status = BookingStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+                capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+                sourceReference = "$EXTERNAL_MIRROR_PREFIX${sourceReference.take(180)}:residual",
+                occupancyGroupId = "blablacar:${trip.publicToken}:residual",
+            )
+        }
+        return claims
     }
 
     internal fun parsePriceCents(raw: String?): Long {
@@ -375,5 +499,6 @@ internal object PublicAgendaAutoSync0300 {
     )
 
     private const val LOCAL_MIRROR_PREFIX = "LOCAL_MIRROR:"
+    private const val EXTERNAL_MIRROR_PREFIX = "BLABLACAR_SYNC:"
     private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
 }
