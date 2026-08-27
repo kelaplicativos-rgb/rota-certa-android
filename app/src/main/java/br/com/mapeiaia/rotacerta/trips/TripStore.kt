@@ -209,6 +209,7 @@ data class TripOnlineSettings(
     val driverDisplayName: String = "",
     val driverUsername: String = "",
     val driverWhatsapp: String = "",
+    val driverPhotoUrl: String = "",
     val driverPublicAbout: String = "",
     val driverPublicRating: String = "",
     val driverPublicReviewCount: Int = 0,
