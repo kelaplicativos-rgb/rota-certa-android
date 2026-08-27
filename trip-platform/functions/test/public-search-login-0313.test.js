@@ -19,12 +19,12 @@ test("public agenda starts behind WhatsApp and password access", () => {
   assert.match(api, /\/v1\/passenger\/me/);
 });
 
-test("first-time passenger can create phone-password access before searching", () => {
-  assert.match(html, /id="accessSignup"/);
-  assert.match(html, /Criar acesso e entrar/);
-  assert.match(web, /\/v1\/passenger\/signup/);
+test("first-time passenger access is now invite-only before searching", () => {
+  assert.doesNotMatch(html, /id="accessSignup"/);
+  assert.doesNotMatch(html, /Criar acesso e entrar/);
+  assert.match(html, /Acesso somente por convite/);
   assert.match(api, /async function signupPassengerAccount/);
-  assert.match(api, /signupSource: "PUBLIC_AGENDA"/);
+  assert.match(api, /passenger_invite_required/);
 });
 
 test("search filter exposes route GPS dates seats and same public cards", () => {
