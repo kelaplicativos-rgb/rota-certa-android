@@ -133,6 +133,7 @@ internal object PublicAgendaAutoSync0300 {
                     api.upsertDriverBooking(response.tripId, claim)
                     seatClaimsSynced++
                 }
+                response
             }.onSuccess { response ->
                 store.savePublicExternalBinding(
                     PublicExternalTripBinding(
