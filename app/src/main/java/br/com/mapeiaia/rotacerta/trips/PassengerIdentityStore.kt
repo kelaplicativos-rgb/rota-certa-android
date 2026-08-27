@@ -17,9 +17,11 @@ data class PassengerProfile(
     val whatsapp: String = "",
     /** Stable external passenger/member IDs explicitly associated with this canonical profile. */
     val externalPassengerIds: Set<String> = emptySet(),
-    /** Local driver preference. This flag never blocks by name or phone similarity. */
+    /** Local driver preference/persona non grata. This flag never blocks by name or phone similarity. */
     val blocked: Boolean = false,
     val blockedReason: String = "",
+    /** Soft archive only. Passenger history is never physically deleted by Timeline cleanup. */
+    val archived: Boolean = false,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )
@@ -61,12 +63,48 @@ data class PassengerRideHistory(
     val ridesByDriverProfile: Map<String, Int>,
 )
 
+
+@Serializable
+data class PassengerIdentityObservation(
+    val id: String = UUID.randomUUID().toString(),
+    val passengerId: String,
+    val displayName: String = "",
+    val whatsapp: String = "",
+    val photoUrl: String = "",
+    val source: String = "",
+    val externalPassengerId: String = "",
+    val observedAtMillis: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class PassengerRideRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val passengerId: String,
+    /** Stable idempotency key: local booking id or external profile/trip/passenger identity. */
+    val rideKey: String,
+    val tripId: String = "",
+    val driverProfileUuid: String = "",
+    val source: String = "",
+    val reservationKey: String = "",
+    val observedAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class PassengerPersistentHistory(
+    val profile: PassengerProfile,
+    val observations: List<PassengerIdentityObservation>,
+    val rides: List<PassengerRideRecord>,
+) {
+    val totalRides: Int get() = rides.size
+}
+
 class PassengerIdentityStore(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val profilesKey = tenantScope.key(KEY_PROFILES)
     private val externalMetadataKey = tenantScope.key(KEY_EXTERNAL_METADATA)
+    private val observationsKey = tenantScope.key(KEY_OBSERVATIONS)
+    private val rideRecordsKey = tenantScope.key(KEY_RIDE_RECORDS)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun profiles(): List<PassengerProfile> = decode<List<PassengerProfile>>(prefs.getString(profilesKey, null))
@@ -130,11 +168,192 @@ class PassengerIdentityStore(context: Context) {
         return saveProfile(target.copy(blocked = blocked, blockedReason = if (blocked) reason else ""))
     }
 
+
+    fun setArchived(profileId: String, archived: Boolean): PassengerProfile? {
+        val target = profile(profileId) ?: return null
+        return saveProfile(target.copy(archived = archived))
+    }
+
+    /**
+     * Every local/private/Rota Certa booking receives a durable canonical passenger identity.
+     * No automatic merge by name/phone is performed: only an existing passengerId is reused.
+     */
+    fun ensureLocalBookingProfile(booking: Booking): PassengerProfile? {
+        if (booking.capacityClaimType != CapacityClaimType.PASSENGER) return null
+        val name = booking.passengerName.trim().take(120)
+        if (name.isBlank()) return null
+        val existing = booking.passengerId.trim().takeIf(String::isNotEmpty)?.let(::profile)
+        val base = existing ?: PassengerProfile(
+            displayName = name,
+            whatsapp = booking.passengerContact.trim().take(40),
+        )
+        val saved = saveProfile(
+            base.copy(
+                displayName = name,
+                whatsapp = booking.passengerContact.trim().take(40).ifBlank { base.whatsapp },
+            ),
+        )
+        observeIdentity(
+            passengerId = saved.id,
+            displayName = name,
+            whatsapp = booking.passengerContact,
+            source = "LOCAL_${booking.source.name}",
+        )
+        recordRide(
+            passengerId = saved.id,
+            rideKey = "local:${booking.id}",
+            tripId = booking.tripId,
+            source = booking.source.name,
+        )
+        return saved
+    }
+
+    /**
+     * BlaBlaCar identity is automatically persisted only from a strong stable passenger UUID/id.
+     * Name, phone and future photo changes become observations; they never create a new person
+     * while the same external UUID is present.
+     */
+    fun observeExternalPassenger(
+        displayName: String,
+        whatsapp: String?,
+        externalPassengerId: String?,
+        reservationKey: String?,
+        externalTripId: String?,
+        driverProfileUuid: String?,
+        photoUrl: String? = null,
+    ): PassengerProfile? {
+        val externalId = stableExternalPassengerId(externalPassengerId) ?: return null
+        val name = displayName.trim().take(120).ifBlank { "Passageiro" }
+        val phone = whatsapp.orEmpty().trim().take(40)
+        val existing = profileByExternalPassengerId(externalId)
+        val base = existing ?: PassengerProfile(
+            displayName = name,
+            whatsapp = phone,
+            externalPassengerIds = setOf(externalId),
+        )
+        val saved = saveProfile(
+            base.copy(
+                displayName = name,
+                whatsapp = phone.ifBlank { base.whatsapp },
+                externalPassengerIds = base.externalPassengerIds + externalId,
+            ),
+        )
+        observeIdentity(
+            passengerId = saved.id,
+            displayName = name,
+            whatsapp = phone,
+            photoUrl = photoUrl.orEmpty(),
+            source = "BLABLACAR",
+            externalPassengerId = externalId,
+        )
+        reservationKey?.trim()?.takeIf(String::isNotEmpty)?.let { key ->
+            val current = externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
+            saveExternalMetadata(
+                current.copy(
+                    passengerId = saved.id,
+                    externalPassengerId = externalId,
+                    externalTripId = stableExternalPassengerId(externalTripId).orEmpty(),
+                    externalProfileUuid = driverProfileUuid.orEmpty().trim().lowercase(),
+                ),
+            )
+        }
+        val driverProfile = driverProfileUuid.orEmpty().trim().lowercase()
+        val trip = stableExternalPassengerId(externalTripId).orEmpty()
+        recordRide(
+            passengerId = saved.id,
+            rideKey = listOf("blablacar", driverProfile.ifBlank { "profile?" }, trip.ifBlank { reservationKey.orEmpty() }, externalId).joinToString(":"),
+            tripId = trip,
+            driverProfileUuid = driverProfile,
+            source = "BLABLACAR",
+            reservationKey = reservationKey.orEmpty(),
+        )
+        return saved
+    }
+
+    fun observations(profileId: String): List<PassengerIdentityObservation> =
+        decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+            .orEmpty()
+            .filter { it.passengerId == profileId }
+            .sortedByDescending(PassengerIdentityObservation::observedAtMillis)
+
+    fun rideRecords(profileId: String): List<PassengerRideRecord> =
+        decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
+            .orEmpty()
+            .filter { it.passengerId == profileId }
+            .distinctBy(PassengerRideRecord::rideKey)
+            .sortedByDescending(PassengerRideRecord::observedAtMillis)
+
+    fun persistentHistory(profileId: String): PassengerPersistentHistory? {
+        val target = profile(profileId) ?: return null
+        return PassengerPersistentHistory(target, observations(profileId), rideRecords(profileId))
+    }
+
+    private fun observeIdentity(
+        passengerId: String,
+        displayName: String,
+        whatsapp: String,
+        photoUrl: String = "",
+        source: String,
+        externalPassengerId: String = "",
+    ) {
+        val name = displayName.trim().take(120)
+        val phone = whatsapp.trim().take(40)
+        val photo = photoUrl.trim().take(500)
+        val externalId = stableExternalPassengerId(externalPassengerId).orEmpty()
+        val all = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null)).orEmpty()
+        val last = all.filter { it.passengerId == passengerId }.maxByOrNull(PassengerIdentityObservation::observedAtMillis)
+        if (last != null &&
+            last.displayName == name &&
+            last.whatsapp == phone &&
+            last.photoUrl == photo &&
+            last.externalPassengerId == externalId
+        ) return
+        val next = PassengerIdentityObservation(
+            passengerId = passengerId,
+            displayName = name,
+            whatsapp = phone,
+            photoUrl = photo,
+            source = source.take(80),
+            externalPassengerId = externalId,
+        )
+        prefs.edit().putString(observationsKey, json.encodeToString(listOf(next) + all)).apply()
+    }
+
+    private fun recordRide(
+        passengerId: String,
+        rideKey: String,
+        tripId: String,
+        driverProfileUuid: String = "",
+        source: String,
+        reservationKey: String = "",
+    ) {
+        val key = rideKey.trim().takeIf(String::isNotEmpty) ?: return
+        val all = decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null)).orEmpty()
+        if (all.any { it.passengerId == passengerId && it.rideKey == key }) return
+        val next = PassengerRideRecord(
+            passengerId = passengerId,
+            rideKey = key,
+            tripId = tripId.trim().take(160),
+            driverProfileUuid = driverProfileUuid.trim().lowercase().take(80),
+            source = source.take(80),
+            reservationKey = reservationKey.trim().take(200),
+        )
+        prefs.edit().putString(rideRecordsKey, json.encodeToString(listOf(next) + all)).apply()
+    }
+
     fun rideHistory(profileId: String): PassengerRideHistory {
         val target = profile(profileId) ?: return PassengerRideHistory(0, emptyMap())
+        val durable = rideRecords(profileId)
+        if (durable.isNotEmpty()) {
+            return PassengerRideHistory(
+                totalRides = durable.size,
+                ridesByDriverProfile = durable
+                    .groupingBy { it.driverProfileUuid.ifBlank { if (it.source == "BLABLACAR") "Perfil não identificado" else "Particular / Rota Certa" } }
+                    .eachCount(),
+            )
+        }
         val externalIds = target.externalPassengerIds
-        if (externalIds.isEmpty()) return PassengerRideHistory(0, emptyMap())
-        val rides = externalMetadata()
+        val legacy = externalMetadata()
             .filter { it.externalPassengerId in externalIds }
             .distinctBy { metadata ->
                 listOf(
@@ -143,8 +362,8 @@ class PassengerIdentityStore(context: Context) {
                 ).joinToString("|")
             }
         return PassengerRideHistory(
-            totalRides = rides.size,
-            ridesByDriverProfile = rides
+            totalRides = legacy.size,
+            ridesByDriverProfile = legacy
                 .groupingBy { it.externalProfileUuid.ifBlank { "Perfil não identificado" } }
                 .eachCount(),
         )
@@ -208,6 +427,8 @@ class PassengerIdentityStore(context: Context) {
         private const val PREFS = "rota_certa_passenger_identity_v1"
         private const val KEY_PROFILES = "passenger_profiles"
         private const val KEY_EXTERNAL_METADATA = "external_passenger_metadata"
+        private const val KEY_OBSERVATIONS = "passenger_identity_observations_v1"
+        private const val KEY_RIDE_RECORDS = "passenger_ride_records_v1"
     }
 }
 
