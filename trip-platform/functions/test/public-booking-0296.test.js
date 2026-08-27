@@ -7,9 +7,11 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
-test("public booking remains opt-in and future-only", () => {
-  assert.match(api, /publicBookingEnabled: raw\.publicBookingEnabled === true/);
-  assert.match(api, /trip\.publicBookingEnabled !== true/);
+test("published future trips are available from the permanent public agenda", () => {
+  assert.match(api, /PUBLIC_STATUSES\.has\(trip\.status\).*departureAtMillis/s);
+  assert.doesNotMatch(api, /PUBLIC_STATUSES\.has\(trip\.status\) && trip\.publicBookingEnabled === true/);
+  assert.doesNotMatch(api, /PUBLIC_STATUSES\.has\(data\.status\) \|\| data\.publicBookingEnabled !== true/);
+  assert.doesNotMatch(api, /PUBLIC_STATUSES\.has\(trip\.status\) \|\| trip\.publicBookingEnabled !== true/);
   assert.match(api, /departureAtMillis.*<= Date\.now\(\)/s);
 });
 
