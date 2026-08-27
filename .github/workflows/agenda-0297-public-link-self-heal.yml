@@ -121,6 +121,12 @@ jobs:
             exit 3
           fi
 
+      - name: Install Functions dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
       - name: Deploy authenticated trip API
         shell: bash
         run: |
