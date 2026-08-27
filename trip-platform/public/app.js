@@ -391,6 +391,8 @@ function refreshAvailability() {
     requested = available;
     seatsInput.value = String(available);
   }
+  const invalidSelection = available < 1 || requested > available;
+  seatsInput.setAttribute("aria-invalid", invalidSelection ? "true" : "false");
   const fareText = farePerSeatCents > 0 ? ` • ${formatMoney(farePerSeatCents)} por pessoa` : "";
   $("availability").textContent = available > 0
     ? `${available} vaga${available === 1 ? "" : "s"} disponível${available === 1 ? "" : "is"}${fareText}`
@@ -401,7 +403,7 @@ function refreshAvailability() {
 function renderSeatChoices() {
   const result = refreshAvailability();
   const available = result?.available || 0;
-  const maxChoices = Math.min(4, available);
+  const maxChoices = available;
   const container = $("seatChoices");
   container.innerHTML = "";
   for (let count = 1; count <= maxChoices; count += 1) {
