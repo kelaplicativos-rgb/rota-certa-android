@@ -752,6 +752,18 @@ function splitPublicList(value) {
     .slice(0, 12);
 }
 
+function safePublicDriverReviews(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((raw) => ({
+    author: cleanText(raw && raw.author, 120),
+    rating: cleanText(raw && raw.rating, 20),
+    dateLabel: cleanText(raw && raw.dateLabel, 80),
+    text: cleanText(raw && raw.text, 600),
+  }))
+    .filter((review) => review.author || review.text)
+    .slice(0, 60);
+}
+
 function safePublicDriverProfile(data, username = "") {
   const driver = data || {};
   return {
@@ -764,6 +776,7 @@ function safePublicDriverProfile(data, username = "") {
     about: cleanText(driver.driverPublicAbout, 320),
     rating: cleanText(driver.driverPublicRating, 20),
     reviewCount: Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0),
+    reviews: safePublicDriverReviews(driver.driverPublicReviews),
     badge: cleanText(driver.driverPublicBadge, 80),
     vehicle: {
       makeModel: cleanText(driver.vehicleMakeModel, 120),
