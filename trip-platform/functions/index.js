@@ -16,6 +16,25 @@ const CAPACITY_BOOKING_STATUSES = new Set(["REQUESTED", "HELD", "CONFIRMED", "CA
 const DRIVER_BOOKING_SOURCES = new Set(["BLABLACAR", "PRIVATE", "OTHER"]);
 const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "RESERVED_SEAT"]);
 
+const PUBLIC_DEBUG_EVENTS = new Set([
+  "PUBLIC_LINK_OPENED",
+  "PUBLIC_AGENDA_LOADED",
+  "PUBLIC_AGENDA_LOAD_FAILED",
+  "PUBLIC_TRIP_SELECTED",
+  "PUBLIC_TRIP_LOADED",
+  "PUBLIC_TRIP_LOAD_FAILED",
+  "PUBLIC_SEARCH_CHANGED",
+  "PUBLIC_RESERVATION_STARTED",
+  "PUBLIC_RESERVATION_REQUEST_SENT",
+  "PUBLIC_RESERVATION_CREATED",
+  "PUBLIC_RESERVATION_FAILED",
+  "PUBLIC_RESERVATION_CANCEL_STARTED",
+  "PUBLIC_RESERVATION_CANCELLED",
+  "PUBLIC_RESERVATION_CANCEL_FAILED",
+  "PUBLIC_SEATS_UPDATED",
+]);
+const PUBLIC_DEBUG_RETENTION_MILLIS = 14 * 24 * 60 * 60 * 1000;
+
 function json(res, status, body) {
   res.status(status);
   res.set("Content-Type", "application/json; charset=utf-8");
@@ -154,6 +173,154 @@ async function enforceBookingRateLimit(req) {
     if (count >= 10) throw Object.assign(new Error("Muitas tentativas. Aguarde um minuto."), { httpStatus: 429, code: "rate_limited" });
     tx.set(ref, { count: count + 1, expiresAtMillis: Date.now() + 5 * 60000 }, { merge: true });
   });
+}
+
+async function enforcePublicDebugRateLimit(req) {
+  const minute = Math.floor(Date.now() / 60000);
+  const key = sha256Hex(`public-debug:${clientIp(req)}:${minute}`);
+  const ref = db.collection("tripPublicDebugRateLimits").doc(key);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const count = snap.exists ? Number(snap.data().count || 0) : 0;
+    if (count >= 60) throw Object.assign(new Error("Limite de diagnóstico atingido."), { httpStatus: 429, code: "debug_rate_limited" });
+    tx.set(ref, { count: count + 1, expiresAtMillis: Date.now() + 5 * 60000 }, { merge: true });
+  });
+}
+
+function safePublicDebugReason(value) {
+  return cleanText(value, 80).toLowerCase().replace(/[^a-z0-9_.:-]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function safePublicDebugSession(value) {
+  return cleanText(value, 80).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
+}
+
+async function appendPublicDebugEvent({
+  driverUsername,
+  event,
+  source = "server",
+  sessionId = "",
+  tripToken = "",
+  agendaToken = "",
+  screen = "",
+  reason = "",
+  statusCode = 0,
+  seats = 0,
+  fromIndex = -1,
+  toIndex = -1,
+  replayed = false,
+}) {
+  const username = normalizeUsername(driverUsername);
+  if (!username || !PUBLIC_DEBUG_EVENTS.has(event)) return;
+  const now = Date.now();
+  const ref = db.collection("tripPublicDebugEvents").doc(`${now}_${crypto.randomBytes(8).toString("hex")}`);
+  const safeStatus = Number.isInteger(Number(statusCode)) ? Math.max(0, Math.min(599, Number(statusCode))) : 0;
+  const safeSeats = Number.isInteger(Number(seats)) ? Math.max(0, Math.min(999, Number(seats))) : 0;
+  const safeFrom = Number.isInteger(Number(fromIndex)) ? Math.max(-1, Math.min(23, Number(fromIndex))) : -1;
+  const safeTo = Number.isInteger(Number(toIndex)) ? Math.max(-1, Math.min(23, Number(toIndex))) : -1;
+  await ref.set({
+    driverUsername: username,
+    event,
+    source: source === "browser" ? "browser" : "server",
+    sessionId: safePublicDebugSession(sessionId),
+    targetType: tripToken ? "trip" : (agendaToken ? "agenda" : "unknown"),
+    tripRefHash: tripToken ? sha256Hex(`trip:${tripToken}`).slice(0, 24) : "",
+    agendaRefHash: agendaToken ? sha256Hex(`agenda:${agendaToken}`).slice(0, 24) : "",
+    screen: cleanText(screen, 24).replace(/[^a-zA-Z0-9_-]/g, ""),
+    reason: safePublicDebugReason(reason),
+    statusCode: safeStatus,
+    seats: safeSeats,
+    fromIndex: safeFrom,
+    toIndex: safeTo,
+    replayed: replayed === true,
+    createdAtMillis: now,
+    expiresAtMillis: now + PUBLIC_DEBUG_RETENTION_MILLIS,
+  });
+}
+
+async function resolvePublicDebugTarget(body) {
+  const tripToken = cleanText(body && body.tripToken, 80).replace(/[^A-Za-z0-9_-]/g, "");
+  if (tripToken.length >= 16) {
+    const tripSnap = await db.collection("trips").doc(tripToken).get();
+    if (!tripSnap.exists) return null;
+    const data = tripSnap.data();
+    const username = normalizeUsername(data.driverUsername || "");
+    if (!username) return null;
+    return { driverUsername: username, tripToken, agendaToken: "" };
+  }
+  const driverUsername = normalizeUsername(body && body.driverUsername);
+  const agendaToken = cleanText(body && body.agendaToken, 80).replace(/[^A-Za-z0-9_-]/g, "");
+  if (driverUsername.length >= 3 && agendaToken.length >= 16) {
+    const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get();
+    if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), driverSnap.data().agendaTokenHash || "")) return null;
+    return { driverUsername, tripToken: "", agendaToken };
+  }
+  return null;
+}
+
+async function recordPublicBrowserDebugEvent(req, res) {
+  try {
+    await enforcePublicDebugRateLimit(req);
+  } catch (error) {
+    return res.status(error.httpStatus || 429).send("");
+  }
+  const event = cleanText(req.body && req.body.event, 80);
+  if (!PUBLIC_DEBUG_EVENTS.has(event)) return res.status(204).send("");
+  const target = await resolvePublicDebugTarget(req.body || {});
+  if (!target) return res.status(204).send("");
+  await appendPublicDebugEvent({
+    ...target,
+    event,
+    source: "browser",
+    sessionId: req.body && req.body.sessionId,
+    screen: req.body && req.body.screen,
+    reason: req.body && req.body.reason,
+    statusCode: Number(req.body && req.body.statusCode || 0),
+    seats: Number(req.body && req.body.seats || 0),
+    fromIndex: Number(req.body && req.body.fromIndex ?? -1),
+    toIndex: Number(req.body && req.body.toIndex ?? -1),
+    replayed: req.body && req.body.replayed === true,
+  });
+  return res.status(204).send("");
+}
+
+async function listDriverPublicDebugEvents(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+  const limit = Math.max(1, Math.min(250, Number(req.query && req.query.limit || 100) || 100));
+  const afterMillis = Math.max(0, Number(req.query && req.query.afterMillis || 0) || 0);
+  const snapshot = await db.collection("tripPublicDebugEvents").where("driverUsername", "==", driver.username).limit(500).get();
+  const now = Date.now();
+  const stale = [];
+  const events = [];
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    if (Number(data.expiresAtMillis || 0) > 0 && Number(data.expiresAtMillis) < now) {
+      if (stale.length < 40) stale.push(doc.ref.delete());
+      continue;
+    }
+    if (Number(data.createdAtMillis || 0) <= afterMillis) continue;
+    events.push({
+      id: doc.id,
+      event: cleanText(data.event, 80),
+      source: data.source === "browser" ? "browser" : "server",
+      sessionId: safePublicDebugSession(data.sessionId),
+      targetType: cleanText(data.targetType, 16),
+      targetRefHash: cleanText(data.tripRefHash || data.agendaRefHash, 24),
+      screen: cleanText(data.screen, 24),
+      reason: safePublicDebugReason(data.reason),
+      statusCode: Number(data.statusCode || 0),
+      seats: Number(data.seats || 0),
+      fromIndex: Number(data.fromIndex ?? -1),
+      toIndex: Number(data.toIndex ?? -1),
+      replayed: data.replayed === true,
+      createdAtMillis: Number(data.createdAtMillis || 0),
+    });
+  }
+  if (stale.length) await Promise.allSettled(stale);
+  events.sort((a, b) => a.createdAtMillis - b.createdAtMillis || a.id.localeCompare(b.id));
+  return json(res, 200, { events: events.slice(-limit) });
 }
 
 function bookingSegmentRange(trip, boardingStopId, dropoffStopId) {
@@ -695,6 +862,8 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const parts = path.split("/").filter(Boolean);
   try {
+    if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
+    if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
