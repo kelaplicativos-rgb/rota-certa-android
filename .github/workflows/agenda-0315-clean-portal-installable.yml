@@ -3,7 +3,7 @@ name: Rota Certa 0.1.315 clean portal installable
 on:
   push:
     branches:
-      - agent/passenger-invites-credits-0.1.315
+      - agent/passenger-portal-clean-search-install-0.1.315
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/passenger-invites-credits-0.1.315
+          ref: agent/passenger-portal-clean-search-install-0.1.315
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
