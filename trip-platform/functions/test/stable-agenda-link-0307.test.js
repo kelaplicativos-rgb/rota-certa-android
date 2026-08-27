@@ -10,6 +10,11 @@ const activity = fs.readFileSync(
   path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripsActivity.kt"),
   "utf8",
 );
+const settingsUi = fs.readFileSync(
+  path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaSettingsUi.kt"),
+  "utf8",
+);
+const linkPolicy = fs.readFileSync(path.join(__dirname, "..", "public-agenda-link-policy.js"), "utf8");
 const autoSync = fs.readFileSync(
   path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"),
   "utf8",
@@ -35,18 +40,23 @@ test("only explicit regeneration creates a new agenda token", () => {
   const regenerate = between(api, "async function regenerateDriverPublicAgenda", "function splitPublicList");
   assert.match(regenerate, /REGENERATE_PUBLIC_AGENDA_LINK/);
   assert.match(regenerate, /explicit_confirmation_required/);
-  assert.match(regenerate, /crypto\.randomBytes\(24\)/);
-  assert.match(regenerate, /agendaTokenHash: sha256Hex\(publicAgendaToken\)/);
+  assert.match(regenerate, /deriveRotationToken\(rotationSecret, driver\.username, rotationId\)/);
+  assert.match(linkPolicy, /createHmac\("sha256", String\(secret\)\)/);
+  assert.match(regenerate, /currentPublicAgendaToken/);
+  assert.match(regenerate, /rotationId/);
+  assert.match(regenerate, /agenda_rotation_conflict/);
+  assert.match(regenerate, /lastRotationIdHash/);
   assert.match(api, /\/v1\/driver\/agenda\/regenerate/);
 });
 
 test("Android blocks manual token edits and requires two-step regeneration", () => {
-  assert.match(activity, /Token público da agenda de viagens — fixo/);
-  assert.match(activity, /enabled = token\.isBlank\(\)/);
-  assert.match(activity, /Text\("Gerar novo link"\)/);
-  assert.match(activity, /Gerar um novo link invalida imediatamente o link atual/);
-  assert.match(activity, /Text\("Confirmar novo link"\)/);
-  assert.match(activity, /regeneratePublicAgenda\(\)/);
+  assert.match(settingsUi, /Token público da agenda de viagens — fixo/);
+  assert.match(settingsUi, /enabled = token\.isBlank\(\)/);
+  assert.match(settingsUi, /Text\("Gerar novo link"\)/);
+  assert.match(settingsUi, /Gerar um novo link invalida imediatamente o link atual/);
+  assert.match(settingsUi, /Text\("Confirmar novo link"\)/);
+  assert.match(settingsUi, /regeneratePublicAgenda\(expectedCurrent, rotationId\)/);
+  assert.match(settingsUi, /onRotateLink\(expectedCurrent, response\.publicAgendaToken\)/);
 });
 
 test("normal app save and autosync do not adopt a replacement token", () => {
