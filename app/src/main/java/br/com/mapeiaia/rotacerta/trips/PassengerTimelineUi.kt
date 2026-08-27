@@ -25,7 +25,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -80,7 +82,30 @@ internal fun EnhancedPassengerTimelineSection(
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val scope = rememberCoroutineScope()
+    var identityRevision by remember { mutableIntStateOf(0) }
     val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
+    val externalObservationKey = rawRows
+        .filter { BookingSource.BLABLACAR in it.sources }
+        .joinToString("|") { row ->
+            listOf(row.externalPassengerId.orEmpty(), row.name, row.phone.orEmpty(), row.externalReservationKey.orEmpty()).joinToString("~")
+        }
+    LaunchedEffect(entry.tripId, entry.blablaTripId, entry.blablaProfileUuid, externalObservationKey) {
+        var observed = false
+        rawRows.filter { BookingSource.BLABLACAR in it.sources }.forEach { row ->
+            val profile = passengerStore.observeExternalPassenger(
+                displayName = row.name,
+                whatsapp = row.phone,
+                externalPassengerId = row.externalPassengerId,
+                reservationKey = row.externalReservationKey,
+                externalTripId = entry.blablaTripId,
+                driverProfileUuid = entry.blablaProfileUuid,
+            )
+            if (profile != null) observed = true
+        }
+        if (observed) identityRevision++
+    }
+    @Suppress("UNUSED_VARIABLE")
+    val identityRefresh = identityRevision
     if (hasExternalTripActionEvidence(entry)) {
         TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
     }
@@ -93,6 +118,7 @@ internal fun EnhancedPassengerTimelineSection(
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var historyRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var editManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -102,6 +128,8 @@ internal fun EnhancedPassengerTimelineSection(
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
+        val rowProfile = passenger.passengerId?.let(passengerStore::profile)
+            ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -175,10 +203,19 @@ internal fun EnhancedPassengerTimelineSection(
                     contentPadding = COMPACT_NAME_PADDING,
                 ) {
                     Text(
-                        passenger.name.ifBlank { "Passageiro" },
+                        (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+
+                TextButton(
+                    onClick = { historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId) },
+                    enabled = rowProfile != null || !passenger.externalPassengerId.isNullOrBlank(),
+                    contentPadding = COMPACT_ACTION_PADDING,
+                    modifier = Modifier.heightIn(min = 36.dp),
+                ) {
+                    Text("Histórico", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
 
                 OutlinedButton(
@@ -272,8 +309,7 @@ internal fun EnhancedPassengerTimelineSection(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val canonicalProfile = passenger.passengerId?.let(passengerStore::profile)
-                ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
+            val canonicalProfile = rowProfile
             val rideHistory = canonicalProfile?.let { passengerStore.rideHistory(it.id) }
             val identityLabel = when {
                 canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO"
@@ -291,6 +327,70 @@ internal fun EnhancedPassengerTimelineSection(
                 ) { Text(label, style = MaterialTheme.typography.bodySmall) }
             }
         }
+    }
+
+
+    historyRow?.let { row ->
+        val profile = row.passengerId?.let(passengerStore::profile)
+            ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
+        val persistent = profile?.let { passengerStore.persistentHistory(it.id) }
+        AlertDialog(
+            onDismissRequest = { historyRow = null },
+            title = { Text("Histórico do passageiro") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (profile == null) {
+                        Text("Ainda não há identidade persistente para este passageiro.")
+                    } else {
+                        Text((if (profile.blocked) "🚫 " else "") + profile.displayName, style = MaterialTheme.typography.titleMedium)
+                        Text(profile.whatsapp.ifBlank { "Telefone não informado" })
+                        Text("${persistent?.totalRides ?: 0} viagem(ns) registrada(s)", style = MaterialTheme.typography.bodySmall)
+                        if (profile.externalPassengerIds.isNotEmpty()) {
+                            Text(
+                                "UUID BlaBlaCar: " + profile.externalPassengerIds.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (profile.blocked) {
+                            Text(
+                                "🚫 Persona non grata" + profile.blockedReason.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty(),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (profile.archived) Text("Arquivado da lista, mas histórico preservado.", style = MaterialTheme.typography.bodySmall)
+                        val observations = persistent?.observations.orEmpty()
+                        if (observations.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text("Alterações de identidade", style = MaterialTheme.typography.titleSmall)
+                            observations.take(12).forEach { observation ->
+                                val whenText = java.time.Instant.ofEpochMilli(observation.observedAtMillis)
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                                val parts = listOf(
+                                    observation.displayName.takeIf(String::isNotBlank),
+                                    observation.whatsapp.takeIf(String::isNotBlank),
+                                    observation.photoUrl.takeIf(String::isNotBlank)?.let { "foto registrada" },
+                                ).filterNotNull()
+                                Text("• $whenText — ${parts.joinToString(" • ")}", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (profile != null) {
+                    TextButton(onClick = {
+                        passengerStore.setArchived(profile.id, !profile.archived)
+                        historyRow = null
+                        onChanged(
+                            if (profile.archived) "Passageiro voltou para a lista. Histórico preservado."
+                            else "Passageiro retirado da lista visual. Histórico, UUID, bloqueio e viagens foram preservados.",
+                        )
+                    }) { Text(if (profile.archived) "Restaurar na lista" else "Excluir da lista") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { historyRow = null }) { Text("Fechar") } },
+        )
     }
 
     profileRow?.let { row ->
@@ -563,6 +663,8 @@ internal fun enhancedPassengerRows(
     val rows = entry.blablaPassengers.map { passenger ->
         val metadataKey = externalPassengerReservationKey(entry.blablaProfileUuid, passenger.booking_href)
         val metadata = passengerStore.externalMetadata(metadataKey)
+        val hrefExternalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+        val externalId = metadata?.externalPassengerId?.takeIf(String::isNotBlank) ?: hrefExternalId
         val boarding = passengerTimelinePlaceLabel(passenger.name, passenger.boarding)
         val dropoff = passengerTimelinePlaceLabel(passenger.name, passenger.dropoff)
         EnhancedPassengerCardRow(
@@ -579,7 +681,7 @@ internal fun enhancedPassengerRows(
             fareMinorUnits = metadata?.fareMinorUnits,
             fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
             boardingAddress = metadata?.boardingAddress.orEmpty(),
-            externalPassengerId = metadata?.externalPassengerId?.takeIf(String::isNotBlank),
+            externalPassengerId = externalId,
             dropoffAddress = metadata?.dropoffAddress.orEmpty(),
             boardingStopIndex = trip?.let { TripPassengerRouteOrder.stopIndexForLabel(it, boarding) },
         )
