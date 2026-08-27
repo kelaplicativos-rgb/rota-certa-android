@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.LocalTime
@@ -55,10 +56,38 @@ internal object PublicAgendaAutoSync0300 {
                         publicUrl = response.publicUrl,
                     ),
                 )
-            }.onSuccess {
+                response
+            }.onSuccess { response ->
                 localPublished++
-            }.onFailure {
+                runCatching {
+                    syncLocalCapacityClaims(
+                        api = api,
+                        remoteTripId = response.tripId,
+                        localTrip = original,
+                        localBookings = store.bookingsFor(original.id),
+                    )
+                }.onSuccess { synced ->
+                    seatClaimsSynced += synced
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_AGENDA_LOCAL_CAPACITY_SYNCED",
+                        context.packageName,
+                        "localTrip=${original.id} remoteTripPresent=true claimsSynced=$synced localBookings=${store.bookingsFor(original.id).size}",
+                    )
+                }.onFailure { error ->
+                    failures++
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_AGENDA_LOCAL_CAPACITY_SYNC_FAILED",
+                        context.packageName,
+                        "localTrip=${original.id} remoteTripPresent=true reason=${error.javaClass.simpleName}",
+                    )
+                }
+            }.onFailure { error ->
                 failures++
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_AGENDA_LOCAL_PUBLISH_FAILED",
+                    context.packageName,
+                    "localTrip=${original.id} reason=${error.javaClass.simpleName}",
+                )
             }
         }
 
@@ -114,6 +143,55 @@ internal object PublicAgendaAutoSync0300 {
             seatClaimsSynced = seatClaimsSynced,
             failures = failures,
         )
+    }
+
+    private suspend fun syncLocalCapacityClaims(
+        api: TripRemoteApi,
+        remoteTripId: String,
+        localTrip: Trip,
+        localBookings: List<Booking>,
+    ): Int {
+        val mirrors = localBookings
+            .filterNot { it.source == BookingSource.ROTA_CERTA }
+            .map { booking ->
+                val fingerprint = sha256(booking.id).take(32)
+                booking.copy(
+                    id = "mirror-$fingerprint",
+                    tripId = localTrip.id,
+                    passengerName = "Ocupação sincronizada",
+                    passengerContact = "",
+                    sourceReference = "$LOCAL_MIRROR_PREFIX$fingerprint",
+                    occupancyGroupId = booking.occupancyGroupId ?: "local:$fingerprint",
+                )
+            }
+
+        val currentMirrorIds = mirrors.map(Booking::id).toSet()
+        val remoteMirrorBookings = api.listBookings(remoteTripId).bookings
+            .filter { it.sourceReference.startsWith(LOCAL_MIRROR_PREFIX) }
+
+        var synced = 0
+
+        remoteMirrorBookings
+            .filterNot { it.id in currentMirrorIds }
+            .filterNot { it.status == BookingStatus.CANCELLED.name || it.status == BookingStatus.EXPIRED.name }
+            .forEach { stale ->
+                api.upsertDriverBooking(
+                    remoteTripId = remoteTripId,
+                    booking = stale.toLocalBooking(localTrip.id).copy(
+                        passengerName = "Ocupação sincronizada",
+                        passengerContact = "",
+                        status = BookingStatus.CANCELLED,
+                    ),
+                )
+                synced++
+            }
+
+        mirrors.forEach { mirror ->
+            api.upsertDriverBooking(remoteTripId, mirror)
+            synced++
+        }
+
+        return synced
     }
 
     internal fun toPublicTrip(
@@ -234,5 +312,6 @@ internal object PublicAgendaAutoSync0300 {
         TripStatus.ACTIVE,
     )
 
+    private const val LOCAL_MIRROR_PREFIX = "LOCAL_MIRROR:"
     private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
 }
