@@ -19,6 +19,9 @@ internal data class PublicAgendaExternalTrip(
     val trip: Trip,
     val bookedSeats: Int,
     val sourceReference: String,
+    val profileUuid: String = "",
+    val blablaTripId: String = "",
+    val blablaTripHref: String = "",
 )
 
 internal object PublicAgendaAutoSync0300 {
@@ -130,7 +133,27 @@ internal object PublicAgendaAutoSync0300 {
                     api.upsertDriverBooking(response.tripId, claim)
                     seatClaimsSynced++
                 }
-            }.onSuccess {
+                response
+            }.onSuccess { response ->
+                store.savePublicExternalBinding(
+                    PublicExternalTripBinding(
+                        remoteTripId = response.tripId,
+                        publicToken = response.publicToken,
+                        bookingTripId = "public-external:${response.tripId}",
+                        profileUuid = synthesized.profileUuid,
+                        blablaTripId = synthesized.blablaTripId,
+                        blablaTripHref = synthesized.blablaTripHref,
+                        title = publicTrip.title,
+                        departureAtMillis = publicTrip.departureAtMillis,
+                        capacity = publicTrip.capacity,
+                        stops = publicTrip.stops,
+                    ),
+                )
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_EXTERNAL_BINDING_SAVED",
+                    context.packageName,
+                    "remoteTripPresent=true profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                )
                 externalPublished++
             }.onFailure {
                 failures++
@@ -257,6 +280,9 @@ internal object PublicAgendaAutoSync0300 {
             trip = trip,
             bookedSeats = booked.coerceAtMost(safeCapacity),
             sourceReference = source.trip_id.orEmpty().ifBlank { source.trip_href.orEmpty() }.ifBlank { "BLABLACAR:$token" },
+            profileUuid = source.profile_uuid.trim(),
+            blablaTripId = source.trip_id.orEmpty().trim(),
+            blablaTripHref = source.trip_href.orEmpty().trim(),
         )
     }
 

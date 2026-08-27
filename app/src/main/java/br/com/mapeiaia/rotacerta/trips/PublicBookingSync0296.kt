@@ -18,10 +18,12 @@ internal object PublicBookingRemoteSync0296 {
         val api = TripRemoteApi(settings)
         pullPublicLinkDebugTrace(context, api)
         val candidates = store.trips().filter { !it.remoteId.isNullOrBlank() }
-        if (candidates.isEmpty()) return PublicBookingPullResult(0, emptySet(), 0)
+        val externalBindings = store.publicExternalBindings()
+        if (candidates.isEmpty() && externalBindings.isEmpty()) return PublicBookingPullResult(0, emptySet(), 0)
 
         var imported = 0
         val changed = linkedSetOf<String>()
+        val changedExternalRemoteIds = linkedSetOf<String>()
         candidates.forEach { trip ->
             val remoteTripId = trip.remoteId ?: return@forEach
             val remote = runCatching { api.listBookings(remoteTripId).bookings }
@@ -42,6 +44,33 @@ internal object PublicBookingRemoteSync0296 {
                     changed += trip.id
                 }
             }
+        }
+
+        externalBindings.forEach { binding ->
+            val remote = runCatching { api.listBookings(binding.remoteTripId).bookings }
+                .getOrElse { error ->
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_BOOKING_EXTERNAL_PULL_FAILED",
+                        context.packageName,
+                        "remoteTripPresent=true reason=${error.javaClass.simpleName}",
+                    )
+                    return@forEach
+                }
+            remote.asSequence()
+                .filter { incoming ->
+                    incoming.source == BookingSource.ROTA_CERTA ||
+                        incoming.sourceReference.startsWith("PUBLIC_LINK:")
+                }
+                .forEach { incoming ->
+                    val existing = store.bookings().firstOrNull { it.id == incoming.id }
+                    val mapped = incoming.toLocalBooking(binding.bookingTripId, existing)
+                    if (existing != mapped) {
+                        store.saveBooking(mapped)
+                        imported++
+                        changed += binding.bookingTripId
+                        changedExternalRemoteIds += binding.remoteTripId
+                    }
+                }
         }
 
         if (changed.isEmpty()) return PublicBookingPullResult(imported, changed, 0)
@@ -70,10 +99,31 @@ internal object PublicBookingRemoteSync0296 {
             )
             if (result.shouldSync) queued++
         }
+
+        changedExternalRemoteIds.forEach { remoteTripId ->
+            val binding = store.publicExternalBinding(remoteTripId) ?: return@forEach
+            val exact = merged.filter(binding::matches)
+            if (exact.size != 1) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_BOOKING_EXTERNAL_SEAT_SYNC_PENDING",
+                    context.packageName,
+                    "remoteTripPresent=true reason=strong_timeline_match_count_${exact.size}",
+                )
+                return@forEach
+            }
+            val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+                context = context,
+                entry = exact.single(),
+                trip = binding.asTrip(),
+                store = store,
+                reason = "automatic_after_public_link_booking_external_card",
+            )
+            if (result.shouldSync) queued++
+        }
         UnifiedDebugEventStore.record(
             "PUBLIC_BOOKING_PULL_RECONCILED",
             context.packageName,
-            "imported=$imported changedTrips=${changed.size} seatSyncQueued=$queued",
+            "imported=$imported changedTrips=${changed.size} externalCards=${changedExternalRemoteIds.size} seatSyncQueued=$queued",
         )
         return PublicBookingPullResult(imported, changed, queued)
     }

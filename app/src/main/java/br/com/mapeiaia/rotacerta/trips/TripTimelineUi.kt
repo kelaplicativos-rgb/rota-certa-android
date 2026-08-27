@@ -96,7 +96,14 @@ fun TripTimelineScreen(
     }
 
     val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
-    val mergedRaw = remember(localEntries, collectorResponse) { BlaBlaTimelineAdapter.merge(localEntries, collectorResponse) }
+    val publicExternalBindings = store.publicExternalBindings()
+    val mergedRaw = remember(localEntries, collectorResponse, bookings, publicExternalBindings) {
+        applyPublicExternalBookingsToTimeline(
+            entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponse),
+            bindings = publicExternalBindings,
+            bookings = bookings,
+        )
+    }
     val merged = remember(mergedRaw, appSettings.vehicleCapacity) {
         applyConfiguredVehicleCapacity(mergedRaw, appSettings.vehicleCapacity)
     }
@@ -275,6 +282,7 @@ fun TripTimelineScreen(
         day.items.forEach { entry ->
         val trip = entry.localTripId?.let(store::getTrip)
             ?: store.getTrip(entry.tripId)
+            ?: store.publicExternalBindingFor(entry)?.asTrip()
             ?: findExistingTimelineBackingTrip(entry, store.trips())
         val archived = archiveStore.isArchived(entry)
         TimelineEntryCard(
@@ -438,6 +446,46 @@ private fun TripDriverDefaultsCard(
             ) { Text("Salvar capacidade") }
         }
     }
+}
+
+internal fun applyPublicExternalBookingsToTimeline(
+    entries: List<TripTimelineEntry>,
+    bindings: List<PublicExternalTripBinding>,
+    bookings: List<Booking>,
+    nowMillis: Long = System.currentTimeMillis(),
+): List<TripTimelineEntry> = entries.map { entry ->
+    val binding = bindings.firstOrNull { it.matches(entry) } ?: return@map entry
+    val active = bookings
+        .filter { it.tripId == binding.bookingTripId }
+        .filter { it.source == BookingSource.ROTA_CERTA || it.sourceReference.startsWith("PUBLIC_LINK:") }
+        .filter { booking ->
+            booking.seats > 0 && when (booking.status) {
+                BookingStatus.CONFIRMED -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REQUESTED,
+                BookingStatus.CANCELLED,
+                BookingStatus.EXPIRED,
+                -> false
+            }
+        }
+
+    if (active.isEmpty()) return@map entry
+
+    val publicTrip = binding.asTrip()
+    val publicLoads = SeatAvailabilityEngine.segmentLoads(publicTrip, active, nowMillis)
+    val publicOccupied = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
+        ?: active.sumOf(Booking::seats)
+    val externalRosterSeats = entry.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
+    val combinedPhysical = externalRosterSeats + publicOccupied
+    val sources = entry.sourcePassengerSeats.toMutableMap().apply {
+        this[BookingSource.ROTA_CERTA] = publicOccupied
+    }
+
+    entry.copy(
+        minimumOccupiedSeats = maxOf(entry.minimumOccupiedSeats, combinedPhysical),
+        maximumOccupiedSeats = maxOf(entry.maximumOccupiedSeats, combinedPhysical),
+        sourcePassengerSeats = sources.filterValues { it > 0 },
+    )
 }
 
 internal fun applyConfiguredVehicleCapacity(

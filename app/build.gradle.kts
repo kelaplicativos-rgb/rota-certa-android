@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.gms.google-services")
 }
 
 val localProperties = Properties().apply {
@@ -59,8 +60,8 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5596
-        versionName = "0.1.303"
+        versionCode = 5597
+        versionName = "0.1.304"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -120,6 +121,7 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.gms:play-services-tasks:18.2.0")
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

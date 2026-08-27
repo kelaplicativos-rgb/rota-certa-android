@@ -9,6 +9,7 @@ let driverDisplayName = "";
 let trip = null;
 let confirmedBooking = null;
 let pendingBooking = null;
+let editingExistingBooking = false;
 
 const publicDebugSessionId = (() => {
   try {
@@ -376,6 +377,9 @@ function reviewBooking() {
 
 async function reserve() {
   if (!trip || !pendingBooking) return;
+  if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
+    return updateExistingReservation();
+  }
   $("confirmReserve").disabled = true;
   $("reviewMessage").textContent = "Confirmando sua vaga…";
   const idempotencyKey = requestIdentity(pendingBooking);
@@ -400,12 +404,14 @@ async function reserve() {
     confirmedBooking = {
       bookingId: body.bookingId,
       cancellationToken: body.cancellationToken,
+      passengerName: pendingBooking.passengerName,
+      passengerContact: pendingBooking.passengerContact,
       boardingStopId: pendingBooking.boardingStopId,
       dropoffStopId: pendingBooking.dropoffStopId,
-        seats: pendingBooking.seats,
-        farePerSeatCents: Number(body.farePerSeatCents || 0),
-        totalFareCents: Number(body.totalFareCents || 0),
-      };
+      seats: pendingBooking.seats,
+      farePerSeatCents: Number(body.farePerSeatCents || 0),
+      totalFareCents: Number(body.totalFareCents || 0),
+    };
     try {
       localStorage.setItem(`rotacerta-booking-${body.bookingId}`, JSON.stringify({ trip: tripToken, cancellationToken: body.cancellationToken }));
       localStorage.setItem(cancellationStorageKey(), JSON.stringify(confirmedBooking));
@@ -448,6 +454,73 @@ async function reserve() {
     });
     $("reviewMessage").textContent = error.message || "Falha ao confirmar reserva.";
     await loadTrip();
+  } finally {
+    $("confirmReserve").disabled = false;
+  }
+}
+
+function beginExistingReservationEdit() {
+  if (!trip || !confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken) return;
+  editingExistingBooking = true;
+  $("name").value = confirmedBooking.passengerName || "";
+  $("contact").value = maskWhatsapp(confirmedBooking.passengerContact || "");
+  $("boarding").value = confirmedBooking.boardingStopId || $("boarding").value;
+  refreshSelectors();
+  if (confirmedBooking.dropoffStopId) $("dropoff").value = confirmedBooking.dropoffStopId;
+  $("seats").value = String(Math.max(1, Number(confirmedBooking.seats || 1)));
+  refreshAvailability();
+  $("bookingMessage").textContent = "Altere os dados desejados e revise novamente.";
+  $("reviewMessage").textContent = "";
+  show("confirmed", false);
+  show("booking", true);
+  show("review", false);
+  $("booking").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function updateExistingReservation() {
+  if (!trip || !pendingBooking || !confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken) return;
+  $("confirmReserve").disabled = true;
+  $("reviewMessage").textContent = "Atualizando sua reserva…";
+  let statusCode = 0;
+  try {
+    const response = await fetch(
+      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(confirmedBooking.bookingId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          ...pendingBooking,
+          cancellationToken: confirmedBooking.cancellationToken,
+        }),
+      },
+    );
+    statusCode = response.status;
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível alterar a reserva.");
+    confirmedBooking = {
+      ...confirmedBooking,
+      passengerName: pendingBooking.passengerName,
+      passengerContact: pendingBooking.passengerContact,
+      boardingStopId: pendingBooking.boardingStopId,
+      dropoffStopId: pendingBooking.dropoffStopId,
+      seats: pendingBooking.seats,
+      farePerSeatCents: Number(body.farePerSeatCents || 0),
+      totalFareCents: Number(body.totalFareCents || 0),
+    };
+    try { localStorage.setItem(cancellationStorageKey(), JSON.stringify(confirmedBooking)); } catch (_) {}
+    tracePublicAction("PUBLIC_RESERVATION_CHANGED", { statusCode, seats: confirmedBooking.seats });
+    tracePublicAction("PUBLIC_SEATS_UPDATED", { statusCode, seats: confirmedBooking.seats });
+    editingExistingBooking = false;
+    pendingBooking = null;
+    $("reviewMessage").textContent = "";
+    $("confirmationText").textContent = "✅ Reserva alterada com sucesso.";
+    $("cancelCode").textContent = confirmedBooking.cancellationToken;
+    show("booking", false);
+    show("review", false);
+    show("confirmed", true);
+    await loadTrip();
+  } catch (error) {
+    $("reviewMessage").textContent = error.message || "Falha ao alterar reserva.";
   } finally {
     $("confirmReserve").disabled = false;
   }
@@ -577,6 +650,7 @@ $("contact").addEventListener("input", (event) => { event.target.value = maskWha
 $("reserve").addEventListener("click", reviewBooking);
 $("confirmReserve").addEventListener("click", reserve);
 $("editReservation").addEventListener("click", () => show("review", false));
+$("changeReservation").addEventListener("click", beginExistingReservationEdit);
 $("cancelReservation").addEventListener("click", cancelReservation);
 $("googleCalendar").addEventListener("click", openGoogleCalendar);
 $("downloadIcs").addEventListener("click", downloadIcs);

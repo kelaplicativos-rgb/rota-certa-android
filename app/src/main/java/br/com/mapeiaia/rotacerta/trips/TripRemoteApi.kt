@@ -30,6 +30,18 @@ data class DriverRegistrationResponse(
 )
 
 @Serializable
+data class DriverPushTokenRequest(
+    val token: String,
+    val appVersion: String = "",
+    val deviceLabel: String = "",
+)
+
+@Serializable
+data class DriverPushTokenResponse(
+    val registered: Boolean = false,
+)
+
+@Serializable
 data class DriverAgendaEnsureRequest(
     val publicAgendaToken: String = "",
 )
@@ -142,6 +154,17 @@ class TripRemoteApi(
         path = "/v1/drivers/register",
         body = json.encodeToString(DriverRegistrationRequest(displayName.trim(), username.trim())),
         requireDriverToken = false,
+    )
+
+    suspend fun registerPushToken(
+        token: String,
+        appVersion: String,
+        deviceLabel: String,
+    ): DriverPushTokenResponse = request(
+        method = "POST",
+        path = "/v1/driver/push-tokens",
+        body = json.encodeToString(DriverPushTokenRequest(token, appVersion, deviceLabel)),
+        requireDriverToken = true,
     )
 
     suspend fun ensurePublicAgenda(publicAgendaToken: String): DriverAgendaEnsureResponse = request(

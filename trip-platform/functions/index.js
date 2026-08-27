@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
@@ -27,6 +28,7 @@ const PUBLIC_DEBUG_EVENTS = new Set([
   "PUBLIC_RESERVATION_STARTED",
   "PUBLIC_RESERVATION_REQUEST_SENT",
   "PUBLIC_RESERVATION_CREATED",
+  "PUBLIC_RESERVATION_CHANGED",
   "PUBLIC_RESERVATION_FAILED",
   "PUBLIC_RESERVATION_CANCEL_STARTED",
   "PUBLIC_RESERVATION_CANCELLED",
@@ -86,6 +88,72 @@ async function requireDriver(req, res) {
     return null;
   }
   return { username: "", displayName: "", legacy: true };
+}
+
+async function registerDriverPushToken(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+  const token = cleanText(req.body && req.body.token, 4096);
+  if (token.length < 32) return fail(res, 400, "invalid_push_token", "Token de notificação inválido.");
+  const now = Date.now();
+  const ref = db.collection("tripDriverPushTokens").doc(sha256Hex(token));
+  await ref.set({
+    driverUsername: driver.username,
+    token,
+    platform: "android",
+    appVersion: cleanText(req.body && req.body.appVersion, 40),
+    deviceLabel: cleanText(req.body && req.body.deviceLabel, 80),
+    createdAtMillis: now,
+    updatedAtMillis: now,
+    expiresAtMillis: now + 120 * 24 * 60 * 60 * 1000,
+  }, { merge: true });
+  return json(res, 200, { registered: true });
+}
+
+async function sendDriverBookingPush({
+  driverUsername,
+  event,
+  tripToken,
+  bookingId = "",
+  seats = 0,
+  tripTitle = "",
+}) {
+  const username = normalizeUsername(driverUsername);
+  if (!username) return;
+  const snapshot = await db.collection("tripDriverPushTokens")
+    .where("driverUsername", "==", username)
+    .limit(20)
+    .get();
+  const now = Date.now();
+  const activeDocs = snapshot.docs.filter((doc) => Number(doc.data().expiresAtMillis || 0) > now && cleanText(doc.data().token, 4096).length >= 32);
+  if (!activeDocs.length) return;
+
+  const tokens = activeDocs.map((doc) => cleanText(doc.data().token, 4096));
+  const response = await getMessaging().sendEachForMulticast({
+    tokens,
+    data: {
+      event,
+      remoteTripId: cleanText(tripToken, 100),
+      bookingId: cleanText(bookingId, 120),
+      seats: String(Math.max(0, Number(seats || 0))),
+      tripTitle: cleanText(tripTitle, 180),
+    },
+    android: {
+      priority: "high",
+      ttl: 60 * 60 * 1000,
+    },
+  });
+
+  const invalid = [];
+  response.responses.forEach((item, index) => {
+    if (item.success) return;
+    const code = item.error && item.error.code || "";
+    if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+      invalid.push(activeDocs[index].ref.delete());
+    }
+  });
+  if (invalid.length) await Promise.allSettled(invalid);
 }
 
 function cleanText(value, max = 240) {
@@ -759,6 +827,7 @@ async function createBooking(req, res, token) {
           farePerSeatCents: Number(existingData.farePerSeatCents || 0),
           totalFareCents: Number(existingData.totalFareCents || 0),
           driverUsername: debugDriverUsername,
+          tripTitle: cleanText(trip.title, 180),
         };
       }
 
@@ -810,6 +879,7 @@ async function createBooking(req, res, token) {
         farePerSeatCents,
         totalFareCents,
         driverUsername: debugDriverUsername,
+        tripTitle: cleanText(trip.title, 180),
       };
     });
     const statusCode = result.replayed ? 200 : 201;
@@ -832,6 +902,16 @@ async function createBooking(req, res, token) {
       statusCode,
       seats,
     }).catch(() => {});
+    if (!result.replayed) {
+      await sendDriverBookingPush({
+        driverUsername: result.driverUsername || debugDriverUsername,
+        event: "reservation_created",
+        tripToken: token,
+        bookingId,
+        seats,
+        tripTitle: result.tripTitle || "",
+      }).catch((error) => console.error("push reservation_created", error));
+    }
     return json(res, statusCode, {
       bookingId,
       cancellationToken,
@@ -862,7 +942,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   try {
-    await db.runTransaction(async (tx) => {
+    const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
       const trip = tripSnap.data();
@@ -876,7 +956,8 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const reconciledRecords = records.map((record) => record.id === bookingId ? { ...record, status: "CANCELLED", updatedAtMillis: now } : record);
       const loads = reconciledSegmentLoads(trip, reconciledRecords, now);
       assertNoOverbooking(trip, loads);
-      if (booking.status !== "CANCELLED" && booking.status !== "EXPIRED") {
+      const changed = booking.status !== "CANCELLED" && booking.status !== "EXPIRED";
+      if (changed) {
         tx.update(bookingRef, { status: "CANCELLED", updatedAtMillis: now });
       }
       tx.update(tripRef, {
@@ -884,6 +965,12 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
+      return {
+        changed,
+        driverUsername: debugDriverUsername,
+        tripTitle: cleanText(trip.title, 180),
+        seats: Number(booking.seats || 0),
+      };
     });
     await appendPublicDebugEvent({
       driverUsername: debugDriverUsername,
@@ -901,6 +988,16 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       screen: "trip",
       statusCode: 200,
     }).catch(() => {});
+    if (result.changed) {
+      await sendDriverBookingPush({
+        driverUsername: result.driverUsername || debugDriverUsername,
+        event: "reservation_cancelled",
+        tripToken: token,
+        bookingId,
+        seats: result.seats,
+        tripTitle: result.tripTitle || "",
+      }).catch((error) => console.error("push reservation_cancelled", error));
+    }
     return json(res, 200, { cancelled: true });
   } catch (error) {
     await appendPublicDebugEvent({
@@ -913,6 +1010,109 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       statusCode: error.httpStatus || 400,
     }).catch(() => {});
     return fail(res, error.httpStatus || 400, error.code || "cancel_failed", error.message || "Falha ao cancelar reserva.");
+  }
+}
+
+async function updatePublicBooking(req, res, token, bookingIdRaw) {
+  await enforceBookingRateLimit(req);
+  const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const cancellationToken = cleanText(req.body && req.body.cancellationToken, 120);
+  if (!bookingId || !cancellationToken) return fail(res, 400, "booking_credentials_required", "Reserva e código particular são obrigatórios.");
+  const suppliedHash = sha256Hex(cancellationToken);
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  let debugDriverUsername = "";
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const trip = tripSnap.data();
+      debugDriverUsername = normalizeUsername(trip.driverUsername || "");
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const previous = records.find((record) => record.id === bookingId);
+      if (!previous) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (!safeEqual(suppliedHash, previous.cancellationHash || "")) throw Object.assign(new Error("Código particular inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
+      if (previous.status === "CANCELLED" || previous.status === "EXPIRED") throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
+
+      const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
+      const passengerContact = req.body && req.body.passengerContact
+        ? normalizeBrazilWhatsapp(req.body.passengerContact)
+        : previous.passengerContact;
+      const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80) || previous.boardingStopId;
+      const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80) || previous.dropoffStopId;
+      const seats = req.body && req.body.seats != null ? Number(req.body.seats) : Number(previous.seats || 0);
+      if (!passengerName) throw Object.assign(new Error("Informe seu nome."), { httpStatus: 400, code: "passenger_name_required" });
+      if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+      const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+      const totalFareCents = farePerSeatCents * seats;
+      const now = Date.now();
+      const updated = {
+        ...previous,
+        passengerName,
+        passengerContact,
+        boardingStopId,
+        dropoffStopId,
+        seats,
+        farePerSeatCents,
+        totalFareCents,
+        updatedAtMillis: now,
+      };
+      const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
+      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      assertNoOverbooking(trip, loads);
+      const updatedPersisted = { ...updated };
+      delete updatedPersisted.id;
+      tx.set(bookingRef, updatedPersisted, { merge: true });
+      tx.update(tripRef, {
+        segmentLoads: loads,
+        status: statusForReconciledLoads(trip, loads),
+        updatedAtMillis: now,
+      });
+      return {
+        booking: updated,
+        availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+        driverUsername: debugDriverUsername,
+        tripTitle: cleanText(trip.title, 180),
+      };
+    });
+
+    await appendPublicDebugEvent({
+      driverUsername: result.driverUsername || debugDriverUsername,
+      event: "PUBLIC_RESERVATION_CHANGED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode: 200,
+      seats: result.booking.seats,
+    }).catch(() => {});
+    await appendPublicDebugEvent({
+      driverUsername: result.driverUsername || debugDriverUsername,
+      event: "PUBLIC_SEATS_UPDATED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      statusCode: 200,
+      seats: result.booking.seats,
+    }).catch(() => {});
+    await sendDriverBookingPush({
+      driverUsername: result.driverUsername || debugDriverUsername,
+      event: "reservation_changed",
+      tripToken: token,
+      bookingId,
+      seats: result.booking.seats,
+      tripTitle: result.tripTitle || "",
+    }).catch((error) => console.error("push reservation_changed", error));
+    return json(res, 200, {
+      bookingId,
+      availableSeats: result.availableSeats,
+      farePerSeatCents: Number(result.booking.farePerSeatCents || 0),
+      totalFareCents: Number(result.booking.totalFareCents || 0),
+      changed: true,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "booking_update_failed", error.message || "Falha ao alterar reserva.");
   }
 }
 
@@ -985,6 +1185,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
+    if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
@@ -1004,6 +1205,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "POST") {
       return await createBooking(req, res, parts[3]);
+    }
+    if (parts.length === 6 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "PUT") {
+      return await updatePublicBooking(req, res, parts[3], parts[5]);
     }
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
       return await cancelPublicBooking(req, res, parts[3], parts[5]);

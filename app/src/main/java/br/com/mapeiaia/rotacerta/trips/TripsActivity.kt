@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,6 +48,12 @@ import kotlinx.coroutines.launch
 class TripsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 304)
+        }
         TripShortcutInstaller.installDynamic(this)
         setContent {
             MaterialTheme {
@@ -110,6 +118,7 @@ private fun TripApp(
                 store = store,
                 configuredVehicleCapacity = appSettings.vehicleCapacity,
             )
+            runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
             if (result.localPublished + result.externalPublished > 0) {
                 refresh()
                 message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
