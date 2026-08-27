@@ -62,6 +62,56 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun localCapacityMirrorsArePrivateStableAndExcludePublicLinkBookings() {
+        val trip = Trip(
+            id = "local-trip-1",
+            title = "Santo André → São Tomé das Letras",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            status = TripStatus.FULL,
+            stops = listOf(
+                TripStop(id = "sa", order = 0, name = "Santo André"),
+                TripStop(id = "sp", order = 1, name = "São Paulo"),
+                TripStop(id = "stl", order = 2, name = "São Tomé das Letras"),
+            ),
+        )
+        val blabla = Booking(
+            id = "blabla-booking-1",
+            tripId = trip.id,
+            passengerName = "Nome real não deve subir",
+            passengerContact = "(11) 99999-9999",
+            boardingStopId = "sa",
+            dropoffStopId = "stl",
+            seats = 3,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+        )
+        val publicLink = Booking(
+            id = "public-booking-1",
+            tripId = trip.id,
+            passengerName = "Reserva do link",
+            boardingStopId = "sp",
+            dropoffStopId = "stl",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.ROTA_CERTA,
+            sourceReference = "PUBLIC_LINK:public-booking-1",
+        )
+
+        val mirrors = PublicAgendaAutoSync0300.localCapacityMirrors(trip, listOf(blabla, publicLink))
+
+        assertEquals(1, mirrors.size)
+        val mirror = mirrors.single()
+        assertTrue(mirror.id.startsWith("mirror-"))
+        assertEquals("Ocupação sincronizada", mirror.passengerName)
+        assertEquals("", mirror.passengerContact)
+        assertEquals(3, mirror.seats)
+        assertEquals("sa", mirror.boardingStopId)
+        assertEquals("stl", mirror.dropoffStopId)
+        assertEquals(BookingSource.BLABLACAR, mirror.source)
+        assertTrue(mirror.sourceReference.startsWith("LOCAL_MIRROR:"))
+    }
+    @Test
     fun departedCollectorTripIsNotRepublished() {
         val departure = LocalDate.of(2030, 9, 10)
             .atTime(LocalTime.of(11, 0))
