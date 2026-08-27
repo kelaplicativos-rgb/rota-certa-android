@@ -864,6 +864,118 @@ async function createDriverTrip(req, res) {
   }
 }
 
+
+async function processReferralCreditsForCompletedTrip(token, driverUsername) {
+  const username = normalizeUsername(driverUsername);
+  if (!username) return { credited: 0 };
+  const [driverSnap, bookingsSnap] = await Promise.all([
+    db.collection("tripDrivers").doc(username).get(),
+    db.collection("trips").doc(token).collection("bookings").get(),
+  ]);
+  const creditCents = driverSnap.exists ? Math.max(0, Number(driverSnap.data().referralCreditCents || 0)) : 0;
+  let credited = 0;
+  for (const bookingDoc of bookingsSnap.docs) {
+    const booking = bookingDoc.data();
+    if (!booking || ["CANCELLED", "EXPIRED"].includes(cleanText(booking.status, 24))) continue;
+    let passengerContact;
+    try { passengerContact = normalizeBrazilWhatsapp(booking.passengerContact); } catch (_) { continue; }
+    const accessRef = driverPassengerAccessRef(username, passengerContact);
+    const accessSnap = await accessRef.get();
+    if (!accessSnap.exists) continue;
+    const access = accessSnap.data();
+    const referrerContact = cleanText(access.referredByContact, 40);
+    if (!referrerContact || Number(access.referralRewardGrantedAtMillis || 0) > 0) continue;
+    const ledgerRef = passengerCreditLedgerRef(username, referrerContact);
+    const entryRef = ledgerRef.collection("entries").doc(`ref_${accessRef.id}`);
+    const granted = await db.runTransaction(async (tx) => {
+      const [freshAccess, ledgerSnap, entrySnap] = await Promise.all([
+        tx.get(accessRef),
+        tx.get(ledgerRef),
+        tx.get(entryRef),
+      ]);
+      if (!freshAccess.exists) return false;
+      const currentAccess = freshAccess.data();
+      if (Number(currentAccess.referralRewardGrantedAtMillis || 0) > 0 || entrySnap.exists) return false;
+      const now = Date.now();
+      tx.set(accessRef, {
+        referralRewardGrantedAtMillis: now,
+        referralRewardTripToken: token,
+        referralRewardCents: creditCents,
+        updatedAtMillis: now,
+      }, { merge: true });
+      if (creditCents > 0) {
+        const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
+        tx.set(ledgerRef, {
+          driverUsername: username,
+          passengerContact: referrerContact,
+          balanceCents: Math.max(0, Number(ledger.balanceCents || 0)) + creditCents,
+          earnedCents: Math.max(0, Number(ledger.earnedCents || 0)) + creditCents,
+          spentCents: Math.max(0, Number(ledger.spentCents || 0)),
+          updatedAtMillis: now,
+          createdAtMillis: Number(ledger.createdAtMillis || now),
+        }, { merge: true });
+        tx.create(entryRef, {
+          type: "REFERRAL_EARNED",
+          amountCents: creditCents,
+          referredPassengerContact: passengerContact,
+          referredPassengerName: cleanText(currentAccess.displayName, 120),
+          tripToken: token,
+          createdAtMillis: now,
+        });
+      }
+      return true;
+    });
+    if (granted && creditCents > 0) credited++;
+  }
+  return { credited };
+}
+
+async function refundBookingCreditsIfNeeded(token, bookingId) {
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const preview = await Promise.all([tripRef.get(), bookingRef.get()]);
+  if (!preview[0].exists || !preview[1].exists) return false;
+  const trip = preview[0].data();
+  const booking = preview[1].data();
+  const driverUsername = normalizeUsername(trip.driverUsername || "");
+  const passengerContact = cleanText(booking.passengerContact, 40);
+  const amount = Math.max(0, Number(booking.creditAppliedCents || 0));
+  if (!driverUsername || !passengerContact || amount <= 0 || Number(booking.creditRefundedAtMillis || 0) > 0) return false;
+  const ledgerRef = passengerCreditLedgerRef(driverUsername, passengerContact);
+  const entryRef = ledgerRef.collection("entries").doc(`refund_${sha256Hex(`${token}:${bookingId}`).slice(0, 40)}`);
+  return db.runTransaction(async (tx) => {
+    const [freshBooking, ledgerSnap, entrySnap] = await Promise.all([tx.get(bookingRef), tx.get(ledgerRef), tx.get(entryRef)]);
+    if (!freshBooking.exists) return false;
+    const current = freshBooking.data();
+    const currentAmount = Math.max(0, Number(current.creditAppliedCents || 0));
+    if (currentAmount <= 0 || Number(current.creditRefundedAtMillis || 0) > 0 || entrySnap.exists) return false;
+    if (!["CANCELLED", "EXPIRED"].includes(cleanText(current.status, 24))) return false;
+    const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
+    const now = Date.now();
+    tx.set(ledgerRef, {
+      driverUsername,
+      passengerContact,
+      balanceCents: Math.max(0, Number(ledger.balanceCents || 0)) + currentAmount,
+      earnedCents: Math.max(0, Number(ledger.earnedCents || 0)),
+      spentCents: Math.max(0, Number(ledger.spentCents || 0)),
+      updatedAtMillis: now,
+      createdAtMillis: Number(ledger.createdAtMillis || now),
+    }, { merge: true });
+    tx.create(entryRef, { type: "BOOKING_CREDIT_REFUND", amountCents: currentAmount, tripToken: token, bookingId, createdAtMillis: now });
+    tx.update(bookingRef, { creditRefundedAtMillis: now, updatedAtMillis: now });
+    return true;
+  });
+}
+
+async function refundCreditsForCancelledTrip(token) {
+  const snapshot = await db.collection("trips").doc(token).collection("bookings").get();
+  let refunded = 0;
+  for (const doc of snapshot.docs) {
+    if (await refundBookingCreditsIfNeeded(token, doc.id)) refunded++;
+  }
+  return refunded;
+}
+
 async function updateDriverTrip(req, res, token) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -881,8 +993,23 @@ async function updateDriverTrip(req, res, token) {
       const ownerDisplayName = previous.driverDisplayName || driver.displayName;
       const publicUrl = previous.publicUrl || publicUrlFor(req, token, ownerUsername);
       tx.update(ref, { ...normalized, publicUrl, driverUsername: ownerUsername, driverDisplayName: ownerDisplayName, updatedAtMillis: Date.now() });
-      return { publicUrl };
+      return {
+        publicUrl,
+        ownerUsername,
+        becameCompleted: previous.status !== "COMPLETED" && normalized.status === "COMPLETED",
+        becameCancelled: previous.status !== "CANCELLED" && normalized.status === "CANCELLED",
+      };
     });
+    if (result.becameCompleted) await processReferralCreditsForCompletedTrip(token, result.ownerUsername);
+    if (result.becameCancelled) {
+      const bookings = await ref.collection("bookings").get();
+      for (const doc of bookings.docs) {
+        if (!["CANCELLED", "EXPIRED"].includes(cleanText(doc.data().status, 24))) {
+          await doc.ref.set({ status: "CANCELLED", updatedAtMillis: Date.now() }, { merge: true });
+        }
+      }
+      await refundCreditsForCancelledTrip(token);
+    }
     return json(res, 200, { tripId: token, publicToken: token, publicUrl: result.publicUrl });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "update_failed", error.message || "Falha ao atualizar viagem.");
@@ -1355,94 +1482,22 @@ async function requirePassengerSession(req, res) {
 
 async function signupPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
-  let passengerContact;
-  let password;
-  try {
-    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
-    password = passengerPassword(req.body && req.body.password);
-  } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "invalid_account", error.message || "Dados de acesso inválidos.");
-  }
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
-  const salt = crypto.randomBytes(16).toString("hex");
-  const passwordHash = passengerPasswordDigest(password, salt);
-  const now = Date.now();
-  try {
-    await db.runTransaction(async (tx) => {
-      const accountSnap = await tx.get(accountRef);
-      if (accountSnap.exists) throw Object.assign(new Error("Este WhatsApp já possui acesso. Use Entrar."), { httpStatus: 409, code: "account_exists" });
-      tx.create(accountRef, {
-        passengerContact,
-        passwordSalt: salt,
-        passwordHash,
-        signupSource: "PUBLIC_AGENDA",
-        createdAtMillis: now,
-        updatedAtMillis: now,
-      });
-    });
-    const session = await createPassengerSession(passengerContact);
-    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
-  } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "account_create_failed", error.message || "Não foi possível criar o acesso.");
-  }
+  return fail(res, 403, "passenger_invite_required", "Acesso somente por convite do motorista.");
 }
 
 async function getPassengerMe(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
-  return json(res, 200, { passengerContact: session.passengerContact });
+  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).get();
+  return json(res, 200, {
+    passengerContact: session.passengerContact,
+    mustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
+  });
 }
 
 async function registerPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
-  let passengerContact;
-  let password;
-  try {
-    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
-    password = passengerPassword(req.body && req.body.password);
-  } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "invalid_account", error.message || "Dados de acesso inválidos.");
-  }
-  const tripToken = cleanText(req.body && req.body.tripToken, 120).replace(/[^A-Za-z0-9_-]/g, "");
-  const bookingId = cleanText(req.body && req.body.bookingId, 120).replace(/[^A-Za-z0-9_-]/g, "");
-  const cancellationToken = cleanText(req.body && req.body.cancellationToken, 160);
-  if (!tripToken || !bookingId || !cancellationToken) {
-    return fail(res, 400, "booking_proof_required", "Confirme uma reserva sua para criar o acesso.");
-  }
-
-  const tripRef = db.collection("trips").doc(tripToken);
-  const bookingRef = tripRef.collection("bookings").doc(bookingId);
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
-  const salt = crypto.randomBytes(16).toString("hex");
-  const passwordHash = passengerPasswordDigest(password, salt);
-  const now = Date.now();
-
-  try {
-    await db.runTransaction(async (tx) => {
-      const [tripSnap, bookingSnap, accountSnap] = await Promise.all([
-        tx.get(tripRef),
-        tx.get(bookingRef),
-        tx.get(accountRef),
-      ]);
-      if (!tripSnap.exists || !bookingSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
-      const booking = bookingSnap.data();
-      if (booking.passengerContact !== passengerContact) throw Object.assign(new Error("O telefone não corresponde a esta reserva."), { httpStatus: 403, code: "booking_contact_mismatch" });
-      if (!safeEqual(sha256Hex(cancellationToken), booking.cancellationHash || "")) throw Object.assign(new Error("Código particular inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
-      if (accountSnap.exists) throw Object.assign(new Error("Este telefone já possui acesso. Use Entrar."), { httpStatus: 409, code: "account_exists" });
-      tx.create(accountRef, {
-        passengerContact,
-        passwordSalt: salt,
-        passwordHash,
-        createdAtMillis: now,
-        updatedAtMillis: now,
-      });
-      writePassengerBookingIndex(tx, passengerContact, tripToken, bookingId, now);
-    });
-    const session = await createPassengerSession(passengerContact);
-    return json(res, 201, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
-  } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "account_create_failed", error.message || "Não foi possível criar o acesso.");
-  }
+  return fail(res, 403, "passenger_invite_required", "Acesso somente por convite do motorista.");
 }
 
 async function loginPassengerAccount(req, res) {
@@ -1455,6 +1510,7 @@ async function loginPassengerAccount(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", "Telefone ou senha inválidos.");
   }
+  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
   if (!accountSnap.exists) return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
   const account = accountSnap.data();
@@ -1462,8 +1518,19 @@ async function loginPassengerAccount(req, res) {
   if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
     return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
   }
+  if (driverUsername) {
+    const access = await passengerAccessFor(driverUsername, passengerContact);
+    if (!access || access.status === "PENDING") return fail(res, 403, "passenger_invite_required", "Você precisa ser convidado pelo motorista para acessar esta agenda.");
+    if (access.status === "BLOCKED") return fail(res, 403, "passenger_access_blocked", "Seu acesso a esta agenda está bloqueado.");
+    if (access.status !== "ACTIVE") return fail(res, 403, "passenger_invite_required", "Seu acesso a esta agenda ainda não foi liberado.");
+  }
   const session = await createPassengerSession(passengerContact);
-  return json(res, 200, { sessionToken: session.token, expiresAtMillis: session.expiresAtMillis, passengerContact });
+  return json(res, 200, {
+    sessionToken: session.token,
+    expiresAtMillis: session.expiresAtMillis,
+    passengerContact,
+    mustChangePassword: account.mustChangePassword === true,
+  });
 }
 
 async function listPassengerBookings(req, res) {
