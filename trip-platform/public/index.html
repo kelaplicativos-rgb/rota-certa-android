@@ -14,7 +14,7 @@
     }
     *{box-sizing:border-box}html{font-size:18px}body{margin:0;background:#f5f6f8}button,input,select,textarea{font:inherit}
     main{max-width:760px;margin:0 auto;padding:22px 16px 120px}.hidden{display:none!important}
-    .brand{font-size:18px;font-weight:900;letter-spacing:.06em}.pageTitle{font-size:32px;line-height:1.15;margin:8px 0 6px;font-weight:900}
+    .brand{font-size:18px;font-weight:900;letter-spacing:.06em}.topNav{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px}.passengerAreaEntry{border:0;background:var(--ink);color:#fff;border-radius:18px;padding:10px 14px;min-width:176px;display:grid;gap:2px;text-align:left;cursor:pointer;box-shadow:0 4px 14px #00000014}.passengerAreaEntry:active{transform:scale(.99)}.passengerAreaTitle{font-size:18px;font-weight:950;line-height:1.15}.passengerAreaSub{font-size:14px;color:#d8d8d8;font-weight:750;line-height:1.2}.pageTitle{font-size:32px;line-height:1.15;margin:8px 0 6px;font-weight:900}
     .lead{font-size:20px;line-height:1.45;color:var(--muted);margin:4px 0 18px}.muted{color:var(--muted);font-size:18px;line-height:1.5}
     .card{background:#fff;border-radius:24px;padding:22px;margin-top:16px;box-shadow:0 5px 22px #0000000b;border:1px solid #ebedf0}
     .error{color:var(--danger);font-weight:800;font-size:20px}.success{color:var(--ok);font-size:20px;font-weight:800}
@@ -46,13 +46,18 @@
     .reviewBlock{padding:18px 0;border-bottom:1px solid #e7e9ed}.reviewBlock:last-child{border-bottom:0}.reviewLabel{font-size:19px;color:var(--muted);font-weight:800}.reviewValue{font-size:23px;line-height:1.35;font-weight:900;margin-top:5px}
     .priceTotal{font-size:30px;font-weight:950}.codeBox{display:block;background:#f1f3f5;border-radius:14px;padding:14px;font-size:20px;overflow-wrap:anywhere}
     .actions{display:grid;gap:12px;margin-top:16px}.calendarAction{margin-top:12px}.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-    @media(max-width:480px){html{font-size:17px}.pageTitle{font-size:30px}.agendaRouteLine,.tripRoute{font-size:29px}.timelineStop{grid-template-columns:78px 20px 1fr}.time{font-size:20px}.stopName{font-size:22px}}
+    @media(max-width:480px){html{font-size:17px}.passengerAreaEntry{min-width:158px;padding:9px 12px}.passengerAreaTitle{font-size:17px}.passengerAreaSub{font-size:13px}.pageTitle{font-size:30px}.agendaRouteLine,.tripRoute{font-size:29px}.timelineStop{grid-template-columns:78px 20px 1fr}.time{font-size:20px}.stopName{font-size:22px}}
   </style>
 </head>
 <body>
 <main>
-  <div class="brand">ROTA CERTA</div>
-  <button id="openPassengerPortal" class="backButton" type="button">Minhas reservas</button>
+  <div class="topNav">
+    <div class="brand">ROTA CERTA</div>
+    <button id="openPassengerPortal" class="passengerAreaEntry" type="button" aria-label="Abrir minha área do passageiro">
+      <span class="passengerAreaTitle">Minha área</span>
+      <span class="passengerAreaSub">Reservas e conta</span>
+    </button>
+  </div>
 
   <section id="loading" class="card">Carregando…</section>
   <section id="error" class="card error hidden"></section>
@@ -109,8 +114,8 @@
   <section id="passengerPortal" class="hidden">
     <button id="portalBack" class="backButton" type="button">‹ Voltar</button>
     <div class="card">
-      <h1 class="stepTitle">Minhas reservas</h1>
-      <p class="stepIntro">Entre com seu WhatsApp e sua senha para consultar, alterar ou cancelar suas reservas em qualquer aparelho.</p>
+      <h1 class="stepTitle">Minha área</h1>
+      <p class="stepIntro">Consulte, altere ou cancele suas reservas e gerencie seu acesso em qualquer aparelho.</p>
       <div id="portalLoginBox">
         <label>Seu WhatsApp
           <input id="portalContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
@@ -125,6 +130,7 @@
         <div class="actions">
           <button id="portalLogout" class="secondary" type="button">Sair deste acesso</button>
         </div>
+        <h2 style="margin-top:24px">Minhas reservas</h2>
         <div id="portalBookings"></div>
       </div>
     </div>

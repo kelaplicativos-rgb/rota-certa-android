@@ -54,3 +54,12 @@ test("public agenda stays clean neutral and browser-geolocation free", () => {
   assert.ok(html.includes(".primary{background:#171717;color:#fff}"));
   assert.ok(html.includes(".agendaArrow{font-size:30px;color:var(--ink)"));
 });
+
+
+test("passenger area entry remains prominent and self explanatory", () => {
+  assert.ok(html.includes('id="openPassengerPortal" class="passengerAreaEntry"'));
+  assert.ok(html.includes('<span class="passengerAreaTitle">Minha área</span>'));
+  assert.ok(html.includes('<span class="passengerAreaSub">Reservas e conta</span>'));
+  assert.ok(html.includes('<h1 class="stepTitle">Minha área</h1>'));
+  assert.ok(html.includes('<h2 style="margin-top:24px">Minhas reservas</h2>'));
+});
