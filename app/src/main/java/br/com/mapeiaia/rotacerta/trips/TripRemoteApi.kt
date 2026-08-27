@@ -120,6 +120,69 @@ data class DriverBookingsResponse(
 )
 
 @Serializable
+data class DriverPassengerAccess(
+    val id: String = "",
+    val passengerContact: String = "",
+    val displayName: String = "",
+    val status: String = "PENDING",
+    val referredByContact: String = "",
+    val referralRewardGrantedAtMillis: Long = 0L,
+    val creditBalanceCents: Long = 0L,
+    val creditEarnedCents: Long = 0L,
+    val creditSpentCents: Long = 0L,
+)
+
+@Serializable
+data class DriverPassengersResponse(
+    val passengers: List<DriverPassengerAccess> = emptyList(),
+    val referralCreditCents: Long = 0L,
+)
+
+@Serializable
+data class DriverPassengerInviteRequest(
+    val displayName: String,
+    val passengerContact: String,
+    val referredByContact: String = "",
+)
+
+@Serializable
+data class DriverPassengerInviteResponse(
+    val passenger: DriverPassengerAccess = DriverPassengerAccess(),
+    val temporaryPassword: String = "",
+)
+
+@Serializable
+data class DriverPassengerBlockRequest(
+    val passengerContact: String,
+    val blocked: Boolean,
+)
+
+@Serializable
+data class DriverPassengerBlockResponse(
+    val passenger: DriverPassengerAccess = DriverPassengerAccess(),
+)
+
+@Serializable
+data class DriverPassengerResetPasswordRequest(
+    val passengerContact: String,
+)
+
+@Serializable
+data class DriverPassengerResetPasswordResponse(
+    val temporaryPassword: String = "",
+)
+
+@Serializable
+data class DriverReferralSettingsRequest(
+    val referralCreditCents: Long,
+)
+
+@Serializable
+data class DriverReferralSettingsResponse(
+    val referralCreditCents: Long = 0L,
+)
+
+@Serializable
 data class RemotePublicDebugEvent(
     val id: String,
     val event: String,
@@ -272,6 +335,53 @@ class TripRemoteApi(
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
         method = "GET",
         path = "/v1/driver/trips/$remoteTripId/bookings",
+        requireDriverToken = true,
+    )
+
+    suspend fun listDriverPassengers(): DriverPassengersResponse = request(
+        method = "GET",
+        path = "/v1/driver/passengers",
+        requireDriverToken = true,
+    )
+
+    suspend fun invitePassenger(
+        displayName: String,
+        passengerContact: String,
+        referredByContact: String = "",
+    ): DriverPassengerInviteResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/invite",
+        body = json.encodeToString(
+            DriverPassengerInviteRequest(
+                displayName = displayName.trim(),
+                passengerContact = passengerContact.trim(),
+                referredByContact = referredByContact.trim(),
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
+    suspend fun setPassengerAccessBlocked(
+        passengerContact: String,
+        blocked: Boolean,
+    ): DriverPassengerBlockResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/block",
+        body = json.encodeToString(DriverPassengerBlockRequest(passengerContact.trim(), blocked)),
+        requireDriverToken = true,
+    )
+
+    suspend fun resetPassengerPassword(passengerContact: String): DriverPassengerResetPasswordResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/reset-password",
+        body = json.encodeToString(DriverPassengerResetPasswordRequest(passengerContact.trim())),
+        requireDriverToken = true,
+    )
+
+    suspend fun updateReferralCredit(referralCreditCents: Long): DriverReferralSettingsResponse = request(
+        method = "PUT",
+        path = "/v1/driver/referral-settings",
+        body = json.encodeToString(DriverReferralSettingsRequest(referralCreditCents.coerceAtLeast(0L))),
         requireDriverToken = true,
     )
     suspend fun listPublicDebugEvents(
