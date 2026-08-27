@@ -381,7 +381,7 @@ fun BlaBlaCollectorPanel(
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Contas BlaBlaCar")
-            Text("Nenhuma conta vem pré-cadastrada. Cada conta adicionada ganha um perfil WebView isolado próprio e todas alimentam a mesma Linha do tempo.")
+            Text("Cada conta adicionada mantém sessão isolada. Todas as contas conectadas alimentam automaticamente a mesma Timeline e a mesma Agenda Pública; não existe filtro de perfil para as viagens.")
 
             if (accounts.isEmpty()) {
                 Text("Nenhuma conta adicionada.")
