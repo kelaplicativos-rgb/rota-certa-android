@@ -1,0 +1,148 @@
+name: Agenda 0.1.297 public link self-heal
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-link-self-heal-0.1.297
+    paths:
+      - '.github/workflows/agenda-0297-public-link-self-heal.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicBooking0296Test.kt'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/public-booking-0296.test.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0297-public-link-self-heal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-link-self-heal-0.1.297
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public API self-heal contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5590' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.297"' app/build.gradle.kts
+          grep -Fq 'async function ensureDriverPublicAgenda' trip-platform/functions/index.js
+          grep -Fq '/v1/driver/agenda/ensure' trip-platform/functions/index.js
+          grep -Fq 'agendaTokenHash: sha256Hex(publicAgendaToken)' trip-platform/functions/index.js
+          grep -Fq 'ensurePublicAgenda' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'Validando seu link público' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/*.test.js
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test lint and build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0297
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0297/rota-certa-0.1.297-public-link-self-heal.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0297/apk.sha256
+          git rev-parse HEAD > /tmp/agenda-0297/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.297-public-link-self-heal
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/agenda-0297
+
+  deploy-trip-api:
+    needs: validate-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-link-self-heal-0.1.297
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credentials are not configured in GitHub secrets."
+            exit 3
+          fi
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy authenticated trip API
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "$FIREBASE_AUTH_MODE" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --token "$FIREBASE_TOKEN" --non-interactive
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive
+          fi
+
+      - name: Smoke production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 5 --retry-delay 4 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+          grep -Fq '"service":"rota-certa-trips"' /tmp/health.json

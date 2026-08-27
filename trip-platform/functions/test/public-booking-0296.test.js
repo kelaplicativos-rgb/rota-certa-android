@@ -40,3 +40,13 @@ test("mobile portal reviews before confirmation and limits seats dynamically", (
   assert.match(html, /Qual é o seu WhatsApp/);
   assert.match(html, /✅ RESERVA CONFIRMADA/);
 });
+
+
+test("driver can validate or self-heal the public agenda token before sharing", () => {
+  assert.match(api, /async function ensureDriverPublicAgenda/);
+  assert.match(api, /publicAgendaToken/);
+  assert.match(api, /tokenIsCurrent/);
+  assert.match(api, /agendaTokenHash: sha256Hex\(publicAgendaToken\)/);
+  assert.match(api, /\/v1\/driver\/agenda\/ensure/);
+  assert.match(api, /repaired: !tokenIsCurrent/);
+});

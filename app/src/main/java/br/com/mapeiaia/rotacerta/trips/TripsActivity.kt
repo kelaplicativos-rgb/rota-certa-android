@@ -84,6 +84,7 @@ private fun TripApp(
     }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var message by remember { mutableStateOf<String?>(null) }
+    val shareScope = rememberCoroutineScope()
     val refresh = {
         trips = store.trips()
         bookings = store.bookings()
@@ -163,7 +164,35 @@ private fun TripApp(
                     val onlineSettings = store.onlineSettings()
                     if (onlineSettings.publicAgendaUrl != null) {
                         OutlinedButton(onClick = {
-                            if (TripCalendarBridge.sharePublicAgenda(activity, onlineSettings)) message = "Link exclusivo da Agenda Pública pronto para compartilhar."
+                            if (!onlineSettings.configured) {
+                                message = "A integração online precisa da chave privada do motorista antes de compartilhar."
+                            } else {
+                                message = "Validando seu link público…"
+                                shareScope.launch {
+                                    runCatching {
+                                        val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken)
+                                        val validated = onlineSettings.copy(
+                                            publicCalendarToken = response.publicAgendaToken,
+                                            driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
+                                            driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
+                                        )
+                                        store.saveOnlineSettings(validated)
+                                        response to validated
+                                    }.onSuccess { (response, validated) ->
+                                        if (TripCalendarBridge.sharePublicAgenda(activity, validated)) {
+                                            message = if (response.repaired) {
+                                                "Link da Agenda Pública corrigido no servidor e pronto para compartilhar."
+                                            } else {
+                                                "Link da Agenda Pública validado e pronto para compartilhar."
+                                            }
+                                        } else {
+                                            message = "Não foi possível montar o link público validado."
+                                        }
+                                    }.onFailure {
+                                        message = "Não foi possível validar o link público: ${it.message ?: "erro de conexão"}"
+                                    }
+                                }
+                            }
                         }) { Text("Compartilhar minha agenda") }
                     }
                     if (onlineSettings.googleCalendarMirrorUrl != null) {
