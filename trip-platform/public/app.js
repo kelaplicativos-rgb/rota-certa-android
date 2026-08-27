@@ -430,6 +430,63 @@ function renderTimeline() {
   });
 }
 
+function renderDriverReviews() {
+  const container = $("driverReviews");
+  if (!container) return;
+  container.innerHTML = "";
+  const reviews = Array.isArray(driverProfile.reviews) ? driverProfile.reviews : [];
+  const total = Math.max(0, Number(driverProfile.reviewCount || 0));
+
+  if (!reviews.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = total > 0
+      ? `${total} avaliação(ões) informada(s). Os detalhes ainda não foram sincronizados.`
+      : "Nenhuma avaliação detalhada sincronizada.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const summary = document.createElement("p");
+  summary.className = "muted";
+  summary.textContent = total > reviews.length
+    ? `Mostrando ${reviews.length} de ${total} avaliação(ões) sincronizada(s).`
+    : `${reviews.length} avaliação(ões) sincronizada(s).`;
+  container.appendChild(summary);
+
+  reviews.forEach((review) => {
+    const item = document.createElement("div");
+    item.className = "driverReviewItem";
+    const head = document.createElement("div");
+    head.className = "driverReviewHead";
+    const who = document.createElement("span");
+    who.textContent = String(review.author || "Passageiro");
+    const meta = document.createElement("span");
+    const parts = [];
+    if (review.rating) parts.push(`★ ${review.rating}`);
+    if (review.dateLabel) parts.push(String(review.dateLabel));
+    meta.textContent = parts.join(" • ");
+    head.append(who, meta);
+    item.appendChild(head);
+    if (review.text) {
+      const textNode = document.createElement("div");
+      textNode.className = "driverReviewText";
+      textNode.textContent = String(review.text);
+      item.appendChild(textNode);
+    }
+    container.appendChild(item);
+  });
+}
+
+function toggleDriverReviews() {
+  const line = $("driverRatingLine");
+  const panel = $("driverReviews");
+  if (!line || !panel || line.disabled) return;
+  const open = panel.classList.contains("hidden");
+  show("driverReviews", open);
+  line.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
 function renderDriverProfile() {
   $("driverCardName").textContent = driverDisplayName || "Motorista Rota Certa";
   const photo = $("driverPhoto");
@@ -443,13 +500,20 @@ function renderDriverProfile() {
   }
 
   const ratingParts = [];
+  const detailedReviews = Array.isArray(driverProfile.reviews) ? driverProfile.reviews : [];
   if (driverProfile.rating) ratingParts.push(`★ ${driverProfile.rating}`);
   if (Number(driverProfile.reviewCount || 0) > 0) ratingParts.push(`${driverProfile.reviewCount} avaliações`);
   if (ratingParts.length) {
-    $("driverRatingLine").textContent = ratingParts.join(" • ");
+    const ratingLine = $("driverRatingLine");
+    ratingLine.textContent = ratingParts.join(" • ");
+    ratingLine.disabled = Number(driverProfile.reviewCount || 0) <= 0 && detailedReviews.length === 0;
+    ratingLine.setAttribute("aria-expanded", "false");
     show("driverRatingLine", true);
+    renderDriverReviews();
+    show("driverReviews", false);
   } else {
     show("driverRatingLine", false);
+    show("driverReviews", false);
   }
 
   if (driverProfile.badge) {
@@ -1044,6 +1108,7 @@ function goBackToAgenda() {
   }
 }
 
+$("driverRatingLine").addEventListener("click", toggleDriverReviews);
 $("boarding").addEventListener("change", () => {
   refreshSelectors();
   traceSearchChanged();
