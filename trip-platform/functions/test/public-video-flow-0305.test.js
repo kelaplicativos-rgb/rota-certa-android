@@ -39,6 +39,7 @@ test("driver WhatsApp comes only from configured public driver profile", () => {
 
 test("public profile exposes video-card data only when configured", () => {
   for (const field of [
+    "driverPhotoUrl",
     "driverPublicAbout",
     "driverPublicRating",
     "driverPublicReviewCount",
@@ -51,6 +52,7 @@ test("public profile exposes video-card data only when configured", () => {
   ]) {
     assert.match(api, new RegExp(field));
   }
+  assert.match(web, /driverProfile\.photoUrl/);
   assert.match(web, /driverProfile\.rating/);
   assert.match(web, /driverProfile\.reviewCount/);
   assert.match(web, /driverProfile\.badge/);
