@@ -76,6 +76,29 @@ data class DriverBookingsResponse(
 )
 
 @Serializable
+data class RemotePublicDebugEvent(
+    val id: String,
+    val event: String,
+    val source: String = "server",
+    val sessionId: String = "",
+    val targetType: String = "",
+    val targetRefHash: String = "",
+    val screen: String = "",
+    val reason: String = "",
+    val statusCode: Int = 0,
+    val seats: Int = 0,
+    val fromIndex: Int = -1,
+    val toIndex: Int = -1,
+    val replayed: Boolean = false,
+    val createdAtMillis: Long = 0L,
+)
+
+@Serializable
+data class DriverPublicDebugEventsResponse(
+    val events: List<RemotePublicDebugEvent> = emptyList(),
+)
+
+@Serializable
 data class PublicBookingRequest(
     val passengerName: String,
     val passengerContact: String = "",
@@ -145,6 +168,14 @@ class TripRemoteApi(
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
         method = "GET",
         path = "/v1/driver/trips/$remoteTripId/bookings",
+        requireDriverToken = true,
+    )
+    suspend fun listPublicDebugEvents(
+        afterMillis: Long = 0L,
+        limit: Int = 100,
+    ): DriverPublicDebugEventsResponse = request(
+        method = "GET",
+        path = "/v1/driver/public-debug?afterMillis=${afterMillis.coerceAtLeast(0L)}&limit=${limit.coerceIn(1, 250)}",
         requireDriverToken = true,
     )
 
