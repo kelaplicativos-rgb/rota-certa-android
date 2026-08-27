@@ -1,0 +1,58 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+
+const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
+
+test("public agenda starts behind WhatsApp and password access", () => {
+  assert.match(html, /id="accessGate"/);
+  assert.match(html, /id="accessContact"/);
+  assert.match(html, /id="accessPassword"/);
+  assert.match(web, /bootstrapAuthenticatedExperience/);
+  assert.match(web, /validatePassengerSession/);
+  assert.match(api, /async function getPassengerMe/);
+  assert.match(api, /\/v1\/passenger\/me/);
+});
+
+test("first-time passenger can create phone-password access before searching", () => {
+  assert.match(html, /id="accessSignup"/);
+  assert.match(html, /Criar acesso e entrar/);
+  assert.match(web, /\/v1\/passenger\/signup/);
+  assert.match(api, /async function signupPassengerAccount/);
+  assert.match(api, /signupSource: "PUBLIC_AGENDA"/);
+});
+
+test("search filter exposes route GPS dates seats and same public cards", () => {
+  for (const marker of ["searchFrom", "searchTo", "searchDeparture", "searchReturn", "searchSeats", "searchSubmit"]) {
+    assert.match(html, new RegExp(`id="${marker}"`));
+  }
+  assert.match(html, /Usar localização atual/);
+  assert.match(web, /navigator\.geolocation\.getCurrentPosition/);
+  assert.match(web, /agendaLocationSuggestions/);
+  assert.match(web, /renderCalendarMonths/);
+  assert.match(web, /openCalendarPicker\("departure"\)/);
+  assert.match(web, /openCalendarPicker\("returnDate"\)/);
+  assert.match(web, /renderAgendaCards\(result\.matches/);
+});
+
+test("route search is waypoint-order and segment-capacity aware", () => {
+  assert.match(web, /index > fromIndex && stopMatchesSearch/);
+  assert.match(web, /availableForTripSegment/);
+  assert.match(web, /entry\.available >= seats/);
+  assert.match(web, /O local informado não faz parte do percurso disponível nesta data/);
+  assert.match(web, /Não há \$\{seats\} lugar\(es\) disponível\(is\) nesse trecho/);
+});
+
+test("search result carries exact segment into booking selectors", () => {
+  assert.match(web, /next\.set\("embarque"/);
+  assert.match(web, /next\.set\("destino"/);
+  assert.match(web, /next\.set\("lugares"/);
+  assert.match(web, /requestedBoardingStopId/);
+  assert.match(web, /requestedDropoffStopId/);
+  assert.match(web, /requestedSeats/);
+});
