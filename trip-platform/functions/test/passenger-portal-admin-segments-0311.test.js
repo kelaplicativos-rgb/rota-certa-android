@@ -22,23 +22,26 @@ test("administrative mutation remains capacity safe", () => {
   assert.ok(api.includes("statusForReconciledLoads(trip, loads)"));
 });
 
-test("passenger access uses phone password session and reservation proof", () => {
+test("passenger access uses phone password session and driver invitation", () => {
   assert.ok(api.includes("async function registerPassengerAccount"));
   assert.ok(api.includes("crypto.scryptSync"));
   assert.ok(api.includes("passengerAccounts"));
   assert.ok(api.includes("passengerSessions"));
   assert.ok(api.includes("passengerBookingIndex"));
+  assert.ok(api.includes("driverPassengerAccess"));
+  assert.ok(api.includes("passenger_invite_required"));
   assert.ok(api.includes("/v1/passenger/session"));
   assert.ok(api.includes("/v1/passenger/me/bookings"));
 });
 
-test("public web exposes passenger reservation management", () => {
+test("public web exposes invite-only passenger reservation management", () => {
   assert.ok(html.includes('id="passengerPortal"'));
   assert.ok(html.includes('id="portalContact"'));
   assert.ok(html.includes('id="portalPassword"'));
-  assert.ok(html.includes('id="portalRegister"'));
+  assert.ok(html.includes('Acesso somente por convite'));
+  assert.ok(html.includes('id="portalCreditBalance"'));
   assert.ok(web.includes("loginPassengerPortal"));
   assert.ok(web.includes("loadPassengerBookings"));
-  assert.ok(web.includes("registerPassengerPortal"));
+  assert.ok(web.includes("sharePassengerReferral"));
   assert.ok(web.includes("vaga(s) até"));
 });
