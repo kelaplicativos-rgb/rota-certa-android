@@ -63,6 +63,30 @@ class BlaBlaCollectorNetworkSource0266Test {
     }
 
     @Test
+    fun exactNetworkWaypointsBecomeAuthoritativeOrderedItinerary() {
+        val source = BlaBlaNetworkTripSourceEvidence(
+            tripId = tripId,
+            bookingsComplete = true,
+            bookings = listOf(booking()),
+            waypointsComplete = true,
+            waypoints = listOf(
+                BlaBlaNetworkWaypointSourceEvidence(label = "Santo André"),
+                BlaBlaNetworkWaypointSourceEvidence(label = "Extrema"),
+                BlaBlaNetworkWaypointSourceEvidence(label = "Pouso Alegre"),
+                BlaBlaNetworkWaypointSourceEvidence(label = "São Thomé das Letras"),
+            ),
+        )
+
+        val resolved = BlaBlaCollectorNetworkSourceModule.resolve(tripId, source)!!
+
+        assertTrue(resolved.itineraryAuthoritative)
+        assertEquals(
+            listOf("Santo André", "Extrema", "Pouso Alegre", "São Thomé das Letras"),
+            resolved.itineraryStops,
+        )
+    }
+
+    @Test
     fun canonicalApiAmountDoesNotDependOnBrazilianLocaleGrouping() {
         assertEquals(8_900L, BlaBlaCollectorNetworkSourceModule.parseCanonicalMinorUnits("89.00", "BRL"))
         assertEquals(5_200L, BlaBlaCollectorNetworkSourceModule.parseCanonicalMinorUnits("52.00", "BRL"))
