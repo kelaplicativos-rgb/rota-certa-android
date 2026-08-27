@@ -318,6 +318,40 @@ async function registerDriver(req, res) {
   }
 }
 
+async function ensureDriverPublicAgenda(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) {
+    return fail(res, 409, "driver_identity_required", "Cadastre um nome de usuário do motorista para usar a agenda pública.");
+  }
+
+  const suppliedToken = cleanText(req.body && req.body.publicAgendaToken, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const ref = db.collection("tripDrivers").doc(driver.username);
+  const snap = await ref.get();
+  if (!snap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
+
+  const data = snap.data();
+  const tokenIsCurrent = suppliedToken.length >= 16 &&
+    safeEqual(sha256Hex(suppliedToken), data.agendaTokenHash || "");
+  const publicAgendaToken = tokenIsCurrent ? suppliedToken : crypto.randomBytes(24).toString("base64url");
+
+  if (!tokenIsCurrent) {
+    await ref.update({
+      agendaTokenHash: sha256Hex(publicAgendaToken),
+      updatedAtMillis: Date.now(),
+    });
+  }
+
+  return json(res, 200, {
+    displayName: cleanText(data.displayName, 120) || driver.displayName,
+    username: driver.username,
+    publicAgendaToken,
+    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
+    calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
+    repaired: !tokenIsCurrent,
+  });
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
   const username = normalizeUsername(usernameRaw);
   if (!username || !agendaToken) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
@@ -663,6 +697,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   try {
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
+    if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
     }
