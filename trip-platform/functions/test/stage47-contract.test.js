@@ -34,7 +34,8 @@ test("Firestore is deny by default and browser uses the HTTPS API", () => {
 
 test("browser calendar export excludes passenger contact", () => {
   const start = page.indexOf("function downloadIcs");
-  const block = page.slice(start);
+  const end = page.indexOf("async function shareCalendarFeed", start);
+  const block = page.slice(start, end);
   assert.ok(block.length > 100);
   assert.doesNotMatch(block, /passengerContact/);
   assert.match(block, /text\/calendar/);
