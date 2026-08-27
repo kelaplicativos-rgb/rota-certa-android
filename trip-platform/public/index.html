@@ -2,89 +2,186 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseappcheck.googleapis.com https://www.google.com/recaptcha/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
-  <title>Rota Certa — Agenda de Viagens</title>
+  <title>Rota Certa — Reserve sua viagem</title>
   <style>
-    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#161616;background:#f4f5f7}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:0 auto;padding:24px 16px 56px}.brand{font-weight:800;font-size:14px;letter-spacing:.04em}.card{background:white;border-radius:18px;padding:18px;margin-top:14px;box-shadow:0 4px 18px #0000000c}.muted{color:#666;font-size:14px}.route{display:grid;gap:8px;margin-top:14px}.stop{padding-left:12px;border-left:3px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:560px){.grid{grid-template-columns:1fr}}label{font-size:13px;font-weight:700;display:grid;gap:6px}input,select,button{font:inherit;padding:12px;border-radius:12px;border:1px solid #c9cbd1;background:white}button{border:0;background:#171717;color:white;font-weight:800;cursor:pointer;min-height:52px;font-size:16px}input,select{min-height:52px;font-size:17px}.bookingStep{font-size:20px;margin:18px 0 8px}.summary{font-size:17px;line-height:1.55;padding:12px;background:#f7f8fa;border-radius:12px}.secondary{background:#eef0f3;color:#171717}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.error{color:#a50000}.success{color:#0b6b2c}.hidden{display:none}.availability{font-size:15px;font-weight:750;margin:12px 0}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef0f3;font-size:12px}.agendaTrip{display:block;color:inherit;text-decoration:none;border:1px solid #e1e3e7;border-radius:14px;padding:14px;margin-top:10px}.agendaTrip:hover{border-color:#9fa3aa}.agendaRoute{font-weight:750}.agendaMeta{margin-top:5px;color:#666;font-size:13px}h1{font-size:26px;margin:6px 0 0}h2{font-size:18px;margin:0 0 12px}</style>
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#f4f5f7;font-size:18px}
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f5f7}
+    main{max-width:720px;margin:0 auto;padding:22px 16px 64px}
+    .brand{font-size:.78rem;font-weight:900;letter-spacing:.08em}
+    h1{font-size:2rem;line-height:1.08;margin:8px 0 8px}
+    h2{font-size:1.35rem;line-height:1.2;margin:0 0 12px}
+    h3{font-size:1.1rem;margin:0}
+    p{line-height:1.45}
+    .muted{color:#5c6066}
+    .small{font-size:.88rem}
+    .card{background:#fff;border-radius:22px;padding:20px;margin-top:16px;box-shadow:0 5px 24px #0000000a}
+    .error{color:#9d1414;border:2px solid #f0c4c4}
+    .success{color:#12652e}
+    .hidden{display:none!important}
+    .tripList{display:grid;gap:14px}
+    .tripCard{display:block;background:#fff;border:2px solid #e2e4e8;border-radius:22px;padding:18px;color:inherit;text-decoration:none;min-height:180px}
+    .tripCard:focus-visible,.choice:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:4px solid #6b4fc0;outline-offset:3px}
+    .dateBadge{font-weight:900;font-size:1.12rem;margin-bottom:12px}
+    .routeBig{font-weight:850;font-size:1.25rem;line-height:1.28}
+    .arrow{display:block;color:#6b4fc0;margin:2px 0}
+    .tripMeta{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+    .pill{background:#f0eef8;border-radius:999px;padding:7px 11px;font-size:.9rem;font-weight:750}
+    .primary,button{appearance:none;border:0;border-radius:16px;min-height:56px;padding:14px 18px;font:inherit;font-weight:850;cursor:pointer}
+    .primary{display:block;width:100%;background:#171717;color:#fff;text-align:center;text-decoration:none}
+    button{background:#171717;color:#fff}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .secondary{background:#ececf1;color:#171717}
+    .textButton{background:transparent;color:#4d3a92;padding:10px 4px;min-height:48px}
+    .choiceGrid{display:grid;grid-template-columns:1fr;gap:10px}
+    .choice{width:100%;min-height:62px;background:#fff;color:#171717;border:2px solid #cfd2d8;text-align:left;font-weight:800}
+    .choice.selected{border:3px solid #6b4fc0;background:#f2eefc}
+    .seatGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+    .seatGrid .choice{text-align:center;font-size:1.35rem;padding:10px;min-height:60px}
+    label{display:grid;gap:7px;font-weight:800;margin-top:14px}
+    input{width:100%;min-height:58px;border:2px solid #cfd2d8;border-radius:14px;padding:12px 14px;font:inherit;font-size:1.05rem;background:#fff}
+    .stepNumber{color:#6b4fc0;font-size:.9rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+    .summary{display:grid;gap:10px;background:#f6f6f8;border-radius:16px;padding:16px;line-height:1.4}
+    .summaryRow{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #e0e1e5;padding-bottom:9px}
+    .summaryRow:last-child{border-bottom:0;padding-bottom:0}
+    .summaryRow strong{text-align:right}
+    .availability{font-weight:850;margin:12px 0}
+    .route{display:grid;gap:8px;margin-top:12px}
+    .stop{padding-left:12px;border-left:3px solid #6b4fc0}
+    .actions{display:grid;gap:10px;margin-top:16px}
+    details{margin-top:18px}
+    summary{cursor:pointer;min-height:48px;display:flex;align-items:center;font-weight:800;color:#4f4f55}
+    .moreBox{padding-top:8px}
+    .visuallyHidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+    .emptyState{text-align:center;padding:12px 0}
+    .emptyIcon{font-size:2rem;margin-bottom:6px}
+    .stickyAction{margin-top:18px}
+    code{display:block;background:#f0f0f3;border-radius:10px;padding:10px;font-size:.95rem;overflow-wrap:anywhere}
+    @media(min-width:560px){
+      main{padding:34px 24px 76px}
+      .choiceGrid{grid-template-columns:1fr 1fr}
+      h1{font-size:2.25rem}
+    }
+    @media(max-width:380px){
+      :root{font-size:17px}
+      main{padding-left:12px;padding-right:12px}
+      .card,.tripCard{padding:16px}
+      .seatGrid{grid-template-columns:repeat(2,1fr)}
+    }
+  </style>
 </head>
 <body>
 <main>
-  <div class="brand">ROTA CERTA</div>
-  <h1>Agenda de Viagens</h1>
-  <p id="driverName" class="muted"></p>
-  <p class="muted">Consulte somente as viagens publicadas pelo motorista. A agenda pessoal dele não é compartilhada.</p>
+  <header>
+    <div class="brand">ROTA CERTA</div>
+    <h1 id="pageTitle">Reserve sua viagem</h1>
+    <p id="driverName" class="muted"></p>
+    <p id="pageHint" class="muted">Escolha uma viagem abaixo.</p>
+  </header>
 
-  <section id="loading" class="card">Carregando agenda…</section>
-  <section id="error" class="card error hidden"></section>
+  <section id="loading" class="card" aria-live="polite">Carregando viagens…</section>
+  <section id="error" class="card error hidden" role="alert"></section>
 
-  <section id="agenda" class="card hidden">
-    <h2>Próximas viagens</h2>
-    <p class="muted">Escolha uma viagem para consultar os trechos disponíveis e solicitar sua vaga.</p>
-    <div id="agendaTrips"></div>
-    <div class="actions">
-      <button id="subscribeCalendar">Compartilhar link do calendário (.ics)</button>
-    </div>
-    <p class="muted">O link contém somente viagens publicadas. Para assinar por URL no Google Agenda, use o Google Calendar em um navegador de computador e a opção “A partir de URL”. Passageiros e compromissos pessoais não fazem parte desse calendário.</p>
+  <section id="agenda" class="hidden" aria-label="Próximas viagens">
+    <div id="agendaTrips" class="tripList"></div>
+    <details id="agendaMore" class="card">
+      <summary>Mais opções</summary>
+      <div class="moreBox">
+        <p class="muted small">Quer colocar as viagens no calendário do celular?</p>
+        <button id="subscribeCalendar" class="secondary" type="button">Adicionar viagens ao meu calendário</button>
+      </div>
+    </details>
   </section>
 
   <section id="trip" class="card hidden">
-    <span id="status" class="pill"></span>
-    <h2 id="title" style="margin-top:10px"></h2>
+    <div id="status" class="pill"></div>
+    <h2 id="title" style="margin-top:12px"></h2>
     <div id="departure" class="muted"></div>
     <div id="route" class="route"></div>
-    <p id="notes" class="muted"></p>
+    <p id="notes" class="muted small"></p>
+    <button id="backAgenda" class="textButton hidden" type="button">← Ver outras viagens</button>
   </section>
 
   <section id="booking" class="card hidden">
-    <h2>Reserve sua viagem</h2>
-    <p class="bookingStep"><strong>1. Onde você embarca?</strong></p>
-    <label>Embarque<select id="boarding"></select></label>
-    <p class="bookingStep"><strong>2. Onde você vai descer?</strong></p>
-    <label>Desembarque<select id="dropoff"></select></label>
-    <div id="availability" class="availability"></div>
-    <p class="bookingStep"><strong>3. Quantos lugares?</strong></p>
-    <label>Quantidade de lugares<input id="seats" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-    <p class="bookingStep"><strong>4. Seus dados</strong></p>
-    <label>Qual é o seu nome?<input id="name" autocomplete="name" maxlength="120" required></label>
-    <label style="margin-top:10px">Qual é o seu WhatsApp?<input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required></label>
-    <div class="actions"><button id="reserve">REVISAR RESERVA</button></div>
-    <p id="bookingMessage" class="muted"></p>
+    <select id="boarding" class="visuallyHidden" aria-label="Embarque"></select>
+    <select id="dropoff" class="visuallyHidden" aria-label="Destino"></select>
+    <input id="seats" class="visuallyHidden" type="number" min="1" step="1" value="1" aria-label="Quantidade de pessoas">
+
+    <div id="stepBoarding" class="bookingStep">
+      <div class="stepNumber">Passo 1</div>
+      <h2>Onde você vai embarcar?</h2>
+      <div id="boardingChoices" class="choiceGrid"></div>
+    </div>
+
+    <div id="stepDropoff" class="bookingStep hidden">
+      <div class="stepNumber">Passo 2</div>
+      <h2>Onde você vai descer?</h2>
+      <div id="dropoffChoices" class="choiceGrid"></div>
+    </div>
+
+    <div id="stepSeats" class="bookingStep hidden">
+      <div class="stepNumber">Passo 3</div>
+      <h2>Quantas pessoas vão viajar?</h2>
+      <div id="availability" class="availability" aria-live="polite"></div>
+      <div id="seatChoices" class="seatGrid"></div>
+    </div>
+
+    <div id="stepDetails" class="bookingStep hidden">
+      <div class="stepNumber">Passo 4</div>
+      <h2>Agora seus dados</h2>
+      <label>Qual é o seu nome?
+        <input id="name" autocomplete="name" maxlength="120" placeholder="Digite seu nome" required>
+      </label>
+      <label>Qual é o seu WhatsApp?
+        <input id="contact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999" required>
+      </label>
+      <p id="bookingMessage" class="muted" role="alert"></p>
+      <button id="reserve" class="primary stickyAction" type="button">CONTINUAR</button>
+    </div>
   </section>
 
   <section id="review" class="card hidden">
-    <h2>CONFIRME SUA VIAGEM</h2>
-    <p id="reviewText" class="summary"></p>
+    <div class="stepNumber">Último passo</div>
+    <h2>CONFIRA SUA VIAGEM</h2>
+    <div id="reviewText" class="summary"></div>
+    <p id="reviewMessage" class="muted" role="alert"></p>
     <div class="actions">
-      <button id="confirmReserve">CONFIRMAR RESERVA</button>
-      <button id="editReservation" class="secondary">Voltar e corrigir</button>
+      <button id="confirmReserve" class="primary" type="button">CONFIRMAR RESERVA</button>
+      <button id="editReservation" class="textButton" type="button">Corrigir</button>
     </div>
-    <p id="reviewMessage" class="muted"></p>
   </section>
 
-  <section id="cancelBooking" class="card hidden">
-    <h2>Cancelar minha reserva</h2>
-    <p class="muted">Somente quem possui o número da reserva e o código particular recebido na confirmação consegue cancelar.</p>
-    <div class="grid">
-      <label>Número da reserva<input id="cancelBookingId" autocomplete="off"></label>
-      <label>Código particular<input id="cancelToken" autocomplete="off"></label>
-    </div>
-    <div class="actions"><button id="cancelReservation" class="secondary">Cancelar minha reserva</button></div>
-    <p id="cancelMessage" class="muted"></p>
-  </section>
-
-  <section id="confirmed" class="card hidden">
+  <section id="confirmed" class="card hidden" aria-live="polite">
     <h2>✅ RESERVA CONFIRMADA</h2>
     <p id="confirmationText" class="success"></p>
-    <p class="muted">Guarde o código de cancelamento. Ele é particular e não aparece para outros passageiros.</p>
+    <div id="confirmedSummary" class="summary"></div>
+    <p class="muted small">Guarde este código caso precise cancelar:</p>
     <code id="cancelCode"></code>
     <div class="actions">
-      <button id="googleCalendar">Adicionar ao Google Agenda</button>
-      <button id="downloadIcs" class="secondary">Baixar ICS</button>
+      <button id="newReservation" class="primary hidden" type="button">VER OUTRAS VIAGENS</button>
     </div>
-    <p class="muted">O Google Agenda é um espelho opcional da viagem. Vagas, reservas e cancelamentos em tempo real são controlados pela Agenda Pública do Rota Certa.</p>
+    <details>
+      <summary>Mais opções</summary>
+      <div class="moreBox actions">
+        <button id="googleCalendar" class="secondary" type="button">Adicionar ao meu calendário</button>
+        <button id="downloadIcs" class="secondary" type="button">Baixar arquivo de calendário</button>
+      </div>
+    </details>
   </section>
+
+  <details id="cancelBooking" class="card hidden">
+    <summary>Precisa cancelar uma reserva?</summary>
+    <div class="moreBox">
+      <p class="muted small">Use o número da reserva e o código que você recebeu na confirmação.</p>
+      <label>Número da reserva<input id="cancelBookingId" autocomplete="off"></label>
+      <label>Código de cancelamento<input id="cancelToken" autocomplete="off"></label>
+      <button id="cancelReservation" class="secondary stickyAction" type="button">Cancelar minha reserva</button>
+      <p id="cancelMessage" class="muted" role="alert"></p>
+    </div>
+  </details>
 </main>
 <script src="/__/firebase/8.10.1/firebase-app.js"></script>
 <script src="/__/firebase/8.10.1/firebase-app-check.js"></script>
