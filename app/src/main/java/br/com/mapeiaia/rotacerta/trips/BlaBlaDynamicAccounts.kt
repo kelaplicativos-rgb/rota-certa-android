@@ -118,9 +118,11 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
+    const val MODE_PROFILE = "profile"
     const val MODE_MANAGE = "manage"
 
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
+    fun profile(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_PROFILE)
     fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         intent(context, account, MODE_SYNC).putExtra(EXTRA_TARGET_DATE, targetDate.toString())
@@ -151,6 +153,19 @@ private data class DynamicIdentityEvidence(
     val vehicleColor: String = "",
     val amenities: String = "",
     val preferences: String = "",
+    val reviewsHref: String = "",
+    val reviews: List<BlaBlaPublicReview> = emptyList(),
+    val domHtml: String = "",
+)
+
+@Serializable
+private data class DynamicProfileReviewsPage(
+    val observedUuids: List<String> = emptyList(),
+    val reviews: List<BlaBlaPublicReview> = emptyList(),
+    val scrollY: Int = 0,
+    val scrollHeight: Int = 0,
+    val viewportHeight: Int = 0,
+    val atBottom: Boolean = false,
     val domHtml: String = "",
 )
 
@@ -253,6 +268,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var skipped = 0
     private var identityConfirmedThisSync = false
     private var rideReadAttempts = 0
+    private var profileBaseEvidence: DynamicIdentityEvidence? = null
+    private val profileReviewsCollected = mutableListOf<BlaBlaPublicReview>()
+    private var profileReviewsLastCount = -1
+    private var profileReviewsStablePasses = 0
+    private var profileReviewsReadAttempts = 0
     private val completedCardTraversalKeys = linkedSetOf<String>()
     private val quarantinedCardTraversalKeys = linkedSetOf<String>()
     private val resolvedCardTraversalKeys = linkedSetOf<String>()
@@ -322,6 +342,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         createBrowserUi()
         when (mode) {
             BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
+            BlaBlaDynamicSessionIntents.MODE_PROFILE -> beginProfileSync()
             BlaBlaDynamicSessionIntents.MODE_MANAGE -> webView.loadUrl(manageTargetUrl() ?: RIDES_URL)
             else -> webView.loadUrl(HOME_URL)
         }
@@ -350,7 +371,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         action("Sincronizar") { beginSync() }
         action("Voltar") { finishSeen() }
         root.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) actions.visibility = android.view.View.GONE
+        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC || mode == BlaBlaDynamicSessionIntents.MODE_PROFILE) {
+            actions.visibility = android.view.View.GONE
+        }
 
         webView = WebView(this)
         WebViewCompat.setProfile(webView, account.webProfileName)
@@ -390,6 +413,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 }
                 when (phase) {
                     Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureIdentityForSync() }, 650)
+                    Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ capturePublicProfilePage() }, 850)
+                    Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureProfileReviewsPage() }, 850)
                     Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureRideList() }, 900)
                     Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
                     Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
@@ -425,6 +450,24 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             recordStale("tel_intercept_without_current_passenger", syncGeneration, candidateIndex)
         }
         return true
+    }
+
+    private fun beginProfileSync() {
+        syncGeneration++
+        identityConfirmedThisSync = false
+        profileBaseEvidence = null
+        profileReviewsCollected.clear()
+        profileReviewsLastCount = -1
+        profileReviewsStablePasses = 0
+        profileReviewsReadAttempts = 0
+        phase = Phase.IDENTITY
+        statusView.text = "${account.displayLabel} • buscando dados públicos do motorista…"
+        UnifiedDebugEventStore.record(
+            "PUBLIC_PROFILE_SYNC_STARTED",
+            packageName,
+            "account=${account.displayLabel} expectedUuidPresent=${!account.profileUuid.isNullOrBlank()}",
+        )
+        loadTrackedUrl(PROFILE_URL)
     }
 
     private fun beginSync() {
@@ -545,6 +588,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} foundUuid=${account.profileUuid.orEmpty()} method=authenticated_profile",
                 )
             }
+            if (mode == BlaBlaDynamicSessionIntents.MODE_PROFILE) {
+                continuePublicProfileSync(evidence)
+                return@evaluate
+            }
             if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
                 currentCardTraversalKey = "id|$targetTripId"
                 candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
@@ -562,6 +609,146 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 loadTrackedUrl(RIDES_URL)
             }
         }
+    }
+
+    private fun continuePublicProfileSync(evidence: DynamicIdentityEvidence?) {
+        if (!identityConfirmedThisSync || account.profileUuid.isNullOrBlank() || evidence == null) {
+            statusView.text = "${account.displayLabel} • não foi possível confirmar o perfil público."
+            UnifiedDebugEventStore.record(
+                "PUBLIC_PROFILE_SYNC_BLOCKED",
+                packageName,
+                "account=${account.displayLabel} reason=identity_not_confirmed",
+            )
+            setResult(RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+            finish()
+            return
+        }
+        val expectedUuid = account.profileUuid.orEmpty().lowercase()
+        profileBaseEvidence = evidence
+        profileReviewsCollected.clear()
+        profileReviewsCollected += evidence.reviews
+
+        val trustedProfile = BlaBlaCollectorIdentityModule.trustedDriverProfileLinks(
+            expectedUuid = expectedUuid,
+            authenticatedProfileSessionVerified = true,
+            observedLinks = evidence.profileLinks,
+        ).firstOrNull { link ->
+            link.contains(expectedUuid, ignoreCase = true) && BlaBlaCollectorUrlModule.isAllowed(link)
+        }
+        if (!trustedProfile.isNullOrBlank() &&
+            BlaBlaCollectorUrlModule.canonical(trustedProfile) != BlaBlaCollectorUrlModule.canonical(webView.url.orEmpty())
+        ) {
+            phase = Phase.PROFILE_PUBLIC
+            statusView.text = "${account.displayLabel} • abrindo o perfil público…"
+            loadTrackedUrl(trustedProfile)
+            return
+        }
+        persistPublicProfileEvidence(evidence)
+        continueToProfileReviews(evidence)
+    }
+
+    private fun capturePublicProfilePage() {
+        if (phase != Phase.PROFILE_PUBLIC) return
+        evaluate<DynamicIdentityEvidence>(IDENTITY_JS) { evidence ->
+            if (phase != Phase.PROFILE_PUBLIC || evidence == null) return@evaluate
+            val expectedUuid = account.profileUuid.orEmpty().lowercase()
+            val observed = evidence.observedUuids.map(String::lowercase).toSet()
+            val urlMatches = webView.url.orEmpty().contains(expectedUuid, ignoreCase = true)
+            if (expectedUuid.isBlank() || (expectedUuid !in observed && !urlMatches)) {
+                UnifiedDebugEventStore.record(
+                    "PROFILE_UUID_MISMATCH",
+                    packageName,
+                    "account=${account.displayLabel} source=public_profile_page",
+                )
+                finishPublicProfileSync(success = false)
+                return@evaluate
+            }
+            store.saveDiagnosticHtml(account, "public-profile", evidence.domHtml)
+            profileBaseEvidence = evidence
+            profileReviewsCollected.clear()
+            profileReviewsCollected += evidence.reviews
+            persistPublicProfileEvidence(evidence)
+            continueToProfileReviews(evidence)
+        }
+    }
+
+    private fun continueToProfileReviews(evidence: DynamicIdentityEvidence) {
+        val expectedUuid = account.profileUuid.orEmpty().lowercase()
+        val reviewsHref = evidence.reviewsHref.trim()
+        val trustedReviewsHref = reviewsHref.takeIf { href ->
+            expectedUuid.isNotBlank() &&
+                href.contains(expectedUuid, ignoreCase = true) &&
+                BlaBlaCollectorUrlModule.isAllowed(href)
+        }
+        if (trustedReviewsHref == null) {
+            finishPublicProfileSync(success = true)
+            return
+        }
+        phase = Phase.PROFILE_REVIEWS
+        profileReviewsLastCount = -1
+        profileReviewsStablePasses = 0
+        profileReviewsReadAttempts = 0
+        statusView.text = "${account.displayLabel} • buscando avaliações…"
+        loadTrackedUrl(trustedReviewsHref)
+    }
+
+    private fun captureProfileReviewsPage() {
+        if (phase != Phase.PROFILE_REVIEWS) return
+        evaluate<DynamicProfileReviewsPage>(PROFILE_REVIEWS_JS) { page ->
+            if (phase != Phase.PROFILE_REVIEWS || page == null) return@evaluate
+            val expectedUuid = account.profileUuid.orEmpty().lowercase()
+            val observed = page.observedUuids.map(String::lowercase).toSet()
+            val urlMatches = webView.url.orEmpty().contains(expectedUuid, ignoreCase = true)
+            if (expectedUuid.isBlank() || (expectedUuid !in observed && !urlMatches)) {
+                UnifiedDebugEventStore.record(
+                    "PROFILE_UUID_MISMATCH",
+                    packageName,
+                    "account=${account.displayLabel} source=reviews_page",
+                )
+                finishPublicProfileSync(success = false)
+                return@evaluate
+            }
+            store.saveDiagnosticHtml(account, "public-profile-reviews", page.domHtml)
+            val merged = (profileReviewsCollected + page.reviews)
+                .filter { it.author.isNotBlank() || it.text.isNotBlank() }
+                .distinctBy { "${it.author.lowercase()}|${it.dateLabel.lowercase()}|${it.text.lowercase()}" }
+                .take(60)
+            profileReviewsCollected.clear()
+            profileReviewsCollected += merged
+            if (merged.size == profileReviewsLastCount) profileReviewsStablePasses++ else profileReviewsStablePasses = 0
+            profileReviewsLastCount = merged.size
+            profileReviewsReadAttempts++
+
+            val done = (page.atBottom && profileReviewsStablePasses >= 1) ||
+                profileReviewsReadAttempts >= MAX_PROFILE_REVIEW_READ_ATTEMPTS
+            if (done) {
+                profileBaseEvidence?.let { base ->
+                    persistPublicProfileEvidence(base.copy(reviews = profileReviewsCollected.toList()))
+                }
+                finishPublicProfileSync(success = true)
+            } else {
+                val nextY = (page.scrollY + (page.viewportHeight * 0.8)).toInt().coerceAtLeast(page.scrollY + 1)
+                webView.evaluateJavascript("window.scrollTo(0, $nextY); 'ok';") {
+                    webView.postDelayed({ captureProfileReviewsPage() }, PROFILE_REVIEW_SCROLL_SETTLE_MS)
+                }
+            }
+        }
+    }
+
+    private fun finishPublicProfileSync(success: Boolean) {
+        phase = Phase.IDLE
+        UnifiedDebugEventStore.record(
+            "PUBLIC_PROFILE_SYNC_FINISHED",
+            packageName,
+            "account=${account.displayLabel} success=$success reviews=${profileReviewsCollected.size} profileUuidPresent=${!account.profileUuid.isNullOrBlank()}",
+        )
+        setResult(
+            if (success) RESULT_OK else RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra("public_profile_review_count", profileReviewsCollected.size),
+        )
+        finish()
     }
 
     private fun probeIdentity() {
@@ -1899,6 +2086,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 vehicleColor = evidence.vehicleColor,
                 amenities = evidence.amenities,
                 preferences = evidence.preferences,
+                reviews = evidence.reviews,
             ),
         )
     }
@@ -1990,13 +2178,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return normalized.contains("continuar com e-mail") || normalized.contains("como você deseja se conectar") || normalized.contains("como voce deseja se conectar")
     }
 
-    private enum class Phase { IDLE, IDENTITY, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
+    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
 
     companion object {
         private const val HOME_URL = "https://www.blablacar.com.br/"
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private const val PROFILE_URL = "https://www.blablacar.com.br/dashboard/profile/menu"
         private const val MAX_RIDES_EMPTY_READ_ATTEMPTS = 3
+        private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24
+        private const val PROFILE_REVIEW_SCROLL_SETTLE_MS = 700L
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2
         private const val RIDES_SCROLL_SETTLE_MS = 750L
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
@@ -2052,6 +2242,27 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
               const colorNode = document.querySelector('[data-testid*="vehicle-color"], [data-testid*="car-color"]');
               const amenitiesNode = document.querySelector('[data-testid*="amenit"], [data-testid*="comfort"]');
               const preferencesNode = document.querySelector('[data-testid*="prefer"], [data-testid*="rule"]');
+              const reviewAnchor = Array.from(document.querySelectorAll('a[href]')).find((anchor) => {
+                const label = clean(anchor.innerText || anchor.getAttribute('aria-label'));
+                return /(avalia|opini|review)/i.test(label) && uuid.test(anchor.href || '');
+              });
+              const reviewCandidates = Array.from(document.querySelectorAll(
+                '[data-testid*="review-card"], [data-testid*="review-item"], [data-testid*="rating-card"], article[class*="review" i], li[class*="review" i]'
+              ));
+              const reviews = reviewCandidates.map((root) => {
+                const authorNode = root.querySelector('[data-testid*="name"], strong, h3, h4');
+                const dateNode = root.querySelector('time, [data-testid*="date"]');
+                const textNode = root.querySelector('[data-testid*="comment"], [data-testid*="content"], p');
+                const reviewRatingNode = root.querySelector('[data-testid*="rating"], [aria-label*="estrela" i], [aria-label*="nota" i]');
+                const reviewRatingText = clean(reviewRatingNode && (reviewRatingNode.innerText || reviewRatingNode.getAttribute('aria-label')));
+                const reviewRating = (reviewRatingText.match(/\b([0-5](?:[.,]\d{1,2})?)\b/) || [])[1] || '';
+                return {
+                  author: clean(authorNode && authorNode.innerText).slice(0, 120),
+                  rating: reviewRating.replace(',', '.').slice(0, 20),
+                  dateLabel: clean(dateNode && (dateNode.innerText || dateNode.getAttribute('datetime'))).slice(0, 80),
+                  text: clean(textNode && textNode.innerText).slice(0, 600)
+                };
+              }).filter((item) => item.author || item.text);
               const resourceUrls = (performance && performance.getEntriesByType)
                 ? performance.getEntriesByType('resource').map((entry) => entry.name || '')
                 : [];
@@ -2082,6 +2293,50 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 vehicleColor: clean(colorNode && colorNode.innerText).slice(0, 60),
                 amenities: clean(amenitiesNode && amenitiesNode.innerText).slice(0, 240),
                 preferences: clean(preferencesNode && preferencesNode.innerText).slice(0, 240),
+                reviewsHref: clean(reviewAnchor && reviewAnchor.href).slice(0, 1000),
+                reviews: reviews.slice(0, 60),
+                domHtml: html.slice(0, 350000)
+              });
+            })();
+        """.trimIndent()
+
+        private val PROFILE_REVIEWS_JS = """
+            (function() {
+              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
+              const candidates = Array.from(document.querySelectorAll(
+                '[data-testid*="review-card"], [data-testid*="review-item"], [data-testid*="rating-card"], article[class*="review" i], li[class*="review" i]'
+              ));
+              const reviews = candidates.map((root) => {
+                const authorNode = root.querySelector('[data-testid*="name"], strong, h3, h4');
+                const dateNode = root.querySelector('time, [data-testid*="date"]');
+                const textNode = root.querySelector('[data-testid*="comment"], [data-testid*="content"], p');
+                const ratingNode = root.querySelector('[data-testid*="rating"], [aria-label*="estrela" i], [aria-label*="nota" i]');
+                const ratingText = clean(ratingNode && (ratingNode.innerText || ratingNode.getAttribute('aria-label')));
+                const rating = (ratingText.match(/\b([0-5](?:[.,]\d{1,2})?)\b/) || [])[1] || '';
+                return {
+                  author: clean(authorNode && authorNode.innerText).slice(0, 120),
+                  rating: rating.replace(',', '.').slice(0, 20),
+                  dateLabel: clean(dateNode && (dateNode.innerText || dateNode.getAttribute('datetime'))).slice(0, 80),
+                  text: clean(textNode && textNode.innerText).slice(0, 600)
+                };
+              }).filter((item) => item.author || item.text);
+              const raw = [location.href || '', document.documentElement ? (document.documentElement.outerHTML || '') : ''].join('\n');
+              const observedUuids = Array.from(new Set(
+                (raw.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig) || [])
+                  .map((value) => value.toLowerCase())
+              ));
+              const scrollY = Math.max(0, Math.round(window.scrollY || 0));
+              const scrollHeight = Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0));
+              const viewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
+              const atBottom = scrollY + viewportHeight >= scrollHeight - 24;
+              $SANITIZED_HTML_JS
+              return JSON.stringify({
+                observedUuids,
+                reviews: reviews.slice(0, 60),
+                scrollY,
+                scrollHeight,
+                viewportHeight,
+                atBottom,
                 domHtml: html.slice(0, 350000)
               });
             })();
