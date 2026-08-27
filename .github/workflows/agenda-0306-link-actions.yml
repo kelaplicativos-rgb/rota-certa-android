@@ -1,0 +1,62 @@
+name: Agenda 0.1.306 link actions and validation
+
+on:
+  push:
+    branches:
+      - agent/agenda-link-actions-0.1.306
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-link-actions-0.1.306
+
+      - name: Validate current public agenda link
+        shell: bash
+        env:
+          BASE: https://rota-certa-7ccc8.web.app
+          DRIVER: viagem-certa
+          AGENDA: JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+        run: |
+          set -euo pipefail
+          PUBLIC_URL="$BASE/?motorista=$DRIVER&agenda=$AGENDA"
+          PAGE_HTTP="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/page.html -w '%{http_code}' "$PUBLIC_URL")"
+          API_HTTP="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/agenda.json -w '%{http_code}' "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda")"
+          echo "PUBLIC_PAGE_HTTP=$PAGE_HTTP"
+          echo "AGENDA_API_HTTP=$API_HTTP"
+          test "$PAGE_HTTP" = "200"
+          test "$API_HTTP" = "200"
+          node <<'NODE'
+          const fs=require('fs');
+          const x=JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const trips=Array.isArray(x.trips)?x.trips:[];
+          console.log('DRIVER_USERNAME='+String(x.driver?.username||''));
+          console.log('DRIVER_NAME='+String(x.driver?.displayName||''));
+          console.log('TRIP_COUNT='+trips.length);
+          console.log('CURRENT_AGENDA_LINK_VALID=PASS');
+          NODE
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Android link actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+          grep -Fq 'versionCode = 5599' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.306"' app/build.gradle.kts
+          grep -Fq 'Text("Abrir agenda")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Text("Copiar link")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
