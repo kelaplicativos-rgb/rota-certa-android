@@ -26,12 +26,18 @@ class AgendaDurability0275Test {
     }
 
     @Test
-    fun clearingSyncedTimelineAlsoResetsOnlyExternalArchiveAliases() {
+    fun clearingTimelineIsVisualOnlyAndPreservesPassengerHistoryAndLocalBookings() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val storeSource = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt").readText()
         assertTrue(source.contains("archiveStore.clearExternal(physical)"))
         assertTrue(source.contains("fun clearExternal(entries: List<TripTimelineEntry>)"))
         assertTrue(source.contains(".filter(::hasExternalPublication)"))
-        assertTrue(source.contains("externalArchiveStateReset=true"))
+        assertTrue(source.contains("TIMELINE_VISUAL_CLEARED_BY_USER"))
+        assertTrue(source.contains("passengerHistoryPreserved=true"))
+        assertTrue(source.contains("localBookingsPreserved=true"))
+        assertTrue(!source.contains("store.clearTimelineLocalData()"))
+        assertTrue(storeSource.contains("Timeline cleanup must never delete canonical local trips"))
+        assertTrue(storeSource.contains("fun clearTimelineLocalData(): Pair<Int, Int> = 0 to 0"))
     }
 
     @Test
