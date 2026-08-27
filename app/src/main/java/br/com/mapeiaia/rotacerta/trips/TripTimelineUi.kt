@@ -702,21 +702,21 @@ private fun TimelineEntryCard(
                     if (canCompleteRemoteTrip) {
                         add(
                             ResponsiveTripAction("Concluir viagem") {
-                                val target = trip ?: return@ResponsiveTripAction
+                                val target = trip
                                 val settings = store.onlineSettings()
-                                if (!settings.configured) {
-                                    onChanged("Integração online necessária para concluir a viagem.")
-                                    return@ResponsiveTripAction
-                                }
-                                scope.launch {
-                                    runCatching {
-                                        val completed = target.copy(status = TripStatus.COMPLETED)
-                                        TripRemoteApi(settings).update(completed)
-                                        if (store.getTrip(target.id) != null) store.saveTrip(completed)
-                                    }.onSuccess {
-                                        onChanged("Viagem concluída. Créditos de indicações elegíveis foram processados.")
-                                    }.onFailure { error ->
-                                        onChanged("Não foi possível concluir a viagem: ${error.message ?: "erro de conexão"}")
+                                when {
+                                    target == null -> onChanged("Viagem não identificada para conclusão.")
+                                    !settings.configured -> onChanged("Integração online necessária para concluir a viagem.")
+                                    else -> scope.launch {
+                                        runCatching {
+                                            val completed = target.copy(status = TripStatus.COMPLETED)
+                                            TripRemoteApi(settings).update(completed)
+                                            if (store.getTrip(target.id) != null) store.saveTrip(completed)
+                                        }.onSuccess {
+                                            onChanged("Viagem concluída. Créditos de indicações elegíveis foram processados.")
+                                        }.onFailure { error ->
+                                            onChanged("Não foi possível concluir a viagem: ${error.message ?: "erro de conexão"}")
+                                        }
                                     }
                                 }
                             },
