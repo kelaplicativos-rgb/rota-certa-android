@@ -69,6 +69,7 @@ fun TripTimelineScreen(
 ) {
     val context = LocalContext.current
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
+    val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
     val archiveStore = remember(context) { TripTimelineArchiveStore(context) }
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
@@ -93,6 +94,35 @@ fun TripTimelineScreen(
         while (true) {
             currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
             delay(30_000L)
+        }
+    }
+
+    val collectedIdentityKey = collectorResponse?.trips.orEmpty()
+        .flatMap { collectedTrip ->
+            collectedTrip.passengers.map { passenger ->
+                listOf(
+                    collectedTrip.profile_uuid.orEmpty(),
+                    collectedTrip.trip_id.orEmpty(),
+                    passenger.booking_href.orEmpty(),
+                    passenger.name,
+                    passenger.phone.orEmpty(),
+                ).joinToString("~")
+            }
+        }
+        .joinToString("|")
+    LaunchedEffect(collectedIdentityKey) {
+        collectorResponse?.trips.orEmpty().forEach { collectedTrip ->
+            collectedTrip.passengers.forEach { passenger ->
+                val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+                passengerIdentityStore.observeExternalPassenger(
+                    displayName = passenger.name,
+                    whatsapp = passenger.phone,
+                    externalPassengerId = externalId,
+                    reservationKey = externalPassengerReservationKey(collectedTrip.profile_uuid, passenger.booking_href),
+                    externalTripId = collectedTrip.trip_id,
+                    driverProfileUuid = collectedTrip.profile_uuid,
+                )
+            }
         }
     }
 
@@ -180,24 +210,27 @@ fun TripTimelineScreen(
         },
     )
 
-    val clearTimeline: (Boolean) -> Unit = { includeManual ->
+    val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
         archiveStore.clearExternal(physical)
+        if (includeManualCards) {
+            physical.filterNot(::hasExternalPublication).forEach { archiveStore.setArchived(it, true) }
+            archiveRevision++
+        }
         val externalClear = collectorStore.clearSynchronizedTimelineData()
-        val localClear = if (includeManual) store.clearTimelineLocalData() else 0 to 0
         collectorResponse = externalClear.response
         showArchived = false
         searchQuery = ""
         showTimelineClearDialog = false
         UnifiedDebugEventStore.record(
-            "TIMELINE_CLEARED_BY_USER",
+            "TIMELINE_VISUAL_CLEARED_BY_USER",
             context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} externalArchiveStateReset=true includeManual=$includeManual localTripsRemoved=${localClear.first} localBookingsRemoved=${localClear.second} sessionAccountsTouched=${externalClear.sessionAccountsTouched} settingsPreserved=true loginPreserved=true",
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
         )
         onChanged(
-            if (includeManual) {
-                "Timeline limpa por completo. Viagens BlaBlaCar, viagens manuais e reservas locais foram excluídas; configurações e login foram preservados."
+            if (includeManualCards) {
+                "Visualização da Timeline limpa. Passageiros, histórico, UUIDs, viagens e reservas locais foram preservados."
             } else {
-                "Viagens sincronizadas da BlaBlaCar foram removidas. Viagens manuais e reservas locais foram preservadas."
+                "Cards sincronizados foram removidos da visualização. Passageiros e histórico permanente foram preservados."
             },
         )
     }
@@ -220,15 +253,15 @@ fun TripTimelineScreen(
             onDismissRequest = { showTimelineClearDialog = false },
             title = { Text("Limpar Timeline") },
             text = {
-                Text("Deseja apagar também as viagens feitas manualmente/por fora? Por padrão, somente as viagens sincronizadas da BlaBlaCar serão removidas.")
+                Text("Limpar aqui afeta somente a visualização. Nenhum passageiro, UUID, histórico ou reserva particular será apagado. Deseja ocultar também os cards manuais/por fora?")
             },
             confirmButton = {
-                Button(onClick = { clearTimeline(false) }) { Text("Só BlaBlaCar") }
+                Button(onClick = { clearTimeline(false) }) { Text("Só sincronizadas") }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
-                    TextButton(onClick = { clearTimeline(true) }) { Text("BlaBlaCar + manuais") }
+                    TextButton(onClick = { clearTimeline(true) }) { Text("Tudo da tela") }
                 }
             },
         )
