@@ -611,14 +611,11 @@ async function cancelReservation() {
   $("cancelReservation").disabled = true;
   $("cancelMessage").textContent = "Cancelando sua reserva…";
   try {
-    const response = await protectedPublicFetch(
-      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`,
-      {
+    const response = await protectedPublicFetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ cancellationToken }),
-      },
-    );
+    });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não conseguimos cancelar agora.");
 
