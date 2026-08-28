@@ -166,6 +166,8 @@ object TripPhysicalRideConsolidator {
             blablaProfileUuid = external?.blablaProfileUuid,
             blablaPrice = external?.blablaPrice,
             blablaAvailability = external?.blablaAvailability,
+            blablaItineraryStops = external?.blablaItineraryStops.orEmpty(),
+            blablaPublishedSeats = external?.blablaPublishedSeats,
             blablaPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(group.flatMap(TripTimelineEntry::blablaPassengers)),
             profileId = external?.profileId ?: canonical.profileId,
             profileLabel = external?.profileLabel ?: canonical.profileLabel,
