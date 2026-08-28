@@ -1,0 +1,1 @@
+(function(){const i={{ARCHIVED_INDEX}};const links=Array.from(document.querySelectorAll('a[href]')).filter((n)=>/→|->/.test((n.innerText||''))||/rides\/offer/i.test(n.href||''));const a=links[i];if(!a||typeof a.click!=='function')return JSON.stringify({found:false,clicked:false});const href=a.href||'';a.click();return JSON.stringify({found:true,clicked:true,href});})();
