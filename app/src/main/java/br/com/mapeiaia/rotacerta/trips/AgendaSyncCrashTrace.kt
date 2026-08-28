@@ -17,18 +17,22 @@ import java.util.Locale
 internal object AgendaSyncCrashTraceStore {
     private const val DIRECTORY = "agenda-sync-diagnostic"
     private const val FILE_NAME = "last-java-crash.txt"
+    private const val CHECKPOINT_FILE_NAME = "last-sync-checkpoint.txt"
     private const val MAX_FRAMES = 36
     private const val MAX_CAUSES = 4
     private const val MAX_EXPORT_CHARS = 16_000
+    private const val MAX_CHECKPOINT_CHARS = 700
+
     @Volatile private var lastCheckpoint: String = "not_armed"
 
     fun arm(context: Context) {
         lastCheckpoint = "sync_armed"
-        runCatching { traceFile(context).delete() }
+        persistCheckpoint(context, lastCheckpoint)
     }
 
-    fun checkpoint(value: String) {
-        lastCheckpoint = sanitize(value).take(500).ifBlank { "empty" }
+    fun checkpoint(context: Context, value: String) {
+        lastCheckpoint = sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" }
+        persistCheckpoint(context, lastCheckpoint)
     }
 
     fun record(
@@ -37,14 +41,15 @@ internal object AgendaSyncCrashTraceStore {
         error: Throwable,
         structuralSnapshot: () -> String,
     ) {
+        val checkpoint = currentCheckpoint(context)
         val snapshot = runCatching { sanitize(structuralSnapshot()).take(1_500) }
             .getOrDefault("snapshot_failed")
         val text = buildString {
-            appendLine("schema=1")
+            appendLine("schema=2")
             appendLine("capturedAt=${formatDate(System.currentTimeMillis())}")
             appendLine("thread=${sanitize(thread.name).take(80)}")
             appendLine("exception=${error.javaClass.name}")
-            appendLine("checkpoint=${lastCheckpoint}")
+            appendLine("checkpoint=$checkpoint")
             appendLine("snapshot=$snapshot")
             var current: Throwable? = error
             var causeIndex = 0
@@ -64,26 +69,61 @@ internal object AgendaSyncCrashTraceStore {
         }.take(MAX_EXPORT_CHARS)
 
         runCatching {
-            val file = traceFile(context)
-            file.parentFile?.mkdirs()
-            val temp = File(file.parentFile, "${file.name}.tmp")
-            temp.writeText(text, Charsets.UTF_8)
-            if (!temp.renameTo(file)) {
-                file.writeText(text, Charsets.UTF_8)
-                temp.delete()
-            }
+            writeAtomically(traceFile(context), text)
         }
     }
 
     fun export(context: Context): String {
+        val checkpoint = currentCheckpoint(context)
         val file = traceFile(context)
-        if (!file.isFile) return "nenhuma exceção Java da sincronização foi capturada nesta instalação/versão."
-        return runCatching { file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS) }
-            .getOrElse { "falha ao ler a evidência de crash da Agenda: ${it.javaClass.simpleName}" }
+        val crash = if (!file.isFile) {
+            "nenhuma exceção Java da sincronização foi capturada nesta instalação/versão."
+        } else {
+            runCatching { file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS) }
+                .getOrElse { "falha ao ler a evidência de crash da Agenda: ${it.javaClass.simpleName}" }
+        }
+        return buildString {
+            appendLine("lastCheckpoint=$checkpoint")
+            append(crash)
+        }.trimEnd()
+    }
+
+    private fun persistCheckpoint(context: Context, value: String) {
+        runCatching {
+            writeAtomically(
+                checkpointFile(context),
+                sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" },
+            )
+        }
+    }
+
+    private fun currentCheckpoint(context: Context): String {
+        val persisted = runCatching {
+            checkpointFile(context)
+                .takeIf(File::isFile)
+                ?.readText(Charsets.UTF_8)
+                ?.let(::sanitize)
+                ?.take(MAX_CHECKPOINT_CHARS)
+                ?.takeIf(String::isNotBlank)
+        }.getOrNull()
+        return persisted ?: lastCheckpoint
+    }
+
+    private fun writeAtomically(file: File, text: String) {
+        file.parentFile?.mkdirs()
+        val temp = File(file.parentFile, "${file.name}.tmp")
+        temp.writeText(text, Charsets.UTF_8)
+        if (!temp.renameTo(file)) {
+            file.writeText(text, Charsets.UTF_8)
+            temp.delete()
+        }
     }
 
     private fun traceFile(context: Context): File =
         File(File(context.applicationContext.filesDir, DIRECTORY), FILE_NAME)
+
+    private fun checkpointFile(context: Context): File =
+        File(File(context.applicationContext.filesDir, DIRECTORY), CHECKPOINT_FILE_NAME)
 
     private fun sanitize(value: String): String =
         value.replace(Regex("[\\r\\n\\t]+"), " ")
@@ -117,13 +157,12 @@ private class AgendaSyncUncaughtHandler(
 }
 
 internal class AgendaSyncCrashGuard private constructor(
-    private val thread: Thread,
-    private val original: Thread.UncaughtExceptionHandler?,
+    private val originalDefault: Thread.UncaughtExceptionHandler?,
     private val installed: AgendaSyncUncaughtHandler,
 ) {
     fun close() {
-        if (thread.uncaughtExceptionHandler === installed) {
-            thread.uncaughtExceptionHandler = original
+        if (Thread.getDefaultUncaughtExceptionHandler() === installed) {
+            Thread.setDefaultUncaughtExceptionHandler(originalDefault)
         }
     }
 
@@ -132,16 +171,15 @@ internal class AgendaSyncCrashGuard private constructor(
             context: Context,
             structuralSnapshot: () -> String,
         ): AgendaSyncCrashGuard {
-            val thread = Thread.currentThread()
-            val current = thread.uncaughtExceptionHandler
+            val current = Thread.getDefaultUncaughtExceptionHandler()
             val original = (current as? AgendaSyncUncaughtHandler)?.delegate ?: current
             val handler = AgendaSyncUncaughtHandler(
                 context = context.applicationContext,
                 structuralSnapshot = structuralSnapshot,
                 delegate = original,
             )
-            thread.uncaughtExceptionHandler = handler
-            return AgendaSyncCrashGuard(thread, original, handler)
+            Thread.setDefaultUncaughtExceptionHandler(handler)
+            return AgendaSyncCrashGuard(original, handler)
         }
     }
 }
