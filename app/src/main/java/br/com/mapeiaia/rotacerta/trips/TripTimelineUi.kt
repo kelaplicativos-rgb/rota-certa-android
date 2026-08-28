@@ -70,10 +70,13 @@ fun TripTimelineScreen(
     val context = LocalContext.current
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
+    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
+    val seatSyncStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
     val archiveStore = remember(context) { TripTimelineArchiveStore(context) }
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
     var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }
+    var publicSearchResponse by remember { mutableStateOf(publicSearchStore.lastResponse()) }
     var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
@@ -82,6 +85,7 @@ fun TripTimelineScreen(
     var autoSyncTripId by remember { mutableStateOf<String?>(null) }
     var showPublisher by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var syncPendingOnly by remember { mutableStateOf(false) }
     var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
@@ -154,13 +158,28 @@ fun TripTimelineScreen(
         physical.filter { archiveStore.isArchived(it) == showArchived }
             .sortedBy(TripTimelineEntry::departureAtMillis)
     }
-    val visibleEntries = remember(entries, trips, bookings, searchQuery) {
+    val pendingSyncEntries = entries.filter { entry ->
+        val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+        val tripId = entry.blablaTripId?.trim().orEmpty()
+        if (profileUuid.isBlank() || tripId.isBlank()) false
+        else externalSyncStateIsPending(seatSyncStateStore.get(profileUuid, tripId)?.state)
+    }
+    val searchedEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
-    val timelineCalendarDays = remember(visibleEntries) {
-        agendaCalendarDaysForItems(visibleEntries) { entry ->
-            Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        }
+    val visibleEntries = if (syncPendingOnly) {
+        searchedEntries.filter { candidate -> pendingSyncEntries.any { it.tripId == candidate.tripId } }
+    } else {
+        searchedEntries
+    }
+    val publicResponseForTimeline = publicSearchResponse.takeIf { !showArchived && !syncPendingOnly }
+    val publicTimelineCards = remember(publicResponseForTimeline, searchQuery) {
+        publicResponseForTimeline?.cards.orEmpty()
+            .filter { card -> publicSearchCardMatchesTimelineSearch(card, searchQuery) }
+            .sortedBy(::publicSearchCardDepartureSortMillis)
+    }
+    val timelineCalendarDays = remember(visibleEntries, publicResponseForTimeline) {
+        combinedTimelineCalendarDays(visibleEntries, publicResponseForTimeline)
     }
     val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
@@ -236,7 +255,7 @@ fun TripTimelineScreen(
     }
 
     ResponsiveTripActions(
-        listOf(
+        actions = listOf(
             ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
             ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
@@ -246,6 +265,7 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
+        onPublicSearchResponse = { publicSearchResponse = it },
     )
 
     if (showTimelineClearDialog) {
@@ -292,7 +312,36 @@ fun TripTimelineScreen(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    if (entries.isEmpty()) {
+    if (pendingSyncEntries.isNotEmpty() || syncPendingOnly) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            border = if (syncPendingOnly) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = {
+                    syncPendingOnly = true
+                    searchQuery = ""
+                }) {
+                    Text("Sincronização externa pendente ⚠️ • ${pendingSyncEntries.size}")
+                }
+                if (syncPendingOnly) {
+                    TextButton(onClick = { syncPendingOnly = false }) { Text("✕ Limpar filtro") }
+                }
+            }
+            if (syncPendingOnly) {
+                Text(
+                    "Filtro ativo • exibindo somente cards pendentes em todas as datas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+        }
+    }
+
+    if (entries.isEmpty() && publicResponseForTimeline == null) {
         Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada.")
         return
     }
@@ -307,14 +356,35 @@ fun TripTimelineScreen(
         }
     }
 
-    if (visibleEntries.isEmpty()) {
+    if (syncPendingOnly && visibleEntries.isEmpty()) {
+        Text("Nenhum card está com sincronização externa pendente.")
+        return
+    }
+    if (visibleEntries.isEmpty() && publicResponseForTimeline == null) {
         Text("Nenhuma viagem corresponde à busca.")
         return
+    }
+    if (visibleEntries.isEmpty() && publicTimelineCards.isEmpty() && searchQuery.isNotBlank()) {
+        Text("Nenhum card corresponde à busca; os dias continuam visíveis abaixo.")
     }
 
     timelineCalendarDays.forEach { day ->
         AgendaCalendarDayLine(day.date)
+        val dayPublicCards = publicTimelineCards.filter { card ->
+            runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
+        }
+        var publicCardIndex = 0
         day.items.forEach { entry ->
+            while (
+                publicCardIndex < dayPublicCards.size &&
+                publicSearchCardDepartureSortMillis(dayPublicCards[publicCardIndex]) <= entry.departureAtMillis
+            ) {
+                BlaBlaPublicTimelineCard(
+                    card = dayPublicCards[publicCardIndex],
+                    response = publicResponseForTimeline,
+                )
+                publicCardIndex++
+            }
         val trip = entry.localTripId?.let(store::getTrip)
             ?: store.getTrip(entry.tripId)
             ?: store.publicExternalBindingFor(entry)?.asTrip()
