@@ -343,7 +343,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             AgendaSyncCrashTraceStore.arm(this)
             syncCrashGuard = AgendaSyncCrashGuard.install(this) { syncCrashSnapshot() }
-            AgendaSyncCrashTraceStore.checkpoint("activity_created")
+            AgendaSyncCrashTraceStore.checkpoint(this, "activity_created")
         }
         targetTripId = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID)?.trim().orEmpty()
         targetTripHref = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
@@ -486,6 +486,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         phase = phaseValue
         if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             AgendaSyncCrashTraceStore.checkpoint(
+                this,
                 "phase=${phaseValue.name} request=${request?.name ?: "none"} reason=${reason.take(80)}",
             )
         }
