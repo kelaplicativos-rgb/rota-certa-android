@@ -1784,12 +1784,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .map(String::trim)
                 .filter(String::isNotBlank)
                 .distinct(),
+            published_seats = pendingPublishedSeats,
         )
         collected += trip
         UnifiedDebugEventStore.record(
             "TRIP_ACCEPTED",
             packageName,
-            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} itineraryStops=${trip.itinerary_stops.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${pendingPublishedSeats ?: -1} sequential=true",
+            "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} itineraryStops=${trip.itinerary_stops.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${trip.published_seats ?: -1} sequential=true",
         )
         completeCurrentCard(expectedSync, expectedCandidate)
     }
