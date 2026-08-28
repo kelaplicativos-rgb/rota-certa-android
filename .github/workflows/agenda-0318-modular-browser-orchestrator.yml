@@ -172,6 +172,7 @@ jobs:
           path: /tmp/0318
 
       - name: Publish direct APK release
+        if: ${{ false }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -190,10 +191,12 @@ jobs:
           echo "DIRECT_APK_URL=$URL"
 
       - name: Install Firebase Functions dependencies
+        if: ${{ false }}
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
       - name: Deploy backend portal and hosted APK
+        if: ${{ false }}
         shell: bash
         run: |
           set -euo pipefail
@@ -206,6 +209,7 @@ jobs:
           fi
 
       - name: Smoke production and direct hosted APK
+        if: ${{ false }}
         shell: bash
         run: |
           set -euo pipefail
