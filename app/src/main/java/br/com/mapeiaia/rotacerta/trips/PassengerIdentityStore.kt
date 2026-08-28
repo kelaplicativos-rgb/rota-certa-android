@@ -423,61 +423,95 @@ class PassengerIdentityStore(context: Context) {
         prefs.edit().putString(observationsKey, json.encodeToString(listOf(next) + all)).apply()
     }
 
-    private fun recordRide(
+    fun rideRecord(profileId: String, rideKey: String): PassengerRideRecord? =
+        rideRecords(profileId).firstOrNull { it.rideKey == rideKey.trim() }
+
+    fun completedRideRecords(profileId: String): List<PassengerRideRecord> =
+        rideRecords(profileId).filter { it.status == PassengerOccurrenceStatus.COMPLETED }
+
+    /**
+     * Idempotent physical occurrence upsert. Capture/reservation may enrich the same occurrence,
+     * but only an explicit COMPLETED transition counts as a travelled ride.
+     */
+    fun recordOccurrence(
         passengerId: String,
         rideKey: String,
-        tripId: String,
+        status: PassengerOccurrenceStatus,
+        tripId: String = "",
+        externalTripId: String = "",
         driverProfileUuid: String = "",
-        source: String,
+        source: String = "",
         reservationKey: String = "",
-    ) {
-        val key = rideKey.trim().takeIf(String::isNotEmpty) ?: return
+        departureAtMillis: Long? = null,
+        origin: String = "",
+        destination: String = "",
+        boarding: String = "",
+        dropoff: String = "",
+        seats: Int = 1,
+        completedAtMillis: Long? = null,
+    ): PassengerRideRecord? {
+        val canonicalPassengerId = passengerId.trim().takeIf(String::isNotEmpty) ?: return null
+        val key = rideKey.trim().takeIf(String::isNotEmpty) ?: return null
         val all = decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null)).orEmpty()
-        if (all.any { it.passengerId == passengerId && it.rideKey == key }) return
-        val next = PassengerRideRecord(
-            passengerId = passengerId,
+        val existing = all.firstOrNull { it.passengerId == canonicalPassengerId && it.rideKey == key }
+        val now = System.currentTimeMillis()
+        val mergedStatus = mergePassengerOccurrenceStatus(existing?.status, status)
+        val next = (existing ?: PassengerRideRecord(
+            passengerId = canonicalPassengerId,
             rideKey = key,
-            tripId = tripId.trim().take(160),
-            driverProfileUuid = driverProfileUuid.trim().lowercase().take(80),
-            source = source.take(80),
-            reservationKey = reservationKey.trim().take(200),
+            observedAtMillis = now,
+        )).copy(
+            status = mergedStatus,
+            tripId = tripId.trim().take(160).ifBlank { existing?.tripId.orEmpty() },
+            externalTripId = externalTripId.trim().take(160).ifBlank { existing?.externalTripId.orEmpty() },
+            driverProfileUuid = driverProfileUuid.trim().lowercase().take(80).ifBlank { existing?.driverProfileUuid.orEmpty() },
+            source = source.trim().take(80).ifBlank { existing?.source.orEmpty() },
+            reservationKey = reservationKey.trim().take(200).ifBlank { existing?.reservationKey.orEmpty() },
+            departureAtMillis = departureAtMillis ?: existing?.departureAtMillis,
+            origin = origin.trim().take(160).ifBlank { existing?.origin.orEmpty() },
+            destination = destination.trim().take(160).ifBlank { existing?.destination.orEmpty() },
+            boarding = boarding.trim().take(160).ifBlank { existing?.boarding.orEmpty() },
+            dropoff = dropoff.trim().take(160).ifBlank { existing?.dropoff.orEmpty() },
+            seats = seats.coerceAtLeast(1),
+            completedAtMillis = when (mergedStatus) {
+                PassengerOccurrenceStatus.COMPLETED -> existing?.completedAtMillis ?: completedAtMillis ?: now
+                else -> null
+            },
+            updatedAtMillis = now,
         )
-        prefs.edit().putString(rideRecordsKey, json.encodeToString(listOf(next) + all)).apply()
+        val withoutSamePhysicalOccurrence = all.filterNot {
+            it.passengerId == canonicalPassengerId && it.rideKey == key
+        }
+        prefs.edit().putString(rideRecordsKey, json.encodeToString(listOf(next) + withoutSamePhysicalOccurrence)).apply()
+        return next
     }
 
     fun rideHistory(profileId: String): PassengerRideHistory {
-        val target = profile(profileId) ?: return PassengerRideHistory(0, emptyMap())
-        val durable = rideRecords(profileId)
-        if (durable.isNotEmpty()) {
-            return PassengerRideHistory(
-                totalRides = durable.size,
-                ridesByDriverProfile = durable
-                    .groupingBy { it.driverProfileUuid.ifBlank { if (it.source == "BLABLACAR") "Perfil não identificado" else "Particular / Rota Certa" } }
-                    .eachCount(),
-            )
-        }
-        val externalIds = target.externalPassengerIds
-        val legacy = externalMetadata()
-            .filter { it.externalPassengerId in externalIds }
-            .distinctBy { metadata ->
-                listOf(
-                    metadata.externalProfileUuid.ifBlank { "profile?" },
-                    metadata.externalTripId.ifBlank { metadata.reservationKey },
-                ).joinToString("|")
-            }
+        if (profile(profileId) == null) return PassengerRideHistory(0, emptyMap())
+        val completed = completedRideRecords(profileId)
         return PassengerRideHistory(
-            totalRides = legacy.size,
-            ridesByDriverProfile = legacy
-                .groupingBy { it.externalProfileUuid.ifBlank { "Perfil não identificado" } }
+            totalRides = completed.size,
+            ridesByDriverProfile = completed
+                .groupingBy {
+                    it.driverProfileUuid.ifBlank {
+                        if (it.source == "BLABLACAR") "Perfil não identificado" else "Particular / Rota Certa"
+                    }
+                }
                 .eachCount(),
         )
     }
 
-    /** Exact contact lookup is only a discovery aid. Callers must still require an explicit reuse action. */
+    /**
+     * Exact unique normalized WhatsApp is a canonical identity signal. Historical phones are
+     * searchable too, so changing the current number does not orphan the old identity.
+     */
     fun exactContactMatches(raw: String): List<PassengerProfile> {
         val key = passengerContactKey(raw)
         if (key.isBlank()) return emptyList()
-        return profiles().filter { passengerContactKey(it.whatsapp) == key }
+        return profiles().filter { profile ->
+            passengerContactKey(profile.whatsapp) == key ||
+                observations(profile.id).any { observation -> passengerContactKey(observation.whatsapp) == key }
+        }.distinctBy(PassengerProfile::id)
     }
 
     fun externalMetadata(reservationKey: String?): ExternalPassengerMetadata? {
@@ -545,10 +579,11 @@ internal fun validLatitude(value: Double?): Double? = value?.takeIf { it.isFinit
 internal fun validLongitude(value: Double?): Double? = value?.takeIf { it.isFinite() && it in -180.0..180.0 }
 
 internal fun passengerContactKey(raw: String?): String {
-    val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return ""
-    val digits = value.filter(Char::isDigit)
+    val digits = raw?.filter(Char::isDigit).orEmpty()
     if (digits.length !in 8..15) return ""
-    return if (value.startsWith("+")) "+$digits" else "local:$digits"
+    // Brazilian WhatsApp is commonly observed both as +55XXXXXXXXXXX and XXXXXXXXXXX.
+    // Normalize formatting/country prefix only; never use partial-name/contact similarity for identity.
+    return if (digits.startsWith("55") && digits.length in 12..13) digits.drop(2) else digits
 }
 
 /** Stable metadata identity only when the collector exposed a stable booking reference. */
@@ -561,3 +596,119 @@ internal fun externalPassengerReservationKey(profileUuid: String?, bookingHref: 
         .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     return "blablacar:$digest"
 }
+
+/**
+ * Pure canonical selector used by persistence and unit tests. Priority is strict and names are
+ * intentionally excluded so name similarity can never merge identities.
+ */
+internal fun selectCanonicalPassenger(
+    profiles: List<PassengerProfile>,
+    historicalContactsByProfile: Map<String, Set<String>> = emptyMap(),
+    passengerId: String? = null,
+    externalPassengerId: String? = null,
+    onlineIdentityId: String? = null,
+    whatsapp: String? = null,
+): PassengerProfile? {
+    passengerId?.trim()?.takeIf(String::isNotEmpty)?.let { id ->
+        profiles.firstOrNull { it.id == id }?.let { return it }
+    }
+    stableExternalPassengerId(externalPassengerId)?.let { externalId ->
+        profiles.singleOrNull { externalId in it.externalPassengerIds }?.let { return it }
+    }
+    stableExternalPassengerId(onlineIdentityId)?.let { onlineId ->
+        profiles.singleOrNull { onlineId in it.onlineIdentityIds }?.let { return it }
+    }
+    val contactKey = passengerContactKey(whatsapp)
+    if (contactKey.isBlank()) return null
+    return profiles.filter { profile ->
+        passengerContactKey(profile.whatsapp) == contactKey ||
+            historicalContactsByProfile[profile.id].orEmpty().any { passengerContactKey(it) == contactKey }
+    }.singleOrNull()
+}
+
+/** Shared canonical passenger lookup used by every passenger creation surface. */
+class PassengerRepository(context: Context) {
+    private val store = PassengerIdentityStore(context.applicationContext)
+
+    fun search(raw: String, limit: Int = 12): List<PassengerProfile> {
+        val profiles = store.profiles()
+        val observations = profiles.associate { profile -> profile.id to store.observations(profile.id) }
+        return searchCanonicalPassengers(profiles, observations, raw, limit)
+    }
+
+    fun resolve(
+        passengerId: String? = null,
+        externalPassengerId: String? = null,
+        onlineIdentityId: String? = null,
+        whatsapp: String? = null,
+    ): PassengerProfile? = store.resolveCanonicalPassenger(passengerId, externalPassengerId, onlineIdentityId, whatsapp)
+}
+
+
+internal fun mergePassengerOccurrenceStatus(
+    existing: PassengerOccurrenceStatus?,
+    incoming: PassengerOccurrenceStatus,
+): PassengerOccurrenceStatus = when {
+    existing == PassengerOccurrenceStatus.COMPLETED -> PassengerOccurrenceStatus.COMPLETED
+    incoming == PassengerOccurrenceStatus.COMPLETED -> PassengerOccurrenceStatus.COMPLETED
+    existing != null && incoming in setOf(PassengerOccurrenceStatus.OBSERVED, PassengerOccurrenceStatus.CAPTURED) -> existing
+    else -> incoming
+}
+
+internal fun searchCanonicalPassengers(
+    profiles: List<PassengerProfile>,
+    observationsByProfile: Map<String, List<PassengerIdentityObservation>>,
+    raw: String,
+    limit: Int = 12,
+): List<PassengerProfile> {
+    val query = normalizePassengerSearch(raw)
+    val rawDigits = raw.filter(Char::isDigit)
+    if (query.isBlank() && rawDigits.length < 4) return emptyList()
+    val exactPhoneQuery = passengerContactKey(raw)
+    val phoneFragment = rawDigits.takeLast(8).takeIf { rawDigits.length >= 4 }.orEmpty()
+    return profiles.mapNotNull { profile ->
+        val observations = observationsByProfile[profile.id].orEmpty()
+        val names = buildList {
+            add(profile.displayName)
+            addAll(observations.map(PassengerIdentityObservation::displayName))
+        }.map(::normalizePassengerSearch).filter(String::isNotBlank)
+        val contacts = buildList {
+            add(profile.whatsapp)
+            addAll(observations.map(PassengerIdentityObservation::whatsapp))
+        }.map(::passengerContactKey).filter(String::isNotBlank)
+        val score = when {
+            exactPhoneQuery.isNotBlank() && contacts.any { it == exactPhoneQuery } -> 0
+            query.isNotBlank() && names.any { it == query } -> 0
+            query.isNotBlank() && names.any { it.startsWith(query) } -> 1
+            query.isNotBlank() && names.any { it.contains(query) } -> 2
+            phoneFragment.isNotBlank() && contacts.any { it.contains(phoneFragment) } -> 3
+            else -> Int.MAX_VALUE
+        }
+        score.takeIf { it != Int.MAX_VALUE }?.let { score to profile }
+    }.sortedWith(
+        compareBy<Pair<Int, PassengerProfile>> { it.first }
+            .thenByDescending { it.second.updatedAtMillis }
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.second.displayName },
+    ).map { it.second }
+        .distinctBy(PassengerProfile::id)
+        .take(limit.coerceIn(1, 50))
+}
+
+internal fun externalPassengerOccurrenceKey(
+    driverProfileUuid: String?,
+    externalTripId: String?,
+    reservationKey: String?,
+    externalPassengerId: String?,
+): String = listOf(
+    "blablacar",
+    driverProfileUuid.orEmpty().trim().lowercase().ifBlank { "profile?" },
+    stableExternalPassengerId(externalTripId).orEmpty().ifBlank { reservationKey.orEmpty().trim().ifBlank { "trip?" } },
+    stableExternalPassengerId(externalPassengerId).orEmpty().ifBlank { "passenger?" },
+).joinToString(":")
+
+internal fun normalizePassengerSearch(value: String): String = Normalizer.normalize(value.trim(), Normalizer.Form.NFD)
+    .replace(Regex("\\p{M}+"), "")
+    .lowercase()
+    .replace(Regex("[^a-z0-9]+"), " ")
+    .replace(Regex("\\s+"), " ")
+    .trim()
