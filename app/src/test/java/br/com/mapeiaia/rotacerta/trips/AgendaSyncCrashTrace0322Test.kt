@@ -7,22 +7,32 @@ import org.junit.Test
 
 class AgendaSyncCrashTrace0322Test {
     @Test
-    fun authenticatedSyncInstallsAgendaOnlyMainThreadCrashGuard() {
+    fun authenticatedSyncInstallsAgendaProcessCrashGuardAndPersistsCheckpoint() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         assertTrue(source.contains("AgendaSyncCrashGuard.install(this)"))
         assertTrue(source.contains("if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC)"))
         assertTrue(source.contains("syncCrashSnapshot()"))
-        assertTrue(source.contains("AgendaSyncCrashTraceStore.checkpoint"))
+        assertTrue(source.contains("AgendaSyncCrashTraceStore.checkpoint("))
+        assertTrue(source.contains("this,"))
     }
 
     @Test
-    fun crashGuardRestoresOnlyAfterNormalActivityDestruction() {
-        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
-        val destroy = source.substringAfter("override fun onDestroy() {").substringBefore("private fun syncCrashSnapshot")
-        assertTrue(destroy.contains("webView.destroy()"))
-        assertTrue(destroy.contains("super.onDestroy()"))
-        assertTrue(destroy.contains("syncCrashGuard?.close()"))
-        assertTrue(destroy.indexOf("super.onDestroy()") < destroy.indexOf("syncCrashGuard?.close()"))
+    fun crashGuardCoversProcessThreadsAndRestoresDefaultHandler() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
+        assertTrue(source.contains("Thread.setDefaultUncaughtExceptionHandler(handler)"))
+        assertTrue(source.contains("Thread.getDefaultUncaughtExceptionHandler()"))
+        assertTrue(source.contains("Thread.setDefaultUncaughtExceptionHandler(originalDefault)"))
+        assertFalse(source.contains("thread.uncaughtExceptionHandler = handler"))
+    }
+
+    @Test
+    fun checkpointAndPreviousCrashEvidenceSurviveAProcessRestart() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
+        assertTrue(source.contains("CHECKPOINT_FILE_NAME"))
+        assertTrue(source.contains("persistCheckpoint(context, lastCheckpoint)"))
+        assertTrue(source.contains("lastCheckpoint="))
+        assertTrue(source.contains("checkpointFile(context)"))
+        assertFalse(source.contains("traceFile(context).delete()"))
     }
 
     @Test
