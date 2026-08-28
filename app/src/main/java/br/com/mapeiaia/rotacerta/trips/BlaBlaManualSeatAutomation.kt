@@ -430,6 +430,13 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         webView = WebView(this)
         configureProfiledWebView(webView, account)
+        seatBrowser = BlaBlaSeatBrowserController(
+            context = this,
+            webView = webView,
+            accountId = account.id,
+            expectedProfileUuid = account.profileUuid.orEmpty(),
+            tripId = request.tripId,
+        )
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString()
@@ -1845,6 +1852,7 @@ class BlaBlaManualSeatSyncActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
     private lateinit var archive: BlaBlaMhtmlArchiveStore
+    private lateinit var seatBrowser: BlaBlaSeatBrowserController
     private var phase = Phase.BEFORE
     private var busy = false
     private var expectedSeats = -1
@@ -1897,10 +1905,10 @@ class BlaBlaManualSeatSyncActivity : Activity() {
         busy = true
         when (phase) {
             Phase.BEFORE -> archive.save(webView, account, "options-before", request.tripId) {
-                evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { state ->
+                seatBrowser.read { state ->
                     if (state == null || state.seats < 0 || !state.savePresent) {
                         finishPending("Não consegui ler a quantidade atual de lugares.")
-                        return@evaluate
+                        return@read
                     }
                     expectedSeats = state.seats + request.seatDelta
                     UnifiedDebugEventStore.record(
@@ -1910,20 +1918,24 @@ class BlaBlaManualSeatSyncActivity : Activity() {
                     )
                     if (expectedSeats < 0 || (request.seatDelta > 0 && !state.canAdd) || (request.seatDelta < 0 && !state.canRemove)) {
                         finishPending("A interface externa não permite essa alteração de lugares.")
-                        return@evaluate
+                        return@read
                     }
                     statusView.text = "${account.displayLabel} • ${state.seats} → $expectedSeats lugares • salvando…"
                     phase = Phase.VERIFY
-                    webView.evaluateJavascript(applySeatsJs(expectedSeats), null)
-                    val waitMillis = 1_600L + kotlin.math.abs(request.seatDelta).coerceAtMost(20) * 320L
-                    webView.postDelayed({
-                        busy = false
-                        webView.loadUrl(optionsUrlForTrip(request.tripId))
-                    }, waitMillis)
+                    seatBrowser.adjustAndSave(state.seats, expectedSeats) { saved, reason ->
+                        if (!saved) {
+                            finishPending("A alteração de lugares não foi confirmada ($reason).")
+                            return@adjustAndSave
+                        }
+                        webView.postDelayed({
+                            busy = false
+                            webView.loadUrl(optionsUrlForTrip(request.tripId))
+                        }, 1_600L)
+                    }
                 }
             }
             Phase.VERIFY -> archive.save(webView, account, "options-after", request.tripId) {
-                evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { state ->
+                seatBrowser.read { state ->
                     if (state?.seats == expectedSeats) {
                         if (request.seatDelta < 0) {
                             ledger.markVerifiedDecrease(request)
@@ -1964,94 +1976,15 @@ class BlaBlaManualSeatSyncActivity : Activity() {
         finish()
     }
 
-    private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
-        webView.evaluateJavascript(script) { encoded ->
-            val decoded = runCatching {
-                if (encoded.isNullOrBlank() || encoded == "null") return@runCatching null
-                val raw = json.parseToJsonElement(encoded).jsonPrimitive.content
-                json.decodeFromString<T>(raw)
-            }.getOrNull()
-            callback(decoded)
-        }
-    }
-
     override fun onDestroy() {
+        if (::seatBrowser.isInitialized) seatBrowser.cancel()
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
     }
 
     private enum class Phase { BEFORE, VERIFY }
 
-    companion object {
-        private val SEAT_OPTIONS_READ_JS = """
-            (function() {
-              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-              const remove = document.querySelector('button[aria-label="Remover um lugar"]');
-              const add = document.querySelector('button[aria-label="Adicionar um lugar"]');
-              let root = remove && remove.parentElement;
-              while (root && add && !root.contains(add)) root = root.parentElement;
-              root = root || (add && add.parentElement) || document.body;
-              const leaves = Array.from(root.querySelectorAll('span, p, div'))
-                .filter((node) => node.children.length === 0)
-                .map((node) => clean(node.innerText))
-                .filter((text) => /^\d{1,3}$/.test(text));
-              let seats = leaves.length ? parseInt(leaves[0], 10) : -1;
-              if (seats < 0) {
-                const all = clean(root.innerText).match(/(?:^|\s)(\d{1,3})(?:\s|$)/);
-                seats = all ? parseInt(all[1], 10) : -1;
-              }
-              const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
-              const clone = document.documentElement.cloneNode(true);
-              clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
-              clone.querySelectorAll('input, textarea').forEach((node) => { node.removeAttribute('value'); node.textContent = ''; });
-              const html = clone.outerHTML || '';
-              return JSON.stringify({
-                seats: Number.isFinite(seats) ? seats : -1,
-                canAdd: !!add && !add.disabled,
-                canRemove: !!remove && !remove.disabled,
-                savePresent: !!save,
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
 
-        private fun applySeatsJs(target: Int): String = """
-            (function() {
-              const target = $target;
-              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-              const read = () => {
-                const remove = document.querySelector('button[aria-label="Remover um lugar"]');
-                const add = document.querySelector('button[aria-label="Adicionar um lugar"]');
-                let root = remove && remove.parentElement;
-                while (root && add && !root.contains(add)) root = root.parentElement;
-                root = root || (add && add.parentElement) || document.body;
-                const leaves = Array.from(root.querySelectorAll('span, p, div'))
-                  .filter((node) => node.children.length === 0)
-                  .map((node) => clean(node.innerText))
-                  .filter((text) => /^\d{1,3}$/.test(text));
-                return leaves.length ? parseInt(leaves[0], 10) : -1;
-              };
-              let attempts = 0;
-              const step = () => {
-                attempts++;
-                const current = read();
-                if (current === target) {
-                  const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
-                  if (save && !save.disabled) save.click();
-                  return;
-                }
-                if (attempts > 30 || current < 0) return;
-                const selector = current > target ? 'button[aria-label="Remover um lugar"]' : 'button[aria-label="Adicionar um lugar"]';
-                const button = document.querySelector(selector);
-                if (!button || button.disabled) return;
-                button.click();
-                setTimeout(step, 280);
-              };
-              step();
-              return JSON.stringify({scheduled:true,target:target});
-            })();
-        """.trimIndent()
-    }
 }
 
 private fun configureProfiledWebView(webView: WebView, account: BlaBlaDynamicAccount) {
