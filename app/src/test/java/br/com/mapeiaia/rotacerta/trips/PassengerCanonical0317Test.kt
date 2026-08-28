@@ -178,6 +178,16 @@ class PassengerCanonical0317Test {
         assertTrue(source.contains("não são mesclados com o card operacional"))
     }
 
+    @Test
+    fun timelineToolbarSyncStartsAllAccountsInsteadOfOnlyOpeningPanel() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("AGENDA_SYNC_TOOLBAR_REQUESTED"))
+        assertTrue(source.contains("scope=all_accounts source=timeline_toolbar"))
+        assertTrue(source.contains("onRequestBlaBlaSync()"))
+        assertTrue(source.contains("autoSyncProfileUuid = null"))
+        assertTrue(source.contains("autoSyncTripId = null"))
+    }
+
     @Test // V/W
     fun pendingExternalSyncBannerFiltersAllDatesAndCanBeCleared() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
