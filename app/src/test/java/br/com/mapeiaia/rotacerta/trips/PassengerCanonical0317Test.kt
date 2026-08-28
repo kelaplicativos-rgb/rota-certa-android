@@ -104,6 +104,8 @@ class PassengerCanonical0317Test {
         assertTrue(timeline.contains("TIMELINE_VISUAL_CLEARED_BY_USER"))
         assertTrue(timeline.contains("passengerHistoryPreserved=true"))
         assertTrue(timeline.contains("localBookingsPreserved=true"))
+        assertTrue(timeline.contains("physical.filter { !it.localTripId.isNullOrBlank() }"))
+        assertTrue(timeline.contains("localCardsArchived="))
         assertFalse(timeline.contains("store.clearTimelineLocalData()"))
         assertTrue(store.contains("fun clearTimelineLocalData(): Pair<Int, Int> = 0 to 0"))
         assertTrue(File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt").readText().contains("KEY_RIDE_RECORDS"))

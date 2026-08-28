@@ -231,8 +231,13 @@ fun TripTimelineScreen(
 
     val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
         archiveStore.clearExternal(physical)
+        val manualCardsToArchive = if (includeManualCards) {
+            physical.filter { !it.localTripId.isNullOrBlank() }
+        } else {
+            emptyList()
+        }
+        manualCardsToArchive.forEach { archiveStore.setArchived(it, true) }
         if (includeManualCards) {
-            physical.filterNot(::hasExternalPublication).forEach { archiveStore.setArchived(it, true) }
             archiveRevision++
         }
         val externalClear = collectorStore.clearSynchronizedTimelineData()
@@ -243,7 +248,7 @@ fun TripTimelineScreen(
         UnifiedDebugEventStore.record(
             "TIMELINE_VISUAL_CLEARED_BY_USER",
             context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards localCardsArchived=${manualCardsToArchive.size} passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
         )
         onChanged(
             if (includeManualCards) {
