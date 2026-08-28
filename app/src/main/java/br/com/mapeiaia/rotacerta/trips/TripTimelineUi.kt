@@ -871,6 +871,10 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
+            entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
+                Text("BlaBlaCar publica: $published vaga(s) • não define a capacidade física", style = MaterialTheme.typography.bodySmall)
+            }
+
             val occupied = seatPlan?.loads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
@@ -967,6 +971,9 @@ private fun TimelineEntryCard(
                     } else {
                         seatPlan.loads.forEach { load ->
                             Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
+                        }
+                        entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
+                            Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
                         }
                         Text("💺 ${seatPlan.desiredPublishedSeats} = menor disponibilidade física relevante", style = MaterialTheme.typography.bodySmall)
                     }
