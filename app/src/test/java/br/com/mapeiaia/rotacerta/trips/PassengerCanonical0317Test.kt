@@ -179,13 +179,16 @@ class PassengerCanonical0317Test {
     }
 
     @Test
-    fun timelineToolbarSyncStartsAllAccountsInsteadOfOnlyOpeningPanel() {
+    fun timelineToolbarOnlyOpensManualSyncPanel() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
-        assertTrue(source.contains("AGENDA_SYNC_TOOLBAR_REQUESTED"))
-        assertTrue(source.contains("scope=all_accounts source=timeline_toolbar"))
-        assertTrue(source.contains("onRequestBlaBlaSync()"))
-        assertTrue(source.contains("autoSyncProfileUuid = null"))
-        assertTrue(source.contains("autoSyncTripId = null"))
+        val start = source.indexOf("ResponsiveTripAction(if (showSync)")
+        val end = source.indexOf("ResponsiveTripAction(\"Limpar Timeline\")", start)
+        val toolbarBlock = source.substring(start, end)
+        assertTrue(toolbarBlock.contains("showSync = !showSync"))
+        assertTrue(toolbarBlock.contains("AGENDA_SYNC_PANEL_OPENED"))
+        assertTrue(toolbarBlock.contains("autoSyncStarted=false"))
+        assertFalse(toolbarBlock.contains("onRequestBlaBlaSync()"))
+        assertFalse(toolbarBlock.contains("AGENDA_SYNC_TOOLBAR_REQUESTED"))
     }
 
     @Test
