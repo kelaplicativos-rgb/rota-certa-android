@@ -94,14 +94,36 @@ internal object AgendaSyncCrashTraceStore {
         SimpleDateFormat("dd/MM/yyyy HH:mm:ss.SSS", Locale("pt", "BR")).format(Date(value))
 }
 
+private class AgendaSyncUncaughtHandler(
+    private val context: Context,
+    private val structuralSnapshot: () -> String,
+    val delegate: Thread.UncaughtExceptionHandler?,
+) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(crashedThread: Thread, error: Throwable) {
+        runCatching {
+            AgendaSyncCrashTraceStore.record(
+                context = context.applicationContext,
+                thread = crashedThread,
+                error = error,
+                structuralSnapshot = structuralSnapshot,
+            )
+        }
+        if (delegate != null && delegate !== this) {
+            delegate.uncaughtException(crashedThread, error)
+        } else {
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
+    }
+}
+
 internal class AgendaSyncCrashGuard private constructor(
     private val thread: Thread,
-    private val previous: Thread.UncaughtExceptionHandler?,
-    private val installed: Thread.UncaughtExceptionHandler,
+    private val original: Thread.UncaughtExceptionHandler?,
+    private val installed: AgendaSyncUncaughtHandler,
 ) {
     fun close() {
         if (thread.uncaughtExceptionHandler === installed) {
-            thread.uncaughtExceptionHandler = previous
+            thread.uncaughtExceptionHandler = original
         }
     }
 
@@ -111,27 +133,15 @@ internal class AgendaSyncCrashGuard private constructor(
             structuralSnapshot: () -> String,
         ): AgendaSyncCrashGuard {
             val thread = Thread.currentThread()
-            val previous = thread.uncaughtExceptionHandler
-            val handler = object : Thread.UncaughtExceptionHandler {
-                override fun uncaughtException(crashedThread: Thread, error: Throwable) {
-                    runCatching {
-                        AgendaSyncCrashTraceStore.record(
-                            context = context.applicationContext,
-                            thread = crashedThread,
-                            error = error,
-                            structuralSnapshot = structuralSnapshot,
-                        )
-                    }
-                    val delegate = previous ?: Thread.getDefaultUncaughtExceptionHandler()
-                    if (delegate != null && delegate !== this) {
-                        delegate.uncaughtException(crashedThread, error)
-                    } else {
-                        android.os.Process.killProcess(android.os.Process.myPid())
-                    }
-                }
-            }
+            val current = thread.uncaughtExceptionHandler
+            val original = (current as? AgendaSyncUncaughtHandler)?.delegate ?: current
+            val handler = AgendaSyncUncaughtHandler(
+                context = context.applicationContext,
+                structuralSnapshot = structuralSnapshot,
+                delegate = original,
+            )
             thread.uncaughtExceptionHandler = handler
-            return AgendaSyncCrashGuard(thread, previous, handler)
+            return AgendaSyncCrashGuard(thread, original, handler)
         }
     }
 }
