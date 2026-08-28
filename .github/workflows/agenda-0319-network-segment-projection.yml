@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.322 Timeline pull sync all
+name: Rota Certa 0.1.323 Agenda debug persistence
 
 on:
   push:
     branches:
-      - agent/agenda-sync-crash-trace-0.1.322
+      - agent/agenda-debug-persistence-0.1.323
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0322-${{ github.ref }}
+  group: agenda-0323-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-sync-crash-trace-0.1.322
+          ref: agent/agenda-debug-persistence-0.1.323
           fetch-depth: 0
 
-      - name: Validate 0.1.322 pull-sync-all contracts
+      - name: Validate 0.1.323 persistent Agenda diagnostics
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5615' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.322"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5616' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.323"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'scope=all_accounts source=timeline_toolbar' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'onRequestBlaBlaSync()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -49,6 +49,10 @@ jobs:
           grep -Fq 'AgendaSyncCrashGuard.install' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'AgendaSyncCrashTraceStore.export(context)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
           grep -Fq 'class AgendaSyncCrashTrace0322Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace0322Test.kt
+          grep -Fq 'Thread.setDefaultUncaughtExceptionHandler(handler)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'CHECKPOINT_FILE_NAME' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'persistCheckpoint(context, lastCheckpoint)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          ! grep -Fq 'traceFile(context).delete()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -117,20 +121,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5615'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.322'" /tmp/aapt.txt
+          grep -Fq "versionCode='5616'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.323'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0322
-          cp "$APK" /tmp/0322/rota-certa-0.1.322-agenda-sync-crash-trace.apk
-          cp /tmp/apk.sha256 /tmp/0322/apk.sha256
-          cp /tmp/aapt.txt /tmp/0322/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0322/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0322/gradle.txt
-          git rev-parse HEAD > /tmp/0322/source-head.txt
+          mkdir -p /tmp/0323
+          cp "$APK" /tmp/0323/rota-certa-0.1.323-agenda-debug-persistence.apk
+          cp /tmp/apk.sha256 /tmp/0323/apk.sha256
+          cp /tmp/aapt.txt /tmp/0323/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0323/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0323/gradle.txt
+          git rev-parse HEAD > /tmp/0323/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.322-agenda-sync-crash-trace
+          name: rota-certa-0.1.323-agenda-debug-persistence
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0322
+          path: /tmp/0323
