@@ -663,6 +663,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
     private lateinit var archive: BlaBlaMhtmlArchiveStore
+    private lateinit var seatBrowser: BlaBlaSeatBrowserController
     private var phase = Phase.BEFORE
     private var busy = false
     private var expectedSeats = -1
@@ -755,6 +756,13 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         webView = WebView(this)
         configureReliableProfiledWebView(webView, account)
+        seatBrowser = BlaBlaSeatBrowserController(
+            context = this,
+            webView = webView,
+            accountId = account.id,
+            expectedProfileUuid = account.profileUuid.orEmpty(),
+            tripId = request.tripId,
+        )
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
@@ -795,7 +803,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                     }
                     return
                 }
-                evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
+                seatBrowser.read { state ->
                     if (state == null || state.seats < 0) {
                         if (beforeReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES) {
                             beforeReadAttempts++
@@ -806,20 +814,20 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                             )
                             busy = false
                             webView.postDelayed({ handlePage() }, RELIABLE_OPTIONS_READ_RETRY_MS)
-                            return@evaluate
+                            return@read
                         }
                         finishPending("O editor de vagas não está disponível ou não pôde ser lido após novas leituras.", rotate = true)
-                        return@evaluate
+                        return@read
                     }
                     beforeReadAttempts = 0
                     if (!BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)) {
                         finishPending("A identidade da página de vagas não foi confirmada.", rotate = true)
-                        return@evaluate
+                        return@read
                     }
                     val existingAttempt = attemptStore.get(request.id)
                     if (existingAttempt != null && !attemptMatchesRequest(existingAttempt)) {
                         finishPending("A tentativa persistida não corresponde mais a esta operação.", rotate = true)
-                        return@evaluate
+                        return@read
                     }
                     request.desiredPublishedSeats?.let { desired ->
                         publicationSeatStateStore.markObserved(request.profileUuid, request.tripId, state.seats)
@@ -849,7 +857,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         BlaBlaReliableSeatSyncAction.APPLY_TARGET -> {
                             val target = decision.targetSeats ?: run {
                                 finishPending("Alvo de vagas inválido.", rotate = true)
-                                return@evaluate
+                                return@read
                             }
                             if (existingAttempt == null) {
                                 attemptStore.save(
@@ -869,7 +877,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         BlaBlaReliableSeatSyncAction.APPLY_COMPENSATION -> {
                             val target = decision.targetSeats ?: run {
                                 finishPending("Alvo de compensação inválido.", rotate = true)
-                                return@evaluate
+                                return@read
                             }
                             applyTarget(state.seats, target, compensation = true)
                         }
@@ -901,7 +909,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                     }
                     return
                 }
-                evaluate<SeatOptionState>(RELIABLE_SEAT_OPTIONS_READ_JS) { state ->
+                seatBrowser.read { state ->
                     val exactPage = state != null && BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)
                     val verified = exactPage && state.seats == expectedSeats
                     if (verified) {
@@ -911,7 +919,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         } else {
                             completeVerified(expectedSeats, alreadyApplied = false)
                         }
-                        return@evaluate
+                        return@read
                     }
                     if (verifyReadAttempts < RELIABLE_OPTIONS_READ_MAX_RETRIES) {
                         verifyReadAttempts++
@@ -922,7 +930,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         )
                         busy = false
                         webView.postDelayed({ handlePage() }, RELIABLE_OPTIONS_READ_RETRY_MS)
-                        return@evaluate
+                        return@read
                     }
                     finishPending("Alteração não confirmada após releituras; a tentativa ficou preservada para conferência idempotente.", rotate = true)
                 }
@@ -938,7 +946,16 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         verificationReloadScheduled = false
         statusView.text = "${account.displayLabel} • $before → $target vagas • salvando…"
         phase = Phase.SAVING
-        webView.evaluateJavascript(applyReliableSeatsJs(target), null)
+        seatBrowser.adjustAndSave(before, target) { saved, reason ->
+            if (!saved) {
+                finishPending(
+                    "A alteração de vagas não foi confirmada pelo orquestrador ($reason).",
+                    rotate = true,
+                )
+                return@adjustAndSave
+            }
+            scheduleVerificationReload("browser_orchestrator")
+        }
         webView.postDelayed({
             if (phase == Phase.SAVING) scheduleVerificationReload("save_timeout")
         }, RELIABLE_SAVE_COMPLETION_TIMEOUT_MS)
@@ -1079,18 +1096,8 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             attempt.seatDelta == request.seatDelta &&
             (request.desiredPublishedSeats == null || attempt.targetSeats == request.desiredPublishedSeats)
 
-    private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
-        webView.evaluateJavascript(script) { encoded ->
-            val decoded = runCatching {
-                if (encoded.isNullOrBlank() || encoded == "null") return@runCatching null
-                val raw = json.parseToJsonElement(encoded).jsonPrimitive.content
-                json.decodeFromString<T>(raw)
-            }.getOrNull()
-            callback(decoded)
-        }
-    }
-
     override fun onDestroy() {
+        if (::seatBrowser.isInitialized) seatBrowser.cancel()
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
     }
@@ -1123,100 +1130,3 @@ private const val RELIABLE_SAVE_SETTLE_MS = 650L
 private fun reliableOptionsUrl(tripId: String): String =
     "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
 
-private val RELIABLE_SEAT_OPTIONS_READ_JS = """
-    (function() {
-      const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-      const marker = (node) => clean(
-        ((node && node.getAttribute && node.getAttribute('data-testid')) || '') + ' ' +
-        ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
-        ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
-        ((node && node.innerText) || '')
-      ).toLowerCase();
-      const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-      let remove = buttons.find((node) => /decrement|decrease|remove|minus|remover/.test(marker(node)) || /^[−–-]$/.test(clean(node.innerText)));
-      let add = buttons.find((node) => /increment|increase|add|plus|adicionar/.test(marker(node)) || /^\+$/.test(clean(node.innerText)));
-      let root = (remove && remove.parentElement) || (add && add.parentElement) || null;
-      while (root && root !== document.body && root.querySelectorAll('button, [role="button"]').length < 2) root = root.parentElement;
-      const grouped = root ? Array.from(root.querySelectorAll('button, [role="button"]')) : [];
-      if (!remove && grouped.length >= 2) remove = grouped[0];
-      if (!add && grouped.length >= 2) add = grouped[grouped.length - 1];
-      root = root || document.querySelector('[data-testid*="seat"], [data-testid*="capacity"], [role="spinbutton"]') || document.body;
-      const numeric = root.querySelector('input[type="number"], [role="spinbutton"], select');
-      const controlled = numeric && clean(numeric.value || numeric.getAttribute('aria-valuenow') || numeric.getAttribute('value') || '');
-      const leaves = Array.from(root.querySelectorAll('span, p, div'))
-        .filter((node) => node.children.length === 0)
-        .map((node) => clean(node.innerText))
-        .filter((text) => /^\d{1,3}$/.test(text));
-      let seats = /^\d{1,3}$/.test(controlled || '') ? parseInt(controlled, 10) : (leaves.length ? parseInt(leaves[0], 10) : -1);
-      if (seats < 0) {
-        const all = clean(root.innerText).match(/(?:^|\s)(\d{1,3})(?:\s|$)/);
-        seats = all ? parseInt(all[1], 10) : -1;
-      }
-      const save = buttons.find((node) => /^(salvar|save)$/i.test(clean(node.innerText)))
-        || document.querySelector('button[type="submit"], [data-testid*="save"], [data-testid*="submit"]');
-      return JSON.stringify({
-        seats: Number.isFinite(seats) ? seats : -1,
-        canAdd: !!add && !add.disabled,
-        canRemove: !!remove && !remove.disabled,
-        savePresent: !!save,
-        pageUrl: location.href || '',
-        domHtml: ''
-      });
-    })();
-""".trimIndent()
-
-private fun applyReliableSeatsJs(target: Int): String = """
-    (function() {
-      const target = $target;
-      const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-      const marker = (node) => clean(
-        ((node && node.getAttribute && node.getAttribute('data-testid')) || '') + ' ' +
-        ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
-        ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
-        ((node && node.innerText) || '')
-      ).toLowerCase();
-      const controls = () => {
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        let remove = buttons.find((node) => /decrement|decrease|remove|minus|remover/.test(marker(node)) || /^[−–-]$/.test(clean(node.innerText)));
-        let add = buttons.find((node) => /increment|increase|add|plus|adicionar/.test(marker(node)) || /^\+$/.test(clean(node.innerText)));
-        let root = (remove && remove.parentElement) || (add && add.parentElement) || null;
-        while (root && root !== document.body && root.querySelectorAll('button, [role="button"]').length < 2) root = root.parentElement;
-        const grouped = root ? Array.from(root.querySelectorAll('button, [role="button"]')) : [];
-        if (!remove && grouped.length >= 2) remove = grouped[0];
-        if (!add && grouped.length >= 2) add = grouped[grouped.length - 1];
-        root = root || document.querySelector('[data-testid*="seat"], [data-testid*="capacity"], [role="spinbutton"]') || document.body;
-        return {buttons, remove, add, root};
-      };
-      const read = () => {
-        const c = controls();
-        const numeric = c.root.querySelector('input[type="number"], [role="spinbutton"], select');
-        const controlled = numeric && clean(numeric.value || numeric.getAttribute('aria-valuenow') || numeric.getAttribute('value') || '');
-        if (/^\d{1,3}$/.test(controlled || '')) return parseInt(controlled, 10);
-        const leaves = Array.from(c.root.querySelectorAll('span, p, div'))
-          .filter((node) => node.children.length === 0)
-          .map((node) => clean(node.innerText))
-          .filter((text) => /^\d{1,3}$/.test(text));
-        return leaves.length ? parseInt(leaves[0], 10) : -1;
-      };
-      let attempts = 0;
-      const step = () => {
-        attempts++;
-        const current = read();
-        if (current === target) {
-          const c = controls();
-          const save = c.buttons.find((node) => /^(salvar|save)$/i.test(clean(node.innerText)))
-            || document.querySelector('button[type="submit"], [data-testid*="save"], [data-testid*="submit"]');
-          if (save && !save.disabled) save.click();
-          return;
-        }
-        if (attempts > 30 || current < 0) return;
-        const c = controls();
-        const button = current > target ? c.remove : c.add;
-        if (!button || button.disabled) return;
-        button.click();
-        setTimeout(step, 280);
-      };
-      step();
-      return JSON.stringify({scheduled:true,target:target});
-    })();
-""".trimIndent()
