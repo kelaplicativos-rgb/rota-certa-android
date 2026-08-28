@@ -55,6 +55,8 @@ class BlaBlaPublicSearchActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var store: BlaBlaPublicSearchStore
     private lateinit var request: BlaBlaPublicSearchRequest
+    private lateinit var browserScripts: BlaBlaBrowserScriptRegistry
+    private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private var tasks: List<BlaBlaPublicSearchTask> = emptyList()
     private var taskIndex = 0
     private var generation = 0L
@@ -65,6 +67,7 @@ class BlaBlaPublicSearchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = BlaBlaPublicSearchStore(this)
+        browserScripts = BlaBlaBrowserScriptRegistry(this)
         request = runCatching {
             intent.getStringExtra(BlaBlaPublicSearchIntents.EXTRA_REQUEST_JSON)
                 ?.let { json.decodeFromString<BlaBlaPublicSearchRequest>(it) }
@@ -170,6 +173,11 @@ class BlaBlaPublicSearchActivity : Activity() {
             return
         }
         generation++
+        browserOrchestrator.start(
+            BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM,
+            publicBrowserContext(),
+            reason = "load_exact_public_search_url",
+        )
         statusView.text = "Consulta Pública • ${taskIndex + 1}/${tasks.size}\n${task.date} • ${task.from} → ${task.to}"
         webView.loadUrl(url)
     }
@@ -178,8 +186,18 @@ class BlaBlaPublicSearchActivity : Activity() {
         if (expectedGeneration != generation || capturedGeneration == expectedGeneration) return
         capturedGeneration = expectedGeneration
         val task = tasks.getOrNull(taskIndex) ?: return
-        webView.evaluateJavascript(EXTRACT_PUBLIC_SEARCH_JS) { raw ->
-            if (expectedGeneration != generation || taskIndex >= tasks.size) return@evaluateJavascript
+        val token = browserOrchestrator.start(
+            BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+            publicBrowserContext(),
+            reason = "capture_public_results",
+        )
+        val script = browserScripts.script(BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS)
+        webView.evaluateJavascript(script) { raw ->
+            if (
+                expectedGeneration != generation ||
+                taskIndex >= tasks.size ||
+                !browserOrchestrator.isCurrent(token, publicBrowserContext())
+            ) return@evaluateJavascript
             val evidence = decodePage(raw)
             if (evidence == null) {
                 recordFailure(task, "parse_error", "Não foi possível interpretar a página pública.")
@@ -254,6 +272,7 @@ class BlaBlaPublicSearchActivity : Activity() {
             queries = queries.toList(),
         )
         store.saveResponse(response)
+        browserOrchestrator.cancel()
         UnifiedDebugEventStore.record(
             "PUBLIC_SEARCH_COMPLETED",
             packageName,
@@ -267,6 +286,7 @@ class BlaBlaPublicSearchActivity : Activity() {
     }
 
     private fun finishWithError(message: String) {
+        browserOrchestrator.cancel()
         if (::store.isInitialized && ::request.isInitialized) {
             store.saveResponse(BlaBlaPublicSearchResponse(status = "error", request = request))
         }
@@ -277,6 +297,14 @@ class BlaBlaPublicSearchActivity : Activity() {
         if (::statusView.isInitialized) statusView.text = message
         finish()
     }
+
+    private fun publicBrowserContext(): BlaBlaBrowserExecutionContext = BlaBlaBrowserExecutionContext(
+        accountId = PUBLIC_PROFILE,
+        syncGeneration = generation,
+        navigationGeneration = generation,
+        tripId = "public-task-$taskIndex",
+        url = if (::webView.isInitialized) webView.url.orEmpty() else "",
+    )
 
     private fun decodePage(raw: String?): PublicRenderedPage? = runCatching {
         val encoded = raw?.takeIf { it != "null" } ?: return@runCatching null
@@ -391,23 +419,6 @@ class BlaBlaPublicSearchActivity : Activity() {
             "0 viagem disponível",
             "Nenhuma viagem disponível",
         )
-        private const val EXTRACT_PUBLIC_SEARCH_JS = """
-            (function() {
-              const text = (root, selector) => root.querySelector(selector)?.textContent?.trim() || null;
-              const cards = Array.from(document.querySelectorAll('[data-testid="e2e-srp-card"]')).map((card) => ({
-                driverName: text(card, '[data-testid="e2e-tripcard-driver-name"]') || '',
-                departureTime: text(card, '[data-testid="e2e-itinerary-departure-time"]'),
-                arrivalTime: text(card, '[data-testid="e2e-itinerary-arrival-time"]'),
-                actualDeparture: text(card, '[data-testid="e2e-itinerary-departure-station"]'),
-                actualArrival: text(card, '[data-testid="e2e-itinerary-arrival-station"]'),
-                priceText: text(card, '[data-testid="e2e-tripcard-price"]'),
-                ratingText: text(card, '[data-testid*="rating"]'),
-                seatsText: text(card, '[data-testid*="seat"]') || text(card, '[data-testid*="availability"]'),
-                text: card.innerText || '',
-                href: card.querySelector('a[href*="/trip"]')?.getAttribute('href') || null
-              }));
-              return JSON.stringify({ bodyText: document.body?.innerText || '', cards });
-            })();
-        """
+
     }
 }
