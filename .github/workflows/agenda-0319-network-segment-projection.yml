@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.320 BlaBla sync trigger recovery
+name: Rota Certa 0.1.321 Timeline pull sync all
 
 on:
   push:
     branches:
-      - agent/blablacar-sync-trigger-recovery-0.1.320
+      - agent/timeline-pull-sync-all-0.1.321
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0320-${{ github.ref }}
+  group: agenda-0321-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,28 +25,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/blablacar-sync-trigger-recovery-0.1.320
+          ref: agent/timeline-pull-sync-all-0.1.321
           fetch-depth: 0
 
-      - name: Validate 0.1.320 causal contracts
+      - name: Validate 0.1.321 pull-sync-all contracts
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5613' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.320"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5614' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.321"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'scope=all_accounts source=timeline_toolbar' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'onRequestBlaBlaSync()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'timelineToolbarSyncStartsAllAccountsInsteadOfOnlyOpeningPanel' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'PullToRefreshBox' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AGENDA_PULL_REFRESH_ALL_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'timelinePullRefreshSynchronizesAllAccountsBookingsAndPublicAgenda' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
           grep -Fq '__rotaCertaNetworkTripSource' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
           grep -Fq 'blablaItineraryStops: List<String> = emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
 
-      - name: Verify FAROL unchanged from 0.1.319
+      - name: Verify FAROL unchanged from 0.1.320
         shell: bash
         run: |
           set -euo pipefail
-          BASE=6a179e9166893ba6ce4b30e27b6cff9f7b6c8724
+          BASE=7cc102437ff6ca55ec860f4656daa9f401893759
           test -z "$(git diff --name-only "$BASE"..HEAD --             'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'             'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt')"
 
       - name: Configure Firebase authentication
@@ -109,20 +114,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5613'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.320'" /tmp/aapt.txt
+          grep -Fq "versionCode='5614'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.321'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0320
-          cp "$APK" /tmp/0320/rota-certa-0.1.320-blablacar-sync-trigger.apk
-          cp /tmp/apk.sha256 /tmp/0320/apk.sha256
-          cp /tmp/aapt.txt /tmp/0320/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0320/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0320/gradle.txt
-          git rev-parse HEAD > /tmp/0320/source-head.txt
+          mkdir -p /tmp/0321
+          cp "$APK" /tmp/0321/rota-certa-0.1.321-timeline-pull-sync-all.apk
+          cp /tmp/apk.sha256 /tmp/0321/apk.sha256
+          cp /tmp/aapt.txt /tmp/0321/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0321/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0321/gradle.txt
+          git rev-parse HEAD > /tmp/0321/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.320-blablacar-sync-trigger
+          name: rota-certa-0.1.321-timeline-pull-sync-all
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0320
+          path: /tmp/0321
