@@ -29,6 +29,6 @@ internal class BlaBlaBrowserScriptRegistry(context: Context) {
     fun availableRequests(): Set<BlaBlaBrowserRequest> = BlaBlaBrowserRequest.values().toSet()
 
     private companion object {
-        val UNRESOLVED_PLACEHOLDER = Regex("\\{\\{[A-Z0-9_]+}}")
+        val UNRESOLVED_PLACEHOLDER = Regex("\\{\\{[A-Z0-9_]+\\}\\}")
     }
 }
