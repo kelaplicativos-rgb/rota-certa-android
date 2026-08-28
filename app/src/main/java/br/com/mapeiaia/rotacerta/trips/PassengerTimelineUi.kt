@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
@@ -81,8 +83,10 @@ internal fun EnhancedPassengerTimelineSection(
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
+    val completionService = remember(context) { PassengerCompletionService(context) }
     val scope = rememberCoroutineScope()
     var identityRevision by remember { mutableIntStateOf(0) }
+    var completionRevision by remember { mutableIntStateOf(0) }
     val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
     val externalObservationKey = rawRows
         .filter { BookingSource.BLABLACAR in it.sources }
@@ -106,6 +110,8 @@ internal fun EnhancedPassengerTimelineSection(
     }
     @Suppress("UNUSED_VARIABLE")
     val identityRefresh = identityRevision
+    @Suppress("UNUSED_VARIABLE")
+    val completionRefresh = completionRevision
     if (hasExternalTripActionEvidence(entry)) {
         TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
     }
@@ -118,6 +124,7 @@ internal fun EnhancedPassengerTimelineSection(
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var blockProfile by remember { mutableStateOf<PassengerProfile?>(null) }
     var historyRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var editManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -126,17 +133,38 @@ internal fun EnhancedPassengerTimelineSection(
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var dropoffAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
 
+    val selectedHistoryRow = historyRow
+    if (selectedHistoryRow != null) {
+        val profile = selectedHistoryRow.passengerId?.let(passengerStore::profile)
+            ?: passengerStore.profileByExternalPassengerId(selectedHistoryRow.externalPassengerId)
+        PassengerHistoryPanel(
+            history = profile?.let { passengerStore.persistentHistory(it.id) },
+            onBack = { historyRow = null },
+            onArchiveToggle = { selectedProfile ->
+                passengerStore.setArchived(selectedProfile.id, !selectedProfile.archived)
+                identityRevision++
+                historyRow = null
+                onChanged(
+                    if (selectedProfile.archived) "Passageiro restaurado na lista; histórico preservado."
+                    else "Passageiro arquivado da lista; histórico, UUIDs, bloqueios e viagens foram preservados.",
+                )
+            },
+        )
+        return
+    }
+
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
         val rowProfile = passenger.passengerId?.let(passengerStore::profile)
             ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            val phone = passenger.phone
+            val completed = completionService.isCompleted(entry, passenger)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                val phone = passenger.phone
                 IconButton(
                     onClick = {
                         if (!phone.isNullOrBlank()) {
@@ -153,17 +181,23 @@ internal fun EnhancedPassengerTimelineSection(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_whatsapp_action),
-                        contentDescription = "WhatsApp",
+                        contentDescription = "Abrir WhatsApp do passageiro",
                         tint = Color.Unspecified,
                         modifier = Modifier.size(22.dp),
                     )
                 }
 
-                // 0.1.285: restored compact per-passenger shortcuts from the proven pre-regression row.
-                externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)?.let {
+                val passengerTarget = externalPassengerTarget(passenger)
+                val tripTarget = externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)
+                if (passengerTarget != null || tripTarget != null) {
                     IconButton(
                         onClick = {
-                            if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                            val opened = if (passengerTarget != null) {
+                                openExternalPassengerBlaBla(context, passenger)
+                            } else {
+                                openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)
+                            }
+                            if (!opened) {
                                 Toast.makeText(
                                     context,
                                     "Conta BlaBlaCar desta viagem não está conectada.",
@@ -175,47 +209,41 @@ internal fun EnhancedPassengerTimelineSection(
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_blablacar_action),
-                            contentDescription = "Abrir viagem no BlaBlaCar",
+                            contentDescription = if (passengerTarget != null) "Abrir passageiro no BlaBlaCar" else "Abrir viagem no BlaBlaCar",
                             tint = Color.Unspecified,
                             modifier = Modifier.size(22.dp),
                         )
                     }
                 }
 
-                TextButton(
+                IconButton(
                     onClick = {
-                        val externalTarget = externalPassengerTarget(passenger)
-                        if (externalTarget != null) {
-                            if (!openExternalPassengerBlaBla(context, passenger)) {
-                                Toast.makeText(
-                                    context,
-                                    "Conta BlaBlaCar desta reserva não está conectada.",
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        } else if (!passenger.passengerId.isNullOrBlank() && passengerStore.profile(passenger.passengerId) != null) {
-                            profileRow = passenger
+                        val result = completionService.confirm(entry, passenger)
+                        if (result == null) {
+                            onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
                         } else {
-                            createProfileRow = passenger
+                            completionRevision++
+                            identityRevision++
+                            onChanged(
+                                if (result.newlyCompleted) {
+                                    "✅ ${result.profile.displayName} marcado como VIAJOU. Histórico concluído atualizado."
+                                } else {
+                                    "✅ ${result.profile.displayName} já estava marcado como VIAJOU; nenhum registro duplicado foi criado."
+                                },
+                            )
                         }
                     },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = COMPACT_NAME_PADDING,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .semantics {
+                            contentDescription = if (completed) {
+                                "Viagem concluída para ${passenger.name}"
+                            } else {
+                                "Marcar ${passenger.name} como viagem concluída"
+                            }
+                        },
                 ) {
-                    Text(
-                        (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                TextButton(
-                    onClick = { historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId) },
-                    enabled = rowProfile != null || !passenger.externalPassengerId.isNullOrBlank(),
-                    contentPadding = COMPACT_ACTION_PADDING,
-                    modifier = Modifier.heightIn(min = 36.dp),
-                ) {
-                    Text("Histórico", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                    Text(if (completed) "✅" else "☑️")
                 }
 
                 OutlinedButton(
@@ -239,6 +267,21 @@ internal fun EnhancedPassengerTimelineSection(
                 ) {
                     Text("💬", maxLines = 1)
                 }
+            }
+
+            TextButton(
+                onClick = {
+                    historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = COMPACT_NAME_PADDING,
+            ) {
+                Text(
+                    (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Row(
@@ -310,10 +353,10 @@ internal fun EnhancedPassengerTimelineSection(
                 overflow = TextOverflow.Ellipsis,
             )
             val canonicalProfile = rowProfile
-            val rideHistory = canonicalProfile?.let { passengerStore.rideHistory(it.id) }
+            val persistentHistory = canonicalProfile?.let { passengerStore.persistentHistory(it.id) }
             val identityLabel = when {
-                canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO"
-                rideHistory != null && rideHistory.totalRides > 0 -> "${rideHistory.totalRides} carona(s) registrada(s)"
+                canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO • ${persistentHistory?.totalRides ?: 0} concluída(s) • ${persistentHistory?.totalOccurrences ?: 0} ocorrência(s)"
+                persistentHistory != null -> "${persistentHistory.totalRides} concluída(s) • ${persistentHistory.totalOccurrences} ocorrência(s)/reserva(s)"
                 passenger.externalPassengerId != null -> "Identidade BlaBlaCar disponível"
                 else -> null
             }
