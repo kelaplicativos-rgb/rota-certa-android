@@ -424,7 +424,133 @@ fun TripTimelineScreen(
             archiveRevision++
             onChanged(if (archived) "Viagem restaurada." else "Viagem arquivada sem cancelar a publicação.")
         }
+        }
+        while (publicCardIndex < dayPublicCards.size) {
+            BlaBlaPublicTimelineCard(
+                card = dayPublicCards[publicCardIndex],
+                response = publicResponseForTimeline,
+            )
+            publicCardIndex++
+        }
     }
+}
+
+internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
+    BlaBlaPublicationSeatSyncVisualState.PENDING,
+    BlaBlaPublicationSeatSyncVisualState.SYNCING,
+    BlaBlaPublicationSeatSyncVisualState.ERROR,
+)
+
+internal fun publicSearchCardMatchesTimelineSearch(card: BlaBlaPublicSearchCard, query: String): Boolean {
+    val needle = query.trim()
+    if (needle.isBlank()) return true
+    return listOf(
+        card.driverName,
+        card.date,
+        card.searchFrom,
+        card.searchTo,
+        card.actualDeparture.orEmpty(),
+        card.actualArrival.orEmpty(),
+        card.price.orEmpty(),
+        card.driverRating.orEmpty(),
+        card.flags.joinToString(" "),
+    ).any { it.contains(needle, ignoreCase = true) }
+}
+
+internal fun publicSearchCardDepartureSortMillis(card: BlaBlaPublicSearchCard): Long {
+    val date = runCatching { LocalDate.parse(card.date) }.getOrNull() ?: return Long.MAX_VALUE
+    val clock = Regex("(\\d{1,2}):(\\d{2})").find(card.departureTime.orEmpty())
+    val hour = clock?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 23) ?: 0
+    val minute = clock?.groupValues?.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+    return date.atTime(hour, minute).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+}
+
+internal fun combinedTimelineCalendarDays(
+    entries: List<TripTimelineEntry>,
+    publicResponse: BlaBlaPublicSearchResponse?,
+): List<AgendaCalendarDay<TripTimelineEntry>> {
+    val entriesByDate = entries.groupBy { entry ->
+        Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+    val dates = agendaCalendarDaysForItems(entries) { entry ->
+        Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    }.mapTo(linkedSetOf()) { it.date }
+
+    if (publicResponse != null) {
+        agendaCalendarDaysForPeriod<TripTimelineEntry>(
+            period = publicResponse.request.period,
+            items = emptyList(),
+            dateOf = { null },
+        ).forEach { dates += it.date }
+        publicResponse.cards.mapNotNullTo(dates) { card -> runCatching { LocalDate.parse(card.date) }.getOrNull() }
+    }
+    return dates.sorted().map { date -> AgendaCalendarDay(date, entriesByDate[date].orEmpty()) }
+}
+
+@Composable
+internal fun BlaBlaPublicTimelineCard(
+    card: BlaBlaPublicSearchCard,
+    response: BlaBlaPublicSearchResponse?,
+) {
+    val context = LocalContext.current
+    val routeFrom = card.actualDeparture?.takeIf(String::isNotBlank) ?: card.searchFrom
+    val routeTo = card.actualArrival?.takeIf(String::isNotBlank) ?: card.searchTo
+    val status = when (card.availability) {
+        "full" -> "Cheio"
+        "scarce" -> "Poucas vagas"
+        else -> card.availableSeats?.let { if (it == 1) "1 vaga disponível" else "$it vagas disponíveis" }
+            ?: "Disponibilidade sem quantidade confirmada"
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White, contentColor = Color.Black),
+        border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("Consulta pública • Rota Certa", style = MaterialTheme.typography.labelLarge, color = Color.Black)
+            Text(
+                "${card.departureTime ?: "--:--"} • $routeFrom → $routeTo",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.Black,
+            )
+            val timing = listOfNotNull(
+                card.arrivalTime?.let { "chegada $it" },
+                card.duration?.let { "duração $it" },
+            ).joinToString(" • ")
+            if (timing.isNotBlank()) Text(timing, style = MaterialTheme.typography.bodySmall, color = Color.Black)
+            Text(
+                "Motorista: ${card.driverName.ifBlank { "não identificado" }}${card.driverRating?.let { " • avaliação $it/5" }.orEmpty()}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Black,
+            )
+            Text("Valor: ${card.price ?: "não informado"}", style = MaterialTheme.typography.bodyMedium, color = Color.Black)
+            Text("Vagas/status: $status", style = MaterialTheme.typography.bodyMedium, color = Color.Black)
+            if (card.flags.isNotEmpty()) {
+                Text(card.flags.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = Color.Black)
+            }
+            val direction = response?.let {
+                when (BlaBlaPublicSearchPlanner.direction(card.searchFrom, card.searchTo, it.request)) {
+                    BlaBlaPublicSearchDirection.PRIMARY -> "IDA pesquisada"
+                    BlaBlaPublicSearchDirection.REVERSE -> "VOLTA pesquisada"
+                    BlaBlaPublicSearchDirection.UNKNOWN -> "Sentido pesquisado"
+                }
+            }
+            direction?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Black) }
+            Text(
+                "Card público independente • passageiros, vagas e status não são mesclados com o card operacional.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Black,
+            )
+            card.tripHref?.let { href ->
+                TextButton(onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(href))) }
+                }) { Text("Abrir publicação pública", color = Color.Black) }
+            }
+        }
     }
 }
 
