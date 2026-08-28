@@ -9,6 +9,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -23,10 +25,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.R
 import java.math.RoundingMode
 import kotlinx.coroutines.launch
 
@@ -36,7 +43,9 @@ internal data class PassengerAdminCandidate(
     val whatsapp: String,
     val localProfile: PassengerProfile? = null,
     val remoteAccess: DriverPassengerAccess? = null,
+    val externalPassengerId: String = "",
     val source: String = "",
+    val lastActivityMillis: Long = 0L,
 )
 
 @Composable
@@ -49,6 +58,7 @@ fun PassengerAdminScreen(
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
+    val passengerRepository = remember(context) { PassengerRepository(context) }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     var revision by remember { mutableIntStateOf(0) }
     var remotePassengers by remember { mutableStateOf<List<DriverPassengerAccess>>(emptyList()) }
@@ -56,43 +66,140 @@ fun PassengerAdminScreen(
     var search by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
     var newWhatsapp by remember { mutableStateOf("") }
+    var selectedNewPassengerId by remember { mutableStateOf("") }
     var creditValue by remember { mutableStateOf("") }
     var temporaryPassword by remember { mutableStateOf<String?>(null) }
     var temporaryPasswordFor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
+    var blockCandidate by remember { mutableStateOf<PassengerAdminCandidate?>(null) }
     val settings = store.onlineSettings()
 
-    val localProfiles = remember(revision) { passengerStore.profiles() }
-    val collectedPassengers = remember(revision) {
-        collectorStore.lastResponseRecoveringDynamicSessions()
-            ?.trips.orEmpty()
-            .flatMap { trip -> trip.passengers }
-            .filter { !it.phone.isNullOrBlank() && it.name.isNotBlank() }
+    val localProfiles = remember(revision, remotePassengers) { passengerStore.profiles() }
+    val collectedTrips = remember(revision) {
+        collectorStore.lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
     }
-    val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search) {
+    val collectedPassengers = remember(collectedTrips) {
+        collectedTrips.flatMap { trip -> trip.passengers }.filter { it.name.isNotBlank() }
+    }
+    val collectedIdentityKey = remember(collectedTrips) {
+        collectedTrips.flatMap { trip ->
+            trip.passengers.map { passenger ->
+                listOf(trip.profile_uuid, trip.trip_id.orEmpty(), passenger.booking_href.orEmpty(), passenger.name, passenger.phone.orEmpty()).joinToString("~")
+            }
+        }.joinToString("|")
+    }
+    LaunchedEffect(collectedIdentityKey) {
+        var changed = false
+        collectedTrips.forEach { trip ->
+            trip.passengers.forEach { passenger ->
+                val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+                val observed = passengerStore.observeExternalPassenger(
+                    displayName = passenger.name,
+                    whatsapp = passenger.phone,
+                    externalPassengerId = externalId,
+                    reservationKey = externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href),
+                    externalTripId = trip.trip_id,
+                    driverProfileUuid = trip.profile_uuid,
+                )
+                if (observed != null) changed = true
+            }
+        }
+        if (changed) revision++
+    }
+    val canonicalSearchIds = remember(search, revision) {
+        if (search.isBlank()) emptySet() else passengerRepository.search(search, 50).map(PassengerProfile::id).toSet()
+    }
+    val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search, canonicalSearchIds) {
         mergePassengerAdminCandidates(localProfiles, collectedPassengers, remotePassengers)
             .filter { candidate ->
                 val needle = search.trim()
                 needle.isBlank() ||
+                    candidate.localProfile?.id in canonicalSearchIds ||
                     candidate.displayName.contains(needle, ignoreCase = true) ||
                     candidate.whatsapp.contains(needle, ignoreCase = true)
             }
     }
 
+    val newPassengerSuggestions = remember(newName, newWhatsapp, revision) {
+        val query = newWhatsapp.takeIf { it.filter(Char::isDigit).length >= 4 } ?: newName
+        passengerRepository.search(query, 6)
+    }
+
     suspend fun reloadRemote() {
         if (!settings.configured) return
         runCatching { TripRemoteApi(settings).listDriverPassengers() }
-            .onSuccess {
-                remotePassengers = it.passengers
-                referralCreditCents = it.referralCreditCents
-                creditValue = formatCreditInput(it.referralCreditCents)
+            .onSuccess { response ->
+                response.passengers.forEach { access ->
+                    val current = passengerStore.resolveCanonicalPassenger(
+                        onlineIdentityId = access.id,
+                        whatsapp = access.passengerContact,
+                    ) ?: access.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
+                        passengerStore.createProfile(name, access.passengerContact)
+                    }
+                    if (current != null) {
+                        val refreshed = passengerStore.saveProfile(
+                            current.copy(
+                                displayName = access.displayName.trim().ifBlank { current.displayName },
+                                whatsapp = access.passengerContact.trim().ifBlank { current.whatsapp },
+                                publicAccessStatus = access.status,
+                                referredByContact = access.referredByContact,
+                                creditBalanceCents = access.creditBalanceCents,
+                                creditEarnedCents = access.creditEarnedCents,
+                                creditSpentCents = access.creditSpentCents,
+                            ),
+                        )
+                        stableExternalPassengerId(access.id)?.let { passengerStore.linkOnlineIdentityId(refreshed.id, it) }
+                    }
+                }
+                remotePassengers = response.passengers
+                referralCreditCents = response.referralCreditCents
+                creditValue = formatCreditInput(response.referralCreditCents)
             }
             .onFailure { onChanged("Não foi possível carregar acessos dos passageiros: ${it.message ?: "erro de conexão"}") }
     }
 
     LaunchedEffect(settings.driverUsername, settings.driverToken, revision) {
         reloadRemote()
+    }
+
+    val selectedHistory = historyProfileId?.let(passengerStore::persistentHistory)
+    if (historyProfileId != null) {
+        PassengerHistoryPanel(
+            history = selectedHistory,
+            onBack = { historyProfileId = null },
+            onArchiveToggle = { profile ->
+                passengerStore.setArchived(profile.id, !profile.archived)
+                revision++
+                onChanged(
+                    if (profile.archived) "Passageiro restaurado na lista; histórico preservado."
+                    else "Passageiro arquivado da lista; histórico, UUIDs, bloqueios e viagens foram preservados.",
+                )
+                historyProfileId = null
+            },
+        )
+        return
+    }
+
+    fun canonicalProfile(candidate: PassengerAdminCandidate): PassengerProfile? {
+        val resolved = passengerStore.resolveCanonicalPassenger(
+            passengerId = candidate.localProfile?.id,
+            externalPassengerId = candidate.externalPassengerId,
+            onlineIdentityId = candidate.remoteAccess?.id,
+            whatsapp = candidate.whatsapp,
+        ) ?: candidate.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
+            passengerStore.createProfile(name, candidate.whatsapp)
+        } ?: return null
+        val restored = if (resolved.archived) passengerStore.saveProfile(resolved.copy(archived = false)) else resolved
+        stableExternalPassengerId(candidate.externalPassengerId)?.let { passengerStore.linkExternalPassengerId(restored.id, it) }
+        stableExternalPassengerId(candidate.remoteAccess?.id)?.let { passengerStore.linkOnlineIdentityId(restored.id, it) }
+        return passengerStore.profile(restored.id) ?: restored
+    }
+
+    fun openCandidateHistory(candidate: PassengerAdminCandidate) {
+        val profile = canonicalProfile(candidate)
+        if (profile == null) onChanged("Não foi possível criar a identidade canônica deste passageiro.")
+        else historyProfileId = profile.id
     }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -157,23 +264,64 @@ fun PassengerAdminScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Cadastrar convidado", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(newName, { newName = it.take(120) }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(newWhatsapp, { newWhatsapp = it.take(40) }, label = { Text("WhatsApp") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = newName,
+                onValueChange = {
+                    newName = it.take(120)
+                    selectedNewPassengerId = ""
+                },
+                label = { Text("Nome") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = newWhatsapp,
+                onValueChange = {
+                    newWhatsapp = it.take(40)
+                    selectedNewPassengerId = ""
+                },
+                label = { Text("WhatsApp") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (newPassengerSuggestions.isNotEmpty() && selectedNewPassengerId.isBlank()) {
+                Text("Passageiros já cadastrados", style = MaterialTheme.typography.bodySmall)
+                newPassengerSuggestions.forEach { existing ->
+                    OutlinedButton(
+                        onClick = {
+                            selectedNewPassengerId = existing.id
+                            newName = existing.displayName
+                            newWhatsapp = existing.whatsapp
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Usar ${existing.displayName}${existing.whatsapp.takeIf(String::isNotBlank)?.let { " • ${maskPassengerAdminContact(it)}" }.orEmpty()}")
+                    }
+                }
+            }
+            if (selectedNewPassengerId.isNotBlank()) {
+                Text("✓ Passageiro canônico selecionado", style = MaterialTheme.typography.bodySmall)
+            }
             Button(onClick = {
                 val name = newName.trim()
                 val phone = newWhatsapp.trim()
                 if (name.isBlank() || passengerAdminContactKey(phone).isBlank()) {
                     onChanged("Informe nome e WhatsApp do convidado.")
                 } else {
-                    val exact = passengerStore.exactContactMatches(phone).singleOrNull()
-                    if (exact == null) passengerStore.createProfile(name, phone)
-                    else passengerStore.saveProfile(exact.copy(displayName = name, whatsapp = phone))
-                    newName = ""
-                    newWhatsapp = ""
-                    revision++
-                    onChanged("Convidado cadastrado. Agora você pode liberar o acesso.")
+                    val selected = selectedNewPassengerId.takeIf(String::isNotBlank)?.let(passengerStore::profile)
+                    val exactMatches = passengerStore.exactContactMatches(phone)
+                    val target = selected ?: exactMatches.singleOrNull()
+                    if (selected == null && exactMatches.size > 1) {
+                        onChanged("Há mais de um cadastro com esse WhatsApp. Selecione manualmente o passageiro correto; nenhum foi unido automaticamente.")
+                    } else {
+                        if (target == null) passengerStore.createProfile(name, phone)
+                        else passengerStore.saveProfile(target.copy(displayName = name, whatsapp = phone, archived = false))
+                        newName = ""
+                        newWhatsapp = ""
+                        selectedNewPassengerId = ""
+                        revision++
+                        onChanged(if (target == null) "Novo passageiro cadastrado. Agora você pode liberar o acesso." else "Cadastro canônico reutilizado. Agora você pode liberar o acesso.")
+                    }
                 }
-            }) { Text("Cadastrar") }
+            }) { Text(if (selectedNewPassengerId.isBlank()) "Cadastrar novo" else "Usar cadastro selecionado") }
         }
     }
 
