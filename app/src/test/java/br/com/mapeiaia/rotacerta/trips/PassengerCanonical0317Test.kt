@@ -188,6 +188,20 @@ class PassengerCanonical0317Test {
         assertTrue(source.contains("autoSyncTripId = null"))
     }
 
+    @Test
+    fun timelinePullRefreshSynchronizesAllAccountsBookingsAndPublicAgenda() {
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(activity.contains("PullToRefreshBox"))
+        assertTrue(activity.contains("AGENDA_PULL_REFRESH_ALL_REQUESTED"))
+        assertTrue(activity.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
+        assertTrue(activity.contains("forceAllBlaBlaSyncToken = nextSyncToken"))
+        assertTrue(activity.contains("publicAgendaSyncRevision++"))
+        assertTrue(timeline.contains("AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED"))
+        assertTrue(timeline.contains("autoSyncProfileUuid = if (forceAllSyncActive) null"))
+        assertTrue(timeline.contains("autoSyncTripId = if (forceAllSyncActive) null"))
+    }
+
     @Test // V/W
     fun pendingExternalSyncBannerFiltersAllDatesAndCanBeCleared() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
