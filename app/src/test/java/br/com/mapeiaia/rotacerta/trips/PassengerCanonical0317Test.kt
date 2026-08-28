@@ -102,6 +102,8 @@ class PassengerCanonical0317Test {
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         val store = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt").readText()
         assertTrue(timeline.contains("TIMELINE_VISUAL_CLEARED_BY_USER"))
+        assertTrue(timeline.contains("physical.filter { !it.localTripId.isNullOrBlank() }"))
+        assertTrue(timeline.contains("localCardsArchived="))
         assertTrue(timeline.contains("passengerHistoryPreserved=true"))
         assertTrue(timeline.contains("localBookingsPreserved=true"))
         assertFalse(timeline.contains("store.clearTimelineLocalData()"))
@@ -176,6 +178,16 @@ class PassengerCanonical0317Test {
         assertTrue(source.contains("internal fun BlaBlaPublicTimelineCard"))
         assertTrue(source.contains("Card público independente"))
         assertTrue(source.contains("não são mesclados com o card operacional"))
+    }
+
+    @Test
+    fun timelineToolbarSyncStartsAllAccountsInsteadOfOnlyOpeningPanel() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("AGENDA_SYNC_TOOLBAR_REQUESTED"))
+        assertTrue(source.contains("scope=all_accounts source=timeline_toolbar"))
+        assertTrue(source.contains("onRequestBlaBlaSync()"))
+        assertTrue(source.contains("autoSyncProfileUuid = null"))
+        assertTrue(source.contains("autoSyncTripId = null"))
     }
 
     @Test // V/W
