@@ -1942,10 +1942,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "SYNC_BLOCKED",
             packageName,
-            "account=${account.displayLabel} reason=$reason resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} nextCardAllowed=false",
+            "account=${account.displayLabel} reason=$reason resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} nextCardAllowed=false returnPartial=true",
         )
         saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
-        enterBrowserPhase(Phase.IDLE, null, "sync_blocked")
+        completeSync(collected.size)
     }
 
     private fun saveProgressSnapshot(reason: String) {
