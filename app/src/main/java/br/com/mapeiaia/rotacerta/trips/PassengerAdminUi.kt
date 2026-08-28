@@ -674,9 +674,22 @@ internal fun mergePassengerAdminCandidates(
     remotePassengers: List<DriverPassengerAccess>,
 ): List<PassengerAdminCandidate> {
     val map = linkedMapOf<String, PassengerAdminCandidate>()
-    fun merge(name: String, phone: String, local: PassengerProfile?, remote: DriverPassengerAccess?, source: String) {
-        val key = passengerAdminContactKey(phone)
-        if (key.isBlank()) return
+    val localByExternal = localProfiles.flatMap { profile -> profile.externalPassengerIds.map { it to profile } }.toMap()
+    val localByOnline = localProfiles.flatMap { profile -> profile.onlineIdentityIds.map { it to profile } }.toMap()
+    val phoneGroups = localProfiles
+        .mapNotNull { profile -> passengerAdminContactKey(profile.whatsapp).takeIf(String::isNotBlank)?.let { it to profile } }
+        .groupBy({ it.first }, { it.second })
+    val uniqueLocalByPhone = phoneGroups.mapNotNull { (key, profiles) -> profiles.singleOrNull()?.let { key to it } }.toMap()
+
+    fun merge(
+        key: String,
+        name: String,
+        phone: String,
+        local: PassengerProfile?,
+        remote: DriverPassengerAccess?,
+        externalPassengerId: String,
+        source: String,
+    ) {
         val previous = map[key]
         map[key] = PassengerAdminCandidate(
             key = key,
@@ -690,13 +703,84 @@ internal fun mergePassengerAdminCandidates(
                 ?: phone.trim(),
             localProfile = local ?: previous?.localProfile,
             remoteAccess = remote ?: previous?.remoteAccess,
+            externalPassengerId = externalPassengerId.ifBlank { previous?.externalPassengerId.orEmpty() },
             source = listOf(previous?.source.orEmpty(), source).filter(String::isNotBlank).distinct().joinToString(" • "),
+            lastActivityMillis = maxOf(previous?.lastActivityMillis ?: 0L, local?.updatedAtMillis ?: 0L),
         )
     }
-    localProfiles.forEach { merge(it.displayName, it.whatsapp, it, null, "Cadastro Rota Certa") }
-    collectedPassengers.forEach { merge(it.name, it.phone.orEmpty(), null, null, "Captado na Timeline/BlaBlaCar") }
-    remotePassengers.forEach { merge(it.displayName, it.passengerContact, null, it, if (it.status == "PENDING") "Indicação aguardando aprovação" else "Acesso online") }
-    return map.values.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+
+    localProfiles.forEach { profile ->
+        merge(
+            key = "canonical:${profile.id}",
+            name = profile.displayName,
+            phone = profile.whatsapp,
+            local = profile,
+            remote = null,
+            externalPassengerId = profile.externalPassengerIds.firstOrNull().orEmpty(),
+            source = "Cadastro Rota Certa",
+        )
+    }
+
+    collectedPassengers.forEachIndexed { index, passenger ->
+        val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href)).orEmpty()
+        val phoneKey = passengerAdminContactKey(passenger.phone.orEmpty())
+        val linked = localByExternal[externalId] ?: uniqueLocalByPhone[phoneKey]
+        val key = when {
+            linked != null -> "canonical:${linked.id}"
+            externalId.isNotBlank() -> "external:$externalId"
+            phoneKey.isNotBlank() -> "phone:$phoneKey"
+            !passenger.booking_href.isNullOrBlank() -> "capture:${passenger.booking_href}"
+            else -> "capture:$index:${normalizePassengerSearch(passenger.name)}"
+        }
+        merge(
+            key = key,
+            name = passenger.name,
+            phone = passenger.phone.orEmpty(),
+            local = linked,
+            remote = null,
+            externalPassengerId = externalId,
+            source = "Captado na Timeline/BlaBlaCar",
+        )
+    }
+
+    remotePassengers.forEachIndexed { index, access ->
+        val onlineId = stableExternalPassengerId(access.id).orEmpty()
+        val phoneKey = passengerAdminContactKey(access.passengerContact)
+        val linked = localByOnline[onlineId] ?: uniqueLocalByPhone[phoneKey]
+        val key = when {
+            linked != null -> "canonical:${linked.id}"
+            onlineId.isNotBlank() -> "online:$onlineId"
+            phoneKey.isNotBlank() -> "phone:$phoneKey"
+            else -> "remote:$index:${normalizePassengerSearch(access.displayName)}"
+        }
+        merge(
+            key = key,
+            name = access.displayName,
+            phone = access.passengerContact,
+            local = linked,
+            remote = access,
+            externalPassengerId = "",
+            source = if (access.status == "PENDING") "Indicação aguardando aprovação" else "Acesso online",
+        )
+    }
+
+    return map.values
+        .filterNot { candidate ->
+            candidate.localProfile?.archived == true &&
+                candidate.remoteAccess == null &&
+                !candidate.source.contains("Captado na Timeline/BlaBlaCar")
+        }
+        .sortedWith(
+        compareBy<PassengerAdminCandidate> {
+            when {
+                it.remoteAccess?.status == "PENDING" -> 0
+                it.localProfile?.blocked == true -> 1
+                it.remoteAccess?.status == "ACTIVE" -> 2
+                else -> 3
+            }
+        }.thenByDescending(PassengerAdminCandidate::lastActivityMillis)
+            .thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName },
+    )
 }
 
 internal fun passengerAdminContactKey(raw: String): String {
