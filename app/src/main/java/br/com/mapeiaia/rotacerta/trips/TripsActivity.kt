@@ -49,8 +49,12 @@ import kotlin.math.roundToLong
 import kotlinx.coroutines.launch
 
 class TripsActivity : ComponentActivity() {
+    private var agendaTimelineCrashGuard: AgendaTimelineCrashGuard? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        agendaTimelineCrashGuard = AgendaTimelineCrashGuard.install(this)
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_created")
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -58,6 +62,7 @@ class TripsActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 304)
         }
         TripShortcutInstaller.installDynamic(this)
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
         setContent {
             MaterialTheme {
                 TripApp(
@@ -67,6 +72,13 @@ class TripsActivity : ComponentActivity() {
                 )
             }
         }
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
+    }
+
+    override fun onDestroy() {
+        AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_destroy")
+        super.onDestroy()
+        agendaTimelineCrashGuard?.close()
     }
 }
 
@@ -107,6 +119,8 @@ private fun TripApp(
     }
     val requestFullTimelineRefresh = {
         if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+            AgendaSyncCrashTraceStore.arm(activity)
+            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
             refreshAllRunning = true
             message = "Sincronizando tudo: contas BlaBlaCar, reservas e Agenda Pública…"
             UnifiedDebugEventStore.record(
@@ -115,17 +129,27 @@ private fun TripApp(
                 "scope=all_accounts public_bookings=true public_agenda=true source=timeline_pull",
             )
             shareScope.launch {
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_public_booking_reconcile")
                 val bookingSync = runCatching {
                     PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
                 }
+                AgendaSyncCrashTraceStore.checkpoint(
+                    activity,
+                    "timeline_pull_after_public_booking_reconcile success=${bookingSync.isSuccess}",
+                )
                 refresh()
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_after_local_refresh")
 
                 val nextSyncToken = autoBlaBlaSyncToken + 1
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_blabla_token token=$nextSyncToken")
                 forceAllBlaBlaSyncToken = nextSyncToken
                 autoBlaBlaSyncToken = nextSyncToken
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_after_blabla_token token=$nextSyncToken")
                 publicAgendaSyncRevision++
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_public_agenda_revision_incremented")
 
                 refreshAllRunning = false
+                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_dispatch_complete")
                 val imported = bookingSync.getOrNull()?.importedCount ?: 0
                 message = if (bookingSync.isFailure) {
                     "Sincronização geral iniciada. BlaBlaCar e Agenda Pública continuam; a leitura das reservas públicas falhou e será tentada novamente no próximo ciclo."
@@ -137,7 +161,9 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
+        AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
         val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+        AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
         if (result.importedCount > 0) {
             refresh()
             publicAgendaSyncRevision++
@@ -147,6 +173,10 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity, publicAgendaSyncRevision) {
+        AgendaSyncCrashTraceStore.checkpoint(
+            activity,
+            "timeline_public_agenda_effect_begin revision=$publicAgendaSyncRevision",
+        )
         val online = store.onlineSettings()
         if (online.configured) {
             val result = PublicAgendaAutoSync0300.sync(
@@ -155,6 +185,10 @@ private fun TripApp(
                 configuredVehicleCapacity = appSettings.vehicleCapacity,
             )
             runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
+            AgendaSyncCrashTraceStore.checkpoint(
+                activity,
+                "timeline_public_agenda_effect_result local=${result.localPublished} external=${result.externalPublished} failures=${result.failures}",
+            )
             if (result.localPublished + result.externalPublished > 0) {
                 refresh()
                 message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
