@@ -29,7 +29,11 @@ data class ResponsiveTripAction(
 
 /** Shared phone-safe action renderer. No label is allowed to wrap into a tall pill. */
 @Composable
-fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifier = Modifier) {
+fun ResponsiveTripActions(
+    actions: List<ResponsiveTripAction>,
+    modifier: Modifier = Modifier,
+    onPublicSearchResponse: ((BlaBlaPublicSearchResponse?) -> Unit)? = null,
+) {
     if (actions.isEmpty()) return
     val context = LocalContext.current
     val agendaToolbar = actions.any { action ->
@@ -92,13 +96,16 @@ fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifie
             BlaBlaPublicSearchPanel(
                 trips = agendaTrips,
                 currentResponse = publicResponse,
-                onResult = { publicResponse = it },
+                onResult = {
+                    publicResponse = it
+                    onPublicSearchResponse?.invoke(it)
+                },
                 onChanged = { message ->
                     if (message.isNotBlank()) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 },
             )
-            publicResponse?.let { response ->
-                BlaBlaPublicSearchTimelineResults(response = response, trips = agendaTrips)
+            if (publicResponse != null) {
+                Text("Resultados inseridos cronologicamente na Timeline abaixo.")
             }
         }
     }
