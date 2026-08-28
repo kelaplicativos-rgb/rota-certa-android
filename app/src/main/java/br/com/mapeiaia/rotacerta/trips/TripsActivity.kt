@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.SettingsRepository
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -69,6 +72,7 @@ class TripsActivity : ComponentActivity() {
 
 private enum class TripScreen { LIST, TIMELINE, CREATE, SETTINGS, PASSENGERS }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TripApp(
     activity: ComponentActivity,
@@ -81,7 +85,9 @@ private fun TripApp(
     var trips by remember { mutableStateOf(store.trips()) }
     var bookings by remember { mutableStateOf(store.bookings()) }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
+    var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var publicAgendaSyncRevision by remember { mutableStateOf(0) }
+    var refreshAllRunning by remember { mutableStateOf(false) }
     var screen by remember {
         mutableStateOf(
             when {
@@ -98,6 +104,36 @@ private fun TripApp(
         trips = store.trips()
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
+    }
+    val requestFullTimelineRefresh = {
+        if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+            refreshAllRunning = true
+            message = "Sincronizando tudo: contas BlaBlaCar, reservas e Agenda Pública…"
+            UnifiedDebugEventStore.record(
+                "AGENDA_PULL_REFRESH_ALL_REQUESTED",
+                activity.packageName,
+                "scope=all_accounts public_bookings=true public_agenda=true source=timeline_pull",
+            )
+            shareScope.launch {
+                val bookingSync = runCatching {
+                    PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+                }
+                refresh()
+
+                val nextSyncToken = autoBlaBlaSyncToken + 1
+                forceAllBlaBlaSyncToken = nextSyncToken
+                autoBlaBlaSyncToken = nextSyncToken
+                publicAgendaSyncRevision++
+
+                refreshAllRunning = false
+                val imported = bookingSync.getOrNull()?.importedCount ?: 0
+                message = if (bookingSync.isFailure) {
+                    "Sincronização geral iniciada. BlaBlaCar e Agenda Pública continuam; a leitura das reservas públicas falhou e será tentada novamente no próximo ciclo."
+                } else {
+                    "Sincronização geral iniciada • todas as contas BlaBlaCar • Agenda Pública • $imported reserva(s) pública(s) recebida(s)."
+                }
+            }
+        }
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -129,14 +165,18 @@ private fun TripApp(
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .padding(16.dp)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        PullToRefreshBox(
+            isRefreshing = refreshAllRunning,
+            onRefresh = requestFullTimelineRefresh,
+            modifier = Modifier.fillMaxSize().padding(padding),
         ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             Text("Agenda de Viagens", style = MaterialTheme.typography.headlineSmall)
             Text("Rota Certa • viagens, vagas por trecho e calendário", style = MaterialTheme.typography.bodySmall)
             message?.let {
@@ -164,6 +204,7 @@ private fun TripApp(
                     store = store,
                     onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
                     autoSyncToken = autoBlaBlaSyncToken,
+                    forceAllSyncToken = forceAllBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
                     onCreateTrip = { screen = TripScreen.CREATE },
                     onPinShortcut = {
@@ -274,6 +315,7 @@ private fun TripApp(
                     }
                 }
             }
+        }
         }
     }
 }
