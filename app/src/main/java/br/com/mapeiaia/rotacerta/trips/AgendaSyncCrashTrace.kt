@@ -18,10 +18,13 @@ internal object AgendaSyncCrashTraceStore {
     private const val DIRECTORY = "agenda-sync-diagnostic"
     private const val FILE_NAME = "last-java-crash.txt"
     private const val CHECKPOINT_FILE_NAME = "last-sync-checkpoint.txt"
+    private const val BREADCRUMB_FILE_NAME = "sync-breadcrumbs.txt"
     private const val MAX_FRAMES = 36
     private const val MAX_CAUSES = 4
     private const val MAX_EXPORT_CHARS = 16_000
     private const val MAX_CHECKPOINT_CHARS = 700
+    private const val MAX_BREADCRUMB_LINES = 48
+    private const val MAX_BREADCRUMB_CHARS = 18_000
 
     @Volatile private var lastCheckpoint: String = "not_armed"
 
@@ -33,6 +36,7 @@ internal object AgendaSyncCrashTraceStore {
     fun checkpoint(context: Context, value: String) {
         lastCheckpoint = sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" }
         persistCheckpoint(context, lastCheckpoint)
+        appendBreadcrumb(context, lastCheckpoint)
     }
 
     fun record(
@@ -82,8 +86,11 @@ internal object AgendaSyncCrashTraceStore {
             runCatching { file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS) }
                 .getOrElse { "falha ao ler a evidência de crash da Agenda: ${it.javaClass.simpleName}" }
         }
+        val breadcrumbs = readBreadcrumbs(context)
         return buildString {
             appendLine("lastCheckpoint=$checkpoint")
+            appendLine("--- AGENDA SYNC BREADCRUMBS ---")
+            appendLine(breadcrumbs)
             append(crash)
         }.trimEnd()
     }
@@ -96,6 +103,29 @@ internal object AgendaSyncCrashTraceStore {
             )
         }
     }
+
+    private fun appendBreadcrumb(context: Context, value: String) {
+        runCatching {
+            val file = breadcrumbFile(context)
+            file.parentFile?.mkdirs()
+            val line = "${formatDate(System.currentTimeMillis())} | ${sanitize(value).take(MAX_CHECKPOINT_CHARS)}"
+            val existing = if (file.isFile) file.readLines(Charsets.UTF_8) else emptyList()
+            val kept = (existing + line)
+                .takeLast(MAX_BREADCRUMB_LINES)
+                .joinToString("\n")
+                .takeLast(MAX_BREADCRUMB_CHARS)
+            writeAtomically(file, kept)
+        }
+    }
+
+    private fun readBreadcrumbs(context: Context): String = runCatching {
+        breadcrumbFile(context)
+            .takeIf(File::isFile)
+            ?.readText(Charsets.UTF_8)
+            ?.takeLast(MAX_BREADCRUMB_CHARS)
+            ?.takeIf(String::isNotBlank)
+            ?: "sem checkpoints persistidos da Agenda"
+    }.getOrElse { "falha ao ler checkpoints persistidos: ${it.javaClass.simpleName}" }
 
     private fun currentCheckpoint(context: Context): String {
         val persisted = runCatching {
@@ -124,6 +154,9 @@ internal object AgendaSyncCrashTraceStore {
 
     private fun checkpointFile(context: Context): File =
         File(File(context.applicationContext.filesDir, DIRECTORY), CHECKPOINT_FILE_NAME)
+
+    private fun breadcrumbFile(context: Context): File =
+        File(File(context.applicationContext.filesDir, DIRECTORY), BREADCRUMB_FILE_NAME)
 
     private fun sanitize(value: String): String =
         value.replace(Regex("[\\r\\n\\t]+"), " ")
@@ -180,6 +213,52 @@ internal class AgendaSyncCrashGuard private constructor(
             )
             Thread.setDefaultUncaughtExceptionHandler(handler)
             return AgendaSyncCrashGuard(original, handler)
+        }
+    }
+}
+
+
+private class AgendaTimelineUncaughtHandler(
+    private val context: Context,
+    val delegate: Thread.UncaughtExceptionHandler?,
+) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(crashedThread: Thread, error: Throwable) {
+        runCatching {
+            AgendaSyncCrashTraceStore.record(
+                context = context.applicationContext,
+                thread = crashedThread,
+                error = error,
+                structuralSnapshot = { "owner=TripsActivity parent_sync_orchestration=true" },
+            )
+        }
+        if (delegate != null && delegate !== this) {
+            delegate.uncaughtException(crashedThread, error)
+        } else {
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
+    }
+}
+
+internal class AgendaTimelineCrashGuard private constructor(
+    private val originalDefault: Thread.UncaughtExceptionHandler?,
+    private val installed: AgendaTimelineUncaughtHandler,
+) {
+    fun close() {
+        if (Thread.getDefaultUncaughtExceptionHandler() === installed) {
+            Thread.setDefaultUncaughtExceptionHandler(originalDefault)
+        }
+    }
+
+    companion object {
+        fun install(context: Context): AgendaTimelineCrashGuard {
+            val current = Thread.getDefaultUncaughtExceptionHandler()
+            val original = (current as? AgendaTimelineUncaughtHandler)?.delegate ?: current
+            val handler = AgendaTimelineUncaughtHandler(
+                context = context.applicationContext,
+                delegate = original,
+            )
+            Thread.setDefaultUncaughtExceptionHandler(handler)
+            return AgendaTimelineCrashGuard(original, handler)
         }
     }
 }
