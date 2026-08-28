@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.324 Agenda parent crash trace
+name: Rota Certa 0.1.325 BlaBlaCar script regex fix
 
 on:
   push:
     branches:
-      - agent/agenda-parent-crash-trace-0.1.324
+      - agent/blablacar-script-regex-fix-0.1.325
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0324-${{ github.ref }}
+  group: agenda-0325-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-parent-crash-trace-0.1.324
+          ref: agent/blablacar-script-regex-fix-0.1.325
           fetch-depth: 0
 
-      - name: Validate 0.1.324 parent Agenda crash diagnostics
+      - name: Validate 0.1.325 BlaBlaCar Android regex fix
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5617' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.324"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5618' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.325"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'scope=all_accounts source=timeline_toolbar' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'onRequestBlaBlaSync()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -60,6 +60,11 @@ jobs:
           grep -Fq 'timeline_public_agenda_effect_begin' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'BREADCRUMB_FILE_NAME' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
           grep -Fq -- '--- AGENDA SYNC BREADCRUMBS ---' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'Regex("\\{\\{[A-Z0-9_]+\\}\\}")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
+          ! grep -Fq 'Regex("\\{\\{[A-Z0-9_]+}}")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
+          grep -Fq 'Text("+ Adicionar conta")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Contas BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaCollectorPanel(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -128,20 +133,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5617'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.324'" /tmp/aapt.txt
+          grep -Fq "versionCode='5618'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.325'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0324
-          cp "$APK" /tmp/0324/rota-certa-0.1.324-agenda-parent-crash-trace.apk
-          cp /tmp/apk.sha256 /tmp/0324/apk.sha256
-          cp /tmp/aapt.txt /tmp/0324/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0324/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0324/gradle.txt
-          git rev-parse HEAD > /tmp/0324/source-head.txt
+          mkdir -p /tmp/0325
+          cp "$APK" /tmp/0325/rota-certa-0.1.325-blablacar-script-regex-fix.apk
+          cp /tmp/apk.sha256 /tmp/0325/apk.sha256
+          cp /tmp/aapt.txt /tmp/0325/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0325/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0325/gradle.txt
+          git rev-parse HEAD > /tmp/0325/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.324-agenda-parent-crash-trace
+          name: rota-certa-0.1.325-blablacar-script-regex-fix
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0324
+          path: /tmp/0325
