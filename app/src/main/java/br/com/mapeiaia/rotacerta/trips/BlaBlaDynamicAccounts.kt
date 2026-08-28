@@ -270,6 +270,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private lateinit var store: BlaBlaDynamicSessionStore
     private lateinit var passengerIdentityStore: PassengerIdentityStore
     private lateinit var publicProfileStore: BlaBlaPublicProfileStore
+    private lateinit var browserScripts: BlaBlaBrowserScriptRegistry
+    private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
     private lateinit var statusView: TextView
@@ -277,6 +279,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var targetTripId = ""
     private var targetTripHref = ""
     private var targetDate: LocalDate? = null
+    // Compatibility projection for page-finished dispatch; script authority lives in browserOrchestrator.
     private var phase = Phase.IDLE
     private var candidates = emptyList<BlaBlaDomRideCandidate>()
     private val collected = mutableListOf<BlaBlaCollectorTrip>()
@@ -330,6 +333,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         store = BlaBlaDynamicSessionStore(this)
         passengerIdentityStore = PassengerIdentityStore(this)
         publicProfileStore = BlaBlaPublicProfileStore(this)
+        browserScripts = BlaBlaBrowserScriptRegistry(this)
         account = registry.get(intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finish()
             return
@@ -468,6 +472,24 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return true
     }
 
+    private fun enterBrowserPhase(
+        phaseValue: Phase,
+        request: BlaBlaBrowserRequest?,
+        reason: String,
+    ) {
+        phase = phaseValue
+        if (request == null) {
+            browserOrchestrator.cancel()
+        } else {
+            val token = browserOrchestrator.start(request, browserExecutionContext(), reason)
+            UnifiedDebugEventStore.record(
+                "BROWSER_ORCHESTRATOR_TRANSITION",
+                packageName,
+                "account=${account.displayLabel} request=${request.name} token=${token.generation} phase=${phaseValue.name} reason=$reason",
+            )
+        }
+    }
+
     private fun beginProfileSync() {
         syncGeneration++
         identityConfirmedThisSync = false
@@ -476,7 +498,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         profileReviewsLastCount = -1
         profileReviewsStablePasses = 0
         profileReviewsReadAttempts = 0
-        phase = Phase.IDENTITY
+        enterBrowserPhase(Phase.IDENTITY, BlaBlaBrowserRequest.SESSION_IDENTITY, "profile_sync_start")
         statusView.text = "${account.displayLabel} • buscando dados públicos do motorista…"
         UnifiedDebugEventStore.record(
             "PUBLIC_PROFILE_SYNC_STARTED",
@@ -526,7 +548,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         pendingPublishedSeats = null
         editReadAttempts = 0
         optionsReadAttempts = 0
-        phase = Phase.IDENTITY
+        enterBrowserPhase(Phase.IDENTITY, BlaBlaBrowserRequest.SESSION_IDENTITY, "sync_start")
         statusView.text = "${account.displayLabel} • confirmando conta…"
         UnifiedDebugEventStore.record(
             "SYNC_START",
@@ -579,7 +601,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     private fun captureIdentityForSync() {
-        evaluate<DynamicIdentityEvidence>(IDENTITY_JS) { evidence ->
+        evaluateRequest<DynamicIdentityEvidence>(BlaBlaBrowserRequest.SESSION_IDENTITY) { evidence ->
             evidence?.let {
                 store.saveDiagnosticHtml(account, "profile", it.domHtml)
                 val expectedUuid = account.profileUuid?.lowercase()
@@ -606,13 +628,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             }
             if (mode == BlaBlaDynamicSessionIntents.MODE_PROFILE) {
                 continuePublicProfileSync(evidence)
-                return@evaluate
+                return@evaluateRequest
             }
             if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
                 currentCardTraversalKey = "id|$targetTripId"
                 candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
                 candidateIndex = 0
-                phase = Phase.DETAIL
+                enterBrowserPhase(Phase.DETAIL, BlaBlaBrowserRequest.TRIP_OPEN, "exact_trip_open")
                 UnifiedDebugEventStore.record(
                     "AGENDA_EXACT_CARD_SYNC_STARTED",
                     packageName,
@@ -620,7 +642,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 )
                 loadCurrentCandidate()
             } else {
-                phase = Phase.RIDES
+                enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "open_ride_list")
                 statusView.text = "${account.displayLabel} • lendo Suas viagens…"
                 loadTrackedUrl(RIDES_URL)
             }
@@ -654,7 +676,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (!trustedProfile.isNullOrBlank() &&
             BlaBlaCollectorUrlModule.canonical(trustedProfile) != BlaBlaCollectorUrlModule.canonical(webView.url.orEmpty())
         ) {
-            phase = Phase.PROFILE_PUBLIC
+            enterBrowserPhase(Phase.PROFILE_PUBLIC, BlaBlaBrowserRequest.DRIVER_PROFILE, "open_public_profile")
             statusView.text = "${account.displayLabel} • abrindo o perfil público…"
             loadTrackedUrl(trustedProfile)
             return
@@ -665,8 +687,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun capturePublicProfilePage() {
         if (phase != Phase.PROFILE_PUBLIC) return
-        evaluate<DynamicIdentityEvidence>(IDENTITY_JS) { evidence ->
-            if (phase != Phase.PROFILE_PUBLIC || evidence == null) return@evaluate
+        evaluateRequest<DynamicIdentityEvidence>(BlaBlaBrowserRequest.SESSION_IDENTITY) { evidence ->
+            if (phase != Phase.PROFILE_PUBLIC || evidence == null) return@evaluateRequest
             val expectedUuid = account.profileUuid.orEmpty().lowercase()
             val observed = evidence.observedUuids.map(String::lowercase).toSet()
             val urlMatches = webView.url.orEmpty().contains(expectedUuid, ignoreCase = true)
@@ -677,7 +699,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} source=public_profile_page",
                 )
                 finishPublicProfileSync(success = false)
-                return@evaluate
+                return@evaluateRequest
             }
             store.saveDiagnosticHtml(account, "public-profile", evidence.domHtml)
             profileBaseEvidence = evidence
@@ -700,7 +722,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             finishPublicProfileSync(success = true)
             return
         }
-        phase = Phase.PROFILE_REVIEWS
+        enterBrowserPhase(Phase.PROFILE_REVIEWS, BlaBlaBrowserRequest.DRIVER_REVIEWS, "open_driver_reviews")
         profileReviewsLastCount = -1
         profileReviewsStablePasses = 0
         profileReviewsReadAttempts = 0
@@ -710,8 +732,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun captureProfileReviewsPage() {
         if (phase != Phase.PROFILE_REVIEWS) return
-        evaluate<DynamicProfileReviewsPage>(PROFILE_REVIEWS_JS) { page ->
-            if (phase != Phase.PROFILE_REVIEWS || page == null) return@evaluate
+        evaluateRequest<DynamicProfileReviewsPage>(BlaBlaBrowserRequest.DRIVER_REVIEWS) { page ->
+            if (phase != Phase.PROFILE_REVIEWS || page == null) return@evaluateRequest
             val expectedUuid = account.profileUuid.orEmpty().lowercase()
             val observed = page.observedUuids.map(String::lowercase).toSet()
             val urlMatches = webView.url.orEmpty().contains(expectedUuid, ignoreCase = true)
@@ -722,7 +744,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} source=reviews_page",
                 )
                 finishPublicProfileSync(success = false)
-                return@evaluate
+                return@evaluateRequest
             }
             store.saveDiagnosticHtml(account, "public-profile-reviews", page.domHtml)
             val merged = (profileReviewsCollected + page.reviews)
@@ -752,7 +774,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     private fun finishPublicProfileSync(success: Boolean) {
-        phase = Phase.IDLE
+        enterBrowserPhase(Phase.IDLE, null, "profile_sync_finished")
         UnifiedDebugEventStore.record(
             "PUBLIC_PROFILE_SYNC_FINISHED",
             packageName,
@@ -768,8 +790,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     private fun probeIdentity() {
-        evaluate<DynamicIdentityEvidence>(IDENTITY_JS) { evidence ->
-            if (evidence == null) return@evaluate
+        evaluateRequest<DynamicIdentityEvidence>(BlaBlaBrowserRequest.SESSION_IDENTITY) { evidence ->
+            if (evidence == null) return@evaluateRequest
             store.saveDiagnosticHtml(account, "profile", evidence.domHtml)
             val updated = bindIdentityFromLinks(evidence.profileLinks, evidence.visibleName)
             if (updated != null) {
@@ -790,10 +812,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             }
             return
         }
-        evaluate<DynamicRideList>(RIDE_LIST_JS) { result ->
+        evaluateRequest<DynamicRideList>(BlaBlaBrowserRequest.RIDE_LIST) { result ->
             if (result == null) {
                 blockSyncWithoutCurrentCard("rides_dom_unreadable")
-                return@evaluate
+                return@evaluateRequest
             }
             store.saveDiagnosticHtml(account, "rides", result.domHtml)
             val visibleAll = result.candidates
@@ -814,18 +836,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             if (visibleAll.isEmpty() && rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS && !looksLoggedOut(result.bodyText)) {
                 rideReadAttempts++
                 webView.postDelayed({ captureRideList() }, 1200)
-                return@evaluate
+                return@evaluateRequest
             }
             if (visibleAll.isEmpty() && looksLoggedOut(result.bodyText)) {
                 blockSyncWithoutCurrentCard("rides_session_logged_out")
-                return@evaluate
+                return@evaluateRequest
             }
             if (
                 visibleAll.isEmpty() &&
                 !BlaBlaCollectorCardModule.emptyListIsAuthoritative(result.explicitEmptyList)
             ) {
                 blockSyncWithoutCurrentCard("rides_empty_without_explicit_terminal_evidence")
-                return@evaluate
+                return@evaluateRequest
             }
             val nextKey = BlaBlaCollectorCardModule.firstUnresolvedVisibleKey(
                 visibleKeysInUiOrder = visible.map(::tripTraversalKey),
@@ -839,18 +861,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 currentCardTraversalKey = tripTraversalKey(next)
                 candidates = listOf(next)
                 candidateIndex = 0
-                phase = Phase.DETAIL
+                enterBrowserPhase(Phase.DETAIL, BlaBlaBrowserRequest.TRIP_OPEN, "open_next_trip")
                 UnifiedDebugEventStore.record(
                     "CARD_TRAVERSAL_START",
                     packageName,
                     "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(next.href).orEmpty()} uiOrder=true dateIgnored=${requestedDate == null} dateScope=${if (requestedDate == null) "all" else "today"} targetDate=${requestedDate ?: "none"}",
                 )
                 loadCurrentCandidate()
-                return@evaluate
+                return@evaluateRequest
             }
             if (visible.any { tripTraversalKey(it).isBlank() }) {
                 blockSyncWithoutCurrentCard("visible_card_without_stable_identity")
-                return@evaluate
+                return@evaluateRequest
             }
             if (requestedDate != null) {
                 val firstVisibleDate = visibleAll.firstOrNull()?.let { candidate ->
@@ -858,7 +880,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 }
                 if (collected.isEmpty() && visible.isEmpty() && visibleAll.isNotEmpty() && firstVisibleDate == null) {
                     blockSyncWithoutCurrentCard("today_card_date_unreadable")
-                    return@evaluate
+                    return@evaluateRequest
                 }
                 val verified = identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()
                 saveFinalSnapshotOnce(verified)
@@ -872,7 +894,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 } else {
                     blockSyncWithoutCurrentCard("identity_not_verified_after_today_card")
                 }
-                return@evaluate
+                return@evaluateRequest
             }
             if (!result.atBottom) {
                 val viewport = result.viewportHeight.coerceAtLeast(600)
@@ -880,7 +902,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 val target = (result.scrollY + maxOf(600, viewport * 3 / 4)).coerceAtMost(maxScroll)
                 if (target <= result.scrollY && result.scrollHeight > result.viewportHeight) {
                     blockSyncWithoutCurrentCard("rides_scroll_no_progress")
-                    return@evaluate
+                    return@evaluateRequest
                 }
                 ridesResumeScrollY = target
                 UnifiedDebugEventStore.record(
@@ -891,12 +913,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
                     webView.postDelayed({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
                 }
-                return@evaluate
+                return@evaluateRequest
             }
             if (ridesBottomStablePasses < REQUIRED_STABLE_BOTTOM_PASSES) {
                 ridesBottomStablePasses++
                 webView.postDelayed({ captureRideList() }, RIDES_BOTTOM_SETTLE_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             val verified = identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()
             saveFinalSnapshotOnce(verified)
@@ -958,11 +980,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         detailCaptureInFlight = true
-        evaluate<DynamicTripDetail>(TRIP_DETAIL_DYNAMIC_JS) { result ->
+        evaluateRequest<DynamicTripDetail>(BlaBlaBrowserRequest.TRIP_DETAIL) { result ->
             detailCaptureInFlight = false
             if (!detailCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate)) {
                 recordStale("trip_detail_after_evaluate", expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             if (result == null) {
                 skipped++
@@ -972,7 +994,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_dom_unreadable url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
 
             val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
@@ -985,7 +1007,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_trip_id_mismatch candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} action=reject_stale_detail",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             val networkResolution = BlaBlaCollectorNetworkSourceModule.resolve(candidateTripId, result.networkSource)
             val sourceBackedResult = (networkResolution?.let { resolution ->
@@ -1064,11 +1086,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                         }, ROSTER_RETRY_MS)
                     }
                     if (acceptedResult.rosterHasMore) {
-                        webView.evaluateJavascript(EXPAND_ROSTER_JS) { retryRoster() }
-                    } else {
-                        retryRoster()
+                        UnifiedDebugEventStore.record(
+                            "ROSTER_EXPANSION_NOT_AUTOMATED",
+                            packageName,
+                            "account=${account.displayLabel} tripId=$candidateTripId reason=interaction_not_documented passiveRetry=true",
+                        )
                     }
-                    return@evaluate
+                    retryRoster()
+                    return@evaluateRequest
                 }
                 skipped++
                 UnifiedDebugEventStore.record(
@@ -1077,7 +1102,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
                 val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
@@ -1087,7 +1112,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     webView.postDelayed({
                         captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
                     }, ROSTER_RETRY_MS)
-                    return@evaluate
+                    return@evaluateRequest
                 }
                 if (!editLinkMatches) {
                     skipped++
@@ -1097,7 +1122,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                         "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
                     )
                     advanceCandidate(expectedSync, expectedCandidate)
-                    return@evaluate
+                    return@evaluateRequest
                 }
             }
             tripRosterReadAttempts = 0
@@ -1133,7 +1158,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=explicit_detail_uuid_mismatch expectedUuid=$expectedUuid foundUuids=${driverUuids.joinToString(",")}",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             when {
                 expectedUuid != null && expectedUuid in driverUuids -> identityConfirmedThisSync = true
@@ -1154,7 +1179,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=identity_not_verified expectedUuid=${account.profileUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")}",
                 )
                 advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
 
             val definition = account.verifiedDefinition()
@@ -1231,7 +1256,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 )
             ) {
                 BlaBlaDirectPassengerStep.RESERVATION_URL -> {
-                    phase = Phase.PASSENGER_CONTACT
+                    enterBrowserPhase(Phase.PASSENGER_CONTACT, BlaBlaBrowserRequest.PASSENGER_OPEN, "open_passenger_reservation_url")
                     passengerContactReadAttempts = 0
                     passengerCallActionTriggered = false
                     interceptedPassengerPhone = null
@@ -1241,7 +1266,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     return
                 }
                 BlaBlaDirectPassengerStep.PASSENGER_CARD -> {
-                    phase = Phase.PASSENGER_CARD
+                    enterBrowserPhase(Phase.PASSENGER_CARD, BlaBlaBrowserRequest.PASSENGER_OPEN, "open_passenger_card")
                     passengerContactReadAttempts = 0
                     passengerCardReadAttempts = 0
                     passengerCallActionTriggered = false
@@ -1302,7 +1327,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         passengerCardCaptureInFlight = true
-        evaluate<DynamicPassengerCardOpenState>(passengerCardOpenJs(cardIndex)) { state ->
+        evaluateRequest<DynamicPassengerCardOpenState>(
+            BlaBlaBrowserRequest.PASSENGER_OPEN,
+            arguments = mapOf("PASSENGER_INDEX" to cardIndex.toString()),
+        ) { state ->
             passengerCardCaptureInFlight = false
             if (
                 phase != Phase.PASSENGER_CARD ||
@@ -1313,13 +1341,13 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 !pendingTripIsCurrent(expectedSync, expectedCandidate)
             ) {
                 recordStale("passenger_card_after_evaluate", expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             if (state?.clicked == true) {
                 passengerCardReadAttempts = 0
                 navigationGeneration++
                 val passengerNavigation = navigationGeneration
-                phase = Phase.PASSENGER_CONTACT
+                enterBrowserPhase(Phase.PASSENGER_CONTACT, BlaBlaBrowserRequest.PASSENGER_OPEN, "passenger_clicked_wait_navigation")
                 statusView.text = "${account.displayLabel} • reserva ${expectedPassenger + 1}/${pendingTripPassengers.size}…"
                 webView.postDelayed({
                     capturePassengerContactAfterNavigation(
@@ -1329,14 +1357,14 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                         expectedPassenger,
                     )
                 }, PASSENGER_NAVIGATION_SETTLE_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             if (passengerCardReadAttempts < MAX_PASSENGER_CARD_READ_ATTEMPTS) {
                 passengerCardReadAttempts++
                 webView.postDelayed({
                     openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
                 }, ROSTER_RETRY_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             UnifiedDebugEventStore.record(
                 "PASSENGER_CONTACT_SKIPPED",
@@ -1449,21 +1477,21 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         passengerCaptureInFlight = true
-        evaluate<DynamicPassengerContactEvidence>(PASSENGER_CONTACT_JS) { evidence ->
+        evaluateRequest<DynamicPassengerContactEvidence>(BlaBlaBrowserRequest.PASSENGER_CONTACT) { evidence ->
             passengerCaptureInFlight = false
             if (!passengerCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)) {
                 recordStale("passenger_after_evaluate", expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             if (evidence == null) {
                 if (passengerContactReadAttempts < MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS) {
                     passengerContactReadAttempts++
                     webView.postDelayed({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
-                    return@evaluate
+                    return@evaluateRequest
                 }
                 skipped++
                 blockCurrentCard(expectedSync, expectedCandidate, "passenger_evidence_unreadable")
-                return@evaluate
+                return@evaluateRequest
             }
             evidence.domHtml.takeIf(String::isNotBlank)?.let { html ->
                 store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-passenger-${expectedPassenger + 1}", html)
@@ -1471,21 +1499,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             val effectivePhone = current.phone?.takeIf(String::isNotBlank)
                 ?: BlaBlaCollectorPassengerModule.normalizePhone(evidence.phone)
                 ?: interceptedPassengerPhone
-            if (effectivePhone == null && evidence.callActionPresent && !passengerCallActionTriggered) {
-                passengerCallActionTriggered = true
+            if (effectivePhone == null && evidence.callActionPresent) {
                 UnifiedDebugEventStore.record(
-                    "PASSENGER_CALL_ACTION_PRESENT",
+                    "PASSENGER_CONTACT_NOT_VISIBLE",
                     packageName,
-                    "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} actionPresent=true clickIntercepted=true",
+                    "account=${account.displayLabel} tripId=${BlaBlaTripIdentity.externalTripIdFromHref(candidates[expectedCandidate].href).orEmpty()} passengerIndex=${expectedPassenger + 1}/${pendingTripPassengers.size} revealActionPresent=true revealAutomated=false reason=interaction_not_documented",
                 )
-                webView.evaluateJavascript(CLICK_CALL_ACTION_JS) {
-                    if (passengerCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)) {
-                        webView.postDelayed({
-                            capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
-                        }, PASSENGER_CALL_SETTLE_MS)
-                    }
-                }
-                return@evaluate
             }
             saveCapturedPassengerFare(current.booking_href, evidence)
             saveCapturedPassengerBoardingEvidence(current.booking_href, evidence)
@@ -1504,7 +1523,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             if (!requiredComplete && passengerContactReadAttempts < MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS) {
                 passengerContactReadAttempts++
                 webView.postDelayed({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             if (!requiredComplete) {
                 UnifiedDebugEventStore.record(
@@ -1514,7 +1533,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 )
                 skipped++
                 blockCurrentCard(expectedSync, expectedCandidate, "passenger_required_evidence_incomplete")
-                return@evaluate
+                return@evaluateRequest
             }
             pendingTripPassengers[expectedPassenger] = current.copy(name = resolvedName, phone = effectivePhone)
             val metadataAfter = passengerIdentityStore.externalMetadata(externalPassengerReservationKey(account.profileUuid, current.booking_href))
@@ -1573,7 +1592,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         pendingPublishedSeats = null
         editReadAttempts = 0
         editCaptureInFlight = false
-        phase = Phase.EDIT
+        enterBrowserPhase(Phase.EDIT, BlaBlaBrowserRequest.TRIP_EDIT, "open_trip_edit")
         networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.EDIT)
         statusView.text = "${account.displayLabel} • edição do card ${resolvedCardTraversalKeys.size + 1}…"
         UnifiedDebugEventStore.record(
@@ -1604,7 +1623,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
         if (editCaptureInFlight) return
         editCaptureInFlight = true
-        evaluate<DynamicEditEvidence>(DIRECT_EDIT_EVIDENCE_JS) { evidence ->
+        evaluateRequest<DynamicEditEvidence>(BlaBlaBrowserRequest.TRIP_EDIT) { evidence ->
             editCaptureInFlight = false
             if (
                 phase != Phase.EDIT ||
@@ -1614,7 +1633,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 !pendingTripIsCurrent(expectedSync, expectedCandidate)
             ) {
                 recordStale("edit_after_evaluate", expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             val pageMatches = evidence != null && BlaBlaHarvestAssociation.editPageMatches(tripId, evidence.pageUrl)
             val optionsHref = evidence?.optionsHref?.trim().orEmpty()
@@ -1624,12 +1643,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 webView.postDelayed({
                     captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate)
                 }, ROSTER_RETRY_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             if (!pageMatches || !optionsMatch || evidence == null) {
                 skipped++
                 blockCurrentCard(expectedSync, expectedCandidate, "options_link_missing_or_mismatch")
-                return@evaluate
+                return@evaluateRequest
             }
             store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-edit", evidence.domHtml)
             pendingOptionsHref = optionsHref
@@ -1641,7 +1660,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 packageName,
                 "account=${account.displayLabel} tripId=$tripId optionsLinkPresent=true htmlCaptured=${evidence.domHtml.isNotBlank()} identityMatch=true sequential=true",
             )
-            phase = Phase.OPTIONS
+            enterBrowserPhase(Phase.OPTIONS, BlaBlaBrowserRequest.SEAT_OPTIONS, "open_seat_options")
             networkDiagnosticRecorder?.markPhase(BlaBlaNetworkCapturePhase.OPTIONS)
             statusView.text = "${account.displayLabel} • vagas do card ${resolvedCardTraversalKeys.size + 1}…"
             loadTrackedUrl(optionsHref)
@@ -1668,7 +1687,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
         if (optionsCaptureInFlight) return
         optionsCaptureInFlight = true
-        evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { evidence ->
+        evaluateRequest<SeatOptionState>(BlaBlaBrowserRequest.SEAT_OPTIONS) { evidence ->
             optionsCaptureInFlight = false
             if (
                 phase != Phase.OPTIONS ||
@@ -1678,7 +1697,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 !pendingTripIsCurrent(expectedSync, expectedCandidate)
             ) {
                 recordStale("options_after_evaluate", expectedSync, expectedCandidate)
-                return@evaluate
+                return@evaluateRequest
             }
             val identityMatch = evidence != null && BlaBlaHarvestAssociation.optionsPageMatches(tripId, evidence.pageUrl)
             if ((evidence == null || evidence.seats < 0 || !identityMatch) && optionsReadAttempts < MAX_OPTIONS_READ_ATTEMPTS) {
@@ -1686,12 +1705,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 webView.postDelayed({
                     captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate)
                 }, ROSTER_RETRY_MS)
-                return@evaluate
+                return@evaluateRequest
             }
             if (evidence == null || evidence.seats < 0 || !identityMatch) {
                 skipped++
                 blockCurrentCard(expectedSync, expectedCandidate, "published_seats_unreadable_or_mismatched")
-                return@evaluate
+                return@evaluateRequest
             }
             pendingPublishedSeats = evidence.seats
             store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-options", evidence.domHtml)
@@ -1814,7 +1833,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         currentCardTraversalKey = ""
         candidates = emptyList()
         candidateIndex = 0
-        phase = Phase.RIDES
+        enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "resume_ride_list_after_card")
         ridesRestorePending = ridesResumeScrollY > 0
         loadTrackedUrl(RIDES_URL)
     }
@@ -1890,7 +1909,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         currentCardTraversalKey = ""
         candidates = emptyList()
         candidateIndex = 0
-        phase = Phase.RIDES
+        enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "resume_ride_list_after_quarantine")
         ridesRestorePending = ridesResumeScrollY > 0
         statusView.text = "${account.displayLabel} • card não publicado: ${quarantineReasonLabel(reason)} • continuando…"
         loadTrackedUrl(RIDES_URL)
@@ -1913,7 +1932,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             "account=${account.displayLabel} reason=$reason resolvedCards=${resolvedCardTraversalKeys.size} completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} nextCardAllowed=false",
         )
         saveFinalSnapshotOnce(identityConfirmedThisSync && !account.profileUuid.isNullOrBlank())
-        phase = Phase.IDLE
+        enterBrowserPhase(Phase.IDLE, null, "sync_blocked")
     }
 
     private fun saveProgressSnapshot(reason: String) {
@@ -2134,6 +2153,59 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
     }
 
+    private fun browserExecutionContext(): BlaBlaBrowserExecutionContext {
+        val candidate = candidates.getOrNull(candidateIndex)
+        val passenger = pendingTripPassengers.getOrNull(passengerContactIndex)
+        return BlaBlaBrowserExecutionContext(
+            accountId = account.id,
+            expectedProfileUuid = account.profileUuid.orEmpty(),
+            syncGeneration = syncGeneration,
+            navigationGeneration = navigationGeneration,
+            cardKey = currentCardTraversalKey,
+            tripId = candidate?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty(),
+            passengerKey = passenger?.booking_href?.let(BlaBlaCollectorUrlModule::passengerPageKey).orEmpty(),
+            url = if (::webView.isInitialized) webView.url.orEmpty() else "",
+        )
+    }
+
+    private inline fun <reified T> evaluateRequest(
+        request: BlaBlaBrowserRequest,
+        arguments: Map<String, String> = emptyMap(),
+        crossinline callback: (T?) -> Unit,
+    ) {
+        val contextAtStart = browserExecutionContext()
+        val previous = browserOrchestrator.current()
+        val token = browserOrchestrator.startOrReuse(request, contextAtStart, reason = "webview_evaluate")
+        if (previous?.generation != token.generation) {
+            UnifiedDebugEventStore.record(
+                "BROWSER_REQUEST_STARTED",
+                packageName,
+                "account=${account.displayLabel} request=${request.name} token=${token.generation} sync=${contextAtStart.syncGeneration} nav=${contextAtStart.navigationGeneration} tripId=${contextAtStart.tripId} passengerKeyPresent=${contextAtStart.passengerKey.isNotBlank()} mutates=${request.mutatesRemoteState}",
+            )
+        }
+        val script = runCatching { browserScripts.script(request, arguments) }.getOrElse { error ->
+            UnifiedDebugEventStore.record(
+                "BROWSER_REQUEST_SCRIPT_ERROR",
+                packageName,
+                "account=${account.displayLabel} request=${request.name} error=${error.javaClass.simpleName}",
+            )
+            callback(null)
+            return
+        }
+        evaluate<T>(script) { result ->
+            val currentContext = browserExecutionContext()
+            if (!browserOrchestrator.isCurrent(token, currentContext)) {
+                UnifiedDebugEventStore.record(
+                    "BROWSER_STALE_CALLBACK_IGNORED",
+                    packageName,
+                    "account=${account.displayLabel} request=${request.name} token=${token.generation} current=${browserOrchestrator.current()?.generation ?: -1L}",
+                )
+                return@evaluate
+            }
+            callback(result)
+        }
+    }
+
     private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
         webView.evaluateJavascript(script) { encoded ->
             val decoded = runCatching {
@@ -2154,7 +2226,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             )
             return
         }
-        phase = Phase.IDLE
+        enterBrowserPhase(Phase.IDLE, null, "sync_complete")
         val finalStatus = if (skipped > 0 || quarantinedCardTraversalKeys.isNotEmpty()) "partial" else "success"
         UnifiedDebugEventStore.record(
             "SYNC_END",
@@ -2227,780 +2299,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
         private const val PASSENGER_CALL_SETTLE_MS = 650L
         private const val CARD_TARGET_PREFIX = "rotacerta-card:"
-        private val SANITIZED_HTML_JS = """
-            const clone = document.documentElement.cloneNode(true);
-            clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
-            clone.querySelectorAll('input, textarea').forEach((node) => {
-              node.removeAttribute('value');
-              node.textContent = '';
-            });
-            const html = clone.outerHTML || '';
-        """.trimIndent()
 
-        private val IDENTITY_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
-              const links = Array.from(document.querySelectorAll('a[href]'))
-                .map((a) => a.href || '')
-                .filter((href) => uuid.test(href) && /(profile|user|member)/i.test(href));
-              if (uuid.test(location.href)) links.push(location.href);
-              const explicitNameNode = document.querySelector(
-                '[data-testid*="profile-name"], [data-testid*="driver-name"], [data-testid*="member-name"], [aria-label*="perfil" i] [data-testid*="name"]'
-              );
-              const profileAnchor = Array.from(document.querySelectorAll('a[href]')).find((anchor) => {
-                const href = anchor.href || '';
-                return uuid.test(href) && /(profile|user|member)/i.test(href);
-              });
-              const profileAnchorImage = profileAnchor && profileAnchor.querySelector('img[alt]');
-              const nameCandidate = clean(
-                (explicitNameNode && explicitNameNode.innerText) ||
-                (profileAnchor && profileAnchor.innerText) ||
-                (profileAnchorImage && profileAnchorImage.getAttribute('alt')) ||
-                ''
-              );
-              const photoNode = document.querySelector(
-                '[data-testid*="profile"] img[src^="http"], [data-testid*="avatar"] img[src^="http"], img[alt][src^="http"]'
-              );
-              const aboutNode = document.querySelector(
-                '[data-testid*="about"], [data-testid*="bio"], [data-testid*="description"], [aria-label*="apresenta" i]'
-              );
-              const ratingNode = document.querySelector(
-                '[data-testid*="rating"], [aria-label*="nota" i], [aria-label*="avalia" i]'
-              );
-              const ratingEvidence = clean(ratingNode && (ratingNode.innerText || ratingNode.getAttribute('aria-label')));
-              const ratingMatch = ratingEvidence.match(/\b([0-5](?:[.,]\d{1,2})?)\b/);
-              const reviewNode = document.querySelector(
-                '[data-testid*="review"], [data-testid*="evaluation"], [aria-label*="avalia" i]'
-              );
-              const reviewEvidence = clean(reviewNode && (reviewNode.innerText || reviewNode.getAttribute('aria-label')));
-              const reviewMatch = reviewEvidence.match(/(\d{1,7})\s*(?:avalia|opini|review)/i);
-              const badgeNode = document.querySelector(
-                '[data-testid*="badge"], [data-testid*="verified"], [data-testid*="ambassador"], [aria-label*="verific" i]'
-              );
-              const vehicleNode = document.querySelector('[data-testid*="vehicle"], [data-testid*="car"]');
-              const colorNode = document.querySelector('[data-testid*="vehicle-color"], [data-testid*="car-color"]');
-              const amenitiesNode = document.querySelector('[data-testid*="amenit"], [data-testid*="comfort"]');
-              const preferencesNode = document.querySelector('[data-testid*="prefer"], [data-testid*="rule"]');
-              const reviewAnchor = Array.from(document.querySelectorAll('a[href]')).find((anchor) => {
-                const label = clean(anchor.innerText || anchor.getAttribute('aria-label'));
-                return /(avalia|opini|review)/i.test(label) && uuid.test(anchor.href || '');
-              });
-              const reviewCandidates = Array.from(document.querySelectorAll(
-                '[data-testid*="review-card"], [data-testid*="review-item"], [data-testid*="rating-card"], article[class*="review" i], li[class*="review" i]'
-              ));
-              const reviews = reviewCandidates.map((root) => {
-                const authorNode = root.querySelector('[data-testid*="name"], strong, h3, h4');
-                const dateNode = root.querySelector('time, [data-testid*="date"]');
-                const textNode = root.querySelector('[data-testid*="comment"], [data-testid*="content"], p');
-                const reviewRatingNode = root.querySelector('[data-testid*="rating"], [aria-label*="estrela" i], [aria-label*="nota" i]');
-                const reviewRatingText = clean(reviewRatingNode && (reviewRatingNode.innerText || reviewRatingNode.getAttribute('aria-label')));
-                const reviewRating = (reviewRatingText.match(/\b([0-5](?:[.,]\d{1,2})?)\b/) || [])[1] || '';
-                return {
-                  author: clean(authorNode && authorNode.innerText).slice(0, 120),
-                  rating: reviewRating.replace(',', '.').slice(0, 20),
-                  dateLabel: clean(dateNode && (dateNode.innerText || dateNode.getAttribute('datetime'))).slice(0, 80),
-                  text: clean(textNode && textNode.innerText).slice(0, 600)
-                };
-              }).filter((item) => item.author || item.text);
-              const resourceUrls = (performance && performance.getEntriesByType)
-                ? performance.getEntriesByType('resource').map((entry) => entry.name || '')
-                : [];
-              const navigationUrls = (performance && performance.getEntriesByType)
-                ? performance.getEntriesByType('navigation').map((entry) => entry.name || '')
-                : [];
-              const rawIdentityEvidence = [
-                location.href || '',
-                document.documentElement ? (document.documentElement.outerHTML || '') : '',
-                ...resourceUrls,
-                ...navigationUrls
-              ].join('\n');
-              const observedUuids = Array.from(new Set(
-                (rawIdentityEvidence.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig) || [])
-                  .map((value) => value.toLowerCase())
-              ));
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                profileLinks: Array.from(new Set(links)),
-                observedUuids: observedUuids,
-                visibleName: nameCandidate,
-                photoUrl: clean(photoNode && (photoNode.currentSrc || photoNode.src)),
-                about: clean(aboutNode && aboutNode.innerText).slice(0, 320),
-                rating: ratingMatch ? ratingMatch[1].replace(',', '.') : '',
-                reviewCount: reviewMatch ? Number(reviewMatch[1]) : null,
-                badge: clean(badgeNode && (badgeNode.innerText || badgeNode.getAttribute('aria-label'))).slice(0, 80),
-                vehicleMakeModel: clean(vehicleNode && vehicleNode.innerText).slice(0, 120),
-                vehicleColor: clean(colorNode && colorNode.innerText).slice(0, 60),
-                amenities: clean(amenitiesNode && amenitiesNode.innerText).slice(0, 240),
-                preferences: clean(preferencesNode && preferencesNode.innerText).slice(0, 240),
-                reviewsHref: clean(reviewAnchor && reviewAnchor.href).slice(0, 1000),
-                reviews: reviews.slice(0, 60),
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
-
-        private val PROFILE_REVIEWS_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const candidates = Array.from(document.querySelectorAll(
-                '[data-testid*="review-card"], [data-testid*="review-item"], [data-testid*="rating-card"], article[class*="review" i], li[class*="review" i]'
-              ));
-              const reviews = candidates.map((root) => {
-                const authorNode = root.querySelector('[data-testid*="name"], strong, h3, h4');
-                const dateNode = root.querySelector('time, [data-testid*="date"]');
-                const textNode = root.querySelector('[data-testid*="comment"], [data-testid*="content"], p');
-                const ratingNode = root.querySelector('[data-testid*="rating"], [aria-label*="estrela" i], [aria-label*="nota" i]');
-                const ratingText = clean(ratingNode && (ratingNode.innerText || ratingNode.getAttribute('aria-label')));
-                const rating = (ratingText.match(/\b([0-5](?:[.,]\d{1,2})?)\b/) || [])[1] || '';
-                return {
-                  author: clean(authorNode && authorNode.innerText).slice(0, 120),
-                  rating: rating.replace(',', '.').slice(0, 20),
-                  dateLabel: clean(dateNode && (dateNode.innerText || dateNode.getAttribute('datetime'))).slice(0, 80),
-                  text: clean(textNode && textNode.innerText).slice(0, 600)
-                };
-              }).filter((item) => item.author || item.text);
-              const raw = [location.href || '', document.documentElement ? (document.documentElement.outerHTML || '') : ''].join('\n');
-              const observedUuids = Array.from(new Set(
-                (raw.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig) || [])
-                  .map((value) => value.toLowerCase())
-              ));
-              const scrollY = Math.max(0, Math.round(window.scrollY || 0));
-              const scrollHeight = Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0));
-              const viewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
-              const atBottom = scrollY + viewportHeight >= scrollHeight - 24;
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                observedUuids,
-                reviews: reviews.slice(0, 60),
-                scrollY,
-                scrollHeight,
-                viewportHeight,
-                atBottom,
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
-
-        private val RIDE_LIST_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const first = (root, selectors) => {
-                for (const selector of selectors) {
-                  const node = root && root.querySelector(selector);
-                  if (node && clean(node.innerText)) return clean(node.innerText);
-                }
-                return '';
-              };
-              const candidateHref = (root) => {
-                const anchors = Array.from(root.querySelectorAll('a[href]'))
-                  .map((anchor) => ({ anchor, href: anchor.href || '' }))
-                  .filter((item) => item.href && !item.href.includes('/rides/offer/passenger/'));
-                return (
-                  anchors.find((item) => /\/rides\/offer\/[^/?#]+/i.test(item.href) || /\/trip\/[^/?#]+/i.test(item.href)) ||
-                  anchors.find((item) => /\/rides\/offer\?[^#]*\bid=/i.test(item.href) || /\/trip\?[^#]*\bid=/i.test(item.href)) ||
-                  anchors.find((item) => item.href.includes('/rides/offer') || item.href.includes('/trip?') || item.href.includes('/trip/')) ||
-                  null
-                );
-              };
-              const normalizePassengerName = (value) => clean(value)
-                .replace(/\s*[•|].*$/, '')
-                .replace(/\s*\(\d+\)\s*$/, '');
-              const extractPassengers = (root) => {
-                const passengerMap = new Map();
-                const scoped = Array.from(root.querySelectorAll('a[href*="/rides/offer/passenger/"], [data-testid*="passenger"], [data-testid*="booking"]'));
-                const hintedRoot = /passageir|reserva/i.test(clean(root.innerText));
-                if (hintedRoot) {
-                  Array.from(root.querySelectorAll('img[alt]')).forEach((image) => {
-                    const scope = image.closest('a[href*="/rides/offer/passenger/"], [data-testid*="passenger"], [data-testid*="booking"]');
-                    if (scope) scoped.push(scope);
-                  });
-                }
-                scoped.forEach((node, index) => {
-                  const link = (node.matches && node.matches('a[href*="/rides/offer/passenger/"]'))
-                    ? node
-                    : (node.querySelector && node.querySelector('a[href*="/rides/offer/passenger/"]'));
-                  const href = link ? (link.href || '') : '';
-                  const container = node.closest && (node.closest('li, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]') || node);
-                  const raw = clean((container && container.innerText) || node.innerText || '');
-                  const lines = raw.split(/\n+/).map(clean).filter(Boolean);
-                  const explicitName = container && container.querySelector
-                    ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
-                    : null;
-                  const alt = explicitName && explicitName.getAttribute ? clean(explicitName.getAttribute('alt')) : '';
-                  let name = normalizePassengerName(alt || clean(explicitName && explicitName.innerText) || lines[0] || '');
-                  if (!name || /^(foto|avatar|perfil|blablacar|passageiro|passageira)$/i.test(name)) return;
-                  const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
-                  const suffix = suffixSource.match(/\((\d+)\)\s*$/);
-                  const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
-                  name = normalizePassengerName(name);
-                  const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
-                  const routeParts = route.split(/→|->/).map(clean);
-                  const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
-                  const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
-                  if (!passengerMap.has(key)) {
-                    passengerMap.set(key, {
-                      name: name,
-                      seats: seats,
-                      boarding: routeParts.length >= 2 ? routeParts[0] : null,
-                      dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
-                      phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
-                      booking_href: href || null
-                    });
-                  }
-                });
-                const passengers = Array.from(passengerMap.values()).filter((item) => item.name);
-                const rosterContainers = Array.from(root.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
-                  const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
-                  return marker.includes('passenger') || marker.includes('passageir') || marker.includes('booking') || marker.includes('reserva');
-                });
-                const hasMore = Array.from(root.querySelectorAll('button, a, [role="button"]')).some((node) => /mostrar mais|ver mais|mais passageir|mais reserva/i.test(clean(node.innerText)));
-                return {
-                  passengers: passengers,
-                  passengerRosterComplete: rosterContainers.length > 0 && !hasMore
-                };
-              };
-              const looksLikeCalendarDate = (value) => {
-                const text = clean(value);
-                if (!text) return false;
-                return /\b20\d{2}-\d{1,2}-\d{1,2}\b/.test(text) ||
-                  /\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/.test(text) ||
-                  /\b(?:hoje|amanh[ãa])\b/i.test(text) ||
-                  /\b\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i.test(text);
-              };
-              const nearestPrecedingDateEvidence = (root) => {
-                const markers = Array.from(document.querySelectorAll('[data-testid*="date"], time[datetime], h1, h2, h3'));
-                for (let index = markers.length - 1; index >= 0; index--) {
-                  const node = markers[index];
-                  if (!node || node === root || (root.contains && root.contains(node))) continue;
-                  if (!(node.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
-                  const structured = clean(node.getAttribute && node.getAttribute('datetime'));
-                  const visible = clean(node.innerText || node.textContent);
-                  if (looksLikeCalendarDate(structured)) return structured;
-                  if (looksLikeCalendarDate(visible)) return visible;
-                }
-                return '';
-              };
-              const dateEvidence = (root) => {
-                const structured = Array.from(root.querySelectorAll('time[datetime]'))
-                  .map((node) => clean(node.getAttribute('datetime')))
-                  .filter(Boolean);
-                const visible = Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
-                  .map((node) => clean(node.innerText))
-                  .filter(Boolean);
-                const localEvidence = structured.concat(visible);
-                if (localEvidence.some(looksLikeCalendarDate)) {
-                  return clean(localEvidence.join(' | ')).slice(0, 1200);
-                }
-                const preceding = nearestPrecedingDateEvidence(root);
-                return clean(localEvidence.concat(preceding ? [preceding] : []).join(' | ')).slice(0, 1200);
-              };
-              const roots = Array.from(document.querySelectorAll('[data-testid^="e2e-your-rides-trip-card-"], article[data-testid^="e2e-your-rides-trip-card-"], article'));
-              const fromRoots = roots.map((root) => {
-                const selected = candidateHref(root);
-                if (!selected) return null;
-                const roster = extractPassengers(root);
-                return {
-                  href: selected.href || '',
-                  text: clean(root.innerText).slice(0, 3200),
-                  departureTime: first(root, ['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
-                  arrivalTime: first(root, ['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
-                  origin: first(root, ['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
-                  destination: first(root, ['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
-                  price: first(root, ['[data-testid="e2e-tripcard-price"]', '[data-testid="e2e-tripcard-price-price-value"]', '[data-testid*="price"]']),
-                  dateText: dateEvidence(root),
-                  passengers: roster.passengers,
-                  passengerRosterComplete: roster.passengerRosterComplete
-                };
-              }).filter(Boolean);
-              const fallback = fromRoots.length ? [] : Array.from(document.querySelectorAll('a[href*="/rides/offer"], a[href*="/trip?"], a[href*="/trip/"]'))
-                .filter((anchor) => !(anchor.href || '').includes('/rides/offer/passenger/'))
-                .map((anchor) => {
-                  const root = anchor.closest('article, li, section, div') || anchor.parentElement || document.body;
-                  const roster = extractPassengers(root);
-                  return {
-                    href: anchor.href || '',
-                    text: clean(root.innerText).slice(0, 3200),
-                    departureTime: first(root, ['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
-                    arrivalTime: first(root, ['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
-                    origin: first(root, ['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
-                    destination: first(root, ['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
-                    price: first(root, ['[data-testid*="price"]']),
-                    dateText: dateEvidence(root),
-                    passengers: roster.passengers,
-                    passengerRosterComplete: roster.passengerRosterComplete
-                  };
-                });
-              const bodyText = clean(document.body && document.body.innerText).slice(0, 16000);
-              const emptyStructure = document.querySelector(
-                '[data-testid*="empty"][data-testid*="ride"], [data-testid*="empty"][data-testid*="trip"], ' +
-                '[data-testid*="no-ride"], [data-testid*="no-trip"], [aria-label*="no ride" i], [aria-label*="no trip" i]'
-              );
-              const emptyText = /nenhuma viagem|sem viagens|no trips|no rides|aucun trajet|keine fahrten|sin viajes|nessun viaggio/i.test(bodyText);
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                candidates: fromRoots.concat(fallback),
-                bodyText: bodyText,
-                explicitEmptyList: !!emptyStructure || emptyText,
-                scrollY: Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0)),
-                scrollHeight: Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0)),
-                viewportHeight: Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0)),
-                atBottom: Math.ceil((window.scrollY || window.pageYOffset || 0) + (window.innerHeight || document.documentElement.clientHeight || 0)) >= Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0) - 8,
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
-
-        private val PASSENGER_CONTACT_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const numberOrNull = (value) => {
-                if (value === null || value === undefined || value === '') return null;
-                const parsed = Number(value);
-                return Number.isFinite(parsed) ? parsed : null;
-              };
-              const validLatitude = (value) => value !== null && value >= -90 && value <= 90;
-              const validLongitude = (value) => value !== null && value >= -180 && value <= 180;
-              const nodes = Array.from(document.querySelectorAll('[href^="tel:"], a, button, [role="button"], [role="link"]'));
-              const callAction = nodes.find((node) => {
-                const text = clean(node.innerText || node.textContent);
-                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
-                const href = (node.getAttribute && node.getAttribute('href')) || '';
-                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
-              });
-              const candidates = [];
-              nodes.forEach((node) => {
-                const href = (node.getAttribute && node.getAttribute('href')) || '';
-                if (/^tel:/i.test(href)) candidates.push(href);
-                const outer = node.outerHTML || '';
-                const matches = outer.match(/tel:[+0-9(). \-]{8,32}/ig) || [];
-                matches.forEach((value) => candidates.push(value));
-              });
-              const pageHtml = document.documentElement ? (document.documentElement.outerHTML || '') : '';
-              (pageHtml.match(/tel:[+0-9(). \-]{8,32}/ig) || []).forEach((value) => candidates.push(value));
-              const rawPhone = candidates.find((value) => /^tel:/i.test(value)) || '';
-              const phone = rawPhone
-                ? rawPhone.replace(/^tel:/i, '').split('?')[0].replace(/[^+0-9]/g, '')
-                : '';
-              const nameNode = document.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], h1');
-              const fareNode = document.querySelector(
-                '[data-testid*="booking-price"], [data-testid*="reservation-price"], [data-testid*="passenger-price"], [data-testid*="booking-total"], [data-testid*="reservation-total"]'
-              );
-              const currencyNode = fareNode && fareNode.closest('[data-currency], [data-currency-code], [data-testid*="booking"], [data-testid*="reservation"]');
-              const fareAmount = clean(fareNode && (
-                fareNode.getAttribute('data-value') ||
-                fareNode.getAttribute('content') ||
-                fareNode.innerText
-              ));
-              const fareCurrencyCode = clean(currencyNode && (
-                currencyNode.getAttribute('data-currency-code') ||
-                currencyNode.getAttribute('data-currency')
-              )).toUpperCase();
-
-              const pickup = {
-                address: '',
-                latitude: null,
-                longitude: null,
-                accuracyMeters: null,
-                source: ''
-              };
-              const addressText = (value) => {
-                if (!value) return '';
-                if (typeof value === 'string') return clean(value);
-                if (typeof value !== 'object') return '';
-                return clean(
-                  value.label || value.name || value.formattedAddress || value.formatted_address ||
-                  value.fullAddress || value.full_address || value.address ||
-                  [value.street, value.streetNumber || value.number, value.cityName || value.city, value.postalCode || value.zipCode]
-                    .filter(Boolean).join(', ')
-                );
-              };
-              const readCoordinate = (place) => {
-                if (!place || typeof place !== 'object') return null;
-                const coordinate = place.coordinates || place.coordinate || place.location || place.geo || place;
-                if (!coordinate || typeof coordinate !== 'object') return null;
-                const latitude = numberOrNull(
-                  coordinate.latitude !== undefined ? coordinate.latitude : coordinate.lat
-                );
-                const longitude = numberOrNull(
-                  coordinate.longitude !== undefined ? coordinate.longitude :
-                    (coordinate.lng !== undefined ? coordinate.lng : coordinate.lon)
-                );
-                if (!validLatitude(latitude) || !validLongitude(longitude)) return null;
-                const accuracy = numberOrNull(
-                  coordinate.accuracy !== undefined ? coordinate.accuracy : coordinate.accuracyMeters
-                );
-                return { latitude: latitude, longitude: longitude, accuracyMeters: accuracy };
-              };
-              const acceptPickupPlace = (place, source) => {
-                if (!place || typeof place !== 'object') return;
-                const address = addressText(place.address || place);
-                if (!pickup.address && address) pickup.address = address;
-                const coordinate = readCoordinate(place);
-                if (coordinate && pickup.latitude === null) {
-                  pickup.latitude = coordinate.latitude;
-                  pickup.longitude = coordinate.longitude;
-                  pickup.accuracyMeters = coordinate.accuracyMeters;
-                  pickup.source = source;
-                }
-              };
-              const seen = new Set();
-              const walk = (value, depth) => {
-                if (value === null || value === undefined || depth > 10) return;
-                if (typeof value !== 'object') return;
-                if (seen.has(value)) return;
-                seen.add(value);
-                if (Array.isArray(value)) {
-                  value.forEach((item) => walk(item, depth + 1));
-                  return;
-                }
-                Object.keys(value).forEach((key) => {
-                  const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
-                  if (normalized === 'pickupplace' || normalized === 'boardingplace' || normalized === 'pickuppoint') {
-                    acceptPickupPlace(value[key], 'blablacar_booking_structured_pickup');
-                  }
-                  walk(value[key], depth + 1);
-                });
-              };
-              const scriptTexts = Array.from(document.querySelectorAll('script'))
-                .map((script) => script.textContent || '')
-                .filter((text) => /pickup|boarding/i.test(text));
-              scriptTexts.forEach((text) => {
-                try {
-                  walk(JSON.parse(text), 0);
-                } catch (_) {
-                  // Framework bootstrap scripts are often JavaScript rather than pure JSON.
-                }
-              });
-              if (pickup.latitude === null) {
-                scriptTexts.concat([pageHtml]).some((raw) => {
-                  const marker = raw.search(/pickupPlace|pickup_place|boardingPlace|boarding_place/i);
-                  if (marker < 0) return false;
-                  const slice = raw.slice(marker, marker + 6000);
-                  const latitudeMatch = slice.match(/["'](?:latitude|lat)["']\s*:\s*(-?\d{1,3}(?:\.\d+)?)/i);
-                  const longitudeMatch = slice.match(/["'](?:longitude|lng|lon)["']\s*:\s*(-?\d{1,3}(?:\.\d+)?)/i);
-                  const latitude = numberOrNull(latitudeMatch && latitudeMatch[1]);
-                  const longitude = numberOrNull(longitudeMatch && longitudeMatch[1]);
-                  if (!validLatitude(latitude) || !validLongitude(longitude)) return false;
-                  pickup.latitude = latitude;
-                  pickup.longitude = longitude;
-                  pickup.source = 'blablacar_booking_structured_pickup_text';
-                  const accuracyMatch = slice.match(/["'](?:accuracy|accuracyMeters)["']\s*:\s*(\d+(?:\.\d+)?)/i);
-                  pickup.accuracyMeters = numberOrNull(accuracyMatch && accuracyMatch[1]);
-                  if (!pickup.address) {
-                    const addressMatch = slice.match(/["'](?:formattedAddress|fullAddress|address)["']\s*:\s*["']([^"']{3,240})["']/i);
-                    if (addressMatch) pickup.address = clean(addressMatch[1]);
-                  }
-                  return true;
-                });
-              }
-              if (!pickup.address) {
-                const pickupNode = document.querySelector(
-                  '[data-testid*="pickup-address"], [data-testid*="boarding-address"], [data-testid*="pickup-place"], [data-testid*="boarding-place"]'
-                );
-                pickup.address = clean(pickupNode && pickupNode.innerText);
-              }
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                phone: phone,
-                visibleName: clean(nameNode && nameNode.innerText),
-                fareAmount: fareAmount,
-                fareCurrencyCode: fareCurrencyCode,
-                callActionPresent: !!callAction,
-                boardingAddress: pickup.address,
-                boardingLatitude: pickup.latitude,
-                boardingLongitude: pickup.longitude,
-                boardingAccuracyMeters: pickup.accuracyMeters,
-                boardingLocationSource: pickup.source,
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
-
-        private val CLICK_CALL_ACTION_JS = """
-            (function() {
-              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-              const nodes = Array.from(document.querySelectorAll('a[href], button, [role="button"], [role="link"]'));
-              const action = nodes.find((node) => {
-                const text = clean(node.innerText || node.textContent);
-                const label = clean((node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '');
-                const href = (node.getAttribute && node.getAttribute('href')) || '';
-                return /^tel:/i.test(href) || /^(ligar|chamar|telefone|telefonar)$/i.test(text) || /\b(ligar|telefone|telefonar)\b/i.test(label);
-              });
-              if (!action || typeof action.click !== 'function') return JSON.stringify({ present: !!action, clicked: false });
-              action.click();
-              return JSON.stringify({ present: true, clicked: true });
-            })();
-        """.trimIndent()
-
-        private fun passengerCardOpenJs(cardIndex: Int): String = """
-            (function() {
-              const wantedIndex = $cardIndex;
-              const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-              const linesOf = (node) => ((node && node.innerText) || '').split(/\n+/).map(clean).filter(Boolean);
-              const candidates = Array.from(document.querySelectorAll(
-                'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
-              ));
-              Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
-                const value = clean(node.innerText);
-                if ((value.includes('→') || value.includes('->')) && !candidates.includes(node)) candidates.push(node);
-              });
-              const valid = [];
-              const seen = new Set();
-              candidates.forEach((node, index) => {
-                const anchor = (node.matches && node.matches('a[href]')) ? node : (node.querySelector && node.querySelector('a[href]'));
-                const href = (anchor && (anchor.href || anchor.getAttribute('href'))) || (node.getAttribute && node.getAttribute('data-href')) || '';
-                const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
-                const lines = linesOf(container);
-                const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
-                if (!route) return;
-                const explicit = container && container.querySelector
-                  ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
-                  : null;
-                const marker = clean(
-                  ((container && container.getAttribute && container.getAttribute('data-testid')) || '') + ' ' +
-                  ((container && container.getAttribute && container.getAttribute('aria-label')) || '')
-                ).toLowerCase();
-                const passengerMarked = /passenger|booking|reservation/i.test(marker) || /passenger|booking/i.test(href);
-                if (!explicit && !passengerMarked) return;
-                const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
-                const name = clean(alt || (explicit && explicit.innerText) || lines[0] || '');
-                if (!name) return;
-                const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
-                const suffix = suffixSource.match(/\((\d+)\)\s*$/);
-                const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
-                const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
-                if (seen.has(key)) return;
-                seen.add(key);
-                valid.push({ node: node, container: container });
-              });
-              const item = valid[wantedIndex];
-              if (!item) return JSON.stringify({ found: false, clicked: false });
-              const selector = 'a[href], button, [role="link"], [role="button"]';
-              const direct = item.node && item.node.matches && item.node.matches(selector) ? item.node : null;
-              const nested = !direct && item.node && item.node.querySelector ? item.node.querySelector(selector) : null;
-              const containerTarget = !direct && !nested && item.container && item.container.matches && item.container.matches(selector)
-                ? item.container
-                : (!direct && !nested && item.container && item.container.querySelector ? item.container.querySelector(selector) : null);
-              const clickable = direct || nested || containerTarget || item.node;
-              if (!clickable || typeof clickable.click !== 'function') return JSON.stringify({ found: true, clicked: false });
-              clickable.click();
-              return JSON.stringify({ found: true, clicked: true });
-            })();
-        """.trimIndent()
-
-        private val EXPAND_ROSTER_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const controls = Array.from(document.querySelectorAll(
-                'button, a, [role="button"], [data-testid], [aria-label], [aria-controls]'
-              ));
-              const target = controls.find((node) => {
-                const marker = (
-                  (node.getAttribute('data-testid') || '') + ' ' +
-                  (node.getAttribute('aria-label') || '') + ' ' +
-                  (node.getAttribute('aria-controls') || '')
-                ).toLowerCase();
-                const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
-                const markerRequestsMore = passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
-                const collapsedNearRoute = node.getAttribute('aria-expanded') === 'false' && /(?:→|->)/.test(clean((node.parentElement && node.parentElement.innerText) || ''));
-                return markerRequestsMore || collapsedNearRoute;
-              });
-              if (!target || typeof target.click !== 'function') return JSON.stringify({ found: false, clicked: false });
-              target.click();
-              return JSON.stringify({ found: true, clicked: true });
-            })();
-        """.trimIndent()
-
-        private val DIRECT_EDIT_EVIDENCE_JS = """
-            (function() {
-              const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
-              const candidates = Array.from(document.querySelectorAll('a[href], [data-href]'))
-                .map((node) => absolute(node.getAttribute('href') || node.getAttribute('data-href') || ''))
-                .filter(Boolean);
-              const option = candidates.find((href) => /\/rides\/offer\/edit\/[^/?#]+\/options\/?(?:$|[?#])/i.test(href)) || '';
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                optionsHref: option,
-                pageUrl: location.href || '',
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
-
-        private val TRIP_DETAIL_DYNAMIC_JS = """
-            (function() {
-              const clean = (value) => (value || '').replace(/\s+/g, ' ').trim();
-              const first = (selectors) => {
-                for (const selector of selectors) {
-                  const node = document.querySelector(selector);
-                  if (node && clean(node.innerText)) return clean(node.innerText);
-                }
-                return '';
-              };
-              const driverNode = document.querySelector('[data-testid="e2e-tripcard-driver-name"], [data-testid*="driver-name"], [data-testid*="driver"]');
-              const driverLinks = [];
-              if (driverNode) {
-                const direct = driverNode.closest('a[href]');
-                if (direct) driverLinks.push(direct.href);
-                const root = driverNode.closest('section, article, li, div');
-                if (root) Array.from(root.querySelectorAll('a[href]')).forEach((a) => driverLinks.push(a.href));
-              }
-              const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
-              const scopedDriverLinks = Array.from(new Set(driverLinks.filter((href) => uuid.test(href))));
-              const allProfileLinks = Array.from(new Set(Array.from(document.querySelectorAll('a[href]'))
-                .map((a) => a.href || '')
-                .filter((href) => uuid.test(href) && /(profile|user|member)/i.test(href))));
-              const structuredDates = Array.from(document.querySelectorAll('time[datetime]'))
-                .map((node) => clean(node.getAttribute('datetime')))
-                .filter(Boolean);
-              const visibleDates = Array.from(document.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
-                .map((node) => clean(node.innerText))
-                .filter(Boolean);
-              const dateText = clean(structuredDates.concat(visibleDates).join(' | ')).slice(0, 1600);
-              const linesOf = (node) => ((node && node.innerText) || '').split(/\n+/).map(clean).filter(Boolean);
-              const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
-              const rows = [];
-              const seenPassengers = new Set();
-              const passengerTargets = [];
-              const candidateNodes = Array.from(document.querySelectorAll(
-                'a[href*="passenger"], a[href*="booking"], [data-testid*="passenger"], [data-testid*="booking"], [role="link"]'
-              ));
-              Array.from(document.querySelectorAll('a[href], [role="link"], button')).forEach((node) => {
-                const text = clean(node.innerText);
-                if ((text.includes('→') || text.includes('->')) && !candidateNodes.includes(node)) candidateNodes.push(node);
-              });
-              candidateNodes.forEach((node, index) => {
-                const anchor = (node.matches && node.matches('a[href]')) ? node : (node.querySelector && node.querySelector('a[href]'));
-                const href = absolute((anchor && anchor.getAttribute('href')) || (node.getAttribute && node.getAttribute('data-href')) || '');
-                const container = (node.closest && node.closest('li, article, [role="listitem"], [data-testid*="passenger"], [data-testid*="booking"]')) || node;
-                const lines = linesOf(container);
-                const route = lines.find((line) => line.includes('→') || line.includes('->')) || '';
-                if (!route) return;
-                const explicit = container && container.querySelector
-                  ? container.querySelector('[data-testid*="passenger-name"], [data-testid*="profile-name"], img[alt]')
-                  : null;
-                const marker = clean(
-                  ((container && container.getAttribute && container.getAttribute('data-testid')) || '') + ' ' +
-                  ((container && container.getAttribute && container.getAttribute('aria-label')) || '')
-                ).toLowerCase();
-                const passengerMarked = /passenger|booking|reservation/i.test(marker) || /passenger|booking/i.test(href);
-                if (!explicit && !passengerMarked) return;
-                const alt = explicit && explicit.getAttribute ? clean(explicit.getAttribute('alt')) : '';
-                let name = clean(alt || (explicit && explicit.innerText) || lines[0] || '').replace(/\s*\(\d+\)\s*$/, '');
-                if (!name) return;
-                const suffixSource = lines.find((line) => /\(\d+\)\s*$/.test(line)) || name;
-                const suffix = suffixSource.match(/\((\d+)\)\s*$/);
-                const seats = suffix ? Math.max(1, parseInt(suffix[1], 10) || 1) : 1;
-                const routeParts = route.split(/→|->/).map(clean);
-                const key = href || [name.toLowerCase(), seats, route].join('|') || String(index);
-                if (seenPassengers.has(key)) return;
-                seenPassengers.add(key);
-                const rowIndex = rows.length;
-                const realPassengerHref = /\/passenger\/|\/booking\//i.test(href) ? href : '';
-                passengerTargets.push(realPassengerHref || 'rotacerta-card:' + rowIndex);
-                const tel = container && container.querySelector ? container.querySelector('a[href^="tel:"]') : null;
-                rows.push({
-                  name: name,
-                  seats: seats,
-                  boarding: routeParts.length >= 2 ? routeParts[0] : null,
-                  dropoff: routeParts.length >= 2 ? routeParts[routeParts.length - 1] : null,
-                  phone: tel ? (tel.getAttribute('href') || '').replace(/^tel:/i, '') : null,
-                  booking_href: realPassengerHref || null
-                });
-              });
-              Array.from(document.querySelectorAll('a[href]'))
-                .map((a) => absolute(a.getAttribute('href') || ''))
-                .filter((href) => /\/passenger\/|\/booking\//i.test(href))
-                .forEach((href) => passengerTargets.push(href));
-              const passengers = rows;
-              const links = Array.from(document.querySelectorAll('a[href]'));
-              const edit = links.find((a) => {
-                const href = absolute(a.getAttribute('href') || a.href || '');
-                return /\/rides\/offer\/edit\/[^/?#]+\/?(?:$|[?#])/i.test(href) && !/\/options\/?(?:$|[?#])/i.test(href);
-              });
-              const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
-                const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
-                return marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
-              });
-              const rosterExpandControls = Array.from(document.querySelectorAll('button, a, [role="button"], [data-testid], [aria-label], [aria-controls]')).filter((node) => {
-                const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '') + ' ' + (node.getAttribute('aria-controls') || '')).toLowerCase();
-                const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
-                const markerRequestsMore = passengerMarker && (marker.includes('more') || marker.includes('expand') || marker.includes('load'));
-                const collapsedNearRoute = node.getAttribute('aria-expanded') === 'false' && /(?:→|->)/.test(clean((node.parentElement && node.parentElement.innerText) || ''));
-                return markerRequestsMore || collapsedNearRoute;
-              });
-              const hasMore = rosterExpandControls.length > 0;
-              const isVisible = (node) => {
-                if (!node || !node.isConnected) return false;
-                const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
-                if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) return false;
-                return !node.getClientRects || node.getClientRects().length > 0;
-              };
-              const emptyRosterText = /^(?:nenhum(?:a)? passageir[oa].{0,50}(?:carona|viagem|reserva)|sem passageir[oa]s?(?: nesta carona)?|no passengers?(?: on this ride)?|aucun passager|keine mitfahrer|sin pasajeros|nessun passeggero)$/i;
-              const explicitEmptyRoster = passengers.length === 0 && Array.from(document.querySelectorAll(
-                'p, span, h1, h2, h3, [role="status"], [data-testid*="passenger"], [data-testid*="booking"], [data-testid*="reservation"]'
-              )).some((node) => {
-                const text = clean(node.innerText || node.textContent);
-                return isVisible(node) && text.length > 0 && text.length <= 160 && emptyRosterText.test(text);
-              });
-              const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
-              const rosterTerminalEvidence = !!edit || rosterContainers.length > 0 || document.readyState === 'complete';
-              const itineraryStops = [];
-              [
-                '[data-testid*="itinerary-departure-station"]',
-                '[data-testid*="itinerary-arrival-station"]',
-                '[data-testid*="itinerary-stop"]',
-                '[data-testid*="station"]'
-              ].forEach((selector) => {
-                Array.from(document.querySelectorAll(selector)).forEach((node) => {
-                  const value = clean(node.innerText);
-                  if (value && !itineraryStops.includes(value)) itineraryStops.push(value);
-                });
-              });
-              const pageText = clean(document.body && document.body.innerText);
-              const viewsMatch = pageText.match(/(\d{1,9})\s+visualiza(?:ç|c)[õo]es/i);
-              const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
-              let currentTripId = '';
-              try {
-                const currentUrl = new URL(location.href);
-                currentTripId = clean(currentUrl.searchParams.get('id'));
-                if (!currentTripId) {
-                  const match = currentUrl.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
-                  currentTripId = clean(match && match[1]);
-                }
-              } catch (_) {}
-              const networkSource = typeof window.__rotaCertaNetworkTripSource === 'function'
-                ? window.__rotaCertaNetworkTripSource(currentTripId)
-                : null;
-              $SANITIZED_HTML_JS
-              return JSON.stringify({
-                detail: {
-                  url: location.href,
-                  bodyText: clean(document.body && document.body.innerText).slice(0, 16000),
-                  dateText: dateText,
-                  departureTime: first(['[data-testid="e2e-itinerary-departure-time"]', '[data-testid*="departure-time"]']),
-                  arrivalTime: first(['[data-testid="e2e-itinerary-arrival-time"]', '[data-testid*="arrival-time"]']),
-                  origin: first(['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']),
-                  destination: first(['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']),
-                  price: first(['[data-testid="e2e-tripcard-price"]', '[data-testid="e2e-tripcard-price-price-value"]', '[data-testid*="price"]']),
-                  driverName: clean(driverNode && driverNode.innerText),
-                  profileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
-                  passengers: passengers,
-                  passengerRosterComplete: passengerRosterComplete
-                },
-                networkSource: networkSource,
-                driverProfileLinks: scopedDriverLinks.length ? scopedDriverLinks : allProfileLinks,
-                passengerHrefs: Array.from(new Set(passengerTargets)),
-                explicitEmptyRoster: explicitEmptyRoster,
-                rosterHasMore: hasMore,
-                rosterTerminalEvidence: rosterTerminalEvidence,
-                editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
-                itineraryStops: itineraryStops,
-                views: Number.isFinite(views) ? views : null,
-                domHtml: html.slice(0, 350000)
-              });
-            })();
-        """.trimIndent()
     }
 }
