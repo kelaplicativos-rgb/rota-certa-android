@@ -110,4 +110,21 @@ class BlaBlaBrowserOrchestrator0318Test {
             .toSet()
         assertTrue("Missing documented scripts: ${expected - actual}", actual.containsAll(expected))
     }
+    @Test
+    fun placeholderRegexEscapesBothClosingBracesForAndroidIcu() {
+        val registry = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt").readText()
+        assertTrue(registry.contains("""Regex("\\{\\{[A-Z0-9_]+\\}\\}")"""))
+        assertFalse(registry.contains("""Regex("\\{\\{[A-Z0-9_]+}}")"""))
+    }
+
+    @Test
+    fun blablaAccountManagementPanelStillExistsBehindSyncToolbar() {
+        val collectorUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(collectorUi.contains("Text(\"Contas BlaBlaCar\")"))
+        assertTrue(collectorUi.contains("Text(\"+ Adicionar conta\")"))
+        assertTrue(timelineUi.contains("BlaBlaCollectorPanel("))
+        assertTrue(timelineUi.contains("Sincronizar BlaBlaCar"))
+    }
+
 }
