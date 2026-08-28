@@ -83,6 +83,8 @@ data class BlaBlaCollectorTrip(
     /** Ordered itinerary labels captured from the exact BlaBlaCar trip. Empty means not observed. */
     val itinerary_stops: List<String> = emptyList(),
     val booked_seats: Int = 0,
+    /** Number currently published in BlaBlaCar's seat editor; not physical vehicle capacity. */
+    val published_seats: Int? = null,
     val passenger_roster_complete: Boolean = false,
     val identity_conflict: Boolean = false,
 )
@@ -631,6 +633,8 @@ object BlaBlaTimelineAdapter {
             blablaProfileUuid = trip.profile_uuid.trim().takeIf(String::isNotEmpty),
             blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),
             blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
+            blablaItineraryStops = trip.itinerary_stops,
+            blablaPublishedSeats = trip.published_seats,
             blablaPassengers = trip.passengers,
             blablaPassengerRosterComplete = trip.passenger_roster_complete,
             issues = buildSet {
@@ -642,7 +646,7 @@ object BlaBlaTimelineAdapter {
         UnifiedDebugEventStore.record(
             "TIMELINE_EXTERNAL_ENTRY",
             "br.com.mapeiaia.rotacerta",
-            "identityHash=${identity.identityHash} bookedSeats=${trip.booked_seats} passengerCount=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} sourceBlaBlaSeats=${entry.sourcePassengerSeats[BookingSource.BLABLACAR] ?: 0} phonesPresent=${trip.passengers.count { !it.phone.isNullOrBlank() }}",
+            "identityHash=${identity.identityHash} bookedSeats=${trip.booked_seats} publishedSeats=${trip.published_seats ?: -1} itineraryStops=${trip.itinerary_stops.size} passengerCount=${trip.passengers.size} rosterComplete=${trip.passenger_roster_complete} sourceBlaBlaSeats=${entry.sourcePassengerSeats[BookingSource.BLABLACAR] ?: 0} phonesPresent=${trip.passengers.count { !it.phone.isNullOrBlank() }}",
         )
         return entry
     }
