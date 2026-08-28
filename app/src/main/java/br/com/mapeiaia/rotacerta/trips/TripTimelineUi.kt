@@ -59,6 +59,7 @@ fun TripTimelineScreen(
     store: TripStore,
     onChanged: (String) -> Unit,
     autoSyncToken: Int,
+    forceAllSyncToken: Int,
     onRequestBlaBlaSync: () -> Unit,
     onCreateTrip: () -> Unit,
     onPinShortcut: () -> Unit,
@@ -90,9 +91,21 @@ fun TripTimelineScreen(
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
     val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
+    val forceAllSyncActive = autoSyncToken > 0 && forceAllSyncToken == autoSyncToken
 
-    LaunchedEffect(autoSyncToken) {
-        if (autoSyncToken > 0) showSync = true
+    LaunchedEffect(autoSyncToken, forceAllSyncToken) {
+        if (autoSyncToken > 0) {
+            showSync = true
+            if (forceAllSyncActive) {
+                autoSyncProfileUuid = null
+                autoSyncTripId = null
+                UnifiedDebugEventStore.record(
+                    "AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED",
+                    context.packageName,
+                    "scope=all_accounts source=timeline_pull token=$autoSyncToken",
+                )
+            }
+        }
     }
     LaunchedEffect(Unit) {
         while (true) {
@@ -313,8 +326,8 @@ fun TripTimelineScreen(
             onResult = { collectorResponse = it },
             onChanged = onChanged,
             autoSyncToken = autoSyncToken,
-            autoSyncProfileUuid = autoSyncProfileUuid,
-            autoSyncTripId = autoSyncTripId,
+            autoSyncProfileUuid = if (forceAllSyncActive) null else autoSyncProfileUuid,
+            autoSyncTripId = if (forceAllSyncActive) null else autoSyncTripId,
         )
     }
 
