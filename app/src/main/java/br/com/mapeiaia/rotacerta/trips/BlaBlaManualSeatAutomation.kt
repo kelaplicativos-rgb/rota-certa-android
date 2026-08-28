@@ -430,13 +430,6 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         webView = WebView(this)
         configureProfiledWebView(webView, account)
-        seatBrowser = BlaBlaSeatBrowserController(
-            context = this,
-            webView = webView,
-            accountId = account.id,
-            expectedProfileUuid = account.profileUuid.orEmpty(),
-            tripId = request.tripId,
-        )
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString()
@@ -1883,6 +1876,13 @@ class BlaBlaManualSeatSyncActivity : Activity() {
         root.addView(statusView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         webView = WebView(this)
         configureProfiledWebView(webView, account)
+        seatBrowser = BlaBlaSeatBrowserController(
+            context = this,
+            webView = webView,
+            accountId = account.id,
+            expectedProfileUuid = account.profileUuid.orEmpty(),
+            tripId = request.tripId,
+        )
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
