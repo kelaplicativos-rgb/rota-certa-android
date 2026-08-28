@@ -275,19 +275,12 @@ fun TripTimelineScreen(
             ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
-                if (showSync) {
-                    showSync = false
-                } else {
-                    showSync = true
-                    autoSyncProfileUuid = null
-                    autoSyncTripId = null
-                    UnifiedDebugEventStore.record(
-                        "AGENDA_SYNC_TOOLBAR_REQUESTED",
-                        context.packageName,
-                        "scope=all_accounts source=timeline_toolbar",
-                    )
-                    onRequestBlaBlaSync()
-                }
+                showSync = !showSync
+                UnifiedDebugEventStore.record(
+                    if (showSync) "AGENDA_SYNC_PANEL_OPENED" else "AGENDA_SYNC_PANEL_CLOSED",
+                    context.packageName,
+                    "source=timeline_toolbar autoSyncStarted=false",
+                )
             },
             ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
