@@ -123,8 +123,22 @@ class BlaBlaBrowserOrchestrator0318Test {
         val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertTrue(collectorUi.contains("Text(\"Contas BlaBlaCar\")"))
         assertTrue(collectorUi.contains("Text(\"+ Adicionar conta\")"))
+        assertTrue(collectorUi.contains("Sincronizar todas as contas"))
+        assertTrue(collectorUi.contains("Text(\"Sincronizar só hoje\")"))
         assertTrue(timelineUi.contains("BlaBlaCollectorPanel("))
         assertTrue(timelineUi.contains("Sincronizar BlaBlaCar"))
+    }
+
+    @Test
+    fun unreadableRideListReturnsPartialInsteadOfHangingInIdle() {
+        val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        val start = dynamic.indexOf("private fun blockSyncWithoutCurrentCard")
+        val end = dynamic.indexOf("private fun saveProgressSnapshot", start)
+        val block = dynamic.substring(start, end)
+        assertTrue(block.contains("returnPartial=true"))
+        assertTrue(block.contains("saveFinalSnapshotOnce"))
+        assertTrue(block.contains("completeSync(collected.size)"))
+        assertFalse(block.contains("enterBrowserPhase(Phase.IDLE, null, \"sync_blocked\")"))
     }
 
 }
