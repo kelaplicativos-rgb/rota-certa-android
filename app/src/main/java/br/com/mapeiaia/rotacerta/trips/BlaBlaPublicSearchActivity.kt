@@ -37,6 +37,8 @@ private data class PublicRenderedCard(
     val actualDeparture: String? = null,
     val actualArrival: String? = null,
     val priceText: String? = null,
+    val ratingText: String? = null,
+    val seatsText: String? = null,
     val text: String = "",
     val href: String? = null,
 )
@@ -320,6 +322,9 @@ class BlaBlaPublicSearchActivity : Activity() {
             actualDeparture = actualDeparture,
             actualArrival = actualArrival,
             price = cleanPrice(priceText),
+            duration = publicTripDuration(departureTime, arrivalTime),
+            driverRating = cleanRating(ratingText, text),
+            availableSeats = cleanAvailableSeats(seatsText, text),
             flags = flags,
             availability = availability,
             tripHref = href?.let { if (it.startsWith('/')) "https://www.blablacar.com.br$it" else it },
@@ -330,6 +335,48 @@ class BlaBlaPublicSearchActivity : Activity() {
         ?.let { Regex("R\\$\\s*[0-9.]+(?:,[0-9]{2})?", RegexOption.IGNORE_CASE).find(it)?.value }
         ?.replace(Regex("\\s+"), " ")
         ?.trim()
+
+    private fun cleanRating(raw: String?, fallback: String): String? {
+        fun normalizedRating(value: String): String? = Regex("([0-5](?:[.,]\\d)?)")
+            .find(value)?.groupValues?.getOrNull(1)?.replace(',', '.')
+        raw?.trim()?.takeIf(String::isNotEmpty)?.let(::normalizedRating)?.let { return it }
+        val marked = Regex(
+            "(?:avalia[cç][aã]o|rating|★|⭐)\\s*[:=-]?\\s*([0-5](?:[.,]\\d)?)|([0-5](?:[.,]\\d)?)\\s*(?:/\\s*5|★|⭐)",
+            RegexOption.IGNORE_CASE,
+        ).find(fallback) ?: return null
+        return marked.groupValues.drop(1).firstOrNull(String::isNotBlank)?.replace(',', '.')
+    }
+
+    private fun cleanAvailableSeats(raw: String?, fallback: String): Int? {
+        val source = listOfNotNull(raw, fallback).joinToString(" ")
+        return Regex("(\\d+)\\s*(?:vaga|vagas|lugar|lugares)\\s*(?:dispon[ií]vel|dispon[ií]veis)?", RegexOption.IGNORE_CASE)
+            .find(source)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
+
+    private fun publicTripDuration(departure: String?, arrival: String?): String? {
+        val start = parsePublicClock(departure) ?: return null
+        val end = parsePublicClock(arrival) ?: return null
+        var minutes = end - start
+        if (minutes < 0) minutes += 24 * 60
+        if (minutes <= 0) return null
+        val hours = minutes / 60
+        val rest = minutes % 60
+        return buildString {
+            if (hours > 0) append("${hours}h")
+            if (rest > 0) {
+                if (isNotEmpty()) append(' ')
+                append("${rest}min")
+            }
+        }
+    }
+
+    private fun parsePublicClock(raw: String?): Int? {
+        val match = Regex("(\\d{1,2}):(\\d{2})").find(raw.orEmpty()) ?: return null
+        val h = match.groupValues[1].toIntOrNull() ?: return null
+        val m = match.groupValues[2].toIntOrNull() ?: return null
+        if (h !in 0..23 || m !in 0..59) return null
+        return h * 60 + m
+    }
 
     private fun isAllowedPublicUrl(raw: String): Boolean = runCatching {
         val uri = URI(raw)
@@ -354,6 +401,8 @@ class BlaBlaPublicSearchActivity : Activity() {
                 actualDeparture: text(card, '[data-testid="e2e-itinerary-departure-station"]'),
                 actualArrival: text(card, '[data-testid="e2e-itinerary-arrival-station"]'),
                 priceText: text(card, '[data-testid="e2e-tripcard-price"]'),
+                ratingText: text(card, '[data-testid*="rating"]'),
+                seatsText: text(card, '[data-testid*="seat"]') || text(card, '[data-testid*="availability"]'),
                 text: card.innerText || '',
                 href: card.querySelector('a[href*="/trip"]')?.getAttribute('href') || null
               }));
