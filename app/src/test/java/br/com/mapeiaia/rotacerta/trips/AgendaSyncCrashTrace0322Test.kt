@@ -36,6 +36,21 @@ class AgendaSyncCrashTrace0322Test {
     }
 
     @Test
+    fun timelineParentGuardCoversCrashBeforeSyncActivityAndPersistsBreadcrumbs() {
+        val trace = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        assertTrue(trace.contains("class AgendaTimelineCrashGuard"))
+        assertTrue(trace.contains("class AgendaTimelineUncaughtHandler"))
+        assertTrue(trace.contains("BREADCRUMB_FILE_NAME"))
+        assertTrue(trace.contains("--- AGENDA SYNC BREADCRUMBS ---"))
+        assertTrue(activity.contains("AgendaTimelineCrashGuard.install(this)"))
+        assertTrue(activity.contains("timeline_pull_requested"))
+        assertTrue(activity.contains("timeline_pull_before_public_booking_reconcile"))
+        assertTrue(activity.contains("timeline_pull_after_blabla_token"))
+        assertTrue(activity.contains("timeline_public_agenda_effect_begin"))
+    }
+
+    @Test
     fun persistedCrashEvidenceNeverStoresThrowableMessageOrPassengerValues() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
         assertTrue(source.contains("error.javaClass.name"))
