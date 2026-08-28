@@ -19,7 +19,7 @@ class AgendaDurability0275Test {
 
     @Test
     fun rideListCollectorUsesNearestPrecedingCalendarHeaderAsFallback() {
-        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        val source = File("src/main/assets/blablacar/scripts/ride_list.js").readText()
         assertTrue(source.contains("looksLikeCalendarDate"))
         assertTrue(source.contains("nearestPrecedingDateEvidence"))
         assertTrue(source.contains("node.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING"))
