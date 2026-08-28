@@ -373,69 +373,6 @@ internal fun EnhancedPassengerTimelineSection(
     }
 
 
-    historyRow?.let { row ->
-        val profile = row.passengerId?.let(passengerStore::profile)
-            ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
-        val persistent = profile?.let { passengerStore.persistentHistory(it.id) }
-        AlertDialog(
-            onDismissRequest = { historyRow = null },
-            title = { Text("Histórico do passageiro") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    if (profile == null) {
-                        Text("Ainda não há identidade persistente para este passageiro.")
-                    } else {
-                        Text((if (profile.blocked) "🚫 " else "") + profile.displayName, style = MaterialTheme.typography.titleMedium)
-                        Text(profile.whatsapp.ifBlank { "Telefone não informado" })
-                        Text("${persistent?.totalRides ?: 0} viagem(ns) registrada(s)", style = MaterialTheme.typography.bodySmall)
-                        if (profile.externalPassengerIds.isNotEmpty()) {
-                            Text(
-                                "UUID BlaBlaCar: " + profile.externalPassengerIds.joinToString(", "),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        if (profile.blocked) {
-                            Text(
-                                "🚫 Persona non grata" + profile.blockedReason.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty(),
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                        if (profile.archived) Text("Arquivado da lista, mas histórico preservado.", style = MaterialTheme.typography.bodySmall)
-                        val observations = persistent?.observations.orEmpty()
-                        if (observations.isNotEmpty()) {
-                            HorizontalDivider()
-                            Text("Alterações de identidade", style = MaterialTheme.typography.titleSmall)
-                            observations.take(12).forEach { observation ->
-                                val whenText = java.time.Instant.ofEpochMilli(observation.observedAtMillis)
-                                    .atZone(java.time.ZoneId.systemDefault())
-                                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
-                                val parts = listOf(
-                                    observation.displayName.takeIf(String::isNotBlank),
-                                    observation.whatsapp.takeIf(String::isNotBlank),
-                                    observation.photoUrl.takeIf(String::isNotBlank)?.let { "foto registrada" },
-                                ).filterNotNull()
-                                Text("• $whenText — ${parts.joinToString(" • ")}", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                if (profile != null) {
-                    TextButton(onClick = {
-                        passengerStore.setArchived(profile.id, !profile.archived)
-                        historyRow = null
-                        onChanged(
-                            if (profile.archived) "Passageiro voltou para a lista. Histórico preservado."
-                            else "Passageiro retirado da lista visual. Histórico, UUID, bloqueio e viagens foram preservados.",
-                        )
-                    }) { Text(if (profile.archived) "Restaurar na lista" else "Excluir da lista") }
-                }
-            },
-            dismissButton = { TextButton(onClick = { historyRow = null }) { Text("Fechar") } },
-        )
-    }
-
     profileRow?.let { row ->
         val profile = passengerStore.profile(row.passengerId)
             ?: passengerStore.profileByExternalPassengerId(row.externalPassengerId)
@@ -459,7 +396,7 @@ internal fun EnhancedPassengerTimelineSection(
                     val phone = profile?.whatsapp?.takeIf(String::isNotBlank) ?: row.phone
                     Text(phone?.takeIf(String::isNotBlank) ?: "Telefone não informado")
                     Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
-                    history?.let { Text("${it.totalRides} carona(s) registrada(s)", style = MaterialTheme.typography.bodySmall) }
+                    history?.let { Text("${it.totalRides} viagem(ns) concluída(s)", style = MaterialTheme.typography.bodySmall) }
                     if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)
                     if (manualBooking != null) {
                         TextButton(onClick = {
@@ -475,12 +412,37 @@ internal fun EnhancedPassengerTimelineSection(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    profile?.let { passengerStore.setBlocked(it.id, !it.blocked, if (!it.blocked) "Bloqueado pelo motorista" else "") }
+                    blockProfile = profile
                     profileRow = null
-                    onChanged(if (profile?.blocked == true) "Passageiro desbloqueado." else "Passageiro bloqueado; futuras reservas com a mesma identidade serão sinalizadas e retiradas quando possível.")
-                }) { Text(if (profile?.blocked == true) "Desbloquear" else "Bloquear") }
+                }) { Text(if (profile?.blocked == true) "✅" else "🚫") }
             },
             dismissButton = { TextButton(onClick = { profileRow = null }) { Text("Fechar") } },
+        )
+    }
+
+    blockProfile?.let { profile ->
+        val blocking = !profile.blocked
+        AlertDialog(
+            onDismissRequest = { blockProfile = null },
+            title = { Text(if (blocking) "Marcar como persona non grata?" else "Remover persona non grata?") },
+            text = {
+                Text(
+                    if (blocking) {
+                        "O bloqueio é ligado à identidade canônica/UUID e não ao nome. O acesso à Agenda Pública é uma permissão separada."
+                    } else {
+                        "Isto remove apenas o bloqueio de persona non grata. Histórico e identidade permanecem preservados."
+                    },
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    passengerStore.setBlocked(profile.id, blocking, if (blocking) "Bloqueado pelo motorista" else "")
+                    identityRevision++
+                    blockProfile = null
+                    onChanged(if (blocking) "Passageiro marcado como persona non grata." else "Bloqueio de persona non grata removido.")
+                }) { Text("Confirmar") }
+            },
+            dismissButton = { TextButton(onClick = { blockProfile = null }) { Text("Cancelar") } },
         )
     }
 
@@ -762,7 +724,12 @@ internal fun enhancedPassengerRows(
                     boarding = current.boarding ?: boarding,
                     dropoff = current.dropoff ?: dropoff,
                     sources = current.sources + booking.source,
-                    passengerId = booking.passengerId.takeIf(String::isNotBlank) ?: current.passengerId,
+                    passengerId = if (candidateIndex >= 0) {
+                        booking.passengerId.takeIf(String::isNotBlank) ?: current.passengerId
+                    } else {
+                        // Probable name/route similarity is visual evidence only; never canonical identity.
+                        current.passengerId
+                    },
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
                     fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
@@ -1381,7 +1348,7 @@ private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassenger
     return true
 }
 
-private fun openPassengerWhatsApp(context: Context, raw: String) {
+internal fun openPassengerWhatsApp(context: Context, raw: String) {
     val digits = raw.filter(Char::isDigit)
     if (digits.length !in 8..15) return
     runCatching {
