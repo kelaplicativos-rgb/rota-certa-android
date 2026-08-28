@@ -20,10 +20,10 @@ const policy = fs.readFileSync(
 );
 
 test("identity collector never uses a generic h1 as the driver name", () => {
-  const identityStart = accounts.indexOf("private val IDENTITY_JS");
-  const identityEnd = accounts.indexOf("private val PROFILE_REVIEWS_JS", identityStart);
-  const identity = accounts.slice(identityStart, identityEnd);
-  assert.ok(identityStart >= 0 && identityEnd > identityStart);
+  const identity = fs.readFileSync(
+    path.join(root, "app", "src", "main", "assets", "blablacar", "scripts", "session_identity.js"),
+    "utf8",
+  );
   assert.doesNotMatch(identity, /driver-name"\], h1/);
   assert.doesNotMatch(identity, /profile-name"\], \[data-testid\*="driver-name"\], h1/);
   assert.match(identity, /explicitNameNode/);
