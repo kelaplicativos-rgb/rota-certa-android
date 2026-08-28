@@ -37,6 +37,7 @@ fun QuickPassengerPanel(
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
+    val passengerRepository = remember(context) { PassengerRepository(context) }
     val moneySpec = remember(context) { PassengerMoney.spec(context) }
     val stops = trip.stops.sortedBy(TripStop::order)
     if (stops.size < 2) return
@@ -71,6 +72,13 @@ fun QuickPassengerPanel(
     val exactContactMatches = remember(contact, selectedPassengerId) {
         if (selectedPassengerId.isBlank()) passengerStore.exactContactMatches(contact) else emptyList()
     }
+    val passengerSuggestions = remember(name, contact, selectedPassengerId) {
+        if (selectedPassengerId.isNotBlank()) emptyList()
+        else passengerRepository.search(
+            contact.takeIf { it.filter(Char::isDigit).length >= 4 } ?: name,
+            6,
+        )
+    }
 
     HorizontalDivider()
     Text("Adicionar passageiro")
@@ -94,23 +102,27 @@ fun QuickPassengerPanel(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    if (exactContactMatches.size == 1) {
-        val existing = exactContactMatches.single()
+    if (passengerSuggestions.isNotEmpty()) {
+        Text("Passageiros já cadastrados", style = MaterialTheme.typography.bodySmall)
+        passengerSuggestions.forEach { existing ->
+            OutlinedButton(
+                onClick = {
+                    selectedPassengerId = existing.id
+                    name = existing.displayName
+                    contact = existing.whatsapp
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Usar cadastro: ${existing.displayName}") }
+        }
+    }
+    if (exactContactMatches.size == 1 && selectedPassengerId.isBlank()) {
         Text(
-            "Cadastro existente encontrado. Só será reutilizado se você confirmar.",
+            "WhatsApp exato e único encontrado; este cadastro será reutilizado automaticamente.",
             style = MaterialTheme.typography.bodySmall,
         )
-        OutlinedButton(
-            onClick = {
-                selectedPassengerId = existing.id
-                name = existing.displayName
-                contact = existing.whatsapp
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Usar cadastro: ${existing.displayName}") }
     } else if (exactContactMatches.size > 1) {
         Text(
-            "Há mais de um cadastro com esse contato. Nenhum será unido automaticamente.",
+            "Há mais de um cadastro com esse contato. Selecione manualmente; nenhum será unido automaticamente.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -203,10 +215,17 @@ fun QuickPassengerPanel(
                 error = "Informe um WhatsApp/telefone válido."
                 return@Button
             }
+            if (selectedPassengerId.isBlank() && exactContactMatches.size > 1) {
+                error = "Há mais de um cadastro com esse WhatsApp. Selecione o passageiro correto."
+                return@Button
+            }
+            val canonicalPassengerId = selectedPassengerId.ifBlank {
+                exactContactMatches.singleOrNull()?.id.orEmpty()
+            }
             val request = QuickPassengerRequest(
                 passengerName = name,
                 passengerContact = contact,
-                passengerId = selectedPassengerId,
+                passengerId = canonicalPassengerId,
                 boardingStopId = boarding,
                 dropoffStopId = dropoff,
                 seats = seats,
