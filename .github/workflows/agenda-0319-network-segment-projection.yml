@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.325 BlaBlaCar script regex fix
+name: Rota Certa 0.1.326 BlaBlaCar panel and unblock
 
 on:
   push:
     branches:
-      - agent/blablacar-script-regex-fix-0.1.325
+      - agent/blablacar-panel-and-unblock-0.1.326
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0325-${{ github.ref }}
+  group: agenda-0326-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,20 +25,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/blablacar-script-regex-fix-0.1.325
+          ref: agent/blablacar-panel-and-unblock-0.1.326
           fetch-depth: 0
 
-      - name: Validate 0.1.325 BlaBlaCar Android regex fix
+      - name: Validate 0.1.326 manual panel and sync unblock
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5618' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.325"' app/build.gradle.kts
-          grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'scope=all_accounts source=timeline_toolbar' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'onRequestBlaBlaSync()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'timelineToolbarSyncStartsAllAccountsInsteadOfOnlyOpeningPanel' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'versionCode = 5619' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.326"' app/build.gradle.kts
+          grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'timelineToolbarOnlyOpensManualSyncPanel' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
           grep -Fq 'PullToRefreshBox' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'AGENDA_PULL_REFRESH_ALL_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
@@ -64,7 +64,12 @@ jobs:
           ! grep -Fq 'Regex("\\{\\{[A-Z0-9_]+}}")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
           grep -Fq 'Text("+ Adicionar conta")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'Text("Contas BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Sincronizar todas as contas' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaCollectorPanel(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'returnPartial=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'completeSync(collected.size)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'unreadableRideListReturnsPartialInsteadOfHangingInIdle' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -133,20 +138,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5618'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.325'" /tmp/aapt.txt
+          grep -Fq "versionCode='5619'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.326'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0325
-          cp "$APK" /tmp/0325/rota-certa-0.1.325-blablacar-script-regex-fix.apk
-          cp /tmp/apk.sha256 /tmp/0325/apk.sha256
-          cp /tmp/aapt.txt /tmp/0325/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0325/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0325/gradle.txt
-          git rev-parse HEAD > /tmp/0325/source-head.txt
+          mkdir -p /tmp/0326
+          cp "$APK" /tmp/0326/rota-certa-0.1.326-blablacar-panel-and-unblock.apk
+          cp /tmp/apk.sha256 /tmp/0326/apk.sha256
+          cp /tmp/aapt.txt /tmp/0326/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0326/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0326/gradle.txt
+          git rev-parse HEAD > /tmp/0326/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.325-blablacar-script-regex-fix
+          name: rota-certa-0.1.326-blablacar-panel-and-unblock
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0325
+          path: /tmp/0326
