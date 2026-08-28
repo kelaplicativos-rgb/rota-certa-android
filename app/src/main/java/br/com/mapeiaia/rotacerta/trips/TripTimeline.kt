@@ -29,6 +29,10 @@ data class TripTimelineEntry(
     val blablaProfileUuid: String? = null,
     val blablaPrice: String? = null,
     val blablaAvailability: String? = null,
+    /** Ordered stops observed on the exact BlaBlaCar publication. */
+    val blablaItineraryStops: List<String> = emptyList(),
+    /** External publication setting only; never used as the vehicle's physical capacity. */
+    val blablaPublishedSeats: Int? = null,
     val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val blablaPassengerRosterComplete: Boolean? = null,
     val issues: Set<TripTimelineIssue> = emptySet(),
