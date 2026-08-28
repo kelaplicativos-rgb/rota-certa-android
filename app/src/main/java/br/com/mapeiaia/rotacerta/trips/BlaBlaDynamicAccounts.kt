@@ -326,6 +326,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var pendingTripCandidateIndex = -1
     private val completionGate = BlaBlaSyncCompletionGate()
     private var networkDiagnosticRecorder: BlaBlaNetworkDiagnosticRecorder? = null
+    private var syncCrashGuard: AgendaSyncCrashGuard? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -339,6 +340,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            AgendaSyncCrashTraceStore.arm(this)
+            syncCrashGuard = AgendaSyncCrashGuard.install(this) { syncCrashSnapshot() }
+            AgendaSyncCrashTraceStore.checkpoint("activity_created")
+        }
         targetTripId = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID)?.trim().orEmpty()
         targetTripHref = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL)?.trim().orEmpty()
         targetDate = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_DATE)
@@ -478,6 +484,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         reason: String,
     ) {
         phase = phaseValue
+        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            AgendaSyncCrashTraceStore.checkpoint(
+                "phase=${phaseValue.name} request=${request?.name ?: "none"} reason=${reason.take(80)}",
+            )
+        }
         if (request == null) {
             browserOrchestrator.cancel()
         } else {
@@ -2264,6 +2275,25 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         networkDiagnosticRecorder?.close()
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
+        syncCrashGuard?.close()
+    }
+
+    private fun syncCrashSnapshot(): String = buildString {
+        append("mode=").append(mode)
+        append(" syncGeneration=").append(syncGeneration)
+        append(" navigationGeneration=").append(navigationGeneration)
+        append(" phase=").append(phase.name)
+        append(" candidateIndex=").append(candidateIndex)
+        append(" candidates=").append(candidates.size)
+        append(" collected=").append(collected.size)
+        append(" pendingPassengers=").append(pendingTripPassengers.size)
+        append(" resolvedCards=").append(resolvedCardTraversalKeys.size)
+        append(" completedCards=").append(completedCardTraversalKeys.size)
+        append(" quarantinedCards=").append(quarantinedCardTraversalKeys.size)
+        append(" detailInFlight=").append(detailCaptureInFlight)
+        append(" passengerInFlight=").append(passengerCaptureInFlight || passengerCardCaptureInFlight)
+        append(" editInFlight=").append(editCaptureInFlight)
+        append(" optionsInFlight=").append(optionsCaptureInFlight)
     }
 
     private fun currentTripMatchesCandidate(expectedCandidate: Int): Boolean {

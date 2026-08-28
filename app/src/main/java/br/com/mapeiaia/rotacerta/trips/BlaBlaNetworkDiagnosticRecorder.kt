@@ -327,6 +327,7 @@ internal class BlaBlaNetworkDiagnosticStore(
         private const val MAX_REPORT_RESPONSES_PER_PHASE = 10
 
         fun exportLatest(context: Context): String {
+            val crashTrace = AgendaSyncCrashTraceStore.export(context)
             val root = File(context.filesDir, "blablacar-network-diagnostic")
             val captures = root.listFiles()
                 .orEmpty()
@@ -334,8 +335,9 @@ internal class BlaBlaNetworkDiagnosticStore(
                 .filter(File::isFile)
                 .sortedByDescending(File::lastModified)
                 .take(MAX_REPORT_CAPTURES)
-            if (captures.isEmpty()) return "sem captura network-first"
-            return captures.mapIndexed { captureIndex, file ->
+            val networkCapture = if (captures.isEmpty()) {
+                "sem captura network-first"
+            } else captures.mapIndexed { captureIndex, file ->
                 val lines = runCatching { file.readLines(Charsets.UTF_8) }.getOrDefault(emptyList())
                     .filter { line -> line.startsWith('{') && line.endsWith('}') }
                 val selectedIndexes = linkedSetOf<Int>()
@@ -354,6 +356,11 @@ internal class BlaBlaNetworkDiagnosticStore(
                     selectedIndexes.sorted().forEach { index -> appendLine(lines[index]) }
                 }.trimEnd()
             }.joinToString("\n")
+            return buildString {
+                appendLine("--- AGENDA SYNC CRASH TRACE ---")
+                appendLine(crashTrace)
+                append(networkCapture)
+            }.trimEnd()
         }
 
         private fun stableDirectoryTag(accountId: String): String =
