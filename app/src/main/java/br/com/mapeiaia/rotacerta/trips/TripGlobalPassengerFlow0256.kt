@@ -73,6 +73,27 @@ internal fun timelineExternalRoutePointLabels(entry: TripTimelineEntry): List<St
     val destinationKey = timelinePlaceKey0256(destination)
     if (originKey.isBlank() || destinationKey.isBlank() || originKey == destinationKey) return listOf(origin, destination)
 
+    val observedItinerary = entry.blablaItineraryStops
+        .map(String::trim)
+        .filter(String::isNotBlank)
+    if (observedItinerary.size >= 2) {
+        val observedOriginIndex = observedItinerary.indexOfFirst { timelineSamePlace0256(it, origin) }
+        val observedDestinationIndex = observedItinerary.indexOfLast { timelineSamePlace0256(it, destination) }
+        if (observedOriginIndex >= 0 && observedDestinationIndex > observedOriginIndex) {
+            val route = observedItinerary
+                .subList(observedOriginIndex, observedDestinationIndex + 1)
+                .fold(mutableListOf<String>()) { acc, label ->
+                    if (acc.none { timelineSamePlace0256(it, label) }) acc += label
+                    acc
+                }
+            if (route.size >= 2) {
+                route[0] = origin
+                route[route.lastIndex] = destination
+                return route
+            }
+        }
+    }
+
     val labels = linkedMapOf(originKey to origin, destinationKey to destination)
     val edges = linkedMapOf<String, MutableSet<String>>()
     fun addNode(key: String) { edges.getOrPut(key) { linkedSetOf() } }
