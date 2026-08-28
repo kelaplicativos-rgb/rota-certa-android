@@ -231,8 +231,13 @@ fun TripTimelineScreen(
 
     val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
         archiveStore.clearExternal(physical)
+        val manualCardsToArchive = if (includeManualCards) {
+            physical.filter { !it.localTripId.isNullOrBlank() }
+        } else {
+            emptyList()
+        }
+        manualCardsToArchive.forEach { archiveStore.setArchived(it, true) }
         if (includeManualCards) {
-            physical.filterNot(::hasExternalPublication).forEach { archiveStore.setArchived(it, true) }
             archiveRevision++
         }
         val externalClear = collectorStore.clearSynchronizedTimelineData()
@@ -243,7 +248,7 @@ fun TripTimelineScreen(
         UnifiedDebugEventStore.record(
             "TIMELINE_VISUAL_CLEARED_BY_USER",
             context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards localCardsArchived=${manualCardsToArchive.size} passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
         )
         onChanged(
             if (includeManualCards) {
@@ -261,7 +266,21 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
             ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
-            ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") { showSync = !showSync },
+            ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
+                if (showSync) {
+                    showSync = false
+                } else {
+                    showSync = true
+                    autoSyncProfileUuid = null
+                    autoSyncTripId = null
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_SYNC_TOOLBAR_REQUESTED",
+                        context.packageName,
+                        "scope=all_accounts source=timeline_toolbar",
+                    )
+                    onRequestBlaBlaSync()
+                }
+            },
             ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
