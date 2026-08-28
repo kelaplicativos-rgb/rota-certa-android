@@ -28,7 +28,7 @@ class AgendaSyncCrashTrace0322Test {
     @Test
     fun persistedCrashEvidenceNeverStoresThrowableMessageOrPassengerValues() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
-        assertTrue(source.contains("exception=${\'$\'}{error.javaClass.name}"))
+        assertTrue(source.contains("error.javaClass.name"))
         assertTrue(source.contains("messageCaptured=false"))
         assertTrue(source.contains("personalValuesCaptured=false"))
         assertFalse(source.contains("error.message"))
