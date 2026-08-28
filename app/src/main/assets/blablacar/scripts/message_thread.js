@@ -1,0 +1,1 @@
+(function(){const clean=(v)=>(v||'').replace(/\s+/g,' ').trim();const nodes=Array.from(document.querySelectorAll('[data-testid*="message"],[data-testid*="conversation"],article,li')).map((n)=>clean(n.innerText)).filter(Boolean);return JSON.stringify({items:Array.from(new Set(nodes)).slice(0,200),url:location.href||''});})();
