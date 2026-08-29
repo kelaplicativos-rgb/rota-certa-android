@@ -130,6 +130,20 @@ class BlaBlaBrowserOrchestrator0318Test {
     }
 
     @Test
+    fun allAccountSyncKeepsOnlyOneSessionActivityInFlight() {
+        val collector = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
+        assertTrue(collector.contains("var syncSessionInFlight by remember { mutableStateOf(false) }"))
+        assertTrue(collector.contains("if (!syncing || archiving || syncSessionInFlight) return@LaunchedEffect"))
+        assertTrue(collector.contains("syncSessionInFlight = true"))
+        assertTrue(collector.contains("syncSessionInFlight = false"))
+        assertTrue(collector.contains("AGENDA_SYNC_SESSION_LAUNCH"))
+        val launchGate = collector.indexOf("syncSessionInFlight = true", collector.indexOf("LaunchedEffect(syncing, archiving, syncCursor, syncQueue)"))
+        val launchCall = collector.indexOf("sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))", launchGate)
+        assertTrue(launchGate >= 0)
+        assertTrue(launchCall > launchGate)
+    }
+
+    @Test
     fun unreadableRideListReturnsPartialInsteadOfHangingInIdle() {
         val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         val start = dynamic.indexOf("private fun blockSyncWithoutCurrentCard")
