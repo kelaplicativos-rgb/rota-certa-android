@@ -335,6 +335,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
         if (uri == null) {
+            br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.clearFrozen()
             supportReportStatus = "Relatorio cancelado."
             return@rememberLauncherForActivityResult
         }
@@ -766,6 +767,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
                                             packageName = context.packageName,
                                             details = "source=manual_report_tap",
                                         )
+                                        br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.freezeSnapshot()
                                         supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt")
                                     },
                                     onClearReport = {
@@ -894,6 +896,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
                                             packageName = context.packageName,
                                             details = "source=manual_report_tap",
                                         )
+                                        br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.freezeSnapshot()
                                         supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt")
                                     },
                     onClearReport = {
@@ -1906,7 +1909,7 @@ private fun DiagnosticExpander(
             Switch(checked = debugLogEnabled, onCheckedChange = onDebugLogChange)
         }
         Text(
-            "A coleta não grava eventos continuamente no armazenamento. Telefones e e-mails são mascarados no arquivo.",
+            "A Agenda mantém uma trilha circular leve apenas em memória. Gerar relatório apenas congela e exporta essa trilha; dados sensíveis são mascarados.",
             style = MaterialTheme.typography.bodySmall,
         )
         Button(onClick = onCreateReport, modifier = Modifier.fillMaxWidth()) {
@@ -2973,6 +2976,8 @@ private suspend fun buildManualSupportReport(
     val complementaryEvents = DiagnosticLogStore.dump()
 
     return buildString {
+        appendLine(br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.build(context))
+        appendLine()
         appendLine("ROTA CERTA DIAGNOSTICO DE SESSAO")
         appendLine("Arquivo montado somente por clique do usuario.")
         appendLine("A trilha normal fica apenas em memoria; a investigacao intensiva opcional sobrescreve somente um checkpoint pequeno por segundo.")
