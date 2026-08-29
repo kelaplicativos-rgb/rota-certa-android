@@ -391,7 +391,7 @@ async function markDriverNotificationRead(req, res, notificationIdRaw, all = fal
     return fail(res, 404, "notification_not_found", "Notificação não encontrada.");
   }
   await ref.set({ readAtMillis: Number(snap.data().readAtMillis || 0) || now }, { merge: true });
-  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 });
+  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 ? 1 : 0 });
 }
 
 async function markPassengerNotificationRead(req, res, notificationIdRaw, all = false) {
@@ -419,7 +419,7 @@ async function markPassengerNotificationRead(req, res, notificationIdRaw, all = 
   const snap = await ref.get();
   if (!snap.exists || !owns(snap.data())) return fail(res, 404, "notification_not_found", "Notificação não encontrada.");
   await ref.set({ readAtMillis: Number(snap.data().readAtMillis || 0) || now }, { merge: true });
-  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 });
+  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 ? 1 : 0 });
 }
 
 function cleanText(value, max = 240) {
