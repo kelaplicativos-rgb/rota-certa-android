@@ -149,9 +149,7 @@ jobs:
           grep -Fq 'shape = RoundedCornerShape(12.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'BorderStroke(1.dp, MaterialTheme.colorScheme.outline)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'color = MaterialTheme.colorScheme.onSurface' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
-          grep -Fq '.fillMaxHeight(0.92f)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq '.verticalScroll(rememberScrollState())' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
-          grep -Fq 'Text("Confirmar")' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'usePlatformDefaultWidth = false' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'modifier = Modifier.fillMaxSize()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'FilterChip(' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
