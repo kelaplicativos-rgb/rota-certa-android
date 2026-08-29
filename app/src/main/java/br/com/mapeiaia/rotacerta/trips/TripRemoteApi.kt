@@ -122,9 +122,11 @@ data class DriverBookingsResponse(
 @Serializable
 data class DriverPassengerAccess(
     val id: String = "",
+    val passengerId: String = "",
     val passengerContact: String = "",
     val displayName: String = "",
     val status: String = "PENDING",
+    val accountActivated: Boolean = false,
     val referredByContact: String = "",
     val referralRewardGrantedAtMillis: Long = 0L,
     val creditBalanceCents: Long = 0L,
@@ -142,7 +144,25 @@ data class DriverPassengersResponse(
 data class DriverPassengerInviteRequest(
     val displayName: String,
     val passengerContact: String,
+    val passengerId: String = "",
     val referredByContact: String = "",
+)
+
+@Serializable
+data class DriverPassengerDirectoryItem(
+    val passengerId: String,
+    val displayName: String,
+    val passengerContact: String,
+)
+
+@Serializable
+data class DriverPassengerDirectoryRequest(
+    val passengers: List<DriverPassengerDirectoryItem>,
+)
+
+@Serializable
+data class DriverPassengerDirectoryResponse(
+    val synced: Int = 0,
 )
 
 @Serializable
@@ -154,7 +174,17 @@ data class DriverPassengerInviteResponse(
 @Serializable
 data class DriverPassengerBlockRequest(
     val passengerContact: String,
-    val blocked: Boolean,
+    val passengerId: String = "",
+    val blocked: Boolean = false,
+    val status: String = "",
+)
+
+@Serializable
+data class DriverPassengerWhatsappUpdateRequest(
+    val passengerId: String,
+    val currentPassengerContact: String = "",
+    val newPassengerContact: String,
+    val displayName: String = "",
 )
 
 @Serializable
@@ -165,6 +195,7 @@ data class DriverPassengerBlockResponse(
 @Serializable
 data class DriverPassengerResetPasswordRequest(
     val passengerContact: String,
+    val passengerId: String = "",
 )
 
 @Serializable
@@ -347,6 +378,7 @@ class TripRemoteApi(
     suspend fun invitePassenger(
         displayName: String,
         passengerContact: String,
+        passengerId: String = "",
         referredByContact: String = "",
     ): DriverPassengerInviteResponse = request(
         method = "POST",
@@ -355,7 +387,66 @@ class TripRemoteApi(
             DriverPassengerInviteRequest(
                 displayName = displayName.trim(),
                 passengerContact = passengerContact.trim(),
+                passengerId = passengerId.trim(),
                 referredByContact = referredByContact.trim(),
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
+    suspend fun syncPassengerDirectory(
+        profiles: List<PassengerProfile>,
+    ): DriverPassengerDirectoryResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/sync",
+        body = json.encodeToString(
+            DriverPassengerDirectoryRequest(
+                profiles
+                    .filter { it.id.isNotBlank() && passengerContactKey(it.agendaAccessWhatsapp).isNotBlank() }
+                    .distinctBy { passengerContactKey(it.agendaAccessWhatsapp) }
+                    .map {
+                        DriverPassengerDirectoryItem(
+                            passengerId = it.id,
+                            displayName = it.displayName,
+                            passengerContact = it.agendaAccessWhatsapp,
+                        )
+                    },
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
+    suspend fun updatePassengerAccessWhatsapp(
+        passengerId: String,
+        currentPassengerContact: String,
+        newPassengerContact: String,
+        displayName: String,
+    ): DriverPassengerBlockResponse = request(
+        method = "PUT",
+        path = "/v1/driver/passengers/whatsapp",
+        body = json.encodeToString(
+            DriverPassengerWhatsappUpdateRequest(
+                passengerId = passengerId.trim(),
+                currentPassengerContact = currentPassengerContact.trim(),
+                newPassengerContact = newPassengerContact.trim(),
+                displayName = displayName.trim(),
+            ),
+        ),
+        requireDriverToken = true,
+    )
+
+    suspend fun setPassengerAccessStatus(
+        passengerContact: String,
+        status: String,
+        passengerId: String = "",
+    ): DriverPassengerBlockResponse = request(
+        method = "POST",
+        path = "/v1/driver/passengers/block",
+        body = json.encodeToString(
+            DriverPassengerBlockRequest(
+                passengerContact = passengerContact.trim(),
+                passengerId = passengerId.trim(),
+                status = status.trim().uppercase(),
             ),
         ),
         requireDriverToken = true,
@@ -364,17 +455,25 @@ class TripRemoteApi(
     suspend fun setPassengerAccessBlocked(
         passengerContact: String,
         blocked: Boolean,
-    ): DriverPassengerBlockResponse = request(
-        method = "POST",
-        path = "/v1/driver/passengers/block",
-        body = json.encodeToString(DriverPassengerBlockRequest(passengerContact.trim(), blocked)),
-        requireDriverToken = true,
+        passengerId: String = "",
+    ): DriverPassengerBlockResponse = setPassengerAccessStatus(
+        passengerContact = passengerContact,
+        status = if (blocked) "BLOCKED" else "AUTHORIZED",
+        passengerId = passengerId,
     )
 
-    suspend fun resetPassengerPassword(passengerContact: String): DriverPassengerResetPasswordResponse = request(
+    suspend fun resetPassengerPassword(
+        passengerContact: String,
+        passengerId: String = "",
+    ): DriverPassengerResetPasswordResponse = request(
         method = "POST",
         path = "/v1/driver/passengers/reset-password",
-        body = json.encodeToString(DriverPassengerResetPasswordRequest(passengerContact.trim())),
+        body = json.encodeToString(
+            DriverPassengerResetPasswordRequest(
+                passengerContact = passengerContact.trim(),
+                passengerId = passengerId.trim(),
+            ),
+        ),
         requireDriverToken = true,
     )
 

@@ -21,7 +21,14 @@ let confirmedBooking = null;
 let pendingBooking = null;
 let editingExistingBooking = false;
 let passengerSessionToken = (() => {
-  try { return localStorage.getItem("rotacerta-passenger-session") || ""; } catch (_) { return ""; }
+  try {
+    const token = sessionStorage.getItem("rotacerta-passenger-session") || "";
+    localStorage.removeItem("rotacerta-passenger-session");
+    return token;
+  } catch (_) { return ""; }
+})();
+let passengerAgendaViewToken = (() => {
+  try { return sessionStorage.getItem("rotacerta-agenda-view-session") || ""; } catch (_) { return ""; }
 })();
 let passengerSessionContact = (() => {
   try { return localStorage.getItem("rotacerta-passenger-contact") || ""; } catch (_) { return ""; }
@@ -32,6 +39,8 @@ let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
 let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
+let passengerViewAccountActivated = false;
+let pendingPrivateAction = "";
 
 function localTodayKey() {
   return DateContract.todayKey();
@@ -85,7 +94,7 @@ function tracePublicAction(event, details = {}) {
   } catch (_) {}
 }
 
-const mainSections = ["accessGate", "agenda", "calendarPicker", "seatPicker", "searchResults", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
+const mainSections = ["accessGate", "privateAuth", "agenda", "calendarPicker", "seatPicker", "searchResults", "trip", "passengerPortal", "booking", "review", "confirmed", "cancelBooking"];
 
 function show(id, visible = true) {
   const node = $(id);
@@ -240,6 +249,12 @@ function authenticatedHeaders(extra = {}) {
   return headers;
 }
 
+function agendaViewHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (passengerAgendaViewToken) headers["X-Rota-Certa-Agenda-View-Token"] = passengerAgendaViewToken;
+  return headers;
+}
+
 function savePassengerContact(contact) {
   passengerSessionContact = normalizeWhatsapp(contact || "");
   try {
@@ -248,19 +263,72 @@ function savePassengerContact(contact) {
   } catch (_) {}
 }
 
+function saveAgendaViewSession(token) {
+  passengerAgendaViewToken = String(token || "");
+  try {
+    if (passengerAgendaViewToken) sessionStorage.setItem("rotacerta-agenda-view-session", passengerAgendaViewToken);
+    else sessionStorage.removeItem("rotacerta-agenda-view-session");
+  } catch (_) {}
+  updateAuthenticatedChrome();
+}
+
 function updateAuthenticatedChrome() {
-  show("openPassengerPortal", Boolean(passengerSessionToken));
+  show("openPassengerPortal", Boolean(passengerAgendaViewToken || passengerSessionToken));
 }
 
 function showAccessGate(destination = pendingAuthDestination, message = "") {
   pendingAuthDestination = destination || "agenda";
+  pendingPrivateAction = "";
   showOnly("accessGate");
   updateAuthenticatedChrome();
-  show("accessLoginBox", true);
+  const hasPublicTarget = Boolean(driverUsername && (agendaToken || tripToken));
+  show("accessLoginBox", hasPublicTarget);
   show("referralRequestBox", Boolean(referralCode && driverUsername));
   $("accessMessage").textContent = message;
   if (passengerSessionContact && !$("accessContact").value) $("accessContact").value = maskWhatsapp(passengerSessionContact);
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function requestPublicAgendaAccess(contactInput = "") {
+  const passengerContact = normalizeWhatsapp(contactInput || $("accessContact").value || passengerSessionContact);
+  if (!passengerContact) {
+    $("accessMessage").textContent = "Informe seu WhatsApp com DDD.";
+    return false;
+  }
+  if (!driverUsername || (!agendaToken && !tripToken)) {
+    $("accessMessage").textContent = "Este link não identifica uma agenda válida.";
+    return false;
+  }
+  $("accessLogin").disabled = true;
+  $("accessMessage").className = "muted";
+  $("accessMessage").textContent = "Verificando acesso…";
+  try {
+    const response = await fetch("/v1/public/passenger-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ passengerContact, driverUsername, agendaToken, tripToken }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      saveAgendaViewSession("");
+      $("accessMessage").className = "error";
+      $("accessMessage").textContent = body.message || "Acesso negado. Este WhatsApp não está autorizado para esta Agenda.";
+      return false;
+    }
+    savePassengerContact(body.passengerContact || passengerContact);
+    saveAgendaViewSession(body.viewToken);
+    passengerViewAccountActivated = body.accountActivated === true;
+    $("accessMessage").className = "muted";
+    $("accessMessage").textContent = "";
+    await continueAfterViewAccess();
+    return true;
+  } catch (error) {
+    $("accessMessage").className = "error";
+    $("accessMessage").textContent = error.message || "Não foi possível verificar o acesso.";
+    return false;
+  } finally {
+    $("accessLogin").disabled = false;
+  }
 }
 
 async function validatePassengerSession() {
@@ -270,52 +338,127 @@ async function validatePassengerSession() {
     const body = await response.json();
     if (!response.ok) {
       savePassengerSession("");
-      savePassengerContact("");
       return false;
     }
     savePassengerContact(body.passengerContact || passengerSessionContact);
     passengerMustChangePassword = body.mustChangePassword === true;
+    passengerViewAccountActivated = true;
     return true;
   } catch (_) {
     return false;
   }
 }
 
+async function continueAfterViewAccess() {
+  updateAuthenticatedChrome();
+  if (portalMode || pendingAuthDestination === "portal") {
+    if (passengerSessionToken) return openPassengerPortal();
+    return showPrivateAuthGate("portal");
+  }
+  if (tripToken) return loadTrip();
+  if (agendaToken) return loadAgenda();
+  return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+}
+
 async function continueAfterAuthentication() {
   updateAuthenticatedChrome();
+  const resume = pendingPrivateAction;
+  pendingPrivateAction = "";
+  if (resume === "reserve") return reserve();
+  if (resume === "update") return updateExistingReservation();
+  if (resume === "cancel") return cancelReservation();
+  if (resume === "edit") return beginExistingReservationEdit();
+  if (resume === "showCancel") {
+    showOnly("cancelBooking");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
   if (pendingAuthDestination === "portal") return openPassengerPortal();
+  if (pendingAuthDestination === "booking") return openBookingFlow();
+  if (pendingAuthDestination === "review") {
+    showOnly("review");
+    return;
+  }
   if (pendingAuthDestination === "trip" && tripToken) return loadTrip();
   if (agendaToken) return loadAgenda();
   return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
 }
 
 async function loginAccessGate() {
-  const passengerContact = normalizeWhatsapp($("accessContact").value);
-  const password = $("accessPassword").value;
-  if (!passengerContact || password.length < 8) {
-    $("accessMessage").textContent = "Informe seu WhatsApp com DDD e sua senha.";
+  await requestPublicAgendaAccess();
+}
+
+function showPrivateAuthGate(destination = "portal", resumeAction = "") {
+  if (!passengerAgendaViewToken || !passengerSessionContact) {
+    return showAccessGate(destination, "Informe seu WhatsApp para continuar.");
+  }
+  pendingAuthDestination = destination;
+  pendingPrivateAction = resumeAction;
+  $("privateAuthContact").value = maskWhatsapp(passengerSessionContact);
+  $("privateAuthPassword").value = "";
+  $("privateAuthPasswordConfirm").value = "";
+  $("privateAuthMessage").textContent = "";
+  show("privateAuthConfirmWrap", !passengerViewAccountActivated);
+  $("privateAuthTitle").textContent = passengerViewAccountActivated ? "Entre para continuar" : "Crie sua senha para continuar";
+  $("privateAuthIntro").textContent = passengerViewAccountActivated
+    ? "Sua senha protege reservas e informações privadas."
+    : "Esta será a senha da sua área particular. Seu cadastro atual será mantido.";
+  $("privateAuthSubmit").textContent = passengerViewAccountActivated ? "Entrar" : "Criar senha e continuar";
+  showOnly("privateAuth");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function submitPrivateAuthentication() {
+  const passengerContact = passengerSessionContact;
+  const password = $("privateAuthPassword").value;
+  const confirmation = $("privateAuthPasswordConfirm").value;
+  if (!passengerContact || password.length < 8 || password.length > 72) {
+    $("privateAuthMessage").textContent = "Use uma senha de 8 a 72 caracteres.";
     return;
   }
-  $("accessLogin").disabled = true;
-  $("accessMessage").textContent = "Entrando…";
+  if (!passengerViewAccountActivated && password !== confirmation) {
+    $("privateAuthMessage").textContent = "As senhas não conferem.";
+    return;
+  }
+  $("privateAuthSubmit").disabled = true;
+  $("privateAuthMessage").textContent = passengerViewAccountActivated ? "Entrando…" : "Criando sua senha…";
   try {
-    const response = await fetch("/v1/passenger/session", {
+    const activating = !passengerViewAccountActivated;
+    const response = await fetch(activating ? "/v1/passenger/activate" : "/v1/passenger/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: activating
+        ? agendaViewHeaders({ "Content-Type": "application/json", Accept: "application/json" })
+        : { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ passengerContact, password, driverUsername }),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
+    if (!response.ok) {
+      if (body.error === "passenger_account_already_activated") {
+        passengerViewAccountActivated = true;
+        showPrivateAuthGate(pendingAuthDestination, pendingPrivateAction);
+        $("privateAuthMessage").textContent = "Sua senha já existe. Entre com ela para continuar.";
+        return;
+      }
+      throw new Error(body.message || "Não foi possível autenticar.");
+    }
     savePassengerSession(body.sessionToken);
     savePassengerContact(body.passengerContact || passengerContact);
     passengerMustChangePassword = body.mustChangePassword === true;
-    $("accessPassword").value = "";
+    passengerViewAccountActivated = true;
     await continueAfterAuthentication();
   } catch (error) {
-    $("accessMessage").textContent = error.message || "Falha ao entrar.";
+    $("privateAuthMessage").textContent = error.message || "Falha ao autenticar.";
   } finally {
-    $("accessLogin").disabled = false;
+    $("privateAuthSubmit").disabled = false;
   }
+}
+
+function closePrivateAuth() {
+  pendingPrivateAction = "";
+  if (trip) return renderTrip();
+  if (agendaToken && agendaTripsCache.length) return renderAgenda(agendaTripsCache);
+  if (agendaToken) return loadAgenda();
+  return showAccessGate("agenda");
 }
 
 async function requestReferralInvite() {
@@ -350,10 +493,14 @@ async function loadAgenda() {
   try {
     const response = await fetch(
       `/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`,
-      { headers: authenticatedHeaders({ Accept: "application/json" }) },
+      { headers: agendaViewHeaders({ Accept: "application/json" }) },
     );
     statusCode = response.status;
     const body = await response.json();
+    if (!response.ok && (response.status === 401 || response.status === 403)) {
+      saveAgendaViewSession("");
+      return showAccessGate("agenda", body.message || "Informe seu WhatsApp novamente.");
+    }
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
     driverProfile = body.driver || {};
     driverDisplayName = driverProfile.displayName || driverUsername;
@@ -703,10 +850,14 @@ async function loadTrip() {
   try {
     const response = await fetch(
       `/v1/public/trips/${encodeURIComponent(tripToken)}`,
-      { headers: authenticatedHeaders({ Accept: "application/json" }) },
+      { headers: agendaViewHeaders({ Accept: "application/json" }) },
     );
     statusCode = response.status;
     const body = await response.json();
+    if (!response.ok && (response.status === 401 || response.status === 403)) {
+      saveAgendaViewSession("");
+      return showAccessGate("trip", body.message || "Informe seu WhatsApp novamente.");
+    }
     if (!response.ok) throw new Error(body.message || "Viagem indisponível.");
     trip = body;
     driverProfile = body.driver || {};
@@ -1132,6 +1283,7 @@ function requestIdentity(payload) {
 
 async function reserve() {
   if (!trip || !pendingBooking) return;
+  if (!passengerSessionToken) return showPrivateAuthGate("review", "reserve");
   if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
     return updateExistingReservation();
   }
@@ -1163,6 +1315,12 @@ async function reserve() {
     });
     statusCode = response.status;
     const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      showPrivateAuthGate("review", "reserve");
+      return;
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível reservar.");
 
     confirmedBooking = {
@@ -1293,6 +1451,7 @@ function beginExistingReservationEdit() {
 
 async function updateExistingReservation() {
   if (!trip || !pendingBooking || !confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken) return;
+  if (!passengerSessionToken) return showPrivateAuthGate("review", "update");
 
   $("confirmReserve").disabled = true;
   $("reviewMessage").textContent = "Atualizando sua reserva…";
@@ -1303,7 +1462,7 @@ async function updateExistingReservation() {
       `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(confirmedBooking.bookingId)}`,
       {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
         body: JSON.stringify({
           ...pendingBooking,
           cancellationToken: confirmedBooking.cancellationToken,
@@ -1313,6 +1472,12 @@ async function updateExistingReservation() {
 
     statusCode = response.status;
     const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      showPrivateAuthGate("review", "update");
+      return;
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível alterar a reserva.");
 
     confirmedBooking = {
@@ -1352,7 +1517,7 @@ async function updateExistingReservation() {
 async function refreshTripSilently() {
   try {
     const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}`, {
-      headers: authenticatedHeaders({ Accept: "application/json" }),
+      headers: agendaViewHeaders({ Accept: "application/json" }),
     });
     if (!response.ok) return;
     const body = await response.json();
@@ -1362,6 +1527,7 @@ async function refreshTripSilently() {
 }
 
 async function cancelReservation() {
+  if (!passengerSessionToken) return showPrivateAuthGate("review", "cancel");
   const bookingId = $("cancelBookingId").value.trim();
   const cancellationToken = $("cancelToken").value.trim();
 
@@ -1380,12 +1546,18 @@ async function cancelReservation() {
       `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
         body: JSON.stringify({ cancellationToken }),
       },
     );
     statusCode = response.status;
     const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      showPrivateAuthGate("review", "cancel");
+      return;
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
 
     try {
@@ -1527,14 +1699,15 @@ function portalHeaders() {
 function savePassengerSession(token) {
   passengerSessionToken = String(token || "");
   try {
-    if (passengerSessionToken) localStorage.setItem("rotacerta-passenger-session", passengerSessionToken);
-    else localStorage.removeItem("rotacerta-passenger-session");
+    localStorage.removeItem("rotacerta-passenger-session");
+    if (passengerSessionToken) sessionStorage.setItem("rotacerta-passenger-session", passengerSessionToken);
+    else sessionStorage.removeItem("rotacerta-passenger-session");
   } catch (_) {}
   updateAuthenticatedChrome();
 }
 
 function openPassengerPortal() {
-  if (!passengerSessionToken) return showAccessGate("portal");
+  if (!passengerSessionToken) return showPrivateAuthGate("portal");
   showOnly("passengerPortal");
   $("portalMessage").textContent = "";
   show("portalLoginBox", false);
@@ -1866,10 +2039,12 @@ async function loadPassengerBookings() {
 
 function logoutPassengerPortal() {
   savePassengerSession("");
-  savePassengerContact("");
+  passengerViewAccountActivated = true;
   $("portalPassword").value = "";
   $("portalBookings").innerHTML = "";
-  showAccessGate(portalMode ? "portal" : (tripToken ? "trip" : "agenda"), "Acesso encerrado neste aparelho.");
+  if (trip) renderTrip();
+  else if (agendaToken) loadAgenda();
+  else showAccessGate("agenda", "Área privada encerrada neste aparelho.");
 }
 
 function closePassengerPortal() {
@@ -1897,6 +2072,8 @@ function goBackToAgenda() {
 
 $("accessLogin").addEventListener("click", loginAccessGate);
 $("accessContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
+$("privateAuthSubmit").addEventListener("click", submitPrivateAuthentication);
+$("privateAuthBack").addEventListener("click", closePrivateAuth);
 $("referralRequestContact").addEventListener("input", (event) => { event.target.value = maskWhatsapp(event.target.value); });
 $("referralRequestSubmit").addEventListener("click", requestReferralInvite);
 $("searchFromInput").addEventListener("input", (event) => { searchState.from = event.target.value; $("searchMessage").textContent = ""; });
@@ -1943,7 +2120,10 @@ $("contact").addEventListener("input", (event) => {
 $("messageToDriver").addEventListener("input", () => {
   setWhatsappLink($("driverWhatsappReview"), $("messageToDriver").value);
 });
-$("startBooking").addEventListener("click", openBookingFlow);
+$("startBooking").addEventListener("click", () => {
+  if (!passengerSessionToken) return showPrivateAuthGate("booking");
+  openBookingFlow();
+});
 $("reserve").addEventListener("click", reviewBooking);
 $("confirmReserve").addEventListener("click", reserve);
 $("editReservation").addEventListener("click", () => {
@@ -1952,8 +2132,12 @@ $("editReservation").addEventListener("click", () => {
 });
 $("backToTrip").addEventListener("click", goBackToTrip);
 $("backToAgenda").addEventListener("click", goBackToAgenda);
-$("changeReservation").addEventListener("click", beginExistingReservationEdit);
+$("changeReservation").addEventListener("click", () => {
+  if (!passengerSessionToken) return showPrivateAuthGate("review", "edit");
+  beginExistingReservationEdit();
+});
 $("showCancel").addEventListener("click", () => {
+  if (!passengerSessionToken) return showPrivateAuthGate("review", "showCancel");
   showOnly("cancelBooking");
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
@@ -1969,9 +2153,13 @@ async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
   if (!portalMode && !tripToken && !agendaToken && !referralCode) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
   if (referralCode && !tripToken && !agendaToken) return showAccessGate("agenda");
-  const valid = await validatePassengerSession();
-  if (!valid) return showAccessGate(pendingAuthDestination);
-  await continueAfterAuthentication();
+  await validatePassengerSession();
+  if (passengerSessionContact) {
+    const opened = await requestPublicAgendaAccess(passengerSessionContact);
+    if (opened) return;
+  }
+  const accessMessage = $("accessMessage").textContent;
+  showAccessGate(pendingAuthDestination, accessMessage);
 }
 
 bootstrapAuthenticatedExperience();

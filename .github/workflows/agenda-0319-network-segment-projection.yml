@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.341 Passageiros agrupados
+name: Rota Certa 0.1.344 Acesso negado para nao convidados
 
 on:
   push:
     branches:
-      - agent/agenda-passengers-grouped-access-0.1.341
+      - agent/public-whatsapp-view-private-auth-0.1.342
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0341-${{ github.ref }}
+  group: agenda-0344-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-passengers-grouped-access-0.1.341
+          ref: agent/public-whatsapp-view-private-auth-0.1.342
           fetch-depth: 0
 
-      - name: Validate 0.1.341 grouped passenger access
+      - name: Validate 0.1.344 explicit denied access messages
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5634' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.341"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5637' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
           grep -Fq 'ResponsiveTripAction("👥 Passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Text("+ Adicionar passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Text("👥 Ver / gerenciar passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -43,6 +43,34 @@ jobs:
           grep -Fq 'LaunchedEffect(openRequestToken)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           ! grep -Fq 'Text("+ Passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'passengerToolbarGroupsAddAndManageBehindSingleEntry' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
+          grep -Fq 'async function requirePassengerAgendaView' trip-platform/functions/index.js
+          grep -Fq '/v1/public/passenger-access' trip-platform/functions/index.js
+          grep -Fq 'async function activatePassengerAccount' trip-platform/functions/index.js
+          grep -Fq 'passengerAgendaViewSessions' trip-platform/functions/index.js
+          grep -Fq 'passengerId,' trip-platform/functions/index.js
+          grep -Fq 'syncDriverPassengerDirectory' trip-platform/functions/index.js
+          grep -Fq 'status: "AUTHORIZED"' trip-platform/functions/index.js
+          grep -Fq '"SUSPENDED"' trip-platform/functions/index.js
+          grep -Fq 'id="accessContact"' trip-platform/public/index.html
+          ! grep -Fq 'id="accessPassword"' trip-platform/public/index.html
+          grep -Fq 'id="privateAuthPassword"' trip-platform/public/index.html
+          grep -Fq 'requestPublicAgendaAccess' trip-platform/public/app.js
+          grep -Fq 'showPrivateAuthGate("booking")' trip-platform/public/app.js
+          grep -Fq 'sessionStorage.setItem("rotacerta-passenger-session"' trip-platform/public/app.js
+          ! grep -Fq 'localStorage.setItem("rotacerta-passenger-session"' trip-platform/public/app.js
+          grep -Fq 'api.syncPassengerDirectory(canonicalPassengerProfiles)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'setPassengerAccessStatus' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'val agendaAccessWhatsapp: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'updatePassengerAccessWhatsapp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'WhatsApp de acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          grep -Fq 'async function updateDriverPassengerWhatsapp' trip-platform/functions/index.js
+          grep -Fq 'passenger_whatsapp_conflict' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_not_available' trip-platform/functions/index.js
+          grep -Fq 'Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda.' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_pending' trip-platform/functions/index.js
+          grep -Fq 'accessMessage").className = "error"' trip-platform/public/app.js
+          grep -Fq 'class PassengerPublicAccess0342Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerPublicAccess0342Test.kt
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -233,13 +261,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Test global web date contract
+      - name: Test web backend and authentication contracts
         shell: bash
         run: |
           set -euo pipefail
+          node --check trip-platform/functions/index.js
           node --check trip-platform/public/date-selection.js
           node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/date-selection-contract-0340.test.js
+          node --test trip-platform/functions/test/*.test.js
 
       - uses: actions/setup-java@v4
         with:
@@ -261,20 +290,68 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5634'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.341'" /tmp/aapt.txt
+          grep -Fq "versionCode='5637'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.344'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0341
-          cp "$APK" /tmp/0341/rota-certa-0.1.341-passengers-grouped-access.apk
-          cp /tmp/apk.sha256 /tmp/0341/apk.sha256
-          cp /tmp/aapt.txt /tmp/0341/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0341/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0341/gradle.txt
-          git rev-parse HEAD > /tmp/0341/source-head.txt
+          mkdir -p /tmp/0344 trip-platform/public/downloads
+          cp "$APK" /tmp/0344/rota-certa-0.1.344-access-denied.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.344-access-denied.apk
+          cp /tmp/apk.sha256 /tmp/0344/apk.sha256
+          cp /tmp/aapt.txt /tmp/0344/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0344/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0344/gradle.txt
+          git rev-parse HEAD > /tmp/0344/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.341-passengers-grouped-access
+          name: rota-certa-0.1.344-access-denied
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0341
+          path: /tmp/0344
+
+      - name: Install Firebase Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy Agenda backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke deployed WhatsApp consultation and hosted APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+
+          BUST="$(date +%s%N)"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
+          grep -Fq 'id="accessContact"' /tmp/live-index.html
+          ! grep -Fq 'id="accessPassword"' /tmp/live-index.html
+          grep -Fq 'id="privateAuthPassword"' /tmp/live-index.html
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          grep -Fq 'requestPublicAgendaAccess' /tmp/live-app.js
+          grep -Fq 'showPrivateAuthGate("booking")' /tmp/live-app.js
+
+          CODE="$(curl --silent --show-error -o /tmp/no-view.json -w '%{http_code}' "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda")"
+          test "$CODE" = "401"
+          grep -Fq 'agenda_view_required' /tmp/no-view.json
+
+          ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
+          test "$ACCESS_CODE" = "403"
+
+          EXPECTED="$(sha256sum /tmp/0344/rota-certa-0.1.344-access-denied.apk | awk '{print $1}')"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.344-access-denied.apk?v=$BUST" -o /tmp/hosted-0342.apk
+          ACTUAL="$(sha256sum /tmp/hosted-0342.apk | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.344-access-denied.apk"

@@ -32,6 +32,6 @@ class PassengerAdmin0314Test {
     @Test
     fun accessLabelsKeepPendingSeparateFromBlocked() {
         assertEquals("⏳ Aguardando sua aprovação", passengerAccessLabel(DriverPassengerAccess(status = "PENDING")))
-        assertEquals("🚫 Acesso bloqueado", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
+        assertEquals("🔴 Bloqueado", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
     }
 }

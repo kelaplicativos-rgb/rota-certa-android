@@ -9,22 +9,22 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
-test("public agenda starts behind WhatsApp and password access", () => {
+test("public agenda now starts behind WhatsApp-only consultation access", () => {
   assert.match(html, /id="accessGate"/);
   assert.match(html, /id="accessContact"/);
-  assert.match(html, /id="accessPassword"/);
-  assert.match(web, /bootstrapAuthenticatedExperience/);
-  assert.match(web, /validatePassengerSession/);
-  assert.match(api, /async function getPassengerMe/);
-  assert.match(api, /\/v1\/passenger\/me/);
+  assert.doesNotMatch(html, /id="accessPassword"/);
+  assert.match(html, /id="privateAuthPassword"/);
+  assert.match(web, /requestPublicAgendaAccess/);
+  assert.match(api, /async function requirePassengerAgendaView/);
+  assert.match(api, /\/v1\/public\/passenger-access/);
 });
 
-test("first-time passenger access is now invite-only before searching", () => {
+test("unknown passenger still cannot create a private identity from the public gate", () => {
   assert.doesNotMatch(html, /id="accessSignup"/);
   assert.doesNotMatch(html, /Criar acesso e entrar/);
-  assert.match(html, /Acesso somente por convite/);
   assert.match(api, /async function signupPassengerAccount/);
   assert.match(api, /passenger_invite_required/);
+  assert.match(api, /passenger_access_not_available/);
 });
 
 test("search filter uses simple browser fields without GPS and keeps dates seats and public cards", () => {

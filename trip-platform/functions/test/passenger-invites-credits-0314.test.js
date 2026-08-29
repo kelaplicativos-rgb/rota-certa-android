@@ -9,27 +9,29 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
-test("passenger access is invite-only at UI and backend", () => {
-  assert.match(html, /Acesso somente por convite/);
-  assert.doesNotMatch(html, /Criar acesso e entrar/);
-  assert.match(api, /passenger_invite_required/);
+test("passenger consultation is phone-based while private actions remain driver-controlled", () => {
+  assert.match(html, /Informe apenas seu WhatsApp/);
+  assert.doesNotMatch(html, /id="accessPassword"/);
   assert.match(api, /driverPassengerAccess/);
+  assert.match(api, /requirePassengerAgendaView/);
   assert.match(api, /requirePassengerDriverAccess/);
 });
 
-test("driver can administer invited passengers and temporary passwords", () => {
+test("driver administers authorized suspended and blocked access without first-login temporary password", () => {
   assert.match(api, /async function listDriverPassengers/);
   assert.match(api, /async function inviteDriverPassenger/);
-  assert.match(api, /async function setDriverPassengerBlocked/);
+  assert.match(api, /async function syncDriverPassengerDirectory/);
+  assert.match(api, /"SUSPENDED"/);
+  assert.match(api, /"BLOCKED"/);
+  assert.match(api, /status: "AUTHORIZED"/);
   assert.match(api, /async function resetDriverPassengerPassword/);
-  assert.match(api, /temporaryPassengerPassword/);
-  assert.match(api, /\/v1\/driver\/passengers\/invite/);
   assert.match(api, /\/v1\/driver\/passengers\/reset-password/);
 });
 
 test("referrals require driver approval and earn configured credits once", () => {
   assert.match(api, /requestPassengerReferralInvite/);
-  assert.match(api, /status: existing\.exists && existingData\.status === "BLOCKED" \? "BLOCKED" : "PENDING"/);
+  assert.match(api, /PASSENGER_RESTRICTED_ACCESS_STATUSES\.has/);
+  assert.match(api, /: "PENDING"/);
   assert.match(api, /firstReferrer = cleanText\(existingData\.referredByContact/);
   assert.match(api, /processReferralCreditsForCompletedTrip/);
   assert.match(api, /referralRewardGrantedAtMillis/);

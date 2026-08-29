@@ -18,6 +18,8 @@ const DRIVER_MUTABLE_STATUSES = new Set(["DRAFT", "PUBLISHED", "FULL", "STARTING
 const CAPACITY_BOOKING_STATUSES = new Set(["REQUESTED", "HELD", "CONFIRMED", "CANCELLED", "EXPIRED"]);
 const DRIVER_BOOKING_SOURCES = new Set(["BLABLACAR", "PRIVATE", "OTHER"]);
 const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "RESERVED_SEAT"]);
+const PASSENGER_AUTHORIZED_ACCESS_STATUSES = new Set(["ACTIVE", "AUTHORIZED"]);
+const PASSENGER_RESTRICTED_ACCESS_STATUSES = new Set(["SUSPENDED", "BLOCKED"]);
 
 const PUBLIC_DEBUG_EVENTS = new Set([
   "PUBLIC_LINK_OPENED",
@@ -807,8 +809,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
     }
     return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   }
-  const authorized = await requirePassengerDriverAccess(req, res, username);
-  if (!authorized) return;
+  const view = await requirePassengerAgendaView(req, res, username);
+  if (!view) return;
   const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const trips = snapshot.docs
@@ -1078,8 +1080,8 @@ async function getPublicTrip(res, req, token) {
   if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const data = snap.data();
   const driverUsername = normalizeUsername(data.driverUsername || "");
-  const authorized = await requirePassengerDriverAccess(req, res, driverUsername);
-  if (!authorized) return;
+  const view = await requirePassengerAgendaView(req, res, driverUsername);
+  if (!view) return;
   if (!PUBLIC_STATUSES.has(data.status)) {
     await appendPublicDebugEvent({
       driverUsername,
@@ -1192,7 +1194,54 @@ async function passengerAccessFor(driverUsername, passengerContact) {
   if (!username || !passengerContact) return null;
   const snap = await driverPassengerAccessRef(username, passengerContact).get();
   if (!snap.exists) return null;
-  return { id: snap.id, ...snap.data() };
+  const access = { id: snap.id, ...snap.data() };
+  if (cleanText(access.status, 20).toUpperCase() === "MOVED") return null;
+  return access;
+}
+
+async function passengerAccessForPassengerId(driverUsername, passengerId) {
+  const username = normalizeUsername(driverUsername);
+  const canonicalPassengerId = cleanText(passengerId, 120);
+  if (!username || !canonicalPassengerId) return null;
+  const snapshot = await db.collection("driverPassengerAccess")
+    .where("passengerId", "==", canonicalPassengerId)
+    .limit(50)
+    .get();
+  return snapshot.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((access) => normalizeUsername(access.driverUsername || "") === username)
+    .filter((access) => cleanText(access.status, 20).toUpperCase() !== "MOVED")
+    .sort((a, b) => Number(b.updatedAtMillis || 0) - Number(a.updatedAtMillis || 0))[0] || null;
+}
+
+async function passengerAccessForIdentity(driverUsername, passengerId, passengerContact) {
+  const byPassengerId = await passengerAccessForPassengerId(driverUsername, passengerId);
+  if (byPassengerId) return byPassengerId;
+  return passengerAccessFor(driverUsername, passengerContact);
+}
+
+function passengerSessionOwnsBooking(session, booking) {
+  const sessionPassengerId = cleanText(session && session.passengerId, 120);
+  const bookingPassengerId = cleanText(booking && booking.passengerId, 120);
+  if (sessionPassengerId && bookingPassengerId) return sessionPassengerId === bookingPassengerId;
+  return cleanText(booking && booking.passengerContact, 40) === cleanText(session && session.passengerContact, 40);
+}
+
+function passengerAccessStatus(access) {
+  const status = cleanText(access && access.status, 20).toUpperCase();
+  return status === "ACTIVE" ? "AUTHORIZED" : status;
+}
+
+function passengerAccessIsAuthorized(access) {
+  return PASSENGER_AUTHORIZED_ACCESS_STATUSES.has(cleanText(access && access.status, 20).toUpperCase());
+}
+
+function passengerAccountIsActivated(account) {
+  return Boolean(
+    account &&
+    cleanText(account.passwordSalt, 80) &&
+    cleanText(account.passwordHash, 256)
+  );
 }
 
 async function requirePassengerDriverAccess(req, res, driverUsername, sessionInput = null) {
@@ -1203,20 +1252,139 @@ async function requirePassengerDriverAccess(req, res, driverUsername, sessionInp
   }
   const session = sessionInput || await requirePassengerSession(req, res);
   if (!session) return null;
-  const access = await passengerAccessFor(username, session.passengerContact);
+  const access = await passengerAccessForIdentity(username, session.passengerId, session.passengerContact);
   if (!access || access.status === "PENDING") {
-    fail(res, 403, "passenger_invite_required", "Você precisa ser convidado pelo motorista para acessar esta agenda.");
+    fail(res, 403, "passenger_invite_required", "Seu acesso a esta agenda ainda não está disponível.");
     return null;
   }
-  if (access.status === "BLOCKED") {
-    fail(res, 403, "passenger_access_blocked", "Seu acesso a esta agenda está bloqueado.");
+  if (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(cleanText(access.status, 20).toUpperCase())) {
+    fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
     return null;
   }
-  if (access.status !== "ACTIVE") {
-    fail(res, 403, "passenger_invite_required", "Seu acesso a esta agenda ainda não foi liberado.");
+  if (!passengerAccessIsAuthorized(access)) {
+    fail(res, 403, "passenger_invite_required", "Seu acesso a esta agenda ainda não está disponível.");
     return null;
   }
   return { session, access, driverUsername: username };
+}
+
+function passengerAgendaViewToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+async function createPassengerAgendaViewSession(driverUsername, passengerContact, passengerId = "") {
+  const token = passengerAgendaViewToken();
+  const now = Date.now();
+  const expiresAtMillis = now + 7 * 24 * 60 * 60 * 1000;
+  await db.collection("passengerAgendaViewSessions").doc(sha256Hex(token)).set({
+    driverUsername: normalizeUsername(driverUsername),
+    passengerContact,
+    contactHash: sha256Hex(passengerContact),
+    passengerId: cleanText(passengerId, 120),
+    createdAtMillis: now,
+    expiresAtMillis,
+  });
+  return { token, expiresAtMillis };
+}
+
+async function requirePassengerAgendaView(req, res, driverUsername) {
+  const username = normalizeUsername(driverUsername);
+  const supplied = cleanText(req.get("X-Rota-Certa-Agenda-View-Token"), 240);
+  if (!username || !supplied) {
+    fail(res, 401, "agenda_view_required", "Informe seu WhatsApp para consultar esta agenda.");
+    return null;
+  }
+  const ref = db.collection("passengerAgendaViewSessions").doc(sha256Hex(supplied));
+  const snap = await ref.get();
+  if (!snap.exists) {
+    fail(res, 401, "agenda_view_invalid", "Informe seu WhatsApp novamente para consultar esta agenda.");
+    return null;
+  }
+  const data = snap.data();
+  if (Number(data.expiresAtMillis || 0) <= Date.now()) {
+    await ref.delete().catch(() => {});
+    fail(res, 401, "agenda_view_expired", "Informe seu WhatsApp novamente para consultar esta agenda.");
+    return null;
+  }
+  if (normalizeUsername(data.driverUsername) !== username) {
+    fail(res, 403, "agenda_view_driver_mismatch", "Este acesso não pertence a esta agenda.");
+    return null;
+  }
+  const passengerContact = cleanText(data.passengerContact, 40);
+  const access = await passengerAccessForIdentity(username, data.passengerId, passengerContact);
+  if (!access || !passengerAccessIsAuthorized(access)) {
+    fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
+    return null;
+  }
+  return {
+    driverUsername: username,
+    passengerContact: cleanText(access.passengerContact || passengerContact, 40),
+    passengerId: cleanText(access.passengerId || data.passengerId, 120),
+    access,
+  };
+}
+
+async function openPassengerAgendaView(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
+  }
+  const username = normalizeUsername(req.body && req.body.driverUsername);
+  const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
+  const tripToken = cleanText(req.body && req.body.tripToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!username) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
+  if (!agendaToken && !tripToken) return fail(res, 400, "agenda_target_required", "Agenda não identificada.");
+
+  if (agendaToken) {
+    const driverSnap = await db.collection("tripDrivers").doc(username).get();
+    const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(username, driverSnap) : "";
+    if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) {
+      return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+    }
+  }
+  if (tripToken) {
+    const tripSnap = await db.collection("trips").doc(tripToken).get();
+    if (!tripSnap.exists || normalizeUsername(tripSnap.data().driverUsername || "") !== username) {
+      return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
+    }
+  }
+
+  const access = await passengerAccessFor(username, passengerContact);
+  if (!access) {
+    return fail(
+      res,
+      403,
+      "passenger_access_not_available",
+      "Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda. Para acessar, você precisa ser cadastrado e convidado pelo motorista.",
+    );
+  }
+  if (cleanText(access.status, 20).toUpperCase() === "PENDING") {
+    return fail(
+      res,
+      403,
+      "passenger_access_pending",
+      "Acesso ainda não liberado. Seu convite precisa ser aprovado pelo motorista antes de entrar na Agenda.",
+    );
+  }
+  if (!passengerAccessIsAuthorized(access)) {
+    return fail(res, 403, "passenger_access_unavailable", "Acesso negado. Este WhatsApp está com acesso suspenso ou bloqueado nesta Agenda. Fale com o motorista.");
+  }
+
+  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
+  const account = accountSnap.exists ? accountSnap.data() : null;
+  const passengerId = cleanText(access.passengerId || (account && account.passengerId), 120);
+  const view = await createPassengerAgendaViewSession(username, passengerContact, passengerId);
+  return json(res, 200, {
+    viewToken: view.token,
+    expiresAtMillis: view.expiresAtMillis,
+    passengerContact,
+    passengerId,
+    accessStatus: "AUTHORIZED",
+    accountActivated: passengerAccountIsActivated(account),
+  });
 }
 
 async function invalidatePassengerSessions(passengerContact) {
@@ -1235,7 +1403,9 @@ function safePassengerAccess(doc) {
     id: doc.id || cleanText(data.id, 120),
     passengerContact: cleanText(data.passengerContact, 40),
     displayName: cleanText(data.displayName, 120),
-    status: cleanText(data.status, 20) || "PENDING",
+    status: passengerAccessStatus(data) || "PENDING",
+    passengerId: cleanText(data.passengerId, 120),
+    accountActivated: data.accountActivated === true,
     referredByContact: cleanText(data.referredByContact, 40),
     referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
     createdAtMillis: Number(data.createdAtMillis || 0),
@@ -1248,12 +1418,17 @@ async function listDriverPassengers(req, res) {
   if (!driver) return;
   if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
   const snapshot = await db.collection("driverPassengerAccess").where("driverUsername", "==", driver.username).limit(500).get();
-  const passengers = await Promise.all(snapshot.docs.map(async (doc) => {
+  const visibleDocs = snapshot.docs.filter((doc) => cleanText(doc.data().status, 20).toUpperCase() !== "MOVED");
+  const passengers = await Promise.all(visibleDocs.map(async (doc) => {
     const access = safePassengerAccess(doc);
-    const ledgerSnap = await passengerCreditLedgerRef(driver.username, access.passengerContact).get();
+    const [ledgerSnap, accountSnap] = await Promise.all([
+      passengerCreditLedgerRef(driver.username, access.passengerContact).get(),
+      db.collection("passengerAccounts").doc(sha256Hex(access.passengerContact)).get(),
+    ]);
     const ledger = ledgerSnap.exists ? ledgerSnap.data() : {};
     return {
       ...access,
+      accountActivated: accountSnap.exists && passengerAccountIsActivated(accountSnap.data()),
       creditBalanceCents: Math.max(0, Number(ledger.balanceCents || 0)),
       creditEarnedCents: Math.max(0, Number(ledger.earnedCents || 0)),
       creditSpentCents: Math.max(0, Number(ledger.spentCents || 0)),
@@ -1276,70 +1451,323 @@ async function inviteDriverPassenger(req, res) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
   }
   const displayName = cleanText(req.body && req.body.displayName, 120);
+  const passengerId = cleanText(req.body && req.body.passengerId, 120);
   if (!displayName) return fail(res, 400, "passenger_name_required", "Informe o nome do passageiro.");
   let referredByContact = "";
   if (req.body && req.body.referredByContact) {
     try { referredByContact = normalizeBrazilWhatsapp(req.body.referredByContact); } catch (_) { referredByContact = ""; }
   }
-  const temporaryPassword = temporaryPassengerPassword();
-  const salt = crypto.randomBytes(16).toString("hex");
-  const passwordHash = passengerPasswordDigest(temporaryPassword, salt);
   const now = Date.now();
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
   const accessRef = driverPassengerAccessRef(driver.username, passengerContact);
   await db.runTransaction(async (tx) => {
     const previous = await tx.get(accessRef);
     const previousData = previous.exists ? previous.data() : {};
-    tx.set(accountRef, {
-      passengerContact,
-      passwordSalt: salt,
-      passwordHash,
-      mustChangePassword: true,
-      updatedAtMillis: now,
-      createdAtMillis: now,
-    }, { merge: true });
+    const previousPassengerId = cleanText(previousData.passengerId, 120);
+    const previousStatus = cleanText(previousData.status, 20).toUpperCase();
+    if (previous.exists && passengerId && previousPassengerId && previousPassengerId !== passengerId && previousStatus !== "MOVED") {
+      throw Object.assign(
+        new Error("Este WhatsApp já é utilizado por " + (cleanText(previousData.displayName, 120) || "outro passageiro") + "."),
+        { httpStatus: 409, code: "passenger_whatsapp_conflict" },
+      );
+    }
     tx.set(accessRef, {
       driverUsername: driver.username,
       passengerContact,
       displayName,
-      status: "ACTIVE",
+      passengerId: passengerId || cleanText(previousData.passengerId, 120),
+      status: "AUTHORIZED",
       referredByContact: referredByContact || cleanText(previousData.referredByContact, 40),
       referralRewardGrantedAtMillis: Number(previousData.referralRewardGrantedAtMillis || 0),
       createdAtMillis: Number(previousData.createdAtMillis || now),
       updatedAtMillis: now,
     }, { merge: true });
   });
-  await invalidatePassengerSessions(passengerContact);
-  return json(res, 200, {
-    passenger: safePassengerAccess({
-      id: accessRef.id,
-      data: () => ({
-        passengerContact,
-        displayName,
-        status: "ACTIVE",
-        referredByContact,
-        createdAtMillis: now,
-        updatedAtMillis: now,
-      }),
-    }),
-    temporaryPassword,
+  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
+  const updated = await accessRef.get();
+  const passenger = safePassengerAccess(updated);
+  passenger.accountActivated = accountSnap.exists && passengerAccountIsActivated(accountSnap.data());
+  return json(res, 200, { passenger, temporaryPassword: "" });
+}
+
+async function syncDriverPassengerDirectory(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+  const rawPassengers = Array.isArray(req.body && req.body.passengers) ? req.body.passengers.slice(0, 450) : [];
+  const normalized = [];
+  for (const raw of rawPassengers) {
+    let passengerContact;
+    try { passengerContact = normalizeBrazilWhatsapp(raw && raw.passengerContact); } catch (_) { continue; }
+    const passengerId = cleanText(raw && raw.passengerId, 120);
+    const displayName = cleanText(raw && raw.displayName, 120);
+    if (!passengerId || !displayName) continue;
+    normalized.push({ passengerContact, passengerId, displayName });
+  }
+
+  const inRequestContacts = new Map();
+  for (const item of normalized) {
+    const previousPassengerId = inRequestContacts.get(item.passengerContact);
+    if (previousPassengerId && previousPassengerId !== item.passengerId) {
+      return fail(res, 409, "passenger_whatsapp_conflict", "O mesmo WhatsApp de acesso foi informado para dois passageiros diferentes.");
+    }
+    inRequestContacts.set(item.passengerContact, item.passengerId);
+  }
+
+  const existingDocs = await Promise.all(normalized.map((item) => driverPassengerAccessRef(driver.username, item.passengerContact).get()));
+  for (let index = 0; index < normalized.length; index++) {
+    const previous = existingDocs[index];
+    if (!previous.exists) continue;
+    const previousData = previous.data();
+    const previousPassengerId = cleanText(previousData.passengerId, 120);
+    const previousStatus = cleanText(previousData.status, 20).toUpperCase();
+    if (previousPassengerId && previousPassengerId !== normalized[index].passengerId && previousStatus !== "MOVED") {
+      return fail(
+        res,
+        409,
+        "passenger_whatsapp_conflict",
+        "WhatsApp já utilizado por " + (cleanText(previousData.displayName, 120) || "outro passageiro") + ".",
+      );
+    }
+  }
+  const batch = db.batch();
+  const now = Date.now();
+  normalized.forEach((item, index) => {
+    const previous = existingDocs[index];
+    const data = previous.exists ? previous.data() : {};
+    const previousStatus = cleanText(data.status, 20).toUpperCase();
+    const status = PASSENGER_RESTRICTED_ACCESS_STATUSES.has(previousStatus)
+      ? previousStatus
+      : (PASSENGER_AUTHORIZED_ACCESS_STATUSES.has(previousStatus) ? previousStatus : "AUTHORIZED");
+    batch.set(driverPassengerAccessRef(driver.username, item.passengerContact), {
+      driverUsername: driver.username,
+      passengerContact: item.passengerContact,
+      passengerId: item.passengerId,
+      displayName: item.displayName,
+      status,
+      referredByContact: cleanText(data.referredByContact, 40),
+      referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
+      createdAtMillis: Number(data.createdAtMillis || now),
+      updatedAtMillis: now,
+    }, { merge: true });
   });
+  if (normalized.length) await batch.commit();
+  return json(res, 200, { synced: normalized.length });
 }
 
 async function setDriverPassengerBlocked(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
   if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
-  let passengerContact;
-  try { passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact); }
-  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
-  const blocked = req.body && req.body.blocked === true;
-  const accessRef = driverPassengerAccessRef(driver.username, passengerContact);
-  const snap = await accessRef.get();
-  if (!snap.exists) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
-  await accessRef.set({ status: blocked ? "BLOCKED" : "ACTIVE", updatedAtMillis: Date.now() }, { merge: true });
-  if (blocked) await invalidatePassengerSessions(passengerContact);
+  const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  let passengerContact = "";
+  if (req.body && req.body.passengerContact) {
+    try { passengerContact = normalizeBrazilWhatsapp(req.body.passengerContact); }
+    catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
+  }
+  const requestedStatus = cleanText(req.body && req.body.status, 20).toUpperCase();
+  const status = ["AUTHORIZED", "ACTIVE", "SUSPENDED", "BLOCKED"].includes(requestedStatus)
+    ? (requestedStatus === "ACTIVE" ? "AUTHORIZED" : requestedStatus)
+    : (req.body && req.body.blocked === true ? "BLOCKED" : "AUTHORIZED");
+  const access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
+  if (!access) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
+  const accessRef = db.collection("driverPassengerAccess").doc(access.id);
+  await accessRef.set({ status, updatedAtMillis: Date.now() }, { merge: true });
   const updated = await accessRef.get();
+  return json(res, 200, { passenger: safePassengerAccess(updated) });
+}
+
+async function commitPassengerWhatsappWrites(writes) {
+  for (let offset = 0; offset < writes.length; offset += 400) {
+    const batch = db.batch();
+    writes.slice(offset, offset + 400).forEach((write) => write(batch));
+    await batch.commit();
+  }
+}
+
+async function updateDriverPassengerWhatsapp(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+
+  const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  const displayName = cleanText(req.body && req.body.displayName, 120);
+  if (!passengerId) return fail(res, 400, "passenger_id_required", "Identidade permanente do passageiro não informada.");
+
+  let currentPassengerContact = "";
+  let newPassengerContact;
+  try {
+    if (req.body && req.body.currentPassengerContact) currentPassengerContact = normalizeBrazilWhatsapp(req.body.currentPassengerContact);
+    newPassengerContact = normalizeBrazilWhatsapp(req.body && req.body.newPassengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
+  }
+
+  const currentAccess = await passengerAccessForIdentity(driver.username, passengerId, currentPassengerContact);
+  if (!currentAccess || cleanText(currentAccess.passengerId, 120) !== passengerId) {
+    return fail(res, 404, "passenger_access_not_found", "Cadastro de acesso não encontrado para este passengerId.");
+  }
+  const previousPassengerContact = normalizeBrazilWhatsapp(currentAccess.passengerContact);
+  if (previousPassengerContact === newPassengerContact) {
+    const same = await db.collection("driverPassengerAccess").doc(currentAccess.id).get();
+    return json(res, 200, { passenger: safePassengerAccess(same) });
+  }
+
+  const destinationRef = driverPassengerAccessRef(driver.username, newPassengerContact);
+  const destinationSnap = await destinationRef.get();
+  if (destinationSnap.exists) {
+    const destination = destinationSnap.data();
+    const destinationPassengerId = cleanText(destination.passengerId, 120);
+    const destinationStatus = cleanText(destination.status, 20).toUpperCase();
+    if (destinationStatus !== "MOVED" && destinationPassengerId !== passengerId) {
+      return fail(
+        res,
+        409,
+        "passenger_whatsapp_conflict",
+        "Este WhatsApp já está associado a " + (cleanText(destination.displayName, 120) || "outro passageiro") + ".",
+      );
+    }
+  }
+
+  const sourceRef = db.collection("driverPassengerAccess").doc(currentAccess.id);
+  const oldAccountRef = db.collection("passengerAccounts").doc(sha256Hex(previousPassengerContact));
+  const newAccountRef = db.collection("passengerAccounts").doc(sha256Hex(newPassengerContact));
+  const oldLedgerRef = passengerCreditLedgerRef(driver.username, previousPassengerContact);
+  const newLedgerRef = passengerCreditLedgerRef(driver.username, newPassengerContact);
+
+  const oldAccountSnap = await oldAccountRef.get();
+  const newAccountSnap = await newAccountRef.get();
+  if (newAccountSnap.exists) {
+    const accountPassengerId = cleanText(newAccountSnap.data().passengerId, 120);
+    if (accountPassengerId && accountPassengerId !== passengerId) {
+      return fail(res, 409, "passenger_whatsapp_account_conflict", "Este WhatsApp já possui uma conta privada vinculada a outro passageiro.");
+    }
+  }
+
+  const [
+    oldLedgerSnap,
+    newLedgerSnap,
+    oldLedgerEntries,
+    sessionSnap,
+    agendaViewSnap,
+    referredAccessSnap,
+    referralCodesSnap,
+    bookingCandidates,
+  ] = await Promise.all([
+    oldLedgerRef.get(),
+    newLedgerRef.get(),
+    oldLedgerRef.collection("entries").limit(450).get(),
+    db.collection("passengerSessions").where("passengerId", "==", passengerId).limit(450).get(),
+    db.collection("passengerAgendaViewSessions").where("passengerId", "==", passengerId).limit(450).get(),
+    db.collection("driverPassengerAccess").where("referredByContact", "==", previousPassengerContact).limit(450).get(),
+    db.collection("passengerReferralCodes").where("referrerContact", "==", previousPassengerContact).limit(450).get(),
+    db.collectionGroup("bookings").where("passengerId", "==", passengerId).limit(450).get(),
+  ]);
+
+  const tripRefsByPath = new Map();
+  bookingCandidates.docs.forEach((doc) => {
+    const tripRef = doc.ref.parent.parent;
+    if (tripRef && tripRef.parent && tripRef.parent.id === "trips") tripRefsByPath.set(tripRef.path, tripRef);
+  });
+  const tripSnapshots = await Promise.all(Array.from(tripRefsByPath.values()).map((ref) => ref.get()));
+  const ownedTripPaths = new Set(
+    tripSnapshots
+      .filter((snap) => snap.exists && normalizeUsername(snap.data().driverUsername || "") === driver.username)
+      .map((snap) => snap.ref.path),
+  );
+  const ownedBookings = bookingCandidates.docs.filter((doc) => {
+    const tripRef = doc.ref.parent.parent;
+    return tripRef && ownedTripPaths.has(tripRef.path);
+  });
+
+  const now = Date.now();
+  const sourceData = { ...currentAccess };
+  delete sourceData.id;
+  const writes = [];
+  writes.push((batch) => batch.set(destinationRef, {
+    ...sourceData,
+    driverUsername: driver.username,
+    passengerId,
+    passengerContact: newPassengerContact,
+    displayName: displayName || cleanText(sourceData.displayName, 120),
+    status: passengerAccessStatus(sourceData) || "AUTHORIZED",
+    updatedAtMillis: now,
+  }, { merge: true }));
+
+  if (oldAccountSnap.exists) {
+    writes.push((batch) => batch.set(newAccountRef, {
+      ...oldAccountSnap.data(),
+      passengerId,
+      passengerContact: newPassengerContact,
+      updatedAtMillis: now,
+    }, { merge: true }));
+  }
+
+  if (oldLedgerSnap.exists) {
+    const oldLedger = oldLedgerSnap.data();
+    const newLedger = newLedgerSnap.exists ? newLedgerSnap.data() : {};
+    writes.push((batch) => batch.set(newLedgerRef, {
+      ...oldLedger,
+      driverUsername: driver.username,
+      passengerId,
+      passengerContact: newPassengerContact,
+      balanceCents: Math.max(Number(oldLedger.balanceCents || 0), Number(newLedger.balanceCents || 0)),
+      earnedCents: Math.max(Number(oldLedger.earnedCents || 0), Number(newLedger.earnedCents || 0)),
+      spentCents: Math.max(Number(oldLedger.spentCents || 0), Number(newLedger.spentCents || 0)),
+      updatedAtMillis: now,
+    }, { merge: true }));
+    oldLedgerEntries.docs.forEach((entry) => {
+      writes.push((batch) => batch.set(newLedgerRef.collection("entries").doc(entry.id), entry.data(), { merge: true }));
+    });
+  }
+
+  sessionSnap.docs.forEach((doc) => {
+    writes.push((batch) => batch.set(doc.ref, {
+      passengerId,
+      passengerContact: newPassengerContact,
+      contactHash: sha256Hex(newPassengerContact),
+    }, { merge: true }));
+  });
+  agendaViewSnap.docs.forEach((doc) => {
+    writes.push((batch) => batch.set(doc.ref, {
+      passengerId,
+      passengerContact: newPassengerContact,
+      contactHash: sha256Hex(newPassengerContact),
+    }, { merge: true }));
+  });
+  referredAccessSnap.docs
+    .filter((doc) => normalizeUsername(doc.data().driverUsername || "") === driver.username)
+    .forEach((doc) => writes.push((batch) => batch.set(doc.ref, { referredByContact: newPassengerContact, updatedAtMillis: now }, { merge: true })));
+  referralCodesSnap.docs
+    .filter((doc) => normalizeUsername(doc.data().driverUsername || "") === driver.username)
+    .forEach((doc) => writes.push((batch) => batch.set(doc.ref, { referrerContact: newPassengerContact }, { merge: true })));
+
+  ownedBookings.forEach((doc) => {
+    const tripToken = doc.ref.parent.parent.id;
+    writes.push((batch) => batch.set(doc.ref, { passengerContact: newPassengerContact, passengerId, updatedAtMillis: now }, { merge: true }));
+    writes.push((batch) => batch.set(
+      passengerBookingIndexRef(newPassengerContact, tripToken, doc.id),
+      { tripToken, bookingId: doc.id, updatedAtMillis: now },
+      { merge: true },
+    ));
+    writes.push((batch) => batch.delete(passengerBookingIndexRef(previousPassengerContact, tripToken, doc.id)));
+  });
+
+  await commitPassengerWhatsappWrites(writes);
+
+  const cleanup = [];
+  cleanup.push((batch) => batch.set(sourceRef, {
+    status: "MOVED",
+    replacedByContact: newPassengerContact,
+    updatedAtMillis: now,
+  }, { merge: true }));
+  if (oldAccountSnap.exists) cleanup.push((batch) => batch.delete(oldAccountRef));
+  if (oldLedgerSnap.exists) {
+    oldLedgerEntries.docs.forEach((entry) => cleanup.push((batch) => batch.delete(entry.ref)));
+    cleanup.push((batch) => batch.delete(oldLedgerRef));
+  }
+  await commitPassengerWhatsappWrites(cleanup);
+
+  const updated = await destinationRef.get();
   return json(res, 200, { passenger: safePassengerAccess(updated) });
 }
 
@@ -1347,22 +1775,31 @@ async function resetDriverPassengerPassword(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
   if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
-  let passengerContact;
-  try { passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact); }
-  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
-  const access = await passengerAccessFor(driver.username, passengerContact);
+  const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  let passengerContact = "";
+  if (req.body && req.body.passengerContact) {
+    try { passengerContact = normalizeBrazilWhatsapp(req.body.passengerContact); }
+    catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
+  }
+  const access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
   if (!access) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
+  const currentContact = normalizeBrazilWhatsapp(access.passengerContact);
   const temporaryPassword = temporaryPassengerPassword();
   const salt = crypto.randomBytes(16).toString("hex");
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(currentContact));
+  const currentAccount = await accountRef.get();
+  if (!currentAccount.exists || !passengerAccountIsActivated(currentAccount.data())) {
+    return fail(res, 409, "passenger_account_not_activated", "O passageiro ainda não criou a senha da área privada.");
+  }
   await accountRef.set({
-    passengerContact,
+    passengerContact: currentContact,
+    passengerId: cleanText(access.passengerId, 120) || passengerId,
     passwordSalt: salt,
     passwordHash: passengerPasswordDigest(temporaryPassword, salt),
     mustChangePassword: true,
     updatedAtMillis: Date.now(),
   }, { merge: true });
-  await invalidatePassengerSessions(passengerContact);
+  await invalidatePassengerSessions(currentContact);
   return json(res, 200, { temporaryPassword });
 }
 
@@ -1417,7 +1854,7 @@ async function requestPassengerReferralInvite(req, res) {
   const ref = driverPassengerAccessRef(driverUsername, passengerContact);
   const now = Date.now();
   const existing = await ref.get();
-  if (existing.exists && existing.data().status === "ACTIVE") {
+  if (existing.exists && passengerAccessIsAuthorized(existing.data())) {
     return fail(res, 409, "access_already_active", "Este WhatsApp já possui acesso à agenda.");
   }
   const existingData = existing.exists ? existing.data() : {};
@@ -1427,7 +1864,9 @@ async function requestPassengerReferralInvite(req, res) {
     driverUsername,
     passengerContact,
     displayName: cleanText(existingData.displayName, 120) || displayName,
-    status: existing.exists && existingData.status === "BLOCKED" ? "BLOCKED" : "PENDING",
+    status: existing.exists && PASSENGER_RESTRICTED_ACCESS_STATUSES.has(cleanText(existingData.status, 20).toUpperCase())
+      ? cleanText(existingData.status, 20).toUpperCase()
+      : "PENDING",
     referredByContact: firstReferrer,
     referralCode: firstReferralCode,
     createdAtMillis: existing.exists ? Number(existingData.createdAtMillis || now) : now,
@@ -1502,7 +1941,7 @@ function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-async function createPassengerSession(passengerContact) {
+async function createPassengerSession(passengerContact, passengerId = "") {
   const token = passengerSessionToken();
   const tokenHash = sha256Hex(token);
   const now = Date.now();
@@ -1510,6 +1949,7 @@ async function createPassengerSession(passengerContact) {
   await db.collection("passengerSessions").doc(tokenHash).set({
     contactHash: sha256Hex(passengerContact),
     passengerContact,
+    passengerId: cleanText(passengerId, 120),
     createdAtMillis: now,
     expiresAtMillis,
   });
@@ -1537,6 +1977,7 @@ async function requirePassengerSession(req, res) {
   }
   return {
     passengerContact: cleanText(data.passengerContact, 40),
+    passengerId: cleanText(data.passengerId, 120),
     contactHash: cleanText(data.contactHash, 80),
   };
 }
@@ -1553,6 +1994,7 @@ async function getPassengerMe(req, res) {
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).get();
   return json(res, 200, {
     passengerContact: session.passengerContact,
+    passengerId: cleanText(session.passengerId || (accountSnap.exists && accountSnap.data().passengerId), 120),
     mustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
   });
 }
@@ -1560,6 +2002,62 @@ async function getPassengerMe(req, res) {
 async function registerPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
   return fail(res, 403, "passenger_invite_required", "Acesso somente por convite do motorista.");
+}
+
+async function activatePassengerAccount(req, res) {
+  await enforceBookingRateLimit(req);
+  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
+  if (!driverUsername) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
+  const view = await requirePassengerAgendaView(req, res, driverUsername);
+  if (!view) return;
+  let passengerContact;
+  let password;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    password = passengerPassword(req.body && req.body.password);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_activation", error.message || "Não foi possível criar sua senha.");
+  }
+  if (passengerContact !== view.passengerContact) {
+    return fail(res, 403, "passenger_contact_mismatch", "Use o mesmo WhatsApp informado para consultar a agenda.");
+  }
+  const passengerId = cleanText(view.passengerId || view.access.passengerId, 120);
+  if (!passengerId) {
+    return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
+  }
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const now = Date.now();
+  const salt = crypto.randomBytes(16).toString("hex");
+  try {
+    await db.runTransaction(async (tx) => {
+      const [accountSnap, accessSnap] = await Promise.all([tx.get(accountRef), tx.get(driverPassengerAccessRef(driverUsername, passengerContact))]);
+      if (!accessSnap.exists || !passengerAccessIsAuthorized(accessSnap.data())) {
+        throw Object.assign(new Error("Seu acesso a esta agenda não está disponível."), { httpStatus: 403, code: "passenger_access_unavailable" });
+      }
+      if (accountSnap.exists && passengerAccountIsActivated(accountSnap.data())) {
+        throw Object.assign(new Error("Sua senha já foi criada. Entre com ela para continuar."), { httpStatus: 409, code: "passenger_account_already_activated" });
+      }
+      tx.set(accountRef, {
+        passengerContact,
+        passengerId,
+        passwordSalt: salt,
+        passwordHash: passengerPasswordDigest(password, salt),
+        mustChangePassword: false,
+        createdAtMillis: Number(accountSnap.exists && accountSnap.data().createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "passenger_activation_failed", error.message || "Não foi possível criar sua senha.");
+  }
+  const session = await createPassengerSession(passengerContact, passengerId);
+  return json(res, 201, {
+    sessionToken: session.token,
+    expiresAtMillis: session.expiresAtMillis,
+    passengerContact,
+    passengerId,
+    mustChangePassword: false,
+  });
 }
 
 async function loginPassengerAccount(req, res) {
@@ -1580,17 +2078,23 @@ async function loginPassengerAccount(req, res) {
   if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
     return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
   }
+  let access = null;
   if (driverUsername) {
-    const access = await passengerAccessFor(driverUsername, passengerContact);
-    if (!access || access.status === "PENDING") return fail(res, 403, "passenger_invite_required", "Você precisa ser convidado pelo motorista para acessar esta agenda.");
-    if (access.status === "BLOCKED") return fail(res, 403, "passenger_access_blocked", "Seu acesso a esta agenda está bloqueado.");
-    if (access.status !== "ACTIVE") return fail(res, 403, "passenger_invite_required", "Seu acesso a esta agenda ainda não foi liberado.");
+    access = await passengerAccessFor(driverUsername, passengerContact);
+    if (!access || !passengerAccessIsAuthorized(access)) {
+      return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
+    }
   }
-  const session = await createPassengerSession(passengerContact);
+  const passengerId = cleanText(account.passengerId || (access && access.passengerId), 120);
+  if (passengerId && !account.passengerId) {
+    await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).set({ passengerId, updatedAtMillis: Date.now() }, { merge: true });
+  }
+  const session = await createPassengerSession(passengerContact, passengerId);
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
     passengerContact,
+    passengerId,
     mustChangePassword: account.mustChangePassword === true,
   });
 }
@@ -1611,8 +2115,11 @@ async function listPassengerBookings(req, res) {
       tripRef.collection("bookings").doc(bookingId).get(),
     ]);
     if (!tripSnap.exists || !bookingSnap.exists) return null;
+    const tripData = tripSnap.data();
+    const access = await passengerAccessForIdentity(normalizeUsername(tripData.driverUsername || ""), session.passengerId, session.passengerContact);
+    if (!access || !passengerAccessIsAuthorized(access)) return null;
     const booking = bookingSnap.data();
-    if (booking.passengerContact !== session.passengerContact) return null;
+    if (!passengerSessionOwnsBooking(session, booking)) return null;
     const safeBooking = { id: bookingId, ...booking };
     delete safeBooking.cancellationHash;
     delete safeBooking.idempotencyFingerprint;
@@ -1660,6 +2167,8 @@ async function createBooking(req, res, token) {
   debugDriverUsername = normalizeUsername(authTrip.data().driverUsername || "");
   const authorized = await requirePassengerDriverAccess(req, res, debugDriverUsername, session);
   if (!authorized) return;
+  const passengerId = cleanText(session.passengerId || authorized.access.passengerId, 120);
+  if (!passengerId) return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
   const ledgerRef = passengerCreditLedgerRef(debugDriverUsername, passengerContact);
   const ledgerEntryRef = ledgerRef.collection("entries").doc(`booking_${bookingId}`);
 
@@ -1721,6 +2230,7 @@ async function createBooking(req, res, token) {
         tripId: token,
         passengerName,
         passengerContact,
+        passengerId,
         boardingStopId,
         dropoffStopId,
         seats,
@@ -1835,11 +2345,17 @@ async function createBooking(req, res, token) {
 }
 
 async function cancelPublicBooking(req, res, token, bookingId) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
   const cancellationToken = cleanText(req.body && req.body.cancellationToken, 120);
   let debugDriverUsername = "";
   const suppliedHash = crypto.createHash("sha256").update(cancellationToken).digest("hex");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -1849,7 +2365,10 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const booking = records.find((record) => record.id === bookingId);
-      if (!booking) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (!booking || booking.passengerContact !== session.passengerContact ||
+        (booking.passengerId && session.passengerId && booking.passengerId !== session.passengerId)) {
+        throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
+      }
       if (!safeEqual(suppliedHash, booking.cancellationHash || "")) throw Object.assign(new Error("Código de cancelamento inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
       const now = Date.now();
       const reconciledRecords = records.map((record) => record.id === bookingId ? { ...record, status: "CANCELLED", updatedAtMillis: now } : record);
@@ -1915,6 +2434,8 @@ async function cancelPublicBooking(req, res, token, bookingId) {
 
 async function updatePublicBooking(req, res, token, bookingIdRaw) {
   await enforceBookingRateLimit(req);
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const cancellationToken = cleanText(req.body && req.body.cancellationToken, 120);
   if (!bookingId || !cancellationToken) return fail(res, 400, "booking_credentials_required", "Reserva e código particular são obrigatórios.");
@@ -1922,6 +2443,11 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   let debugDriverUsername = "";
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  debugDriverUsername = normalizeUsername(authTrip.data().driverUsername || "");
+  const authorized = await requirePassengerDriverAccess(req, res, debugDriverUsername, session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -1931,14 +2457,20 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
-      if (!previous) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (!previous || !passengerSessionOwnsBooking(session, previous)) {
+        throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
+      }
       if (!safeEqual(suppliedHash, previous.cancellationHash || "")) throw Object.assign(new Error("Código particular inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
 
       const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
-      const passengerContact = req.body && req.body.passengerContact
+      const requestedPassengerContact = req.body && req.body.passengerContact
         ? normalizeBrazilWhatsapp(req.body.passengerContact)
         : previous.passengerContact;
+      if (requestedPassengerContact !== session.passengerContact) {
+        throw Object.assign(new Error("A reserva precisa usar o WhatsApp do seu acesso."), { httpStatus: 403, code: "booking_contact_mismatch" });
+      }
+      const passengerContact = session.passengerContact;
       const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80) || previous.boardingStopId;
       const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80) || previous.dropoffStopId;
       const seats = req.body && req.body.seats != null ? Number(req.body.seats) : Number(previous.seats || 0);
@@ -2025,6 +2557,10 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -2116,6 +2652,10 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -2124,7 +2664,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
-      if (!previous || previous.passengerContact !== session.passengerContact) {
+      if (!previous || !passengerSessionOwnsBooking(session, previous)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
@@ -2190,6 +2730,10 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -2198,7 +2742,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
-      if (!previous || previous.passengerContact !== session.passengerContact) {
+      if (!previous || !passengerSessionOwnsBooking(session, previous)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       const now = Date.now();
@@ -2290,8 +2834,10 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
     if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/activate") return await activatePassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/session") return await loginPassengerAccount(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me") return await getPassengerMe(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/password") return await changePassengerPassword(req, res);
@@ -2301,6 +2847,8 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/referrals/request") return await requestPassengerReferralInvite(req, res);
     if (req.method === "GET" && path === "/v1/driver/passengers") return await listDriverPassengers(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/invite") return await inviteDriverPassenger(req, res);
+    if (req.method === "POST" && path === "/v1/driver/passengers/sync") return await syncDriverPassengerDirectory(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/passengers/whatsapp") return await updateDriverPassengerWhatsapp(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/block") return await setDriverPassengerBlocked(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);

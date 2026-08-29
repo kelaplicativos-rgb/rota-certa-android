@@ -34,13 +34,12 @@ test("passenger access uses phone password session and driver invitation", () =>
   assert.ok(api.includes("/v1/passenger/me/bookings"));
 });
 
-test("public web exposes invite-only passenger reservation management", () => {
+test("public web keeps passenger management private behind the authenticated area", () => {
   assert.ok(html.includes('id="passengerPortal"'));
-  assert.ok(html.includes('id="portalContact"'));
-  assert.ok(html.includes('id="portalPassword"'));
-  assert.ok(html.includes('Acesso somente por convite'));
+  assert.ok(html.includes('id="privateAuthPassword"'));
   assert.ok(html.includes('id="portalCreditBalance"'));
-  assert.ok(web.includes("loginPassengerPortal"));
+  assert.ok(html.includes("A senha só será solicitada para reservar"));
+  assert.ok(web.includes("showPrivateAuthGate"));
   assert.ok(web.includes("loadPassengerBookings"));
   assert.ok(web.includes("sharePassengerReferral"));
   assert.ok(web.includes("vaga(s) até"));
