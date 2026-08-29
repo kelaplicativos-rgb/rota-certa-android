@@ -62,12 +62,13 @@ class AgendaForensicBlackBox0345Test {
     }
 
     @Test
-    fun capacityEmptyToPersistedValueAndSaveAreObservable() {
+    fun capacityWaitingToPersistedValueAndSaveAreObservable() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        assertTrue(activity.contains("collectAsState(initial = AppSettings())"))
+        assertTrue(activity.contains("collectAsState(initial = null)"))
         assertTrue(activity.contains("CAPACITY_INITIAL_STATE"))
         assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_REQUEST"))
+        assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_WAITING"))
         assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_RECEIVED"))
         assertTrue(activity.contains("CAPACITY_FIRST_VALUE_MS"))
         assertTrue(activity.contains("CAPACITY_RENDER_UPDATED"))
@@ -76,6 +77,7 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(timeline.contains("CAPACITY_FIELD_CHANGED_BY_USER"))
         assertTrue(timeline.contains("CAPACITY_SAVE_REQUESTED"))
         assertTrue(timeline.contains("CAPACITY_LOCAL_SAVE"))
+        assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC"))
         assertTrue(activity.contains("CAPACITY_REMOTE_CONFIRMATION"))
