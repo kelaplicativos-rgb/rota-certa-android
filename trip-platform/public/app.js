@@ -13,6 +13,7 @@ const requestedBoardingStopId = (params.get("embarque") || "").replace(/[^A-Za-z
 const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const requestedSeats = Math.max(1, Math.min(9, Number(params.get("lugares") || 1) || 1));
 const referralCode = (params.get("ref") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
+const directReserveRequested = params.get("reservar") === "1";
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -41,6 +42,9 @@ let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
 let passengerViewAccountActivated = false;
 let pendingPrivateAction = "";
+let bookingRequestInFlight = false;
+let directReserveConsumed = false;
+let quickUndoTimer = null;
 
 function localTodayKey() {
   return DateContract.todayKey();
@@ -200,11 +204,15 @@ function availableFor(fromIndex, toIndex) {
   return Math.max(0, available);
 }
 
-function fareFor(fromIndex, toIndex) {
-  if (!trip || fromIndex < 0 || toIndex <= fromIndex) return 0;
-  const stops = orderedStops();
+function fareForTripSegment(source, fromIndex, toIndex) {
+  if (!source || fromIndex < 0 || toIndex <= fromIndex) return 0;
+  const stops = orderedStops(source);
   return stops.slice(fromIndex, toIndex)
     .reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+}
+
+function fareFor(fromIndex, toIndex) {
+  return fareForTripSegment(trip, fromIndex, toIndex);
 }
 
 function stopMoment(stop, index) {
@@ -368,7 +376,11 @@ async function continueAfterAuthentication() {
   updateAuthenticatedChrome();
   const resume = pendingPrivateAction;
   pendingPrivateAction = "";
-  if (resume === "reserve") return reserve();
+  if (resume === "reserve") {
+    if (!pendingBooking) pendingBooking = restorePendingBookingIntent();
+    return reserve();
+  }
+  if (resume === "undo") return undoQuickBooking();
   if (resume === "update") return updateExistingReservation();
   if (resume === "cancel") return cancelReservation();
   if (resume === "edit") return beginExistingReservationEdit();
@@ -785,25 +797,20 @@ function renderAgendaCards(entries, container, filtered = false) {
     const full = isFullTrip(item);
     const range = seatRange(item);
     const stops = orderedStops(item);
-    const from = stops[0]?.name || "Origem";
-    const to = stops[stops.length - 1]?.name || "Destino";
-    const fare = fullFareFor(item);
-    const card = document.createElement(full ? "article" : "a");
+    const fromIndex = filtered && Number.isInteger(entry.fromIndex) ? entry.fromIndex : 0;
+    const toIndex = filtered && Number.isInteger(entry.toIndex) ? entry.toIndex : stops.length - 1;
+    const from = stops[fromIndex]?.name || "Origem";
+    const to = stops[toIndex]?.name || "Destino";
+    const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
+    const card = document.createElement("article");
     card.className = full ? "agendaTrip agendaTripFull" : "agendaTrip";
 
-    if (full) {
-      card.setAttribute("aria-disabled", "true");
-      card.setAttribute("tabindex", "-1");
-    } else {
-      const owner = item.driverUsername || driverUsername;
-      const next = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
-      if (filtered && Number.isInteger(entry.fromIndex) && Number.isInteger(entry.toIndex)) {
-        next.set("embarque", stops[entry.fromIndex]?.id || "");
-        next.set("destino", stops[entry.toIndex]?.id || "");
-        next.set("lugares", String(searchState.seats));
-      }
-      card.href = `/?${next.toString()}`;
-      card.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    const owner = item.driverUsername || driverUsername;
+    const detailsParams = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
+    if (filtered && Number.isInteger(entry.fromIndex) && Number.isInteger(entry.toIndex)) {
+      detailsParams.set("embarque", stops[fromIndex]?.id || "");
+      detailsParams.set("destino", stops[toIndex]?.id || "");
+      detailsParams.set("lugares", String(searchState.seats));
     }
 
     const date = document.createElement("div");
@@ -847,16 +854,41 @@ function renderAgendaCards(entries, container, filtered = false) {
     price.className = "priceMini";
     price.textContent = fare > 0 ? formatMoney(fare) : "";
     bottom.append(driver, price);
-    const action = document.createElement("div");
-    action.className = "agendaAction";
-    action.textContent = full ? "CHEIO" : "VER DETALHES";
+
+    card.append(date, routeFrom, arrow, routeTo, meta, bottom);
+
     if (full) {
+      const action = document.createElement("div");
+      action.className = "agendaAction";
+      action.textContent = "CHEIO";
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
       fullWord.textContent = "Cheio";
       bottom.appendChild(fullWord);
+      card.appendChild(action);
+    } else {
+      const details = document.createElement("a");
+      details.className = "agendaDetailsLink";
+      details.href = `/?${detailsParams.toString()}`;
+      details.textContent = "Ver detalhes";
+      details.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+
+      const reserveParams = new URLSearchParams(detailsParams);
+      reserveParams.set("reservar", "1");
+      const action = document.createElement("a");
+      action.className = "agendaAction";
+      action.href = `/?${reserveParams.toString()}`;
+      action.textContent = "RESERVAR";
+      action.addEventListener("click", () => {
+        tracePublicAction("PUBLIC_TRIP_SELECTED");
+        tracePublicAction("PUBLIC_RESERVATION_STARTED", {
+          seats: filtered ? searchState.seats : 1,
+          fromIndex,
+          toIndex,
+        });
+      });
+      card.append(details, action);
     }
-    card.append(date, routeFrom, arrow, routeTo, meta, bottom, action);
     container.appendChild(card);
   });
 }
@@ -928,15 +960,18 @@ function renderTrip() {
 
   show("tripSticky", !full && trip.canReserve !== false);
   $("startBooking").disabled = full || trip.canReserve === false;
-  if (full) {
-    $("startBooking").textContent = "Cheio";
-  } else {
-    $("startBooking").textContent = "Fazer pedido de reserva";
-  }
+  $("adjustBooking").disabled = full || trip.canReserve === false;
+  $("startBooking").textContent = full ? "Cheio" : "RESERVAR";
 
   prepareBookingSelectors();
   restoreCancellation();
-  if (!restoreExistingBooking()) setWhatsappLink($("driverWhatsappTrip"), defaultDriverMessage());
+  const restored = restoreExistingBooking();
+  if (!restored) {
+    setWhatsappLink($("driverWhatsappTrip"), defaultDriverMessage());
+    if (directReserveRequested && !directReserveConsumed) {
+      queueMicrotask(() => startQuickReservation(true));
+    }
+  }
 }
 
 function renderTimeline() {
@@ -1148,6 +1183,107 @@ function prepareBookingSelectors() {
   refreshAvailability();
 }
 
+function pendingBookingIntentKey() {
+  return `rotacerta-pending-booking-${tripToken}`;
+}
+
+function persistPendingBookingIntent(payload) {
+  try { sessionStorage.setItem(pendingBookingIntentKey(), JSON.stringify(payload)); } catch (_) {}
+}
+
+function restorePendingBookingIntent() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(pendingBookingIntentKey()) || "null");
+    return saved && saved.boardingStopId && saved.dropoffStopId ? saved : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearPendingBookingIntent() {
+  try { sessionStorage.removeItem(pendingBookingIntentKey()); } catch (_) {}
+}
+
+function showQuickBookingNotice(title, message, isError = false) {
+  $("quickBookingTitle").textContent = title;
+  $("quickBookingText").textContent = message;
+  $("quickBookingText").className = isError ? "error" : "muted";
+  show("quickBookingNotice", true);
+  if (isError) {
+    show("quickUndo", false);
+    show("quickObservation", false);
+  }
+}
+
+function hideQuickBookingNotice() {
+  show("quickBookingNotice", false);
+  if (quickUndoTimer) clearTimeout(quickUndoTimer);
+  quickUndoTimer = null;
+}
+
+function defaultBookingIntent() {
+  if (!trip) return null;
+  const stops = orderedStops();
+  if (stops.length < 2) return null;
+  let fromIndex = requestedBoardingStopId ? stops.findIndex((stop) => stop.id === requestedBoardingStopId) : 0;
+  let toIndex = requestedDropoffStopId ? stops.findIndex((stop) => stop.id === requestedDropoffStopId) : stops.length - 1;
+  if (fromIndex < 0) fromIndex = 0;
+  if (toIndex <= fromIndex) toIndex = stops.length - 1;
+  const seats = Math.max(1, requestedSeats || 1);
+  const available = availableFor(fromIndex, toIndex);
+  if (available < seats) return null;
+  return {
+    boardingStopId: stops[fromIndex].id,
+    dropoffStopId: stops[toIndex].id,
+    seats,
+    creditToUseCents: 0,
+    quick: true,
+  };
+}
+
+function startQuickReservation(auto = false) {
+  if (!trip || isFullTrip(trip) || trip.canReserve === false || bookingRequestInFlight) return;
+  if (auto) {
+    if (directReserveConsumed) return;
+    directReserveConsumed = true;
+  }
+  const intent = defaultBookingIntent();
+  if (!intent) {
+    showQuickBookingNotice("Reserva indisponível", "As vagas mudaram ou esse trecho não está mais disponível.", true);
+    return;
+  }
+  pendingBooking = intent;
+  persistPendingBookingIntent(intent);
+  const stops = orderedStops();
+  tracePublicAction("PUBLIC_RESERVATION_STARTED", {
+    seats: intent.seats,
+    fromIndex: stops.findIndex((stop) => stop.id === intent.boardingStopId),
+    toIndex: stops.findIndex((stop) => stop.id === intent.dropoffStopId),
+  });
+  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
+  reserve();
+}
+
+function refreshTripAvailabilitySummary() {
+  if (!trip) return;
+  const full = isFullTrip(trip);
+  const range = seatRange(trip);
+  $("status").textContent = full ? "Cheio" : "Disponível";
+  $("status").classList.toggle("statusFull", full);
+  $("tripAvailability").textContent = full
+    ? "🪑 Cheio • 0 vagas"
+    : (range.minimum === range.maximum
+      ? `🪑 ${range.maximum} vaga(s) disponível(is)`
+      : `🪑 ${range.minimum}–${range.maximum} vagas por trecho`);
+  if (confirmedBooking) {
+    show("tripSticky", false);
+  } else {
+    show("tripSticky", !full && trip.canReserve !== false);
+    $("startBooking").disabled = full || trip.canReserve === false;
+    $("adjustBooking").disabled = full || trip.canReserve === false;
+  }
+}
+
 function openBookingFlow() {
   if (!trip || isFullTrip(trip) || trip.canReserve === false) return;
   editingExistingBooking = false;
@@ -1220,15 +1356,7 @@ function traceSearchChanged() {
 
 function reviewBooking() {
   if (!trip) return;
-  const name = $("name").value.trim();
-  const passengerContact = normalizeWhatsapp($("contact").value);
   const seats = Number($("seats").value || 0);
-
-  if (!name) return void ($("bookingMessage").textContent = "Informe seu nome.");
-  if (!passengerContact) return void ($("bookingMessage").textContent = "Informe seu WhatsApp com DDD.");
-  if (passengerSessionContact && passengerContact !== passengerSessionContact) {
-    return void ($("bookingMessage").textContent = "Use o mesmo WhatsApp do seu acesso.");
-  }
   if (!$("boarding").value || !$("dropoff").value || seats < 1) {
     return void ($("bookingMessage").textContent = "Escolha um trecho com vagas.");
   }
@@ -1236,55 +1364,41 @@ function reviewBooking() {
   const stops = orderedStops();
   const fromIndex = stops.findIndex((s) => s.id === $("boarding").value);
   const toIndex = stops.findIndex((s) => s.id === $("dropoff").value);
-  const from = stops[fromIndex]?.name || "Embarque";
-  const to = stops[toIndex]?.name || "Destino";
+  const available = availableFor(fromIndex, toIndex);
+  if (available < seats) {
+    return void ($("bookingMessage").textContent = "As vagas mudaram. Escolha uma quantidade disponível.");
+  }
+
   const farePerSeatCents = fareFor(fromIndex, toIndex);
   const totalFareCents = farePerSeatCents * seats;
   const requestedCreditCents = Math.max(0, Math.round(Number($("creditToUse").value || 0) * 100));
   const creditToUseCents = editingExistingBooking ? 0 : Math.min(requestedCreditCents, passengerCreditBalanceCents, totalFareCents);
-  const amountDueCents = Math.max(0, totalFareCents - creditToUseCents);
 
   pendingBooking = {
-    passengerName: name,
-    passengerContact,
     boardingStopId: $("boarding").value,
     dropoffStopId: $("dropoff").value,
     seats,
     creditToUseCents,
+    quick: !editingExistingBooking,
   };
-
+  persistPendingBookingIntent(pendingBooking);
   tracePublicAction("PUBLIC_RESERVATION_STARTED", { seats, fromIndex, toIndex });
-
-  $("reviewRoute").textContent = `${from} → ${to}`;
-  $("reviewDate").textContent = formatDate(trip.departureAtMillis);
-  $("reviewStops").textContent = `${from} → ${to}`;
-  $("reviewSeats").textContent = seats === 1 ? "1 lugar" : `${seats} lugares`;
-  if (totalFareCents > 0) {
-    $("reviewPrice").textContent = creditToUseCents > 0
-      ? `${formatMoney(totalFareCents)} • créditos −${formatMoney(creditToUseCents)} • a pagar ${formatMoney(amountDueCents)}`
-      : formatMoney(totalFareCents);
-  } else {
-    $("reviewPrice").textContent = "Valor não informado";
-  }
-  $("reviewPayment").textContent = amountDueCents === 0 && totalFareCents > 0
-    ? "Esta viagem ficará integralmente coberta pelos seus créditos."
-    : (driverProfile.paymentInstructions || "Forma de pagamento não informada pelo motorista.");
-
-  const suggested = `Olá, ${driverDisplayName || "motorista"}. Sou ${name}. Fiz um pedido para ${from} → ${to}, ${formatDate(trip.departureAtMillis)}, para ${seats} lugar(es).`;
-  $("messageToDriver").value = suggested;
-  $("messageHeading").textContent = `Mande uma mensagem para ${driverDisplayName || "o motorista"}`;
-
-  const hasWhatsapp = setWhatsappLink($("driverWhatsappReview"), suggested);
-  show("whatsappUnavailable", !hasWhatsapp);
-
-  $("confirmReserve").textContent = editingExistingBooking ? "Confirmar alteração" : "Fazer pedido de reserva";
   $("bookingMessage").textContent = "";
-  showOnly("review");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+
+  if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
+    return updateExistingReservation();
+  }
+  if (!passengerSessionToken) return showPrivateAuthGate("booking", "reserve");
+  return reserve();
 }
 
 function requestIdentity(payload) {
-  const fingerprint = JSON.stringify(payload);
+  const fingerprint = JSON.stringify({
+    boardingStopId: payload.boardingStopId,
+    dropoffStopId: payload.dropoffStopId,
+    seats: payload.seats,
+    creditToUseCents: payload.creditToUseCents || 0,
+  });
   const key = `rotacerta-booking-intent-${tripToken}`;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) {}
@@ -1299,22 +1413,33 @@ function requestIdentity(payload) {
 }
 
 async function reserve() {
-  if (!trip || !pendingBooking) return;
-  if (!passengerSessionToken) return showPrivateAuthGate("review", "reserve");
+  if (!trip) return;
+  if (!pendingBooking) pendingBooking = restorePendingBookingIntent();
+  if (!pendingBooking || bookingRequestInFlight) return;
+  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
   if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
     return updateExistingReservation();
   }
 
-  $("confirmReserve").disabled = true;
-  $("reviewMessage").textContent = "Enviando seu pedido…";
-  const idempotencyKey = requestIdentity(pendingBooking);
+  bookingRequestInFlight = true;
+  const intent = { ...pendingBooking };
+  const bookingPayload = {
+    boardingStopId: intent.boardingStopId,
+    dropoffStopId: intent.dropoffStopId,
+    seats: intent.seats,
+    creditToUseCents: intent.creditToUseCents || 0,
+  };
+  const idempotencyKey = requestIdentity(bookingPayload);
   const debugStops = orderedStops();
-  const fromIndex = debugStops.findIndex((s) => s.id === pendingBooking.boardingStopId);
-  const toIndex = debugStops.findIndex((s) => s.id === pendingBooking.dropoffStopId);
+  const fromIndex = debugStops.findIndex((s) => s.id === bookingPayload.boardingStopId);
+  const toIndex = debugStops.findIndex((s) => s.id === bookingPayload.dropoffStopId);
   let statusCode = 0;
 
+  $("startBooking").disabled = true;
+  $("reserve").disabled = true;
+  showQuickBookingNotice("Solicitando reserva…", "Validando a vaga e registrando sua solicitação.");
   tracePublicAction("PUBLIC_RESERVATION_REQUEST_SENT", {
-    seats: pendingBooking.seats,
+    seats: bookingPayload.seats,
     fromIndex,
     toIndex,
   });
@@ -1326,16 +1451,18 @@ async function reserve() {
         "Content-Type": "application/json",
         Accept: "application/json",
         "Idempotency-Key": idempotencyKey,
-        ...(passengerSessionToken ? { Authorization: `Bearer ${passengerSessionToken}` } : {}),
+        Authorization: `Bearer ${passengerSessionToken}`,
       },
-      body: JSON.stringify({ ...pendingBooking, idempotencyKey }),
+      body: JSON.stringify({ ...bookingPayload, idempotencyKey }),
     });
     statusCode = response.status;
     const body = await response.json();
     if (response.status === 401) {
       savePassengerSession("");
       passengerViewAccountActivated = true;
-      showPrivateAuthGate("review", "reserve");
+      pendingBooking = intent;
+      persistPendingBookingIntent(intent);
+      showPrivateAuthGate("trip", "reserve");
       return;
     }
     if (!response.ok) throw new Error(body.message || "Não foi possível reservar.");
@@ -1343,11 +1470,11 @@ async function reserve() {
     confirmedBooking = {
       bookingId: body.bookingId,
       cancellationToken: body.cancellationToken,
-      passengerName: pendingBooking.passengerName,
-      passengerContact: pendingBooking.passengerContact,
-      boardingStopId: pendingBooking.boardingStopId,
-      dropoffStopId: pendingBooking.dropoffStopId,
-      seats: pendingBooking.seats,
+      passengerName: body.passengerName || "",
+      passengerContact: passengerSessionContact,
+      boardingStopId: bookingPayload.boardingStopId,
+      dropoffStopId: bookingPayload.dropoffStopId,
+      seats: bookingPayload.seats,
       farePerSeatCents: Number(body.farePerSeatCents || 0),
       totalFareCents: Number(body.totalFareCents || 0),
       creditAppliedCents: Number(body.creditAppliedCents || 0),
@@ -1366,18 +1493,6 @@ async function reserve() {
     $("cancelToken").value = body.cancellationToken;
     $("cancelCode").textContent = body.cancellationToken;
 
-    const total = Number(body.totalFareCents || 0);
-    const credits = Number(body.creditAppliedCents || 0);
-    const due = Number(body.amountDueCents || 0);
-    const confirmedFare = total > 0
-      ? credits > 0
-        ? ` Valor da viagem: ${formatMoney(total)}. Créditos usados: ${formatMoney(credits)}. A pagar: ${formatMoney(due)}.`
-        : ` Valor total: ${formatMoney(total)}.`
-      : "";
-    $("confirmationText").textContent = body.replayed
-      ? `Esta reserva já estava confirmada. Nenhuma duplicata foi criada.${confirmedFare}`
-      : `Seu pedido foi confirmado para ${pendingBooking.seats} lugar(es).${confirmedFare}`;
-
     trip.segmentLoads = recomputeLoadsAfterBooking(trip.segmentLoads || [], confirmedBooking);
 
     tracePublicAction("PUBLIC_RESERVATION_CREATED", {
@@ -1394,27 +1509,102 @@ async function reserve() {
       toIndex,
     });
 
-    const confirmationWhatsappMessage =
-      `Olá, ${driverDisplayName || "motorista"}. Minha reserva pelo Rota Certa foi confirmada. Reserva ${confirmedBooking.bookingId}.`;
-    setWhatsappLink($("driverWhatsappConfirmed"), confirmationWhatsappMessage);
+    const total = Number(body.totalFareCents || 0);
+    const credits = Number(body.creditAppliedCents || 0);
+    const due = Number(body.amountDueCents || 0);
+    const fareText = total > 0
+      ? (credits > 0
+        ? ` Valor: ${formatMoney(total)} • créditos: −${formatMoney(credits)} • a pagar: ${formatMoney(due)}.`
+        : ` Valor: ${formatMoney(total)}.`)
+      : "";
+    $("confirmationText").textContent = body.replayed
+      ? `Esta reserva já estava registrada. Nenhuma duplicata foi criada.${fareText}`
+      : `Reserva solicitada para ${confirmedBooking.seats} lugar(es).${fareText}`;
 
     passengerCreditBalanceCents = Math.max(0, passengerCreditBalanceCents - credits);
-    loadPassengerCredits();
+    clearPendingBookingIntent();
     pendingBooking = null;
-    showOnly("confirmed");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    editingExistingBooking = false;
+
+    showOnly("trip");
+    refreshTripAvailabilitySummary();
+    showQuickBookingNotice(
+      "✓ RESERVA SOLICITADA",
+      body.replayed
+        ? "Essa solicitação já estava registrada. Nenhuma reserva duplicada foi criada."
+        : "Sua vaga foi registrada e o motorista foi avisado.",
+    );
+
+    const observation = `Olá, ${driverDisplayName || "motorista"}. Tenho uma observação sobre minha reserva ${confirmedBooking.bookingId}: `;
+    const hasObservation = setWhatsappLink($("quickObservation"), observation);
+    show("quickObservation", hasObservation);
+    show("quickUndo", !body.replayed);
+    if (quickUndoTimer) clearTimeout(quickUndoTimer);
+    quickUndoTimer = setTimeout(() => show("quickUndo", false), 8000);
   } catch (error) {
     tracePublicAction("PUBLIC_RESERVATION_FAILED", {
       statusCode,
       reason: statusCode ? `http_${statusCode}` : "network_or_client_error",
-      seats: pendingBooking?.seats || 0,
+      seats: intent.seats || 0,
       fromIndex,
       toIndex,
     });
-    $("reviewMessage").textContent = error.message || "Falha ao confirmar reserva.";
     if (statusCode === 409) await loadTrip();
+    else showOnly("trip");
+    showQuickBookingNotice("Reserva não concluída", error.message || "Falha ao registrar a reserva.", true);
+    pendingBooking = intent;
+    persistPendingBookingIntent(intent);
   } finally {
-    $("confirmReserve").disabled = false;
+    bookingRequestInFlight = false;
+    if (!confirmedBooking) {
+      $("startBooking").disabled = isFullTrip(trip) || trip?.canReserve === false;
+      $("reserve").disabled = false;
+    }
+  }
+}
+
+async function undoQuickBooking() {
+  const booking = confirmedBooking;
+  if (!booking?.bookingId || !booking?.cancellationToken || !tripToken) return;
+  if (!passengerSessionToken) return showPrivateAuthGate("trip", "undo");
+  $("quickUndo").disabled = true;
+  showQuickBookingNotice("Desfazendo…", "Cancelando a solicitação e devolvendo a vaga.");
+  tracePublicAction("PUBLIC_RESERVATION_CANCEL_STARTED");
+  let statusCode = 0;
+  try {
+    const response = await fetch(
+      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(booking.bookingId)}/cancel`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
+        body: JSON.stringify({ cancellationToken: booking.cancellationToken }),
+      },
+    );
+    statusCode = response.status;
+    const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      return showPrivateAuthGate("trip", "undo");
+    }
+    if (!response.ok) throw new Error(body.message || "Não foi possível desfazer.");
+
+    try {
+      localStorage.removeItem(cancellationStorageKey());
+      localStorage.removeItem(`rotacerta-booking-${booking.bookingId}`);
+      localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+    } catch (_) {}
+    clearPendingBookingIntent();
+    confirmedBooking = null;
+    directReserveConsumed = true;
+    tracePublicAction("PUBLIC_RESERVATION_CANCELLED", { statusCode });
+    tracePublicAction("PUBLIC_SEATS_UPDATED", { statusCode });
+    hideQuickBookingNotice();
+    await loadTrip();
+  } catch (error) {
+    showQuickBookingNotice("Não foi possível desfazer", error.message || "Use Minha área para cancelar a reserva.", true);
+  } finally {
+    $("quickUndo").disabled = false;
   }
 }
 
@@ -1453,8 +1643,6 @@ function restoreExistingBooking() {
 function beginExistingReservationEdit() {
   if (!trip || !confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken) return;
   editingExistingBooking = true;
-  $("name").value = confirmedBooking.passengerName || "";
-  $("contact").value = maskWhatsapp(confirmedBooking.passengerContact || "");
   $("boarding").value = confirmedBooking.boardingStopId || $("boarding").value;
   refreshSelectors();
   if (confirmedBooking.dropoffStopId) $("dropoff").value = confirmedBooking.dropoffStopId;
@@ -1499,8 +1687,8 @@ async function updateExistingReservation() {
 
     confirmedBooking = {
       ...confirmedBooking,
-      passengerName: pendingBooking.passengerName,
-      passengerContact: pendingBooking.passengerContact,
+      passengerName: pendingBooking.passengerName || confirmedBooking.passengerName,
+      passengerContact: pendingBooking.passengerContact || confirmedBooking.passengerContact,
       boardingStopId: pendingBooking.boardingStopId,
       dropoffStopId: pendingBooking.dropoffStopId,
       seats: pendingBooking.seats,
@@ -2138,11 +2326,14 @@ $("contact").addEventListener("input", (event) => {
 $("messageToDriver").addEventListener("input", () => {
   setWhatsappLink($("driverWhatsappReview"), $("messageToDriver").value);
 });
-$("startBooking").addEventListener("click", () => {
+$("startBooking").addEventListener("click", () => startQuickReservation(false));
+$("adjustBooking").addEventListener("click", () => {
   if (!passengerSessionToken) return showPrivateAuthGate("booking");
   openBookingFlow();
 });
 $("reserve").addEventListener("click", reviewBooking);
+$("quickUndo").addEventListener("click", undoQuickBooking);
+$("quickDismiss").addEventListener("click", hideQuickBookingNotice);
 $("confirmReserve").addEventListener("click", reserve);
 $("editReservation").addEventListener("click", () => {
   showOnly("booking");
