@@ -1383,6 +1383,7 @@ async function updateDriverTrip(req, res, token) {
   if (!driver) return;
   const ref = db.collection("trips").doc(token);
   try {
+    const passengerIdentityByContact = await passengerIdentityByContactForDriver(driver.username);
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
@@ -1419,12 +1420,15 @@ async function updateDriverTrip(req, res, token) {
           .map((doc) => ({ id: doc.id, ...doc.data() }))
           .filter((booking) => !["CANCELLED", "EXPIRED"].includes(cleanText(booking.status, 24)))
           .filter((booking) => cleanText(booking.passengerId, 120) || cleanText(booking.passengerContact, 40))
-          .map((booking) => ({
-            passengerId: cleanText(booking.passengerId, 120),
-            passengerContact: cleanText(booking.passengerContact, 40),
+          .map((booking) => {
+            const passengerContact = cleanText(booking.passengerContact, 40);
+            return {
+            passengerId: cleanText(booking.passengerId, 120) || cleanText(passengerIdentityByContact.get(passengerContact), 120),
+            passengerContact,
             bookingId: booking.id,
             tripTitle: cleanText(normalized.title || previous.title, 180),
-          }));
+          };
+          });
         notifiedPassengers = new Set(recipients.map((item) => item.passengerId || item.passengerContact).filter(Boolean)).size;
         writeChangeEventAndNotifications(tx, {
           eventType,
@@ -1610,6 +1614,25 @@ async function passengerAccessForIdentity(driverUsername, passengerId, passenger
   const byPassengerId = await passengerAccessForPassengerId(driverUsername, passengerId);
   if (byPassengerId) return byPassengerId;
   return passengerAccessFor(driverUsername, passengerContact);
+}
+
+async function passengerIdentityByContactForDriver(driverUsername) {
+  const username = normalizeUsername(driverUsername);
+  if (!username) return new Map();
+  const snapshot = await db.collection("driverPassengerAccess")
+    .where("driverUsername", "==", username)
+    .limit(500)
+    .get();
+  const result = new Map();
+  snapshot.docs
+    .map((doc) => doc.data())
+    .filter((access) => cleanText(access.status, 20).toUpperCase() !== "MOVED")
+    .forEach((access) => {
+      const contact = cleanText(access.passengerContact, 40);
+      const passengerId = cleanText(access.passengerId, 120);
+      if (contact && passengerId) result.set(contact, passengerId);
+    });
+  return result;
 }
 
 function passengerSessionOwnsBooking(session, booking) {
@@ -3163,6 +3186,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   try {
+    const passengerIdentityByContact = await passengerIdentityByContactForDriver(driver.username);
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
@@ -3216,6 +3240,9 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         };
       }
 
+      const canonicalPassengerId = cleanText(updated.passengerId, 120) ||
+        cleanText(passengerIdentityByContact.get(cleanText(updated.passengerContact, 40)), 120);
+      if (canonicalPassengerId) updated = { ...updated, passengerId: canonicalPassengerId };
       const relevantChanges = bookingRelevantChanges(previous, updated);
       const internalChanged = cleanText(previous.passengerName, 120) !== cleanText(updated.passengerName, 120) ||
         cleanText(previous.passengerContact, 40) !== cleanText(updated.passengerContact, 40);
