@@ -30,7 +30,8 @@ test("driver administers authorized suspended and blocked access without first-l
 
 test("referrals require driver approval and earn configured credits once", () => {
   assert.match(api, /requestPassengerReferralInvite/);
-  assert.match(api, /status: existing\.exists && existingData\.status === "BLOCKED" \? "BLOCKED" : "PENDING"/);
+  assert.match(api, /PASSENGER_RESTRICTED_ACCESS_STATUSES\.has/);
+  assert.match(api, /: "PENDING"/);
   assert.match(api, /firstReferrer = cleanText\(existingData\.referredByContact/);
   assert.match(api, /processReferralCreditsForCompletedTrip/);
   assert.match(api, /referralRewardGrantedAtMillis/);
