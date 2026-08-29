@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.327 BlaBlaCar sequential sync gate
+name: Rota Certa 0.1.328 Public Agenda external failure trace
 
 on:
   push:
     branches:
-      - agent/blablacar-sequential-sync-gate-0.1.327
+      - agent/public-agenda-external-failure-trace-0.1.328
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0327-${{ github.ref }}
+  group: agenda-0328-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/blablacar-sequential-sync-gate-0.1.327
+          ref: agent/public-agenda-external-failure-trace-0.1.328
           fetch-depth: 0
 
-      - name: Validate 0.1.327 sequential BlaBlaCar sync gate
+      - name: Validate 0.1.328 Public Agenda external failure trace
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5620' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.327"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5621' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.328"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -74,6 +74,11 @@ jobs:
           grep -Fq 'if (!syncing || archiving || syncSessionInFlight) return@LaunchedEffect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'AGENDA_SYNC_SESSION_LAUNCH' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'allAccountSyncKeepsOnlyOneSessionActivityInFlight' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'failureStage = "update_after_publish_failure"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'failureStage = "capacity_claims"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'externalPublicationFailuresExposeStageWithoutPassengerPii' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -142,20 +147,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5620'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.327'" /tmp/aapt.txt
+          grep -Fq "versionCode='5621'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.328'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0327
-          cp "$APK" /tmp/0327/rota-certa-0.1.327-blablacar-sequential-sync-gate.apk
-          cp /tmp/apk.sha256 /tmp/0327/apk.sha256
-          cp /tmp/aapt.txt /tmp/0327/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0327/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0327/gradle.txt
-          git rev-parse HEAD > /tmp/0327/source-head.txt
+          mkdir -p /tmp/0328
+          cp "$APK" /tmp/0328/rota-certa-0.1.328-public-agenda-external-failure-trace.apk
+          cp /tmp/apk.sha256 /tmp/0328/apk.sha256
+          cp /tmp/aapt.txt /tmp/0328/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0328/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0328/gradle.txt
+          git rev-parse HEAD > /tmp/0328/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.327-blablacar-sequential-sync-gate
+          name: rota-certa-0.1.328-public-agenda-external-failure-trace
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0327
+          path: /tmp/0328
