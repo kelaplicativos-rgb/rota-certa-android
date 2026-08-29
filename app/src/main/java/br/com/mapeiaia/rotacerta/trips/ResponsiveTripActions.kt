@@ -11,6 +11,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,7 @@ fun ResponsiveTripActions(
     actions: List<ResponsiveTripAction>,
     modifier: Modifier = Modifier,
     onPublicSearchResponse: ((BlaBlaPublicSearchResponse?) -> Unit)? = null,
+    publicSearchClearToken: Int = 0,
 ) {
     if (actions.isEmpty()) return
     val context = LocalContext.current
@@ -43,6 +45,14 @@ fun ResponsiveTripActions(
     var showPublicSearch by remember { mutableStateOf(false) }
     val publicStore = remember(context, agendaToolbar) { if (agendaToolbar) BlaBlaPublicSearchStore(context) else null }
     var publicResponse by remember(context, agendaToolbar) { mutableStateOf(publicStore?.lastResponse()) }
+
+    LaunchedEffect(publicSearchClearToken) {
+        if (publicSearchClearToken > 0) {
+            publicResponse = null
+            showPublicSearch = false
+        }
+    }
+
     val agendaTrips = remember(context, agendaToolbar, showPublicSearch) {
         if (agendaToolbar && showPublicSearch) TripStore(context).trips() else emptyList()
     }
