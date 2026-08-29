@@ -29,9 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
-import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelection
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
 import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionField
-import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionMode
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
