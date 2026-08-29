@@ -112,7 +112,9 @@ object BlaBlaPublicSearchPlanner {
     fun matchesTarget(driverName: String?, targets: List<String>): Boolean {
         val driver = normalizePerson(driverName.orEmpty())
         if (driver.isBlank()) return false
-        return targets.any { normalizePerson(it) == driver }
+        val normalizedTargets = targets.map(::normalizePerson).filter(String::isNotBlank)
+        if (normalizedTargets.isEmpty()) return true
+        return normalizedTargets.any { it == driver }
     }
 
     /**
