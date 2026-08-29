@@ -30,8 +30,8 @@ class PassengerAdmin0314Test {
     }
 
     @Test
-    fun accessLabelsKeepPendingSeparateFromBlocked() {
-        assertEquals("⏳ Aguardando sua aprovação", passengerAccessLabel(DriverPassengerAccess(status = "PENDING")))
+    fun accessLabelsTreatPendingAsSyncStateAndBlockedAsCanonicalDenial() {
+        assertEquals("🟡 Sincronização pendente", passengerAccessLabel(DriverPassengerAccess(status = "PENDING")))
         assertEquals("⛔ Não aceito no meu carro", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
     }
 }
