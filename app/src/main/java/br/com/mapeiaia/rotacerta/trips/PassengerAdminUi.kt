@@ -308,7 +308,7 @@ fun PassengerAdminScreen(
                 val name = newName.trim()
                 val phone = newWhatsapp.trim()
                 if (name.isBlank() || passengerAdminContactKey(phone).isBlank()) {
-                    onChanged("Informe nome e WhatsApp do convidado.")
+                    onChanged("Informe nome e WhatsApp do passageiro.")
                 } else {
                     val selected = selectedNewPassengerId.takeIf(String::isNotBlank)?.let(passengerStore::profile)
                     val accessKey = passengerAdminContactKey(phone)
