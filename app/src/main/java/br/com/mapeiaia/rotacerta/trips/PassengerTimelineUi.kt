@@ -38,8 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
@@ -162,9 +160,142 @@ internal fun EnhancedPassengerTimelineSection(
         if (index > 0) HorizontalDivider()
         val rowProfile = passenger.passengerId?.let(passengerStore::profile)
             ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
+        val currentBooking = trip?.let { currentTrip ->
+            passenger.localBookingId?.let { bookingId ->
+                store.bookingsFor(currentTrip.id).firstOrNull { it.id == bookingId }
+            }
+        }
+        var statusMenuOpen by remember(passenger.localBookingId, passenger.externalPassengerId) {
+            mutableStateOf(false)
+        }
+        val completed = completionService.isCompleted(entry, passenger)
+        val statusLabel = when {
+            completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED -> "Concluído"
+            passenger.lastDriverSelection == "PAID" -> "Pago"
+            passenger.operationalStatus == PassengerOperationalStatus.AT_LOCATION -> "No local"
+            passenger.operationalStatus == PassengerOperationalStatus.IN_CAR -> "No carro"
+            passenger.operationalStatus == PassengerOperationalStatus.CANCELLED -> "Cancelado"
+            passenger.operationalStatus == PassengerOperationalStatus.PENDING -> "Aguardando"
+            else -> "Confirmado"
+        }
+        val selectOperationalStatus: (String) -> Unit = select@{ selection ->
+            statusMenuOpen = false
+            if (selection == "CANCELLED") {
+                when {
+                    currentBooking?.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) -> {
+                        cancelManualRow = passenger
+                    }
+                    BookingSource.BLABLACAR in passenger.sources -> {
+                        cancelExternalRow = passenger
+                    }
+                    else -> onChanged("Não foi possível identificar a reserva exata para cancelar com segurança.")
+                }
+                return@select
+            }
+
+            scope.launch {
+                if (selection == "COMPLETED") {
+                    val completion = completionService.confirm(entry, passenger)
+                    if (completion == null) {
+                        onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
+                        return@launch
+                    }
+                    completionRevision++
+                    identityRevision++
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_COMPLETION_SUCCESS",
+                        context.packageName,
+                        "timeline=true newlyCompleted=" + completion.newlyCompleted,
+                    )
+                }
+
+                val selectedTrip = trip
+                val booking = currentBooking
+                if (selectedTrip == null || booking == null) {
+                    if (selection == "COMPLETED") {
+                        onChanged("Viagem concluída no histórico canônico; esta ocorrência não possui Booking local para sincronizar.")
+                    } else {
+                        onChanged("Não foi possível identificar a Booking exata desta ocorrência para alterar o status.")
+                    }
+                    return@launch
+                }
+
+                val nextOperational = when (selection) {
+                    "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+                    "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+                    "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+                    "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+                    "PAID" -> booking.operationalStatus
+                    else -> booking.operationalStatus
+                }
+                val nextPayment = if (selection == "PAID") {
+                    PassengerPaymentStatus.PAID
+                } else {
+                    booking.paymentStatus
+                }
+                val nextBookingStatus = if (
+                    selection == "CONFIRMED" &&
+                    booking.status in setOf(BookingStatus.REQUESTED, BookingStatus.HELD)
+                ) BookingStatus.CONFIRMED else booking.status
+
+                val localNext = booking.copy(
+                    status = nextBookingStatus,
+                    operationalStatus = nextOperational,
+                    paymentStatus = nextPayment,
+                    lastDriverSelection = selection,
+                )
+                store.saveBooking(localNext)
+
+                val settings = store.onlineSettings()
+                val remoteTripId = selectedTrip.remoteId
+                if (settings.configured && !remoteTripId.isNullOrBlank()) {
+                    runCatching {
+                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
+                            remoteTripId = remoteTripId,
+                            bookingId = booking.id,
+                            selection = selection,
+                        )
+                    }.onSuccess { response ->
+                        store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, localNext))
+                        UnifiedDebugEventStore.record(
+                            "PASSENGER_STATUS_REALTIME_PUBLISHED",
+                            context.packageName,
+                            "timeline=true selection=" + selection,
+                        )
+                    }.onFailure { error ->
+                        UnifiedDebugEventStore.record(
+                            "PASSENGER_STATUS_REALTIME_FAILED",
+                            context.packageName,
+                            "timeline=true selection=" + selection + " reason=" +
+                                (error.message ?: error.javaClass.simpleName).take(120),
+                        )
+                        onChanged(
+                            "Status salvo localmente; sincronização online pendente: " +
+                                (error.message ?: error.javaClass.simpleName),
+                        )
+                        return@launch
+                    }
+                }
+
+                UnifiedDebugEventStore.record(
+                    if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
+                    context.packageName,
+                    "timeline=true selection=" + selection + " bookingPresent=true",
+                )
+                val message = when (selection) {
+                    "CONFIRMED" -> "Passageiro confirmado."
+                    "AT_LOCATION" -> "Status alterado para No local."
+                    "IN_CAR" -> "Status alterado para No carro."
+                    "PAID" -> "Pagamento confirmado; fase da viagem preservada."
+                    "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService e sincronizada."
+                    else -> "Status atualizado."
+                }
+                onChanged(message)
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             val phone = passenger.phone
-            val completed = completionService.isCompleted(entry, passenger)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -221,36 +352,6 @@ internal fun EnhancedPassengerTimelineSection(
                     }
                 }
 
-                IconButton(
-                    onClick = {
-                        val result = completionService.confirm(entry, passenger)
-                        if (result == null) {
-                            onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
-                        } else {
-                            completionRevision++
-                            identityRevision++
-                            onChanged(
-                                if (result.newlyCompleted) {
-                                    "✅ ${result.profile.displayName} marcado como VIAJOU. Histórico concluído atualizado."
-                                } else {
-                                    "✅ ${result.profile.displayName} já estava marcado como VIAJOU; nenhum registro duplicado foi criado."
-                                },
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .semantics {
-                            contentDescription = if (completed) {
-                                "Viagem concluída para ${passenger.name}"
-                            } else {
-                                "Marcar ${passenger.name} como viagem concluída"
-                            }
-                        },
-                ) {
-                    Text(if (completed) "✅" else "☑️")
-                }
-
                 OutlinedButton(
                     onClick = {
                         if (passenger.fareMinorUnits != null) {
@@ -274,19 +375,45 @@ internal fun EnhancedPassengerTimelineSection(
                 }
             }
 
-            TextButton(
-                onClick = {
-                    historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
-                },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = COMPACT_NAME_PADDING,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                TextButton(
+                    onClick = {
+                        historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = COMPACT_NAME_PADDING,
+                ) {
+                    Text(
+                        (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Column {
+                    OutlinedButton(
+                        onClick = { statusMenuOpen = true },
+                        contentPadding = COMPACT_ACTION_PADDING,
+                        modifier = Modifier.heightIn(min = 40.dp),
+                    ) {
+                        Text(statusLabel + " ▼", maxLines = 1)
+                    }
+                    DropdownMenu(
+                        expanded = statusMenuOpen,
+                        onDismissRequest = { statusMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
+                        DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
+                        DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
+                        DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
+                        DropdownMenuItem(text = { Text("Concluído") }, onClick = { selectOperationalStatus("COMPLETED") })
+                        DropdownMenuItem(text = { Text("Cancelar") }, onClick = { selectOperationalStatus("CANCELLED") })
+                    }
+                }
             }
 
             Row(
