@@ -429,84 +429,110 @@ fun PassengerAdminScreen(
                         ) { Text(if (candidate.localProfile.blocked) "✅" else "🚫") }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Acesso à Agenda", style = MaterialTheme.typography.titleSmall)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    fun setAgendaAccessStatus(status: String) {
+                        loading = true
+                        scope.launch {
+                            runCatching { TripRemoteApi(settings).setPassengerAccessStatus(candidate.whatsapp, status) }
+                                .onSuccess {
+                                    revision++
+                                    onChanged(
+                                        when (status) {
+                                            "AUTHORIZED" -> "Acesso de ${candidate.displayName} autorizado."
+                                            "SUSPENDED" -> "Acesso de ${candidate.displayName} suspenso."
+                                            else -> "Acesso de ${candidate.displayName} bloqueado."
+                                        },
+                                    )
+                                }
+                                .onFailure { onChanged("Falha ao alterar acesso: ${it.message ?: "erro de conexão"}") }
+                            loading = false
+                        }
+                    }
+
                     when (access?.status) {
-                        "ACTIVE" -> {
+                        "AUTHORIZED", "ACTIVE" -> {
                             OutlinedButton(
                                 enabled = settings.configured && !loading,
-                                onClick = {
-                                    loading = true
-                                    scope.launch {
-                                        runCatching { TripRemoteApi(settings).setPassengerAccessBlocked(candidate.whatsapp, true) }
-                                            .onSuccess {
-                                                revision++
-                                                onChanged("Acesso de ${candidate.displayName} bloqueado.")
-                                            }
-                                            .onFailure { onChanged("Falha ao bloquear acesso: ${it.message ?: "erro de conexão"}") }
-                                        loading = false
-                                    }
-                                },
+                                onClick = { setAgendaAccessStatus("SUSPENDED") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Suspender acesso") }
+                            OutlinedButton(
+                                enabled = settings.configured && !loading,
+                                onClick = { setAgendaAccessStatus("BLOCKED") },
+                                modifier = Modifier.fillMaxWidth(),
                             ) { Text("Bloquear acesso") }
+                            if (access.accountActivated) {
+                                OutlinedButton(
+                                    enabled = settings.configured && !loading,
+                                    onClick = {
+                                        loading = true
+                                        scope.launch {
+                                            runCatching { TripRemoteApi(settings).resetPassengerPassword(candidate.whatsapp) }
+                                                .onSuccess {
+                                                    temporaryPassword = it.temporaryPassword
+                                                    temporaryPasswordFor = candidate.displayName
+                                                    onChanged("Nova senha temporária gerada.")
+                                                }
+                                                .onFailure { onChanged("Falha ao redefinir senha: ${it.message ?: "erro de conexão"}") }
+                                            loading = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Redefinir senha") }
+                            }
+                        }
+                        "SUSPENDED" -> {
+                            Button(
+                                enabled = settings.configured && !loading,
+                                onClick = { setAgendaAccessStatus("AUTHORIZED") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Autorizar acesso") }
                             OutlinedButton(
                                 enabled = settings.configured && !loading,
-                                onClick = {
-                                    loading = true
-                                    scope.launch {
-                                        runCatching { TripRemoteApi(settings).resetPassengerPassword(candidate.whatsapp) }
-                                            .onSuccess {
-                                                temporaryPassword = it.temporaryPassword
-                                                temporaryPasswordFor = candidate.displayName
-                                                onChanged("Nova senha temporária gerada.")
-                                            }
-                                            .onFailure { onChanged("Falha ao redefinir senha: ${it.message ?: "erro de conexão"}") }
-                                        loading = false
-                                    }
-                                },
-                            ) { Text("Nova senha") }
+                                onClick = { setAgendaAccessStatus("BLOCKED") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Bloquear acesso") }
                         }
                         "BLOCKED" -> {
                             Button(
                                 enabled = settings.configured && !loading,
-                                onClick = {
-                                    loading = true
-                                    scope.launch {
-                                        runCatching { TripRemoteApi(settings).setPassengerAccessBlocked(candidate.whatsapp, false) }
-                                            .onSuccess {
-                                                revision++
-                                                onChanged("Acesso de ${candidate.displayName} liberado novamente.")
-                                            }
-                                            .onFailure { onChanged("Falha ao desbloquear: ${it.message ?: "erro de conexão"}") }
-                                        loading = false
-                                    }
-                                },
-                            ) { Text("Desbloquear") }
+                                onClick = { setAgendaAccessStatus("AUTHORIZED") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Autorizar acesso") }
+                            OutlinedButton(
+                                enabled = settings.configured && !loading,
+                                onClick = { setAgendaAccessStatus("SUSPENDED") },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Suspender acesso") }
                         }
                         else -> {
                             Button(
                                 enabled = settings.configured && passengerAdminContactKey(candidate.whatsapp).isNotBlank() && !loading,
                                 onClick = {
-                                    loading = true
-                                    scope.launch {
-                                        runCatching {
-                                            TripRemoteApi(settings).invitePassenger(
-                                                displayName = candidate.displayName,
-                                                passengerContact = candidate.whatsapp,
-                                                referredByContact = access?.referredByContact.orEmpty(),
-                                            )
-                                        }.onSuccess {
-                                            temporaryPassword = it.temporaryPassword
-                                            temporaryPasswordFor = candidate.displayName
-                                            val local = candidate.localProfile
-                                            if (local == null && candidate.displayName.isNotBlank()) {
-                                                passengerStore.createProfile(candidate.displayName, candidate.whatsapp)
-                                            }
-                                            revision++
-                                            onChanged("Acesso liberado. Envie a senha temporária ao passageiro.")
-                                        }.onFailure { onChanged("Falha ao liberar acesso: ${it.message ?: "erro de conexão"}") }
-                                        loading = false
+                                    val canonical = canonicalProfile(candidate)
+                                    if (canonical == null) {
+                                        onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    } else {
+                                        loading = true
+                                        scope.launch {
+                                            runCatching {
+                                                TripRemoteApi(settings).invitePassenger(
+                                                    displayName = canonical.displayName,
+                                                    passengerContact = canonical.whatsapp,
+                                                    passengerId = canonical.id,
+                                                    referredByContact = access?.referredByContact.orEmpty(),
+                                                )
+                                            }.onSuccess {
+                                                revision++
+                                                onChanged("Acesso autorizado. O passageiro criará a própria senha ao usar uma ação privada.")
+                                            }.onFailure { onChanged("Falha ao autorizar acesso: ${it.message ?: "erro de conexão"}") }
+                                            loading = false
+                                        }
                                     }
                                 },
-                            ) { Text(if (access?.status == "PENDING") "Aprovar e liberar" else "Liberar acesso") }
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(if (access?.status == "PENDING") "Aprovar e autorizar" else "Autorizar acesso") }
                         }
                     }
                 }
@@ -797,8 +823,9 @@ internal fun maskPassengerAdminContact(raw: String): String {
 }
 
 internal fun passengerAccessLabel(access: DriverPassengerAccess?): String = when (access?.status) {
-    "ACTIVE" -> "✅ Agenda liberada"
-    "BLOCKED" -> "🚫 Acesso bloqueado"
+    "AUTHORIZED", "ACTIVE" -> "🟢 Autorizado"
+    "SUSPENDED" -> "🟡 Suspenso"
+    "BLOCKED" -> "🔴 Bloqueado"
     "PENDING" -> "⏳ Aguardando sua aprovação"
     else -> "🔒 Sem acesso à Agenda Pública"
 }
