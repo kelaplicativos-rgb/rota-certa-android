@@ -133,6 +133,13 @@ internal object PublicAgendaAutoSync0300 {
 
         localTrips.forEach { original ->
             val publicTrip = original.copy(publicBookingEnabled = true)
+            val localPublishOperation = AgendaTrace.operationStart(
+                context,
+                "LOCAL_TRIP_PUBLISH",
+                "PublicAgendaAutoSync0300",
+                traceId,
+                syncOperation.operationId,
+            )
             runCatching {
                 val response = if (publicTrip.remoteId.isNullOrBlank()) {
                     api.publish(publicTrip)
@@ -149,6 +156,14 @@ internal object PublicAgendaAutoSync0300 {
                 response
             }.onSuccess { response ->
                 localPublished++
+                AgendaTrace.operationEnd(context, localPublishOperation, result = "published", processedCount = 1)
+                val localCapacityOperation = AgendaTrace.operationStart(
+                    context,
+                    "LOCAL_CAPACITY_CLAIMS",
+                    "PublicAgendaAutoSync0300",
+                    traceId,
+                    syncOperation.operationId,
+                )
                 runCatching {
                     syncLocalCapacityClaims(
                         api = api,
@@ -158,13 +173,18 @@ internal object PublicAgendaAutoSync0300 {
                     )
                 }.onSuccess { synced ->
                     seatClaimsSynced += synced
+                    AgendaTrace.operationEnd(context, localCapacityOperation, result = "synced", processedCount = synced)
                     UnifiedDebugEventStore.record(
                         "PUBLIC_AGENDA_LOCAL_CAPACITY_SYNCED",
                         context.packageName,
                         "localTrip=${original.id} remoteTripPresent=true claimsSynced=$synced localBookings=${store.bookingsFor(original.id).size}",
                     )
                 }.onFailure { error ->
-                    if (error is CancellationException) throw error
+                    if (error is CancellationException) {
+                        AgendaTrace.operationCancelled(context, localCapacityOperation)
+                        throw error
+                    }
+                    AgendaTrace.operationError(context, localCapacityOperation, error)
                     failures++
                     UnifiedDebugEventStore.record(
                         "PUBLIC_AGENDA_LOCAL_CAPACITY_SYNC_FAILED",
@@ -173,7 +193,11 @@ internal object PublicAgendaAutoSync0300 {
                     )
                 }
             }.onFailure { error ->
-                if (error is CancellationException) throw error
+                if (error is CancellationException) {
+                    AgendaTrace.operationCancelled(context, localPublishOperation)
+                    throw error
+                }
+                AgendaTrace.operationError(context, localPublishOperation, error)
                 failures++
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_LOCAL_PUBLISH_FAILED",
@@ -184,16 +208,36 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         val capacity = configuredVehicleCapacity.takeIf { it in 1..999 } ?: 4
+        val connectedAccountsOperation = AgendaTrace.operationStart(
+            context,
+            "CONNECTED_ACCOUNTS_READ",
+            "PublicAgendaAutoSync0300",
+            traceId,
+            syncOperation.operationId,
+        )
         val connectedAccounts = BlaBlaDynamicAccountRegistry(context).list()
         val allConnectedResponse = if (connectedAccounts.isNotEmpty()) {
             BlaBlaDynamicSessionStore(context).combinedResponse(connectedAccounts)
         } else {
             BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
         }
+        AgendaTrace.operationEnd(
+            context,
+            connectedAccountsOperation,
+            result = "read",
+            processedCount = connectedAccounts.size,
+        )
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_ALL_CONNECTED_ACCOUNTS",
             context.packageName,
             "accounts=${connectedAccounts.size} trips=${allConnectedResponse?.trips?.size ?: 0} selectionFilter=false",
+        )
+        val externalDiscoveryOperation = AgendaTrace.operationStart(
+            context,
+            "EXTERNAL_TRIPS_DISCOVERY",
+            "PublicAgendaAutoSync0300",
+            traceId,
+            syncOperation.operationId,
         )
         val externalTrips = allConnectedResponse
             ?.trips
@@ -207,6 +251,7 @@ internal object PublicAgendaAutoSync0300 {
             .distinctBy { it.trip.publicToken }
             .take(100)
             .toList()
+        AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
 
         externalTrips.forEachIndexed { index, synthesized ->
             val publicTrip = synthesized.trip
