@@ -1261,7 +1261,7 @@ function startQuickReservation(auto = false) {
     toIndex: stops.findIndex((stop) => stop.id === intent.dropoffStopId),
   });
   if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
-  reserve();
+  return reserve();
 }
 
 function refreshTripAvailabilitySummary() {
