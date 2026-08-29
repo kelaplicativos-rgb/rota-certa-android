@@ -1310,15 +1310,59 @@ async function updateDriverTrip(req, res, token) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
       const normalized = normalizeDriverTrip(req.body || {}, previous);
+      const changes = tripRelevantChanges(previous, normalized);
+      const bookingsSnap = changes.length ? await tx.get(ref.collection("bookings")) : null;
       const ownerUsername = previous.driverUsername || driver.username;
       const ownerDisplayName = previous.driverDisplayName || driver.displayName;
       const publicUrl = previous.publicUrl || publicUrlFor(req, token, ownerUsername);
-      tx.update(ref, { ...normalized, publicUrl, driverUsername: ownerUsername, driverDisplayName: ownerDisplayName, updatedAtMillis: Date.now() });
+      const changeVersion = changes.length
+        ? Math.max(0, Number(previous.changeVersion || 0)) + 1
+        : Math.max(0, Number(previous.changeVersion || 0));
+      const now = Date.now();
+      tx.update(ref, {
+        ...normalized,
+        publicUrl,
+        driverUsername: ownerUsername,
+        driverDisplayName: ownerDisplayName,
+        changeVersion,
+        updatedAtMillis: now,
+      });
+
+      let eventType = "";
+      let notifiedPassengers = 0;
+      if (changes.length) {
+        eventType = normalized.status === "CANCELLED" && previous.status !== "CANCELLED"
+          ? "TRIP_CANCELLED"
+          : (Number(previous.departureAtMillis || 0) !== Number(normalized.departureAtMillis || 0) ? "TRIP_TIME_CHANGED" : "TRIP_CHANGED");
+        const recipients = (bookingsSnap ? bookingsSnap.docs : [])
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((booking) => !["CANCELLED", "EXPIRED"].includes(cleanText(booking.status, 24)))
+          .filter((booking) => cleanText(booking.passengerId, 120) || cleanText(booking.passengerContact, 40))
+          .map((booking) => ({
+            passengerId: cleanText(booking.passengerId, 120),
+            passengerContact: cleanText(booking.passengerContact, 40),
+            bookingId: booking.id,
+            tripTitle: cleanText(normalized.title || previous.title, 180),
+          }));
+        notifiedPassengers = new Set(recipients.map((item) => item.passengerId || item.passengerContact).filter(Boolean)).size;
+        writeChangeEventAndNotifications(tx, {
+          eventType,
+          tripToken: token,
+          version: changeVersion,
+          driverUsername: ownerUsername,
+          actor: "DRIVER",
+          source: "TIMELINE_TRIP_EDIT",
+          changes,
+          passengerRecipients: recipients,
+        });
+      }
       return {
         publicUrl,
         ownerUsername,
         becameCompleted: previous.status !== "COMPLETED" && normalized.status === "COMPLETED",
         becameCancelled: previous.status !== "CANCELLED" && normalized.status === "CANCELLED",
+        eventType,
+        notifiedPassengers,
       };
     });
     if (result.becameCompleted) await processReferralCreditsForCompletedTrip(token, result.ownerUsername);
@@ -1331,7 +1375,12 @@ async function updateDriverTrip(req, res, token) {
       }
       await refundCreditsForCancelledTrip(token);
     }
-    return json(res, 200, { tripId: token, publicToken: token, publicUrl: result.publicUrl });
+    return json(res, 200, {
+      tripId: token,
+      publicToken: token,
+      publicUrl: result.publicUrl,
+      passengerNotificationsCreated: result.notifiedPassengers,
+    });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "update_failed", error.message || "Falha ao atualizar viagem.");
   }
