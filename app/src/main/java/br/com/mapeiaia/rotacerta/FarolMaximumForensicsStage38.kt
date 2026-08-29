@@ -171,7 +171,7 @@ object FarolMaximumForensicsStage38 {
                 event.cycleId?.let { append(" | cycle=").append(it) }
                 event.traceId?.let { append(" | trace=").append(it) }
                 event.operationId?.let { append(" | op=").append(it) }
-                if (event.details.isNotBlank()) append(" | ").append(event.details)
+                if (event.details.isNotBlank()) append(" | ").append(sanitizeDetailsForExport(event.details))
                 appendLine()
                 previousNs = event.atNs
             }
@@ -205,6 +205,28 @@ object FarolMaximumForensicsStage38 {
         .replace('\r', '\n')
         .replace("\n", "\\n")
         .trim()
+
+    /**
+     * Export-only privacy barrier. Stage38 recording and every FAROL decision
+     * remain untouched; only the text representation written to a manual report
+     * is redacted.
+     */
+    private fun sanitizeDetailsForExport(value: String): String = sanitizeDetails(value)
+        .replace(
+            Regex("(?i)\\b(eventText|accessibilityText|rawText|messageText|typedText)\\s*[:=]\\s*([^|;]+)"),
+        ) { match -> "${match.groupValues[1]}=[texto mascarado]" }
+        .replace(
+            Regex("(?<!\\d)(?:\\+?55\\s*)?(?:\\(?\\d{2}\\)?\\s*)?9?\\d{4}[-\\s]?\\d{4}(?!\\d)"),
+            "[telefone mascarado]",
+        )
+        .replace(
+            Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"),
+            "[email mascarado]",
+        )
+        .replace(Regex("(?i)https?://[^\\s|;]+"), "[url mascarada]")
+        .replace(
+            Regex("(?i)\\b(token|cookie|authorization|password|senha|secret|jwt|sessionToken|accessToken|viewToken)\\s*[:=]\\s*[^|;\\s]+"),
+        ) { match -> "${match.groupValues[1]}=[segredo mascarado]" }
 
     private fun percentile(sorted: List<Long>, percentile: Int): Long {
         if (sorted.isEmpty()) return -1L

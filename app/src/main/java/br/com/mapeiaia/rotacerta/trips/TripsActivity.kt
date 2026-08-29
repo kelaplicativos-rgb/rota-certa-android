@@ -57,7 +57,19 @@ class TripsActivity : ComponentActivity() {
     private var agendaTimelineCrashGuard: AgendaTimelineCrashGuard? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val createStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        val createStartedWall = System.currentTimeMillis()
+        val traceId = AgendaTrace.adoptTrace(intent)
+        val openStartedNs = AgendaTrace.openStartNs(intent, traceId)
         super.onCreate(savedInstanceState)
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_ONCREATE_START",
+            "savedInstanceStatePresent=${savedInstanceState != null} launchAction=${intent?.action?.take(80).orEmpty()} coldWarm=unknown",
+            traceId,
+            wallMs = createStartedWall,
+            monotonicNs = createStartedNs,
+        )
         agendaTimelineCrashGuard = AgendaTimelineCrashGuard.install(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_created")
         if (
@@ -68,19 +80,36 @@ class TripsActivity : ComponentActivity() {
         }
         TripShortcutInstaller.installDynamic(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
-        setContent {
-            MaterialTheme {
-                TripApp(
-                    activity = this,
-                    startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
-                    initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
-                )
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_BEFORE_SET_CONTENT", "savedInstanceStatePresent=${savedInstanceState != null}", traceId)
+        val contentOperation = AgendaTrace.operationStart(this, "AGENDA_SET_CONTENT", "TripsActivity.onCreate", traceId)
+        try {
+            setContent {
+                MaterialTheme {
+                    TripApp(
+                        activity = this,
+                        startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
+                        initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
+                    )
+                }
             }
+            AgendaTrace.event(this, "TRIPS_ACTIVITY_AFTER_SET_CONTENT", "result=returned", traceId, contentOperation.operationId)
+            AgendaTrace.operationEnd(this, contentOperation)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(this, contentOperation, error)
+            throw error
         }
+        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
+        val createDurationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - createStartedNs).coerceAtLeast(0L)) / 1_000_000L
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
     }
 
     override fun onDestroy() {
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_DESTROY",
+            "changingConfigurations=$isChangingConfigurations finishing=$isFinishing",
+        )
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_destroy")
         super.onDestroy()
         agendaTimelineCrashGuard?.close()
@@ -96,11 +125,54 @@ private fun TripApp(
     startCreating: Boolean,
     initialTripId: String?,
 ) {
+    val traceId = AgendaTrace.currentTraceId()
+    val firstCompositionOperation = remember {
+        AgendaTrace.operationStart(activity, "AGENDA_FIRST_COMPOSITION", "TripApp", traceId)
+    }
+    val firstCompositionEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val timelineStartupOperation = remember {
+        AgendaTrace.operationStart(activity, "TIMELINE_STARTUP", "TripApp", traceId)
+    }
     val store = remember { TripStore(activity) }
     val settingsRepository = remember(activity) { SettingsRepository(activity) }
+    val settingsObservationStartedNs = remember {
+        AgendaTrace.event(activity, "CAPACITY_LOCAL_SETTINGS_REQUEST", "source=local_settings", traceId)
+        android.os.SystemClock.elapsedRealtimeNanos()
+    }
     val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
-    var trips by remember { mutableStateOf(store.trips()) }
-    var bookings by remember { mutableStateOf(store.bookings()) }
+    val capacityFirstValueReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val capacityInitialReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    if (capacityInitialReported.compareAndSet(false, true)) {
+        val present = appSettings.vehicleCapacity in 1..999
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_INITIAL_STATE",
+            "source=${if (present) "memory" else "default"} valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+    }
+    var trips by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_TRIPS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.trips()
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
+    var bookings by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_BOOKINGS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.bookings()
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var publicAgendaSyncRevision by remember { mutableStateOf(0) }
@@ -117,6 +189,43 @@ private fun TripApp(
     var selectedId by remember { mutableStateOf(initialTripId) }
     var message by remember { mutableStateOf<String?>(null) }
     val shareScope = rememberCoroutineScope()
+
+    androidx.compose.runtime.SideEffect {
+        AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
+        if (firstCompositionEnded.compareAndSet(false, true)) {
+            AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity) {
+        val present = appSettings.vehicleCapacity in 1..999
+        val source = if (present) "local_settings" else "default"
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_LOCAL_SETTINGS_RECEIVED",
+            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_RENDER_UPDATED",
+            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+        if (present && capacityFirstValueReported.compareAndSet(false, true)) {
+            val delayMs = ((android.os.SystemClock.elapsedRealtimeNanos() - settingsObservationStartedNs).coerceAtLeast(0L)) / 1_000_000L
+            AgendaTrace.event(activity, "CAPACITY_FIRST_VALUE_MS", "value=$delayMs unit=ms source=local_settings", traceId)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, appSettings.vehicleCapacity) {
+        AgendaTrace.event(
+            activity,
+            "AGENDA_RENDER_STATE",
+            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            traceId,
+        )
+    }
     val refresh = {
         trips = store.trips()
         bookings = store.bookings()
@@ -124,6 +233,7 @@ private fun TripApp(
     }
     val requestFullTimelineRefresh = {
         if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
             AgendaSyncCrashTraceStore.arm(activity)
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
             refreshAllRunning = true
@@ -135,9 +245,16 @@ private fun TripApp(
             )
             shareScope.launch {
                 AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_public_booking_reconcile")
+                AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=pull_refresh", traceId)
                 val bookingSync = runCatching {
                     PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
                 }
+                AgendaTrace.event(
+                    activity,
+                    "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                    "source=pull_refresh success=${bookingSync.isSuccess} imported=${bookingSync.getOrNull()?.importedCount ?: 0}",
+                    traceId,
+                )
                 AgendaSyncCrashTraceStore.checkpoint(
                     activity,
                     "timeline_pull_after_public_booking_reconcile success=${bookingSync.isSuccess}",
@@ -167,13 +284,34 @@ private fun TripApp(
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
-        val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
-        AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
-        if (result.importedCount > 0) {
-            refresh()
-            publicAgendaSyncRevision++
-            message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
-            if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+        AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup", traceId)
+        try {
+            val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+            AgendaTrace.event(
+                activity,
+                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                "source=startup imported=${result.importedCount} seatSyncQueued=${result.seatSyncQueued}",
+                traceId,
+            )
+            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
+            if (result.importedCount > 0) {
+                refresh()
+                publicAgendaSyncRevision++
+                message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
+                if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+            }
+            AgendaTrace.operationEnd(
+                activity,
+                timelineStartupOperation,
+                result = "ready",
+                processedCount = trips.size + bookings.size,
+            )
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            AgendaTrace.operationCancelled(activity, timelineStartupOperation)
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, timelineStartupOperation, error)
+            throw error
         }
     }
 
@@ -184,11 +322,45 @@ private fun TripApp(
         )
         val online = store.onlineSettings()
         if (online.configured) {
-            val result = PublicAgendaAutoSync0300.sync(
-                context = activity,
-                store = store,
-                configuredVehicleCapacity = appSettings.vehicleCapacity,
+            AgendaTrace.event(
+                activity,
+                "CAPACITY_PUBLIC_SYNC_TRIGGERED",
+                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
+                traceId,
             )
+            val capacityPublicSyncOperation = AgendaTrace.operationStart(
+                activity,
+                "CAPACITY_PUBLIC_SYNC",
+                "TripApp.publicAgendaEffect",
+                traceId,
+            )
+            val result = try {
+                PublicAgendaAutoSync0300.sync(
+                    context = activity,
+                    store = store,
+                    configuredVehicleCapacity = appSettings.vehicleCapacity,
+                ).also { syncResult ->
+                    AgendaTrace.operationEnd(
+                        activity,
+                        capacityPublicSyncOperation,
+                        result = if (syncResult.failures == 0) "confirmed" else "partial",
+                        processedCount = syncResult.localPublished + syncResult.externalPublished,
+                    )
+                    AgendaTrace.event(
+                        activity,
+                        "CAPACITY_REMOTE_CONFIRMATION",
+                        "source=remote success=${syncResult.failures == 0} published=${syncResult.localPublished + syncResult.externalPublished} claims=${syncResult.seatClaimsSynced}",
+                        traceId,
+                        capacityPublicSyncOperation.operationId,
+                    )
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                AgendaTrace.operationCancelled(activity, capacityPublicSyncOperation)
+                throw error
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(activity, capacityPublicSyncOperation, error)
+                throw error
+            }
             runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
             AgendaSyncCrashTraceStore.checkpoint(
                 activity,

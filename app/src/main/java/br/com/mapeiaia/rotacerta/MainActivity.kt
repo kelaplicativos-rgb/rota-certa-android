@@ -205,10 +205,36 @@ fun RotaCertaApp(launchIntent: Intent?) {
         highlightedShortcutModule0171 = spec.id
         moduleNavigationActive0172 = true
         if (spec.id == "trip_agenda") {
-            context.startActivity(
+            val traceId = br.com.mapeiaia.rotacerta.trips.AgendaTrace.beginAgendaOpen(context, "home_shortcut")
+            val agendaIntent = br.com.mapeiaia.rotacerta.trips.AgendaTrace.attachTrace(
                 Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
                     .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
+                traceId,
             )
+            val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
+                context, "AGENDA_START_ACTIVITY", "main_activity", traceId,
+            )
+            try {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_REQUEST",
+                    "source=home_shortcut previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                context.startActivity(agendaIntent)
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_RETURN",
+                    "source=home_shortcut previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            } catch (error: Throwable) {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationError(context, launchOperation, error)
+                throw error
+            }
             return
         }
         when (spec.action) {
@@ -322,6 +348,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
         if (uri == null) {
+            br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.clearFrozen()
             supportReportStatus = "Relatorio cancelado."
             return@rememberLauncherForActivityResult
         }
@@ -412,10 +439,36 @@ fun RotaCertaApp(launchIntent: Intent?) {
         if (highlightedShortcutModule0171 == "trip_agenda") {
             launchIntent?.removeExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171)
             highlightedShortcutModule0171 = null
-            context.startActivity(
+            val traceId = br.com.mapeiaia.rotacerta.trips.AgendaTrace.beginAgendaOpen(context, "home_launch_intent")
+            val agendaIntent = br.com.mapeiaia.rotacerta.trips.AgendaTrace.attachTrace(
                 Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
                     .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
+                traceId,
             )
+            val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
+                context, "AGENDA_START_ACTIVITY", "main_activity_launch_intent", traceId,
+            )
+            try {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_REQUEST",
+                    "source=home_launch_intent previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                context.startActivity(agendaIntent)
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_RETURN",
+                    "source=home_launch_intent previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            } catch (error: Throwable) {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationError(context, launchOperation, error)
+                throw error
+            }
         }
         if (homeLaunchMode0186 == HomeLaunchPolicy0186.MODE_COLLAPSED) {
             selectedBubbleGroup = BUBBLE_GROUP_GENERAL
@@ -740,6 +793,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
                                             packageName = context.packageName,
                                             details = "source=manual_report_tap",
                                         )
+                                        br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.freezeSnapshot()
                                         supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt")
                                     },
                                     onClearReport = {
@@ -868,6 +922,7 @@ fun RotaCertaApp(launchIntent: Intent?) {
                                             packageName = context.packageName,
                                             details = "source=manual_report_tap",
                                         )
+                                        br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.freezeSnapshot()
                                         supportReportFileCreator.launch("rota-certa-relatorio-depuracao.txt")
                                     },
                     onClearReport = {
@@ -1880,7 +1935,7 @@ private fun DiagnosticExpander(
             Switch(checked = debugLogEnabled, onCheckedChange = onDebugLogChange)
         }
         Text(
-            "A coleta não grava eventos continuamente no armazenamento. Telefones e e-mails são mascarados no arquivo.",
+            "A Agenda mantém uma trilha circular leve apenas em memória. Gerar relatório apenas congela e exporta essa trilha; dados sensíveis são mascarados.",
             style = MaterialTheme.typography.bodySmall,
         )
         Button(onClick = onCreateReport, modifier = Modifier.fillMaxWidth()) {
@@ -2947,6 +3002,8 @@ private suspend fun buildManualSupportReport(
     val complementaryEvents = DiagnosticLogStore.dump()
 
     return buildString {
+        appendLine(br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.build(context))
+        appendLine()
         appendLine("ROTA CERTA DIAGNOSTICO DE SESSAO")
         appendLine("Arquivo montado somente por clique do usuario.")
         appendLine("A trilha normal fica apenas em memoria; a investigacao intensiva opcional sobrescreve somente um checkpoint pequeno por segundo.")

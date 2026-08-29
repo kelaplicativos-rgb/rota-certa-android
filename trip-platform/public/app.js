@@ -302,6 +302,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
   $("accessLogin").disabled = true;
   $("accessMessage").className = "muted";
   $("accessMessage").textContent = "Verificando acesso…";
+  tracePublicAction("PUBLIC_ACCESS_CONTACT_SUBMITTED", { reason: "contact_present" });
   try {
     const response = await fetch("/v1/public/passenger-access", {
       method: "POST",
@@ -310,6 +311,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
     });
     const body = await response.json();
     if (!response.ok) {
+      tracePublicAction("PUBLIC_ACCESS_DENIED", { statusCode: response.status, reason: `http_${response.status}` });
       saveAgendaViewSession("");
       $("accessMessage").className = "error";
       $("accessMessage").textContent = body.message || "Acesso negado. Este WhatsApp não está autorizado para esta Agenda.";
@@ -318,11 +320,13 @@ async function requestPublicAgendaAccess(contactInput = "") {
     savePassengerContact(body.passengerContact || passengerContact);
     saveAgendaViewSession(body.viewToken);
     passengerViewAccountActivated = body.accountActivated === true;
+    tracePublicAction("PUBLIC_ACCESS_GRANTED", { statusCode: response.status, reason: "authorized" });
     $("accessMessage").className = "muted";
     $("accessMessage").textContent = "";
     await continueAfterViewAccess();
     return true;
   } catch (error) {
+    tracePublicAction("PUBLIC_ACCESS_DENIED", { reason: "network_or_client_error" });
     $("accessMessage").className = "error";
     $("accessMessage").textContent = error.message || "Não foi possível verificar o acesso.";
     return false;
@@ -404,6 +408,9 @@ function showPrivateAuthGate(destination = "portal", resumeAction = "") {
     ? "Sua senha protege reservas e informações privadas."
     : "Esta será a senha da sua área particular. Seu cadastro atual será mantido.";
   $("privateAuthSubmit").textContent = passengerViewAccountActivated ? "Entrar" : "Criar senha e continuar";
+  tracePublicAction("PUBLIC_PRIVATE_AUTH_SHOWN", {
+    reason: passengerViewAccountActivated ? "login" : "activate",
+  });
   showOnly("privateAuth");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -413,10 +420,12 @@ async function submitPrivateAuthentication() {
   const password = $("privateAuthPassword").value;
   const confirmation = $("privateAuthPasswordConfirm").value;
   if (!passengerContact || password.length < 8 || password.length > 72) {
+    tracePublicAction("PUBLIC_PRIVATE_AUTH_FAILED", { reason: "invalid_input_shape" });
     $("privateAuthMessage").textContent = "Use uma senha de 8 a 72 caracteres.";
     return;
   }
   if (!passengerViewAccountActivated && password !== confirmation) {
+    tracePublicAction("PUBLIC_PRIVATE_AUTH_FAILED", { reason: "confirmation_mismatch" });
     $("privateAuthMessage").textContent = "As senhas não conferem.";
     return;
   }
@@ -433,6 +442,10 @@ async function submitPrivateAuthentication() {
     });
     const body = await response.json();
     if (!response.ok) {
+      tracePublicAction("PUBLIC_PRIVATE_AUTH_FAILED", {
+        statusCode: response.status,
+        reason: `http_${response.status}`,
+      });
       if (body.error === "passenger_account_already_activated") {
         passengerViewAccountActivated = true;
         showPrivateAuthGate(pendingAuthDestination, pendingPrivateAction);
@@ -445,6 +458,10 @@ async function submitPrivateAuthentication() {
     savePassengerContact(body.passengerContact || passengerContact);
     passengerMustChangePassword = body.mustChangePassword === true;
     passengerViewAccountActivated = true;
+    tracePublicAction("PUBLIC_PRIVATE_AUTH_SUCCESS", {
+      statusCode: response.status,
+      reason: activating ? "activated" : "authenticated",
+    });
     await continueAfterAuthentication();
   } catch (error) {
     $("privateAuthMessage").textContent = error.message || "Falha ao autenticar.";
@@ -1708,6 +1725,7 @@ function savePassengerSession(token) {
 
 function openPassengerPortal() {
   if (!passengerSessionToken) return showPrivateAuthGate("portal");
+  tracePublicAction("PUBLIC_PASSENGER_PORTAL_OPENED", { reason: "authenticated" });
   showOnly("passengerPortal");
   $("portalMessage").textContent = "";
   show("portalLoginBox", false);

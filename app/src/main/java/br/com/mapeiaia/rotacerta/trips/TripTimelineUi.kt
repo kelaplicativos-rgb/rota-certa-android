@@ -148,14 +148,33 @@ fun TripTimelineScreen(
         }
     }
 
-    val localEntries = remember(trips, bookings) { TripTimelineEngine.fromLocalAgenda(trips, bookings) }
+    val traceId = AgendaTrace.currentTraceId()
+    val localEntries = remember(trips, bookings) {
+        val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE_LOCAL", "TripTimelineScreen", traceId)
+        try {
+            TripTimelineEngine.fromLocalAgenda(trips, bookings).also {
+                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
+            }
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, operation, error)
+            throw error
+        }
+    }
     val publicExternalBindings = store.publicExternalBindings()
     val mergedRaw = remember(localEntries, collectorResponse, bookings, publicExternalBindings) {
-        applyPublicExternalBookingsToTimeline(
-            entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponse),
-            bindings = publicExternalBindings,
-            bookings = bookings,
-        )
+        val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE", "TripTimelineScreen", traceId)
+        try {
+            applyPublicExternalBookingsToTimeline(
+                entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponse),
+                bindings = publicExternalBindings,
+                bookings = bookings,
+            ).also {
+                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
+            }
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, operation, error)
+            throw error
+        }
     }
     val merged = remember(mergedRaw, appSettings.vehicleCapacity) {
         applyConfiguredVehicleCapacity(mergedRaw, appSettings.vehicleCapacity)
@@ -170,11 +189,26 @@ fun TripTimelineScreen(
         timelineDirectionReference(referenceOrigin, appSettings)
     }
     val physical = remember(merged, directionGeo) {
-        TripPhysicalRideConsolidator.consolidate(merged, directionGeo)
+        val operation = AgendaTrace.operationStart(context, "TIMELINE_PHYSICAL_CONSOLIDATION", "TripTimelineScreen", traceId)
+        try {
+            TripPhysicalRideConsolidator.consolidate(merged, directionGeo).also {
+                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
+            }
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, operation, error)
+            throw error
+        }
     }
     val entries = remember(physical, archiveRevision, showArchived) {
-        physical.filter { archiveStore.isArchived(it) == showArchived }
-            .sortedBy(TripTimelineEntry::departureAtMillis)
+        val operation = AgendaTrace.operationStart(context, "TIMELINE_SORT", "TripTimelineScreen", traceId)
+        try {
+            physical.filter { archiveStore.isArchived(it) == showArchived }
+                .sortedBy(TripTimelineEntry::departureAtMillis)
+                .also { AgendaTrace.operationEnd(context, operation, processedCount = it.size) }
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, operation, error)
+            throw error
+        }
     }
     val pendingSyncEntries = entries.filter { entry ->
         val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
@@ -212,10 +246,36 @@ fun TripTimelineScreen(
         )
     }
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
+    val renderOperation = remember {
+        AgendaTrace.operationStart(context, "TIMELINE_RENDER", "TripTimelineScreen", traceId)
+    }
+    val renderEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    androidx.compose.runtime.SideEffect {
+        if (renderEnded.compareAndSet(false, true)) {
+            AgendaTrace.operationEnd(context, renderOperation, processedCount = visibleEntries.size)
+        }
+    }
+    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, appSettings.vehicleCapacity) {
+        AgendaTrace.event(
+            context,
+            "TIMELINE_RENDER_STATE",
+            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$showSync",
+            traceId,
+        )
+        AgendaTrace.event(
+            context,
+            "CAPACITY_RENDER_STATE",
+            "loading=false empty=${appSettings.vehicleCapacity !in 1..999} items=1 capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$showSync source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"}",
+            traceId,
+        )
+    }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(if (showArchived) "Arquivadas" else "Todas as viagens", style = MaterialTheme.typography.titleLarge)
-        TextButton(onClick = onBack) { Text("Voltar") }
+        TextButton(onClick = {
+            AgendaTrace.event(context, "USER_BACK", "source=timeline_header", traceId)
+            onBack()
+        }) { Text("Voltar") }
     }
 
     TripDriverDefaultsCard(
@@ -676,8 +736,30 @@ private fun TripDriverDefaultsCard(
     val scope = rememberCoroutineScope()
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
+    val traceId = AgendaTrace.currentTraceId()
     var capacity by remember(settings.vehicleCapacity) {
         mutableStateOf(settings.vehicleCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    }
+    val capacityOpenedNs = remember { android.os.SystemClock.elapsedRealtimeNanos() }
+    val capacityRenderCount = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+    LaunchedEffect(Unit) {
+        AgendaTrace.event(
+            context,
+            "CAPACITY_SCREEN_OPENED",
+            "source=timeline_defaults valuePresent=${capacity.isNotBlank()}",
+            traceId,
+        )
+    }
+    androidx.compose.runtime.SideEffect {
+        val count = capacityRenderCount.incrementAndGet()
+        if (count == 1L || count == 2L || count == 4L || count == 8L) {
+            AgendaTrace.event(
+                context,
+                "CAPACITY_FIELD_RENDERED",
+                "source=${if (settings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${capacity.isNotBlank()} value=${capacity.toIntOrNull() ?: 0} recompositionCount=$count sinceOpenMs=${(android.os.SystemClock.elapsedRealtimeNanos() - capacityOpenedNs).coerceAtLeast(0L) / 1_000_000L}",
+                traceId,
+            )
+        }
     }
     var locating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -751,7 +833,22 @@ private fun TripDriverDefaultsCard(
 
             OutlinedTextField(
                 value = capacity,
-                onValueChange = { capacity = it.filter(Char::isDigit).take(3) },
+                onValueChange = { raw ->
+                    val next = raw.filter(Char::isDigit).take(3)
+                    capacity = next
+                    AgendaTrace.event(
+                        context,
+                        "USER_CHANGE_CAPACITY",
+                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
+                        traceId,
+                    )
+                    AgendaTrace.event(
+                        context,
+                        "CAPACITY_FIELD_CHANGED_BY_USER",
+                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
+                        traceId,
+                    )
+                },
                 label = { Text("Capacidade do veículo") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -773,14 +870,41 @@ private fun TripDriverDefaultsCard(
                         return@Button
                     }
                     error = null
+                    AgendaTrace.event(
+                        context,
+                        "USER_SAVE_CAPACITY",
+                        "source=user valuePresent=true value=$parsed",
+                        traceId,
+                    )
+                    AgendaTrace.event(
+                        context,
+                        "CAPACITY_SAVE_REQUESTED",
+                        "source=user valuePresent=true value=$parsed",
+                        traceId,
+                    )
                     scope.launch {
-                        repository.saveSettings(settings.copy(vehicleCapacity = parsed))
-                        UnifiedDebugEventStore.record(
-                            "TRIP_DRIVER_DEFAULTS_SAVED",
-                            context.packageName,
-                            "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                        val saveOperation = AgendaTrace.operationStart(
+                            context,
+                            "CAPACITY_LOCAL_SAVE",
+                            "TripDriverDefaultsCard",
+                            traceId,
                         )
-                        onChanged("Capacidade do veículo salva.")
+                        try {
+                            repository.saveSettings(settings.copy(vehicleCapacity = parsed))
+                            AgendaTrace.operationEnd(context, saveOperation, result = "saved", processedCount = 1)
+                            UnifiedDebugEventStore.record(
+                                "TRIP_DRIVER_DEFAULTS_SAVED",
+                                context.packageName,
+                                "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                            )
+                            onChanged("Capacidade do veículo salva.")
+                        } catch (failure: kotlinx.coroutines.CancellationException) {
+                            AgendaTrace.operationCancelled(context, saveOperation)
+                            throw failure
+                        } catch (failure: Throwable) {
+                            AgendaTrace.operationError(context, saveOperation, failure)
+                            throw failure
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
