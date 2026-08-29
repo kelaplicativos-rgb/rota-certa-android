@@ -32,16 +32,18 @@ test("backend validates Brazilian WhatsApp and public source", () => {
   assert.match(api, /sourceReference: `PUBLIC_LINK:/);
 });
 
-test("mobile portal reviews before confirmation and limits seats dynamically", () => {
-  assert.match(web, /reviewBooking/);
+test("mobile portal reserves directly while keeping dynamic seat limits and idempotency", () => {
+  assert.match(web, /startQuickReservation/);
   assert.match(web, /seatsInput\.max = String\(Math\.max\(1, available\)\)/);
-  assert.match(web, /normalizeWhatsapp/);
   assert.match(web, /requestIdentity/);
+  assert.match(web, /bookingRequestInFlight/);
   assert.match(web, /body\.replayed/);
-  assert.match(html, /Confira os detalhes do seu pedido de reserva/);
-  assert.match(html, /Seu WhatsApp/);
-  assert.match(html, /✅ Reserva confirmada/);
-  assert.match(html, /Fazer pedido de reserva/);
+  assert.match(html, /id="startBooking"[^>]*>RESERVAR</);
+  assert.match(html, /Precisa de mais lugares ou outro trecho\?/);
+  assert.match(html, /id="name" type="hidden"/);
+  assert.match(html, /id="contact" type="hidden"/);
+  assert.doesNotMatch(html, /<label>Seu nome\s*<input id="name"/);
+  assert.doesNotMatch(html, /<label>Seu WhatsApp\s*<input id="contact"/);
 });
 
 

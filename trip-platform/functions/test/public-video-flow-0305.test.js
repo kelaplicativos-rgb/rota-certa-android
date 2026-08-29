@@ -15,16 +15,15 @@ test("video flow keeps large readable typography and large controls", () => {
   assert.match(html, /class="stepTitle"/);
 });
 
-test("video flow has detail, request, review, message and final request stages", () => {
+test("passenger flow keeps details but reservation is direct with optional adjustments and post-booking observation", () => {
   assert.match(html, /Escolha sua viagem/);
   assert.match(html, /Detalhes da viagem/);
-  assert.match(html, /Fazer pedido de reserva/);
-  assert.match(html, /Confira os detalhes do seu pedido de reserva/);
-  assert.match(html, /Resumo do preço/);
-  assert.match(html, /Mande uma mensagem para o motorista/);
-  assert.match(web, /showOnly\("booking"\)/);
-  assert.match(web, /showOnly\("review"\)/);
-  assert.match(web, /showOnly\("confirmed"\)/);
+  assert.match(html, /id="startBooking"[^>]*>RESERVAR</);
+  assert.match(html, /Precisa de mais lugares ou outro trecho\?/);
+  assert.match(html, /Ajustar a reserva/);
+  assert.match(html, /Adicionar observação/);
+  assert.match(web, /startQuickReservation/);
+  assert.match(web, /showQuickBookingNotice/);
 });
 
 test("driver WhatsApp comes only from configured public driver profile", () => {
@@ -65,6 +64,6 @@ test("public profile exposes video-card data only when configured", () => {
 test("full trips remain unavailable and cannot enter booking flow", () => {
   assert.match(web, /isFullTrip\(trip\)/);
   assert.match(web, /show\("tripSticky", !full && trip\.canReserve !== false\)/);
-  assert.match(web, /if \(!trip \|\| isFullTrip\(trip\) \|\| trip\.canReserve === false\) return/);
-  assert.match(web, /action\.textContent = full \? "CHEIO" : "VER DETALHES"/);
+  assert.match(web, /if \(!trip \|\| isFullTrip\(trip\) \|\| trip\.canReserve === false \|\| bookingRequestInFlight\) return/);
+  assert.match(web, /action\.textContent = "CHEIO"/);
 });
