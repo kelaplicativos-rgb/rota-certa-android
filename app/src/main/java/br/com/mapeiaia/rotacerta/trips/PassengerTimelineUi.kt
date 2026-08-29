@@ -460,7 +460,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 )
                             }.onSuccess { response ->
                                 if (blocking) {
-                                    runCatching { PublicBookingSync0296.pullAndReconcile(context, store) }
+                                    runCatching { PublicBookingRemoteSync0296.pullAndReconcile(context, store) }
                                 }
                                 onChanged(
                                     if (blocking) {
