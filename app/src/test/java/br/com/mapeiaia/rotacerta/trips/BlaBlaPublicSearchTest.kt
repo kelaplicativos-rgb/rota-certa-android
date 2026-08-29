@@ -19,10 +19,63 @@ class BlaBlaPublicSearchTest {
                 period = "2026-09",
                 includeReverse = true,
             ),
+            today = LocalDate.of(2026, 8, 29),
         )
         assertEquals(60, tasks.size)
         assertEquals(LocalDate.of(2026, 9, 1), tasks.first().date)
         assertEquals(LocalDate.of(2026, 9, 30), tasks.last().date)
+    }
+
+    @Test
+    fun currentMonthWithoutDayStartsAtTodayAndNeverScansPastDays() {
+        val tasks = BlaBlaPublicSearchPlanner.tasks(
+            BlaBlaPublicSearchRequest(
+                targetNames = listOf("Barbosa"),
+                from = "Santo André",
+                to = "São Thomé das Letras",
+                period = "2026-08",
+                includeReverse = true,
+            ),
+            today = LocalDate.of(2026, 8, 29),
+        )
+
+        assertEquals(6, tasks.size)
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 8, 29),
+                LocalDate.of(2026, 8, 30),
+                LocalDate.of(2026, 8, 31),
+            ),
+            tasks.map(BlaBlaPublicSearchTask::date).distinct(),
+        )
+        assertTrue(tasks.none { it.date.isBefore(LocalDate.of(2026, 8, 29)) })
+    }
+
+    @Test
+    fun pastMonthHasNoAutomaticTasksButExplicitPastDayRemainsAllowed() {
+        val monthTasks = BlaBlaPublicSearchPlanner.tasks(
+            BlaBlaPublicSearchRequest(
+                targetNames = listOf("Barbosa"),
+                from = "Santo André",
+                to = "São Thomé das Letras",
+                period = "2026-07",
+                includeReverse = false,
+            ),
+            today = LocalDate.of(2026, 8, 29),
+        )
+        val exactDayTasks = BlaBlaPublicSearchPlanner.tasks(
+            BlaBlaPublicSearchRequest(
+                targetNames = listOf("Barbosa"),
+                from = "Santo André",
+                to = "São Thomé das Letras",
+                period = "2026-07-15",
+                includeReverse = false,
+            ),
+            today = LocalDate.of(2026, 8, 29),
+        )
+
+        assertTrue(monthTasks.isEmpty())
+        assertEquals(listOf(LocalDate.of(2026, 7, 15)), exactDayTasks.map(BlaBlaPublicSearchTask::date))
     }
 
     @Test
