@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.331 Agenda clear-all and empty-day cards
+name: Rota Certa 0.1.332 Agenda public search starts today
 
 on:
   push:
     branches:
-      - agent/agenda-clear-all-empty-day-only-0.1.331
+      - agent/agenda-public-search-today-start-0.1.332
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0331-${{ github.ref }}
+  group: agenda-0332-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-clear-all-empty-day-only-0.1.331
+          ref: agent/agenda-public-search-today-start-0.1.332
           fetch-depth: 0
 
-      - name: Validate 0.1.331 clear-all and empty-day cards
+      - name: Validate 0.1.332 public-search today start
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5624' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.331"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5625' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.332"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -110,6 +110,10 @@ jobs:
           grep -Fq 'dateCardAppearsOnlyWhenThatCalendarDayHasNoTravelCard' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
           grep -Fq 'clearAllRemovesEveryTimelineVisualLayerButPreservesPermanentData' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
           grep -Fq 'clearAllArchivesHybridLocalIdentityBeforeExternalHalfDisappears' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'val startDay = maxOf(firstDay, today)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'if (startDay.isAfter(lastDay)) return emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'currentMonthWithoutDayStartsAtTodayAndNeverScansPastDays' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'pastMonthHasNoAutomaticTasksButExplicitPastDayRemainsAllowed' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -178,20 +182,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5624'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.331'" /tmp/aapt.txt
+          grep -Fq "versionCode='5625'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.332'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0331
-          cp "$APK" /tmp/0331/rota-certa-0.1.331-agenda-clear-all-empty-day-only.apk
-          cp /tmp/apk.sha256 /tmp/0331/apk.sha256
-          cp /tmp/aapt.txt /tmp/0331/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0331/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0331/gradle.txt
-          git rev-parse HEAD > /tmp/0331/source-head.txt
+          mkdir -p /tmp/0332
+          cp "$APK" /tmp/0332/rota-certa-0.1.332-agenda-public-search-today-start.apk
+          cp /tmp/apk.sha256 /tmp/0332/apk.sha256
+          cp /tmp/aapt.txt /tmp/0332/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0332/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0332/gradle.txt
+          git rev-parse HEAD > /tmp/0332/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.331-agenda-clear-all-empty-day-only
+          name: rota-certa-0.1.332-agenda-public-search-today-start
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0331
+          path: /tmp/0332
