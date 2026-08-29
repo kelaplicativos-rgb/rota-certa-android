@@ -147,6 +147,89 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun immutableBookedTripShapeFailureIsRecognizedWithoutBroadeningOtherErrors() {
+        val protected = IllegalStateException(
+            "Servidor respondeu HTTP 400: {\"message\":\"Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.\"}",
+        )
+        assertTrue(PublicAgendaAutoSync0300.isImmutablePublicTripShapeFailure(protected))
+        assertTrue(!PublicAgendaAutoSync0300.isImmutablePublicTripShapeFailure(IllegalStateException("HTTP 500")))
+    }
+
+    @Test
+    fun bookedExternalTripPreservesExistingBindingShapeAndRemapsClaims() {
+        val token = "bb123456789012345678901234567890"
+        val observed = Trip(
+            id = "public:$token",
+            title = "Santo André → São Thomé das Letras",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            publicToken = token,
+            remoteId = token,
+            publicBookingEnabled = true,
+            stops = listOf(
+                TripStop(id = "new-sa", order = 0, name = "Santo André"),
+                TripStop(id = "new-pa", order = 1, name = "Pouso Alegre"),
+                TripStop(id = "new-cam", order = 2, name = "Camanducaia"),
+                TripStop(id = "new-stl", order = 3, name = "São Thomé das Letras"),
+            ),
+        )
+        val binding = PublicExternalTripBinding(
+            remoteTripId = token,
+            publicToken = token,
+            bookingTripId = "public-external:$token",
+            profileUuid = "profile",
+            blablaTripId = "trip",
+            title = observed.title,
+            departureAtMillis = observed.departureAtMillis,
+            capacity = 4,
+            stops = listOf(
+                TripStop(id = "old-sa", order = 0, name = "Santo André"),
+                TripStop(id = "old-pa", order = 1, name = "Pouso Alegre"),
+                TripStop(id = "old-stl", order = 2, name = "São Thomé das Letras"),
+            ),
+        )
+        val preserved = PublicAgendaAutoSync0300.preserveExternalBindingShape(observed, binding)
+        assertEquals(listOf("old-sa", "old-pa", "old-stl"), preserved.stops.map(TripStop::id))
+
+        val matchingClaim = Booking(
+            id = "claim-1",
+            tripId = observed.id,
+            passengerName = "Ocupação",
+            boardingStopId = "new-pa",
+            dropoffStopId = "new-stl",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+        )
+        val newMiddleStopClaim = matchingClaim.copy(
+            id = "claim-2",
+            boardingStopId = "new-cam",
+            dropoffStopId = "new-stl",
+        )
+        val remapped = PublicAgendaAutoSync0300.remapExternalClaimsToBindingStructure(
+            claims = listOf(matchingClaim, newMiddleStopClaim),
+            observedStops = observed.stops,
+            preservedTrip = preserved,
+        )
+        assertEquals("old-pa", remapped[0].boardingStopId)
+        assertEquals("old-stl", remapped[0].dropoffStopId)
+        assertEquals("old-sa", remapped[1].boardingStopId)
+        assertEquals("old-stl", remapped[1].dropoffStopId)
+    }
+
+    @Test
+    fun cancellationIsNeverCountedAsExternalPublicationFailure() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        assertTrue(source.contains("catch (error: CancellationException)"))
+        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_CANCELLED"))
+        assertTrue(source.contains("throw error"))
+        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED"))
+    }
+
+    @Test
     fun priceParserAcceptsBrazilianFormatting() {
         assertEquals(9_300L, PublicAgendaAutoSync0300.parsePriceCents("R$ 93,00"))
         assertEquals(10_500L, PublicAgendaAutoSync0300.parsePriceCents("105"))
