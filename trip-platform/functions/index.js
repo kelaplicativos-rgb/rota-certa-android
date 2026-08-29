@@ -1357,7 +1357,7 @@ async function openPassengerAgendaView(req, res) {
     return fail(
       res,
       403,
-      "passenger_access_denied",
+      "passenger_access_not_available",
       "Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda. Para acessar, você precisa ser cadastrado e convidado pelo motorista.",
     );
   }

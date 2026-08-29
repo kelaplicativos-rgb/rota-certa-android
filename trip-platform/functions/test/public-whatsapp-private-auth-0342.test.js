@@ -121,7 +121,7 @@ test("captured contact and Agenda access WhatsApp are kept as separate local fie
 
 test("unknown, pending and restricted WhatsApp receive explicit Agenda access messages", () => {
   const openAccess = block(api, "async function openPassengerAgendaView", "async function invalidatePassengerSessions");
-  assert.match(openAccess, /passenger_access_denied/);
+  assert.match(openAccess, /passenger_access_not_available/);
   assert.match(openAccess, /Acesso negado\. Este WhatsApp não está na lista de passageiros autorizados desta Agenda/);
   assert.match(openAccess, /passenger_access_pending/);
   assert.match(openAccess, /Seu convite precisa ser aprovado pelo motorista/);

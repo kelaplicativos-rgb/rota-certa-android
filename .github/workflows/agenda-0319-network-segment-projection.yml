@@ -66,7 +66,7 @@ jobs:
           grep -Fq 'WhatsApp de acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
           grep -Fq 'async function updateDriverPassengerWhatsapp' trip-platform/functions/index.js
           grep -Fq 'passenger_whatsapp_conflict' trip-platform/functions/index.js
-          grep -Fq 'passenger_access_denied' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_not_available' trip-platform/functions/index.js
           grep -Fq 'Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda.' trip-platform/functions/index.js
           grep -Fq 'passenger_access_pending' trip-platform/functions/index.js
           grep -Fq 'accessMessage").className = "error"' trip-platform/public/app.js
