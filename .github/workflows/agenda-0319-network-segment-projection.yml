@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.326 BlaBlaCar panel and unblock
+name: Rota Certa 0.1.327 BlaBlaCar sequential sync gate
 
 on:
   push:
     branches:
-      - agent/blablacar-panel-and-unblock-0.1.326
+      - agent/blablacar-sequential-sync-gate-0.1.327
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0326-${{ github.ref }}
+  group: agenda-0327-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/blablacar-panel-and-unblock-0.1.326
+          ref: agent/blablacar-sequential-sync-gate-0.1.327
           fetch-depth: 0
 
-      - name: Validate 0.1.326 manual panel and sync unblock
+      - name: Validate 0.1.327 sequential BlaBlaCar sync gate
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5619' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.326"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5620' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.327"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -70,6 +70,10 @@ jobs:
           grep -Fq 'returnPartial=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'completeSync(collected.size)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'unreadableRideListReturnsPartialInsteadOfHangingInIdle' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
+          grep -Fq 'var syncSessionInFlight by remember { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'if (!syncing || archiving || syncSessionInFlight) return@LaunchedEffect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_SYNC_SESSION_LAUNCH' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'allAccountSyncKeepsOnlyOneSessionActivityInFlight' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -138,20 +142,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5619'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.326'" /tmp/aapt.txt
+          grep -Fq "versionCode='5620'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.327'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0326
-          cp "$APK" /tmp/0326/rota-certa-0.1.326-blablacar-panel-and-unblock.apk
-          cp /tmp/apk.sha256 /tmp/0326/apk.sha256
-          cp /tmp/aapt.txt /tmp/0326/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0326/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0326/gradle.txt
-          git rev-parse HEAD > /tmp/0326/source-head.txt
+          mkdir -p /tmp/0327
+          cp "$APK" /tmp/0327/rota-certa-0.1.327-blablacar-sequential-sync-gate.apk
+          cp /tmp/apk.sha256 /tmp/0327/apk.sha256
+          cp /tmp/aapt.txt /tmp/0327/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0327/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0327/gradle.txt
+          git rev-parse HEAD > /tmp/0327/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.326-blablacar-panel-and-unblock
+          name: rota-certa-0.1.327-blablacar-sequential-sync-gate
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0326
+          path: /tmp/0327
