@@ -91,6 +91,162 @@ class BlaBlaPublicSearchTest {
     }
 
     @Test
+    fun noSelectedDateStartsTodayAndContinuesOnlyThroughCurrentMonth() {
+        val tasks = BlaBlaPublicSearchPlanner.tasks(
+            BlaBlaPublicSearchRequest(
+                targetNames = emptyList(),
+                from = "Santo André",
+                to = "São Thomé das Letras",
+                period = "",
+                includeReverse = false,
+                selectedDates = emptyList(),
+            ),
+            today = LocalDate.of(2026, 8, 29),
+        )
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 8, 29),
+                LocalDate.of(2026, 8, 30),
+                LocalDate.of(2026, 8, 31),
+            ),
+            tasks.map(BlaBlaPublicSearchTask::date),
+        )
+        assertTrue(tasks.none { it.date.isBefore(LocalDate.of(2026, 8, 29)) })
+    }
+
+    @Test
+    fun threeExplicitDatesWithReverseCreateExactlySixIndependentTasks() {
+        val tasks = BlaBlaPublicSearchPlanner.tasks(
+            BlaBlaPublicSearchRequest(
+                targetNames = emptyList(),
+                from = "Santo André",
+                to = "São Thomé das Letras",
+                period = "",
+                includeReverse = true,
+                selectedDates = listOf("2026-09-05", "2026-09-07", "2026-09-12"),
+            ),
+            today = LocalDate.of(2026, 8, 29),
+        )
+        assertEquals(6, tasks.size)
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 9, 5),
+                LocalDate.of(2026, 9, 7),
+                LocalDate.of(2026, 9, 12),
+            ),
+            tasks.map(BlaBlaPublicSearchTask::date).distinct(),
+        )
+        tasks.chunked(2).forEach { pair ->
+            assertEquals("Santo André", pair[0].from)
+            assertEquals("São Thomé das Letras", pair[0].to)
+            assertEquals("São Thomé das Letras", pair[1].from)
+            assertEquals("Santo André", pair[1].to)
+        }
+    }
+
+    @Test
+    fun demandToggleOffSkipsAdditionalDemandProcessing() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = emptyList(),
+            from = "Santo André",
+            to = "São Thomé das Letras",
+            selectedDates = listOf("2026-09-05"),
+            captureDemand = false,
+        )
+        val task = BlaBlaPublicSearchTask(LocalDate.of(2026, 9, 5), request.from, request.to)
+        assertEquals(
+            null,
+            publicSearchDemandFor(
+                request,
+                task,
+                "Trecho concorrido! É bom reservar logo. 62% das viagens já estão reservadas.",
+                capturedAtMillis = 123L,
+            ),
+        )
+    }
+
+    @Test
+    fun demandCaptureExtractsBusyFlagPercentageMessageAndTimestamp() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = emptyList(),
+            from = "Santo André",
+            to = "São Thomé das Letras",
+            selectedDates = listOf("2026-09-05"),
+            captureDemand = true,
+        )
+        val task = BlaBlaPublicSearchTask(LocalDate.of(2026, 9, 5), request.from, request.to)
+        val demand = publicSearchDemandFor(
+            request,
+            task,
+            "Trecho concorrido! É bom reservar logo. 62% das viagens já estão reservadas.",
+            capturedAtMillis = 987654321L,
+        )!!
+        assertTrue(demand.indicadorDemandaEncontrado)
+        assertEquals(true, demand.trechoConcorrido)
+        assertEquals(62, demand.percentualReservado)
+        assertTrue(demand.mensagemDemanda.orEmpty().contains("Trecho concorrido", ignoreCase = true))
+        assertTrue(demand.mensagemDemanda.orEmpty().contains("62%"))
+        assertEquals("2026-09-05", demand.date)
+        assertEquals("Santo André", demand.from)
+        assertEquals("São Thomé das Letras", demand.to)
+        assertEquals(987654321L, demand.dataHoraCaptura)
+    }
+
+    @Test
+    fun missingDemandIndicatorStaysUnknownInsteadOfInventingLowDemand() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = emptyList(),
+            from = "Santo André",
+            to = "São Thomé das Letras",
+            selectedDates = listOf("2026-09-05"),
+            captureDemand = true,
+        )
+        val task = BlaBlaPublicSearchTask(LocalDate.of(2026, 9, 5), request.from, request.to)
+        val demand = publicSearchDemandFor(
+            request,
+            task,
+            "Viagens encontradas. Escolha uma opção abaixo.",
+            capturedAtMillis = 10L,
+        )!!
+        assertFalse(demand.indicadorDemandaEncontrado)
+        assertEquals(null, demand.trechoConcorrido)
+        assertEquals(null, demand.percentualReservado)
+        assertEquals(null, demand.mensagemDemanda)
+    }
+
+    @Test
+    fun demandStaysAssociatedWithExactDateAndDirection() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = emptyList(),
+            from = "Santo André",
+            to = "São Thomé das Letras",
+            selectedDates = listOf("2026-09-05"),
+            includeReverse = true,
+            captureDemand = true,
+        )
+        val tasks = BlaBlaPublicSearchPlanner.tasks(request, LocalDate.of(2026, 8, 29))
+        val outbound = publicSearchDemandFor(
+            request,
+            tasks[0],
+            "Trecho concorrido! É bom reservar logo. 78% das viagens já estão reservadas.",
+            capturedAtMillis = 1L,
+        )!!
+        val inbound = publicSearchDemandFor(
+            request,
+            tasks[1],
+            "Viagens encontradas sem indicador especial.",
+            capturedAtMillis = 2L,
+        )!!
+        assertEquals("Santo André", outbound.from)
+        assertEquals("São Thomé das Letras", outbound.to)
+        assertEquals(78, outbound.percentualReservado)
+        assertEquals("São Thomé das Letras", inbound.from)
+        assertEquals("Santo André", inbound.to)
+        assertFalse(inbound.indicadorDemandaEncontrado)
+        assertEquals(null, inbound.percentualReservado)
+    }
+
+    @Test
     fun driverMatchingIsAccentAndCaseInsensitiveButNotSubstringBased() {
         assertTrue(BlaBlaPublicSearchPlanner.matchesTarget("EZEQUIEL S", listOf("Ezequiel S")))
         assertTrue(BlaBlaPublicSearchPlanner.matchesTarget("Barbosa", listOf("BARBOSA")))
