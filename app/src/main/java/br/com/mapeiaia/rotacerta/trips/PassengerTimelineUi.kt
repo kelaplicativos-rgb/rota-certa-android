@@ -356,7 +356,7 @@ internal fun EnhancedPassengerTimelineSection(
             val canonicalProfile = rowProfile
             val persistentHistory = canonicalProfile?.let { passengerStore.persistentHistory(it.id) }
             val identityLabel = when {
-                canonicalProfile?.blocked == true -> "🚫 PASSAGEIRO BLOQUEADO • ${persistentHistory?.totalRides ?: 0} concluída(s) • ${persistentHistory?.totalOccurrences ?: 0} ocorrência(s)"
+                canonicalProfile?.blocked == true -> "⛔ NÃO ACEITO NO MEU CARRO • ${persistentHistory?.totalRides ?: 0} concluída(s) • ${persistentHistory?.totalOccurrences ?: 0} ocorrência(s)"
                 persistentHistory != null -> "${persistentHistory.totalRides} concluída(s) • ${persistentHistory.totalOccurrences} ocorrência(s)/reserva(s)"
                 passenger.externalPassengerId != null -> "Identidade BlaBlaCar disponível"
                 else -> null
@@ -398,7 +398,7 @@ internal fun EnhancedPassengerTimelineSection(
                     Text(phone?.takeIf(String::isNotBlank) ?: "Telefone não informado")
                     Text("Identidade canônica vinculada", style = MaterialTheme.typography.bodySmall)
                     history?.let { Text("${it.totalRides} viagem(ns) concluída(s)", style = MaterialTheme.typography.bodySmall) }
-                    if (profile?.blocked == true) Text("🚫 PASSAGEIRO BLOQUEADO", color = MaterialTheme.colorScheme.error)
+                    if (profile?.blocked == true) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
                     if (manualBooking != null) {
                         TextButton(onClick = {
                             editManualRow = row
@@ -425,23 +425,58 @@ internal fun EnhancedPassengerTimelineSection(
         val blocking = !profile.blocked
         AlertDialog(
             onDismissRequest = { blockProfile = null },
-            title = { Text(if (blocking) "Marcar como persona non grata?" else "Remover persona non grata?") },
+            title = { Text(if (blocking) "Não aceito no meu carro?" else "Remover bloqueio?") },
             text = {
                 Text(
                     if (blocking) {
-                        "O bloqueio é ligado à identidade canônica/UUID e não ao nome. O acesso à Agenda Pública é uma permissão separada."
+                        "O bloqueio fica ligado ao passengerId/identidade forte, nega a Agenda de Viagens e cancela reservas Rota Certa ativas, liberando as vagas."
                     } else {
-                        "Isto remove apenas o bloqueio de persona non grata. Histórico e identidade permanecem preservados."
+                        "O desbloqueio é explícito. PassengerId, cadastro, histórico e viagens permanecem preservados."
                     },
                 )
             },
             confirmButton = {
                 Button(onClick = {
-                    passengerStore.setBlocked(profile.id, blocking, if (blocking) "Bloqueado pelo motorista" else "")
+                    val saved = passengerStore.setBlocked(
+                        profile.id,
+                        blocking,
+                        if (blocking) "Não aceito no meu carro" else "",
+                    ) ?: profile
                     identityRevision++
                     blockProfile = null
-                    onChanged(if (blocking) "Passageiro marcado como persona non grata." else "Bloqueio de persona non grata removido.")
-                }) { Text("Confirmar") }
+                    onChanged(
+                        if (blocking) "⛔ Não aceito no meu carro. Bloqueio salvo no passengerId."
+                        else "Passageiro desbloqueado explicitamente.",
+                    )
+                    val settings = store.onlineSettings()
+                    val accessContact = saved.agendaAccessContact()
+                    if (settings.configured && passengerContactKey(accessContact).isNotBlank()) {
+                        scope.launch {
+                            runCatching {
+                                TripRemoteApi(settings).setPassengerAccessBlocked(
+                                    passengerContact = accessContact,
+                                    blocked = blocking,
+                                    passengerId = saved.id,
+                                )
+                            }.onSuccess { response ->
+                                if (blocking) {
+                                    runCatching { PublicBookingSync0296.pullAndReconcile(context, store) }
+                                }
+                                onChanged(
+                                    if (blocking) {
+                                        "⛔ Bloqueio sincronizado. ${response.cancelledBookings} reserva(s) ativa(s) cancelada(s); vagas recalculadas."
+                                    } else {
+                                        "Desbloqueio sincronizado. Acesso automático à Agenda de Viagens restaurado."
+                                    },
+                                )
+                            }.onFailure { error ->
+                                onChanged(
+                                    "Bloqueio local preservado; sincronização online pendente: ${error.message ?: "erro de conexão"}",
+                                )
+                            }
+                        }
+                    }
+                }) { Text(if (blocking) "Confirmar ⛔" else "Desbloquear") }
             },
             dismissButton = { TextButton(onClick = { blockProfile = null }) { Text("Cancelar") } },
         )
@@ -469,7 +504,7 @@ internal fun EnhancedPassengerTimelineSection(
                     if (updated.source == BookingSource.ROTA_CERTA) {
                         val remoteTripId = currentTrip.remoteId
                         if (remoteTripId.isNullOrBlank()) {
-                            onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda Pública antes de editar.")
+                            onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de editar.")
                         } else {
                             scope.launch {
                                 runCatching {
@@ -531,7 +566,7 @@ internal fun EnhancedPassengerTimelineSection(
                         if (selectedBooking.source == BookingSource.ROTA_CERTA) {
                             val remoteTripId = selectedTrip.remoteId
                             if (remoteTripId.isNullOrBlank()) {
-                                onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda Pública antes de cancelar.")
+                                onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de cancelar.")
                                 return@TextButton
                             }
                             scope.launch {
