@@ -118,6 +118,8 @@ internal object PublicAgendaAutoSync0300 {
         var externalPublished = 0
         var seatClaimsSynced = 0
         var failures = 0
+        var externalRetries = 0
+        var preservedShapes = 0
 
         val localDiscoveryOperation = AgendaTrace.operationStart(
             context,
@@ -277,6 +279,7 @@ internal object PublicAgendaAutoSync0300 {
                     } catch (publishError: Throwable) {
                         if (publishError is CancellationException) throw publishError
                         failureStage = "update_after_publish_failure"
+                        externalRetries++
                         UnifiedDebugEventStore.record(
                             "PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY",
                             context.packageName,
@@ -312,6 +315,7 @@ internal object PublicAgendaAutoSync0300 {
                                     preservedTrip = effectiveTrip,
                                 )
                                 shapePreserved = true
+                                preservedShapes++
                                 UnifiedDebugEventStore.record(
                                     "PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED",
                                     context.packageName,
@@ -428,6 +432,13 @@ internal object PublicAgendaAutoSync0300 {
             externalPublished = externalPublished,
             seatClaimsSynced = seatClaimsSynced,
             failures = failures,
+        )
+        AgendaTrace.event(
+            context,
+            "PUBLIC_AGENDA_SYNC_RESULT",
+            "accounts=${connectedAccounts.size} totalTrips=${localTrips.size + externalTrips.size} processed=${localPublished + externalPublished} localPublished=$localPublished externalPublished=$externalPublished claims=$seatClaimsSynced failures=$failures cancelled=0 retries=$externalRetries preservedShape=$preservedShapes",
+            traceId,
+            syncOperation.operationId,
         )
         AgendaTrace.operationEnd(
             context,
