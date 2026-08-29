@@ -7,6 +7,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 
 internal data class PublicAgendaAutoSyncResult(
     val localPublished: Int = 0,
@@ -51,6 +52,7 @@ internal object PublicAgendaAutoSync0300 {
                 )
             }
             .onFailure { error ->
+                if (error is CancellationException) throw error
                 UnifiedDebugEventStore.record(
                     "PUBLIC_DRIVER_PROFILE_SYNC_FAILED",
                     context.packageName,
@@ -99,6 +101,7 @@ internal object PublicAgendaAutoSync0300 {
                         "localTrip=${original.id} remoteTripPresent=true claimsSynced=$synced localBookings=${store.bookingsFor(original.id).size}",
                     )
                 }.onFailure { error ->
+                    if (error is CancellationException) throw error
                     failures++
                     UnifiedDebugEventStore.record(
                         "PUBLIC_AGENDA_LOCAL_CAPACITY_SYNC_FAILED",
@@ -107,6 +110,7 @@ internal object PublicAgendaAutoSync0300 {
                     )
                 }
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 failures++
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_LOCAL_PUBLISH_FAILED",
@@ -144,26 +148,56 @@ internal object PublicAgendaAutoSync0300 {
         externalTrips.forEachIndexed { index, synthesized ->
             val publicTrip = synthesized.trip
             val diagnosticTripKey = sha256(publicTrip.publicToken).take(12)
+            val existingBinding = store.publicExternalBindings().firstOrNull {
+                it.publicToken == publicTrip.publicToken
+            }
             var failureStage = "publish"
-            runCatching {
-                val response = runCatching { api.publish(publicTrip) }.getOrElse { publishError ->
+            var effectiveTrip = publicTrip
+            var effectiveClaims = synthesized.capacityClaims
+            var shapePreserved = false
+            try {
+                val response = try {
+                    api.publish(publicTrip)
+                } catch (publishError: Throwable) {
+                    if (publishError is CancellationException) throw publishError
                     failureStage = "update_after_publish_failure"
                     UnifiedDebugEventStore.record(
                         "PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY",
                         context.packageName,
                         "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey reason=${publishError.javaClass.simpleName} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
                     )
-                    api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
+                    try {
+                        api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
+                    } catch (updateError: Throwable) {
+                        if (updateError is CancellationException) throw updateError
+                        val binding = existingBinding
+                        if (binding == null || !isImmutablePublicTripShapeFailure(updateError)) throw updateError
+
+                        failureStage = "update_preserved_binding_shape"
+                        effectiveTrip = preserveExternalBindingShape(publicTrip, binding)
+                        effectiveClaims = remapExternalClaimsToBindingStructure(
+                            claims = synthesized.capacityClaims,
+                            observedStops = publicTrip.stops,
+                            preservedTrip = effectiveTrip,
+                        )
+                        shapePreserved = true
+                        UnifiedDebugEventStore.record(
+                            "PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED",
+                            context.packageName,
+                            "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey observedStops=${publicTrip.stops.size} preservedStops=${effectiveTrip.stops.size} observedCapacity=${publicTrip.capacity} preservedCapacity=${effectiveTrip.capacity} claims=${effectiveClaims.size}",
+                        )
+                        api.update(effectiveTrip)
+                    }
                 }
+
                 failureStage = "capacity_claims"
                 seatClaimsSynced += syncExternalCapacityClaims(
                     api = api,
                     remoteTripId = response.tripId,
-                    publicTrip = publicTrip,
-                    claims = synthesized.capacityClaims,
+                    publicTrip = effectiveTrip,
+                    claims = effectiveClaims,
                 )
-                response
-            }.onSuccess { response ->
+
                 store.savePublicExternalBinding(
                     PublicExternalTripBinding(
                         remoteTripId = response.tripId,
@@ -172,24 +206,31 @@ internal object PublicAgendaAutoSync0300 {
                         profileUuid = synthesized.profileUuid,
                         blablaTripId = synthesized.blablaTripId,
                         blablaTripHref = synthesized.blablaTripHref,
-                        title = publicTrip.title,
-                        departureAtMillis = publicTrip.departureAtMillis,
-                        capacity = publicTrip.capacity,
-                        stops = publicTrip.stops,
+                        title = effectiveTrip.title,
+                        departureAtMillis = effectiveTrip.departureAtMillis,
+                        capacity = effectiveTrip.capacity,
+                        stops = effectiveTrip.stops,
                     ),
                 )
                 UnifiedDebugEventStore.record(
                     "PUBLIC_EXTERNAL_BINDING_SAVED",
                     context.packageName,
-                    "remoteTripPresent=true profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                    "remoteTripPresent=true profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()} shapePreserved=$shapePreserved",
                 )
                 externalPublished++
-            }.onFailure { error ->
+            } catch (error: CancellationException) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_AGENDA_EXTERNAL_SYNC_CANCELLED",
+                    context.packageName,
+                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey stage=$failureStage",
+                )
+                throw error
+            } catch (error: Throwable) {
                 failures++
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED",
                     context.packageName,
-                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey stage=$failureStage reason=${error.javaClass.simpleName} claims=${synthesized.capacityClaims.size} bookedSeats=${synthesized.bookedSeats} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey stage=$failureStage reason=${error.javaClass.simpleName} claims=${effectiveClaims.size} bookedSeats=${synthesized.bookedSeats} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()} shapePreserved=$shapePreserved",
                 )
             }
         }
@@ -200,6 +241,58 @@ internal object PublicAgendaAutoSync0300 {
             seatClaimsSynced = seatClaimsSynced,
             failures = failures,
         )
+    }
+
+    internal fun isImmutablePublicTripShapeFailure(error: Throwable): Boolean =
+        error is IllegalStateException &&
+            error.message.orEmpty().contains(
+                "Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.",
+            )
+
+    internal fun preserveExternalBindingShape(
+        publicTrip: Trip,
+        binding: PublicExternalTripBinding,
+    ): Trip = publicTrip.copy(
+        remoteId = binding.remoteTripId,
+        capacity = binding.capacity,
+        stops = binding.stops,
+    )
+
+    internal fun remapExternalClaimsToBindingStructure(
+        claims: List<Booking>,
+        observedStops: List<TripStop>,
+        preservedTrip: Trip,
+    ): List<Booking> {
+        val sourceById = observedStops.associateBy(TripStop::id)
+        val targetStops = preservedTrip.stops.sortedBy(TripStop::order)
+        if (targetStops.size < 2) return claims
+
+        fun keys(stop: TripStop): Set<String> = sequenceOf(stop.name, stop.address)
+            .map(::normalizePlace)
+            .filter(String::isNotBlank)
+            .toSet()
+
+        fun targetFor(source: TripStop?): TripStop? {
+            val sourceKeys = source?.let(::keys).orEmpty()
+            if (sourceKeys.isEmpty()) return null
+            return targetStops.firstOrNull { target -> keys(target).any(sourceKeys::contains) }
+        }
+
+        val first = targetStops.first()
+        val last = targetStops.last()
+        return claims.map { claim ->
+            val requestedBoarding = targetFor(sourceById[claim.boardingStopId])
+            val requestedDropoff = targetFor(sourceById[claim.dropoffStopId])
+            val fromIndex = requestedBoarding?.let { targetStops.indexOf(it) } ?: -1
+            val toIndex = requestedDropoff?.let { targetStops.indexOf(it) } ?: -1
+            val boarding = if (fromIndex >= 0 && toIndex > fromIndex) requestedBoarding!! else first
+            val dropoff = if (fromIndex >= 0 && toIndex > fromIndex) requestedDropoff!! else last
+            claim.copy(
+                tripId = preservedTrip.id,
+                boardingStopId = boarding.id,
+                dropoffStopId = dropoff.id,
+            )
+        }
     }
 
     private suspend fun syncLocalCapacityClaims(
