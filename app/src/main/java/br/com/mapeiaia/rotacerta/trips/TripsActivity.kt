@@ -511,6 +511,8 @@ private fun TripEditor(
             allowedModes = setOf(RotaCertaDateSelectionMode.SINGLE),
             allowEmptySelection = false,
             emptyConfirmLabel = "Selecione uma data",
+            title = "Data da saída",
+            description = "Escolha a data da viagem. Dias passados ficam indisponíveis.",
         )
     }
 }
