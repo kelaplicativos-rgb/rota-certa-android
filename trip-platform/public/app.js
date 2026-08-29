@@ -1,5 +1,8 @@
 "use strict";
 
+const DateContract = window.RotaCertaDateContract;
+if (!DateContract) throw new Error("Rota Certa date contract unavailable");
+
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
@@ -31,8 +34,7 @@ let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
 
 function localTodayKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return DateContract.todayKey();
 }
 
 const searchState = {
@@ -370,16 +372,15 @@ function normalizeSearchText(value) {
 }
 
 function dateKeyFromMillis(ms) {
-  const date = new Date(Number(ms || 0));
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return DateContract.keyFromDate(new Date(Number(ms || 0)));
 }
 
 function formatSearchDate(key) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key || ""))) return "Data";
-  const [year, month, day] = key.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  if (key === localTodayKey()) return "Hoje";
-  return new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(date).replace(/\.$/, "");
+  return DateContract.formatFriendly(key, {
+    todayKey: localTodayKey(),
+    placeholder: "Data",
+    locale: "pt-BR",
+  });
 }
 
 function updateSearchUi() {
@@ -406,13 +407,15 @@ function openCalendarPicker(target) {
 function renderCalendarMonths() {
   const container = $("calendarMonths");
   container.innerHTML = "";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  let minimum = today;
-  if (calendarPickerTarget === "returnDate" && searchState.departure) {
-    const [y, m, d] = searchState.departure.split("-").map(Number);
-    minimum = new Date(y, m - 1, d);
+  let minimumKey = localTodayKey();
+  if (
+    calendarPickerTarget === "returnDate" &&
+    DateContract.normalizeKey(searchState.departure) &&
+    DateContract.compareKeys(searchState.departure, minimumKey) >= 0
+  ) {
+    minimumKey = searchState.departure;
   }
+  const minimum = DateContract.parseKey(minimumKey);
   const monthStart = new Date(minimum.getFullYear(), minimum.getMonth(), 1);
   const selected = calendarPickerTarget === "returnDate" ? searchState.returnDate : searchState.departure;
   const week = ["D", "S", "T", "Q", "Q", "S", "S"];
@@ -436,12 +439,12 @@ function renderCalendarMonths() {
     }
     for (let day = 1; day <= lastDay; day += 1) {
       const date = new Date(first.getFullYear(), first.getMonth(), day);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const key = DateContract.keyFromDate(date);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "calendarDay" + (key === selected ? " calendarDaySelected" : "");
       button.textContent = String(day);
-      button.disabled = date < minimum;
+      button.disabled = DateContract.isBefore(key, minimumKey);
       button.addEventListener("click", () => selectCalendarDate(key));
       grid.appendChild(button);
     }
