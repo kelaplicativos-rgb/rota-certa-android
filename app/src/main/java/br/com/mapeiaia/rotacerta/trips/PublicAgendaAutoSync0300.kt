@@ -63,7 +63,7 @@ internal object PublicAgendaAutoSync0300 {
             .groupBy { passengerContactKey(it.whatsapp) }
             .filter { (contactKey, profiles) -> contactKey.isNotBlank() && profiles.size == 1 }
             .values
-            .map(List<PassengerProfile>::single)
+            .map { it.single() }
             .take(450)
         runCatching { api.syncPassengerDirectory(canonicalPassengerProfiles) }
             .onSuccess { response ->
