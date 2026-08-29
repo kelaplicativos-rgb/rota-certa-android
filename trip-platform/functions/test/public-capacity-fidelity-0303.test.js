@@ -20,11 +20,11 @@ test("FULL trips fail closed even if stale segment loads exist", () => {
   assert.match(api, /Esta viagem está lotada/);
 });
 
-test("agenda UI renders full trips as non-clickable disabled cards", () => {
-  assert.match(web, /document\.createElement\(full \? "article" : "a"\)/);
-  assert.match(web, /action\.textContent = full \? "CHEIO" : "VER DETALHES"/);
-  assert.match(web, /aria-disabled/);
-  assert.match(web, /tabindex/);
+test("agenda UI keeps full trips non-interactive while available trips expose reserve action", () => {
+  assert.match(web, /const card = document\.createElement\("article"\)/);
+  assert.match(web, /if \(full\)/);
+  assert.match(web, /action\.textContent = "CHEIO"/);
+  assert.match(web, /action\.textContent = "RESERVAR"/);
   assert.match(web, /agendaTripFull/);
   assert.match(web, /"🪑 Cheio • 0 vagas"/);
   assert.match(web, /show\("tripSticky", !full && trip\.canReserve !== false\)/);
