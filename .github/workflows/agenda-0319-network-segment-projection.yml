@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.335 Agenda compact date field
+name: Rota Certa 0.1.336 Agenda date confirm always visible
 
 on:
   push:
     branches:
-      - agent/agenda-public-search-date-field-ux-0.1.335
+      - agent/agenda-public-search-date-dialog-confirm-0.1.336
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0335-${{ github.ref }}
+  group: agenda-0336-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-search-date-field-ux-0.1.335
+          ref: agent/agenda-public-search-date-dialog-confirm-0.1.336
           fetch-depth: 0
 
-      - name: Validate 0.1.335 compact date field
+      - name: Validate 0.1.336 date confirm always visible
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5628' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.335"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5629' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.336"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -149,6 +149,9 @@ jobs:
           grep -Fq 'shape = RoundedCornerShape(12.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'BorderStroke(1.dp, MaterialTheme.colorScheme.outline)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'color = MaterialTheme.colorScheme.onSurface' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq '.fillMaxHeight(0.92f)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq '.verticalScroll(rememberScrollState())' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'Text("Confirmar")' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -217,20 +220,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5628'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.335'" /tmp/aapt.txt
+          grep -Fq "versionCode='5629'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.336'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0335
-          cp "$APK" /tmp/0335/rota-certa-0.1.335-agenda-public-search-date-field-ux.apk
-          cp /tmp/apk.sha256 /tmp/0335/apk.sha256
-          cp /tmp/aapt.txt /tmp/0335/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0335/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0335/gradle.txt
-          git rev-parse HEAD > /tmp/0335/source-head.txt
+          mkdir -p /tmp/0336
+          cp "$APK" /tmp/0336/rota-certa-0.1.336-agenda-public-search-date-dialog-confirm.apk
+          cp /tmp/apk.sha256 /tmp/0336/apk.sha256
+          cp /tmp/aapt.txt /tmp/0336/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0336/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0336/gradle.txt
+          git rev-parse HEAD > /tmp/0336/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.335-agenda-public-search-date-field-ux
+          name: rota-certa-0.1.336-agenda-public-search-date-dialog-confirm
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0335
+          path: /tmp/0336
