@@ -13,14 +13,63 @@ internal data class PublicBookingPullResult(
 
 internal object PublicBookingRemoteSync0296 {
     suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult {
+        val traceId = AgendaTrace.currentTraceId()
+        val reconcileStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        val reconcileOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_RECONCILE",
+            "PublicBookingRemoteSync0296.pullAndReconcile",
+            traceId,
+        )
         val settings = store.onlineSettings()
-        if (!settings.configured) return PublicBookingPullResult(0, emptySet(), 0)
+        if (!settings.configured) {
+            AgendaTrace.operationEnd(context, reconcileOperation, result = "not_configured", processedCount = 0)
+            return PublicBookingPullResult(0, emptySet(), 0)
+        }
         val api = TripRemoteApi(settings)
         pullPublicLinkDebugTrace(context, api)
+
+        val localReadOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_LOCAL_READ",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            reconcileOperation.operationId,
+        )
         val candidates = store.trips().filter { !it.remoteId.isNullOrBlank() }
         val externalBindings = store.publicExternalBindings()
-        if (candidates.isEmpty() && externalBindings.isEmpty()) return PublicBookingPullResult(0, emptySet(), 0)
+        AgendaTrace.operationEnd(
+            context,
+            localReadOperation,
+            processedCount = candidates.size + externalBindings.size,
+        )
+        if (candidates.isEmpty() && externalBindings.isEmpty()) {
+            AgendaTrace.operationEnd(context, reconcileOperation, result = "nothing_to_reconcile", processedCount = 0)
+            return PublicBookingPullResult(0, emptySet(), 0)
+        }
 
+        val remoteFetchOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_REMOTE_FETCH",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            reconcileOperation.operationId,
+        )
+        val compareOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_COMPARE",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            reconcileOperation.operationId,
+        )
+        val importOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_IMPORT",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            reconcileOperation.operationId,
+        )
+        var remoteFetched = 0
         var imported = 0
         val changed = linkedSetOf<String>()
         val changedExternalRemoteIds = linkedSetOf<String>()
@@ -35,6 +84,7 @@ internal object PublicBookingRemoteSync0296 {
                     )
                     return@forEach
                 }
+            remoteFetched += remote.size
             remote.forEach { incoming ->
                 val existing = store.bookings().firstOrNull { it.id == incoming.id }
                 val mapped = incoming.toLocalBooking(trip.id, existing)
@@ -56,6 +106,7 @@ internal object PublicBookingRemoteSync0296 {
                     )
                     return@forEach
                 }
+            remoteFetched += remote.size
             remote.asSequence()
                 .filter { incoming ->
                     incoming.source == BookingSource.ROTA_CERTA ||
@@ -73,7 +124,16 @@ internal object PublicBookingRemoteSync0296 {
                 }
         }
 
-        if (changed.isEmpty()) return PublicBookingPullResult(imported, changed, 0)
+        AgendaTrace.operationEnd(context, remoteFetchOperation, processedCount = remoteFetched)
+        AgendaTrace.operationEnd(context, compareOperation, processedCount = remoteFetched)
+        AgendaTrace.operationEnd(context, importOperation, processedCount = imported)
+
+        if (changed.isEmpty()) {
+            val durationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - reconcileStartedNs).coerceAtLeast(0L)) / 1_000_000L
+            recordReconcileSlowThresholds(context, traceId, reconcileOperation.operationId, durationMs)
+            AgendaTrace.operationEnd(context, reconcileOperation, result = "no_changes", processedCount = remoteFetched)
+            return PublicBookingPullResult(imported, changed, 0)
+        }
         val localTrips = store.trips()
         val localEntries = TripTimelineEngine.fromLocalAgenda(localTrips, store.bookings())
         val external = BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
@@ -90,6 +150,13 @@ internal object PublicBookingRemoteSync0296 {
                 )
                 return@forEach
             }
+            AgendaTrace.event(
+                context,
+                "BOOKING_SEAT_SYNC_QUEUE",
+                "source=local changedTrip=true",
+                traceId,
+                reconcileOperation.operationId,
+            )
             val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
                 context = context,
                 entry = exact.single(),
@@ -111,6 +178,13 @@ internal object PublicBookingRemoteSync0296 {
                 )
                 return@forEach
             }
+            AgendaTrace.event(
+                context,
+                "BOOKING_SEAT_SYNC_QUEUE",
+                "source=external changedTrip=true",
+                traceId,
+                reconcileOperation.operationId,
+            )
             val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
                 context = context,
                 entry = exact.single(),
@@ -125,7 +199,34 @@ internal object PublicBookingRemoteSync0296 {
             context.packageName,
             "imported=$imported changedTrips=${changed.size} externalCards=${changedExternalRemoteIds.size} seatSyncQueued=$queued",
         )
+        val durationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - reconcileStartedNs).coerceAtLeast(0L)) / 1_000_000L
+        recordReconcileSlowThresholds(context, traceId, reconcileOperation.operationId, durationMs)
+        AgendaTrace.operationEnd(
+            context,
+            reconcileOperation,
+            result = "reconciled",
+            processedCount = remoteFetched,
+        )
         return PublicBookingPullResult(imported, changed, queued)
+    }
+
+    private fun recordReconcileSlowThresholds(
+        context: Context,
+        traceId: String,
+        operationId: String,
+        durationMs: Long,
+    ) {
+        listOf(1_000L, 2_000L, 5_000L, 10_000L).forEach { threshold ->
+            if (durationMs >= threshold) {
+                AgendaTrace.event(
+                    context,
+                    "BOOKING_RECONCILE_SLOW_${threshold}MS",
+                    "durationMs=$durationMs thresholdMs=$threshold",
+                    traceId,
+                    operationId,
+                )
+            }
+        }
     }
 
     private suspend fun pullPublicLinkDebugTrace(
