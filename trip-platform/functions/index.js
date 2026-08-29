@@ -3032,10 +3032,6 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
-  const authTrip = await tripRef.get();
-  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
-  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
-  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -3054,13 +3050,18 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       if (!cancelOnly && (previous.status === "CANCELLED" || previous.status === "EXPIRED")) {
         throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
       }
+      if (cancelOnly && (previous.status === "CANCELLED" || previous.status === "EXPIRED")) {
+        const safe = { ...previous };
+        delete safe.cancellationHash;
+        delete safe.idempotencyFingerprint;
+        return { booking: safe, segmentLoads: Array.isArray(trip.segmentLoads) ? trip.segmentLoads : [], availableSeats: null, notified: false, changed: false };
+      }
 
-      const now = Date.now();
       let updated;
       let fromIndex = -1;
       let toIndex = -1;
       if (cancelOnly) {
-        updated = { ...previous, status: "CANCELLED", updatedAtMillis: now };
+        updated = { ...previous, status: "CANCELLED" };
       } else {
         const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
         const passengerContact = req.body && req.body.passengerContact
@@ -3082,22 +3083,59 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
           seats,
           farePerSeatCents,
           totalFareCents: farePerSeatCents * seats,
-          updatedAtMillis: now,
         };
-        movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
       }
 
+      const relevantChanges = bookingRelevantChanges(previous, updated);
+      const internalChanged = cleanText(previous.passengerName, 120) !== cleanText(updated.passengerName, 120) ||
+        cleanText(previous.passengerContact, 40) !== cleanText(updated.passengerContact, 40);
+      if (!relevantChanges.length && !internalChanged) {
+        const safe = { ...previous };
+        delete safe.cancellationHash;
+        delete safe.idempotencyFingerprint;
+        return { booking: safe, segmentLoads: Array.isArray(trip.segmentLoads) ? trip.segmentLoads : [], availableSeats: null, notified: false, changed: false };
+      }
+      const now = Date.now();
+      const changeVersion = relevantChanges.length
+        ? Math.max(0, Number(previous.changeVersion || 0)) + 1
+        : Math.max(0, Number(previous.changeVersion || 0));
+      updated = { ...updated, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, candidateRecords, now);
       assertNoOverbooking(trip, loads);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
+      if (!cancelOnly && cleanText(previous.passengerContact, 40) !== cleanText(updated.passengerContact, 40)) {
+        movePassengerBookingIndex(tx, previous.passengerContact, updated.passengerContact, token, bookingId, now);
+      }
       tx.update(tripRef, {
         segmentLoads: loads,
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
+      if (relevantChanges.length) {
+        const eventType = updated.status === "CANCELLED" && previous.status !== "CANCELLED"
+          ? "BOOKING_CANCELLED_BY_DRIVER"
+          : (updated.status === "CONFIRMED" && previous.status !== "CONFIRMED" ? "BOOKING_CONFIRMED_BY_DRIVER" : "BOOKING_CHANGED_BY_DRIVER");
+        writeChangeEventAndNotifications(tx, {
+          eventType,
+          tripToken: token,
+          bookingId,
+          version: changeVersion,
+          driverUsername: driver.username,
+          actor: "DRIVER",
+          source: cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT",
+          passengerId: cleanText(updated.passengerId, 120),
+          changes: relevantChanges,
+          passengerRecipients: [{
+            passengerId: cleanText(updated.passengerId, 120),
+            passengerContact: cleanText(updated.passengerContact, 40),
+            bookingId,
+            tripTitle: cleanText(trip.title, 180),
+          }],
+        });
+      }
       const safeBooking = { ...updated };
       delete safeBooking.cancellationHash;
       delete safeBooking.idempotencyFingerprint;
@@ -3105,15 +3143,20 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         booking: safeBooking,
         segmentLoads: loads,
         availableSeats: fromIndex >= 0 ? availableForSegmentRange(trip, loads, fromIndex, toIndex) : null,
+        notified: relevantChanges.length > 0,
+        changed: true,
       };
     });
-    if (cancelOnly) await refundBookingCreditsIfNeeded(token, bookingId);
-    else await reconcileBookingCreditAfterFareChange(token, bookingId);
+    if (result.changed) {
+      if (cancelOnly) await refundBookingCreditsIfNeeded(token, bookingId);
+      else await reconcileBookingCreditAfterFareChange(token, bookingId);
+    }
     return json(res, 200, {
       booking: result.booking,
       segmentLoads: result.segmentLoads,
       availableSeats: result.availableSeats,
-      changed: true,
+      changed: result.changed,
+      passengerNotified: result.notified,
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "protected_booking_admin_failed", error.message || "Falha ao administrar a reserva.");
