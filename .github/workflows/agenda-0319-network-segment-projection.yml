@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.337 Agenda full-screen date selector
+name: Rota Certa 0.1.338 Agenda date selector nav-safe
 
 on:
   push:
     branches:
-      - agent/agenda-public-search-date-fullscreen-ux-0.1.337
+      - agent/agenda-public-search-date-nav-safe-0.1.338
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0337-${{ github.ref }}
+  group: agenda-0338-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-search-date-fullscreen-ux-0.1.337
+          ref: agent/agenda-public-search-date-nav-safe-0.1.338
           fetch-depth: 0
 
-      - name: Validate 0.1.337 full-screen date selector
+      - name: Validate 0.1.338 nav-safe date selector
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5630' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.337"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5631' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.338"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -155,6 +155,7 @@ jobs:
           grep -Fq 'FilterChip(' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'compactModeLabel(mode)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'rotaCertaDateConfirmLabel(draft)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq '.navigationBarsPadding()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'confirmationLabelStaysShortAndCountsSelectedDates' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
           ! grep -Fq 'Text("Cancelar")' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
 
@@ -225,20 +226,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5630'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.337'" /tmp/aapt.txt
+          grep -Fq "versionCode='5631'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.338'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0337
-          cp "$APK" /tmp/0337/rota-certa-0.1.337-agenda-public-search-date-fullscreen-ux.apk
-          cp /tmp/apk.sha256 /tmp/0337/apk.sha256
-          cp /tmp/aapt.txt /tmp/0337/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0337/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0337/gradle.txt
-          git rev-parse HEAD > /tmp/0337/source-head.txt
+          mkdir -p /tmp/0338
+          cp "$APK" /tmp/0338/rota-certa-0.1.338-agenda-public-search-date-nav-safe.apk
+          cp /tmp/apk.sha256 /tmp/0338/apk.sha256
+          cp /tmp/aapt.txt /tmp/0338/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0338/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0338/gradle.txt
+          git rev-parse HEAD > /tmp/0338/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.337-agenda-public-search-date-fullscreen-ux
+          name: rota-certa-0.1.338-agenda-public-search-date-nav-safe
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0337
+          path: /tmp/0338
