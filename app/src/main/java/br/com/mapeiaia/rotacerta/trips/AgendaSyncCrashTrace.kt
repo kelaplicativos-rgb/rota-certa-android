@@ -3,16 +3,20 @@ package br.com.mapeiaia.rotacerta.trips
 import android.content.Context
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Agenda-only crash evidence for the authenticated BlaBlaCar sync Activity.
+ * Agenda-only crash evidence.
  *
- * This does not contain passenger values, URLs, exception messages, cookies or
- * request data. It persists only the exception class, source frames and the
- * collector's structural checkpoint, then delegates to Android's original
- * uncaught-exception handler so crash behavior is not changed.
+ * Normal checkpoints are memory-only and schedule coalesced background
+ * persistence. Crash handling performs the minimum synchronous flush required
+ * for process-death recovery. No passenger values, URLs, exception messages,
+ * cookies, tokens or request bodies are persisted.
  */
 internal object AgendaSyncCrashTraceStore {
     private const val DIRECTORY = "agenda-sync-diagnostic"
@@ -23,20 +27,39 @@ internal object AgendaSyncCrashTraceStore {
     private const val MAX_CAUSES = 4
     private const val MAX_EXPORT_CHARS = 16_000
     private const val MAX_CHECKPOINT_CHARS = 700
-    private const val MAX_BREADCRUMB_LINES = 48
+    private const val MAX_BREADCRUMB_LINES = 64
     private const val MAX_BREADCRUMB_CHARS = 18_000
+
+    private data class Breadcrumb(val wallMs: Long, val value: String)
+
+    private val breadcrumbLock = Any()
+    private val breadcrumbs = ArrayDeque<Breadcrumb>(MAX_BREADCRUMB_LINES)
+    private val ioExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "agenda-crash-trace-io").apply { isDaemon = true }
+    }
+    private val persistScheduled = AtomicBoolean(false)
+    private val persistVersion = AtomicLong(0L)
+    private val persistedVersion = AtomicLong(0L)
 
     @Volatile private var lastCheckpoint: String = "not_armed"
 
     fun arm(context: Context) {
-        lastCheckpoint = "sync_armed"
-        persistCheckpoint(context, lastCheckpoint)
+        checkpoint(context, "sync_armed")
     }
 
+    /**
+     * Hot-path checkpoint: compact memory mutation only. Disk persistence is
+     * coalesced and happens off the caller thread.
+     */
     fun checkpoint(context: Context, value: String) {
-        lastCheckpoint = sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" }
-        persistCheckpoint(context, lastCheckpoint)
-        appendBreadcrumb(context, lastCheckpoint)
+        val safe = sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" }
+        lastCheckpoint = safe
+        synchronized(breadcrumbLock) {
+            while (breadcrumbs.size >= MAX_BREADCRUMB_LINES) breadcrumbs.removeFirst()
+            breadcrumbs.addLast(Breadcrumb(System.currentTimeMillis(), safe))
+        }
+        persistVersion.incrementAndGet()
+        schedulePersist(context.applicationContext)
     }
 
     fun record(
@@ -45,15 +68,20 @@ internal object AgendaSyncCrashTraceStore {
         error: Throwable,
         structuralSnapshot: () -> String,
     ) {
-        val checkpoint = currentCheckpoint(context)
+        val appContext = context.applicationContext
+        val checkpoint = currentCheckpoint(appContext)
         val snapshot = runCatching { sanitize(structuralSnapshot()).take(1_500) }
             .getOrDefault("snapshot_failed")
+        val activeContext = sanitize(AgendaTrace.activeOperationSummary()).take(700)
+        val incomplete = !activeContext.contains("operationId=none")
         val text = buildString {
-            appendLine("schema=2")
+            appendLine("schema=3")
             appendLine("capturedAt=${formatDate(System.currentTimeMillis())}")
             appendLine("thread=${sanitize(thread.name).take(80)}")
             appendLine("exception=${error.javaClass.name}")
             appendLine("checkpoint=$checkpoint")
+            appendLine("activeContext=$activeContext")
+            appendLine("OPERATION_INCOMPLETE_DUE_PROCESS_TERMINATION=$incomplete")
             appendLine("snapshot=$snapshot")
             var current: Throwable? = error
             var causeIndex = 0
@@ -73,52 +101,77 @@ internal object AgendaSyncCrashTraceStore {
         }.take(MAX_EXPORT_CHARS)
 
         runCatching {
-            writeAtomically(traceFile(context), text)
+            persistCheckpointAndBreadcrumbsNow(appContext)
+            writeAtomically(traceFile(appContext), text)
         }
     }
 
     fun export(context: Context): String {
-        val checkpoint = currentCheckpoint(context)
-        val file = traceFile(context)
+        val appContext = context.applicationContext
+        val checkpoint = currentCheckpoint(appContext)
+        val file = traceFile(appContext)
         val crash = if (!file.isFile) {
             "nenhuma exceção Java da sincronização foi capturada nesta instalação/versão."
         } else {
             runCatching { file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS) }
                 .getOrElse { "falha ao ler a evidência de crash da Agenda: ${it.javaClass.simpleName}" }
         }
-        val breadcrumbs = readBreadcrumbs(context)
+        val memoryBreadcrumbs = snapshotBreadcrumbs()
+        val breadcrumbText = if (memoryBreadcrumbs.isNotEmpty()) {
+            renderBreadcrumbs(memoryBreadcrumbs)
+        } else {
+            readPersistedBreadcrumbs(appContext)
+        }
         return buildString {
             appendLine("lastCheckpoint=$checkpoint")
+            appendLine("checkpointPersistence=memory_hot_path_async_coalesced")
             appendLine("--- AGENDA SYNC BREADCRUMBS ---")
-            appendLine(breadcrumbs)
+            appendLine(breadcrumbText)
             append(crash)
         }.trimEnd()
     }
 
+    private fun schedulePersist(context: Context) {
+        if (!persistScheduled.compareAndSet(false, true)) return
+        ioExecutor.execute {
+            try {
+                persistCheckpointAndBreadcrumbsNow(context.applicationContext)
+            } finally {
+                persistScheduled.set(false)
+                if (persistedVersion.get() < persistVersion.get()) {
+                    schedulePersist(context.applicationContext)
+                }
+            }
+        }
+    }
+
+    private fun persistCheckpointAndBreadcrumbsNow(context: Context) {
+        val version = persistVersion.get()
+        val checkpoint = lastCheckpoint
+        val snapshot = snapshotBreadcrumbs()
+        runCatching {
+            persistCheckpoint(context, checkpoint)
+            writeAtomically(breadcrumbFile(context), renderBreadcrumbs(snapshot))
+            persistedVersion.set(version)
+        }
+    }
+
     private fun persistCheckpoint(context: Context, value: String) {
-        runCatching {
-            writeAtomically(
-                checkpointFile(context),
-                sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" },
-            )
-        }
+        writeAtomically(
+            checkpointFile(context),
+            sanitize(value).take(MAX_CHECKPOINT_CHARS).ifBlank { "empty" },
+        )
     }
 
-    private fun appendBreadcrumb(context: Context, value: String) {
-        runCatching {
-            val file = breadcrumbFile(context)
-            file.parentFile?.mkdirs()
-            val line = "${formatDate(System.currentTimeMillis())} | ${sanitize(value).take(MAX_CHECKPOINT_CHARS)}"
-            val existing = if (file.isFile) file.readLines(Charsets.UTF_8) else emptyList()
-            val kept = (existing + line)
-                .takeLast(MAX_BREADCRUMB_LINES)
-                .joinToString("\n")
-                .takeLast(MAX_BREADCRUMB_CHARS)
-            writeAtomically(file, kept)
-        }
-    }
+    private fun snapshotBreadcrumbs(): List<Breadcrumb> =
+        synchronized(breadcrumbLock) { breadcrumbs.toList() }
 
-    private fun readBreadcrumbs(context: Context): String = runCatching {
+    private fun renderBreadcrumbs(values: List<Breadcrumb>): String =
+        values.joinToString("\n") { breadcrumb ->
+            "${formatDate(breadcrumb.wallMs)} | ${breadcrumb.value}"
+        }.takeLast(MAX_BREADCRUMB_CHARS).ifBlank { "sem checkpoints persistidos da Agenda" }
+
+    private fun readPersistedBreadcrumbs(context: Context): String = runCatching {
         breadcrumbFile(context)
             .takeIf(File::isFile)
             ?.readText(Charsets.UTF_8)
@@ -128,6 +181,7 @@ internal object AgendaSyncCrashTraceStore {
     }.getOrElse { "falha ao ler checkpoints persistidos: ${it.javaClass.simpleName}" }
 
     private fun currentCheckpoint(context: Context): String {
+        if (lastCheckpoint != "not_armed") return lastCheckpoint
         val persisted = runCatching {
             checkpointFile(context)
                 .takeIf(File::isFile)
@@ -161,6 +215,10 @@ internal object AgendaSyncCrashTraceStore {
     private fun sanitize(value: String): String =
         value.replace(Regex("[\\r\\n\\t]+"), " ")
             .replace(Regex("\\s{2,}"), " ")
+            .replace(Regex("(?i)https?://[^\\s|;]+"), "[url mascarada]")
+            .replace(
+                Regex("(?i)\\b(token|cookie|authorization|password|senha|secret|jwt|sessionToken|accessToken|viewToken)\\s*[:=]\\s*[^|;\\s]+"),
+            ) { match -> "${match.groupValues[1]}=[segredo mascarado]" }
             .trim()
 
     private fun formatDate(value: Long): String =
@@ -216,7 +274,6 @@ internal class AgendaSyncCrashGuard private constructor(
         }
     }
 }
-
 
 private class AgendaTimelineUncaughtHandler(
     private val context: Context,
