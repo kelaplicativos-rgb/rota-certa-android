@@ -254,4 +254,58 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(trace.contains("UnifiedDebugEventStore.recordAlways"))
         assertFalse(trace.contains("LiveRideAccessibilityService"))
     }
+    @Test
+    fun forensicSummaryReportsDroppedEventsAndAllObserverCostMetrics() {
+        val report = source("br/com/mapeiaia/rotacerta/trips/AgendaForensicReport.kt")
+        listOf(
+            "debugEventsRecorded",
+            "debugEventsDropped",
+            "debugBufferCapacity",
+            "debugRecordMedianNs",
+            "debugRecordP95Ns",
+            "debugRecordMaxNs",
+            "debugTotalOverheadNs",
+        ).forEach { assertTrue(report.contains(it)) }
+    }
+
+    @Test
+    fun slowBookingReconcileExposesOneTwoFiveAndTenSecondThresholds() {
+        val source = source("br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt")
+        assertTrue(source.contains("1_000L"))
+        assertTrue(source.contains("2_000L"))
+        assertTrue(source.contains("5_000L"))
+        assertTrue(source.contains("10_000L"))
+        assertTrue(source.contains("BOOKING_RECONCILE_SLOW_"))
+    }
+
+    @Test
+    fun incompleteOperationsAreVisibleInCurrentSnapshotAndAfterProcessTermination() {
+        val report = source("br/com/mapeiaia/rotacerta/trips/AgendaForensicReport.kt")
+        val crash = source("br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt")
+        assertTrue(report.contains("operations START sem conclusão"))
+        assertTrue(report.contains("START_WITHOUT_END"))
+        assertTrue(crash.contains("OPERATION_INCOMPLETE_DUE_PROCESS_TERMINATION"))
+        assertTrue(crash.contains("AgendaTrace.activeOperationSummary()"))
+    }
+
+    @Test
+    fun publicDebugBackendStoresOnlyHashedTargetReferences() {
+        val api = File("../trip-platform/functions/index.js").readText()
+        assertTrue(api.contains("tripRefHash: tripToken ? sha256Hex"))
+        assertTrue(api.contains("agendaRefHash: agendaToken ? sha256Hex"))
+        assertTrue(api.contains("targetRefHash"))
+        assertFalse(api.contains("passengerContact: req.body && req.body.passengerContact"))
+        assertFalse(api.contains("password: req.body && req.body.password"))
+    }
+
+    @Test
+    fun legacyDebugCanRemainDisabledWhileAgendaBlackBoxStillCompilesAndRecordsInMemory() {
+        val unified = source("br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt")
+        val trace = source("br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt")
+        assertTrue(unified.contains("DiagnosticRuntimeGate.isEnabled"))
+        assertTrue(unified.contains("fun recordAlways("))
+        assertTrue(trace.contains("UnifiedDebugEventStore.recordAlways"))
+        assertFalse(trace.contains("DiagnosticRuntimeGate.isEnabled"))
+    }
+
 }
