@@ -383,7 +383,13 @@ internal object AgendaTrace {
             exceptionClass?.let { append(" exceptionClass=").append(safeKey(it)) }
         }
         activeOperations.remove(token.operationId)
-        event(context, "OPERATION_$terminal", details, token.traceId, token.operationId)
+        val terminalStage = when (terminal) {
+            "END" -> "OPERATION_END"
+            "ERROR" -> "OPERATION_ERROR"
+            "CANCELLED" -> "OPERATION_CANCELLED"
+            else -> "OPERATION_TERMINAL"
+        }
+        event(context, terminalStage, details, token.traceId, token.operationId)
         event(context, "${token.operation}_$terminal", details, token.traceId, token.operationId)
         if (durationMs >= 1_000L) {
             event(
