@@ -1536,13 +1536,17 @@ async function syncDriverPassengerDirectory(req, res) {
       );
     }
   }
-  const batch = db.batch();
+  const identitySnapshots = await Promise.all(normalized.map((item) => (
+    db.collection("driverPassengerAccess").where("passengerId", "==", item.passengerId).limit(50).get()
+  )));
+  const writes = [];
   const now = Date.now();
   normalized.forEach((item, index) => {
     const previous = existingDocs[index];
     const data = previous.exists ? previous.data() : {};
     const status = item.blocked ? "BLOCKED" : "AUTHORIZED";
-    batch.set(driverPassengerAccessRef(driver.username, item.passengerContact), {
+    const currentRef = driverPassengerAccessRef(driver.username, item.passengerContact);
+    writes.push((batch) => batch.set(currentRef, {
       driverUsername: driver.username,
       passengerContact: item.passengerContact,
       passengerId: item.passengerId,
@@ -1552,9 +1556,21 @@ async function syncDriverPassengerDirectory(req, res) {
       referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
       createdAtMillis: Number(data.createdAtMillis || now),
       updatedAtMillis: now,
-    }, { merge: true });
+    }, { merge: true }));
+
+    identitySnapshots[index].docs
+      .filter((doc) => normalizeUsername(doc.data().driverUsername || "") === driver.username)
+      .filter((doc) => doc.ref.path !== currentRef.path)
+      .filter((doc) => cleanText(doc.data().status, 20).toUpperCase() !== "MOVED")
+      .forEach((doc) => {
+        writes.push((batch) => batch.set(doc.ref, {
+          status: "MOVED",
+          movedToPassengerContact: item.passengerContact,
+          updatedAtMillis: now,
+        }, { merge: true }));
+      });
   });
-  if (normalized.length) await batch.commit();
+  if (writes.length) await commitPassengerWhatsappWrites(writes);
   return json(res, 200, { synced: normalized.length });
 }
 
@@ -1690,15 +1706,21 @@ async function setDriverPassengerBlocked(req, res) {
     access = { id: created.id, ...created.data() };
   }
 
-  if (access) {
-    const accessRef = db.collection("driverPassengerAccess").doc(access.id);
-    await accessRef.set({
+  const identityAccessSnapshot = await db.collection("driverPassengerAccess")
+    .where("passengerId", "==", passengerId)
+    .limit(50)
+    .get();
+  const identityWrites = identityAccessSnapshot.docs
+    .filter((doc) => normalizeUsername(doc.data().driverUsername || "") === driver.username)
+    .filter((doc) => cleanText(doc.data().status, 20).toUpperCase() !== "MOVED")
+    .map((doc) => (batch) => batch.set(doc.ref, {
       passengerId,
       status,
       updatedAtMillis: Date.now(),
-    }, { merge: true });
-    const updated = await accessRef.get();
-    access = { id: updated.id, ...updated.data() };
+    }, { merge: true }));
+  if (identityWrites.length) {
+    await commitPassengerWhatsappWrites(identityWrites);
+    access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
   }
 
   let cancelled = { cancelledBookings: 0, affectedTrips: 0 };
