@@ -125,11 +125,54 @@ private fun TripApp(
     startCreating: Boolean,
     initialTripId: String?,
 ) {
+    val traceId = AgendaTrace.currentTraceId()
+    val firstCompositionOperation = remember {
+        AgendaTrace.operationStart(activity, "AGENDA_FIRST_COMPOSITION", "TripApp", traceId)
+    }
+    val firstCompositionEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val timelineStartupOperation = remember {
+        AgendaTrace.operationStart(activity, "TIMELINE_STARTUP", "TripApp", traceId)
+    }
     val store = remember { TripStore(activity) }
     val settingsRepository = remember(activity) { SettingsRepository(activity) }
+    val settingsObservationStartedNs = remember {
+        AgendaTrace.event(activity, "CAPACITY_LOCAL_SETTINGS_REQUEST", "source=local_settings", traceId)
+        android.os.SystemClock.elapsedRealtimeNanos()
+    }
     val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
-    var trips by remember { mutableStateOf(store.trips()) }
-    var bookings by remember { mutableStateOf(store.bookings()) }
+    val capacityFirstValueReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val capacityInitialReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    if (capacityInitialReported.compareAndSet(false, true)) {
+        val present = appSettings.vehicleCapacity in 1..999
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_INITIAL_STATE",
+            "source=${if (present) "memory" else "default"} valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+    }
+    var trips by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_TRIPS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.trips()
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
+    var bookings by remember {
+        val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_BOOKINGS_LOAD", "TripApp", traceId)
+        try {
+            val loaded = store.bookings()
+            AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
+            mutableStateOf(loaded)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, operation, error)
+            throw error
+        }
+    }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var publicAgendaSyncRevision by remember { mutableStateOf(0) }
@@ -146,6 +189,44 @@ private fun TripApp(
     var selectedId by remember { mutableStateOf(initialTripId) }
     var message by remember { mutableStateOf<String?>(null) }
     val shareScope = rememberCoroutineScope()
+
+    androidx.compose.runtime.SideEffect {
+        AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
+        if (firstCompositionEnded.compareAndSet(false, true)) {
+            AgendaTrace.event(activity, "AGENDA_FIRST_COMPOSITION_END", "result=content_mounted", traceId, firstCompositionOperation.operationId)
+            AgendaTrace.operationEnd(activity, firstCompositionOperation)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity) {
+        val present = appSettings.vehicleCapacity in 1..999
+        val source = if (present) "local_settings" else "default"
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_LOCAL_SETTINGS_RECEIVED",
+            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+        AgendaTrace.event(
+            activity,
+            "CAPACITY_RENDER_UPDATED",
+            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            traceId,
+        )
+        if (present && capacityFirstValueReported.compareAndSet(false, true)) {
+            val delayMs = ((android.os.SystemClock.elapsedRealtimeNanos() - settingsObservationStartedNs).coerceAtLeast(0L)) / 1_000_000L
+            AgendaTrace.event(activity, "CAPACITY_FIRST_VALUE_MS", "value=$delayMs unit=ms source=local_settings", traceId)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, appSettings.vehicleCapacity) {
+        AgendaTrace.event(
+            activity,
+            "AGENDA_RENDER_STATE",
+            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            traceId,
+        )
+    }
     val refresh = {
         trips = store.trips()
         bookings = store.bookings()
