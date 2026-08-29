@@ -52,7 +52,15 @@ internal object PublicAgendaAutoSync0300 {
             traceId,
             syncOperation.operationId,
         )
-        val resolvedPublicProfile = PublicDriverProfileResolver(context).resolve(settings)
+        val resolvedPublicProfile = try {
+            PublicDriverProfileResolver(context).resolve(settings)
+        } catch (error: CancellationException) {
+            AgendaTrace.operationCancelled(context, profileOperation)
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, profileOperation, error)
+            throw error
+        }
         runCatching { api.ensurePublicAgenda(settings.publicCalendarToken, resolvedPublicProfile) }
             .onSuccess { response ->
                 val updated = settings.copy(
