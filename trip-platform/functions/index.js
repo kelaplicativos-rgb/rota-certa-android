@@ -2375,6 +2375,10 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
