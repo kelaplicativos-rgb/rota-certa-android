@@ -167,6 +167,261 @@ async function sendDriverBookingPush({
   if (invalid.length) await Promise.allSettled(invalid);
 }
 
+function changeEventId(eventType, tripToken, bookingId, version) {
+  return "evt_" + sha256Hex([eventType, cleanText(tripToken, 120), cleanText(bookingId, 120), String(Math.max(1, Number(version || 1)))].join("|")).slice(0, 48);
+}
+
+function changeNotificationId(eventId, recipientType, recipientKey) {
+  return "ntf_" + sha256Hex([eventId, recipientType, cleanText(recipientKey, 180)].join("|")).slice(0, 48);
+}
+
+function eventValue(value) {
+  if (Array.isArray(value)) {
+    return value.slice(0, 24).map((item) => {
+      if (!item || typeof item !== "object") return item;
+      return {
+        id: cleanText(item.id, 80),
+        name: cleanText(item.name, 160),
+        address: cleanText(item.address, 220),
+        plannedArrivalMillis: Number(item.plannedArrivalMillis || 0) || null,
+        plannedDepartureMillis: Number(item.plannedDepartureMillis || 0) || null,
+        priceToNextCents: Math.max(0, Number(item.priceToNextCents || 0)),
+      };
+    });
+  }
+  if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+  return value == null ? null : value;
+}
+
+function changedField(field, before, after) {
+  const a = eventValue(before);
+  const b = eventValue(after);
+  return JSON.stringify(a) === JSON.stringify(b) ? null : { field, before: a, after: b };
+}
+
+function bookingRelevantChanges(previous, updated) {
+  return [
+    changedField("boardingStopId", previous && previous.boardingStopId, updated && updated.boardingStopId),
+    changedField("dropoffStopId", previous && previous.dropoffStopId, updated && updated.dropoffStopId),
+    changedField("seats", Number(previous && previous.seats || 0), Number(updated && updated.seats || 0)),
+    changedField("status", previous && previous.status, updated && updated.status),
+    changedField("farePerSeatCents", Number(previous && previous.farePerSeatCents || 0), Number(updated && updated.farePerSeatCents || 0)),
+    changedField("totalFareCents", Number(previous && previous.totalFareCents || 0), Number(updated && updated.totalFareCents || 0)),
+  ].filter(Boolean);
+}
+
+function tripRelevantChanges(previous, updated) {
+  return [
+    changedField("departureAtMillis", Number(previous && previous.departureAtMillis || 0), Number(updated && updated.departureAtMillis || 0)),
+    changedField("status", previous && previous.status, updated && updated.status),
+    changedField("title", previous && previous.title, updated && updated.title),
+    changedField("stops", previous && previous.stops, updated && updated.stops),
+  ].filter(Boolean);
+}
+
+function driverNotificationCopy(eventType, booking, tripTitle) {
+  const name = cleanText(booking && booking.passengerName, 120) || "Passageiro";
+  const seats = Math.max(0, Number(booking && booking.seats || 0));
+  if (eventType === "BOOKING_CREATED") return { title: "Nova reserva", message: name + " reservou " + seats + " lugar(es)" + (tripTitle ? " em " + tripTitle : "") + "." };
+  if (eventType === "BOOKING_CANCELLED") return { title: "Reserva cancelada", message: name + " cancelou " + seats + " lugar(es)" + (tripTitle ? " em " + tripTitle : "") + "." };
+  return { title: "Reserva alterada", message: name + " alterou uma reserva" + (tripTitle ? " em " + tripTitle : "") + "." };
+}
+
+function passengerNotificationCopy(eventType, tripTitle) {
+  if (eventType === "TRIP_CANCELLED") return { title: "Viagem cancelada", message: "O motorista cancelou" + (tripTitle ? " a viagem " + tripTitle : " sua viagem") + "." };
+  if (eventType === "TRIP_TIME_CHANGED") return { title: "Horário alterado", message: "O horário" + (tripTitle ? " de " + tripTitle : " da sua viagem") + " foi alterado." };
+  if (eventType === "TRIP_CHANGED") return { title: "Viagem alterada", message: "Dados importantes" + (tripTitle ? " de " + tripTitle : " da sua viagem") + " foram atualizados." };
+  if (eventType === "BOOKING_CANCELLED_BY_DRIVER") return { title: "Reserva cancelada", message: "O motorista cancelou sua reserva" + (tripTitle ? " em " + tripTitle : "") + "." };
+  if (eventType === "BOOKING_CONFIRMED_BY_DRIVER") return { title: "Reserva confirmada", message: "Sua reserva" + (tripTitle ? " em " + tripTitle : "") + " foi confirmada." };
+  return { title: "Reserva alterada", message: "O motorista atualizou sua reserva" + (tripTitle ? " em " + tripTitle : "") + "." };
+}
+
+function writeChangeEventAndNotifications(tx, {
+  eventType,
+  tripToken,
+  bookingId = "",
+  version,
+  driverUsername,
+  actor,
+  source,
+  passengerId = "",
+  changes = [],
+  driverNotification = null,
+  passengerRecipients = [],
+}) {
+  const eventId = changeEventId(eventType, tripToken, bookingId, version);
+  const createdAtMillis = Date.now();
+  const safeChanges = Array.isArray(changes) ? changes.slice(0, 24) : [];
+  const recipients = Array.isArray(passengerRecipients) ? passengerRecipients : [];
+  const affectedPassengerIds = [...new Set(recipients.map((item) => cleanText(item && item.passengerId, 120)).filter(Boolean))];
+  tx.create(db.collection("tripChangeEvents").doc(eventId), {
+    eventId,
+    eventType: cleanText(eventType, 80),
+    tripId: cleanText(tripToken, 120),
+    publicToken: cleanText(tripToken, 120),
+    bookingId: cleanText(bookingId, 120),
+    passengerId: cleanText(passengerId, 120),
+    driverUsername: normalizeUsername(driverUsername),
+    actor: cleanText(actor, 32),
+    source: cleanText(source, 80),
+    createdAtMillis,
+    changes: safeChanges,
+    affectedPassengerIds,
+  });
+
+  if (driverNotification) {
+    const driverKey = normalizeUsername(driverUsername);
+    const notificationId = changeNotificationId(eventId, "DRIVER", driverKey);
+    tx.create(db.collection("tripNotifications").doc(notificationId), {
+      notificationId,
+      recipientType: "DRIVER",
+      driverUsername: driverKey,
+      passengerId: "",
+      passengerContact: "",
+      eventId,
+      eventType: cleanText(eventType, 80),
+      title: cleanText(driverNotification.title, 120),
+      message: cleanText(driverNotification.message, 500),
+      tripId: cleanText(tripToken, 120),
+      bookingId: cleanText(bookingId, 120),
+      createdAtMillis,
+      readAtMillis: null,
+    });
+  }
+
+  const seen = new Set();
+  for (const recipient of recipients) {
+    const recipientPassengerId = cleanText(recipient && recipient.passengerId, 120);
+    const recipientContact = cleanText(recipient && recipient.passengerContact, 40);
+    const key = recipientPassengerId || recipientContact;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const copy = recipient.copy || passengerNotificationCopy(eventType, recipient.tripTitle || "");
+    const notificationId = changeNotificationId(eventId, "PASSENGER", key);
+    tx.create(db.collection("tripNotifications").doc(notificationId), {
+      notificationId,
+      recipientType: "PASSENGER",
+      driverUsername: normalizeUsername(driverUsername),
+      passengerId: recipientPassengerId,
+      passengerContact: recipientContact,
+      eventId,
+      eventType: cleanText(eventType, 80),
+      title: cleanText(copy.title, 120),
+      message: cleanText(copy.message, 500),
+      tripId: cleanText(tripToken, 120),
+      bookingId: cleanText(recipient.bookingId || bookingId, 120),
+      createdAtMillis,
+      readAtMillis: null,
+    });
+  }
+  return eventId;
+}
+
+function notificationResponse(doc) {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    notificationId: cleanText(data.notificationId || doc.id, 120),
+    type: cleanText(data.eventType, 80),
+    title: cleanText(data.title, 120),
+    message: cleanText(data.message, 500),
+    tripId: cleanText(data.tripId, 120),
+    bookingId: cleanText(data.bookingId, 120),
+    driverUsername: normalizeUsername(data.driverUsername),
+    createdAtMillis: Number(data.createdAtMillis || 0),
+    read: Number(data.readAtMillis || 0) > 0,
+    readAtMillis: Number(data.readAtMillis || 0) || null,
+    eventId: cleanText(data.eventId, 120),
+  };
+}
+
+async function ownedDriverNotifications(driver) {
+  const snap = await db.collection("tripNotifications").where("driverUsername", "==", driver.username).limit(250).get();
+  return snap.docs.filter((doc) => doc.data().recipientType === "DRIVER");
+}
+
+async function ownedPassengerNotifications(session) {
+  const requests = [];
+  if (session.passengerId) requests.push(db.collection("tripNotifications").where("passengerId", "==", session.passengerId).limit(250).get());
+  if (session.passengerContact) requests.push(db.collection("tripNotifications").where("passengerContact", "==", session.passengerContact).limit(250).get());
+  const snapshots = await Promise.all(requests);
+  const unique = new Map();
+  snapshots.forEach((snap) => snap.docs.forEach((doc) => {
+    if (doc.data().recipientType === "PASSENGER") unique.set(doc.id, doc);
+  }));
+  return [...unique.values()];
+}
+
+async function listDriverNotifications(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const docs = await ownedDriverNotifications(driver);
+  const notifications = docs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length });
+}
+
+async function listPassengerNotifications(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const docs = await ownedPassengerNotifications(session);
+  const notifications = docs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length });
+}
+
+async function markDriverNotificationRead(req, res, notificationIdRaw, all = false) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const now = Date.now();
+  if (all) {
+    const docs = await ownedDriverNotifications(driver);
+    const batch = db.batch();
+    let changed = 0;
+    docs.forEach((doc) => {
+      if (Number(doc.data().readAtMillis || 0) > 0) return;
+      batch.set(doc.ref, { readAtMillis: now }, { merge: true });
+      changed++;
+    });
+    if (changed) await batch.commit();
+    return json(res, 200, { changed });
+  }
+  const notificationId = cleanText(notificationIdRaw, 120);
+  const ref = db.collection("tripNotifications").doc(notificationId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().recipientType !== "DRIVER" || normalizeUsername(snap.data().driverUsername) !== driver.username) {
+    return fail(res, 404, "notification_not_found", "Notificação não encontrada.");
+  }
+  await ref.set({ readAtMillis: Number(snap.data().readAtMillis || 0) || now }, { merge: true });
+  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 });
+}
+
+async function markPassengerNotificationRead(req, res, notificationIdRaw, all = false) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const now = Date.now();
+  const owns = (data) => data.recipientType === "PASSENGER" && (
+    (session.passengerId && cleanText(data.passengerId, 120) === session.passengerId) ||
+    (session.passengerContact && cleanText(data.passengerContact, 40) === session.passengerContact)
+  );
+  if (all) {
+    const docs = await ownedPassengerNotifications(session);
+    const batch = db.batch();
+    let changed = 0;
+    docs.forEach((doc) => {
+      if (!owns(doc.data()) || Number(doc.data().readAtMillis || 0) > 0) return;
+      batch.set(doc.ref, { readAtMillis: now }, { merge: true });
+      changed++;
+    });
+    if (changed) await batch.commit();
+    return json(res, 200, { changed });
+  }
+  const notificationId = cleanText(notificationIdRaw, 120);
+  const ref = db.collection("tripNotifications").doc(notificationId);
+  const snap = await ref.get();
+  if (!snap.exists || !owns(snap.data())) return fail(res, 404, "notification_not_found", "Notificação não encontrada.");
+  await ref.set({ readAtMillis: Number(snap.data().readAtMillis || 0) || now }, { merge: true });
+  return json(res, 200, { changed: Number(snap.data().readAtMillis || 0) <= 0 });
+}
+
 function cleanText(value, max = 240) {
   return String(value || "").trim().slice(0, max);
 }
@@ -3012,6 +3267,10 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/passenger/me/credits") return await getPassengerCredits(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/referral") return await createPassengerReferral(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me/notifications") return await listPassengerNotifications(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/me/notifications/read-all") return await markPassengerNotificationRead(req, res, "", true);
+    if (req.method === "GET" && path === "/v1/driver/notifications") return await listDriverNotifications(req, res);
+    if (req.method === "POST" && path === "/v1/driver/notifications/read-all") return await markDriverNotificationRead(req, res, "", true);
     if (req.method === "POST" && path === "/v1/public/referrals/request") return await requestPassengerReferralInvite(req, res);
     if (req.method === "GET" && path === "/v1/driver/passengers") return await listDriverPassengers(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/invite") return await inviteDriverPassenger(req, res);
@@ -3053,6 +3312,12 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
       return await cancelPublicBooking(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 6 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "notifications" && parts[5] === "read" && req.method === "POST") {
+      return await markPassengerNotificationRead(req, res, parts[4], false);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "notifications" && parts[4] === "read" && req.method === "POST") {
+      return await markDriverNotificationRead(req, res, parts[3], false);
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "bookings" && req.method === "PUT") {
       return await updatePassengerBooking(req, res, parts[4], parts[5]);
