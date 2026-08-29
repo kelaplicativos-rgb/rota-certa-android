@@ -700,6 +700,7 @@ internal fun mergePassengerAdminCandidates(
     remotePassengers: List<DriverPassengerAccess>,
 ): List<PassengerAdminCandidate> {
     val map = linkedMapOf<String, PassengerAdminCandidate>()
+    val localById = localProfiles.associateBy(PassengerProfile::id)
     val localByExternal = localProfiles.flatMap { profile -> profile.externalPassengerIds.map { it to profile } }.toMap()
     val localByOnline = localProfiles.flatMap { profile -> profile.onlineIdentityIds.map { it to profile } }.toMap()
     val phoneGroups = localProfiles
@@ -772,7 +773,7 @@ internal fun mergePassengerAdminCandidates(
     remotePassengers.forEachIndexed { index, access ->
         val onlineId = stableExternalPassengerId(access.id).orEmpty()
         val phoneKey = passengerAdminContactKey(access.passengerContact)
-        val linked = localByOnline[onlineId] ?: uniqueLocalByPhone[phoneKey]
+        val linked = localById[access.passengerId] ?: localByOnline[onlineId] ?: uniqueLocalByPhone[phoneKey]
         val key = when {
             linked != null -> "canonical:${linked.id}"
             onlineId.isNotBlank() -> "online:$onlineId"
