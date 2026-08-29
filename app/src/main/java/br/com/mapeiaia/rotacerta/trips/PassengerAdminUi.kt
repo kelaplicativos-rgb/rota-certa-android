@@ -904,10 +904,9 @@ internal fun maskPassengerAdminContact(raw: String): String {
 }
 
 internal fun passengerAccessLabel(access: DriverPassengerAccess?): String = when (access?.status) {
-    "AUTHORIZED", "ACTIVE" -> "🟢 Autorizado"
-    "SUSPENDED" -> "🟡 Suspenso"
+    "AUTHORIZED", "ACTIVE" -> "🟢 Acesso automático"
+    "SUSPENDED", "PENDING" -> "🟡 Sincronização pendente"
     "BLOCKED" -> "⛔ Não aceito no meu carro"
-    "PENDING" -> "⏳ Aguardando sua aprovação"
     else -> "🟠 Aguardando sincronização da Agenda de Viagens"
 }
 
