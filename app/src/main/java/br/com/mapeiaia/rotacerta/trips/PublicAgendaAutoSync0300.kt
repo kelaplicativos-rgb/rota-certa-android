@@ -263,63 +263,143 @@ internal object PublicAgendaAutoSync0300 {
             var effectiveTrip = publicTrip
             var effectiveClaims = synthesized.capacityClaims
             var shapePreserved = false
+            val externalPublishOperation = AgendaTrace.operationStart(
+                context,
+                "EXTERNAL_TRIP_PUBLISH",
+                "PublicAgendaAutoSync0300",
+                traceId,
+                syncOperation.operationId,
+            )
             try {
                 val response = try {
-                    api.publish(publicTrip)
-                } catch (publishError: Throwable) {
-                    if (publishError is CancellationException) throw publishError
-                    failureStage = "update_after_publish_failure"
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY",
-                        context.packageName,
-                        "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey reason=${publishError.javaClass.simpleName} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
-                    )
-                    try {
-                        api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
-                    } catch (updateError: Throwable) {
-                        if (updateError is CancellationException) throw updateError
-                        val binding = existingBinding
-                        if (binding == null || !isImmutablePublicTripShapeFailure(updateError)) throw updateError
-
-                        failureStage = "update_preserved_binding_shape"
-                        effectiveTrip = preserveExternalBindingShape(publicTrip, binding)
-                        effectiveClaims = remapExternalClaimsToBindingStructure(
-                            claims = synthesized.capacityClaims,
-                            observedStops = publicTrip.stops,
-                            preservedTrip = effectiveTrip,
-                        )
-                        shapePreserved = true
+                    val published = try {
+                        api.publish(publicTrip)
+                    } catch (publishError: Throwable) {
+                        if (publishError is CancellationException) throw publishError
+                        failureStage = "update_after_publish_failure"
                         UnifiedDebugEventStore.record(
-                            "PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED",
+                            "PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY",
                             context.packageName,
-                            "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey observedStops=${publicTrip.stops.size} preservedStops=${effectiveTrip.stops.size} observedCapacity=${publicTrip.capacity} preservedCapacity=${effectiveTrip.capacity} claims=${effectiveClaims.size}",
+                            "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey reason=${publishError.javaClass.simpleName} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
                         )
-                        api.update(effectiveTrip)
+                        AgendaTrace.event(
+                            context,
+                            "EXTERNAL_TRIP_UPDATE_RETRY",
+                            "index=${index + 1} reasonClass=${publishError.javaClass.simpleName}",
+                            traceId,
+                            externalPublishOperation.operationId,
+                        )
+                        val updateOperation = AgendaTrace.operationStart(
+                            context,
+                            "EXTERNAL_TRIP_UPDATE",
+                            "PublicAgendaAutoSync0300",
+                            traceId,
+                            externalPublishOperation.operationId,
+                        )
+                        try {
+                            val updated = try {
+                                api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
+                            } catch (updateError: Throwable) {
+                                if (updateError is CancellationException) throw updateError
+                                val binding = existingBinding
+                                if (binding == null || !isImmutablePublicTripShapeFailure(updateError)) throw updateError
+
+                                failureStage = "update_preserved_binding_shape"
+                                effectiveTrip = preserveExternalBindingShape(publicTrip, binding)
+                                effectiveClaims = remapExternalClaimsToBindingStructure(
+                                    claims = synthesized.capacityClaims,
+                                    observedStops = publicTrip.stops,
+                                    preservedTrip = effectiveTrip,
+                                )
+                                shapePreserved = true
+                                UnifiedDebugEventStore.record(
+                                    "PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED",
+                                    context.packageName,
+                                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey observedStops=${publicTrip.stops.size} preservedStops=${effectiveTrip.stops.size} observedCapacity=${publicTrip.capacity} preservedCapacity=${effectiveTrip.capacity} claims=${effectiveClaims.size}",
+                                )
+                                api.update(effectiveTrip)
+                            }
+                            AgendaTrace.operationEnd(context, updateOperation, result = "updated", processedCount = 1)
+                            AgendaTrace.event(
+                                context,
+                                "EXTERNAL_TRIP_UPDATE_END",
+                                "index=${index + 1} shapePreserved=$shapePreserved",
+                                traceId,
+                                updateOperation.operationId,
+                            )
+                            updated
+                        } catch (error: CancellationException) {
+                            AgendaTrace.operationCancelled(context, updateOperation)
+                            throw error
+                        } catch (error: Throwable) {
+                            AgendaTrace.operationError(context, updateOperation, error)
+                            throw error
+                        }
                     }
+                    AgendaTrace.operationEnd(context, externalPublishOperation, result = "published", processedCount = 1)
+                    published
+                } catch (error: CancellationException) {
+                    AgendaTrace.operationCancelled(context, externalPublishOperation)
+                    throw error
+                } catch (error: Throwable) {
+                    AgendaTrace.operationError(context, externalPublishOperation, error)
+                    throw error
                 }
 
                 failureStage = "capacity_claims"
-                seatClaimsSynced += syncExternalCapacityClaims(
-                    api = api,
-                    remoteTripId = response.tripId,
-                    publicTrip = effectiveTrip,
-                    claims = effectiveClaims,
+                val externalCapacityOperation = AgendaTrace.operationStart(
+                    context,
+                    "EXTERNAL_CAPACITY_CLAIMS",
+                    "PublicAgendaAutoSync0300",
+                    traceId,
+                    syncOperation.operationId,
                 )
-
-                store.savePublicExternalBinding(
-                    PublicExternalTripBinding(
+                val syncedClaims = try {
+                    syncExternalCapacityClaims(
+                        api = api,
                         remoteTripId = response.tripId,
-                        publicToken = response.publicToken,
-                        bookingTripId = "public-external:${response.tripId}",
-                        profileUuid = synthesized.profileUuid,
-                        blablaTripId = synthesized.blablaTripId,
-                        blablaTripHref = synthesized.blablaTripHref,
-                        title = effectiveTrip.title,
-                        departureAtMillis = effectiveTrip.departureAtMillis,
-                        capacity = effectiveTrip.capacity,
-                        stops = effectiveTrip.stops,
-                    ),
+                        publicTrip = effectiveTrip,
+                        claims = effectiveClaims,
+                    ).also { synced ->
+                        AgendaTrace.operationEnd(context, externalCapacityOperation, result = "synced", processedCount = synced)
+                    }
+                } catch (error: CancellationException) {
+                    AgendaTrace.operationCancelled(context, externalCapacityOperation)
+                    throw error
+                } catch (error: Throwable) {
+                    AgendaTrace.operationError(context, externalCapacityOperation, error)
+                    throw error
+                }
+                seatClaimsSynced += syncedClaims
+
+                failureStage = "binding_save"
+                val bindingOperation = AgendaTrace.operationStart(
+                    context,
+                    "PUBLIC_EXTERNAL_BINDING_SAVE",
+                    "PublicAgendaAutoSync0300",
+                    traceId,
+                    syncOperation.operationId,
                 )
+                try {
+                    store.savePublicExternalBinding(
+                        PublicExternalTripBinding(
+                            remoteTripId = response.tripId,
+                            publicToken = response.publicToken,
+                            bookingTripId = "public-external:${response.tripId}",
+                            profileUuid = synthesized.profileUuid,
+                            blablaTripId = synthesized.blablaTripId,
+                            blablaTripHref = synthesized.blablaTripHref,
+                            title = effectiveTrip.title,
+                            departureAtMillis = effectiveTrip.departureAtMillis,
+                            capacity = effectiveTrip.capacity,
+                            stops = effectiveTrip.stops,
+                        ),
+                    )
+                    AgendaTrace.operationEnd(context, bindingOperation, result = "saved", processedCount = 1)
+                } catch (error: Throwable) {
+                    AgendaTrace.operationError(context, bindingOperation, error)
+                    throw error
+                }
                 UnifiedDebugEventStore.record(
                     "PUBLIC_EXTERNAL_BINDING_SAVED",
                     context.packageName,
@@ -343,12 +423,26 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
-        return PublicAgendaAutoSyncResult(
+        val result = PublicAgendaAutoSyncResult(
             localPublished = localPublished,
             externalPublished = externalPublished,
             seatClaimsSynced = seatClaimsSynced,
             failures = failures,
         )
+        AgendaTrace.operationEnd(
+            context,
+            syncOperation,
+            result = "completed",
+            processedCount = localPublished + externalPublished,
+        )
+        return result
+        } catch (error: CancellationException) {
+            AgendaTrace.operationCancelled(context, syncOperation)
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, syncOperation, error)
+            throw error
+        }
     }
 
     internal fun isImmutablePublicTripShapeFailure(error: Throwable): Boolean =
