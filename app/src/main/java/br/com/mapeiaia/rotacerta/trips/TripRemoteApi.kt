@@ -240,6 +240,33 @@ data class DriverPublicDebugEventsResponse(
 )
 
 @Serializable
+data class DriverNotificationItem(
+    val id: String = "",
+    val notificationId: String = "",
+    val type: String = "",
+    val title: String = "",
+    val message: String = "",
+    val tripId: String = "",
+    val bookingId: String = "",
+    val driverUsername: String = "",
+    val createdAtMillis: Long = 0L,
+    val read: Boolean = false,
+    val readAtMillis: Long? = null,
+    val eventId: String = "",
+)
+
+@Serializable
+data class DriverNotificationsResponse(
+    val notifications: List<DriverNotificationItem> = emptyList(),
+    val unreadCount: Int = 0,
+)
+
+@Serializable
+data class NotificationReadResponse(
+    val changed: Int = 0,
+)
+
+@Serializable
 data class PublicBookingRequest(
     val passengerName: String,
     val passengerContact: String = "",
@@ -493,6 +520,26 @@ class TripRemoteApi(
     ): DriverPublicDebugEventsResponse = request(
         method = "GET",
         path = "/v1/driver/public-debug?afterMillis=${afterMillis.coerceAtLeast(0L)}&limit=${limit.coerceIn(1, 250)}",
+        requireDriverToken = true,
+    )
+
+    suspend fun listDriverNotifications(): DriverNotificationsResponse = request(
+        method = "GET",
+        path = "/v1/driver/notifications",
+        requireDriverToken = true,
+    )
+
+    suspend fun markDriverNotificationRead(notificationId: String): NotificationReadResponse = request(
+        method = "POST",
+        path = "/v1/driver/notifications/" + notificationId.trim() + "/read",
+        body = "{}",
+        requireDriverToken = true,
+    )
+
+    suspend fun markAllDriverNotificationsRead(): NotificationReadResponse = request(
+        method = "POST",
+        path = "/v1/driver/notifications/read-all",
+        body = "{}",
         requireDriverToken = true,
     )
 

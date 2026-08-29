@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -195,7 +197,31 @@ private fun TripApp(
     }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var message by remember { mutableStateOf<String?>(null) }
+    var driverNotifications by remember { mutableStateOf<List<DriverNotificationItem>>(emptyList()) }
+    var driverUnreadCount by remember { mutableStateOf(0) }
+    var notificationsExpanded by remember { mutableStateOf(false) }
     val shareScope = rememberCoroutineScope()
+
+    val refreshDriverNotifications: suspend () -> Unit = {
+        val online = store.onlineSettings()
+        if (!online.configured) {
+            driverNotifications = emptyList()
+            driverUnreadCount = 0
+        } else {
+            runCatching { TripRemoteApi(online).listDriverNotifications() }
+                .onSuccess { response ->
+                    driverNotifications = response.notifications
+                    driverUnreadCount = response.unreadCount.coerceAtLeast(0)
+                }
+                .onFailure { error ->
+                    UnifiedDebugEventStore.record(
+                        "DRIVER_NOTIFICATION_CENTER_REFRESH_FAILED",
+                        activity.packageName,
+                        "reason=" + error.javaClass.simpleName,
+                    )
+                }
+        }
+    }
 
     androidx.compose.runtime.SideEffect {
         AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
@@ -295,6 +321,13 @@ private fun TripApp(
                     "Sincronização geral iniciada • todas as contas BlaBlaCar • Agenda Pública • $imported reserva(s) pública(s) recebida(s)."
                 }
             }
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            refreshDriverNotifications()
+            kotlinx.coroutines.delay(15_000L)
         }
     }
 
@@ -413,8 +446,90 @@ private fun TripApp(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-            Text("Agenda de Viagens", style = MaterialTheme.typography.headlineSmall)
-            Text("Rota Certa • viagens, vagas por trecho e calendário", style = MaterialTheme.typography.bodySmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text("Agenda de Viagens", style = MaterialTheme.typography.headlineSmall)
+                    Text("Rota Certa • viagens, vagas por trecho e calendário", style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(
+                    onClick = {
+                        notificationsExpanded = !notificationsExpanded
+                        shareScope.launch { refreshDriverNotifications() }
+                    },
+                ) {
+                    BadgedBox(
+                        badge = {
+                            if (driverUnreadCount > 0) {
+                                Badge { Text(if (driverUnreadCount > 99) "99+" else driverUnreadCount.toString()) }
+                            }
+                        },
+                    ) {
+                        Text("🔔")
+                    }
+                }
+            }
+            if (notificationsExpanded) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Notificações", style = MaterialTheme.typography.titleMedium)
+                            if (driverUnreadCount > 0) {
+                                TextButton(onClick = {
+                                    shareScope.launch {
+                                        val online = store.onlineSettings()
+                                        if (online.configured) {
+                                            runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
+                                            refreshDriverNotifications()
+                                        }
+                                    }
+                                }) { Text("Marcar todas como lidas") }
+                            }
+                        }
+                        if (driverNotifications.isEmpty()) {
+                            Text("Nenhuma notificação.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            driverNotifications.take(20).forEach { item ->
+                                TextButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        shareScope.launch {
+                                            val online = store.onlineSettings()
+                                            if (online.configured && item.id.isNotBlank()) {
+                                                runCatching { TripRemoteApi(online).markDriverNotificationRead(item.id) }
+                                            }
+                                            val localTrip = trips.firstOrNull {
+                                                it.remoteId == item.tripId || it.id == item.tripId
+                                            }
+                                            if (localTrip != null) {
+                                                selectedId = localTrip.id
+                                                screen = TripScreen.LIST
+                                            }
+                                            refreshDriverNotifications()
+                                        }
+                                    },
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            (if (!item.read) "● " else "") + item.title,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Text(item.message, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             message?.let {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(it, modifier = Modifier.padding(12.dp))

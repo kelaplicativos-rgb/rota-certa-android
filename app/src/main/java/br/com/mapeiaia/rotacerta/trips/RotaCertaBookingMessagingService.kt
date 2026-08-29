@@ -201,7 +201,7 @@ private object BookingNotificationCenter0304 {
 
         runCatching {
             NotificationManagerCompat.from(context).notify(
-                (event + bookingId + System.currentTimeMillis() / 60_000L).hashCode(),
+                (event + ":" + bookingId).hashCode(),
                 notification,
             )
         }.onFailure { error ->
