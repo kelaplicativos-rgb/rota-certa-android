@@ -9,13 +9,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -97,6 +101,15 @@ internal fun rotaCertaSelectMonth(
 
 private val shortDateFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("pt-BR"))
 private val monthFormatter = DateTimeFormatter.ofPattern("MMMM 'de' yyyy", Locale.forLanguageTag("pt-BR"))
+
+internal fun rotaCertaDateConfirmLabel(selection: RotaCertaDateSelection): String {
+    val count = selection.normalizedDates.size
+    return when (count) {
+        0 -> "Continuar a partir de hoje"
+        1 -> "Confirmar 1 data"
+        else -> "Confirmar $count datas"
+    }
+}
 
 fun rotaCertaDateSelectionSummary(selection: RotaCertaDateSelection): String {
     val dates = selection.normalizedDates
@@ -186,54 +199,69 @@ fun RotaCertaDatePickerDialog(
         mutableStateOf(draft.normalizedDates.firstOrNull()?.let(YearMonth::from) ?: YearMonth.from(minDate))
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.92f),
-            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(0.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Datas da consulta", style = MaterialTheme.typography.titleLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("‹", style = MaterialTheme.typography.headlineMedium)
+                    }
+                    TextButton(
+                        enabled = draft.normalizedDates.isNotEmpty(),
+                        onClick = { draft = draft.copy(dates = emptyList()) },
+                    ) {
+                        Text("Limpar")
+                    }
+                }
+
+                Text("Datas da consulta", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Dias passados ficam indisponíveis e as datas escolhidas permanecem marcadas.",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Escolha uma, várias datas, um período ou o mês inteiro. Dias passados ficam indisponíveis.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    allowedModes.toList().sortedBy { it.ordinal }.forEach { mode ->
+                        FilterChip(
+                            selected = draft.mode == mode,
+                            onClick = { draft = RotaCertaDateSelection(mode = mode) },
+                            label = { Text(compactModeLabel(mode), maxLines = 1) },
+                        )
+                    }
+                }
 
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    val modes = allowedModes.toList().sortedBy { it.ordinal }
-                    modes.chunked(2).forEach { rowModes ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            rowModes.forEach { mode ->
-                                val selected = draft.mode == mode
-                                val click = {
-                                    draft = RotaCertaDateSelection(mode = mode)
-                                }
-                                if (selected) {
-                                    Button(onClick = click, modifier = Modifier.weight(1f)) {
-                                        Text(modeLabel(mode))
-                                    }
-                                } else {
-                                    OutlinedButton(onClick = click, modifier = Modifier.weight(1f)) {
-                                        Text(modeLabel(mode))
-                                    }
-                                }
-                            }
-                            if (rowModes.size == 1) Box(Modifier.weight(1f))
-                        }
-                    }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -243,7 +271,10 @@ fun RotaCertaDatePickerDialog(
                             enabled = visibleMonth > YearMonth.from(minDate),
                             onClick = { visibleMonth = visibleMonth.minusMonths(1) },
                         ) { Text("‹") }
-                        Text(monthFormatter.format(visibleMonth.atDay(1)), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            monthFormatter.format(visibleMonth.atDay(1)),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
                         TextButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }) { Text("›") }
                     }
 
@@ -252,7 +283,7 @@ fun RotaCertaDatePickerDialog(
                             onClick = { draft = rotaCertaSelectMonth(visibleMonth, minDate) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Selecionar mês inteiro")
+                            Text("Selecionar mês inteiro", maxLines = 1)
                         }
                     }
 
@@ -271,24 +302,33 @@ fun RotaCertaDatePickerDialog(
 
                     when {
                         draft.mode == RotaCertaDateSelectionMode.RANGE && draft.normalizedDates.size == 1 ->
-                            Text("Agora escolha a data final do período.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Agora escolha a data final do período.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         draft.mode == RotaCertaDateSelectionMode.MULTIPLE ->
-                            Text("Toque novamente em um dia marcado para desmarcá-lo.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Toque novamente em um dia marcado para desmarcá-lo.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                     }
 
-                    Text(rotaCertaDateSelectionSummary(draft), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        rotaCertaDateSelectionSummary(draft),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
 
-                Row(
+                Button(
+                    onClick = { onConfirm(draft) },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    shape = RoundedCornerShape(14.dp),
                 ) {
-                    TextButton(
-                        onClick = { draft = draft.copy(dates = emptyList()) },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Limpar") }
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancelar") }
-                    Button(onClick = { onConfirm(draft) }, modifier = Modifier.weight(1f)) { Text("Confirmar") }
+                    Text(
+                        rotaCertaDateConfirmLabel(draft),
+                        maxLines = 1,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 }
             }
         }
@@ -349,9 +389,9 @@ private fun CalendarMonthGrid(
     }
 }
 
-private fun modeLabel(mode: RotaCertaDateSelectionMode): String = when (mode) {
-    RotaCertaDateSelectionMode.SINGLE -> "Uma data"
-    RotaCertaDateSelectionMode.MULTIPLE -> "Várias datas"
+private fun compactModeLabel(mode: RotaCertaDateSelectionMode): String = when (mode) {
+    RotaCertaDateSelectionMode.SINGLE -> "Uma"
+    RotaCertaDateSelectionMode.MULTIPLE -> "Várias"
     RotaCertaDateSelectionMode.RANGE -> "Período"
-    RotaCertaDateSelectionMode.MONTH -> "Mês inteiro"
+    RotaCertaDateSelectionMode.MONTH -> "Mês"
 }
