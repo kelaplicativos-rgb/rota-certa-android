@@ -493,6 +493,10 @@ async function loadAgenda() {
     );
     statusCode = response.status;
     const body = await response.json();
+    if (!response.ok && (response.status === 401 || response.status === 403)) {
+      saveAgendaViewSession("");
+      return showAccessGate("agenda", body.message || "Informe seu WhatsApp novamente.");
+    }
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
     driverProfile = body.driver || {};
     driverDisplayName = driverProfile.displayName || driverUsername;
@@ -846,6 +850,10 @@ async function loadTrip() {
     );
     statusCode = response.status;
     const body = await response.json();
+    if (!response.ok && (response.status === 401 || response.status === 403)) {
+      saveAgendaViewSession("");
+      return showAccessGate("trip", body.message || "Informe seu WhatsApp novamente.");
+    }
     if (!response.ok) throw new Error(body.message || "Viagem indisponível.");
     trip = body;
     driverProfile = body.driver || {};
@@ -1460,6 +1468,12 @@ async function updateExistingReservation() {
 
     statusCode = response.status;
     const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      showPrivateAuthGate("review", "update");
+      return;
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível alterar a reserva.");
 
     confirmedBooking = {
@@ -1534,6 +1548,12 @@ async function cancelReservation() {
     );
     statusCode = response.status;
     const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      passengerViewAccountActivated = true;
+      showPrivateAuthGate("review", "cancel");
+      return;
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
 
     try {
@@ -2134,7 +2154,8 @@ async function bootstrapAuthenticatedExperience() {
     const opened = await requestPublicAgendaAccess(passengerSessionContact);
     if (opened) return;
   }
-  showAccessGate(pendingAuthDestination);
+  const accessMessage = $("accessMessage").textContent;
+  showAccessGate(pendingAuthDestination, accessMessage);
 }
 
 bootstrapAuthenticatedExperience();
