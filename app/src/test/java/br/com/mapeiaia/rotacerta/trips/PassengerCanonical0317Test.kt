@@ -109,6 +109,40 @@ class PassengerCanonical0317Test {
         assertTrue(File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt").readText().contains("KEY_RIDE_RECORDS"))
     }
 
+    @Test
+    fun clearAllRemovesEveryTimelineVisualLayerButPreservesPermanentData() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val responsive = File("src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt").readText()
+
+        assertTrue(timeline.contains("archiveStore.archiveLocalVisualEntries(physical)"))
+        assertTrue(timeline.contains("collectorStore.clearSynchronizedTimelineData()"))
+        assertTrue(timeline.contains("publicSearchStore.clearResponse()"))
+        assertTrue(timeline.contains("publicSearchResponse = null"))
+        assertTrue(timeline.contains("publicSearchClearToken++"))
+        assertTrue(timeline.contains("syncPendingOnly = false"))
+        assertTrue(timeline.contains("showArchived = false"))
+        assertTrue(timeline.contains("Timeline zerada visualmente"))
+        assertTrue(timeline.contains("localTripsPreserved=true"))
+        assertTrue(timeline.contains("localBookingsPreserved=true"))
+
+        assertTrue(responsive.contains("LaunchedEffect(publicSearchClearToken)"))
+        assertTrue(responsive.contains("publicResponse = null"))
+        assertTrue(responsive.contains("showPublicSearch = false"))
+    }
+
+    @Test
+    fun clearAllArchivesHybridLocalIdentityBeforeExternalHalfDisappears() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val start = source.indexOf("fun archiveLocalVisualEntries")
+        val end = source.indexOf("private fun aliases", start)
+        val block = source.substring(start, end)
+
+        assertTrue(block.contains("val localId = entry.localTripId"))
+        assertTrue(block.contains("edit.putBoolean(\"local:\$localId\", true)"))
+        assertTrue(block.contains("!hasExternalPublication(entry)"))
+        assertTrue(block.indexOf("localId != null") < block.indexOf("!hasExternalPublication(entry)"))
+    }
+
     @Test // N
     fun blockedPassengerReturnsBlockedAfterRenameWhenUuidIsSame() {
         val blocked = PassengerProfile(id = "p1", displayName = "Nome antigo", blocked = true, externalPassengerIds = setOf(uuidA))
