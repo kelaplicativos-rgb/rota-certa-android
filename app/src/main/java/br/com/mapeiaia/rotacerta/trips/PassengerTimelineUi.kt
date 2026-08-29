@@ -182,7 +182,9 @@ internal fun EnhancedPassengerTimelineSection(
             statusMenuOpen = false
             if (selection == "CANCELLED") {
                 when {
-                    currentBooking?.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) -> {
+                    currentBooking?.source?.let {
+                        it in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER)
+                    } == true -> {
                         cancelManualRow = passenger
                     }
                     BookingSource.BLABLACAR in passenger.sources -> {
