@@ -61,6 +61,9 @@ internal data class EnhancedPassengerCardRow(
     val externalBookingHref: String? = null,
     val externalProfileUuid: String? = null,
     val bookingStatus: BookingStatus? = null,
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -129,6 +132,7 @@ internal fun EnhancedPassengerTimelineSection(
     var historyRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var editManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
+    var cancelExternalRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -768,6 +772,9 @@ internal fun enhancedPassengerRows(
                     },
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
+                    operationalStatus = booking.operationalStatus,
+                    paymentStatus = booking.paymentStatus,
+                    lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank) ?: current.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank) ?: current.boardingAddress,
@@ -787,6 +794,9 @@ internal fun enhancedPassengerRows(
                     passengerId = booking.passengerId.takeIf(String::isNotBlank),
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
+                    operationalStatus = booking.operationalStatus,
+                    paymentStatus = booking.paymentStatus,
+                    lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress,
