@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - agent/agenda-operational-status-my-trips-0.1.350
+  pull_request:
+    branches:
+      - agent/agenda-bidirectional-notifications-0.1.349
   workflow_dispatch:
 
 permissions:
