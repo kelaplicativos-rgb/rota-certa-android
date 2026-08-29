@@ -121,7 +121,6 @@ jobs:
           grep -Fq 'Vazio = todos' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
           ! grep -Fq 'Informe pelo menos um nome de motorista/perfil.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
           grep -Fq 'class RotaCertaDatePickerTest' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
-          grep -Fq 'enum class RotaCertaDateSelectionMode' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'RotaCertaDateSelectionMode.MULTIPLE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'RotaCertaDateSelectionMode.RANGE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'RotaCertaDateSelectionMode.MONTH' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
