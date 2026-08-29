@@ -211,7 +211,7 @@ fun PassengerAdminScreen(
         TextButton(onClick = onBack) { Text("Voltar") }
     }
     Text(
-        "Administre quem pode entrar na Agenda Pública, senhas temporárias, indicações e créditos.",
+        "Administre quem pode entrar na Agenda de Viagens, senhas temporárias, indicações e créditos.",
         style = MaterialTheme.typography.bodySmall,
     )
 
@@ -267,7 +267,7 @@ fun PassengerAdminScreen(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Cadastrar convidado", style = MaterialTheme.typography.titleMedium)
+            Text("Cadastrar passageiro", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = newName,
                 onValueChange = {
@@ -349,9 +349,9 @@ fun PassengerAdminScreen(
                             revision++
                             onChanged(
                                 if (target == null) {
-                                    "Novo passengerId criado com WhatsApp de acesso. Agora você pode autorizar a Agenda."
+                                    "Novo passengerId criado com WhatsApp de acesso. O acesso à Agenda de Viagens será sincronizado automaticamente."
                                 } else {
-                                    "PassengerId existente mantido. WhatsApp de acesso atualizado; agora você pode autorizar a Agenda."
+                                    "PassengerId existente mantido. WhatsApp de acesso atualizado; o acesso à Agenda de Viagens será sincronizado automaticamente."
                                 },
                             )
                         }
@@ -400,7 +400,7 @@ fun PassengerAdminScreen(
     candidates.forEach { candidate ->
         val access = candidate.remoteAccess
         val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
-            ?: candidate.agendaAccessWhatsapp
+            ?: candidate.agendaAccessWhatsapp.ifBlank { candidate.whatsapp }
         val accessWhatsappDraft = accessWhatsappDrafts[candidate.key] ?: activeAccessWhatsapp
         Card(
             onClick = { openCandidateHistory(candidate) },
@@ -440,7 +440,7 @@ fun PassengerAdminScreen(
                         "${durableHistory?.totalRides ?: passengerStore.rideHistory(profile.id).totalRides} concluída(s) • ${durableHistory?.totalOccurrences ?: 0} ocorrência(s)/reserva(s)",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    if (profile.blocked) Text("🚫 Persona non grata no seu carro", color = MaterialTheme.colorScheme.error)
+                    if (profile.blocked) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
                 }
                 Text(passengerAccessLabel(access), style = MaterialTheme.typography.bodySmall)
                 if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
@@ -462,7 +462,7 @@ fun PassengerAdminScreen(
                                 contentDescription = if (candidate.localProfile.blocked) {
                                     "Liberar passageiro no carro"
                                 } else {
-                                    "Marcar passageiro como persona non grata"
+                                    "Marcar como Não aceito no meu carro"
                                 }
                             },
                         ) { Text(if (candidate.localProfile.blocked) "✅" else "🚫") }
@@ -517,7 +517,7 @@ fun PassengerAdminScreen(
                                             revision++
                                             onChanged(
                                                 if (access == null) {
-                                                    "WhatsApp de acesso salvo no mesmo passengerId. Agora autorize o passageiro para liberar a Agenda."
+                                                    "WhatsApp de acesso salvo no mesmo passengerId. O acesso à Agenda de Viagens será sincronizado automaticamente."
                                                 } else {
                                                     "WhatsApp de acesso atualizado. PassengerId, histórico, reservas, créditos e conta foram preservados."
                                                 },
@@ -533,124 +533,44 @@ fun PassengerAdminScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Salvar WhatsApp de acesso") }
 
-                    fun setAgendaAccessStatus(status: String) {
-                        loading = true
-                        scope.launch {
-                            runCatching {
-                                TripRemoteApi(settings).setPassengerAccessStatus(
-                                    passengerContact = activeAccessWhatsapp,
-                                    status = status,
-                                    passengerId = candidate.localProfile?.id.orEmpty(),
-                                )
-                            }
-                                .onSuccess {
-                                    revision++
-                                    onChanged(
-                                        when (status) {
-                                            "AUTHORIZED" -> "Acesso de ${candidate.displayName} autorizado."
-                                            "SUSPENDED" -> "Acesso de ${candidate.displayName} suspenso."
-                                            else -> "Acesso de ${candidate.displayName} bloqueado."
-                                        },
-                                    )
-                                }
-                                .onFailure { onChanged("Falha ao alterar acesso: ${it.message ?: "erro de conexão"}") }
-                            loading = false
-                        }
+                    val canonicalAccessProfile = candidate.localProfile ?: canonicalProfile(candidate)
+                    Text(
+                        if (canonicalAccessProfile?.blocked == true) {
+                            "🔴 Não aceito no meu carro • acesso negado"
+                        } else {
+                            "🟢 Acesso automático pela base unificada"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (canonicalAccessProfile?.blocked != true && access == null) {
+                        Text(
+                            "O WhatsApp será liberado automaticamente na próxima sincronização online.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
-
-                    when (access?.status) {
-                        "AUTHORIZED", "ACTIVE" -> {
-                            OutlinedButton(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("SUSPENDED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Suspender acesso") }
-                            OutlinedButton(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("BLOCKED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Bloquear acesso") }
-                            if (access.accountActivated) {
-                                OutlinedButton(
-                                    enabled = settings.configured && !loading,
-                                    onClick = {
-                                        loading = true
-                                        scope.launch {
-                                            runCatching {
-                                                TripRemoteApi(settings).resetPassengerPassword(
-                                                    passengerContact = activeAccessWhatsapp,
-                                                    passengerId = candidate.localProfile?.id.orEmpty(),
-                                                )
-                                            }
-                                                .onSuccess {
-                                                    temporaryPassword = it.temporaryPassword
-                                                    temporaryPasswordFor = candidate.displayName
-                                                    onChanged("Nova senha temporária gerada.")
-                                                }
-                                                .onFailure { onChanged("Falha ao redefinir senha: ${it.message ?: "erro de conexão"}") }
-                                            loading = false
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Redefinir senha") }
-                            }
-                        }
-                        "SUSPENDED" -> {
-                            Button(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("AUTHORIZED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Autorizar acesso") }
-                            OutlinedButton(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("BLOCKED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Bloquear acesso") }
-                        }
-                        "BLOCKED" -> {
-                            Button(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("AUTHORIZED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Autorizar acesso") }
-                            OutlinedButton(
-                                enabled = settings.configured && !loading,
-                                onClick = { setAgendaAccessStatus("SUSPENDED") },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Suspender acesso") }
-                        }
-                        else -> {
-                            Button(
-                                enabled = settings.configured && passengerAdminContactKey(accessWhatsappDraft).isNotBlank() && !loading,
-                                onClick = {
-                                    val canonical = canonicalProfile(candidate)
-                                    if (canonical == null) {
-                                        onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
-                                    } else {
-                                        loading = true
-                                        scope.launch {
-                                            runCatching {
-                                                TripRemoteApi(settings).invitePassenger(
-                                                    displayName = canonical.displayName,
-                                                    passengerContact = accessWhatsappDraft,
-                                                    passengerId = canonical.id,
-                                                    referredByContact = access?.referredByContact.orEmpty(),
-                                                )
-                                            }.onSuccess {
-                                                passengerStore.saveProfile(
-                                                    canonical.copy(agendaAccessWhatsapp = accessWhatsappDraft),
-                                                )
-                                                accessWhatsappDrafts = accessWhatsappDrafts - candidate.key
-                                                revision++
-                                                onChanged("Acesso autorizado no mesmo passengerId. O passageiro criará a própria senha ao usar uma ação privada.")
-                                            }.onFailure { onChanged("Falha ao autorizar acesso: ${it.message ?: "erro de conexão"}") }
-                                            loading = false
-                                        }
+                    if (access?.accountActivated == true) {
+                        OutlinedButton(
+                            enabled = settings.configured && !loading,
+                            onClick = {
+                                loading = true
+                                scope.launch {
+                                    runCatching {
+                                        TripRemoteApi(settings).resetPassengerPassword(
+                                            passengerContact = activeAccessWhatsapp,
+                                            passengerId = canonicalAccessProfile?.id.orEmpty(),
+                                        )
                                     }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(if (access?.status == "PENDING") "Aprovar e autorizar" else "Autorizar acesso") }
-                        }
+                                        .onSuccess {
+                                            temporaryPassword = it.temporaryPassword
+                                            temporaryPasswordFor = candidate.displayName
+                                            onChanged("Nova senha temporária gerada.")
+                                        }
+                                        .onFailure { onChanged("Falha ao redefinir senha: ${it.message ?: "erro de conexão"}") }
+                                    loading = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Redefinir senha") }
                     }
                 }
             }
@@ -661,30 +581,67 @@ fun PassengerAdminScreen(
         val currentlyBlocked = candidate.localProfile?.blocked == true
         AlertDialog(
             onDismissRequest = { blockCandidate = null },
-            title = { Text(if (currentlyBlocked) "Liberar passageiro no carro?" else "Marcar como persona non grata?") },
+            title = { Text(if (currentlyBlocked) "Remover bloqueio?" else "Não aceito no meu carro?") },
             text = {
                 Text(
                     if (currentlyBlocked) {
-                        "Isso remove somente o bloqueio de persona non grata. O acesso à Agenda Pública continua sendo uma configuração separada."
+                        "O desbloqueio é explícito e mantém passengerId, cadastro e histórico."
                     } else {
-                        "O passageiro será sinalizado por sua identidade canônica forte. O acesso à Agenda Pública não será alterado automaticamente."
+                        "O bloqueio ficará preso ao passengerId, negará a Agenda de Viagens e cancelará reservas Rota Certa ativas, liberando as vagas."
                     },
                 )
             },
             confirmButton = {
-                Button(onClick = {
-                    val current = canonicalProfile(candidate)
-                    if (current != null) {
-                        passengerStore.setBlocked(
-                            current.id,
-                            !currentlyBlocked,
-                            if (!currentlyBlocked) "Persona non grata marcada pelo motorista" else "",
-                        )
-                        revision++
-                        onChanged(if (currentlyBlocked) "Passageiro liberado para o carro." else "🚫 Passageiro marcado como persona non grata.")
-                    }
-                    blockCandidate = null
-                }) { Text(if (currentlyBlocked) "Liberar" else "Confirmar 🚫") }
+                Button(
+                    enabled = !loading,
+                    onClick = {
+                        val current = canonicalProfile(candidate)
+                        val nextBlocked = !currentlyBlocked
+                        if (current != null) {
+                            val saved = passengerStore.setBlocked(
+                                current.id,
+                                nextBlocked,
+                                if (nextBlocked) "Não aceito no meu carro" else "",
+                            ) ?: current
+                            revision++
+                            blockCandidate = null
+                            onChanged(
+                                if (nextBlocked) "⛔ Não aceito no meu carro. Bloqueio salvo no passengerId."
+                                else "Passageiro desbloqueado explicitamente.",
+                            )
+                            val contact = saved.agendaAccessContact()
+                            if (settings.configured && passengerAdminContactKey(contact).isNotBlank()) {
+                                loading = true
+                                scope.launch {
+                                    runCatching {
+                                        TripRemoteApi(settings).setPassengerAccessBlocked(
+                                            passengerContact = contact,
+                                            blocked = nextBlocked,
+                                            passengerId = saved.id,
+                                        )
+                                    }.onSuccess { response ->
+                                        revision++
+                                        onChanged(
+                                            if (nextBlocked) {
+                                                "⛔ Bloqueio sincronizado. ${response.cancelledBookings} reserva(s) ativa(s) cancelada(s); vagas recalculadas."
+                                            } else {
+                                                "Desbloqueio sincronizado. O acesso automático à Agenda de Viagens foi restaurado."
+                                            },
+                                        )
+                                    }.onFailure { error ->
+                                        onChanged(
+                                            "Bloqueio local preservado; sincronização online pendente: ${error.message ?: "erro de conexão"}",
+                                        )
+                                    }
+                                    loading = false
+                                }
+                            }
+                        } else {
+                            blockCandidate = null
+                            onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                        }
+                    },
+                ) { Text(if (currentlyBlocked) "Desbloquear" else "Confirmar ⛔") }
             },
             dismissButton = { TextButton(onClick = { blockCandidate = null }) { Text("Cancelar") } },
         )
@@ -741,7 +698,7 @@ internal fun PassengerHistoryPanel(
             Text("Último registro: ${whenText(history.lastSeenAtMillis)}", style = MaterialTheme.typography.bodySmall)
             if (profile.blocked) {
                 Text(
-                    "🚫 Persona non grata${profile.blockedReason.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}",
+                    "⛔ NÃO ACEITO NO MEU CARRO${profile.blockedReason.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}",
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -946,9 +903,9 @@ internal fun maskPassengerAdminContact(raw: String): String {
 internal fun passengerAccessLabel(access: DriverPassengerAccess?): String = when (access?.status) {
     "AUTHORIZED", "ACTIVE" -> "🟢 Autorizado"
     "SUSPENDED" -> "🟡 Suspenso"
-    "BLOCKED" -> "🔴 Bloqueado"
+    "BLOCKED" -> "⛔ Não aceito no meu carro"
     "PENDING" -> "⏳ Aguardando sua aprovação"
-    else -> "🔒 Sem acesso à Agenda Pública"
+    else -> "🟠 Aguardando sincronização da Agenda de Viagens"
 }
 
 internal fun parseCreditInput(raw: String): Long? = runCatching {
