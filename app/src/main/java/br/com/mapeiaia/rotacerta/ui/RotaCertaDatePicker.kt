@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -185,87 +188,96 @@ fun RotaCertaDatePickerDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f),
             shape = RoundedCornerShape(24.dp),
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("Datas da consulta", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "Mesmo calendário da Agenda Pública: dias passados ficam indisponíveis e as datas escolhidas permanecem marcadas.",
+                    "Dias passados ficam indisponíveis e as datas escolhidas permanecem marcadas.",
                     style = MaterialTheme.typography.bodySmall,
                 )
 
-                val modes = allowedModes.toList().sortedBy { it.ordinal }
-                modes.chunked(2).forEach { rowModes ->
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    val modes = allowedModes.toList().sortedBy { it.ordinal }
+                    modes.chunked(2).forEach { rowModes ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            rowModes.forEach { mode ->
+                                val selected = draft.mode == mode
+                                val click = {
+                                    draft = RotaCertaDateSelection(mode = mode)
+                                }
+                                if (selected) {
+                                    Button(onClick = click, modifier = Modifier.weight(1f)) {
+                                        Text(modeLabel(mode))
+                                    }
+                                } else {
+                                    OutlinedButton(onClick = click, modifier = Modifier.weight(1f)) {
+                                        Text(modeLabel(mode))
+                                    }
+                                }
+                            }
+                            if (rowModes.size == 1) Box(Modifier.weight(1f))
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        rowModes.forEach { mode ->
-                            val selected = draft.mode == mode
-                            val click = {
-                                draft = RotaCertaDateSelection(mode = mode)
-                            }
-                            if (selected) {
-                                Button(onClick = click, modifier = Modifier.weight(1f)) {
-                                    Text(modeLabel(mode))
-                                }
+                        TextButton(
+                            enabled = visibleMonth > YearMonth.from(minDate),
+                            onClick = { visibleMonth = visibleMonth.minusMonths(1) },
+                        ) { Text("‹") }
+                        Text(monthFormatter.format(visibleMonth.atDay(1)), style = MaterialTheme.typography.titleMedium)
+                        TextButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }) { Text("›") }
+                    }
+
+                    if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
+                        OutlinedButton(
+                            onClick = { draft = rotaCertaSelectMonth(visibleMonth, minDate) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Selecionar mês inteiro")
+                        }
+                    }
+
+                    CalendarMonthGrid(
+                        month = visibleMonth,
+                        minDate = minDate,
+                        selectedDates = draft.normalizedDates.toSet(),
+                        onDateClick = { tapped ->
+                            draft = if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
+                                rotaCertaSelectMonth(YearMonth.from(tapped), minDate)
                             } else {
-                                OutlinedButton(onClick = click, modifier = Modifier.weight(1f)) {
-                                    Text(modeLabel(mode))
-                                }
+                                rotaCertaApplyDateTap(draft, tapped)
                             }
-                        }
-                        if (rowModes.size == 1) Box(Modifier.weight(1f))
+                        },
+                    )
+
+                    when {
+                        draft.mode == RotaCertaDateSelectionMode.RANGE && draft.normalizedDates.size == 1 ->
+                            Text("Agora escolha a data final do período.", style = MaterialTheme.typography.bodySmall)
+                        draft.mode == RotaCertaDateSelectionMode.MULTIPLE ->
+                            Text("Toque novamente em um dia marcado para desmarcá-lo.", style = MaterialTheme.typography.bodySmall)
                     }
+
+                    Text(rotaCertaDateSelectionSummary(draft), style = MaterialTheme.typography.bodyMedium)
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    TextButton(
-                        enabled = visibleMonth > YearMonth.from(minDate),
-                        onClick = { visibleMonth = visibleMonth.minusMonths(1) },
-                    ) { Text("‹") }
-                    Text(monthFormatter.format(visibleMonth.atDay(1)), style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }) { Text("›") }
-                }
-
-                if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
-                    OutlinedButton(
-                        onClick = { draft = rotaCertaSelectMonth(visibleMonth, minDate) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Selecionar mês inteiro")
-                    }
-                }
-
-                CalendarMonthGrid(
-                    month = visibleMonth,
-                    minDate = minDate,
-                    selectedDates = draft.normalizedDates.toSet(),
-                    onDateClick = { tapped ->
-                        draft = if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
-                            rotaCertaSelectMonth(YearMonth.from(tapped), minDate)
-                        } else {
-                            rotaCertaApplyDateTap(draft, tapped)
-                        }
-                    },
-                )
-
-                when {
-                    draft.mode == RotaCertaDateSelectionMode.RANGE && draft.normalizedDates.size == 1 ->
-                        Text("Agora escolha a data final do período.", style = MaterialTheme.typography.bodySmall)
-                    draft.mode == RotaCertaDateSelectionMode.MULTIPLE ->
-                        Text("Toque novamente em um dia marcado para desmarcá-lo.", style = MaterialTheme.typography.bodySmall)
-                }
-
-                Text(rotaCertaDateSelectionSummary(draft), style = MaterialTheme.typography.bodyMedium)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
