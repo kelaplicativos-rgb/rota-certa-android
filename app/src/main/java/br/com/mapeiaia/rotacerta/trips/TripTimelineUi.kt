@@ -78,6 +78,7 @@ fun TripTimelineScreen(
     val locationService = remember(context) { DeviceLocationService(context) }
     var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }
     var publicSearchResponse by remember { mutableStateOf(publicSearchStore.lastResponse()) }
+    var publicSearchClearToken by remember { mutableIntStateOf(0) }
     var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
@@ -248,24 +249,40 @@ fun TripTimelineScreen(
     )
 
     val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
+        // First forget any old archive aliases tied to synchronized identities. When the
+        // user chooses "Tudo da tela", re-archive only the persistent local/manual
+        // identity so a hybrid local+BlaBla card cannot reappear after its external half
+        // is removed.
         archiveStore.clearExternal(physical)
-        if (includeManualCards) {
-            physical.filterNot(::hasExternalPublication).forEach { archiveStore.setArchived(it, true) }
-            archiveRevision++
+        val manualVisualHidden = if (includeManualCards) {
+            archiveStore.archiveLocalVisualEntries(physical)
+        } else {
+            0
         }
         val externalClear = collectorStore.clearSynchronizedTimelineData()
         collectorResponse = externalClear.response
+
+        if (includeManualCards) {
+            publicSearchStore.clearResponse()
+            publicSearchResponse = null
+            publicSearchClearToken++
+            syncPendingOnly = false
+            showSync = false
+            showPublisher = false
+            archiveRevision++
+        }
+
         showArchived = false
         searchQuery = ""
         showTimelineClearDialog = false
         UnifiedDebugEventStore.record(
             "TIMELINE_VISUAL_CLEARED_BY_USER",
             context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards manualVisualHidden=$manualVisualHidden publicSearchCleared=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
         )
         onChanged(
             if (includeManualCards) {
-                "Visualização da Timeline limpa. Passageiros, histórico, UUIDs, viagens e reservas locais foram preservados."
+                "Timeline zerada visualmente. Cards sincronizados, manuais, consulta pública e linhas de datas foram removidos da tela; os dados permanentes foram preservados."
             } else {
                 "Cards sincronizados foram removidos da visualização. Passageiros e histórico permanente foram preservados."
             },
@@ -291,6 +308,7 @@ fun TripTimelineScreen(
             ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
         ),
         onPublicSearchResponse = { publicSearchResponse = it },
+        publicSearchClearToken = publicSearchClearToken,
     )
 
     if (showTimelineClearDialog) {
@@ -394,11 +412,17 @@ fun TripTimelineScreen(
     }
 
     timelineCalendarDays.forEach { day ->
-        if (day.date in operationalTimelineDates) {
-            AgendaCalendarDayLine(day.date)
-        }
         val dayPublicCards = publicTimelineCards.filter { card ->
             runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
+        }
+        if (
+            shouldRenderTimelineEmptyDayCard(
+                isOperationalCalendarDate = day.date in operationalTimelineDates,
+                operationalCardCount = day.items.size,
+                publicCardCount = dayPublicCards.size,
+            )
+        ) {
+            AgendaCalendarDayLine(day.date)
         }
         var publicCardIndex = 0
         day.items.forEach { entry ->
@@ -461,6 +485,12 @@ fun TripTimelineScreen(
         }
     }
 }
+
+internal fun shouldRenderTimelineEmptyDayCard(
+    isOperationalCalendarDate: Boolean,
+    operationalCardCount: Int,
+    publicCardCount: Int,
+): Boolean = isOperationalCalendarDate && operationalCardCount == 0 && publicCardCount == 0
 
 internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
     BlaBlaPublicationSeatSyncVisualState.PENDING,
@@ -1170,6 +1200,26 @@ private class TripTimelineArchiveStore(context: Context) {
             .distinct()
             .forEach(edit::remove)
         edit.apply()
+    }
+
+    fun archiveLocalVisualEntries(entries: List<TripTimelineEntry>): Int {
+        val edit = prefs.edit()
+        var hidden = 0
+        entries.forEach { entry ->
+            val localId = entry.localTripId?.trim()?.takeIf(String::isNotEmpty)
+            when {
+                localId != null -> {
+                    edit.putBoolean("local:$localId", true)
+                    hidden++
+                }
+                !hasExternalPublication(entry) -> {
+                    edit.putBoolean("timeline:${entry.tripId}", true)
+                    hidden++
+                }
+            }
+        }
+        edit.apply()
+        return hidden
     }
 
     private fun aliases(entry: TripTimelineEntry): Set<String> = setOfNotNull(
