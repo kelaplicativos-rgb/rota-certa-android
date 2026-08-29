@@ -1931,7 +1931,7 @@ function renderPassengerNotifications(entries, unreadCount) {
   const notifications = Array.isArray(entries) ? entries : [];
   passengerUnreadBookingIds = new Set(
     notifications
-      .filter((item) => item && !item.readAtMillis && item.bookingId)
+      .filter((item) => item && !item.read && item.bookingId)
       .map((item) => String(item.bookingId)),
   );
   setPassengerNotificationBadge(unreadCount);
