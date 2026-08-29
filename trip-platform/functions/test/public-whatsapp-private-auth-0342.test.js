@@ -117,3 +117,16 @@ test("captured contact and Agenda access WhatsApp are kept as separate local fie
   assert.match(identity, /val whatsapp: String = ""/);
   assert.match(identity, /val agendaAccessWhatsapp: String = ""/);
 });
+
+
+test("unknown, pending and restricted WhatsApp receive explicit Agenda access messages", () => {
+  const openAccess = block(api, "async function openPassengerAgendaView", "async function invalidatePassengerSessions");
+  assert.match(openAccess, /passenger_access_denied/);
+  assert.match(openAccess, /Acesso negado\. Este WhatsApp não está na lista de passageiros autorizados desta Agenda/);
+  assert.match(openAccess, /passenger_access_pending/);
+  assert.match(openAccess, /Seu convite precisa ser aprovado pelo motorista/);
+  assert.match(openAccess, /acesso suspenso ou bloqueado nesta Agenda/);
+  const requestAccess = block(web, "async function requestPublicAgendaAccess", "async function validatePassengerSession");
+  assert.match(requestAccess, /accessMessage"\)\.className = "error"/);
+  assert.match(requestAccess, /Acesso negado\. Este WhatsApp não está autorizado para esta Agenda/);
+});

@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.343 PassengerId e WhatsApp de acesso
+name: Rota Certa 0.1.344 Acesso negado para nao convidados
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-0343-${{ github.ref }}
+  group: agenda-0344-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,13 +28,13 @@ jobs:
           ref: agent/public-whatsapp-view-private-auth-0.1.342
           fetch-depth: 0
 
-      - name: Validate 0.1.343 passengerId and editable access WhatsApp
+      - name: Validate 0.1.344 explicit denied access messages
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5636' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.343"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5637' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
           grep -Fq 'ResponsiveTripAction("👥 Passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Text("+ Adicionar passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Text("👥 Ver / gerenciar passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -43,7 +43,7 @@ jobs:
           grep -Fq 'LaunchedEffect(openRequestToken)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           ! grep -Fq 'Text("+ Passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'passengerToolbarGroupsAddAndManageBehindSingleEntry' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
-          grep -Fq 'versionName = "0.1.343"' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
           grep -Fq 'async function requirePassengerAgendaView' trip-platform/functions/index.js
           grep -Fq '/v1/public/passenger-access' trip-platform/functions/index.js
           grep -Fq 'async function activatePassengerAccount' trip-platform/functions/index.js
@@ -66,6 +66,10 @@ jobs:
           grep -Fq 'WhatsApp de acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
           grep -Fq 'async function updateDriverPassengerWhatsapp' trip-platform/functions/index.js
           grep -Fq 'passenger_whatsapp_conflict' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_denied' trip-platform/functions/index.js
+          grep -Fq 'Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda.' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_pending' trip-platform/functions/index.js
+          grep -Fq 'accessMessage").className = "error"' trip-platform/public/app.js
           grep -Fq 'class PassengerPublicAccess0342Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerPublicAccess0342Test.kt
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -286,24 +290,24 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5636'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.343'" /tmp/aapt.txt
+          grep -Fq "versionCode='5637'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.344'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0343 trip-platform/public/downloads
-          cp "$APK" /tmp/0343/rota-certa-0.1.343-passenger-id-whatsapp.apk
-          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.343-passenger-id-whatsapp.apk
-          cp /tmp/apk.sha256 /tmp/0343/apk.sha256
-          cp /tmp/aapt.txt /tmp/0343/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0343/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0343/gradle.txt
-          git rev-parse HEAD > /tmp/0343/source-head.txt
+          mkdir -p /tmp/0344 trip-platform/public/downloads
+          cp "$APK" /tmp/0344/rota-certa-0.1.344-access-denied.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.344-access-denied.apk
+          cp /tmp/apk.sha256 /tmp/0344/apk.sha256
+          cp /tmp/aapt.txt /tmp/0344/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0344/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0344/gradle.txt
+          git rev-parse HEAD > /tmp/0344/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.343-passenger-id-whatsapp
+          name: rota-certa-0.1.344-access-denied
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0343
+          path: /tmp/0344
 
       - name: Install Firebase Functions dependencies
         shell: bash
@@ -346,8 +350,8 @@ jobs:
           ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
           test "$ACCESS_CODE" = "403"
 
-          EXPECTED="$(sha256sum /tmp/0343/rota-certa-0.1.343-passenger-id-whatsapp.apk | awk '{print $1}')"
-          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.343-passenger-id-whatsapp.apk?v=$BUST" -o /tmp/hosted-0342.apk
+          EXPECTED="$(sha256sum /tmp/0344/rota-certa-0.1.344-access-denied.apk | awk '{print $1}')"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.344-access-denied.apk?v=$BUST" -o /tmp/hosted-0342.apk
           ACTUAL="$(sha256sum /tmp/hosted-0342.apk | awk '{print $1}')"
           test "$ACTUAL" = "$EXPECTED"
-          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.343-passenger-id-whatsapp.apk"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.344-access-denied.apk"

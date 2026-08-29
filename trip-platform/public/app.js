@@ -300,6 +300,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
     return false;
   }
   $("accessLogin").disabled = true;
+  $("accessMessage").className = "muted";
   $("accessMessage").textContent = "Verificando acesso…";
   try {
     const response = await fetch("/v1/public/passenger-access", {
@@ -310,16 +311,19 @@ async function requestPublicAgendaAccess(contactInput = "") {
     const body = await response.json();
     if (!response.ok) {
       saveAgendaViewSession("");
-      $("accessMessage").textContent = body.message || "Seu acesso a esta agenda não está disponível.";
+      $("accessMessage").className = "error";
+      $("accessMessage").textContent = body.message || "Acesso negado. Este WhatsApp não está autorizado para esta Agenda.";
       return false;
     }
     savePassengerContact(body.passengerContact || passengerContact);
     saveAgendaViewSession(body.viewToken);
     passengerViewAccountActivated = body.accountActivated === true;
+    $("accessMessage").className = "muted";
     $("accessMessage").textContent = "";
     await continueAfterViewAccess();
     return true;
   } catch (error) {
+    $("accessMessage").className = "error";
     $("accessMessage").textContent = error.message || "Não foi possível verificar o acesso.";
     return false;
   } finally {

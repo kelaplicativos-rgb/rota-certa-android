@@ -1353,11 +1353,24 @@ async function openPassengerAgendaView(req, res) {
   }
 
   const access = await passengerAccessFor(username, passengerContact);
-  if (!access || cleanText(access.status, 20).toUpperCase() === "PENDING") {
-    return fail(res, 403, "passenger_access_not_available", "Este WhatsApp ainda não possui acesso a esta agenda.");
+  if (!access) {
+    return fail(
+      res,
+      403,
+      "passenger_access_denied",
+      "Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda. Para acessar, você precisa ser cadastrado e convidado pelo motorista.",
+    );
+  }
+  if (cleanText(access.status, 20).toUpperCase() === "PENDING") {
+    return fail(
+      res,
+      403,
+      "passenger_access_pending",
+      "Acesso ainda não liberado. Seu convite precisa ser aprovado pelo motorista antes de entrar na Agenda.",
+    );
   }
   if (!passengerAccessIsAuthorized(access)) {
-    return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
+    return fail(res, 403, "passenger_access_unavailable", "Acesso negado. Este WhatsApp está com acesso suspenso ou bloqueado nesta Agenda. Fale com o motorista.");
   }
 
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
