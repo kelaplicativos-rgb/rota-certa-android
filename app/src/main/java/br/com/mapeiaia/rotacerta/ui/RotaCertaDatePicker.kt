@@ -77,11 +77,18 @@ internal fun rotaCertaApplyDateTap(
     return current.copy(dates = next)
 }
 
-internal fun rotaCertaSelectMonth(month: YearMonth): RotaCertaDateSelection =
-    RotaCertaDateSelection(
+internal fun rotaCertaSelectMonth(
+    month: YearMonth,
+    minDate: LocalDate? = null,
+): RotaCertaDateSelection {
+    val start = minDate?.takeIf { !it.isBefore(month.atDay(1)) } ?: month.atDay(1)
+    val dates = if (start.isAfter(month.atEndOfMonth())) emptyList() else
+        rotaCertaInclusiveDates(start, month.atEndOfMonth())
+    return RotaCertaDateSelection(
         mode = RotaCertaDateSelectionMode.MONTH,
-        dates = rotaCertaInclusiveDates(month.atDay(1), month.atEndOfMonth()),
+        dates = dates,
     )
+}
 
 private val shortDateFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("pt-BR"))
 private val monthFormatter = DateTimeFormatter.ofPattern("MMMM 'de' yyyy", Locale.forLanguageTag("pt-BR"))
@@ -201,7 +208,7 @@ fun RotaCertaDatePickerDialog(
 
                 if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
                     OutlinedButton(
-                        onClick = { draft = rotaCertaSelectMonth(visibleMonth) },
+                        onClick = { draft = rotaCertaSelectMonth(visibleMonth, minDate) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Selecionar mês inteiro")
@@ -213,7 +220,11 @@ fun RotaCertaDatePickerDialog(
                     minDate = minDate,
                     selectedDates = draft.normalizedDates.toSet(),
                     onDateClick = { tapped ->
-                        draft = rotaCertaApplyDateTap(draft, tapped)
+                        draft = if (draft.mode == RotaCertaDateSelectionMode.MONTH) {
+                            rotaCertaSelectMonth(YearMonth.from(tapped), minDate)
+                        } else {
+                            rotaCertaApplyDateTap(draft, tapped)
+                        }
                     },
                 )
 
