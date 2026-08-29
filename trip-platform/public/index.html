@@ -69,20 +69,17 @@
 
   <section id="accessGate" class="hidden">
     <div class="card authCard">
-      <h1 class="pageTitle">Entre para buscar sua viagem</h1>
-      <p class="lead">Use seu WhatsApp e sua senha para acessar a Agenda Pública do Rota Certa.</p>
+      <h1 class="pageTitle">Acesse a agenda</h1>
+      <p class="lead">Informe apenas seu WhatsApp. Se este número estiver autorizado, você poderá consultar as viagens imediatamente.</p>
       <div id="accessLoginBox">
         <label>WhatsApp
           <input id="accessContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
         </label>
-        <label>Senha
-          <input id="accessPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
-        </label>
         <p id="accessMessage" class="muted"></p>
         <div class="authActions">
-          <button id="accessLogin" class="primary" type="button">Entrar</button>
+          <button id="accessLogin" class="primary" type="button">Continuar</button>
         </div>
-        <p class="authHint"><strong>Acesso somente por convite.</strong> Você precisa ser liberado pelo motorista para entrar nesta agenda.</p>
+        <p class="authHint">A senha só será solicitada para reservar, abrir Minha área ou executar uma ação privada.</p>
       </div>
       <div id="referralRequestBox" class="hidden">
         <h2>Você recebeu uma indicação</h2>
@@ -95,6 +92,27 @@
         </label>
         <p id="referralRequestMessage" class="muted"></p>
         <button id="referralRequestSubmit" class="secondary" type="button">Solicitar convite</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="privateAuth" class="hidden">
+    <div class="card authCard">
+      <button id="privateAuthBack" class="backButton" type="button">‹ Voltar</button>
+      <h1 id="privateAuthTitle" class="pageTitle">Entre para continuar</h1>
+      <p id="privateAuthIntro" class="lead">Sua senha protege reservas e informações privadas.</p>
+      <label>WhatsApp
+        <input id="privateAuthContact" autocomplete="tel" inputmode="tel" maxlength="16" readonly>
+      </label>
+      <label>Senha
+        <input id="privateAuthPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
+      </label>
+      <label id="privateAuthConfirmWrap" class="hidden">Confirme a senha
+        <input id="privateAuthPasswordConfirm" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+      </label>
+      <p id="privateAuthMessage" class="muted"></p>
+      <div class="authActions">
+        <button id="privateAuthSubmit" class="primary" type="button">Entrar</button>
       </div>
     </div>
   </section>
