@@ -425,10 +425,23 @@ fun RotaCertaApp(launchIntent: Intent?) {
         if (highlightedShortcutModule0171 == "trip_agenda") {
             launchIntent?.removeExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171)
             highlightedShortcutModule0171 = null
-            context.startActivity(
+            val traceId = br.com.mapeiaia.rotacerta.trips.AgendaTrace.beginAgendaOpen(context, "home_launch_intent")
+            val agendaIntent = br.com.mapeiaia.rotacerta.trips.AgendaTrace.attachTrace(
                 Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
                     .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
+                traceId,
             )
+            val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
+                context, "AGENDA_START_ACTIVITY", "main_activity_launch_intent", traceId,
+            )
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                context, "AGENDA_START_ACTIVITY_REQUEST", "source=home_launch_intent", traceId, launchOperation.operationId,
+            )
+            context.startActivity(agendaIntent)
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                context, "AGENDA_START_ACTIVITY_RETURN", "source=home_launch_intent", traceId, launchOperation.operationId,
+            )
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
         }
         if (homeLaunchMode0186 == HomeLaunchPolicy0186.MODE_COLLAPSED) {
             selectedBubbleGroup = BUBBLE_GROUP_GENERAL
