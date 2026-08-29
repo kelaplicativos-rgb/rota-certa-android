@@ -342,8 +342,11 @@ async function ownedDriverNotifications(driver) {
 
 async function ownedPassengerNotifications(session) {
   const requests = [];
-  if (session.passengerId) requests.push(db.collection("tripNotifications").where("passengerId", "==", session.passengerId).limit(250).get());
-  if (session.passengerContact) requests.push(db.collection("tripNotifications").where("passengerContact", "==", session.passengerContact).limit(250).get());
+  if (session.passengerId) {
+    requests.push(db.collection("tripNotifications").where("passengerId", "==", session.passengerId).limit(250).get());
+  } else if (session.passengerContact) {
+    requests.push(db.collection("tripNotifications").where("passengerContact", "==", session.passengerContact).limit(250).get());
+  }
   const snapshots = await Promise.all(requests);
   const unique = new Map();
   snapshots.forEach((snap) => snap.docs.forEach((doc) => {
@@ -399,8 +402,9 @@ async function markPassengerNotificationRead(req, res, notificationIdRaw, all = 
   if (!session) return;
   const now = Date.now();
   const owns = (data) => data.recipientType === "PASSENGER" && (
-    (session.passengerId && cleanText(data.passengerId, 120) === session.passengerId) ||
-    (session.passengerContact && cleanText(data.passengerContact, 40) === session.passengerContact)
+    session.passengerId
+      ? cleanText(data.passengerId, 120) === session.passengerId
+      : (session.passengerContact && cleanText(data.passengerContact, 40) === session.passengerContact)
   );
   if (all) {
     const docs = await ownedPassengerNotifications(session);
