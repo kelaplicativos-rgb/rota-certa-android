@@ -94,7 +94,7 @@ fun BlaBlaPublicSearchPanel(
         ) {
             Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Somente leitura. A Agenda sugere perfis e rota, mas a busca usa exatamente os nomes, cidades e período informados aqui.",
+                "Somente leitura. Nomes são opcionais: se o campo ficar vazio, a busca traz todos os motoristas encontrados para a Timeline.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
@@ -103,8 +103,8 @@ fun BlaBlaPublicSearchPanel(
                 label = { Text("Nomes dos motoristas/perfis") },
                 supportingText = {
                     Text(
-                        if (knownNames.isEmpty()) "Separe vários nomes por vírgula." else
-                            "Perfis conhecidos pela Agenda: ${knownNames.joinToString(", ")}",
+                        if (knownNames.isEmpty()) "Opcional. Vazio = todos os motoristas encontrados." else
+                            "Opcional. Vazio = todos. Perfis conhecidos: ${knownNames.joinToString(", ")}",
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -181,7 +181,6 @@ fun BlaBlaPublicSearchPanel(
                         includeReverse = includeReverse,
                     )
                     error = when {
-                        targets.isEmpty() -> "Informe pelo menos um nome de motorista/perfil."
                         req.from.isBlank() || req.to.isBlank() -> "Informe origem e destino."
                         BlaBlaPublicSearchPlanner.tasks(req).isEmpty() -> "Informe uma data AAAA-MM-DD ou um mês AAAA-MM atual/futuro."
                         !BlaBlaPublicPlaceDirectory.supported(req.from) -> "Origem ainda não reconhecida pela Consulta Pública."
@@ -191,7 +190,13 @@ fun BlaBlaPublicSearchPanel(
                     if (error == null) {
                         running = true
                         store.saveRequest(req)
-                        onChanged("Consulta pública iniciada • ${BlaBlaPublicSearchPlanner.tasks(req).size} busca(s).")
+                        onChanged(
+                            if (targets.isEmpty()) {
+                                "Consulta pública iniciada • todos os motoristas encontrados • ${BlaBlaPublicSearchPlanner.tasks(req).size} busca(s)."
+                            } else {
+                                "Consulta pública iniciada • ${targets.size} perfil(is) filtrado(s) • ${BlaBlaPublicSearchPlanner.tasks(req).size} busca(s)."
+                            },
+                        )
                         launcher.launch(BlaBlaPublicSearchIntents.search(context, req))
                     }
                 },
