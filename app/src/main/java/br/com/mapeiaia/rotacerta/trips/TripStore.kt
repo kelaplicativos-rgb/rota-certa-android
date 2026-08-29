@@ -91,9 +91,27 @@ class TripStore(context: Context) {
         } else {
             booking
         }
-        val identity = passengerIdentityStore.ensureLocalBookingProfile(withPreservedLocalMetadata)
-        val normalized = withPreservedLocalMetadata.copy(
-            passengerId = identity?.id ?: withPreservedLocalMetadata.passengerId,
+        // Collector refreshes have no lastDriverSelection. Preserve an explicit local
+        // operational/payment choice against those refreshes, while still accepting a real
+        // server-side driver mutation (which always carries lastDriverSelection).
+        val withPreservedOperationalState = existing?.let { current ->
+            withPreservedLocalMetadata.copy(
+                operationalStatus = if (
+                    withPreservedLocalMetadata.lastDriverSelection.isBlank() &&
+                    withPreservedLocalMetadata.operationalStatus == PassengerOperationalStatus.CONFIRMED &&
+                    current.operationalStatus != PassengerOperationalStatus.CONFIRMED
+                ) current.operationalStatus else withPreservedLocalMetadata.operationalStatus,
+                paymentStatus = if (
+                    withPreservedLocalMetadata.lastDriverSelection.isBlank() &&
+                    current.paymentStatus == PassengerPaymentStatus.PAID &&
+                    withPreservedLocalMetadata.paymentStatus == PassengerPaymentStatus.UNPAID
+                ) PassengerPaymentStatus.PAID else withPreservedLocalMetadata.paymentStatus,
+                lastDriverSelection = withPreservedLocalMetadata.lastDriverSelection.ifBlank { current.lastDriverSelection },
+            )
+        } ?: withPreservedLocalMetadata
+        val identity = passengerIdentityStore.ensureLocalBookingProfile(withPreservedOperationalState)
+        val normalized = withPreservedOperationalState.copy(
+            passengerId = identity?.id ?: withPreservedOperationalState.passengerId,
             updatedAtMillis = System.currentTimeMillis(),
         )
         val current = all.filterNot { it.id == normalized.id }
