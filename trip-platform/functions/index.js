@@ -2297,33 +2297,34 @@ async function createBooking(req, res, token) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   let debugDriverUsername = "";
-  const passengerName = cleanText(req.body && req.body.passengerName, 120);
+  const requestedPassengerName = cleanText(req.body && req.body.passengerName, 120);
   const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
   const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
   const seats = Number(req.body && req.body.seats);
   const requestedCreditCents = Number(req.body && req.body.creditToUseCents || 0);
-  if (!passengerName) return fail(res, 400, "passenger_name_required", "Informe seu nome.");
   if (!Number.isInteger(seats) || seats < 1 || seats > 999) return fail(res, 400, "invalid_seats", "Quantidade de lugares inválida.");
   if (!Number.isInteger(requestedCreditCents) || requestedCreditCents < 0 || requestedCreditCents > 1_000_000) {
     return fail(res, 400, "invalid_credit_amount", "Valor de créditos inválido.");
   }
 
-  let passengerContact;
+  let requestedPassengerContact = "";
   let idempotencyKey;
   try {
-    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    if (req.body && req.body.passengerContact) {
+      requestedPassengerContact = normalizeBrazilWhatsapp(req.body.passengerContact);
+    }
     idempotencyKey = publicBookingIdempotencyKey(req);
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_booking", error.message || "Reserva inválida.");
   }
-  if (passengerContact !== session.passengerContact) {
+  if (requestedPassengerContact && requestedPassengerContact !== session.passengerContact) {
     return fail(res, 403, "booking_contact_mismatch", "A reserva precisa usar o WhatsApp do seu acesso.");
   }
+  const passengerContact = session.passengerContact;
 
   const bookingId = publicBookingId(token, idempotencyKey);
   const cancellationToken = publicCancellationToken(token, idempotencyKey);
   const cancellationHash = sha256Hex(cancellationToken);
-  const fingerprint = publicBookingFingerprint({ passengerName, passengerContact, boardingStopId, dropoffStopId, seats });
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   const authTrip = await tripRef.get();
@@ -2333,6 +2334,9 @@ async function createBooking(req, res, token) {
   if (!authorized) return;
   const passengerId = cleanText(session.passengerId || authorized.access.passengerId, 120);
   if (!passengerId) return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
+  const passengerName = cleanText(authorized.access && authorized.access.displayName, 120) || requestedPassengerName;
+  if (!passengerName) return fail(res, 409, "passenger_name_unavailable", "Seu cadastro ainda não possui um nome válido. Atualize o passageiro antes de reservar.");
+  const fingerprint = publicBookingFingerprint({ passengerId, boardingStopId, dropoffStopId, seats });
   const ledgerRef = passengerCreditLedgerRef(debugDriverUsername, passengerContact);
   const ledgerEntryRef = ledgerRef.collection("entries").doc(`booking_${bookingId}`);
 
