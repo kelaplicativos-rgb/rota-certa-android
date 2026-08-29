@@ -17,19 +17,19 @@ data class PassengerProfile(
     val displayName: String,
     /** Contact observed/captured from Timeline, integrations or manual history. Not the permanent identity. */
     val whatsapp: String = "",
-    /** Explicit WhatsApp authorized by the driver for Agenda access. External capture never fills this implicitly. */
+    /** Optional Agenda access override. When blank, the captured WhatsApp is the access contact; passengerId remains the identity. */
     val agendaAccessWhatsapp: String = "",
     /** Stable external passenger/member IDs explicitly associated with this canonical profile. */
     val externalPassengerIds: Set<String> = emptySet(),
     /** Stable Rota Certa/public-portal identities explicitly linked to this canonical profile. */
     val onlineIdentityIds: Set<String> = emptySet(),
-    /** Public portal access is independent from the local persona-non-grata flag. */
+    /** Legacy portal status mirror. Canonical authorization is derived from existence + blocked state. */
     val publicAccessStatus: String = "",
     val referredByContact: String = "",
     val creditBalanceCents: Long = 0L,
     val creditEarnedCents: Long = 0L,
     val creditSpentCents: Long = 0L,
-    /** Local driver preference/persona non grata. This flag never blocks by name or phone similarity. */
+    /** Persistent "Não aceito no meu carro" state bound to this canonical passengerId, never to name/photo/phone similarity. */
     val blocked: Boolean = false,
     val blockedReason: String = "",
     /** Soft archive only. Passenger history is never physically deleted by Timeline cleanup. */
@@ -37,6 +37,9 @@ data class PassengerProfile(
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )
+
+internal fun PassengerProfile.agendaAccessContact(): String =
+    agendaAccessWhatsapp.trim().ifBlank { whatsapp.trim() }
 
 /**
  * Metadata that belongs to an external reservation but must not create another capacity claim.

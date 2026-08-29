@@ -153,6 +153,7 @@ data class DriverPassengerDirectoryItem(
     val passengerId: String,
     val displayName: String,
     val passengerContact: String,
+    val blocked: Boolean = false,
 )
 
 @Serializable
@@ -190,6 +191,8 @@ data class DriverPassengerWhatsappUpdateRequest(
 @Serializable
 data class DriverPassengerBlockResponse(
     val passenger: DriverPassengerAccess = DriverPassengerAccess(),
+    val cancelledBookings: Int = 0,
+    val affectedTrips: Int = 0,
 )
 
 @Serializable
@@ -402,13 +405,14 @@ class TripRemoteApi(
         body = json.encodeToString(
             DriverPassengerDirectoryRequest(
                 profiles
-                    .filter { it.id.isNotBlank() && passengerContactKey(it.agendaAccessWhatsapp).isNotBlank() }
-                    .distinctBy { passengerContactKey(it.agendaAccessWhatsapp) }
+                    .filter { it.id.isNotBlank() && passengerContactKey(it.agendaAccessContact()).isNotBlank() }
+                    .distinctBy { passengerContactKey(it.agendaAccessContact()) }
                     .map {
                         DriverPassengerDirectoryItem(
                             passengerId = it.id,
                             displayName = it.displayName,
-                            passengerContact = it.agendaAccessWhatsapp,
+                            passengerContact = it.agendaAccessContact(),
+                            blocked = it.blocked,
                         )
                     },
             ),

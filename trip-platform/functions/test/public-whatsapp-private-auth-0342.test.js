@@ -68,11 +68,12 @@ test("reservation, alteration and cancellation require authenticated passenger s
   assert.match(create, /passenger_identity_unavailable/);
 });
 
-test("canonical passenger directory sync preserves restricted status and never creates a password", () => {
-  const sync = block(api, "async function syncDriverPassengerDirectory", "async function setDriverPassengerBlocked");
+test("canonical passenger directory derives access only from existing passenger blocked state", () => {
+  const sync = block(api, "async function syncDriverPassengerDirectory", "async function invalidatePassengerIdentitySessions");
   assert.match(sync, /passengerId/);
-  assert.match(sync, /PASSENGER_RESTRICTED_ACCESS_STATUSES/);
-  assert.match(sync, /"AUTHORIZED"/);
+  assert.match(sync, /blocked: raw && raw\.blocked === true/);
+  assert.match(sync, /item\.blocked \? "BLOCKED" : "AUTHORIZED"/);
+  assert.doesNotMatch(sync, /PASSENGER_RESTRICTED_ACCESS_STATUSES/);
   assert.doesNotMatch(sync, /passwordHash|temporaryPassengerPassword/);
 });
 
@@ -119,14 +120,14 @@ test("captured contact and Agenda access WhatsApp are kept as separate local fie
 });
 
 
-test("unknown, pending and restricted WhatsApp receive explicit Agenda access messages", () => {
+test("unknown and blocked passengers receive explicit Agenda de Viagens denial", () => {
   const openAccess = block(api, "async function openPassengerAgendaView", "async function invalidatePassengerSessions");
   assert.match(openAccess, /passenger_access_not_available/);
-  assert.match(openAccess, /Acesso negado\. Este WhatsApp não está na lista de passageiros autorizados desta Agenda/);
+  assert.match(openAccess, /não está associado a um passageiro cadastrado nesta Agenda de Viagens/);
   assert.match(openAccess, /passenger_access_pending/);
-  assert.match(openAccess, /Seu convite precisa ser aprovado pelo motorista/);
-  assert.match(openAccess, /acesso suspenso ou bloqueado nesta Agenda/);
+  assert.match(openAccess, /ainda não está associado a um passageiro autorizado na Agenda de Viagens/);
+  assert.match(openAccess, /Não aceito no meu carro/);
   const requestAccess = block(web, "async function requestPublicAgendaAccess", "async function validatePassengerSession");
   assert.match(requestAccess, /accessMessage"\)\.className = "error"/);
-  assert.match(requestAccess, /Acesso negado\. Este WhatsApp não está autorizado para esta Agenda/);
+  assert.match(requestAccess, /não pertence a um passageiro autorizado nesta Agenda de Viagens/);
 });

@@ -33,20 +33,20 @@ class PassengerPublicAccess0342Test {
     }
 
     @Test
-    fun agendaAccessStatusesAreExplicitAndIndependentFromPersonaNonGrata() {
-        assertEquals("🟢 Autorizado", passengerAccessLabel(DriverPassengerAccess(status = "AUTHORIZED")))
-        assertEquals("🟡 Suspenso", passengerAccessLabel(DriverPassengerAccess(status = "SUSPENDED")))
-        assertEquals("🔴 Bloqueado", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
-        val profile = PassengerProfile(id = "p1", displayName = "Pessoa", blocked = true)
+    fun canonicalBlockedStateControlsAgendaAccessPresentation() {
+        assertEquals("🟢 Acesso automático", passengerAccessLabel(DriverPassengerAccess(status = "AUTHORIZED")))
+        assertEquals("🟡 Sincronização pendente", passengerAccessLabel(DriverPassengerAccess(status = "SUSPENDED")))
+        assertEquals("⛔ Não aceito no meu carro", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
+        val profile = PassengerProfile(id = "p1", displayName = "Pessoa", whatsapp = "11999999999", blocked = true)
         assertTrue(profile.blocked)
-        assertEquals("", profile.publicAccessStatus)
+        assertEquals("11999999999", profile.agendaAccessContact())
     }
 
     @Test
     fun automaticAgendaSyncPublishesOnlyUniqueCanonicalPhoneIdentities() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertTrue(source.contains("PassengerIdentityStore(context).profiles()"))
-        assertTrue(source.contains("groupBy { passengerContactKey(it.agendaAccessWhatsapp) }"))
+        assertTrue(source.contains("groupBy { passengerContactKey(it.agendaAccessContact()) }"))
         assertTrue(source.contains("profiles.size == 1"))
         assertTrue(source.contains("api.syncPassengerDirectory(canonicalPassengerProfiles)"))
     }
@@ -57,12 +57,13 @@ class PassengerPublicAccess0342Test {
         val admin = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt").readText()
         assertTrue(remote.contains("val passengerId: String = \"\""))
         assertTrue(remote.contains("syncPassengerDirectory"))
-        assertTrue(remote.contains("setPassengerAccessStatus"))
+        assertTrue(remote.contains("blocked = it.blocked"))
         assertTrue(remote.contains("updatePassengerAccessWhatsapp"))
         assertTrue(admin.contains("WhatsApp de acesso"))
         assertTrue(admin.contains("agendaAccessWhatsapp"))
-        assertTrue(admin.contains("Acesso autorizado no mesmo passengerId. O passageiro criará a própria senha ao usar uma ação privada."))
-        assertFalse(admin.contains("Acesso liberado. Envie a senha temporária ao passageiro."))
+        assertTrue(admin.contains("Acesso automático pela base unificada"))
+        assertFalse(admin.contains("Aprovar e autorizar"))
+        assertFalse(admin.contains("Suspender acesso"))
     }
 
     @Test
