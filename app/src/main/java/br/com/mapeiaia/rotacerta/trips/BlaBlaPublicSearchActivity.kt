@@ -63,6 +63,7 @@ class BlaBlaPublicSearchActivity : Activity() {
     private var capturedGeneration = Long.MIN_VALUE
     private val matches = mutableListOf<BlaBlaPublicSearchCard>()
     private val queries = mutableListOf<BlaBlaPublicSearchQueryResult>()
+    private val demands = mutableListOf<BlaBlaPublicSearchDemand>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,7 +97,7 @@ class BlaBlaPublicSearchActivity : Activity() {
         UnifiedDebugEventStore.record(
             "PUBLIC_SEARCH_STARTED",
             packageName,
-            "period=${request.period} targets=${request.targetNames.size} tasks=${tasks.size} reverse=${request.includeReverse} isolated=true",
+            "period=${request.period.ifBlank { "visual_dates" }} selectedDates=${request.selectedDates.size} targets=${request.targetNames.size} tasks=${tasks.size} reverse=${request.includeReverse} demand=${request.captureDemand} isolated=true",
         )
         loadCurrentTask()
     }
@@ -212,6 +213,16 @@ class BlaBlaPublicSearchActivity : Activity() {
             val visibleCards = evidence.cards.filter { it.driverName.isNotBlank() }
             val contentConfirmed = zeroResults || visibleCards.isNotEmpty()
             val status = if (exact && contentConfirmed) "validated" else "mismatch"
+            val demand = if (status == "validated") {
+                publicSearchDemandFor(
+                    request = request,
+                    task = task,
+                    bodyText = evidence.bodyText,
+                )
+            } else {
+                null
+            }
+            demand?.let(demands::add)
             val targetMatches = visibleCards.filter {
                 BlaBlaPublicSearchPlanner.matchesTarget(it.driverName, request.targetNames)
             }
@@ -230,7 +241,7 @@ class BlaBlaPublicSearchActivity : Activity() {
             UnifiedDebugEventStore.record(
                 "PUBLIC_SEARCH_QUERY",
                 packageName,
-                "index=${taskIndex + 1}/${tasks.size} date=${task.date} status=$status cards=${visibleCards.size} targetMatches=${targetMatches.size} zero=$zeroResults",
+                "index=${taskIndex + 1}/${tasks.size} date=${task.date} status=$status cards=${visibleCards.size} targetMatches=${targetMatches.size} zero=$zeroResults demandEnabled=${request.captureDemand} demandFound=${demand?.indicadorDemandaEncontrado}",
             )
             advance()
         }
@@ -270,13 +281,14 @@ class BlaBlaPublicSearchActivity : Activity() {
                     .joinToString("|")
             },
             queries = queries.toList(),
+            demands = demands.distinctBy { listOf(it.date, it.from, it.to).joinToString("|") },
         )
         store.saveResponse(response)
         browserOrchestrator.cancel()
         UnifiedDebugEventStore.record(
             "PUBLIC_SEARCH_COMPLETED",
             packageName,
-            "status=$status tasks=${queries.size} validated=${response.validatedQueries} failed=${response.failedQueries} matches=${response.cards.size}",
+            "status=$status tasks=${queries.size} validated=${response.validatedQueries} failed=${response.failedQueries} matches=${response.cards.size} demandRecords=${response.demands.size}",
         )
         setResult(
             if (status == "error") RESULT_CANCELED else RESULT_OK,
