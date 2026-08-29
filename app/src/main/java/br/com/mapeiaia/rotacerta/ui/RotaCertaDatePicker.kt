@@ -260,6 +260,18 @@ fun RotaCertaDatePickerDialog(
                     }
                 }
 
+                Button(
+                    onClick = { onConfirm(draft) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(
+                        rotaCertaDateConfirmLabel(draft),
+                        maxLines = 1,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -323,17 +335,6 @@ fun RotaCertaDatePickerDialog(
                     )
                 }
 
-                Button(
-                    onClick = { onConfirm(draft) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Text(
-                        rotaCertaDateConfirmLabel(draft),
-                        maxLines = 1,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
             }
         }
     }
