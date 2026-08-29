@@ -195,7 +195,7 @@ fun BlaBlaPublicSearchPanel(
                         to = to,
                         period = "",
                         includeReverse = includeReverse,
-                        selectedDates = dateSelection.normalizedDates.map(LocalDate::toString),
+                        selectedDates = dateSelection.isoDateKeys,
                     ),
                 ).size
             }
@@ -214,7 +214,7 @@ fun BlaBlaPublicSearchPanel(
                         to = to.trim(),
                         period = "",
                         includeReverse = includeReverse,
-                        selectedDates = dateSelection.normalizedDates.map(LocalDate::toString),
+                        selectedDates = dateSelection.isoDateKeys,
                         captureDemand = captureDemand,
                     )
                     error = when {
