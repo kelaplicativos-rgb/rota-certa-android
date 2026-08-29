@@ -30,10 +30,10 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(trace.contains("traceId"))
         assertTrue(trace.contains("operationId"))
         assertTrue(trace.contains("parentOperationId"))
-        assertTrue(trace.contains(""OPERATION_START""))
-        assertTrue(trace.contains(""OPERATION_END""))
-        assertTrue(trace.contains(""OPERATION_ERROR""))
-        assertTrue(trace.contains(""OPERATION_CANCELLED""))
+        assertTrue(trace.contains("\\\"OPERATION_START\\\""))
+        assertTrue(trace.contains("\\\"OPERATION_END\\\""))
+        assertTrue(trace.contains("\\\"OPERATION_ERROR\\\""))
+        assertTrue(trace.contains("\\\"OPERATION_CANCELLED\\\""))
     }
 
     @Test
