@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -420,6 +421,7 @@ internal fun TimelineCardQuickPassengerDialog(
 internal fun GlobalPassengerFlowPanel(
     entries: List<TripTimelineEntry>,
     store: TripStore,
+    openRequestToken: Int,
     formatter: DateTimeFormatter,
     onChanged: (String) -> Unit,
     onNewTrip: () -> Unit,
@@ -431,14 +433,14 @@ internal fun GlobalPassengerFlowPanel(
     var selectedTrip by remember { mutableStateOf<Trip?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    OutlinedButton(onClick = {
-        open = true
-        chooseTrip = false
-        selectedEntry = null
-        selectedTrip = null
-        error = null
-    }, modifier = Modifier.fillMaxWidth()) {
-        Text("+ Passageiro")
+    LaunchedEffect(openRequestToken) {
+        if (openRequestToken > 0) {
+            open = true
+            chooseTrip = false
+            selectedEntry = null
+            selectedTrip = null
+            error = null
+        }
     }
 
     if (!open) return

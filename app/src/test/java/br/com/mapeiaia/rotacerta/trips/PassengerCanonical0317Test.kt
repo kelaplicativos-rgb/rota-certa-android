@@ -248,4 +248,21 @@ class PassengerCanonical0317Test {
         assertTrue(source.contains("✕ Limpar filtro"))
         assertTrue(source.contains("syncPendingOnly = false"))
     }
+    @Test
+    fun passengerToolbarGroupsAddAndManageBehindSingleEntry() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val addFlow = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt").readText()
+
+        assertTrue(timeline.contains("ResponsiveTripAction(\"👥 Passageiros\")"))
+        assertTrue(timeline.contains("showPassengerMenu = true"))
+        assertTrue(timeline.contains("Text(\"+ Adicionar passageiro\")"))
+        assertTrue(timeline.contains("Text(\"👥 Ver / gerenciar passageiros\")"))
+        assertTrue(timeline.contains("passengerAddRequestToken++"))
+        assertTrue(timeline.contains("onOpenPassengers()"))
+        assertTrue(timeline.contains("passengerMenuActionLocked"))
+        assertFalse(addFlow.contains("Text(\"+ Passageiro\")"))
+        assertTrue(addFlow.contains("LaunchedEffect(openRequestToken)"))
+        assertTrue(addFlow.contains("QuickPassengerPanel("))
+    }
+
 }

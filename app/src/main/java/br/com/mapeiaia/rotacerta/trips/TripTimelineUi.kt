@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,6 +87,9 @@ fun TripTimelineScreen(
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
     var autoSyncTripId by remember { mutableStateOf<String?>(null) }
     var showPublisher by remember { mutableStateOf(false) }
+    var showPassengerMenu by remember { mutableStateOf(false) }
+    var passengerMenuActionLocked by remember { mutableStateOf(false) }
+    var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
     var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
@@ -228,6 +232,7 @@ fun TripTimelineScreen(
     GlobalPassengerFlowPanel(
         entries = entries,
         store = store,
+        openRequestToken = passengerAddRequestToken,
         formatter = formatter,
         onChanged = onChanged,
         onNewTrip = onCreateTrip,
@@ -294,7 +299,10 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
             ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
-            ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
+            ResponsiveTripAction("👥 Passageiros") {
+                passengerMenuActionLocked = false
+                showPassengerMenu = true
+            },
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
                 showSync = !showSync
@@ -310,6 +318,47 @@ fun TripTimelineScreen(
         onPublicSearchResponse = { publicSearchResponse = it },
         publicSearchClearToken = publicSearchClearToken,
     )
+
+    if (showPassengerMenu) {
+        AlertDialog(
+            onDismissRequest = {
+                passengerMenuActionLocked = false
+                showPassengerMenu = false
+            },
+            title = { Text("Passageiros") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            if (!passengerMenuActionLocked) {
+                                passengerMenuActionLocked = true
+                                showPassengerMenu = false
+                                passengerAddRequestToken++
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("+ Adicionar passageiro") }
+                    OutlinedButton(
+                        onClick = {
+                            if (!passengerMenuActionLocked) {
+                                passengerMenuActionLocked = true
+                                showPassengerMenu = false
+                                onOpenPassengers()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("👥 Ver / gerenciar passageiros") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    passengerMenuActionLocked = false
+                    showPassengerMenu = false
+                }) { Text("Fechar") }
+            },
+        )
+    }
 
     if (showTimelineClearDialog) {
         AlertDialog(
