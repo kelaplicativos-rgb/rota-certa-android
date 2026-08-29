@@ -78,8 +78,7 @@ fun BlaBlaPublicSearchPanel(
     }
     var names by remember {
         mutableStateOf(
-            previous?.targetNames?.joinToString(", ")?.takeIf(String::isNotBlank)
-                ?: knownNames.joinToString(", "),
+            if (previous != null) previous.targetNames.joinToString(", ") else knownNames.joinToString(", "),
         )
     }
     var from by remember { mutableStateOf(previous?.from.orEmpty()) }
