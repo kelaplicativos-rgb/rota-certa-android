@@ -273,6 +273,18 @@ private fun TripApp(
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
     }
+    androidx.compose.runtime.DisposableEffect(activity) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refresh()
+                // Exact external cancellation writes the canonical local Booking only after
+                // BlaBlaCar absence is verified. Republish that verified capacity/status.
+                publicAgendaSyncRevision++
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
     val requestFullTimelineRefresh = {
         if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
             AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
