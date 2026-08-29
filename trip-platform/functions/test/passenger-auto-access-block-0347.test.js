@@ -51,6 +51,10 @@ test("E blocking cancels active Rota Certa reservations and recalculates seats",
 test("F changed phone or visual data cannot replace permanent identity", () => {
   const identity = block(api, "async function passengerAccessForPassengerId", "function passengerSessionOwnsBooking");
   assert.match(identity, /where\("passengerId", "==", canonicalPassengerId\)/);
+  const sync = block(api, "async function syncDriverPassengerDirectory", "async function invalidatePassengerIdentitySessions");
+  assert.match(sync, /where\("passengerId", "==", item\.passengerId\)/);
+  assert.match(sync, /status: "MOVED"/);
+  assert.match(sync, /movedToPassengerContact: item\.passengerContact/);
   const update = block(api, "async function updateDriverPassengerWhatsapp", "async function resetDriverPassengerPassword");
   assert.match(update, /passengerId/);
   assert.match(update, /status: "MOVED"/);
