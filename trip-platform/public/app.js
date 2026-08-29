@@ -237,9 +237,9 @@ function setWhatsappLink(element, message) {
 }
 
 function defaultDriverMessage() {
-  if (!trip) return `Olá, ${driverDisplayName || "motorista"}. Estou falando pela Agenda Pública do Rota Certa.`;
+  if (!trip) return `Olá, ${driverDisplayName || "motorista"}. Estou falando pela Agenda de Viagens do Rota Certa.`;
   const { from, to } = routeLabel(trip);
-  return `Olá, ${driverDisplayName || "motorista"}. Estou falando pela Agenda Pública do Rota Certa sobre a viagem ${from} → ${to}, ${formatDate(trip.departureAtMillis)}.`;
+  return `Olá, ${driverDisplayName || "motorista"}. Estou falando pela Agenda de Viagens do Rota Certa sobre a viagem ${from} → ${to}, ${formatDate(trip.departureAtMillis)}.`;
 }
 
 
@@ -314,7 +314,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
       tracePublicAction("PUBLIC_ACCESS_DENIED", { statusCode: response.status, reason: `http_${response.status}` });
       saveAgendaViewSession("");
       $("accessMessage").className = "error";
-      $("accessMessage").textContent = body.message || "Acesso negado. Este WhatsApp não está autorizado para esta Agenda.";
+      $("accessMessage").textContent = body.message || "Acesso negado. Este WhatsApp não pertence a um passageiro autorizado nesta Agenda de Viagens.";
       return false;
     }
     savePassengerContact(body.passengerContact || passengerContact);
