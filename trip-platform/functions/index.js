@@ -3179,6 +3179,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
       const trip = tripSnap.data();
+      const driverUsername = normalizeUsername(trip.driverUsername || "");
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
@@ -3196,8 +3197,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
       const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
       const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
-      const now = Date.now();
-      const updated = {
+      const draft = {
         ...previous,
         passengerName,
         boardingStopId,
@@ -3205,8 +3205,11 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
         seats,
         farePerSeatCents,
         totalFareCents: farePerSeatCents * seats,
-        updatedAtMillis: now,
       };
+      const changes = bookingRelevantChanges(previous, draft);
+      const changeVersion = changes.length ? Math.max(0, Number(previous.changeVersion || 0)) + 1 : Math.max(0, Number(previous.changeVersion || 0));
+      const now = changes.length ? Date.now() : Number(previous.updatedAtMillis || Date.now());
+      const updated = { ...draft, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, candidateRecords, now);
       assertNoOverbooking(trip, loads);
@@ -3214,17 +3217,34 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
-      tx.update(tripRef, {
-        segmentLoads: loads,
-        status: statusForReconciledLoads(trip, loads),
-        updatedAtMillis: now,
-      });
+      if (changes.length) {
+        tx.update(tripRef, {
+          segmentLoads: loads,
+          status: statusForReconciledLoads(trip, loads),
+          updatedAtMillis: now,
+        });
+        writeChangeEventAndNotifications(tx, {
+          eventType: "BOOKING_CHANGED",
+          tripToken: token,
+          bookingId,
+          version: changeVersion,
+          driverUsername,
+          actor: "PASSENGER",
+          source: "PASSENGER_MY_TRIPS_EDIT",
+          passengerId: cleanText(updated.passengerId || session.passengerId, 120),
+          changes,
+          driverNotification: driverNotificationCopy("BOOKING_CHANGED", updated, cleanText(trip.title, 180)),
+        });
+      }
       const safeBooking = { ...updated };
       delete safeBooking.cancellationHash;
       delete safeBooking.idempotencyFingerprint;
       return {
         booking: safeBooking,
         availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+        driverUsername,
+        tripTitle: cleanText(trip.title, 180),
+        changed: changes.length > 0,
       };
     });
     await reconcileBookingCreditAfterFareChange(token, bookingId);
@@ -3232,10 +3252,20 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
     const safeBooking = refreshed.exists ? { id: bookingId, ...refreshed.data() } : result.booking;
     delete safeBooking.cancellationHash;
     delete safeBooking.idempotencyFingerprint;
+    if (result.changed) {
+      await sendDriverBookingPush({
+        driverUsername: result.driverUsername,
+        event: "reservation_changed",
+        tripToken: token,
+        bookingId,
+        seats: Number(safeBooking.seats || 0),
+        tripTitle: result.tripTitle || "",
+      }).catch((error) => console.error("push passenger reservation_changed", error));
+    }
     return json(res, 200, {
       booking: safeBooking,
       availableSeats: result.availableSeats,
-      changed: true,
+      changed: result.changed,
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_booking_update_failed", error.message || "Não foi possível alterar a reserva.");
@@ -3253,31 +3283,59 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
   const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
   if (!authorized) return;
   try {
-    await db.runTransaction(async (tx) => {
+    const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
       if (!tripSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
       const trip = tripSnap.data();
+      const driverUsername = normalizeUsername(trip.driverUsername || "");
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
       if (!previous || !passengerSessionOwnsBooking(session, previous)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
+      if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
+        return { changed: false, driverUsername, tripTitle: cleanText(trip.title, 180), seats: Number(previous.seats || 0) };
+      }
       const now = Date.now();
-      const updated = { ...previous, status: "CANCELLED", updatedAtMillis: now };
+      const changeVersion = Math.max(0, Number(previous.changeVersion || 0)) + 1;
+      const updated = { ...previous, status: "CANCELLED", changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, candidateRecords, now);
       assertNoOverbooking(trip, loads);
-      tx.update(bookingRef, { status: "CANCELLED", updatedAtMillis: now });
+      tx.update(bookingRef, { status: "CANCELLED", changeVersion, updatedAtMillis: now });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       tx.update(tripRef, {
         segmentLoads: loads,
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
+      writeChangeEventAndNotifications(tx, {
+        eventType: "BOOKING_CANCELLED",
+        tripToken: token,
+        bookingId,
+        version: changeVersion,
+        driverUsername,
+        actor: "PASSENGER",
+        source: "PASSENGER_MY_TRIPS_CANCEL",
+        passengerId: cleanText(previous.passengerId || session.passengerId, 120),
+        changes: bookingRelevantChanges(previous, updated),
+        driverNotification: driverNotificationCopy("BOOKING_CANCELLED", updated, cleanText(trip.title, 180)),
+      });
+      return { changed: true, driverUsername, tripTitle: cleanText(trip.title, 180), seats: Number(previous.seats || 0) };
     });
-    await refundBookingCreditsIfNeeded(token, bookingId);
-    return json(res, 200, { cancelled: true });
+    if (result.changed) {
+      await refundBookingCreditsIfNeeded(token, bookingId);
+      await sendDriverBookingPush({
+        driverUsername: result.driverUsername,
+        event: "reservation_cancelled",
+        tripToken: token,
+        bookingId,
+        seats: result.seats,
+        tripTitle: result.tripTitle || "",
+      }).catch((error) => console.error("push passenger reservation_cancelled", error));
+    }
+    return json(res, 200, { cancelled: true, changed: result.changed });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_booking_cancel_failed", error.message || "Não foi possível cancelar a reserva.");
   }
