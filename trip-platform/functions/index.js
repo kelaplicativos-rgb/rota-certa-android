@@ -2802,26 +2802,45 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const booking = records.find((record) => record.id === bookingId);
-      if (!booking || booking.passengerContact !== session.passengerContact ||
-        (booking.passengerId && session.passengerId && booking.passengerId !== session.passengerId)) {
+      if (!booking || !passengerSessionOwnsBooking(session, booking)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       if (!safeEqual(suppliedHash, booking.cancellationHash || "")) throw Object.assign(new Error("Código de cancelamento inválido."), { httpStatus: 401, code: "invalid_cancel_token" });
+      const changed = booking.status !== "CANCELLED" && booking.status !== "EXPIRED";
+      if (!changed) {
+        return {
+          changed: false,
+          driverUsername: debugDriverUsername,
+          tripTitle: cleanText(trip.title, 180),
+          seats: Number(booking.seats || 0),
+        };
+      }
       const now = Date.now();
-      const reconciledRecords = records.map((record) => record.id === bookingId ? { ...record, status: "CANCELLED", updatedAtMillis: now } : record);
+      const changeVersion = Math.max(0, Number(booking.changeVersion || 0)) + 1;
+      const updated = { ...booking, status: "CANCELLED", changeVersion, updatedAtMillis: now };
+      const reconciledRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, reconciledRecords, now);
       assertNoOverbooking(trip, loads);
-      const changed = booking.status !== "CANCELLED" && booking.status !== "EXPIRED";
-      if (changed) {
-        tx.update(bookingRef, { status: "CANCELLED", updatedAtMillis: now });
-      }
+      tx.update(bookingRef, { status: "CANCELLED", changeVersion, updatedAtMillis: now });
       tx.update(tripRef, {
         segmentLoads: loads,
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
+      writeChangeEventAndNotifications(tx, {
+        eventType: "BOOKING_CANCELLED",
+        tripToken: token,
+        bookingId,
+        version: changeVersion,
+        driverUsername: debugDriverUsername,
+        actor: "PASSENGER",
+        source: "PUBLIC_BOOKING_CANCEL",
+        passengerId: cleanText(booking.passengerId || session.passengerId, 120),
+        changes: bookingRelevantChanges(booking, updated),
+        driverNotification: driverNotificationCopy("BOOKING_CANCELLED", updated, cleanText(trip.title, 180)),
+      });
       return {
-        changed,
+        changed: true,
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
         seats: Number(booking.seats || 0),
@@ -2835,15 +2854,15 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       screen: "trip",
       statusCode: 200,
     }).catch(() => {});
-    await appendPublicDebugEvent({
-      driverUsername: debugDriverUsername,
-      event: "PUBLIC_SEATS_UPDATED",
-      source: "server",
-      tripToken: token,
-      screen: "trip",
-      statusCode: 200,
-    }).catch(() => {});
     if (result.changed) {
+      await appendPublicDebugEvent({
+        driverUsername: debugDriverUsername,
+        event: "PUBLIC_SEATS_UPDATED",
+        source: "server",
+        tripToken: token,
+        screen: "trip",
+        statusCode: 200,
+      }).catch(() => {});
       await refundBookingCreditsIfNeeded(token, bookingId);
       await sendDriverBookingPush({
         driverUsername: result.driverUsername || debugDriverUsername,
@@ -2854,7 +2873,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         tripTitle: result.tripTitle || "",
       }).catch((error) => console.error("push reservation_cancelled", error));
     }
-    return json(res, 200, { cancelled: true });
+    return json(res, 200, { cancelled: true, changed: result.changed });
   } catch (error) {
     await appendPublicDebugEvent({
       driverUsername: debugDriverUsername,
