@@ -108,6 +108,14 @@ internal object BlaBlaExactPassengerCancellationCoordinator {
         entry: TripTimelineEntry,
         row: EnhancedPassengerCardRow,
     ): Boolean {
+        if (row.operationalStatus == PassengerOperationalStatus.COMPLETED) {
+            UnifiedDebugEventStore.record(
+                "PASSENGER_CANCEL_FAILED",
+                context.packageName,
+                "source=BLABLACAR reason=occurrence_completed",
+            )
+            return false
+        }
         val profileUuid = (row.externalProfileUuid ?: entry.blablaProfileUuid)
             ?.trim()
             ?.takeIf(String::isNotEmpty)
