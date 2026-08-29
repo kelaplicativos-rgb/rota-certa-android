@@ -246,9 +246,16 @@ private fun TripApp(
             )
             shareScope.launch {
                 AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_public_booking_reconcile")
+                AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=pull_refresh", traceId)
                 val bookingSync = runCatching {
                     PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
                 }
+                AgendaTrace.event(
+                    activity,
+                    "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                    "source=pull_refresh success=${bookingSync.isSuccess} imported=${bookingSync.getOrNull()?.importedCount ?: 0}",
+                    traceId,
+                )
                 AgendaSyncCrashTraceStore.checkpoint(
                     activity,
                     "timeline_pull_after_public_booking_reconcile success=${bookingSync.isSuccess}",
@@ -278,8 +285,15 @@ private fun TripApp(
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
+        AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup", traceId)
         try {
             val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+            AgendaTrace.event(
+                activity,
+                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                "source=startup imported=${result.importedCount} seatSyncQueued=${result.seatSyncQueued}",
+                traceId,
+            )
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
             if (result.importedCount > 0) {
                 refresh()
@@ -315,11 +329,39 @@ private fun TripApp(
                 "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
                 traceId,
             )
-            val result = PublicAgendaAutoSync0300.sync(
-                context = activity,
-                store = store,
-                configuredVehicleCapacity = appSettings.vehicleCapacity,
+            val capacityPublicSyncOperation = AgendaTrace.operationStart(
+                activity,
+                "CAPACITY_PUBLIC_SYNC",
+                "TripApp.publicAgendaEffect",
+                traceId,
             )
+            val result = try {
+                PublicAgendaAutoSync0300.sync(
+                    context = activity,
+                    store = store,
+                    configuredVehicleCapacity = appSettings.vehicleCapacity,
+                ).also { syncResult ->
+                    AgendaTrace.operationEnd(
+                        activity,
+                        capacityPublicSyncOperation,
+                        result = if (syncResult.failures == 0) "confirmed" else "partial",
+                        processedCount = syncResult.localPublished + syncResult.externalPublished,
+                    )
+                    AgendaTrace.event(
+                        activity,
+                        "CAPACITY_REMOTE_CONFIRMATION",
+                        "source=remote success=${syncResult.failures == 0} published=${syncResult.localPublished + syncResult.externalPublished} claims=${syncResult.seatClaimsSynced}",
+                        traceId,
+                        capacityPublicSyncOperation.operationId,
+                    )
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                AgendaTrace.operationCancelled(activity, capacityPublicSyncOperation)
+                throw error
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(activity, capacityPublicSyncOperation, error)
+                throw error
+            }
             runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
             AgendaSyncCrashTraceStore.checkpoint(
                 activity,
