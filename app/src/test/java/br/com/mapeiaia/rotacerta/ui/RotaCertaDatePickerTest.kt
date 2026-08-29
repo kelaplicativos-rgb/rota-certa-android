@@ -49,6 +49,22 @@ class RotaCertaDatePickerTest {
     }
 
     @Test
+    fun currentMonthModeCanRespectTodayAsMinimumDate() {
+        val selection = rotaCertaSelectMonth(
+            YearMonth.of(2026, 8),
+            minDate = LocalDate.of(2026, 8, 29),
+        )
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 8, 29),
+                LocalDate.of(2026, 8, 30),
+                LocalDate.of(2026, 8, 31),
+            ),
+            selection.normalizedDates,
+        )
+    }
+
+    @Test
     fun monthModeSelectsWholeMonth() {
         val selection = rotaCertaSelectMonth(YearMonth.of(2026, 9))
         assertEquals(30, selection.normalizedDates.size)
