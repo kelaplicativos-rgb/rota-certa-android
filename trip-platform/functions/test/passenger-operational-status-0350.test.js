@@ -11,6 +11,7 @@ const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js")
 const domain = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripDomain.kt"), "utf8");
 const timeline = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerTimelineUi.kt"), "utf8");
 const completion = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerCompletionService.kt"), "utf8");
+const identityStore = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerIdentityStore.kt"), "utf8");
 const exactCancel = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "BlaBlaBlockedPassengerCancellation.kt"), "utf8");
 
 function block(source, start, end) {
@@ -90,6 +91,25 @@ test("Minhas Viagens renders active/history states, payment in parallel and near
   assert.match(web, /VIAGEM ATUALIZADA/);
 });
 
+test("pure BlaBlaCar occurrence uses exact external metadata and never creates a capacity Booking", () => {
+  assert.match(identityStore, /data class ExternalPassengerMetadata/);
+  assert.match(identityStore, /val operationalStatus: PassengerOperationalStatus/);
+  assert.match(identityStore, /val paymentStatus: PassengerPaymentStatus/);
+  assert.match(timeline, /authority=EXTERNAL_RESERVATION_METADATA/);
+  assert.match(timeline, /passengerStore\.saveExternalMetadata/);
+  assert.match(timeline, /BookingSource\.BLABLACAR in passenger\.sources/);
+  assert.doesNotMatch(timeline, /CapacityClaimType\.OPERATIONAL_ONLY/);
+});
+
+test("completed occurrence cannot regress or be cancelled retroactively", () => {
+  const op = block(api, "async function mutateDriverPassengerOperationalStatus", "async function mutateProtectedBooking");
+  const admin = block(api, "async function mutateProtectedBooking", "async function updatePassengerBooking");
+  assert.match(op, /passenger_operational_completed/);
+  assert.match(admin, /completed_booking_not_cancelable/);
+  assert.match(timeline, /A conclusão é permanente/);
+  assert.match(exactCancel, /reason=occurrence_completed/);
+});
+
 test("exact BlaBlaCar cancellation fails closed and verifies absence before local cancellation", () => {
   assert.match(exactCancel, /BlaBlaExactPassengerCancellationCoordinator/);
   assert.match(exactCancel, /identity_not_exact/);
@@ -100,7 +120,7 @@ test("exact BlaBlaCar cancellation fails closed and verifies absence before loca
 });
 
 test("operational implementation does not touch FAROL code path", () => {
-  for (const source of [api, web, timeline, exactCancel]) {
+  for (const source of [api, web, timeline, identityStore, exactCancel]) {
     assert.doesNotMatch(source, /LiveRideAccessibilityService/);
   }
 });
