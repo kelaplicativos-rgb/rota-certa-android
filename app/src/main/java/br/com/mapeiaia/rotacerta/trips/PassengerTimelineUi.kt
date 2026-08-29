@@ -213,12 +213,60 @@ internal fun EnhancedPassengerTimelineSection(
 
                 val selectedTrip = trip
                 val booking = currentBooking
-                if (selectedTrip == null || booking == null) {
-                    if (selection == "COMPLETED") {
-                        onChanged("Viagem concluída no histórico canônico; esta ocorrência não possui Booking local para sincronizar.")
-                    } else {
-                        onChanged("Não foi possível identificar a Booking exata desta ocorrência para alterar o status.")
+                if (booking == null) {
+                    val reservationKey = passenger.externalReservationKey
+                    if (BookingSource.BLABLACAR in passenger.sources && !reservationKey.isNullOrBlank()) {
+                        val currentMetadata = passengerStore.externalMetadata(reservationKey)
+                            ?: ExternalPassengerMetadata(
+                                reservationKey = reservationKey,
+                                passengerId = passenger.passengerId.orEmpty(),
+                                externalPassengerId = passenger.externalPassengerId.orEmpty(),
+                                externalTripId = entry.blablaTripId.orEmpty(),
+                                externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                            )
+                        val nextOperational = when (selection) {
+                            "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+                            "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+                            "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+                            "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+                            "PAID" -> currentMetadata.operationalStatus
+                            else -> currentMetadata.operationalStatus
+                        }
+                        val nextPayment = if (selection == "PAID") {
+                            PassengerPaymentStatus.PAID
+                        } else {
+                            currentMetadata.paymentStatus
+                        }
+                        passengerStore.saveExternalMetadata(
+                            currentMetadata.copy(
+                                operationalStatus = nextOperational,
+                                paymentStatus = nextPayment,
+                                lastDriverSelection = selection,
+                            ),
+                        )
+                        identityRevision++
+                        UnifiedDebugEventStore.record(
+                            if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
+                            context.packageName,
+                            "timeline=true selection=" + selection + " authority=EXTERNAL_RESERVATION_METADATA",
+                        )
+                        onChanged(
+                            when (selection) {
+                                "CONFIRMED" -> "Passageiro BlaBlaCar confirmado."
+                                "AT_LOCATION" -> "Status BlaBlaCar alterado para No local."
+                                "IN_CAR" -> "Status BlaBlaCar alterado para No carro."
+                                "PAID" -> "Pagamento BlaBlaCar confirmado; fase da viagem preservada."
+                                "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService; ocorrência externa atualizada."
+                                else -> "Status externo atualizado."
+                            },
+                        )
+                        return@launch
                     }
+                    onChanged("Não foi possível identificar a ocorrência exata para alterar o status com segurança.")
+                    return@launch
+                }
+                if (selectedTrip == null) {
+                    onChanged("A Booking foi localizada, mas a viagem correspondente não está disponível para sincronização.")
                     return@launch
                 }
 
@@ -915,6 +963,9 @@ internal fun enhancedPassengerRows(
             externalReservationKey = metadataKey,
             externalBookingHref = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty),
             externalProfileUuid = entry.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty),
+            operationalStatus = metadata?.operationalStatus ?: PassengerOperationalStatus.CONFIRMED,
+            paymentStatus = metadata?.paymentStatus ?: PassengerPaymentStatus.UNPAID,
+            lastDriverSelection = metadata?.lastDriverSelection.orEmpty(),
             fareMinorUnits = metadata?.fareMinorUnits,
             fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
             boardingAddress = metadata?.boardingAddress.orEmpty(),
