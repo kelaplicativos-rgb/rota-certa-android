@@ -221,7 +221,7 @@ internal fun publicSearchDemandFor(
         indicadorDemandaEncontrado = messages.isNotEmpty(),
         trechoConcorrido = busy?.let { true },
         percentualReservado = percentage,
-        mensagemDemanda = messages.takeIf(List<String>::isNotEmpty)?.joinToString(" "),
+        mensagemDemanda = messages.takeIf { it.isNotEmpty() }?.joinToString(" "),
         dataHoraCaptura = capturedAtMillis,
     )
 }
