@@ -2916,8 +2916,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
       const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
       const totalFareCents = farePerSeatCents * seats;
-      const now = Date.now();
-      const updated = {
+      const draft = {
         ...previous,
         passengerName,
         passengerContact,
@@ -2926,8 +2925,11 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
         seats,
         farePerSeatCents,
         totalFareCents,
-        updatedAtMillis: now,
       };
+      const changes = bookingRelevantChanges(previous, draft);
+      const changeVersion = changes.length ? Math.max(0, Number(previous.changeVersion || 0)) + 1 : Math.max(0, Number(previous.changeVersion || 0));
+      const now = changes.length ? Date.now() : Number(previous.updatedAtMillis || Date.now());
+      const updated = { ...draft, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, candidateRecords, now);
       assertNoOverbooking(trip, loads);
@@ -2935,16 +2937,31 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
       movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
-      tx.update(tripRef, {
-        segmentLoads: loads,
-        status: statusForReconciledLoads(trip, loads),
-        updatedAtMillis: now,
-      });
+      if (changes.length) {
+        tx.update(tripRef, {
+          segmentLoads: loads,
+          status: statusForReconciledLoads(trip, loads),
+          updatedAtMillis: now,
+        });
+        writeChangeEventAndNotifications(tx, {
+          eventType: "BOOKING_CHANGED",
+          tripToken: token,
+          bookingId,
+          version: changeVersion,
+          driverUsername: debugDriverUsername,
+          actor: "PASSENGER",
+          source: "PUBLIC_BOOKING_EDIT",
+          passengerId: cleanText(updated.passengerId || session.passengerId, 120),
+          changes,
+          driverNotification: driverNotificationCopy("BOOKING_CHANGED", updated, cleanText(trip.title, 180)),
+        });
+      }
       return {
         booking: updated,
         availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
+        changed: changes.length > 0,
       };
     });
 
@@ -2958,29 +2975,31 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       statusCode: 200,
       seats: result.booking.seats,
     }).catch(() => {});
-    await appendPublicDebugEvent({
-      driverUsername: result.driverUsername || debugDriverUsername,
-      event: "PUBLIC_SEATS_UPDATED",
-      source: "server",
-      tripToken: token,
-      screen: "trip",
-      statusCode: 200,
-      seats: result.booking.seats,
-    }).catch(() => {});
-    await sendDriverBookingPush({
-      driverUsername: result.driverUsername || debugDriverUsername,
-      event: "reservation_changed",
-      tripToken: token,
-      bookingId,
-      seats: result.booking.seats,
-      tripTitle: result.tripTitle || "",
-    }).catch((error) => console.error("push reservation_changed", error));
+    if (result.changed) {
+      await appendPublicDebugEvent({
+        driverUsername: result.driverUsername || debugDriverUsername,
+        event: "PUBLIC_SEATS_UPDATED",
+        source: "server",
+        tripToken: token,
+        screen: "trip",
+        statusCode: 200,
+        seats: result.booking.seats,
+      }).catch(() => {});
+      await sendDriverBookingPush({
+        driverUsername: result.driverUsername || debugDriverUsername,
+        event: "reservation_changed",
+        tripToken: token,
+        bookingId,
+        seats: result.booking.seats,
+        tripTitle: result.tripTitle || "",
+      }).catch((error) => console.error("push reservation_changed", error));
+    }
     return json(res, 200, {
       bookingId,
       availableSeats: result.availableSeats,
       farePerSeatCents: Number(result.booking.farePerSeatCents || 0),
       totalFareCents: Number(result.booking.totalFareCents || 0),
-      changed: true,
+      changed: result.changed,
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "booking_update_failed", error.message || "Falha ao alterar reserva.");
