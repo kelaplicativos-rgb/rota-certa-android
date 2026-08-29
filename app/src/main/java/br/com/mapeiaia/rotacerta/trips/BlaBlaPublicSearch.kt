@@ -78,8 +78,11 @@ internal enum class BlaBlaPublicSearchDirection {
 object BlaBlaPublicSearchPlanner {
     private const val PROFILE_VISUAL_SLOTS = 8
 
-    fun tasks(request: BlaBlaPublicSearchRequest): List<BlaBlaPublicSearchTask> {
-        val dates = datesFor(request.period)
+    fun tasks(
+        request: BlaBlaPublicSearchRequest,
+        today: LocalDate = LocalDate.now(),
+    ): List<BlaBlaPublicSearchTask> {
+        val dates = datesFor(request.period, today)
         if (dates.isEmpty()) return emptyList()
         val routes = buildList {
             add(request.from.trim() to request.to.trim())
@@ -90,11 +93,20 @@ object BlaBlaPublicSearchPlanner {
         return dates.flatMap { date -> routes.map { (from, to) -> BlaBlaPublicSearchTask(date, from, to) } }
     }
 
-    fun datesFor(period: String): List<LocalDate> {
+    fun datesFor(
+        period: String,
+        today: LocalDate = LocalDate.now(),
+    ): List<LocalDate> {
         val value = period.trim()
         runCatching { LocalDate.parse(value) }.getOrNull()?.let { return listOf(it) }
         val month = runCatching { YearMonth.parse(value) }.getOrNull() ?: return emptyList()
-        return (1..month.lengthOfMonth()).map(month::atDay)
+        val firstDay = month.atDay(1)
+        val lastDay = month.atEndOfMonth()
+        val startDay = maxOf(firstDay, today)
+        if (startDay.isAfter(lastDay)) return emptyList()
+        return generateSequence(startDay) { current ->
+            current.plusDays(1).takeIf { next -> !next.isAfter(lastDay) }
+        }.toList()
     }
 
     fun matchesTarget(driverName: String?, targets: List<String>): Boolean {
