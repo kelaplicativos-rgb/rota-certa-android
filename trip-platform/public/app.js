@@ -46,6 +46,7 @@ let bookingRequestInFlight = false;
 let directReserveConsumed = false;
 let quickUndoTimer = null;
 let passengerUnreadNotificationCount = 0;
+let passengerUnreadBookingIds = new Set();
 
 function localTodayKey() {
   return DateContract.todayKey();
@@ -1928,6 +1929,11 @@ function renderPassengerNotifications(entries, unreadCount) {
   const container = $("portalNotifications");
   container.innerHTML = "";
   const notifications = Array.isArray(entries) ? entries : [];
+  passengerUnreadBookingIds = new Set(
+    notifications
+      .filter((item) => item && !item.readAtMillis && item.bookingId)
+      .map((item) => String(item.bookingId)),
+  );
   setPassengerNotificationBadge(unreadCount);
   if (!notifications.length) {
     container.innerHTML = '<p class="muted">Nenhuma notificação.</p>';
@@ -2206,6 +2212,58 @@ async function changePassengerPortalPassword() {
   }
 }
 
+function passengerOperationalView(booking) {
+  if (["CANCELLED", "EXPIRED"].includes(String(booking.status || "")) || booking.operationalStatus === "CANCELLED") {
+    return { key: "CANCELLED", icon: "❌", title: "RESERVA CANCELADA", message: "Esta reserva não está mais ativa." };
+  }
+  const key = String(booking.operationalStatus || (booking.status === "CONFIRMED" ? "CONFIRMED" : "PENDING"));
+  if (key === "PENDING") return { key, icon: "🟠", title: "AGUARDANDO CONFIRMAÇÃO", message: "Sua solicitação foi recebida." };
+  if (key === "AT_LOCATION") return { key, icon: "📍", title: "MOTORISTA NO LOCAL", message: "O motorista informou que chegou ao local combinado." };
+  if (key === "IN_CAR") return { key, icon: "🚗", title: "VOCÊ ESTÁ EMBARCADO", message: "Sua viagem está em andamento." };
+  if (key === "COMPLETED") return { key, icon: "✅", title: "VIAGEM CONCLUÍDA", message: "Esta viagem foi concluída." };
+  return { key: "CONFIRMED", icon: "🟢", title: "RESERVA CONFIRMADA", message: "Sua vaga está confirmada." };
+}
+
+function passengerCanCancelBooking(booking) {
+  const operational = passengerOperationalView(booking).key;
+  return !["IN_CAR", "COMPLETED", "CANCELLED"].includes(operational) &&
+    !["CANCELLED", "EXPIRED"].includes(String(booking.status || ""));
+}
+
+function confirmPassengerCancellation() {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:9999;padding:20px";
+    const dialog = document.createElement("div");
+    dialog.className = "card";
+    dialog.style.cssText = "width:min(520px,100%);margin:0";
+    const title = document.createElement("h2");
+    title.textContent = "Cancelar sua reserva?";
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "secondary";
+    back.textContent = "Voltar";
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "dangerButton";
+    confirm.textContent = "Cancelar reserva";
+    const finish = (value) => { backdrop.remove(); resolve(value); };
+    back.addEventListener("click", () => finish(false));
+    confirm.addEventListener("click", () => finish(true));
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) finish(false); });
+    actions.append(back, confirm);
+    dialog.append(title, actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+  });
+}
+
+function portalStop(tripItem, stopId) {
+  return orderedStops(tripItem).find((stop) => stop.id === stopId) || null;
+}
+
 function renderPassengerBookings(entries) {
   const container = $("portalBookings");
   container.innerHTML = "";
@@ -2217,129 +2275,188 @@ function renderPassengerBookings(entries) {
     return;
   }
 
-  entries.forEach(({ trip: tripItem, booking }) => {
-    const card = document.createElement("article");
-    card.className = "agendaTrip";
-    const route = document.createElement("div");
-    route.className = "agendaDate";
-    route.textContent = `${portalStopName(tripItem, booking.boardingStopId)} → ${portalStopName(tripItem, booking.dropoffStopId)}`;
-    const when = document.createElement("p");
-    when.className = "muted";
-    when.textContent = formatDate(tripItem.departureAtMillis);
-    const status = document.createElement("div");
-    status.className = "bigPill";
-    status.textContent = `${booking.status || "CONFIRMED"} • ${booking.seats || 1} lugar(es)`;
-    card.append(route, when, status);
+  const active = [];
+  const history = [];
+  entries.forEach((entry) => {
+    const view = passengerOperationalView(entry.booking || {});
+    (["COMPLETED", "CANCELLED"].includes(view.key) ? history : active).push(entry);
+  });
 
-    const active = !["CANCELLED", "EXPIRED"].includes(String(booking.status || ""));
-    if (active) {
-      const stops = orderedStops(tripItem);
-      const fromSelect = document.createElement("select");
-      const toSelect = document.createElement("select");
-      stops.slice(0, -1).forEach((stop) => {
-        const option = document.createElement("option");
-        option.value = stop.id;
-        option.textContent = `Embarque: ${stop.name}`;
-        option.selected = stop.id === booking.boardingStopId;
-        fromSelect.appendChild(option);
-      });
-      const refreshTo = () => {
-        const fromIndex = stops.findIndex((stop) => stop.id === fromSelect.value);
-        const current = toSelect.value || booking.dropoffStopId;
-        toSelect.innerHTML = "";
-        stops.forEach((stop, index) => {
-          if (index <= fromIndex) return;
-          const option = document.createElement("option");
-          option.value = stop.id;
-          option.textContent = `Destino: ${stop.name}`;
-          option.selected = stop.id === current;
-          toSelect.appendChild(option);
-        });
-      };
-      fromSelect.addEventListener("change", refreshTo);
-      refreshTo();
+  const appendSection = (sectionTitle, sectionEntries) => {
+    if (!sectionEntries.length) return;
+    const heading = document.createElement("h2");
+    heading.textContent = sectionTitle;
+    heading.style.marginTop = "22px";
+    container.appendChild(heading);
 
-      const seatsInput = document.createElement("input");
-      seatsInput.type = "number";
-      seatsInput.min = "1";
-      seatsInput.max = String(Math.max(1, Number(tripItem.capacity || 1)));
-      seatsInput.value = String(Math.max(1, Number(booking.seats || 1)));
-      seatsInput.inputMode = "numeric";
+    sectionEntries.forEach(({ trip: tripItem, booking }) => {
+      const state = passengerOperationalView(booking);
+      const card = document.createElement("article");
+      card.className = "agendaTrip";
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-expanded", "false");
 
-      const message = document.createElement("p");
-      message.className = "muted";
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "secondary";
-      save.textContent = "Salvar alteração";
-      save.addEventListener("click", async () => {
-        save.disabled = true;
-        message.textContent = "Salvando…";
-        try {
-          const token = tripItem.publicToken || tripItem.tripId;
-          const response = await fetch(
-            `/v1/passenger/me/bookings/${encodeURIComponent(token)}/${encodeURIComponent(booking.id)}`,
-            {
-              method: "PUT",
-              headers: portalHeaders(),
-              body: JSON.stringify({
-                passengerName: booking.passengerName,
-                boardingStopId: fromSelect.value,
-                dropoffStopId: toSelect.value,
-                seats: Number(seatsInput.value || 1),
-              }),
-            },
-          );
-          const body = await response.json();
-          if (!response.ok) throw new Error(body.message || "Não foi possível alterar.");
-          message.textContent = "Reserva alterada.";
-          await loadPassengerBookings();
-        } catch (error) {
-          message.textContent = error.message || "Falha ao alterar.";
-        } finally {
-          save.disabled = false;
-        }
-      });
+      if (passengerUnreadBookingIds.has(String(booking.id || ""))) {
+        const unread = document.createElement("div");
+        unread.className = "error";
+        unread.textContent = "🔴 VIAGEM ATUALIZADA";
+        card.appendChild(unread);
+      }
 
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "dangerButton";
-      cancel.textContent = "Cancelar reserva";
-      cancel.addEventListener("click", async () => {
-        if (!window.confirm("Cancelar esta reserva e liberar as vagas?")) return;
-        cancel.disabled = true;
-        message.textContent = "Cancelando…";
-        try {
-          const token = tripItem.publicToken || tripItem.tripId;
-          const response = await fetch(
-            `/v1/passenger/me/bookings/${encodeURIComponent(token)}/${encodeURIComponent(booking.id)}/cancel`,
-            { method: "POST", headers: portalHeaders(), body: "{}" },
-          );
-          const body = await response.json();
-          if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
-          await loadPassengerBookings();
-        } catch (error) {
-          message.textContent = error.message || "Falha ao cancelar.";
-        } finally {
-          cancel.disabled = false;
-        }
-      });
+      const status = document.createElement("div");
+      status.className = "bigPill";
+      status.textContent = state.icon + " " + state.title;
+      const when = document.createElement("p");
+      when.className = "muted";
+      when.textContent = formatDate(tripItem.departureAtMillis);
+      const route = document.createElement("div");
+      route.className = "agendaDate";
+      route.textContent = portalStopName(tripItem, booking.boardingStopId) + " → " + portalStopName(tripItem, booking.dropoffStopId);
+      card.append(status, when, route);
+
+      if (Number.isFinite(Number(booking.totalFareCents))) {
+        const amount = document.createElement("div");
+        amount.className = "priceTotal";
+        amount.textContent = formatMoney(Math.max(0, Number(booking.totalFareCents || 0)));
+        card.appendChild(amount);
+      }
+      if (booking.paymentStatus === "PAID") {
+        const paid = document.createElement("p");
+        paid.className = "success";
+        paid.textContent = "💰 PAGAMENTO CONFIRMADO";
+        card.appendChild(paid);
+      }
+
+      const details = document.createElement("div");
+      details.className = "hidden";
+      details.style.marginTop = "16px";
+
+      const current = document.createElement("div");
+      current.className = "reviewBlock";
+      const currentLabel = document.createElement("div");
+      currentLabel.className = "reviewLabel";
+      currentLabel.textContent = "ESTADO ATUAL";
+      const currentValue = document.createElement("div");
+      currentValue.className = "reviewValue";
+      currentValue.textContent = state.icon + " " + state.title;
+      const currentMessage = document.createElement("p");
+      currentMessage.className = "muted";
+      currentMessage.textContent = state.message;
+      current.append(currentLabel, currentValue, currentMessage);
+      details.appendChild(current);
+
+      const fromStop = portalStop(tripItem, booking.boardingStopId);
+      const toStop = portalStop(tripItem, booking.dropoffStopId);
+      const journey = document.createElement("div");
+      journey.className = "reviewBlock";
+      const journeyLabel = document.createElement("div");
+      journeyLabel.className = "reviewLabel";
+      journeyLabel.textContent = "DATA E EMBARQUE";
+      const journeyValue = document.createElement("div");
+      journeyValue.className = "reviewValue";
+      journeyValue.textContent = formatDate(tripItem.departureAtMillis);
+      const places = document.createElement("p");
+      places.className = "muted";
+      places.textContent = (fromStop?.name || "Embarque") + " → " + (toStop?.name || "Destino");
+      journey.append(journeyLabel, journeyValue, places);
+      details.appendChild(journey);
+
+      const reservation = document.createElement("div");
+      reservation.className = "reviewBlock";
+      const reservationLabel = document.createElement("div");
+      reservationLabel.className = "reviewLabel";
+      reservationLabel.textContent = "RESERVA";
+      const reservationValue = document.createElement("div");
+      reservationValue.className = "reviewValue";
+      reservationValue.textContent = Math.max(1, Number(booking.seats || 1)) + " lugar(es)" +
+        (Number.isFinite(Number(booking.totalFareCents))
+          ? " • " + formatMoney(Math.max(0, Number(booking.totalFareCents || 0)))
+          : "");
+      reservation.append(reservationLabel, reservationValue);
+      details.appendChild(reservation);
 
       const actions = document.createElement("div");
       actions.className = "actions";
-      actions.append(fromSelect, toSelect, seatsInput, save, cancel, message);
-      card.appendChild(actions);
-    }
-    container.appendChild(card);
-  });
+      actions.addEventListener("click", (event) => event.stopPropagation());
+
+      if (fromStop && fromStop.address) {
+        const map = document.createElement("button");
+        map.type = "button";
+        map.className = "secondary";
+        map.textContent = "📍 Abrir local de embarque";
+        map.addEventListener("click", () => {
+          const target = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(fromStop.address);
+          window.open(target, "_blank", "noopener");
+        });
+        actions.appendChild(map);
+      }
+
+      if (passengerCanCancelBooking(booking)) {
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "dangerButton";
+        cancel.textContent = "Cancelar reserva";
+        const message = document.createElement("p");
+        message.className = "muted";
+        cancel.addEventListener("click", async () => {
+          if (!(await confirmPassengerCancellation())) return;
+          cancel.disabled = true;
+          message.textContent = "Cancelando…";
+          try {
+            const token = tripItem.publicToken || tripItem.tripId;
+            const response = await fetch(
+              "/v1/passenger/me/bookings/" + encodeURIComponent(token) + "/" + encodeURIComponent(booking.id) + "/cancel",
+              { method: "POST", headers: portalHeaders(), body: "{}" },
+            );
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.message || "Não foi possível cancelar.");
+            await loadPassengerBookings({ silent: true });
+            await loadPassengerNotifications({ silent: true });
+          } catch (error) {
+            message.textContent = error.message || "Falha ao cancelar.";
+          } finally {
+            cancel.disabled = false;
+          }
+        });
+        actions.append(cancel, message);
+      } else if (state.key === "IN_CAR") {
+        const locked = document.createElement("p");
+        locked.className = "muted";
+        locked.textContent = "A viagem já foi iniciada. Fale com o motorista caso precise de ajuda.";
+        actions.appendChild(locked);
+      }
+      if (actions.children.length) details.appendChild(actions);
+
+      const toggle = () => {
+        const opening = details.classList.contains("hidden");
+        details.classList.toggle("hidden", !opening);
+        card.setAttribute("aria-expanded", opening ? "true" : "false");
+        if (opening) tracePublicAction("PASSENGER_PORTAL_STATUS_RENDERED", { reason: state.key.toLowerCase() });
+      };
+      card.addEventListener("click", toggle);
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      });
+      card.appendChild(details);
+      container.appendChild(card);
+    });
+  };
+
+  appendSection("Viagens atuais", active);
+  appendSection("Histórico", history);
 }
 
-async function loadPassengerBookings() {
+async function loadPassengerBookings(options = {}) {
   if (!passengerSessionToken) return;
   show("portalLoginBox", false);
   show("portalAuthenticated", true);
   const container = $("portalBookings");
-  container.innerHTML = '<p class="muted">Carregando reservas…</p>';
+  const silent = options.silent === true;
+  if (!silent) container.innerHTML = '<p class="muted">Carregando reservas…</p>';
   try {
     const response = await fetch("/v1/passenger/me/bookings", { headers: portalHeaders() });
     const body = await response.json();
@@ -2482,8 +2599,18 @@ $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
 tracePublicAction("PUBLIC_LINK_OPENED");
 
 setInterval(() => {
-  if (passengerSessionToken && !document.hidden) loadPassengerNotifications({ silent: true });
-}, 15_000);
+  if (passengerSessionToken && !document.hidden) {
+    loadPassengerNotifications({ silent: true });
+    loadPassengerBookings({ silent: true });
+  }
+}, 2_500);
+
+window.addEventListener("online", () => {
+  if (passengerSessionToken) {
+    loadPassengerNotifications({ silent: true });
+    loadPassengerBookings({ silent: true });
+  }
+});
 
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
