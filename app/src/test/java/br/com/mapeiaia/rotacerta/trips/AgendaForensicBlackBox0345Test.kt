@@ -145,8 +145,11 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(trace.contains("AGENDA_EMPTY_VISUAL_STATE"))
         assertTrue(trace.contains("AGENDA_EMPTY_VISUAL_STATE_LONG"))
         assertFalse(trace.contains("while (true)"))
-        assertFalse(trace.contains("screenshot"))
-        assertFalse(trace.contains("OCR"))
+        assertFalse(trace.contains("PixelCopy"))
+        assertFalse(trace.contains("MediaProjection"))
+        assertFalse(trace.contains("ImageReader"))
+        assertFalse(trace.contains("TextRecognizer"))
+        assertFalse(trace.contains("recognizeText("))
     }
 
     @Test
