@@ -1575,7 +1575,7 @@ async function requestPassengerReferralInvite(req, res) {
   const ref = driverPassengerAccessRef(driverUsername, passengerContact);
   const now = Date.now();
   const existing = await ref.get();
-  if (existing.exists && existing.data().status === "ACTIVE") {
+  if (existing.exists && passengerAccessIsAuthorized(existing.data())) {
     return fail(res, 409, "access_already_active", "Este WhatsApp já possui acesso à agenda.");
   }
   const existingData = existing.exists ? existing.data() : {};
@@ -1585,7 +1585,9 @@ async function requestPassengerReferralInvite(req, res) {
     driverUsername,
     passengerContact,
     displayName: cleanText(existingData.displayName, 120) || displayName,
-    status: existing.exists && existingData.status === "BLOCKED" ? "BLOCKED" : "PENDING",
+    status: existing.exists && PASSENGER_RESTRICTED_ACCESS_STATUSES.has(cleanText(existingData.status, 20).toUpperCase())
+      ? cleanText(existingData.status, 20).toUpperCase()
+      : "PENDING",
     referredByContact: firstReferrer,
     referralCode: firstReferralCode,
     createdAtMillis: existing.exists ? Number(existingData.createdAtMillis || now) : now,
@@ -1834,8 +1836,12 @@ async function listPassengerBookings(req, res) {
       tripRef.collection("bookings").doc(bookingId).get(),
     ]);
     if (!tripSnap.exists || !bookingSnap.exists) return null;
+    const tripData = tripSnap.data();
+    const access = await passengerAccessFor(normalizeUsername(tripData.driverUsername || ""), session.passengerContact);
+    if (!access || !passengerAccessIsAuthorized(access)) return null;
     const booking = bookingSnap.data();
     if (booking.passengerContact !== session.passengerContact) return null;
+    if (booking.passengerId && session.passengerId && booking.passengerId !== session.passengerId) return null;
     const safeBooking = { id: bookingId, ...booking };
     delete safeBooking.cancellationHash;
     delete safeBooking.idempotencyFingerprint;
@@ -2274,6 +2280,10 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -2373,7 +2383,8 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
-      if (!previous || previous.passengerContact !== session.passengerContact) {
+      if (!previous || previous.passengerContact !== session.passengerContact ||
+        (previous.passengerId && session.passengerId && previous.passengerId !== session.passengerId)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
@@ -2439,6 +2450,10 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  const authTrip = await tripRef.get();
+  if (!authTrip.exists) return fail(res, 404, "booking_not_found", "Reserva não encontrada.");
+  const authorized = await requirePassengerDriverAccess(req, res, normalizeUsername(authTrip.data().driverUsername || ""), session);
+  if (!authorized) return;
   try {
     await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
@@ -2447,7 +2462,8 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId);
-      if (!previous || previous.passengerContact !== session.passengerContact) {
+      if (!previous || previous.passengerContact !== session.passengerContact ||
+        (previous.passengerId && session.passengerId && previous.passengerId !== session.passengerId)) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       const now = Date.now();
