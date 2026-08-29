@@ -24,6 +24,22 @@ enum class BookingStatus {
 }
 
 @Serializable
+enum class PassengerOperationalStatus {
+    PENDING,
+    CONFIRMED,
+    AT_LOCATION,
+    IN_CAR,
+    COMPLETED,
+    CANCELLED,
+}
+
+@Serializable
+enum class PassengerPaymentStatus {
+    UNPAID,
+    PAID,
+}
+
+@Serializable
 enum class BookingSource {
     ROTA_CERTA,
     BLABLACAR,
@@ -78,6 +94,15 @@ data class Booking(
     val dropoffStopId: String,
     val seats: Int = 1,
     val status: BookingStatus = BookingStatus.REQUESTED,
+    /**
+     * Journey phase for this exact passenger occurrence. Separate from BookingStatus so
+     * operational updates never distort the segment-capacity engine.
+     */
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    /** Payment acknowledgement is orthogonal to the journey phase. */
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    /** Last explicit Timeline choice; used only for the compact driver status label. */
+    val lastDriverSelection: String = "",
     val holdExpiresAtMillis: Long? = null,
     val cancellationToken: String? = null,
     val createdAtMillis: Long = System.currentTimeMillis(),
