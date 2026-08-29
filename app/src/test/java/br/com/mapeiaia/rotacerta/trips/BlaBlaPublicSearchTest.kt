@@ -98,6 +98,19 @@ class BlaBlaPublicSearchTest {
     }
 
     @Test
+    fun emptyDriverFilterAcceptsEveryIdentifiedPublicDriver() {
+        assertTrue(BlaBlaPublicSearchPlanner.matchesTarget("Ezequiel S", emptyList()))
+        assertTrue(BlaBlaPublicSearchPlanner.matchesTarget("Barbosa", listOf(" ", "")))
+        assertFalse(BlaBlaPublicSearchPlanner.matchesTarget("", emptyList()))
+    }
+
+    @Test
+    fun explicitDriverFilterStillKeepsOnlyRequestedProfiles() {
+        assertTrue(BlaBlaPublicSearchPlanner.matchesTarget("Barbosa", listOf("Barbosa")))
+        assertFalse(BlaBlaPublicSearchPlanner.matchesTarget("Ezequiel S", listOf("Barbosa")))
+    }
+
+    @Test
     fun monitoredProfilesReceiveDistinctStableVisualSlots() {
         val targets = listOf("Ezequiel S", "Barbosa", "Carlos", "Daniela")
         val slots = targets.map { BlaBlaPublicSearchPlanner.profileVisualSlot(it, targets) }
