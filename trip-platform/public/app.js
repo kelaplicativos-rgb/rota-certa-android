@@ -457,7 +457,7 @@ function selectCalendarDate(key) {
   if (calendarPickerTarget === "returnDate") searchState.returnDate = key;
   else {
     searchState.departure = key;
-    if (searchState.returnDate && searchState.returnDate < key) searchState.returnDate = "";
+    if (searchState.returnDate && DateContract.isBefore(searchState.returnDate, key)) searchState.returnDate = "";
   }
   updateSearchUi();
   renderAgenda(agendaTripsCache);
