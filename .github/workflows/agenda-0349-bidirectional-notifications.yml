@@ -1,4 +1,5 @@
 name: Rota Certa 0.1.349 Sincronizacao bidirecional
+# build-contract: 0.1.349-5642
 
 on:
   push:
