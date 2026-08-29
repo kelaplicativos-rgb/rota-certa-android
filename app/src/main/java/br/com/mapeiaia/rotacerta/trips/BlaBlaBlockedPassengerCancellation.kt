@@ -27,6 +27,9 @@ internal data class BlockedPassengerCancellationRequest(
     val tripId: String,
     val externalPassengerId: String,
     val bookingHref: String,
+    /** Optional local mirror; changed only after the external reservation is verified absent. */
+    val localTripId: String = "",
+    val localBookingId: String = "",
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
@@ -92,6 +95,63 @@ internal object BlockedPassengerCancellationCoordinator {
             )
         }
         return queued
+    }
+}
+
+/**
+ * Reuses the exact-reservation BlaBlaCar cancellation engine for any Timeline passenger.
+ * It fails closed unless profile, trip, passenger and booking URL identify one exact occurrence.
+ */
+internal object BlaBlaExactPassengerCancellationCoordinator {
+    fun enqueueExact(
+        context: Context,
+        entry: TripTimelineEntry,
+        row: EnhancedPassengerCardRow,
+    ): Boolean {
+        val profileUuid = (row.externalProfileUuid ?: entry.blablaProfileUuid)
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+        val tripId = entry.blablaTripId?.trim()?.takeIf(String::isNotEmpty)
+        val externalId = stableExternalPassengerId(row.externalPassengerId)
+        val bookingHref = row.externalBookingHref
+            ?.trim()
+            ?.takeIf(BlaBlaCollectorUrlModule::isPassenger)
+        val account = profileUuid?.let { wanted ->
+            BlaBlaDynamicAccountRegistry(context).list().singleOrNull {
+                it.profileUuid?.equals(wanted, ignoreCase = true) == true
+            }
+        }
+        if (profileUuid == null || tripId == null || externalId == null || bookingHref == null || account == null) {
+            UnifiedDebugEventStore.record(
+                "PASSENGER_CANCEL_FAILED",
+                context.packageName,
+                "source=BLABLACAR reason=identity_not_exact",
+            )
+            return false
+        }
+
+        val request = BlockedPassengerCancellationRequest(
+            accountId = account.id,
+            profileUuid = profileUuid,
+            tripId = tripId,
+            externalPassengerId = externalId,
+            bookingHref = bookingHref,
+            localTripId = entry.localTripId.orEmpty(),
+            localBookingId = row.localBookingId.orEmpty(),
+        )
+        val store = BlockedPassengerCancellationStore(context)
+        val queued = store.enqueue(request)
+        val alreadyQueued = store.list().any {
+            it.profileUuid.equals(profileUuid, ignoreCase = true) &&
+                it.tripId == tripId &&
+                it.externalPassengerId == externalId
+        }
+        UnifiedDebugEventStore.record(
+            "PASSENGER_CANCEL_REQUESTED",
+            context.packageName,
+            "source=BLABLACAR exactIdentity=true queued=" + (queued || alreadyQueued),
+        )
+        return queued || alreadyQueued
     }
 }
 
@@ -205,11 +265,31 @@ class BlaBlaBlockedPassengerCancellationActivity : Activity() {
                     "request=${current.id} passengerStillPresent=${action == "PRESENT"} stableAbsentPasses=$verificationMisses",
                 )
                 if (verificationMisses >= 2) {
+                    if (current.localBookingId.isNotBlank()) {
+                        val tripStore = TripStore(this)
+                        tripStore.bookings().firstOrNull { booking ->
+                            booking.id == current.localBookingId &&
+                                (current.localTripId.isBlank() || booking.tripId == current.localTripId)
+                        }?.let { booking ->
+                            tripStore.saveBooking(
+                                booking.copy(
+                                    status = BookingStatus.CANCELLED,
+                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                    lastDriverSelection = "CANCELLED",
+                                ),
+                            )
+                        }
+                    }
                     queue.remove(current.id)
                     UnifiedDebugEventStore.record(
-                        "BLOCKED_PASSENGER_CANCEL_VERIFIED",
+                        "PASSENGER_EXTERNAL_CANCEL_VERIFIED",
                         packageName,
-                        "request=${current.id} profileUuidPresent=true tripIdPresent=true externalPassengerIdPresent=true",
+                        "source=BLABLACAR verified=true localBookingPresent=" + current.localBookingId.isNotBlank(),
+                    )
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_CANCEL_SUCCESS",
+                        packageName,
+                        "source=BLABLACAR verified=true",
                     )
                     processNext(root)
                 } else if (action == "LOGIN") {
