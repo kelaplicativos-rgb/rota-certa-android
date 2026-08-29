@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.330 Agenda calendar visual split
+name: Rota Certa 0.1.331 Agenda clear-all and empty-day cards
 
 on:
   push:
     branches:
-      - agent/agenda-calendar-visual-split-0.1.330
+      - agent/agenda-clear-all-empty-day-only-0.1.331
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0330-${{ github.ref }}
+  group: agenda-0331-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-calendar-visual-split-0.1.330
+          ref: agent/agenda-clear-all-empty-day-only-0.1.331
           fetch-depth: 0
 
-      - name: Validate 0.1.330 Agenda calendar visual split
+      - name: Validate 0.1.331 clear-all and empty-day cards
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5623' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.330"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5624' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.331"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -88,7 +88,6 @@ jobs:
           grep -Fq 'RoundedCornerShape(12.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
           grep -Fq 'BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
           ! grep -Fq 'HorizontalDivider' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
-          grep -Fq 'if (day.date in operationalTimelineDates)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Consulta pública • $publicDateLabel' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'agendaCalendarDaysForPeriod<TripTimelineEntry>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'publicSearchPeriodDoesNotInjectEmptyDaysIntoOperationalTimeline' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
@@ -97,6 +96,20 @@ jobs:
           grep -Fq 'publicSearchDoesNotRenderStandaloneDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
           grep -Fq 'emptyPublicSearchMonthDoesNotPolluteTimelineWithDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
           ! grep -Fq 'emptyPublicSearchMonthStillProducesVisibleDayLines' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'archiveStore.archiveLocalVisualEntries(physical)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchStore.clearResponse()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchResponse = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchClearToken++' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'manualVisualHidden=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchCleared=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'LaunchedEffect(publicSearchClearToken)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          grep -Fq 'showPublicSearch = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          grep -Fq 'shouldRenderTimelineEmptyDayCard(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'operationalCardCount = day.items.size' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicCardCount = dayPublicCards.size' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'dateCardAppearsOnlyWhenThatCalendarDayHasNoTravelCard' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'clearAllRemovesEveryTimelineVisualLayerButPreservesPermanentData' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'clearAllArchivesHybridLocalIdentityBeforeExternalHalfDisappears' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -165,20 +178,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5623'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.330'" /tmp/aapt.txt
+          grep -Fq "versionCode='5624'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.331'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0330
-          cp "$APK" /tmp/0330/rota-certa-0.1.330-agenda-calendar-visual-split.apk
-          cp /tmp/apk.sha256 /tmp/0330/apk.sha256
-          cp /tmp/aapt.txt /tmp/0330/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0330/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0330/gradle.txt
-          git rev-parse HEAD > /tmp/0330/source-head.txt
+          mkdir -p /tmp/0331
+          cp "$APK" /tmp/0331/rota-certa-0.1.331-agenda-clear-all-empty-day-only.apk
+          cp /tmp/apk.sha256 /tmp/0331/apk.sha256
+          cp /tmp/aapt.txt /tmp/0331/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0331/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0331/gradle.txt
+          git rev-parse HEAD > /tmp/0331/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.330-agenda-calendar-visual-split
+          name: rota-certa-0.1.331-agenda-clear-all-empty-day-only
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0330
+          path: /tmp/0331
