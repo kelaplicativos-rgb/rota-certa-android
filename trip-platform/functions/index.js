@@ -138,23 +138,67 @@ async function sendDriverBookingPush({
     .get();
   const now = Date.now();
   const activeDocs = snapshot.docs.filter((doc) => Number(doc.data().expiresAtMillis || 0) > now && cleanText(doc.data().token, 4096).length >= 32);
-  if (!activeDocs.length) return;
+  const pushDebugId = "push_" + sha256Hex([username, event, cleanText(tripToken, 100), cleanText(bookingId, 120)].join("|")).slice(0, 48);
+  if (!activeDocs.length) {
+    await db.collection("tripPublicDebugEvents").doc(pushDebugId).set({
+      driverUsername: username,
+      event: "DRIVER_PUSH_FAILED",
+      source: "server",
+      targetType: "trip",
+      tripRefHash: tripToken ? sha256Hex("trip:" + tripToken).slice(0, 24) : "",
+      screen: "notification",
+      reason: "no_active_push_token",
+      statusCode: 0,
+      createdAtMillis: now,
+      expiresAtMillis: now + PUBLIC_DEBUG_RETENTION_MILLIS,
+    }, { merge: true });
+    return;
+  }
 
   const tokens = activeDocs.map((doc) => cleanText(doc.data().token, 4096));
-  const response = await getMessaging().sendEachForMulticast({
-    tokens,
-    data: {
-      event,
-      remoteTripId: cleanText(tripToken, 100),
-      bookingId: cleanText(bookingId, 120),
-      seats: String(Math.max(0, Number(seats || 0))),
-      tripTitle: cleanText(tripTitle, 180),
-    },
-    android: {
-      priority: "high",
-      ttl: 60 * 60 * 1000,
-    },
-  });
+  let response;
+  try {
+    response = await getMessaging().sendEachForMulticast({
+      tokens,
+      data: {
+        event,
+        remoteTripId: cleanText(tripToken, 100),
+        bookingId: cleanText(bookingId, 120),
+        seats: String(Math.max(0, Number(seats || 0))),
+        tripTitle: cleanText(tripTitle, 180),
+      },
+      android: {
+        priority: "high",
+        ttl: 60 * 60 * 1000,
+      },
+    });
+    await db.collection("tripPublicDebugEvents").doc(pushDebugId).set({
+      driverUsername: username,
+      event: "DRIVER_PUSH_SENT",
+      source: "server",
+      targetType: "trip",
+      tripRefHash: tripToken ? sha256Hex("trip:" + tripToken).slice(0, 24) : "",
+      screen: "notification",
+      reason: "success_" + Number(response.successCount || 0) + "_failure_" + Number(response.failureCount || 0),
+      statusCode: response.successCount > 0 ? 200 : 0,
+      createdAtMillis: Date.now(),
+      expiresAtMillis: Date.now() + PUBLIC_DEBUG_RETENTION_MILLIS,
+    }, { merge: true });
+  } catch (error) {
+    await db.collection("tripPublicDebugEvents").doc(pushDebugId).set({
+      driverUsername: username,
+      event: "DRIVER_PUSH_FAILED",
+      source: "server",
+      targetType: "trip",
+      tripRefHash: tripToken ? sha256Hex("trip:" + tripToken).slice(0, 24) : "",
+      screen: "notification",
+      reason: safePublicDebugReason(error && (error.code || error.name) || "push_failed"),
+      statusCode: 0,
+      createdAtMillis: Date.now(),
+      expiresAtMillis: Date.now() + PUBLIC_DEBUG_RETENTION_MILLIS,
+    }, { merge: true });
+    throw error;
+  }
 
   const invalid = [];
   response.responses.forEach((item, index) => {
@@ -317,6 +361,39 @@ function writeChangeEventAndNotifications(tx, {
       bookingId: cleanText(recipient.bookingId || bookingId, 120),
       createdAtMillis,
       readAtMillis: null,
+    });
+  }
+  const debugBase = {
+    driverUsername: normalizeUsername(driverUsername),
+    source: "server",
+    sessionId: "",
+    targetType: "trip",
+    tripRefHash: tripToken ? sha256Hex("trip:" + tripToken).slice(0, 24) : "",
+    agendaRefHash: "",
+    screen: actor === "DRIVER" ? "timeline" : "passenger",
+    reason: cleanText(eventType, 80).toLowerCase(),
+    statusCode: 200,
+    seats: 0,
+    fromIndex: -1,
+    toIndex: -1,
+    replayed: false,
+    createdAtMillis,
+    expiresAtMillis: createdAtMillis + PUBLIC_DEBUG_RETENTION_MILLIS,
+  };
+  tx.create(db.collection("tripPublicDebugEvents").doc("change_" + eventId), {
+    ...debugBase,
+    event: String(eventType || "").startsWith("TRIP_") ? "TRIP_CHANGE_EVENT_CREATED" : "BOOKING_CHANGE_EVENT_CREATED",
+  });
+  if (driverNotification) {
+    tx.create(db.collection("tripPublicDebugEvents").doc("driver_notification_" + eventId), {
+      ...debugBase,
+      event: "DRIVER_NOTIFICATION_CREATED",
+    });
+  }
+  if (seen.size > 0) {
+    tx.create(db.collection("tripPublicDebugEvents").doc("passenger_notification_" + eventId), {
+      ...debugBase,
+      event: "PASSENGER_NOTIFICATION_CREATED",
     });
   }
   return eventId;
