@@ -66,7 +66,9 @@ test("G blocked state survives sessions because every Agenda view rechecks durab
   assert.match(view, /passengerAccessForIdentity/);
   assert.match(view, /passengerAccessIsAuthorized/);
   const setBlock = block(api, "async function setDriverPassengerBlocked", "async function commitPassengerWhatsappWrites");
-  assert.match(setBlock, /await accessRef\.set\(\{/);
+  assert.match(setBlock, /where\("passengerId", "==", passengerId\)/);
+  assert.match(setBlock, /identityWrites/);
+  assert.match(setBlock, /commitPassengerWhatsappWrites\(identityWrites\)/);
   assert.match(setBlock, /status,/);
 });
 
