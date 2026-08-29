@@ -57,7 +57,19 @@ class TripsActivity : ComponentActivity() {
     private var agendaTimelineCrashGuard: AgendaTimelineCrashGuard? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val createStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        val createStartedWall = System.currentTimeMillis()
+        val traceId = AgendaTrace.adoptTrace(intent)
+        val openStartedNs = AgendaTrace.openStartNs(intent, traceId)
         super.onCreate(savedInstanceState)
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_ONCREATE_START",
+            "savedInstanceStatePresent=${savedInstanceState != null} launchAction=${intent?.action?.take(80).orEmpty()} coldWarm=unknown",
+            traceId,
+            wallMs = createStartedWall,
+            monotonicNs = createStartedNs,
+        )
         agendaTimelineCrashGuard = AgendaTimelineCrashGuard.install(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_created")
         if (
@@ -68,19 +80,36 @@ class TripsActivity : ComponentActivity() {
         }
         TripShortcutInstaller.installDynamic(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
-        setContent {
-            MaterialTheme {
-                TripApp(
-                    activity = this,
-                    startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
-                    initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
-                )
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_BEFORE_SET_CONTENT", "savedInstanceStatePresent=${savedInstanceState != null}", traceId)
+        val contentOperation = AgendaTrace.operationStart(this, "AGENDA_SET_CONTENT", "TripsActivity.onCreate", traceId)
+        try {
+            setContent {
+                MaterialTheme {
+                    TripApp(
+                        activity = this,
+                        startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
+                        initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
+                    )
+                }
             }
+            AgendaTrace.event(this, "TRIPS_ACTIVITY_AFTER_SET_CONTENT", "result=returned", traceId, contentOperation.operationId)
+            AgendaTrace.operationEnd(this, contentOperation)
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(this, contentOperation, error)
+            throw error
         }
+        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
+        val createDurationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - createStartedNs).coerceAtLeast(0L)) / 1_000_000L
+        AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
     }
 
     override fun onDestroy() {
+        AgendaTrace.event(
+            this,
+            "TRIPS_ACTIVITY_DESTROY",
+            "changingConfigurations=$isChangingConfigurations finishing=$isFinishing",
+        )
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_activity_destroy")
         super.onDestroy()
         agendaTimelineCrashGuard?.close()
