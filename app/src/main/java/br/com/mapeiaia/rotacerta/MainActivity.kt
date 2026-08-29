@@ -214,14 +214,27 @@ fun RotaCertaApp(launchIntent: Intent?) {
             val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
                 context, "AGENDA_START_ACTIVITY", "main_activity", traceId,
             )
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
-                context, "AGENDA_START_ACTIVITY_REQUEST", "source=home_shortcut", traceId, launchOperation.operationId,
-            )
-            context.startActivity(agendaIntent)
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
-                context, "AGENDA_START_ACTIVITY_RETURN", "source=home_shortcut", traceId, launchOperation.operationId,
-            )
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            try {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_REQUEST",
+                    "source=home_shortcut previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                context.startActivity(agendaIntent)
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_RETURN",
+                    "source=home_shortcut previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            } catch (error: Throwable) {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationError(context, launchOperation, error)
+                throw error
+            }
             return
         }
         when (spec.action) {
@@ -435,14 +448,27 @@ fun RotaCertaApp(launchIntent: Intent?) {
             val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
                 context, "AGENDA_START_ACTIVITY", "main_activity_launch_intent", traceId,
             )
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
-                context, "AGENDA_START_ACTIVITY_REQUEST", "source=home_launch_intent", traceId, launchOperation.operationId,
-            )
-            context.startActivity(agendaIntent)
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
-                context, "AGENDA_START_ACTIVITY_RETURN", "source=home_launch_intent", traceId, launchOperation.operationId,
-            )
-            br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            try {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_REQUEST",
+                    "source=home_launch_intent previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                context.startActivity(agendaIntent)
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                    context,
+                    "AGENDA_START_ACTIVITY_RETURN",
+                    "source=home_launch_intent previousActivity=MainActivity currentActivity=TripsActivity",
+                    traceId,
+                    launchOperation.operationId,
+                )
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
+            } catch (error: Throwable) {
+                br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationError(context, launchOperation, error)
+                throw error
+            }
         }
         if (homeLaunchMode0186 == HomeLaunchPolicy0186.MODE_COLLAPSED) {
             selectedBubbleGroup = BUBBLE_GROUP_GENERAL
