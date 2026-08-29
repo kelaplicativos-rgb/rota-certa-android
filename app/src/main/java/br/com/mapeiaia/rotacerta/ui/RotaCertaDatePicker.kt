@@ -106,6 +106,8 @@ fun RotaCertaDatePickerDialog(
     allowedModes: Set<RotaCertaDateSelectionMode> = RotaCertaDateSelectionMode.entries.toSet(),
     allowEmptySelection: Boolean = true,
     emptyConfirmLabel: String = "Continuar a partir de hoje",
+    title: String = "Datas da consulta",
+    description: String = "Escolha uma, várias datas, um período ou o mês inteiro. Dias passados ficam indisponíveis.",
 ) {
     var draft by remember(selection) { mutableStateOf(selection.copy(dates = selection.normalizedDates)) }
     var visibleMonth by remember(selection, minDate) {
@@ -150,9 +152,9 @@ fun RotaCertaDatePickerDialog(
                     }
                 }
 
-                Text("Datas da consulta", style = MaterialTheme.typography.headlineMedium)
+                Text(title, style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Escolha uma, várias datas, um período ou o mês inteiro. Dias passados ficam indisponíveis.",
+                    description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
