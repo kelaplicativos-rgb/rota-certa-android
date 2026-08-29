@@ -458,7 +458,7 @@ private fun TripApp(
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
-                    onChanged = { text -> refresh(); message = text },
+                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
