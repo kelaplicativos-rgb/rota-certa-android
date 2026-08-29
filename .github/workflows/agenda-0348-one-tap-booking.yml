@@ -56,7 +56,7 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED='^(.github/workflows/agenda-0348-one-tap-booking.yml|app/build.gradle.kts|trip-platform/functions/index.js|trip-platform/functions/test/(public-booking-0296.test.js|public-capacity-fidelity-0303.test.js|public-search-login-0313.test.js|public-video-flow-0305.test.js|public-one-tap-booking-0348.test.js)|trip-platform/public/(app.js|index.html))
+          ALLOWED="^(.github/workflows/agenda-0348-one-tap-booking.yml|app/build.gradle.kts|trip-platform/functions/index.js|trip-platform/functions/test/(public-booking-0296.test.js|public-capacity-fidelity-0303.test.js|public-search-login-0313.test.js|public-video-flow-0305.test.js|public-one-tap-booking-0348.test.js)|trip-platform/public/(app.js|index.html))$"
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
 
