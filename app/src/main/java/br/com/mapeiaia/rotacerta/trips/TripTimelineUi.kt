@@ -95,7 +95,9 @@ fun TripTimelineScreen(
     var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
-    val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
+    val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
+    val settingsLoaded = appSettingsState != null
+    val appSettings = appSettingsState ?: AppSettings()
     val forceAllSyncActive = autoSyncToken > 0 && forceAllSyncToken == autoSyncToken
 
     LaunchedEffect(autoSyncToken, forceAllSyncToken) {
@@ -255,17 +257,17 @@ fun TripTimelineScreen(
             AgendaTrace.operationEnd(context, renderOperation, processedCount = visibleEntries.size)
         }
     }
-    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, appSettings.vehicleCapacity) {
+    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.vehicleCapacity) {
         AgendaTrace.event(
             context,
             "TIMELINE_RENDER_STATE",
-            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$showSync",
+            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$showSync",
             traceId,
         )
         AgendaTrace.event(
             context,
             "CAPACITY_RENDER_STATE",
-            "loading=false empty=${appSettings.vehicleCapacity !in 1..999} items=1 capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$showSync source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"}",
+            "loading=${!settingsLoaded} empty=${settingsLoaded && appSettings.vehicleCapacity !in 1..999} items=1 capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$showSync source=${when { !settingsLoaded -> "awaiting_local_settings"; appSettings.vehicleCapacity in 1..999 -> "local_settings"; else -> "local_settings_unconfigured" }}",
             traceId,
         )
     }
@@ -278,16 +280,28 @@ fun TripTimelineScreen(
         }) { Text("Voltar") }
     }
 
-    TripDriverDefaultsCard(
-        settings = appSettings,
-        repository = settingsRepository,
-        referenceOrigin = referenceOrigin,
-        onReferenceChanged = { origin ->
-            referenceOrigin = origin
-            onChanged("Origem de referência definida pelo GPS. Os cards foram reclassificados.")
-        },
-        onChanged = onChanged,
-    )
+    if (settingsLoaded) {
+        TripDriverDefaultsCard(
+            settings = appSettings,
+            repository = settingsRepository,
+            referenceOrigin = referenceOrigin,
+            onReferenceChanged = { origin ->
+                referenceOrigin = origin
+                onChanged("Origem de referência definida pelo GPS. Os cards foram reclassificados.")
+            },
+            onChanged = onChanged,
+        )
+    } else {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Dados do veículo", style = MaterialTheme.typography.titleSmall)
+                Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 
     GlobalPassengerFlowPanel(
         entries = entries,
