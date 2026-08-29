@@ -139,15 +139,22 @@ private fun TripApp(
         AgendaTrace.event(activity, "CAPACITY_LOCAL_SETTINGS_REQUEST", "source=local_settings", traceId)
         android.os.SystemClock.elapsedRealtimeNanos()
     }
-    val appSettings by settingsRepository.settings.collectAsState(initial = AppSettings())
+    val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
+    val settingsLoaded = appSettingsState != null
+    val appSettings = appSettingsState ?: AppSettings()
     val capacityFirstValueReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val capacityInitialReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     if (capacityInitialReported.compareAndSet(false, true)) {
-        val present = appSettings.vehicleCapacity in 1..999
+        val present = settingsLoaded && appSettings.vehicleCapacity in 1..999
+        val source = when {
+            !settingsLoaded -> "awaiting_local_settings"
+            present -> "local_settings"
+            else -> "local_settings_unconfigured"
+        }
         AgendaTrace.event(
             activity,
             "CAPACITY_INITIAL_STATE",
-            "source=${if (present) "memory" else "default"} valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
             traceId,
         )
     }
@@ -197,9 +204,18 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity) {
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity) {
+        if (!settingsLoaded) {
+            AgendaTrace.event(
+                activity,
+                "CAPACITY_LOCAL_SETTINGS_WAITING",
+                "source=awaiting_local_settings valuePresent=false",
+                traceId,
+            )
+            return@LaunchedEffect
+        }
         val present = appSettings.vehicleCapacity in 1..999
-        val source = if (present) "local_settings" else "default"
+        val source = if (present) "local_settings" else "local_settings_unconfigured"
         AgendaTrace.event(
             activity,
             "CAPACITY_LOCAL_SETTINGS_RECEIVED",
@@ -218,11 +234,11 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, appSettings.vehicleCapacity) {
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.vehicleCapacity) {
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
-            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${appSettings.vehicleCapacity in 1..999} syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
             traceId,
         )
     }
@@ -315,7 +331,16 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(appSettings.vehicleCapacity, publicAgendaSyncRevision) {
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision) {
+        if (!settingsLoaded) {
+            AgendaTrace.event(
+                activity,
+                "CAPACITY_PUBLIC_SYNC_DEFERRED",
+                "reason=local_settings_not_loaded revision=$publicAgendaSyncRevision",
+                traceId,
+            )
+            return@LaunchedEffect
+        }
         AgendaSyncCrashTraceStore.checkpoint(
             activity,
             "timeline_public_agenda_effect_begin revision=$publicAgendaSyncRevision",
@@ -325,7 +350,7 @@ private fun TripApp(
             AgendaTrace.event(
                 activity,
                 "CAPACITY_PUBLIC_SYNC_TRIGGERED",
-                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
+                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "local_settings_unconfigured"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
                 traceId,
             )
             val capacityPublicSyncOperation = AgendaTrace.operationStart(
