@@ -180,6 +180,12 @@ internal fun EnhancedPassengerTimelineSection(
         }
         val selectOperationalStatus: (String) -> Unit = select@{ selection ->
             statusMenuOpen = false
+            val occurrenceCompleted =
+                completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED
+            if (occurrenceCompleted && selection !in setOf("COMPLETED", "PAID")) {
+                onChanged("Esta ocorrência já foi concluída. A conclusão é permanente; apenas o pagamento ainda pode ser confirmado.")
+                return@select
+            }
             if (selection == "CANCELLED") {
                 when {
                     currentBooking?.source?.let {
