@@ -47,10 +47,11 @@ test("route search is waypoint-order and segment-capacity aware", () => {
   assert.match(web, /Não há \$\{seats\} lugar\(es\) disponível\(is\) nesse trecho/);
 });
 
-test("search result carries exact segment into booking selectors", () => {
-  assert.match(web, /next\.set\("embarque"/);
-  assert.match(web, /next\.set\("destino"/);
-  assert.match(web, /next\.set\("lugares"/);
+test("search result carries exact segment and seats into direct booking URL", () => {
+  assert.match(web, /detailsParams\.set\("embarque"/);
+  assert.match(web, /detailsParams\.set\("destino"/);
+  assert.match(web, /detailsParams\.set\("lugares"/);
+  assert.match(web, /reserveParams\.set\("reservar", "1"\)/);
   assert.match(web, /requestedBoardingStopId/);
   assert.match(web, /requestedDropoffStopId/);
   assert.match(web, /requestedSeats/);
