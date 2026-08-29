@@ -40,7 +40,10 @@ import kotlinx.coroutines.launch
 internal data class PassengerAdminCandidate(
     val key: String,
     val displayName: String,
+    /** Contact observed from Timeline/integration or entered as contact history. */
     val whatsapp: String,
+    /** Explicit identifier used to enter the public Agenda. */
+    val agendaAccessWhatsapp: String = "",
     val localProfile: PassengerProfile? = null,
     val remoteAccess: DriverPassengerAccess? = null,
     val externalPassengerId: String = "",
@@ -67,6 +70,7 @@ fun PassengerAdminScreen(
     var newName by remember { mutableStateOf("") }
     var newWhatsapp by remember { mutableStateOf("") }
     var selectedNewPassengerId by remember { mutableStateOf("") }
+    var accessWhatsappDrafts by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var creditValue by remember { mutableStateOf("") }
     var temporaryPassword by remember { mutableStateOf<String?>(null) }
     var temporaryPasswordFor by remember { mutableStateOf("") }
@@ -141,7 +145,7 @@ fun PassengerAdminScreen(
                         val refreshed = passengerStore.saveProfile(
                             current.copy(
                                 displayName = access.displayName.trim().ifBlank { current.displayName },
-                                whatsapp = access.passengerContact.trim().ifBlank { current.whatsapp },
+                                agendaAccessWhatsapp = access.passengerContact.trim().ifBlank { current.agendaAccessWhatsapp },
                                 publicAccessStatus = access.status,
                                 referredByContact = access.referredByContact,
                                 creditBalanceCents = access.creditBalanceCents,
@@ -289,7 +293,7 @@ fun PassengerAdminScreen(
                         onClick = {
                             selectedNewPassengerId = existing.id
                             newName = existing.displayName
-                            newWhatsapp = existing.whatsapp
+                            newWhatsapp = existing.agendaAccessWhatsapp.ifBlank { existing.whatsapp }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -307,18 +311,50 @@ fun PassengerAdminScreen(
                     onChanged("Informe nome e WhatsApp do convidado.")
                 } else {
                     val selected = selectedNewPassengerId.takeIf(String::isNotBlank)?.let(passengerStore::profile)
-                    val exactMatches = passengerStore.exactContactMatches(phone)
-                    val target = selected ?: exactMatches.singleOrNull()
-                    if (selected == null && exactMatches.size > 1) {
-                        onChanged("Há mais de um cadastro com esse WhatsApp. Selecione manualmente o passageiro correto; nenhum foi unido automaticamente.")
+                    val accessKey = passengerAdminContactKey(phone)
+                    val localConflict = passengerStore.profiles().firstOrNull { existing ->
+                        existing.id != selected?.id &&
+                            passengerAdminContactKey(existing.agendaAccessWhatsapp) == accessKey
+                    }
+                    if (localConflict != null) {
+                        onChanged("Este WhatsApp de acesso já está associado a ${localConflict.displayName}.")
                     } else {
-                        if (target == null) passengerStore.createProfile(name, phone)
-                        else passengerStore.saveProfile(target.copy(displayName = name, whatsapp = phone, archived = false))
-                        newName = ""
-                        newWhatsapp = ""
-                        selectedNewPassengerId = ""
-                        revision++
-                        onChanged(if (target == null) "Novo passageiro cadastrado. Agora você pode liberar o acesso." else "Cadastro canônico reutilizado. Agora você pode liberar o acesso.")
+                        val exactAccessMatches = passengerStore.profiles().filter {
+                            passengerAdminContactKey(it.agendaAccessWhatsapp) == accessKey
+                        }
+                        val target = selected ?: exactAccessMatches.singleOrNull()
+                        if (selected == null && exactAccessMatches.size > 1) {
+                            onChanged("Há mais de um cadastro com esse WhatsApp de acesso. Selecione manualmente o passageiro correto; nenhum foi unido automaticamente.")
+                        } else {
+                            if (target == null) {
+                                passengerStore.saveProfile(
+                                    PassengerProfile(
+                                        displayName = name,
+                                        whatsapp = phone,
+                                        agendaAccessWhatsapp = phone,
+                                    ),
+                                )
+                            } else {
+                                passengerStore.saveProfile(
+                                    target.copy(
+                                        displayName = name,
+                                        agendaAccessWhatsapp = phone,
+                                        archived = false,
+                                    ),
+                                )
+                            }
+                            newName = ""
+                            newWhatsapp = ""
+                            selectedNewPassengerId = ""
+                            revision++
+                            onChanged(
+                                if (target == null) {
+                                    "Novo passengerId criado com WhatsApp de acesso. Agora você pode autorizar a Agenda."
+                                } else {
+                                    "PassengerId existente mantido. WhatsApp de acesso atualizado; agora você pode autorizar a Agenda."
+                                },
+                            )
+                        }
                     }
                 }
             }) { Text(if (selectedNewPassengerId.isBlank()) "Cadastrar novo" else "Usar cadastro selecionado") }
@@ -363,6 +399,9 @@ fun PassengerAdminScreen(
 
     candidates.forEach { candidate ->
         val access = candidate.remoteAccess
+        val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
+            ?: candidate.agendaAccessWhatsapp
+        val accessWhatsappDraft = accessWhatsappDrafts[candidate.key] ?: activeAccessWhatsapp
         Card(
             onClick = { openCandidateHistory(candidate) },
             modifier = Modifier.fillMaxWidth(),
@@ -381,7 +420,7 @@ fun PassengerAdminScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        candidate.whatsapp.ifBlank { "WhatsApp não informado" },
+                        "Contato/origem: " + candidate.whatsapp.ifBlank { "não informado" },
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(
@@ -431,10 +470,79 @@ fun PassengerAdminScreen(
                 }
                 Text("Acesso à Agenda", style = MaterialTheme.typography.titleSmall)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = accessWhatsappDraft,
+                        onValueChange = { value ->
+                            accessWhatsappDrafts = accessWhatsappDrafts + (candidate.key to value.take(40))
+                        },
+                        label = { Text("WhatsApp de acesso") },
+                        supportingText = {
+                            Text("Pode ser diferente do contato capturado. Alterar este número não troca o passengerId nem apaga o histórico.")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    OutlinedButton(
+                        enabled = !loading && passengerAdminContactKey(accessWhatsappDraft).isNotBlank(),
+                        onClick = {
+                            val canonical = canonicalProfile(candidate)
+                            val accessKey = passengerAdminContactKey(accessWhatsappDraft)
+                            val localConflict = passengerStore.profiles().firstOrNull { existing ->
+                                existing.id != canonical?.id &&
+                                    passengerAdminContactKey(existing.agendaAccessWhatsapp) == accessKey
+                            }
+                            when {
+                                canonical == null -> onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                localConflict != null -> onChanged("Este WhatsApp de acesso já está associado a ${localConflict.displayName}.")
+                                else -> {
+                                    loading = true
+                                    scope.launch {
+                                        val remoteResult = if (access != null && settings.configured) {
+                                            runCatching {
+                                                TripRemoteApi(settings).updatePassengerAccessWhatsapp(
+                                                    passengerId = canonical.id,
+                                                    currentPassengerContact = access.passengerContact,
+                                                    newPassengerContact = accessWhatsappDraft,
+                                                    displayName = canonical.displayName,
+                                                )
+                                            }
+                                        } else {
+                                            Result.success(DriverPassengerBlockResponse())
+                                        }
+                                        remoteResult.onSuccess {
+                                            passengerStore.saveProfile(
+                                                canonical.copy(agendaAccessWhatsapp = accessWhatsappDraft),
+                                            )
+                                            accessWhatsappDrafts = accessWhatsappDrafts - candidate.key
+                                            revision++
+                                            onChanged(
+                                                if (access == null) {
+                                                    "WhatsApp de acesso salvo no mesmo passengerId. Agora autorize o passageiro para liberar a Agenda."
+                                                } else {
+                                                    "WhatsApp de acesso atualizado. PassengerId, histórico, reservas, créditos e conta foram preservados."
+                                                },
+                                            )
+                                        }.onFailure { error ->
+                                            onChanged("Falha ao atualizar WhatsApp de acesso: ${error.message ?: "erro de conexão"}")
+                                        }
+                                        loading = false
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Salvar WhatsApp de acesso") }
+
                     fun setAgendaAccessStatus(status: String) {
                         loading = true
                         scope.launch {
-                            runCatching { TripRemoteApi(settings).setPassengerAccessStatus(candidate.whatsapp, status) }
+                            runCatching {
+                                TripRemoteApi(settings).setPassengerAccessStatus(
+                                    passengerContact = activeAccessWhatsapp,
+                                    status = status,
+                                    passengerId = candidate.localProfile?.id.orEmpty(),
+                                )
+                            }
                                 .onSuccess {
                                     revision++
                                     onChanged(
@@ -468,7 +576,12 @@ fun PassengerAdminScreen(
                                     onClick = {
                                         loading = true
                                         scope.launch {
-                                            runCatching { TripRemoteApi(settings).resetPassengerPassword(candidate.whatsapp) }
+                                            runCatching {
+                                                TripRemoteApi(settings).resetPassengerPassword(
+                                                    passengerContact = activeAccessWhatsapp,
+                                                    passengerId = candidate.localProfile?.id.orEmpty(),
+                                                )
+                                            }
                                                 .onSuccess {
                                                     temporaryPassword = it.temporaryPassword
                                                     temporaryPasswordFor = candidate.displayName
@@ -508,7 +621,7 @@ fun PassengerAdminScreen(
                         }
                         else -> {
                             Button(
-                                enabled = settings.configured && passengerAdminContactKey(candidate.whatsapp).isNotBlank() && !loading,
+                                enabled = settings.configured && passengerAdminContactKey(accessWhatsappDraft).isNotBlank() && !loading,
                                 onClick = {
                                     val canonical = canonicalProfile(candidate)
                                     if (canonical == null) {
@@ -519,13 +632,17 @@ fun PassengerAdminScreen(
                                             runCatching {
                                                 TripRemoteApi(settings).invitePassenger(
                                                     displayName = canonical.displayName,
-                                                    passengerContact = canonical.whatsapp,
+                                                    passengerContact = accessWhatsappDraft,
                                                     passengerId = canonical.id,
                                                     referredByContact = access?.referredByContact.orEmpty(),
                                                 )
                                             }.onSuccess {
+                                                passengerStore.saveProfile(
+                                                    canonical.copy(agendaAccessWhatsapp = accessWhatsappDraft),
+                                                )
+                                                accessWhatsappDrafts = accessWhatsappDrafts - candidate.key
                                                 revision++
-                                                onChanged("Acesso autorizado. O passageiro criará a própria senha ao usar uma ação privada.")
+                                                onChanged("Acesso autorizado no mesmo passengerId. O passageiro criará a própria senha ao usar uma ação privada.")
                                             }.onFailure { onChanged("Falha ao autorizar acesso: ${it.message ?: "erro de conexão"}") }
                                             loading = false
                                         }
@@ -724,10 +841,13 @@ internal fun mergePassengerAdminCandidates(
                 ?: local?.displayName?.takeIf(String::isNotBlank)
                 ?: previous?.displayName?.takeIf(String::isNotBlank)
                 ?: name.trim(),
-            whatsapp = remote?.passengerContact?.takeIf(String::isNotBlank)
-                ?: local?.whatsapp?.takeIf(String::isNotBlank)
+            whatsapp = local?.whatsapp?.takeIf(String::isNotBlank)
                 ?: previous?.whatsapp?.takeIf(String::isNotBlank)
                 ?: phone.trim(),
+            agendaAccessWhatsapp = remote?.passengerContact?.takeIf(String::isNotBlank)
+                ?: local?.agendaAccessWhatsapp?.takeIf(String::isNotBlank)
+                ?: previous?.agendaAccessWhatsapp?.takeIf(String::isNotBlank)
+                ?: "",
             localProfile = local ?: previous?.localProfile,
             remoteAccess = remote ?: previous?.remoteAccess,
             externalPassengerId = externalPassengerId.ifBlank { previous?.externalPassengerId.orEmpty() },

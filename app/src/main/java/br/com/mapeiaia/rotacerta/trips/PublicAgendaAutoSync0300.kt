@@ -60,7 +60,7 @@ internal object PublicAgendaAutoSync0300 {
                 )
             }
         val canonicalPassengerProfiles = PassengerIdentityStore(context).profiles()
-            .groupBy { passengerContactKey(it.whatsapp) }
+            .groupBy { passengerContactKey(it.agendaAccessWhatsapp) }
             .filter { (contactKey, profiles) -> contactKey.isNotBlank() && profiles.size == 1 }
             .values
             .map { it.single() }

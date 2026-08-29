@@ -84,3 +84,36 @@ test("private session token is not persisted in localStorage and reservation int
   assert.match(web, /resume === "reserve"/);
   assert.match(web, /showPrivateAuthGate\("booking"\)/);
 });
+
+
+test("passengerId remains canonical when the driver changes the Agenda access WhatsApp", () => {
+  const update = block(api, "async function updateDriverPassengerWhatsapp", "async function resetDriverPassengerPassword");
+  assert.match(update, /passengerId/);
+  assert.match(update, /passenger_whatsapp_conflict/);
+  assert.match(update, /passengerAccounts/);
+  assert.match(update, /passengerSessions/);
+  assert.match(update, /passengerAgendaViewSessions/);
+  assert.match(update, /passengerCreditLedgerRef/);
+  assert.match(update, /collectionGroup\("bookings"\)/);
+  assert.match(update, /passengerBookingIndexRef\(newPassengerContact/);
+  assert.match(update, /status: "MOVED"/);
+  assert.match(api, /async function passengerAccessForPassengerId/);
+  assert.match(api, /function passengerSessionOwnsBooking/);
+  assert.match(api, /path === "\/v1\/driver\/passengers\/whatsapp"/);
+});
+
+test("directory sync rejects duplicate access WhatsApp across different passengerId values", () => {
+  const sync = block(api, "async function syncDriverPassengerDirectory", "async function setDriverPassengerBlocked");
+  assert.match(sync, /passenger_whatsapp_conflict/);
+  assert.match(sync, /previousPassengerId !== normalized\[index\]\.passengerId/);
+  assert.match(sync, /inRequestContacts/);
+});
+
+test("captured contact and Agenda access WhatsApp are kept as separate local fields", () => {
+  const identity = fs.readFileSync(
+    path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerIdentityStore.kt"),
+    "utf8",
+  );
+  assert.match(identity, /val whatsapp: String = ""/);
+  assert.match(identity, /val agendaAccessWhatsapp: String = ""/);
+});

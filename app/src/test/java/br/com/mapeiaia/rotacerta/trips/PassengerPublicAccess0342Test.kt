@@ -46,7 +46,7 @@ class PassengerPublicAccess0342Test {
     fun automaticAgendaSyncPublishesOnlyUniqueCanonicalPhoneIdentities() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertTrue(source.contains("PassengerIdentityStore(context).profiles()"))
-        assertTrue(source.contains("groupBy { passengerContactKey(it.whatsapp) }"))
+        assertTrue(source.contains("groupBy { passengerContactKey(it.agendaAccessWhatsapp) }"))
         assertTrue(source.contains("profiles.size == 1"))
         assertTrue(source.contains("api.syncPassengerDirectory(canonicalPassengerProfiles)"))
     }
@@ -58,7 +58,51 @@ class PassengerPublicAccess0342Test {
         assertTrue(remote.contains("val passengerId: String = \"\""))
         assertTrue(remote.contains("syncPassengerDirectory"))
         assertTrue(remote.contains("setPassengerAccessStatus"))
-        assertTrue(admin.contains("Acesso autorizado. O passageiro criará a própria senha ao usar uma ação privada."))
+        assertTrue(remote.contains("updatePassengerAccessWhatsapp"))
+        assertTrue(admin.contains("WhatsApp de acesso"))
+        assertTrue(admin.contains("agendaAccessWhatsapp"))
+        assertTrue(admin.contains("Acesso autorizado no mesmo passengerId. O passageiro criará a própria senha ao usar uma ação privada."))
         assertFalse(admin.contains("Acesso liberado. Envie a senha temporária ao passageiro."))
     }
+
+    @Test
+    fun accessWhatsappCanChangeWithoutChangingCanonicalPassengerOrCapturedContact() {
+        val original = PassengerProfile(
+            id = "passenger-abc123",
+            displayName = "João",
+            whatsapp = "11911111111",
+            agendaAccessWhatsapp = "11911111111",
+        )
+        val edited = original.copy(agendaAccessWhatsapp = "11999999999")
+        assertEquals("passenger-abc123", edited.id)
+        assertEquals("11911111111", edited.whatsapp)
+        assertEquals("11999999999", edited.agendaAccessWhatsapp)
+    }
+
+    @Test
+    fun remoteAccessContactDoesNotOverwriteCapturedContactWhenPassengerIdMatches() {
+        val canonical = PassengerProfile(
+            id = "passenger-abc123",
+            displayName = "João",
+            whatsapp = "11911111111",
+            agendaAccessWhatsapp = "11999999999",
+        )
+        val remote = DriverPassengerAccess(
+            id = "remote-access-id",
+            passengerId = canonical.id,
+            passengerContact = "11999999999",
+            displayName = "João",
+            status = "AUTHORIZED",
+        )
+        val candidate = mergePassengerAdminCandidates(
+            localProfiles = listOf(canonical),
+            collectedPassengers = emptyList(),
+            remotePassengers = listOf(remote),
+        ).single()
+
+        assertEquals(canonical.id, candidate.localProfile?.id)
+        assertEquals("11911111111", candidate.whatsapp)
+        assertEquals("11999999999", candidate.agendaAccessWhatsapp)
+    }
+
 }

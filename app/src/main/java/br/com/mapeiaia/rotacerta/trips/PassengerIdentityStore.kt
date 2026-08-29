@@ -15,7 +15,10 @@ import kotlinx.serialization.json.Json
 data class PassengerProfile(
     val id: String = UUID.randomUUID().toString(),
     val displayName: String,
+    /** Contact observed/captured from Timeline, integrations or manual history. Not the permanent identity. */
     val whatsapp: String = "",
+    /** Explicit WhatsApp authorized by the driver for Agenda access. External capture never fills this implicitly. */
+    val agendaAccessWhatsapp: String = "",
     /** Stable external passenger/member IDs explicitly associated with this canonical profile. */
     val externalPassengerIds: Set<String> = emptySet(),
     /** Stable Rota Certa/public-portal identities explicitly linked to this canonical profile. */
@@ -195,6 +198,7 @@ class PassengerIdentityStore(context: Context) {
         val normalized = profile.copy(
             displayName = profile.displayName.trim().take(120),
             whatsapp = profile.whatsapp.trim().take(40),
+            agendaAccessWhatsapp = profile.agendaAccessWhatsapp.trim().take(40),
             externalPassengerIds = profile.externalPassengerIds.mapNotNull(::stableExternalPassengerId).toSet(),
             onlineIdentityIds = profile.onlineIdentityIds.mapNotNull(::stableExternalPassengerId).toSet(),
             publicAccessStatus = profile.publicAccessStatus.trim().uppercase().take(24),
