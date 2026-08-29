@@ -153,8 +153,8 @@ jobs:
           grep -Fq 'modifier = Modifier.fillMaxSize()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'FilterChip(' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'compactModeLabel(mode)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
-          grep -Fq 'rotaCertaDateConfirmLabel(draft)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
-          python3 -c 'from pathlib import Path; p=Path("app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt").read_text(); button=p.index("rotaCertaDateConfirmLabel(draft)"); calendar=p.index("CalendarMonthGrid(", button); assert button < calendar'
+          grep -Fq 'rotaCertaDateConfirmLabel(draft, emptyLabel = emptyConfirmLabel)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          python3 -c 'from pathlib import Path; p=Path("app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt").read_text(); button=p.index("rotaCertaDateConfirmLabel(draft, emptyLabel = emptyConfirmLabel)"); calendar=p.index("CalendarMonthGrid(", button); assert button < calendar'
           grep -Fq '.navigationBarsPadding()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
           grep -Fq 'confirmationLabelStaysShortAndCountsSelectedDates' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
           ! grep -Fq 'Text("Cancelar")' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
