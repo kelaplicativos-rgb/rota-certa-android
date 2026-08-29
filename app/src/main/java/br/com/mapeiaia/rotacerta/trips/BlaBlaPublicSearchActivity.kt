@@ -78,7 +78,7 @@ class BlaBlaPublicSearchActivity : Activity() {
         }
         tasks = BlaBlaPublicSearchPlanner.tasks(request)
         if (tasks.isEmpty()) {
-            finishWithError("Informe uma data AAAA-MM-DD ou um mês AAAA-MM válido.")
+            finishWithError("Nenhuma data futura está disponível para esta consulta.")
             return
         }
         val unsupported = tasks
