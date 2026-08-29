@@ -51,7 +51,7 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED="^(.github/workflows/agenda-0350-operational-status-my-trips.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(BlaBlaBlockedPassengerCancellation.kt|PassengerTimelineUi.kt|TripDomain.kt|TripRemoteApi.kt|TripStore.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerOperationalStatus0350Test.kt|trip-platform/functions/index.js|trip-platform/functions/test/(operational-status-my-trips-0349.test.js|passenger-operational-status-0350.test.js)|trip-platform/public/app.js)$"
+          ALLOWED="^(.github/workflows/agenda-0350-operational-status-my-trips.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(BlaBlaBlockedPassengerCancellation.kt|PassengerTimelineUi.kt|TripDomain.kt|TripRemoteApi.kt|TripStore.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerOperationalStatus0350Test.kt|trip-platform/functions/index.js|trip-platform/functions/test/(bidirectional-notifications-0349.test.js|passenger-operational-status-0350.test.js)|trip-platform/public/app.js)$"
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
       - uses: actions/setup-node@v4
@@ -138,7 +138,7 @@ jobs:
           cp /tmp/apksigner.txt /tmp/0350/apksigner.txt
           cp /tmp/gradle.txt /tmp/0350/gradle.txt
           git rev-parse HEAD > /tmp/0350/source-head.txt
-          git diff --name-only f68fe904134f5b23b6cf0cfd777218903db0cb5e..HEAD > /tmp/0350/changed-files.txt
+          git diff --name-only abfe403a51613a6716283c49dcb5db2809f52291..HEAD > /tmp/0350/changed-files.txt
 
       - uses: actions/upload-artifact@v4
         with:
