@@ -678,7 +678,7 @@ internal fun EnhancedPassengerTimelineSection(
         }
         AlertDialog(
             onDismissRequest = { cancelManualRow = null },
-            title = { Text("Cancelar passageiro desta viagem?") },
+            title = { Text("Cancelar este passageiro e liberar a(s) vaga(s)?") },
             text = {
                 Text(
                     if (booking?.source == BookingSource.ROTA_CERTA) {
@@ -703,8 +703,19 @@ internal fun EnhancedPassengerTimelineSection(
                             scope.launch {
                                 runCatching {
                                     TripRemoteApi(store.onlineSettings()).cancelProtectedDriverBooking(remoteTripId, selectedBooking.id)
-                                }.onSuccess {
-                                    store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                                }.onSuccess { response ->
+                                    store.saveBooking(
+                                        response.booking.toLocalBooking(selectedTrip.id, selectedBooking).copy(
+                                            status = BookingStatus.CANCELLED,
+                                            operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                            lastDriverSelection = "CANCELLED",
+                                        ),
+                                    )
+                                    UnifiedDebugEventStore.record(
+                                        "PASSENGER_CANCEL_SUCCESS",
+                                        context.packageName,
+                                        "source=ROTA_CERTA seats=" + selectedBooking.seats,
+                                    )
                                     UnifiedDebugEventStore.record(
                                         "AGENDA_ROTA_CERTA_ADMIN_CANCELLED",
                                         context.packageName,
@@ -718,7 +729,18 @@ internal fun EnhancedPassengerTimelineSection(
                                 }
                             }
                         } else {
-                            store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                            store.saveBooking(
+                                selectedBooking.copy(
+                                    status = BookingStatus.CANCELLED,
+                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                    lastDriverSelection = "CANCELLED",
+                                ),
+                            )
+                            UnifiedDebugEventStore.record(
+                                "PASSENGER_CANCEL_SUCCESS",
+                                context.packageName,
+                                "source=MANUAL seats=" + selectedBooking.seats,
+                            )
                             UnifiedDebugEventStore.record(
                                 "AGENDA_MANUAL_PASSENGER_CANCELLED",
                                 context.packageName,
@@ -729,9 +751,50 @@ internal fun EnhancedPassengerTimelineSection(
                             onSyncSeatsOnly?.invoke()
                         }
                     },
-                ) { Text("Cancelar e devolver vaga(s)") }
+                ) { Text("Cancelar reserva") }
             },
-            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Manter passageiro") } },
+            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Voltar") } },
+        )
+    }
+
+    cancelExternalRow?.let { row ->
+        AlertDialog(
+            onDismissRequest = { cancelExternalRow = null },
+            title = { Text("Cancelar este passageiro e liberar a(s) vaga(s)?") },
+            text = {
+                Text(
+                    "A reserva BlaBlaCar só será marcada como cancelada depois que a identidade exata " +
+                        "for localizada na sessão correta e a ausência for verificada. Sem identidade forte, nada será alterado.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        UnifiedDebugEventStore.record(
+                            "PASSENGER_CANCEL_REQUESTED",
+                            context.packageName,
+                            "source=BLABLACAR timeline=true",
+                        )
+                        val queued = BlaBlaExactPassengerCancellationCoordinator.enqueueExact(
+                            context = context,
+                            entry = entry,
+                            row = row,
+                        )
+                        cancelExternalRow = null
+                        if (queued) {
+                            context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
+                            onChanged(
+                                "Cancelamento BlaBlaCar iniciado na reserva exata. A vaga só será liberada após a verificação externa.",
+                            )
+                        } else {
+                            onChanged(
+                                "A reserva externa não pôde ser identificada com segurança. Nada foi cancelado e nenhuma vaga foi liberada.",
+                            )
+                        }
+                    },
+                ) { Text("Cancelar reserva") }
+            },
+            dismissButton = { TextButton(onClick = { cancelExternalRow = null }) { Text("Voltar") } },
         )
     }
 
