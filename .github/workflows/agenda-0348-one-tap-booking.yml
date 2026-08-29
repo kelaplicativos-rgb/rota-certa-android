@@ -178,24 +178,49 @@ jobs:
           curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
 
           BUST="$(date +%s%N)"
-          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
-          grep -Fq 'id="quickBookingNotice"' /tmp/live-index.html
-          grep -Fq 'id="startBooking" class="primary" type="button">RESERVAR</button>' /tmp/live-index.html
-          grep -Fq 'Precisa de mais lugares ou outro trecho?' /tmp/live-index.html
-          grep -Fq 'id="name" type="hidden"' /tmp/live-index.html
-          grep -Fq 'id="contact" type="hidden"' /tmp/live-index.html
+          INDEX_READY=0
+          for attempt in $(seq 1 30); do
+            curl --fail --silent --show-error "$BASE/?v=$BUST-$attempt" -o /tmp/live-index.html || true
+            if grep -Fq 'id="quickBookingNotice"' /tmp/live-index.html \
+              && grep -Fq 'id="startBooking" class="primary" type="button">RESERVAR</button>' /tmp/live-index.html \
+              && grep -Fq 'Precisa de mais lugares ou outro trecho?' /tmp/live-index.html \
+              && grep -Fq 'id="name" type="hidden"' /tmp/live-index.html \
+              && grep -Fq 'id="contact" type="hidden"' /tmp/live-index.html; then
+              INDEX_READY=1
+              break
+            fi
+            sleep 4
+          done
+          test "$INDEX_READY" = "1"
 
-          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
-          grep -Fq 'startQuickReservation' /tmp/live-app.js
-          grep -Fq 'reserveParams.set("reservar", "1")' /tmp/live-app.js
-          grep -Fq 'persistPendingBookingIntent(intent)' /tmp/live-app.js
-          grep -Fq 'bookingRequestInFlight' /tmp/live-app.js
+          APP_READY=0
+          for attempt in $(seq 1 30); do
+            curl --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
+            if grep -Fq 'startQuickReservation' /tmp/live-app.js \
+              && grep -Fq 'reserveParams.set("reservar", "1")' /tmp/live-app.js \
+              && grep -Fq 'persistPendingBookingIntent(intent)' /tmp/live-app.js \
+              && grep -Fq 'bookingRequestInFlight' /tmp/live-app.js; then
+              APP_READY=1
+              break
+            fi
+            sleep 4
+          done
+          test "$APP_READY" = "1"
 
           ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
           test "$ACCESS_CODE" = "403"
 
           EXPECTED="$(sha256sum /tmp/0348/rota-certa-0.1.348-agenda-one-tap-booking.apk | awk '{print $1}')"
-          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk?v=$BUST" -o /tmp/hosted-0348.apk
-          ACTUAL="$(sha256sum /tmp/hosted-0348.apk | awk '{print $1}')"
-          test "$ACTUAL" = "$EXPECTED"
+          APK_READY=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk?v=$BUST-$attempt" -o /tmp/hosted-0348.apk; then
+              ACTUAL="$(sha256sum /tmp/hosted-0348.apk | awk '{print $1}')"
+              if [ "$ACTUAL" = "$EXPECTED" ]; then
+                APK_READY=1
+                break
+              fi
+            fi
+            sleep 4
+          done
+          test "$APK_READY" = "1"
           echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk"
