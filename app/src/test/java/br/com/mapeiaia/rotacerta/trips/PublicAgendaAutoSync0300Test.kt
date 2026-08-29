@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -126,6 +127,23 @@ class PublicAgendaAutoSync0300Test {
             search_to = "São Thomé das Letras",
         )
         assertNull(PublicAgendaAutoSync0300.toPublicTrip(source, 4, departure + 1L, zone))
+    }
+
+    @Test
+    fun externalPublicationFailuresExposeStageWithoutPassengerPii() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+
+        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY"))
+        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED"))
+        assertTrue(source.contains("failureStage = \"update_after_publish_failure\""))
+        assertTrue(source.contains("failureStage = \"capacity_claims\""))
+        assertTrue(source.contains("reason=\${error.javaClass.simpleName}"))
+        assertTrue(source.contains("tripKey=\$diagnosticTripKey"))
+        assertTrue(source.contains("failures++"))
+        assertTrue(!source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED.*passengerName"))
+        assertTrue(!source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED.*passengerContact"))
     }
 
     @Test
