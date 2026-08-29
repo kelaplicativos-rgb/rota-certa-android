@@ -33,6 +33,13 @@
     return keyFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
   }
 
+  function lastDayOfMonthKey(year, month) {
+    const y = Number(year);
+    const m = Number(month);
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return "";
+    return keyFromDate(new Date(y, m, 0));
+  }
+
   function parseKey(key) {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || "").trim());
     if (!match) return null;
@@ -103,7 +110,7 @@
       case MODES.MONTH: {
         const date = parseKey(normalizedKey);
         const first = keyFromParts(date.getFullYear(), date.getMonth() + 1, 1);
-        const last = keyFromParts(date.getFullYear(), date.getMonth() + 2, 0);
+        const last = lastDayOfMonthKey(date.getFullYear(), date.getMonth() + 1);
         dates = inclusiveKeys(first, last);
         break;
       }
@@ -115,7 +122,7 @@
 
   function selectMonth(year, month, minKey = "") {
     const first = keyFromParts(year, month, 1);
-    const last = keyFromParts(year, Number(month) + 1, 0);
+    const last = lastDayOfMonthKey(year, month);
     if (!first || !last) return { mode: MODES.MONTH, dates: [] };
     const min = normalizeKey(minKey);
     const start = min && min > first ? min : first;
@@ -142,6 +149,7 @@
     MODES,
     keyFromParts,
     keyFromDate,
+    lastDayOfMonthKey,
     parseKey,
     normalizeKey,
     todayKey,
