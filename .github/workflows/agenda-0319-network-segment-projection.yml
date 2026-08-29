@@ -172,6 +172,7 @@ jobs:
           grep -Fq '<script src="/date-selection.js" defer></script>' trip-platform/public/index.html
           grep -Fq 'date-selection-contract-0340' <(find trip-platform/functions/test -maxdepth 1 -type f -printf '%f\n')
           grep -Fq 'Rota Certa — contrato global de datas — 0.1.340' docs/ROTA_CERTA_GLOBAL_DATE_CONTRACT_0.1.340.md
+          python3 scripts/check_global_date_contract.py
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
