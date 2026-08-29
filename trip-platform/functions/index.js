@@ -3226,6 +3226,12 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
 
       const beforeOperational = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
       const beforePayment = cleanText(previous.paymentStatus, 32) || "UNPAID";
+      if (beforeOperational === "COMPLETED" && selection !== "COMPLETED" && selection !== "PAID") {
+        throw Object.assign(
+          new Error("A viagem deste passageiro já foi concluída e não pode voltar para uma fase anterior."),
+          { httpStatus: 409, code: "passenger_operational_completed" },
+        );
+      }
       const afterOperational = selection === "PAID" ? beforeOperational : selection;
       const afterPayment = selection === "PAID" ? "PAID" : beforePayment;
       const afterBookingStatus = selection === "CONFIRMED" && (previous.status === "REQUESTED" || previous.status === "HELD")
@@ -3374,6 +3380,12 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       }
       if (!cancelOnly && (previous.status === "CANCELLED" || previous.status === "EXPIRED")) {
         throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
+      }
+      if (cancelOnly && cleanText(previous.operationalStatus, 32) === "COMPLETED") {
+        throw Object.assign(
+          new Error("Viagem concluída não pode ser transformada em cancelamento."),
+          { httpStatus: 409, code: "completed_booking_not_cancelable" },
+        );
       }
       if (cancelOnly && (previous.status === "CANCELLED" || previous.status === "EXPIRED")) {
         const safe = { ...previous };
