@@ -40,8 +40,13 @@ import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
+import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
+import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
+import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionField
 import java.time.Instant
-import java.time.LocalDateTime
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -354,6 +359,18 @@ private fun TripApp(
     }
 }
 
+internal fun tripEditorDepartureMillis(
+    selection: RotaCertaDateSelection,
+    timeText: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): Long? {
+    val date = selection.normalizedDates.singleOrNull() ?: return null
+    val time = runCatching {
+        LocalTime.parse(timeText.trim(), DateTimeFormatter.ofPattern("HH:mm"))
+    }.getOrNull() ?: return null
+    return date.atTime(time).atZone(zoneId).toInstant().toEpochMilli()
+}
+
 @Composable
 private fun TripEditor(
     defaultOrigin: String,
@@ -361,12 +378,24 @@ private fun TripEditor(
     onCancel: () -> Unit,
     onSave: (Trip) -> Unit,
 ) {
-    val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
-    val defaultTime = remember { LocalDateTime.now().plusDays(1).withMinute(0).withSecond(0).withNano(0).format(formatter) }
+    val initialDeparture = remember {
+        val tomorrow = LocalDate.now().plusDays(1)
+        val hour = LocalTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0)
+        tomorrow to hour
+    }
     var origin by remember(defaultOrigin) { mutableStateOf(defaultOrigin.trim()) }
     var destination by remember { mutableStateOf("") }
     var intermediate by remember { mutableStateOf("") }
-    var departure by remember { mutableStateOf(defaultTime) }
+    var departureDate by remember {
+        mutableStateOf(
+            RotaCertaDateSelection(
+                mode = RotaCertaDateSelectionMode.SINGLE,
+                dates = listOf(initialDeparture.first),
+            ),
+        )
+    }
+    var departureTime by remember { mutableStateOf(initialDeparture.second.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+    var showDepartureDatePicker by remember { mutableStateOf(false) }
     var capacity by remember(defaultCapacity) {
         mutableStateOf(defaultCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
     }
@@ -393,7 +422,22 @@ private fun TripEditor(
         minLines = 2,
     )
     Text("Ex.: origem → parada = 20,00; parada → destino = 25,00. Deixe vazio para não publicar valor.", style = MaterialTheme.typography.bodySmall)
-    OutlinedTextField(departure, { departure = it }, label = { Text("Saída — dd/MM/aaaa HH:mm") }, modifier = Modifier.fillMaxWidth())
+    RotaCertaDateSelectionField(
+        selection = departureDate,
+        onClick = { showDepartureDatePicker = true },
+        label = "Data da saída",
+        emptySummary = "Selecione a data da saída",
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = departureTime,
+        onValueChange = { raw ->
+            departureTime = raw.filter { it.isDigit() || it == ':' }.take(5)
+        },
+        label = { Text("Horário da saída — HH:mm") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
     OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit).take(3) }, label = { Text("Capacidade do veículo") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(notes, { notes = it }, label = { Text("Observações públicas opcionais") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
     val planningNames = buildList {
@@ -401,10 +445,7 @@ private fun TripEditor(
         addAll(intermediate.lines().map(String::trim).filter(String::isNotBlank))
         if (destination.isNotBlank()) add(destination.trim())
     }
-    val planningDepartureMillis = runCatching {
-        LocalDateTime.parse(departure.trim(), formatter)
-            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    }.getOrNull()
+    val planningDepartureMillis = tripEditorDepartureMillis(departureDate, departureTime)
     TripRoutePlannerControl(
         stopNames = planningNames,
         departureAtMillis = planningDepartureMillis,
@@ -418,8 +459,8 @@ private fun TripEditor(
                 require(destination.isNotBlank()) { "Informe o destino." }
                 val seats = capacity.toIntOrNull() ?: throw IllegalArgumentException("Informe uma quantidade de vagas válida.")
                 require(seats in 1..999) { "Informe uma capacidade entre 1 e 999 lugares." }
-                val departureMillis = LocalDateTime.parse(departure.trim(), formatter)
-                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                val departureMillis = tripEditorDepartureMillis(departureDate, departureTime)
+                    ?: throw IllegalArgumentException("Selecione a data e informe o horário da saída no formato HH:mm.")
                 val names = buildList {
                     add(origin.trim())
                     addAll(intermediate.lines().map(String::trim).filter(String::isNotBlank))
@@ -456,6 +497,21 @@ private fun TripEditor(
             }.onSuccess(onSave).onFailure { error = it.message ?: "Não foi possível criar a viagem." }
         }) { Text("Salvar rascunho") }
         TextButton(onClick = onCancel) { Text("Cancelar") }
+    }
+
+    if (showDepartureDatePicker) {
+        RotaCertaDatePickerDialog(
+            selection = departureDate,
+            onDismiss = { showDepartureDatePicker = false },
+            onConfirm = {
+                departureDate = it
+                showDepartureDatePicker = false
+            },
+            minDate = LocalDate.now(),
+            allowedModes = setOf(RotaCertaDateSelectionMode.SINGLE),
+            allowEmptySelection = false,
+            emptyConfirmLabel = "Selecione uma data",
+        )
     }
 }
 
