@@ -144,7 +144,7 @@ fun BlaBlaPublicSearchPanel(
                 value = period,
                 onValueChange = { period = it },
                 label = { Text("Data ou mês") },
-                supportingText = { Text("AAAA-MM-DD para um dia ou AAAA-MM para varrer o mês inteiro.") },
+                supportingText = { Text("AAAA-MM-DD para um dia ou AAAA-MM para varrer do dia de hoje em diante no mês atual.") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -183,7 +183,7 @@ fun BlaBlaPublicSearchPanel(
                     error = when {
                         targets.isEmpty() -> "Informe pelo menos um nome de motorista/perfil."
                         req.from.isBlank() || req.to.isBlank() -> "Informe origem e destino."
-                        BlaBlaPublicSearchPlanner.tasks(req).isEmpty() -> "Informe uma data AAAA-MM-DD ou um mês AAAA-MM válido."
+                        BlaBlaPublicSearchPlanner.tasks(req).isEmpty() -> "Informe uma data AAAA-MM-DD ou um mês AAAA-MM atual/futuro."
                         !BlaBlaPublicPlaceDirectory.supported(req.from) -> "Origem ainda não reconhecida pela Consulta Pública."
                         !BlaBlaPublicPlaceDirectory.supported(req.to) -> "Destino ainda não reconhecido pela Consulta Pública."
                         else -> null
