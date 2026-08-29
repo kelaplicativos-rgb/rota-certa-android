@@ -1365,7 +1365,7 @@ async function openPassengerAgendaView(req, res) {
       res,
       403,
       "passenger_access_not_available",
-      "Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda. Para acessar, você precisa ser cadastrado e convidado pelo motorista.",
+      "Acesso negado. Este WhatsApp não está associado a um passageiro cadastrado nesta Agenda de Viagens.",
     );
   }
   if (cleanText(access.status, 20).toUpperCase() === "PENDING") {
@@ -1373,11 +1373,11 @@ async function openPassengerAgendaView(req, res) {
       res,
       403,
       "passenger_access_pending",
-      "Acesso ainda não liberado. Seu convite precisa ser aprovado pelo motorista antes de entrar na Agenda.",
+      "Acesso negado. Este WhatsApp ainda não está associado a um passageiro autorizado na Agenda de Viagens.",
     );
   }
   if (!passengerAccessIsAuthorized(access)) {
-    return fail(res, 403, "passenger_access_unavailable", "Acesso negado. Este WhatsApp está com acesso suspenso ou bloqueado nesta Agenda. Fale com o motorista.");
+    return fail(res, 403, "passenger_access_unavailable", "Acesso negado. Este passageiro está marcado como Não aceito no meu carro.");
   }
 
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
@@ -1508,7 +1508,7 @@ async function syncDriverPassengerDirectory(req, res) {
     const passengerId = cleanText(raw && raw.passengerId, 120);
     const displayName = cleanText(raw && raw.displayName, 120);
     if (!passengerId || !displayName) continue;
-    normalized.push({ passengerContact, passengerId, displayName });
+    normalized.push({ passengerContact, passengerId, displayName, blocked: raw && raw.blocked === true });
   }
 
   const inRequestContacts = new Map();
@@ -1541,10 +1541,7 @@ async function syncDriverPassengerDirectory(req, res) {
   normalized.forEach((item, index) => {
     const previous = existingDocs[index];
     const data = previous.exists ? previous.data() : {};
-    const previousStatus = cleanText(data.status, 20).toUpperCase();
-    const status = PASSENGER_RESTRICTED_ACCESS_STATUSES.has(previousStatus)
-      ? previousStatus
-      : (PASSENGER_AUTHORIZED_ACCESS_STATUSES.has(previousStatus) ? previousStatus : "AUTHORIZED");
+    const status = item.blocked ? "BLOCKED" : "AUTHORIZED";
     batch.set(driverPassengerAccessRef(driver.username, item.passengerContact), {
       driverUsername: driver.username,
       passengerContact: item.passengerContact,
@@ -1561,26 +1558,164 @@ async function syncDriverPassengerDirectory(req, res) {
   return json(res, 200, { synced: normalized.length });
 }
 
+async function invalidatePassengerIdentitySessions(passengerId, passengerContact) {
+  const canonicalPassengerId = cleanText(passengerId, 120);
+  const contact = cleanText(passengerContact, 40);
+  const snapshots = [];
+  if (canonicalPassengerId) {
+    snapshots.push(
+      db.collection("passengerSessions").where("passengerId", "==", canonicalPassengerId).limit(450).get(),
+      db.collection("passengerAgendaViewSessions").where("passengerId", "==", canonicalPassengerId).limit(450).get(),
+    );
+  }
+  if (contact) {
+    const contactHash = sha256Hex(contact);
+    snapshots.push(
+      db.collection("passengerSessions").where("contactHash", "==", contactHash).limit(450).get(),
+      db.collection("passengerAgendaViewSessions").where("contactHash", "==", contactHash).limit(450).get(),
+    );
+  }
+  if (!snapshots.length) return 0;
+  const resolved = await Promise.all(snapshots);
+  const refs = new Map();
+  resolved.forEach((snapshot) => snapshot.docs.forEach((doc) => refs.set(doc.ref.path, doc.ref)));
+  const allRefs = Array.from(refs.values());
+  for (let offset = 0; offset < allRefs.length; offset += 400) {
+    const batch = db.batch();
+    allRefs.slice(offset, offset + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+  return allRefs.length;
+}
+
+async function cancelActiveBookingsForBlockedPassenger(driverUsername, passengerId) {
+  const username = normalizeUsername(driverUsername);
+  const canonicalPassengerId = cleanText(passengerId, 120);
+  if (!username || !canonicalPassengerId) return { cancelledBookings: 0, affectedTrips: 0 };
+
+  const candidates = await db.collectionGroup("bookings")
+    .where("passengerId", "==", canonicalPassengerId)
+    .limit(450)
+    .get();
+  const tripRefs = new Map();
+  candidates.docs.forEach((doc) => {
+    const tripRef = doc.ref.parent.parent;
+    if (tripRef && tripRef.parent && tripRef.parent.id === "trips") tripRefs.set(tripRef.path, tripRef);
+  });
+
+  let cancelledBookings = 0;
+  let affectedTrips = 0;
+  const refunds = [];
+  for (const tripRef of tripRefs.values()) {
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists || normalizeUsername(tripSnap.data().driverUsername || "") !== username) {
+        return { bookingIds: [] };
+      }
+      const trip = tripSnap.data();
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const activeIds = records
+        .filter((record) => cleanText(record.passengerId, 120) === canonicalPassengerId)
+        .filter((record) => ["REQUESTED", "HELD", "CONFIRMED"].includes(cleanText(record.status, 24).toUpperCase()))
+        .filter((record) => cleanText(record.source, 24).toUpperCase() === "ROTA_CERTA" || cleanText(record.cancellationHash, 256))
+        .map((record) => record.id);
+      if (!activeIds.length) return { bookingIds: [] };
+
+      const now = Date.now();
+      const activeSet = new Set(activeIds);
+      const updatedRecords = records.map((record) => (
+        activeSet.has(record.id) ? { ...record, status: "CANCELLED", updatedAtMillis: now } : record
+      ));
+      const loads = reconciledSegmentLoads(trip, updatedRecords, now);
+      activeIds.forEach((bookingId) => {
+        tx.set(tripRef.collection("bookings").doc(bookingId), {
+          status: "CANCELLED",
+          updatedAtMillis: now,
+        }, { merge: true });
+      });
+      tx.update(tripRef, {
+        segmentLoads: loads,
+        status: statusForReconciledLoads(trip, loads),
+        updatedAtMillis: now,
+      });
+      return { bookingIds: activeIds };
+    });
+    if (result.bookingIds.length) {
+      affectedTrips += 1;
+      cancelledBookings += result.bookingIds.length;
+      result.bookingIds.forEach((bookingId) => refunds.push({ tripToken: tripRef.id, bookingId }));
+    }
+  }
+
+  for (const item of refunds) {
+    await refundBookingCreditsIfNeeded(item.tripToken, item.bookingId).catch((error) => {
+      console.error("refund blocked passenger booking", item.tripToken, item.bookingId, error);
+    });
+  }
+  return { cancelledBookings, affectedTrips };
+}
+
 async function setDriverPassengerBlocked(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
   if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+
   const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  if (!passengerId) return fail(res, 400, "passenger_id_required", "Identidade permanente do passageiro não informada.");
   let passengerContact = "";
   if (req.body && req.body.passengerContact) {
     try { passengerContact = normalizeBrazilWhatsapp(req.body.passengerContact); }
     catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
   }
+
   const requestedStatus = cleanText(req.body && req.body.status, 20).toUpperCase();
-  const status = ["AUTHORIZED", "ACTIVE", "SUSPENDED", "BLOCKED"].includes(requestedStatus)
-    ? (requestedStatus === "ACTIVE" ? "AUTHORIZED" : requestedStatus)
-    : (req.body && req.body.blocked === true ? "BLOCKED" : "AUTHORIZED");
-  const access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
-  if (!access) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
-  const accessRef = db.collection("driverPassengerAccess").doc(access.id);
-  await accessRef.set({ status, updatedAtMillis: Date.now() }, { merge: true });
-  const updated = await accessRef.get();
-  return json(res, 200, { passenger: safePassengerAccess(updated) });
+  const blocking = requestedStatus === "BLOCKED" || (req.body && req.body.blocked === true);
+  const status = blocking ? "BLOCKED" : "AUTHORIZED";
+  let access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
+
+  if (!access && passengerContact) {
+    const now = Date.now();
+    const ref = driverPassengerAccessRef(driver.username, passengerContact);
+    await ref.set({
+      driverUsername: driver.username,
+      passengerContact,
+      passengerId,
+      displayName: cleanText(req.body && req.body.displayName, 120),
+      status,
+      createdAtMillis: now,
+      updatedAtMillis: now,
+    }, { merge: true });
+    const created = await ref.get();
+    access = { id: created.id, ...created.data() };
+  }
+
+  if (access) {
+    const accessRef = db.collection("driverPassengerAccess").doc(access.id);
+    await accessRef.set({
+      passengerId,
+      status,
+      updatedAtMillis: Date.now(),
+    }, { merge: true });
+    const updated = await accessRef.get();
+    access = { id: updated.id, ...updated.data() };
+  }
+
+  let cancelled = { cancelledBookings: 0, affectedTrips: 0 };
+  if (blocking) {
+    cancelled = await cancelActiveBookingsForBlockedPassenger(driver.username, passengerId);
+    await invalidatePassengerIdentitySessions(passengerId, cleanText(access && access.passengerContact, 40) || passengerContact);
+  }
+
+  return json(res, 200, {
+    passenger: access ? safePassengerAccess(access) : {
+      passengerId,
+      passengerContact,
+      status,
+    },
+    cancelledBookings: cancelled.cancelledBookings,
+    affectedTrips: cancelled.affectedTrips,
+  });
 }
 
 async function commitPassengerWhatsappWrites(writes) {
