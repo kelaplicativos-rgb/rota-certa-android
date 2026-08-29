@@ -17,8 +17,10 @@ data class BlaBlaPublicSearchRequest(
     val targetNames: List<String>,
     val from: String,
     val to: String,
-    val period: String,
+    val period: String = "",
     val includeReverse: Boolean = true,
+    val selectedDates: List<String> = emptyList(),
+    val captureDemand: Boolean = false,
 )
 
 @Serializable
@@ -52,12 +54,26 @@ data class BlaBlaPublicSearchQueryResult(
 )
 
 @Serializable
+data class BlaBlaPublicSearchDemand(
+    val date: String,
+    val from: String,
+    val to: String,
+    val indicadorDemandaEncontrado: Boolean,
+    val trechoConcorrido: Boolean? = null,
+    val percentualReservado: Int? = null,
+    val mensagemDemanda: String? = null,
+    val dataHoraCaptura: Long,
+)
+
+
+@Serializable
 data class BlaBlaPublicSearchResponse(
     val collectedAtMillis: Long = System.currentTimeMillis(),
     val status: String,
     val request: BlaBlaPublicSearchRequest,
     val cards: List<BlaBlaPublicSearchCard> = emptyList(),
     val queries: List<BlaBlaPublicSearchQueryResult> = emptyList(),
+    val demands: List<BlaBlaPublicSearchDemand> = emptyList(),
 ) {
     val validatedQueries: Int get() = queries.count { it.status == "validated" }
     val failedQueries: Int get() = queries.count { it.status != "validated" }
@@ -82,7 +98,7 @@ object BlaBlaPublicSearchPlanner {
         request: BlaBlaPublicSearchRequest,
         today: LocalDate = LocalDate.now(),
     ): List<BlaBlaPublicSearchTask> {
-        val dates = datesFor(request.period, today)
+        val dates = datesFor(request, today)
         if (dates.isEmpty()) return emptyList()
         val routes = buildList {
             add(request.from.trim() to request.to.trim())
@@ -94,12 +110,25 @@ object BlaBlaPublicSearchPlanner {
     }
 
     fun datesFor(
+        request: BlaBlaPublicSearchRequest,
+        today: LocalDate = LocalDate.now(),
+    ): List<LocalDate> {
+        val explicit = request.selectedDates
+            .mapNotNull { raw -> runCatching { LocalDate.parse(raw.trim()) }.getOrNull() }
+            .distinct()
+            .sorted()
+        if (explicit.isNotEmpty()) return explicit
+        return datesFor(request.period, today)
+    }
+
+    fun datesFor(
         period: String,
         today: LocalDate = LocalDate.now(),
     ): List<LocalDate> {
         val value = period.trim()
         runCatching { LocalDate.parse(value) }.getOrNull()?.let { return listOf(it) }
-        val month = runCatching { YearMonth.parse(value) }.getOrNull() ?: return emptyList()
+        val month = if (value.isBlank()) YearMonth.from(today) else
+            runCatching { YearMonth.parse(value) }.getOrNull() ?: return emptyList()
         val firstDay = month.atDay(1)
         val lastDay = month.atEndOfMonth()
         val startDay = maxOf(firstDay, today)
@@ -162,6 +191,39 @@ object BlaBlaPublicSearchPlanner {
         .replace(Regex("[^a-z0-9]+"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
+}
+
+internal fun publicSearchDemandFor(
+    request: BlaBlaPublicSearchRequest,
+    task: BlaBlaPublicSearchTask,
+    bodyText: String,
+    capturedAtMillis: Long = System.currentTimeMillis(),
+): BlaBlaPublicSearchDemand? {
+    if (!request.captureDemand) return null
+    val normalized = bodyText.replace(Regex("\\s+"), " ").trim()
+    val busy = Regex(
+        "Trecho\\s+concorrido!?\\s*(?:É|E)\\s+bom\\s+reservar\\s+logo\\.?",
+        RegexOption.IGNORE_CASE,
+    ).find(normalized)
+    val reserved = Regex(
+        "(\\d{1,3})\\s*%\\s*das\\s+viagens\\s+(?:já\\s+)?estão\\s+reservadas\\.?",
+        RegexOption.IGNORE_CASE,
+    ).find(normalized)
+    val percentage = reserved?.groupValues?.getOrNull(1)?.toIntOrNull()?.takeIf { it in 0..100 }
+    val messages = listOfNotNull(
+        busy?.value?.trim()?.takeIf(String::isNotEmpty),
+        reserved?.value?.trim()?.takeIf { percentage != null && it.isNotEmpty() },
+    ).distinct()
+    return BlaBlaPublicSearchDemand(
+        date = task.date.toString(),
+        from = task.from,
+        to = task.to,
+        indicadorDemandaEncontrado = messages.isNotEmpty(),
+        trechoConcorrido = busy?.let { true },
+        percentualReservado = percentage,
+        mensagemDemanda = messages.takeIf(List<String>::isNotEmpty)?.joinToString(" "),
+        dataHoraCaptura = capturedAtMillis,
+    )
 }
 
 object BlaBlaPublicPlaceDirectory {
