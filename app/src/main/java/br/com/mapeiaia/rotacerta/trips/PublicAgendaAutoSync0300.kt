@@ -59,6 +59,29 @@ internal object PublicAgendaAutoSync0300 {
                     "reason=${error.javaClass.simpleName}",
                 )
             }
+        val canonicalPassengerProfiles = PassengerIdentityStore(context).profiles()
+            .groupBy { passengerContactKey(it.whatsapp) }
+            .filter { (contactKey, profiles) -> contactKey.isNotBlank() && profiles.size == 1 }
+            .values
+            .map(List<PassengerProfile>::single)
+            .take(450)
+        runCatching { api.syncPassengerDirectory(canonicalPassengerProfiles) }
+            .onSuccess { response ->
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNCED",
+                    context.packageName,
+                    "canonicalPassengers=${canonicalPassengerProfiles.size} synced=${response.synced}",
+                )
+            }
+            .onFailure { error ->
+                if (error is CancellationException) throw error
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNC_FAILED",
+                    context.packageName,
+                    "canonicalPassengers=${canonicalPassengerProfiles.size} reason=${error.javaClass.simpleName}",
+                )
+            }
+
         var localPublished = 0
         var externalPublished = 0
         var seatClaimsSynced = 0
