@@ -57,6 +57,7 @@ fun BlaBlaCollectorPanel(
     var syncing by remember { mutableStateOf(false) }
     var archiving by remember { mutableStateOf(false) }
     var manualSeatSyncing by remember { mutableStateOf(false) }
+    var syncSessionInFlight by remember { mutableStateOf(false) }
     var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
@@ -124,6 +125,7 @@ fun BlaBlaCollectorPanel(
 
     val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val accountId = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)
+        syncSessionInFlight = false
         refresh()
         if (syncing) {
             if (result.resultCode == Activity.RESULT_OK) {
@@ -345,7 +347,7 @@ fun BlaBlaCollectorPanel(
     }
 
     LaunchedEffect(syncing, archiving, syncCursor, syncQueue) {
-        if (!syncing || archiving) return@LaunchedEffect
+        if (!syncing || archiving || syncSessionInFlight) return@LaunchedEffect
         val id = syncQueue.getOrNull(syncCursor)
         val account = registry.get(id)
         if (account == null) {
@@ -368,11 +370,29 @@ fun BlaBlaCollectorPanel(
                     message = "Card exato sem link canônico; sincronização individual não iniciada."
                     onChanged(message.orEmpty())
                 } else {
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_SESSION_LAUNCH",
+                    context.packageName,
+                    "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} today=${dateScope != null} sequentialGate=true",
+                )
+                syncSessionInFlight = true
                     sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
                 }
             } else if (dateScope != null) {
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_SESSION_LAUNCH",
+                    context.packageName,
+                    "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} today=${dateScope != null} sequentialGate=true",
+                )
+                syncSessionInFlight = true
                 sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncToday(context, account, dateScope))
             } else {
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_SESSION_LAUNCH",
+                    context.packageName,
+                    "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} today=${dateScope != null} sequentialGate=true",
+                )
+                syncSessionInFlight = true
                 sessionLauncher.launch(BlaBlaDynamicSessionIntents.sync(context, account))
             }
         }
