@@ -736,8 +736,30 @@ private fun TripDriverDefaultsCard(
     val scope = rememberCoroutineScope()
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
+    val traceId = AgendaTrace.currentTraceId()
     var capacity by remember(settings.vehicleCapacity) {
         mutableStateOf(settings.vehicleCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    }
+    val capacityOpenedNs = remember { android.os.SystemClock.elapsedRealtimeNanos() }
+    val capacityRenderCount = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+    LaunchedEffect(Unit) {
+        AgendaTrace.event(
+            context,
+            "CAPACITY_SCREEN_OPENED",
+            "source=timeline_defaults valuePresent=${capacity.isNotBlank()}",
+            traceId,
+        )
+    }
+    androidx.compose.runtime.SideEffect {
+        val count = capacityRenderCount.incrementAndGet()
+        if (count == 1L || count == 2L || count == 4L || count == 8L) {
+            AgendaTrace.event(
+                context,
+                "CAPACITY_FIELD_RENDERED",
+                "source=${if (settings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${capacity.isNotBlank()} value=${capacity.toIntOrNull() ?: 0} recompositionCount=$count sinceOpenMs=${(android.os.SystemClock.elapsedRealtimeNanos() - capacityOpenedNs).coerceAtLeast(0L) / 1_000_000L}",
+                traceId,
+            )
+        }
     }
     var locating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -811,7 +833,22 @@ private fun TripDriverDefaultsCard(
 
             OutlinedTextField(
                 value = capacity,
-                onValueChange = { capacity = it.filter(Char::isDigit).take(3) },
+                onValueChange = { raw ->
+                    val next = raw.filter(Char::isDigit).take(3)
+                    capacity = next
+                    AgendaTrace.event(
+                        context,
+                        "USER_CHANGE_CAPACITY",
+                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
+                        traceId,
+                    )
+                    AgendaTrace.event(
+                        context,
+                        "CAPACITY_FIELD_CHANGED_BY_USER",
+                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
+                        traceId,
+                    )
+                },
                 label = { Text("Capacidade do veículo") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -833,14 +870,41 @@ private fun TripDriverDefaultsCard(
                         return@Button
                     }
                     error = null
+                    AgendaTrace.event(
+                        context,
+                        "USER_SAVE_CAPACITY",
+                        "source=user valuePresent=true value=$parsed",
+                        traceId,
+                    )
+                    AgendaTrace.event(
+                        context,
+                        "CAPACITY_SAVE_REQUESTED",
+                        "source=user valuePresent=true value=$parsed",
+                        traceId,
+                    )
                     scope.launch {
-                        repository.saveSettings(settings.copy(vehicleCapacity = parsed))
-                        UnifiedDebugEventStore.record(
-                            "TRIP_DRIVER_DEFAULTS_SAVED",
-                            context.packageName,
-                            "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                        val saveOperation = AgendaTrace.operationStart(
+                            context,
+                            "CAPACITY_LOCAL_SAVE",
+                            "TripDriverDefaultsCard",
+                            traceId,
                         )
-                        onChanged("Capacidade do veículo salva.")
+                        try {
+                            repository.saveSettings(settings.copy(vehicleCapacity = parsed))
+                            AgendaTrace.operationEnd(context, saveOperation, result = "saved", processedCount = 1)
+                            UnifiedDebugEventStore.record(
+                                "TRIP_DRIVER_DEFAULTS_SAVED",
+                                context.packageName,
+                                "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                            )
+                            onChanged("Capacidade do veículo salva.")
+                        } catch (failure: kotlinx.coroutines.CancellationException) {
+                            AgendaTrace.operationCancelled(context, saveOperation)
+                            throw failure
+                        } catch (failure: Throwable) {
+                            AgendaTrace.operationError(context, saveOperation, failure)
+                            throw failure
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
