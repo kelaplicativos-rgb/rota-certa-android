@@ -193,8 +193,7 @@ private fun TripApp(
     androidx.compose.runtime.SideEffect {
         AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
         if (firstCompositionEnded.compareAndSet(false, true)) {
-            AgendaTrace.event(activity, "AGENDA_FIRST_COMPOSITION_END", "result=content_mounted", traceId, firstCompositionOperation.operationId)
-            AgendaTrace.operationEnd(activity, firstCompositionOperation)
+            AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
         }
     }
 
