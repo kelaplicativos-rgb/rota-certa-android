@@ -54,6 +54,13 @@ data class ExternalPassengerMetadata(
     val externalPassengerId: String = "",
     val externalTripId: String = "",
     val externalProfileUuid: String = "",
+    /**
+     * Operational authority only for an exact external reservation that has no local Booking.
+     * This metadata never contributes a capacity claim; a linked local Booking always wins.
+     */
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -541,6 +548,7 @@ class PassengerIdentityStore(context: Context) {
             externalPassengerId = stableExternalPassengerId(metadata.externalPassengerId).orEmpty(),
             externalTripId = stableExternalPassengerId(metadata.externalTripId).orEmpty(),
             externalProfileUuid = metadata.externalProfileUuid.trim().lowercase().take(80),
+            lastDriverSelection = metadata.lastDriverSelection.trim().uppercase().take(32),
             fareCurrencyCode = metadata.fareCurrencyCode.trim().uppercase().take(3),
             boardingAddress = metadata.boardingAddress.trim().take(500),
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
