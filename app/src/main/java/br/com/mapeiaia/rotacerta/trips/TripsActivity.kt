@@ -234,6 +234,7 @@ private fun TripApp(
     }
     val requestFullTimelineRefresh = {
         if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
             AgendaSyncCrashTraceStore.arm(activity)
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
             refreshAllRunning = true
@@ -277,13 +278,27 @@ private fun TripApp(
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
-        val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
-        AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
-        if (result.importedCount > 0) {
-            refresh()
-            publicAgendaSyncRevision++
-            message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
-            if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+        try {
+            val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
+            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
+            if (result.importedCount > 0) {
+                refresh()
+                publicAgendaSyncRevision++
+                message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
+                if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+            }
+            AgendaTrace.operationEnd(
+                activity,
+                timelineStartupOperation,
+                result = "ready",
+                processedCount = trips.size + bookings.size,
+            )
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            AgendaTrace.operationCancelled(activity, timelineStartupOperation)
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(activity, timelineStartupOperation, error)
+            throw error
         }
     }
 
@@ -294,6 +309,12 @@ private fun TripApp(
         )
         val online = store.onlineSettings()
         if (online.configured) {
+            AgendaTrace.event(
+                activity,
+                "CAPACITY_PUBLIC_SYNC_TRIGGERED",
+                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
+                traceId,
+            )
             val result = PublicAgendaAutoSync0300.sync(
                 context = activity,
                 store = store,
