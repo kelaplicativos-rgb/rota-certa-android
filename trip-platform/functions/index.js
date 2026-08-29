@@ -271,9 +271,11 @@ function writeChangeEventAndNotifications(tx, {
 
   if (driverNotification) {
     const driverKey = normalizeUsername(driverUsername);
-    const notificationId = changeNotificationId(eventId, "DRIVER", driverKey);
+    const recipientKey = "driver:" + driverKey;
+    const notificationId = changeNotificationId(eventId, "DRIVER", recipientKey);
     tx.create(db.collection("tripNotifications").doc(notificationId), {
       notificationId,
+      recipientKey,
       recipientType: "DRIVER",
       driverUsername: driverKey,
       passengerId: "",
@@ -293,13 +295,16 @@ function writeChangeEventAndNotifications(tx, {
   for (const recipient of recipients) {
     const recipientPassengerId = cleanText(recipient && recipient.passengerId, 120);
     const recipientContact = cleanText(recipient && recipient.passengerContact, 40);
-    const key = recipientPassengerId || recipientContact;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    const identityKey = recipientPassengerId
+      ? "passenger-id:" + recipientPassengerId
+      : (recipientContact ? "passenger-contact:" + recipientContact : "");
+    if (!identityKey || seen.has(identityKey)) continue;
+    seen.add(identityKey);
     const copy = recipient.copy || passengerNotificationCopy(eventType, recipient.tripTitle || "");
-    const notificationId = changeNotificationId(eventId, "PASSENGER", key);
+    const notificationId = changeNotificationId(eventId, "PASSENGER", identityKey);
     tx.create(db.collection("tripNotifications").doc(notificationId), {
       notificationId,
+      recipientKey: identityKey,
       recipientType: "PASSENGER",
       driverUsername: normalizeUsername(driverUsername),
       passengerId: recipientPassengerId,
@@ -336,23 +341,18 @@ function notificationResponse(doc) {
 }
 
 async function ownedDriverNotifications(driver) {
-  const snap = await db.collection("tripNotifications").where("driverUsername", "==", driver.username).limit(250).get();
-  return snap.docs.filter((doc) => doc.data().recipientType === "DRIVER");
+  const recipientKey = "driver:" + driver.username;
+  const snap = await db.collection("tripNotifications").where("recipientKey", "==", recipientKey).limit(250).get();
+  return snap.docs;
 }
 
 async function ownedPassengerNotifications(session) {
-  const requests = [];
-  if (session.passengerId) {
-    requests.push(db.collection("tripNotifications").where("passengerId", "==", session.passengerId).limit(250).get());
-  } else if (session.passengerContact) {
-    requests.push(db.collection("tripNotifications").where("passengerContact", "==", session.passengerContact).limit(250).get());
-  }
-  const snapshots = await Promise.all(requests);
-  const unique = new Map();
-  snapshots.forEach((snap) => snap.docs.forEach((doc) => {
-    if (doc.data().recipientType === "PASSENGER") unique.set(doc.id, doc);
-  }));
-  return [...unique.values()];
+  const recipientKey = session.passengerId
+    ? "passenger-id:" + session.passengerId
+    : (session.passengerContact ? "passenger-contact:" + session.passengerContact : "");
+  if (!recipientKey) return [];
+  const snap = await db.collection("tripNotifications").where("recipientKey", "==", recipientKey).limit(250).get();
+  return snap.docs;
 }
 
 async function listDriverNotifications(req, res) {
