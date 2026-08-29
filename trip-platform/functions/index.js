@@ -249,6 +249,8 @@ function bookingRelevantChanges(previous, updated) {
     changedField("dropoffStopId", previous && previous.dropoffStopId, updated && updated.dropoffStopId),
     changedField("seats", Number(previous && previous.seats || 0), Number(updated && updated.seats || 0)),
     changedField("status", previous && previous.status, updated && updated.status),
+    changedField("operationalStatus", previous && previous.operationalStatus, updated && updated.operationalStatus),
+    changedField("paymentStatus", previous && previous.paymentStatus, updated && updated.paymentStatus),
     changedField("farePerSeatCents", Number(previous && previous.farePerSeatCents || 0), Number(updated && updated.farePerSeatCents || 0)),
     changedField("totalFareCents", Number(previous && previous.totalFareCents || 0), Number(updated && updated.totalFareCents || 0)),
   ].filter(Boolean);
@@ -272,6 +274,11 @@ function driverNotificationCopy(eventType, booking, tripTitle) {
 }
 
 function passengerNotificationCopy(eventType, tripTitle) {
+  if (eventType === "PASSENGER_STATUS_CONFIRMED") return { title: "Reserva confirmada", message: "Sua vaga está confirmada." };
+  if (eventType === "PASSENGER_AT_LOCATION") return { title: "Motorista no local", message: "O motorista informou que chegou ao local combinado." };
+  if (eventType === "PASSENGER_IN_CAR") return { title: "Você está embarcado", message: "A viagem foi iniciada." };
+  if (eventType === "PASSENGER_PAYMENT_CONFIRMED") return { title: "Pagamento confirmado", message: "O motorista confirmou o pagamento da sua reserva." };
+  if (eventType === "PASSENGER_COMPLETED") return { title: "Viagem concluída", message: "Sua viagem foi concluída." };
   if (eventType === "TRIP_CANCELLED") return { title: "Viagem cancelada", message: "O motorista cancelou" + (tripTitle ? " a viagem " + tripTitle : " sua viagem") + "." };
   if (eventType === "TRIP_TIME_CHANGED") return { title: "Horário alterado", message: "O horário" + (tripTitle ? " de " + tripTitle : " da sua viagem") + " foi alterado." };
   if (eventType === "TRIP_CHANGED") return { title: "Viagem alterada", message: "Dados importantes" + (tripTitle ? " de " + tripTitle : " da sua viagem") + " foram atualizados." };
@@ -838,6 +845,9 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
     dropoffStopId,
     seats,
     status,
+    operationalStatus: cleanText(previous && previous.operationalStatus, 32) || "CONFIRMED",
+    paymentStatus: cleanText(previous && previous.paymentStatus, 32) || "UNPAID",
+    lastDriverSelection: cleanText(previous && previous.lastDriverSelection, 32),
     holdExpiresAtMillis,
     source,
     capacityClaimType,
@@ -2811,6 +2821,9 @@ async function createBooking(req, res, token) {
         dropoffStopId,
         seats,
         status: "CONFIRMED",
+        operationalStatus: "PENDING",
+        paymentStatus: "UNPAID",
+        lastDriverSelection: "",
         source: "ROTA_CERTA",
         capacityClaimType: "PASSENGER",
         sourceReference: `PUBLIC_LINK:${bookingId}`,
@@ -2974,7 +2987,13 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const reconciledRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, reconciledRecords, now);
       assertNoOverbooking(trip, loads);
-      tx.update(bookingRef, { status: "CANCELLED", changeVersion, updatedAtMillis: now });
+      tx.update(bookingRef, {
+        status: "CANCELLED",
+        operationalStatus: "CANCELLED",
+        lastDriverSelection: "CANCELLED",
+        changeVersion,
+        updatedAtMillis: now,
+      });
       tx.update(tripRef, {
         segmentLoads: loads,
         status: statusForReconciledLoads(trip, loads),
@@ -3178,6 +3197,158 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
   }
 }
 
+async function mutateDriverPassengerOperationalStatus(req, res, token, bookingIdRaw) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const selection = cleanText(req.body && req.body.selection, 32).toUpperCase();
+  const allowed = new Set(["CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED"]);
+  if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
+  if (!allowed.has(selection)) return fail(res, 400, "invalid_operational_status", "Estado operacional inválido.");
+
+  const tripRef = db.collection("trips").doc(token);
+  const bookingRef = tripRef.collection("bookings").doc(bookingId);
+  try {
+    const passengerIdentityByContact = await passengerIdentityByContactForDriver(driver.username);
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      const bookingSnap = await tx.get(bookingRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      if (!bookingSnap.exists) throw Object.assign(new Error("Reserva não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const trip = tripSnap.data();
+      const previous = { id: bookingId, ...bookingSnap.data() };
+      if (trip.driverUsername && trip.driverUsername !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+      if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
+        throw Object.assign(new Error("Esta reserva não está mais ativa."), { httpStatus: 409, code: "booking_inactive" });
+      }
+
+      const beforeOperational = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
+      const beforePayment = cleanText(previous.paymentStatus, 32) || "UNPAID";
+      const afterOperational = selection === "PAID" ? beforeOperational : selection;
+      const afterPayment = selection === "PAID" ? "PAID" : beforePayment;
+      const afterBookingStatus = selection === "CONFIRMED" && (previous.status === "REQUESTED" || previous.status === "HELD")
+        ? "CONFIRMED"
+        : previous.status;
+
+      if (
+        beforeOperational === afterOperational &&
+        beforePayment === afterPayment &&
+        cleanText(previous.lastDriverSelection, 32) === selection &&
+        previous.status === afterBookingStatus
+      ) {
+        const safe = { ...previous };
+        delete safe.cancellationHash;
+        delete safe.idempotencyFingerprint;
+        return { booking: safe, changed: false, eventType: "" };
+      }
+
+      const now = Date.now();
+      const changeVersion = Math.max(0, Number(previous.changeVersion || 0)) + 1;
+      const updated = {
+        ...previous,
+        status: afterBookingStatus,
+        operationalStatus: afterOperational,
+        paymentStatus: afterPayment,
+        lastDriverSelection: selection,
+        changeVersion,
+        updatedAtMillis: now,
+      };
+
+      if (afterBookingStatus !== previous.status) {
+        const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+        const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const candidates = records.map((record) => record.id === bookingId ? updated : record);
+        const loads = reconciledSegmentLoads(trip, candidates, now);
+        assertNoOverbooking(trip, loads);
+        tx.update(tripRef, {
+          segmentLoads: loads,
+          status: statusForReconciledLoads(trip, loads),
+          updatedAtMillis: now,
+        });
+      }
+
+      const persisted = { ...updated };
+      delete persisted.id;
+      tx.set(bookingRef, persisted, { merge: true });
+
+      const eventType = selection === "CONFIRMED" ? "PASSENGER_STATUS_CONFIRMED"
+        : selection === "AT_LOCATION" ? "PASSENGER_AT_LOCATION"
+          : selection === "IN_CAR" ? "PASSENGER_IN_CAR"
+            : selection === "PAID" ? "PASSENGER_PAYMENT_CONFIRMED"
+              : "PASSENGER_COMPLETED";
+      const passengerContact = cleanText(updated.passengerContact, 40);
+      const passengerId = cleanText(updated.passengerId, 120) ||
+        cleanText(passengerIdentityByContact.get(passengerContact), 120);
+
+      writeChangeEventAndNotifications(tx, {
+        eventType,
+        tripToken: token,
+        bookingId,
+        version: changeVersion,
+        driverUsername: driver.username,
+        actor: "DRIVER",
+        source: "TIMELINE_PASSENGER_STATUS",
+        passengerId,
+        changes: [
+          changedField("operationalStatus", beforeOperational, afterOperational),
+          changedField("paymentStatus", beforePayment, afterPayment),
+          changedField("status", previous.status, afterBookingStatus),
+        ].filter(Boolean),
+        passengerRecipients: [{
+          passengerId,
+          passengerContact,
+          bookingId,
+          tripTitle: cleanText(trip.title, 180),
+        }],
+      });
+
+      const safe = { ...updated, passengerId };
+      delete safe.cancellationHash;
+      delete safe.idempotencyFingerprint;
+      return { booking: safe, changed: true, eventType };
+    });
+
+    if (result.changed) {
+      const debugEvent = result.eventType === "PASSENGER_PAYMENT_CONFIRMED"
+        ? "PASSENGER_PAYMENT_CONFIRMED"
+        : "PASSENGER_STATUS_CHANGED";
+      await appendPublicDebugEvent({
+        driverUsername: driver.username,
+        event: debugEvent,
+        source: "server",
+        tripToken: token,
+        screen: "timeline",
+        reason: result.eventType.toLowerCase(),
+        statusCode: 200,
+      }).catch(() => {});
+      await appendPublicDebugEvent({
+        driverUsername: driver.username,
+        event: "PASSENGER_STATUS_REALTIME_PUBLISHED",
+        source: "server",
+        tripToken: token,
+        screen: "timeline",
+        reason: result.eventType.toLowerCase(),
+        statusCode: 200,
+      }).catch(() => {});
+    }
+
+    return json(res, 200, {
+      booking: result.booking,
+      changed: result.changed,
+      passengerNotified: result.changed,
+    });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "passenger_status_update_failed",
+      error.message || "Não foi possível atualizar o status do passageiro.",
+    );
+  }
+}
+
 async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly = false) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -3215,7 +3386,12 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       let fromIndex = -1;
       let toIndex = -1;
       if (cancelOnly) {
-        updated = { ...previous, status: "CANCELLED" };
+        updated = {
+          ...previous,
+          status: "CANCELLED",
+          operationalStatus: "CANCELLED",
+          lastDriverSelection: "CANCELLED",
+        };
       } else {
         const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
         const passengerContact = req.body && req.body.passengerContact
@@ -3454,13 +3630,33 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
         return { changed: false, driverUsername, tripTitle: cleanText(trip.title, 180), seats: Number(previous.seats || 0) };
       }
+      const operationalStatus = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
+      if (operationalStatus === "IN_CAR" || operationalStatus === "COMPLETED") {
+        throw Object.assign(
+          new Error("A viagem já foi iniciada. Fale com o motorista caso precise de ajuda."),
+          { httpStatus: 409, code: "passenger_cancel_locked_after_boarding" },
+        );
+      }
       const now = Date.now();
       const changeVersion = Math.max(0, Number(previous.changeVersion || 0)) + 1;
-      const updated = { ...previous, status: "CANCELLED", changeVersion, updatedAtMillis: now };
+      const updated = {
+        ...previous,
+        status: "CANCELLED",
+        operationalStatus: "CANCELLED",
+        lastDriverSelection: "CANCELLED",
+        changeVersion,
+        updatedAtMillis: now,
+      };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
       const loads = reconciledSegmentLoads(trip, candidateRecords, now);
       assertNoOverbooking(trip, loads);
-      tx.update(bookingRef, { status: "CANCELLED", changeVersion, updatedAtMillis: now });
+      tx.update(bookingRef, {
+        status: "CANCELLED",
+        operationalStatus: "CANCELLED",
+        lastDriverSelection: "CANCELLED",
+        changeVersion,
+        updatedAtMillis: now,
+      });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       tx.update(tripRef, {
         segmentLoads: loads,
@@ -3598,6 +3794,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "PUT") {
       return await upsertDriverCapacityBooking(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "operational" && req.method === "POST") {
+      return await mutateDriverPassengerOperationalStatus(req, res, parts[3], parts[5]);
     }
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "admin" && req.method === "PUT") {
       return await mutateProtectedBooking(req, res, parts[3], parts[5], false);
