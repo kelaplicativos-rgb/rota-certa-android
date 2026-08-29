@@ -45,6 +45,7 @@ let pendingPrivateAction = "";
 let bookingRequestInFlight = false;
 let directReserveConsumed = false;
 let quickUndoTimer = null;
+let passengerUnreadNotificationCount = 0;
 
 function localTodayKey() {
   return DateContract.todayKey();
@@ -282,6 +283,11 @@ function saveAgendaViewSession(token) {
 
 function updateAuthenticatedChrome() {
   show("openPassengerPortal", Boolean(passengerAgendaViewToken || passengerSessionToken));
+  show("passengerNotificationsBell", Boolean(passengerSessionToken));
+  if (!passengerSessionToken) {
+    passengerUnreadNotificationCount = 0;
+    show("passengerNotificationBadge", false);
+  }
 }
 
 function showAccessGate(destination = pendingAuthDestination, message = "") {
@@ -1901,6 +1907,117 @@ function portalHeaders() {
   };
 }
 
+function setPassengerNotificationBadge(count) {
+  passengerUnreadNotificationCount = Math.max(0, Number(count || 0));
+  const badge = $("passengerNotificationBadge");
+  badge.textContent = passengerUnreadNotificationCount > 99 ? "99+" : String(passengerUnreadNotificationCount);
+  show("passengerNotificationBadge", passengerSessionToken && passengerUnreadNotificationCount > 0);
+  show("portalMarkAllNotificationsRead", passengerUnreadNotificationCount > 0);
+}
+
+function passengerNotificationTarget(item) {
+  if (!item || !item.tripId) return "";
+  const query = new URLSearchParams();
+  const owner = String(item.driverUsername || driverUsername || "");
+  if (owner) query.set("motorista", owner);
+  query.set("trip", String(item.tripId));
+  return location.origin + "/?" + query.toString();
+}
+
+function renderPassengerNotifications(entries, unreadCount) {
+  const container = $("portalNotifications");
+  container.innerHTML = "";
+  const notifications = Array.isArray(entries) ? entries : [];
+  setPassengerNotificationBadge(unreadCount);
+  if (!notifications.length) {
+    container.innerHTML = '<p class="muted">Nenhuma notificação.</p>';
+    return;
+  }
+  notifications.slice(0, 50).forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "notificationItem" + (item.read ? "" : " notificationItemUnread");
+    const title = document.createElement("div");
+    title.className = "notificationTitle";
+    title.textContent = (item.read ? "" : "● ") + (item.title || "Notificação");
+    const message = document.createElement("div");
+    message.className = "notificationMessage";
+    message.textContent = item.message || "";
+    button.append(title, message);
+    button.addEventListener("click", async () => {
+      if (!passengerSessionToken) return showPrivateAuthGate("portal");
+      try {
+        if (!item.read) {
+          await fetch("/v1/passenger/me/notifications/" + encodeURIComponent(item.id) + "/read", {
+            method: "POST",
+            headers: portalHeaders(),
+            body: "{}",
+          });
+        }
+      } catch (_) {}
+      const target = passengerNotificationTarget(item);
+      if (target) {
+        location.href = target;
+        return;
+      }
+      await loadPassengerNotifications({ silent: true });
+    });
+    container.appendChild(button);
+  });
+}
+
+async function loadPassengerNotifications(options = {}) {
+  if (!passengerSessionToken) {
+    setPassengerNotificationBadge(0);
+    return;
+  }
+  const silent = options.silent === true;
+  if (!silent && $("portalNotifications")) {
+    $("portalNotifications").innerHTML = '<p class="muted">Carregando notificações…</p>';
+  }
+  try {
+    const response = await fetch("/v1/passenger/me/notifications", { headers: portalHeaders() });
+    const body = await response.json();
+    if (response.status === 401) {
+      savePassengerSession("");
+      return;
+    }
+    if (!response.ok) throw new Error(body.message || "Não foi possível carregar as notificações.");
+    renderPassengerNotifications(body.notifications, body.unreadCount);
+  } catch (error) {
+    if (!silent && $("portalNotifications")) {
+      $("portalNotifications").innerHTML = '<p class="muted">' + (error.message || "Falha ao carregar notificações.") + "</p>";
+    }
+  }
+}
+
+async function markAllPassengerNotificationsRead() {
+  if (!passengerSessionToken) return;
+  $("portalMarkAllNotificationsRead").disabled = true;
+  try {
+    const response = await fetch("/v1/passenger/me/notifications/read-all", {
+      method: "POST",
+      headers: portalHeaders(),
+      body: "{}",
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.message || "Não foi possível marcar as notificações.");
+    }
+    await loadPassengerNotifications({ silent: true });
+  } finally {
+    $("portalMarkAllNotificationsRead").disabled = false;
+  }
+}
+
+function openPassengerNotificationCenter() {
+  openPassengerPortal();
+  setTimeout(() => {
+    const card = $("portalNotificationsCard");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+}
+
 function savePassengerSession(token) {
   passengerSessionToken = String(token || "");
   try {
@@ -1921,6 +2038,7 @@ function openPassengerPortal() {
   if (passengerMustChangePassword) $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
   loadPassengerCredits();
   loadPassengerBookings();
+  loadPassengerNotifications();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1947,6 +2065,7 @@ async function loginPassengerPortal() {
     $("portalPassword").value = "";
     $("portalMessage").textContent = "";
     await loadPassengerBookings();
+    await loadPassengerNotifications({ silent: true });
   } catch (error) {
     $("portalMessage").textContent = error.message || "Falha ao entrar.";
   } finally {
@@ -2248,6 +2367,8 @@ function logoutPassengerPortal() {
   passengerViewAccountActivated = true;
   $("portalPassword").value = "";
   $("portalBookings").innerHTML = "";
+  $("portalNotifications").innerHTML = '<p class="muted">Nenhuma notificação.</p>';
+  setPassengerNotificationBadge(0);
   if (trip) renderTrip();
   else if (agendaToken) loadAgenda();
   else showAccessGate("agenda", "Área privada encerrada neste aparelho.");
@@ -2298,6 +2419,8 @@ $("seatPlus").addEventListener("click", () => changeSeatPicker(1));
 $("seatConfirm").addEventListener("click", confirmSeatPicker);
 $("resultsBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
 $("openPassengerPortal").addEventListener("click", openPassengerPortal);
+$("passengerNotificationsBell").addEventListener("click", openPassengerNotificationCenter);
+$("portalMarkAllNotificationsRead").addEventListener("click", markAllPassengerNotificationsRead);
 $("portalBack").addEventListener("click", closePassengerPortal);
 $("portalLogin").addEventListener("click", loginPassengerPortal);
 $("portalLogout").addEventListener("click", logoutPassengerPortal);
@@ -2357,6 +2480,10 @@ $("downloadIcs").addEventListener("click", downloadIcs);
 $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
 
 tracePublicAction("PUBLIC_LINK_OPENED");
+
+setInterval(() => {
+  if (passengerSessionToken && !document.hidden) loadPassengerNotifications({ silent: true });
+}, 15_000);
 
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
