@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.332 Agenda public search starts today
+name: Rota Certa 0.1.333 Agenda public search all drivers
 
 on:
   push:
     branches:
-      - agent/agenda-public-search-today-start-0.1.332
+      - agent/agenda-public-search-all-drivers-0.1.333
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0332-${{ github.ref }}
+  group: agenda-0333-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-search-today-start-0.1.332
+          ref: agent/agenda-public-search-all-drivers-0.1.333
           fetch-depth: 0
 
-      - name: Validate 0.1.332 public-search today start
+      - name: Validate 0.1.333 public-search all drivers
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5625' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.332"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5626' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.333"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -114,6 +114,12 @@ jobs:
           grep -Fq 'if (startDay.isAfter(lastDay)) return emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
           grep -Fq 'currentMonthWithoutDayStartsAtTodayAndNeverScansPastDays' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
           grep -Fq 'pastMonthHasNoAutomaticTasksButExplicitPastDayRemainsAllowed' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'if (normalizedTargets.isEmpty()) return true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'emptyDriverFilterAcceptsEveryIdentifiedPublicDriver' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'explicitDriverFilterStillKeepsOnlyRequestedProfiles' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'Nomes são opcionais' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'Vazio = todos' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'Informe pelo menos um nome de motorista/perfil.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -182,20 +188,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5625'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.332'" /tmp/aapt.txt
+          grep -Fq "versionCode='5626'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.333'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0332
-          cp "$APK" /tmp/0332/rota-certa-0.1.332-agenda-public-search-today-start.apk
-          cp /tmp/apk.sha256 /tmp/0332/apk.sha256
-          cp /tmp/aapt.txt /tmp/0332/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0332/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0332/gradle.txt
-          git rev-parse HEAD > /tmp/0332/source-head.txt
+          mkdir -p /tmp/0333
+          cp "$APK" /tmp/0333/rota-certa-0.1.333-agenda-public-search-all-drivers.apk
+          cp /tmp/apk.sha256 /tmp/0333/apk.sha256
+          cp /tmp/aapt.txt /tmp/0333/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0333/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0333/gradle.txt
+          git rev-parse HEAD > /tmp/0333/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.332-agenda-public-search-today-start
+          name: rota-certa-0.1.333-agenda-public-search-all-drivers
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0332
+          path: /tmp/0333
