@@ -155,7 +155,7 @@ class PassengerCanonical0317Test {
     }
 
     @Test // T
-    fun emptyPublicSearchMonthStillProducesVisibleDayLines() {
+    fun emptyPublicSearchMonthDoesNotPolluteTimelineWithDayHeaders() {
         val response = BlaBlaPublicSearchResponse(
             status = "complete",
             request = BlaBlaPublicSearchRequest(
@@ -166,8 +166,7 @@ class PassengerCanonical0317Test {
             ),
         )
         val days = combinedTimelineCalendarDays(emptyList(), response)
-        assertEquals(31, days.size)
-        assertTrue(days.all { it.items.isEmpty() })
+        assertTrue(days.isEmpty())
     }
 
     @Test // U
