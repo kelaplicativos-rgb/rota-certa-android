@@ -205,10 +205,23 @@ fun RotaCertaApp(launchIntent: Intent?) {
         highlightedShortcutModule0171 = spec.id
         moduleNavigationActive0172 = true
         if (spec.id == "trip_agenda") {
-            context.startActivity(
+            val traceId = br.com.mapeiaia.rotacerta.trips.AgendaTrace.beginAgendaOpen(context, "home_shortcut")
+            val agendaIntent = br.com.mapeiaia.rotacerta.trips.AgendaTrace.attachTrace(
                 Intent(context, br.com.mapeiaia.rotacerta.trips.TripsActivity::class.java)
                     .setAction(br.com.mapeiaia.rotacerta.trips.TripActions.ACTION_OPEN_TRIPS),
+                traceId,
             )
+            val launchOperation = br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationStart(
+                context, "AGENDA_START_ACTIVITY", "main_activity", traceId,
+            )
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                context, "AGENDA_START_ACTIVITY_REQUEST", "source=home_shortcut", traceId, launchOperation.operationId,
+            )
+            context.startActivity(agendaIntent)
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.event(
+                context, "AGENDA_START_ACTIVITY_RETURN", "source=home_shortcut", traceId, launchOperation.operationId,
+            )
+            br.com.mapeiaia.rotacerta.trips.AgendaTrace.operationEnd(context, launchOperation)
             return
         }
         when (spec.action) {
