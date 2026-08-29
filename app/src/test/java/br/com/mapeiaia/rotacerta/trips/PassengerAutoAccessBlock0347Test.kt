@@ -64,7 +64,7 @@ class PassengerAutoAccessBlock0347Test {
         assertTrue(timeline.contains("⛔ NÃO ACEITO NO MEU CARRO"))
         assertTrue(timeline.contains("setPassengerAccessBlocked("))
         assertTrue(timeline.contains("passengerId = saved.id"))
-        assertTrue(timeline.contains("PublicBookingSync0296.pullAndReconcile(context, store)"))
+        assertTrue(timeline.contains("PublicBookingRemoteSync0296.pullAndReconcile(context, store)"))
         assertTrue(timeline.contains("profileByExternalPassengerId"))
     }
 
