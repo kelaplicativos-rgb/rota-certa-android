@@ -95,6 +95,8 @@ jobs:
           grep -Fq 'publicSearchWithoutOperationalTripsAddsOnlyDatesThatHaveRealCards' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
           grep -Fq 'timelineDayVisualIsBorderedCardWithoutLooseHorizontalDivider' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
           grep -Fq 'publicSearchDoesNotRenderStandaloneDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'emptyPublicSearchMonthDoesNotPolluteTimelineWithDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          ! grep -Fq 'emptyPublicSearchMonthStillProducesVisibleDayLines' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
