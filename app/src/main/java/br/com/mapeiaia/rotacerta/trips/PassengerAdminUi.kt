@@ -621,7 +621,7 @@ fun PassengerAdminScreen(
                                         )
                                     }.onSuccess { response ->
                                         if (nextBlocked) {
-                                            runCatching { PublicBookingSync0296.pullAndReconcile(context, store) }
+                                            runCatching { PublicBookingRemoteSync0296.pullAndReconcile(context, store) }
                                         }
                                         revision++
                                         onChanged(
