@@ -49,6 +49,32 @@ class RotaCertaDatePickerTest {
     }
 
     @Test
+    fun confirmationLabelStaysShortAndCountsSelectedDates() {
+        assertEquals(
+            "Continuar a partir de hoje",
+            rotaCertaDateConfirmLabel(RotaCertaDateSelection()),
+        )
+        assertEquals(
+            "Confirmar 1 data",
+            rotaCertaDateConfirmLabel(
+                RotaCertaDateSelection(dates = listOf(LocalDate.of(2026, 8, 29))),
+            ),
+        )
+        assertEquals(
+            "Confirmar 3 datas",
+            rotaCertaDateConfirmLabel(
+                RotaCertaDateSelection(
+                    dates = listOf(
+                        LocalDate.of(2026, 8, 29),
+                        LocalDate.of(2026, 8, 30),
+                        LocalDate.of(2026, 8, 31),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun currentMonthModeCanRespectTodayAsMinimumDate() {
         val selection = rotaCertaSelectMonth(
             YearMonth.of(2026, 8),
