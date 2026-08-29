@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AgendaCalendarDayLines0294Test {
@@ -131,11 +132,45 @@ class AgendaCalendarDayLines0294Test {
     }
 
     @Test
+    fun dateCardAppearsOnlyWhenThatCalendarDayHasNoTravelCard() {
+        assertTrue(
+            shouldRenderTimelineEmptyDayCard(
+                isOperationalCalendarDate = true,
+                operationalCardCount = 0,
+                publicCardCount = 0,
+            ),
+        )
+        assertFalse(
+            shouldRenderTimelineEmptyDayCard(
+                isOperationalCalendarDate = true,
+                operationalCardCount = 1,
+                publicCardCount = 0,
+            ),
+        )
+        assertFalse(
+            shouldRenderTimelineEmptyDayCard(
+                isOperationalCalendarDate = true,
+                operationalCardCount = 0,
+                publicCardCount = 1,
+            ),
+        )
+        assertFalse(
+            shouldRenderTimelineEmptyDayCard(
+                isOperationalCalendarDate = false,
+                operationalCardCount = 0,
+                publicCardCount = 0,
+            ),
+        )
+    }
+
+    @Test
     fun publicSearchDoesNotRenderStandaloneDayHeaders() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt",
         ).readText()
-        assertTrue(source.contains("if (day.date in operationalTimelineDates)"))
+        assertTrue(source.contains("shouldRenderTimelineEmptyDayCard("))
+        assertTrue(source.contains("operationalCardCount = day.items.size"))
+        assertTrue(source.contains("publicCardCount = dayPublicCards.size"))
         assertTrue(source.contains("Consulta pública • \$publicDateLabel"))
         assertTrue(!source.contains("agendaCalendarDaysForPeriod<TripTimelineEntry>"))
     }
