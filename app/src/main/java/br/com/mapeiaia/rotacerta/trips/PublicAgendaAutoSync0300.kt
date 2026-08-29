@@ -36,7 +36,22 @@ internal object PublicAgendaAutoSync0300 {
         val settings = store.onlineSettings()
         if (!settings.configured) return PublicAgendaAutoSyncResult()
 
+        val traceId = AgendaTrace.currentTraceId()
+        val syncOperation = AgendaTrace.operationStart(
+            context,
+            "PUBLIC_AGENDA_SYNC",
+            "PublicAgendaAutoSync0300.sync",
+            traceId,
+        )
+        try {
         val api = TripRemoteApi(settings)
+        val profileOperation = AgendaTrace.operationStart(
+            context,
+            "PROFILE_SYNC",
+            "PublicAgendaAutoSync0300",
+            traceId,
+            syncOperation.operationId,
+        )
         val resolvedPublicProfile = PublicDriverProfileResolver(context).resolve(settings)
         runCatching { api.ensurePublicAgenda(settings.publicCalendarToken, resolvedPublicProfile) }
             .onSuccess { response ->
@@ -45,6 +60,7 @@ internal object PublicAgendaAutoSync0300 {
                     driverUsername = response.username.ifBlank { settings.driverUsername },
                 )
                 if (updated != settings) store.saveOnlineSettings(updated)
+                AgendaTrace.operationEnd(context, profileOperation, result = "synced", processedCount = 1)
                 UnifiedDebugEventStore.record(
                     "PUBLIC_DRIVER_PROFILE_SYNCED",
                     context.packageName,
@@ -52,7 +68,11 @@ internal object PublicAgendaAutoSync0300 {
                 )
             }
             .onFailure { error ->
-                if (error is CancellationException) throw error
+                if (error is CancellationException) {
+                    AgendaTrace.operationCancelled(context, profileOperation)
+                    throw error
+                }
+                AgendaTrace.operationError(context, profileOperation, error)
                 UnifiedDebugEventStore.record(
                     "PUBLIC_DRIVER_PROFILE_SYNC_FAILED",
                     context.packageName,
@@ -65,8 +85,16 @@ internal object PublicAgendaAutoSync0300 {
             .values
             .map { it.single() }
             .take(450)
+        val passengerDirectoryOperation = AgendaTrace.operationStart(
+            context,
+            "PASSENGER_DIRECTORY_SYNC",
+            "PublicAgendaAutoSync0300",
+            traceId,
+            syncOperation.operationId,
+        )
         runCatching { api.syncPassengerDirectory(canonicalPassengerProfiles) }
             .onSuccess { response ->
+                AgendaTrace.operationEnd(context, passengerDirectoryOperation, result = "synced", processedCount = response.synced)
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNCED",
                     context.packageName,
@@ -74,7 +102,11 @@ internal object PublicAgendaAutoSync0300 {
                 )
             }
             .onFailure { error ->
-                if (error is CancellationException) throw error
+                if (error is CancellationException) {
+                    AgendaTrace.operationCancelled(context, passengerDirectoryOperation)
+                    throw error
+                }
+                AgendaTrace.operationError(context, passengerDirectoryOperation, error)
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNC_FAILED",
                     context.packageName,
@@ -87,9 +119,17 @@ internal object PublicAgendaAutoSync0300 {
         var seatClaimsSynced = 0
         var failures = 0
 
+        val localDiscoveryOperation = AgendaTrace.operationStart(
+            context,
+            "LOCAL_TRIPS_DISCOVERY",
+            "PublicAgendaAutoSync0300",
+            traceId,
+            syncOperation.operationId,
+        )
         val localTrips = store.trips()
             .filter { it.departureAtMillis > nowMillis }
             .filter { it.status in PUBLIC_LOCAL_STATUSES }
+        AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
 
         localTrips.forEach { original ->
             val publicTrip = original.copy(publicBookingEnabled = true)
