@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.333 Agenda public search all drivers
+name: Rota Certa 0.1.334 Agenda visual dates and route demand
 
 on:
   push:
     branches:
-      - agent/agenda-public-search-all-drivers-0.1.333
+      - agent/agenda-public-search-date-demand-0.1.334
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0333-${{ github.ref }}
+  group: agenda-0334-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,16 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-search-all-drivers-0.1.333
+          ref: agent/agenda-public-search-date-demand-0.1.334
           fetch-depth: 0
 
-      - name: Validate 0.1.333 public-search all drivers
+      - name: Validate 0.1.334 visual dates and route demand
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5626' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.333"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5627' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.334"' app/build.gradle.kts
           grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
@@ -120,6 +120,30 @@ jobs:
           grep -Fq 'Nomes são opcionais' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
           grep -Fq 'Vazio = todos' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
           ! grep -Fq 'Informe pelo menos um nome de motorista/perfil.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'class RotaCertaDatePickerTest' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
+          grep -Fq 'enum class RotaCertaDateSelectionMode' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionMode.MULTIPLE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionMode.RANGE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionMode.MONTH' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionField(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'label = "Datas da consulta"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'label = { Text("Data ou mês") }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'AAAA-MM-DD para um dia' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'Capturar demanda do trecho' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'selectedDates: List<String> = emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'captureDemand: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'data class BlaBlaPublicSearchDemand' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'indicadorDemandaEncontrado: Boolean' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'percentualReservado: Int?' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'publicSearchDemandFor(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt
+          grep -Fq 'bodyText = evidence.bodyText' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt
+          grep -Fq 'document.body?.innerText' app/src/main/assets/blablacar/scripts/public_search_results.js
+          grep -Fq 'noSelectedDateStartsTodayAndContinuesOnlyThroughCurrentMonth' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'threeExplicitDatesWithReverseCreateExactlySixIndependentTasks' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandToggleOffSkipsAdditionalDemandProcessing' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandCaptureExtractsBusyFlagPercentageMessageAndTimestamp' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'missingDemandIndicatorStaysUnknownInsteadOfInventingLowDemand' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandStaysAssociatedWithExactDateAndDirection' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
 
       - name: Verify FAROL unchanged from 0.1.320
         shell: bash
@@ -188,20 +212,20 @@ jobs:
           grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5626'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.333'" /tmp/aapt.txt
+          grep -Fq "versionCode='5627'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.334'" /tmp/aapt.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
-          mkdir -p /tmp/0333
-          cp "$APK" /tmp/0333/rota-certa-0.1.333-agenda-public-search-all-drivers.apk
-          cp /tmp/apk.sha256 /tmp/0333/apk.sha256
-          cp /tmp/aapt.txt /tmp/0333/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0333/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0333/gradle.txt
-          git rev-parse HEAD > /tmp/0333/source-head.txt
+          mkdir -p /tmp/0334
+          cp "$APK" /tmp/0334/rota-certa-0.1.334-agenda-public-search-date-demand.apk
+          cp /tmp/apk.sha256 /tmp/0334/apk.sha256
+          cp /tmp/aapt.txt /tmp/0334/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0334/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0334/gradle.txt
+          git rev-parse HEAD > /tmp/0334/source-head.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.333-agenda-public-search-all-drivers
+          name: rota-certa-0.1.334-agenda-public-search-date-demand
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0333
+          path: /tmp/0334
