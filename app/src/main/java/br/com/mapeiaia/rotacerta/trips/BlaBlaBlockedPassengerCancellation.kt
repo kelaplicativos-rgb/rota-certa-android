@@ -279,6 +279,18 @@ class BlaBlaBlockedPassengerCancellationActivity : Activity() {
                                 ),
                             )
                         }
+                    } else {
+                        externalPassengerReservationKey(current.profileUuid, current.bookingHref)?.let { metadataKey ->
+                            val identityStore = PassengerIdentityStore(this)
+                            identityStore.externalMetadata(metadataKey)?.let { metadata ->
+                                identityStore.saveExternalMetadata(
+                                    metadata.copy(
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                    ),
+                                )
+                            }
+                        }
                     }
                     queue.remove(current.id)
                     UnifiedDebugEventStore.record(
