@@ -191,6 +191,11 @@ fun TripTimelineScreen(
             .filter { card -> publicSearchCardMatchesTimelineSearch(card, searchQuery) }
             .sortedBy(::publicSearchCardDepartureSortMillis)
     }
+    val operationalTimelineDates = remember(visibleEntries) {
+        agendaCalendarDaysForItems(visibleEntries) { entry ->
+            Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        }.mapTo(linkedSetOf()) { it.date }
+    }
     val timelineCalendarDays = remember(visibleEntries, publicResponseForTimeline) {
         combinedTimelineCalendarDays(visibleEntries, publicResponseForTimeline)
     }
@@ -389,7 +394,9 @@ fun TripTimelineScreen(
     }
 
     timelineCalendarDays.forEach { day ->
-        AgendaCalendarDayLine(day.date)
+        if (day.date in operationalTimelineDates) {
+            AgendaCalendarDayLine(day.date)
+        }
         val dayPublicCards = publicTimelineCards.filter { card ->
             runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
         }
@@ -497,12 +504,12 @@ internal fun combinedTimelineCalendarDays(
     }.mapTo(linkedSetOf()) { it.date }
 
     if (publicResponse != null) {
-        agendaCalendarDaysForPeriod<TripTimelineEntry>(
-            period = publicResponse.request.period,
-            items = emptyList(),
-            dateOf = { null },
-        ).forEach { dates += it.date }
-        publicResponse.cards.mapNotNullTo(dates) { card -> runCatching { LocalDate.parse(card.date) }.getOrNull() }
+        // Public Search may contribute real cards, but its requested day/month must never
+        // manufacture empty visual days. The continuous empty-day ruler belongs only
+        // to the operational Timeline.
+        publicResponse.cards.mapNotNullTo(dates) { card ->
+            runCatching { LocalDate.parse(card.date) }.getOrNull()
+        }
     }
     return dates.sorted().map { date -> AgendaCalendarDay(date, entriesByDate[date].orEmpty()) }
 }
@@ -513,6 +520,10 @@ internal fun BlaBlaPublicTimelineCard(
     response: BlaBlaPublicSearchResponse?,
 ) {
     val context = LocalContext.current
+    val publicDateLabel = runCatching { LocalDate.parse(card.date) }
+        .getOrNull()
+        ?.let(::agendaCalendarDayLabel)
+        ?: card.date
     val routeFrom = card.actualDeparture?.takeIf(String::isNotBlank) ?: card.searchFrom
     val routeTo = card.actualArrival?.takeIf(String::isNotBlank) ?: card.searchTo
     val status = when (card.availability) {
@@ -531,7 +542,7 @@ internal fun BlaBlaPublicTimelineCard(
             modifier = Modifier.fillMaxWidth().padding(13.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Text("Consulta pública • Rota Certa", style = MaterialTheme.typography.labelLarge, color = Color.Black)
+            Text("Consulta pública • $publicDateLabel", style = MaterialTheme.typography.labelLarge, color = Color.Black)
             Text(
                 "${card.departureTime ?: "--:--"} • $routeFrom → $routeTo",
                 style = MaterialTheme.typography.titleMedium,
