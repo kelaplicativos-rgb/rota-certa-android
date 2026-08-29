@@ -141,12 +141,21 @@ internal object PublicAgendaAutoSync0300 {
             .take(100)
             .toList()
 
-        externalTrips.forEach { synthesized ->
+        externalTrips.forEachIndexed { index, synthesized ->
             val publicTrip = synthesized.trip
+            val diagnosticTripKey = sha256(publicTrip.publicToken).take(12)
+            var failureStage = "publish"
             runCatching {
-                val response = runCatching { api.publish(publicTrip) }.getOrElse {
+                val response = runCatching { api.publish(publicTrip) }.getOrElse { publishError ->
+                    failureStage = "update_after_publish_failure"
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY",
+                        context.packageName,
+                        "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey reason=${publishError.javaClass.simpleName} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                    )
                     api.update(publicTrip.copy(remoteId = publicTrip.publicToken))
                 }
+                failureStage = "capacity_claims"
                 seatClaimsSynced += syncExternalCapacityClaims(
                     api = api,
                     remoteTripId = response.tripId,
@@ -175,8 +184,13 @@ internal object PublicAgendaAutoSync0300 {
                     "remoteTripPresent=true profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
                 )
                 externalPublished++
-            }.onFailure {
+            }.onFailure { error ->
                 failures++
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED",
+                    context.packageName,
+                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey stage=$failureStage reason=${error.javaClass.simpleName} claims=${synthesized.capacityClaims.size} bookedSeats=${synthesized.bookedSeats} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                )
             }
         }
 
