@@ -56,7 +56,151 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED='^(.github/workflows/agenda-0348-one-tap-booking.yml|app/build.gradle.kts|trip-platform/functions/index.js|trip-platform/functions/test/(public-booking-0296.test.js|public-one-tap-booking-0348.test.js)|trip-platform/public/(app.js|index.html))$'
+          ALLOWED='^(.github/workflows/agenda-0348-one-tap-booking.yml|app/build.gradle.kts|trip-platform/functions/index.js|trip-platform/functions/test/(public-booking-0296.test.js|public-capacity-fidelity-0303.test.js|public-search-login-0313.test.js|public-video-flow-0305.test.js|public-one-tap-booking-0348.test.js)|trip-platform/public/(app.js|index.html))
+          UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
+          test -z "$UNEXPECTED"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Web and backend tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/date-selection.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5641'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.348'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+          mkdir -p /tmp/0348 trip-platform/public/downloads
+          cp "$APK" /tmp/0348/rota-certa-0.1.348-agenda-one-tap-booking.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk
+          cp /tmp/apk.sha256 /tmp/0348/apk.sha256
+          cp /tmp/aapt.txt /tmp/0348/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0348/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0348/gradle.txt
+          git rev-parse HEAD > /tmp/0348/source-head.txt
+          git diff --name-only 2c14213e4f414fc8d2da49f1a4e715d803aa184f..HEAD > /tmp/0348/changed-files.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.348-agenda-one-tap-booking
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0348
+
+      - name: Install Firebase Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy Agenda backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke deployed one-tap booking surface and hosted APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+
+          BUST="$(date +%s%N)"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
+          grep -Fq 'id="quickBookingNotice"' /tmp/live-index.html
+          grep -Fq 'id="startBooking" class="primary" type="button">RESERVAR</button>' /tmp/live-index.html
+          grep -Fq 'Precisa de mais lugares ou outro trecho?' /tmp/live-index.html
+          grep -Fq 'id="name" type="hidden"' /tmp/live-index.html
+          grep -Fq 'id="contact" type="hidden"' /tmp/live-index.html
+
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          grep -Fq 'startQuickReservation' /tmp/live-app.js
+          grep -Fq 'reserveParams.set("reservar", "1")' /tmp/live-app.js
+          grep -Fq 'persistPendingBookingIntent(intent)' /tmp/live-app.js
+          grep -Fq 'bookingRequestInFlight' /tmp/live-app.js
+
+          ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
+          test "$ACCESS_CODE" = "403"
+
+          EXPECTED="$(sha256sum /tmp/0348/rota-certa-0.1.348-agenda-one-tap-booking.apk | awk '{print $1}')"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk?v=$BUST" -o /tmp/hosted-0348.apk
+          ACTUAL="$(sha256sum /tmp/hosted-0348.apk | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.348-agenda-one-tap-booking.apk"
+
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
 
