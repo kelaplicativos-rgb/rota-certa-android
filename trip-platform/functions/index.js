@@ -2668,6 +2668,7 @@ async function createBooking(req, res, token) {
         totalFareCents,
         creditAppliedCents,
         amountDueCents,
+        changeVersion: 1,
         createdAtMillis: now,
         updatedAtMillis: now,
       };
@@ -2701,8 +2702,21 @@ async function createBooking(req, res, token) {
         status: statusForReconciledLoads(trip, reconciled),
         updatedAtMillis: now,
       });
+      const eventId = writeChangeEventAndNotifications(tx, {
+        eventType: "BOOKING_CREATED",
+        tripToken: token,
+        bookingId,
+        version: 1,
+        driverUsername: debugDriverUsername,
+        actor: "PASSENGER",
+        source: "PUBLIC_BOOKING",
+        passengerId,
+        changes: [{ field: "status", before: null, after: "CONFIRMED" }, { field: "seats", before: 0, after: seats }],
+        driverNotification: driverNotificationCopy("BOOKING_CREATED", candidate, cleanText(trip.title, 180)),
+      });
       return {
         replayed: false,
+        eventId,
         availableSeats: availableForSegmentRange(trip, reconciled, fromIndex, toIndex),
         farePerSeatCents,
         totalFareCents,
