@@ -26,13 +26,17 @@ class AgendaSyncCrashTrace0322Test {
     }
 
     @Test
-    fun checkpointAndPreviousCrashEvidenceSurviveAProcessRestart() {
+    fun checkpointAndPreviousCrashEvidenceSurviveAProcessRestartWithoutHotPathDiskIo() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
         assertTrue(source.contains("CHECKPOINT_FILE_NAME"))
-        assertTrue(source.contains("persistCheckpoint(context, lastCheckpoint)"))
+        assertTrue(source.contains("schedulePersist(context.applicationContext)"))
+        assertTrue(source.contains("ioExecutor"))
+        assertTrue(source.contains("persistCheckpointAndBreadcrumbsNow"))
         assertTrue(source.contains("lastCheckpoint="))
         assertTrue(source.contains("checkpointFile(context)"))
+        assertTrue(source.contains("OPERATION_INCOMPLETE_DUE_PROCESS_TERMINATION"))
         assertFalse(source.contains("traceFile(context).delete()"))
+        assertFalse(source.contains("readLines(Charsets.UTF_8)"))
     }
 
     @Test
