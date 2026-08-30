@@ -33,6 +33,7 @@ internal object PublicAgendaAutoSync0300 {
         context: Context,
         store: TripStore,
         configuredVehicleCapacity: Int,
+        configuredRotaCertaSeatAllocation: Int,
         nowMillis: Long = System.currentTimeMillis(),
     ): PublicAgendaAutoSyncResult {
         val settings = store.onlineSettings()
