@@ -416,7 +416,12 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision) {
+    androidx.compose.runtime.LaunchedEffect(
+        settingsLoaded,
+        appSettings.vehicleCapacity,
+        appSettings.rotaCertaSeatAllocation,
+        publicAgendaSyncRevision,
+    ) {
         if (!settingsLoaded) {
             AgendaTrace.event(
                 activity,
@@ -435,7 +440,7 @@ private fun TripApp(
             AgendaTrace.event(
                 activity,
                 "CAPACITY_PUBLIC_SYNC_TRIGGERED",
-                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "local_settings_unconfigured"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
+                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "local_settings_unconfigured"} physicalCapacity=${appSettings.vehicleCapacity} rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation}",
                 traceId,
             )
             val capacityPublicSyncOperation = AgendaTrace.operationStart(
@@ -449,6 +454,7 @@ private fun TripApp(
                     context = activity,
                     store = store,
                     configuredVehicleCapacity = appSettings.vehicleCapacity,
+                    configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                 ).also { syncResult ->
                     AgendaTrace.operationEnd(
                         activity,
