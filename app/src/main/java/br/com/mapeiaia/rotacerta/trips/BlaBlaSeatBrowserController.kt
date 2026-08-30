@@ -3,9 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import android.content.Context
 import android.webkit.WebView
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.serializer
 
 @Serializable
 private data class BlaBlaBrowserClickResult(
@@ -26,15 +24,13 @@ internal class BlaBlaSeatBrowserController(
     private val expectedProfileUuid: String,
     private val tripId: String,
 ) {
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val scripts = BlaBlaBrowserScriptRegistry(context)
+    private val androidContext = context.applicationContext
     private val orchestrator = BlaBlaBrowserOrchestrator()
     private var interactionGeneration = 0L
 
     fun read(callback: (SeatOptionState?) -> Unit) {
         evaluate(
             request = BlaBlaBrowserRequest.SEAT_OPTIONS,
-            script = scripts.script(BlaBlaBrowserRequest.SEAT_OPTIONS),
             callback = callback,
         )
     }
@@ -71,11 +67,10 @@ internal class BlaBlaSeatBrowserController(
         }
         val direction = if (targetSeats > currentSeats) 1 else -1
         val expectedNext = currentSeats + direction
-        val script = scripts.script(
-            BlaBlaBrowserRequest.SEAT_CHANGE,
-            mapOf("DIRECTION" to direction.toString()),
-        )
-        evaluate<BlaBlaBrowserClickResult>(BlaBlaBrowserRequest.SEAT_CHANGE, script) { click ->
+        evaluate<BlaBlaBrowserClickResult>(
+            request = BlaBlaBrowserRequest.SEAT_CHANGE,
+            arguments = mapOf("DIRECTION" to direction.toString()),
+        ) { click ->
             if (click?.clicked != true) {
                 callback(false, "seat_change_not_clicked")
                 return@evaluate
@@ -93,8 +88,7 @@ internal class BlaBlaSeatBrowserController(
     }
 
     private fun save(callback: (Boolean, String) -> Unit) {
-        val script = scripts.script(BlaBlaBrowserRequest.SEAT_SAVE)
-        evaluate<BlaBlaBrowserClickResult>(BlaBlaBrowserRequest.SEAT_SAVE, script) { result ->
+        evaluate<BlaBlaBrowserClickResult>(BlaBlaBrowserRequest.SEAT_SAVE) { result ->
             if (result?.clicked == true) callback(true, "seat_save_clicked")
             else callback(false, "seat_save_not_clicked")
         }
@@ -102,21 +96,36 @@ internal class BlaBlaSeatBrowserController(
 
     private inline fun <reified T> evaluate(
         request: BlaBlaBrowserRequest,
-        script: String,
+        arguments: Map<String, String> = emptyMap(),
         crossinline callback: (T?) -> Unit,
     ) {
-        val localGeneration = ++interactionGeneration
-        val token = orchestrator.start(request, context(), "seat_controller")
-        webView.evaluateJavascript(script) { encoded ->
-            if (localGeneration != interactionGeneration || !orchestrator.isCurrent(token, context())) {
-                return@evaluateJavascript
-            }
-            val decoded = runCatching {
-                if (encoded.isNullOrBlank() || encoded == "null") return@runCatching null
-                val raw = json.parseToJsonElement(encoded).jsonPrimitive.content
-                json.decodeFromString<T>(raw)
-            }.getOrNull()
-            callback(decoded)
+        interactionGeneration += 1L
+        val executionContext = context()
+        val onResult: (T?) -> Unit = { result -> callback(result) }
+        if (request.operation == BlaBlaBrowserOperation.REMOTE_WRITE) {
+            orchestrator.executeRemoteWrite(
+                androidContext = androidContext,
+                webView = webView,
+                request = request,
+                executionContext = executionContext,
+                currentContext = ::context,
+                deserializer = serializer<T>(),
+                arguments = arguments,
+                reason = "seat_controller_write",
+                callback = onResult,
+            )
+        } else {
+            orchestrator.executeCollectionStep(
+                androidContext = androidContext,
+                webView = webView,
+                request = request,
+                executionContext = executionContext,
+                currentContext = ::context,
+                deserializer = serializer<T>(),
+                arguments = arguments,
+                reason = "seat_controller_read",
+                callback = onResult,
+            )
         }
     }
 

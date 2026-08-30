@@ -169,6 +169,7 @@ internal object BlaBlaBlockedPassengerCancellationIntents {
 
 class BlaBlaBlockedPassengerCancellationActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var queue: BlockedPassengerCancellationStore
     private lateinit var status: TextView
@@ -264,7 +265,15 @@ class BlaBlaBlockedPassengerCancellationActivity : Activity() {
                     else -> view.postDelayed({ tick(view, root) }, 750L)
                 }
             }
-            Phase.VERIFY -> view.evaluateJavascript(verificationScript(current.externalPassengerId)) { encoded ->
+            Phase.VERIFY -> browserOrchestrator.executeCollectionScript(
+                androidContext = this,
+                webView = view,
+                request = BlaBlaBrowserRequest.PASSENGER_ROSTER,
+                script = verificationScript(current.externalPassengerId),
+                executionContext = blockedPassengerBrowserContext(view, current),
+                currentContext = { blockedPassengerBrowserContext(view, current) },
+                reason = "blocked_passenger_cancel_verify",
+            ) { encoded ->
                 val action = decodeJsString(encoded)
                 if (action == "ABSENT") verificationMisses++ else verificationMisses = 0
                 UnifiedDebugEventStore.record(
@@ -322,6 +331,19 @@ class BlaBlaBlockedPassengerCancellationActivity : Activity() {
             }
         }
     }
+
+    private fun blockedPassengerBrowserContext(
+        view: WebView,
+        current: BlockedPassengerCancellationRequest,
+    ): BlaBlaBrowserExecutionContext = BlaBlaBrowserExecutionContext(
+        accountId = current.accountId,
+        expectedProfileUuid = current.profileUuid,
+        syncGeneration = startedAtMillis,
+        navigationGeneration = verificationMisses.toLong(),
+        tripId = current.tripId,
+        passengerKey = current.externalPassengerId,
+        url = view.url.orEmpty(),
+    )
 
     private fun cancelFlowScript(): String = """
         (function() {

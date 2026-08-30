@@ -55,7 +55,6 @@ class BlaBlaPublicSearchActivity : Activity() {
     private lateinit var webView: WebView
     private lateinit var store: BlaBlaPublicSearchStore
     private lateinit var request: BlaBlaPublicSearchRequest
-    private lateinit var browserScripts: BlaBlaBrowserScriptRegistry
     private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private var tasks: List<BlaBlaPublicSearchTask> = emptyList()
     private var taskIndex = 0
@@ -68,7 +67,6 @@ class BlaBlaPublicSearchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = BlaBlaPublicSearchStore(this)
-        browserScripts = BlaBlaBrowserScriptRegistry(this)
         request = runCatching {
             intent.getStringExtra(BlaBlaPublicSearchIntents.EXTRA_REQUEST_JSON)
                 ?.let { json.decodeFromString<BlaBlaPublicSearchRequest>(it) }
@@ -187,23 +185,22 @@ class BlaBlaPublicSearchActivity : Activity() {
         if (expectedGeneration != generation || capturedGeneration == expectedGeneration) return
         capturedGeneration = expectedGeneration
         val task = tasks.getOrNull(taskIndex) ?: return
-        val token = browserOrchestrator.start(
-            BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
-            publicBrowserContext(),
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = webView,
+            request = BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+            executionContext = publicBrowserContext(),
+            currentContext = ::publicBrowserContext,
+            deserializer = PublicRenderedPage.serializer(),
             reason = "capture_public_results",
-        )
-        val script = browserScripts.script(BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS)
-        webView.evaluateJavascript(script) { raw ->
-            if (
-                expectedGeneration != generation ||
-                taskIndex >= tasks.size ||
-                !browserOrchestrator.isCurrent(token, publicBrowserContext())
-            ) return@evaluateJavascript
-            val evidence = decodePage(raw)
+        ) { evidence ->
+            if (expectedGeneration != generation || taskIndex >= tasks.size) {
+                return@executeCollectionStep
+            }
             if (evidence == null) {
                 recordFailure(task, "parse_error", "Não foi possível interpretar a página pública.")
                 advance()
-                return@evaluateJavascript
+                return@executeCollectionStep
             }
             val currentUrl = webView.url.orEmpty()
             val exact = exactSearchUrl(currentUrl, task)
@@ -317,12 +314,6 @@ class BlaBlaPublicSearchActivity : Activity() {
         tripId = "public-task-$taskIndex",
         url = if (::webView.isInitialized) webView.url.orEmpty() else "",
     )
-
-    private fun decodePage(raw: String?): PublicRenderedPage? = runCatching {
-        val encoded = raw?.takeIf { it != "null" } ?: return@runCatching null
-        val decoded = json.decodeFromString<String>(encoded)
-        json.decodeFromString<PublicRenderedPage>(decoded)
-    }.getOrNull()
 
     private fun exactSearchUrl(raw: String, task: BlaBlaPublicSearchTask): Boolean {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return false

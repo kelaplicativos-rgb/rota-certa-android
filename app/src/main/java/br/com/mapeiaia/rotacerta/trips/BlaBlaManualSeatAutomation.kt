@@ -386,6 +386,7 @@ private data class PassengerTarget(
 
 class BlaBlaMhtmlHarvestActivity : Activity() {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var sessionStore: BlaBlaDynamicSessionStore
     private lateinit var harvestStore: BlaBlaHarvestEvidenceStore
@@ -516,7 +517,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
 
     private fun captureRides() {
         val expectedNavigation = navigationGeneration
-        evaluate<MhtmlRideList>(RIDE_LINKS_JS) { result ->
+        evaluate<MhtmlRideList>(BlaBlaBrowserRequest.RIDE_LIST, RIDE_LINKS_JS) { result ->
             if (!captureStillCurrent(expectedNavigation, Phase.RIDES, "", -1, result?.pageUrl.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -574,7 +575,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         }
         val expectedNavigation = navigationGeneration
         val expectedIndex = tripIndex
-        evaluate<MhtmlTripEvidence>(TRIP_EVIDENCE_JS) { result ->
+        evaluate<MhtmlTripEvidence>(BlaBlaBrowserRequest.TRIP_DETAIL, TRIP_EVIDENCE_JS) { result ->
             if (!captureStillCurrent(expectedNavigation, Phase.TRIP, target.tripId, expectedIndex, result?.pageUrl.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -735,7 +736,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             advancePassenger(expectedIndex, "parent_trip_not_proven")
             return
         }
-        evaluate<MhtmlPassengerCardOpenState>(passengerCardOpenJs(target.cardIndex)) { state ->
+        evaluate<MhtmlPassengerCardOpenState>(BlaBlaBrowserRequest.PASSENGER_OPEN, passengerCardOpenJs(target.cardIndex)) { state ->
             if (!captureStillCurrent(expectedNavigation, Phase.PASSENGER_CARD, target.tripId, expectedIndex, webView.url.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -843,7 +844,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         }
         val expectedIndex = passengerIndex
         val expectedNavigation = navigationGeneration
-        evaluate<MhtmlPassengerEvidence>(PASSENGER_EVIDENCE_JS) { result ->
+        evaluate<MhtmlPassengerEvidence>(BlaBlaBrowserRequest.PASSENGER_CONTACT, PASSENGER_EVIDENCE_JS) { result ->
             if (!passengerCaptureStillCurrent(expectedNavigation, expectedIndex, target, result?.pageUrl.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -868,7 +869,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                     packageName,
                     "account=${account.displayLabel} tripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} actionPresent=true clickIntercepted=true",
                 )
-                evaluateRaw(CLICK_CALL_ACTION_JS) {
+                evaluateRaw(BlaBlaBrowserRequest.PASSENGER_OPEN, CLICK_CALL_ACTION_JS) {
                     if (!passengerCaptureStillCurrent(expectedNavigation, expectedIndex, target, webView.url.orEmpty())) {
                         busy = false
                         return@evaluateRaw
@@ -984,7 +985,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
         }
         val expectedNavigation = navigationGeneration
         val expectedIndex = editIndex
-        evaluate<MhtmlEditEvidence>(EDIT_EVIDENCE_JS) { result ->
+        evaluate<MhtmlEditEvidence>(BlaBlaBrowserRequest.TRIP_EDIT, EDIT_EVIDENCE_JS) { result ->
             if (!captureStillCurrent(expectedNavigation, Phase.EDIT, target.tripId, expectedIndex, result?.pageUrl.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -1055,7 +1056,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
         }
         val expectedNavigation = navigationGeneration
         val expectedIndex = optionIndex
-        evaluate<SeatOptionState>(SEAT_OPTIONS_READ_JS) { result ->
+        evaluate<SeatOptionState>(BlaBlaBrowserRequest.SEAT_OPTIONS, SEAT_OPTIONS_READ_JS) { result ->
             if (!captureStillCurrent(expectedNavigation, Phase.OPTIONS, target.tripId, expectedIndex, result?.pageUrl.orEmpty())) {
                 busy = false
                 return@evaluate
@@ -1476,28 +1477,54 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
         }
     }
 
-    private fun evaluateRaw(script: String, callback: (String?) -> Unit) {
-        val expectedGeneration = ++evaluationGeneration
-        var completed = false
-        webView.postDelayed({
-            if (completed || expectedGeneration != evaluationGeneration || isFinishing || isDestroyed) return@postDelayed
-            completed = true
-            UnifiedDebugEventStore.record(
-                "HARVEST_EVALUATION_TIMEOUT",
-                packageName,
-                "account=${account.displayLabel} phase=${phase.name.lowercase()} timeoutMs=$EVALUATION_TIMEOUT_MS failClosed=true",
-            )
-            callback(null)
-        }, EVALUATION_TIMEOUT_MS)
-        webView.evaluateJavascript(script) { encoded ->
-            if (completed || expectedGeneration != evaluationGeneration) return@evaluateJavascript
-            completed = true
+    private fun harvestBrowserContext(): BlaBlaBrowserExecutionContext {
+        val tripId = when (phase) {
+            Phase.TRIP -> tripTargets.getOrNull(tripIndex)?.tripId
+            Phase.PASSENGER_CARD, Phase.PASSENGER -> passengerTargets.getOrNull(passengerIndex)?.tripId
+            Phase.EDIT -> editTargets.getOrNull(editIndex)?.tripId
+            Phase.OPTIONS -> optionTargets.getOrNull(optionIndex)?.tripId
+            Phase.RIDES -> null
+        }.orEmpty()
+        val passengerKey = passengerTargets.getOrNull(passengerIndex)?.externalPassengerKey.orEmpty()
+        return BlaBlaBrowserExecutionContext(
+            accountId = account.id,
+            expectedProfileUuid = account.profileUuid.orEmpty(),
+            syncGeneration = evaluationGeneration,
+            navigationGeneration = navigationGeneration,
+            tripId = tripId,
+            passengerKey = passengerKey,
+            url = if (::webView.isInitialized) webView.url.orEmpty() else "",
+        )
+    }
+
+    private fun evaluateRaw(
+        request: BlaBlaBrowserRequest,
+        script: String,
+        callback: (String?) -> Unit,
+    ) {
+        evaluationGeneration += 1L
+        val expectedGeneration = evaluationGeneration
+        browserOrchestrator.executeCollectionScript(
+            androidContext = this,
+            webView = webView,
+            request = request,
+            script = script,
+            executionContext = harvestBrowserContext(),
+            currentContext = ::harvestBrowserContext,
+            reason = "legacy_mhtml_collection",
+            timeoutMs = EVALUATION_TIMEOUT_MS,
+        ) { encoded ->
+            if (expectedGeneration != evaluationGeneration) return@executeCollectionScript
             callback(encoded)
         }
     }
 
-    private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
-        evaluateRaw(script) { encoded ->
+    private inline fun <reified T> evaluate(
+        request: BlaBlaBrowserRequest,
+        script: String,
+        crossinline callback: (T?) -> Unit,
+    ) {
+        evaluateRaw(request, script) { encoded ->
             val decoded = runCatching {
                 if (encoded.isNullOrBlank() || encoded == "null") return@runCatching null
                 val raw = json.parseToJsonElement(encoded).jsonPrimitive.content
