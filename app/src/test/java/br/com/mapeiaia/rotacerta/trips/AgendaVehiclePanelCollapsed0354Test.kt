@@ -9,37 +9,41 @@ class AgendaVehiclePanelCollapsed0354Test {
     private fun source(path: String): String = File("src/main/java/$path").readText()
 
     @Test
-    fun vehicleDefaultsPanelStartsCollapsedAndUsesTheSameAgendaActionPattern() {
+    fun vehicleEntryIsRemovedFromTimelineAdministration() {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        assertTrue(timeline.contains("var driverDefaultsExpanded by remember { mutableStateOf(false) }"))
-        assertTrue(timeline.contains("ResponsiveTripActions("))
-        assertTrue(
-            timeline.contains(
-                "if (driverDefaultsExpanded) \"Fechar dados do veículo\" else \"Dados do veículo\"",
-            ),
-        )
-        assertFalse(timeline.contains("🚗 Dados do veículo ▲"))
-        assertFalse(timeline.contains("🚗 Dados do veículo ▼"))
+        val header = timeline.indexOf("Text(if (showArchived)")
+        val passengers = timeline.indexOf("GlobalPassengerFlowPanel(", header)
+        val topAdministration = timeline.substring(header, passengers)
 
-        val toggleLabel = timeline.indexOf("if (driverDefaultsExpanded) \"Fechar dados do veículo\" else \"Dados do veículo\"")
-        val toggleAction = timeline.indexOf("{ driverDefaultsExpanded = !driverDefaultsExpanded }", toggleLabel)
-        val gate = timeline.indexOf("if (driverDefaultsExpanded) {", toggleAction)
-        val card = timeline.indexOf("TripDriverDefaultsCard(", gate)
-        assertTrue(toggleLabel >= 0)
-        assertTrue(toggleAction > toggleLabel)
-        assertTrue(gate > toggleAction)
-        assertTrue(card > gate)
+        assertFalse(topAdministration.contains("driverDefaultsExpanded"))
+        assertFalse(topAdministration.contains("\"Dados do veículo\""))
+        assertFalse(topAdministration.contains("\"Fechar dados do veículo\""))
+        assertFalse(topAdministration.contains("TripDriverDefaultsCard("))
     }
 
     @Test
-    fun loadingAndEditableVehicleContentStayInsideTheCollapsedGate() {
-        val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        val gate = timeline.indexOf("if (driverDefaultsExpanded) {")
-        val passengers = timeline.indexOf("GlobalPassengerFlowPanel(", gate)
-        val section = timeline.substring(gate, passengers)
+    fun integrationVehicleExpanderReusesCanonicalLocalVehicleSettings() {
+        val settings = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt")
+        val vehicleToggle = settings.indexOf("if (vehicleExpanded) \"🚗 Veículo ▲\" else \"🚗 Veículo ▼\"")
+        val vehicleGate = settings.indexOf("if (vehicleExpanded) {", vehicleToggle)
+        val nextSection = settings.indexOf("PublicProfileTextField(\"Preferências\"", vehicleGate)
+        val vehicleSection = settings.substring(vehicleGate, nextSection)
 
-        assertTrue(section.contains("if (settingsLoaded) {"))
-        assertTrue(section.contains("TripDriverDefaultsCard("))
-        assertTrue(section.contains("Carregando configurações do veículo…"))
+        assertTrue(vehicleToggle >= 0)
+        assertTrue(vehicleGate > vehicleToggle)
+        assertTrue(vehicleSection.contains("TripDriverDefaultsCard("))
+        assertTrue(vehicleSection.contains("vehicleSettingsRepository"))
+        assertTrue(vehicleSection.contains("vehicleReferenceOrigin"))
+        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Marca/modelo\""))
+        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Cor\""))
+        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Comodidades\""))
+    }
+
+    @Test
+    fun canonicalVehicleEditorStillUsesOriginalSettingsRepositoryAndStorageContract() {
+        val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
+        assertTrue(timeline.contains("internal fun TripDriverDefaultsCard("))
+        assertTrue(timeline.contains("repository.saveSettings(settings.copy(vehicleCapacity = parsed))"))
+        assertTrue(timeline.contains("referenceStore.save(origin)"))
     }
 }

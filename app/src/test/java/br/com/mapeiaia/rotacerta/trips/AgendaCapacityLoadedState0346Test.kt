@@ -11,11 +11,16 @@ class AgendaCapacityLoadedState0346Test {
     @Test
     fun capacityUiDoesNotRenderProvisionalDefaultAsEmptyField() {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
+        val online = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt")
+
         assertTrue(timeline.contains("collectAsState(initial = null)"))
         assertTrue(timeline.contains("val settingsLoaded = appSettingsState != null"))
-        assertTrue(timeline.contains("if (settingsLoaded) {"))
-        assertTrue(timeline.contains("Carregando configurações do veículo…"))
         assertFalse(timeline.contains("settingsRepository.settings.collectAsState(initial = AppSettings())"))
+
+        assertTrue(online.contains("vehicleSettingsRepository.settings.collectAsState(initial = null)"))
+        assertTrue(online.contains("if (vehicleAppSettings != null) {"))
+        assertTrue(online.contains("Carregando configurações do veículo…"))
+        assertFalse(online.contains("vehicleSettingsRepository.settings.collectAsState(initial = AppSettings())"))
     }
 
     @Test
