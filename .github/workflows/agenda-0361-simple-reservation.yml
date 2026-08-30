@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.362 canonical reservation links
+name: Rota Certa 0.1.363 BlaBla public share capture
 
 on:
   pull_request:
@@ -40,8 +40,8 @@ jobs:
           BASE=41c846b53fb474c1ac72764efae206477b6c889a
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5655' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.362"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5656' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.363"' app/build.gradle.kts
           grep -Fq 'class="searchShell cleanSearch hidden"' trip-platform/public/index.html
           grep -Fq '<h1 class="pageTitle">Escolha sua viagem</h1>' trip-platform/public/index.html
           grep -Fq 'Reservar pelo WhatsApp' trip-platform/public/index.html
@@ -57,6 +57,13 @@ jobs:
           grep -Fq 'Text("🔗 Público")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'whatsapp = settings.driverWhatsapp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicDriverProfile.kt
           grep -Fq 'driverWhatsapp = publicProfile.whatsapp.trim()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          test -f app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq "compartilhar esta carona" app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq "Object.defineProperty(navigator, 'share'" app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'TRIP_PUBLIC_SHARE("trip_public_share.js")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserRequest.kt
+          grep -Fq 'Phase.PUBLIC_SHARE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_TRIP_LINK_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicTripShare0363Test.kt
           test -f trip-platform/functions/test/public-simple-reservation-0361.test.js
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
@@ -70,6 +77,7 @@ jobs:
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/app.js
           node --check app/src/main/assets/blablacar/scripts/trip_detail.js
+          node --check app/src/main/assets/blablacar/scripts/trip_public_share.js
           node --test trip-platform/functions/test/public-search-capacity-0356.test.js
           node --test trip-platform/functions/test/public-simple-reservation-0361.test.js
           node --test trip-platform/functions/test/public-short-agenda-link-0358.test.js
@@ -139,27 +147,27 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5655'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.362'" /tmp/aapt.txt
-          mkdir -p /tmp/0362
-          cp "$APK" /tmp/0362/rota-certa-0.1.362-links-canonicos-reserva.apk
-          sha256sum /tmp/0362/rota-certa-0.1.362-links-canonicos-reserva.apk | tee /tmp/0362/apk.sha256
-          cp /tmp/aapt.txt /tmp/0362/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0362/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0362/gradle.txt
-          git rev-parse HEAD > /tmp/0362/source-head.txt
-          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0362/changed-files.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0362/dex-strings.txt
+          grep -Fq "versionCode='5656'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.363'" /tmp/aapt.txt
+          mkdir -p /tmp/0363
+          cp "$APK" /tmp/0363/rota-certa-0.1.363-captura-link-publico-card.apk
+          sha256sum /tmp/0363/rota-certa-0.1.363-captura-link-publico-card.apk | tee /tmp/0363/apk.sha256
+          cp /tmp/aapt.txt /tmp/0363/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0363/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0363/gradle.txt
+          git rev-parse HEAD > /tmp/0363/source-head.txt
+          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0363/changed-files.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0363/dex-strings.txt
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          grep -Fq "$SOURCE_SHA" /tmp/0362/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0362/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0363/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0363/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.362-links-canonicos-reserva
+          name: rota-certa-0.1.363-captura-link-publico-card
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0362
+          path: /tmp/0363
 
       - name: Install Agenda backend dependencies
         shell: bash
