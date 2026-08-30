@@ -85,7 +85,7 @@ test("seat picker uses reconciled availability instead of nominal vehicle capaci
   assert.match(publicApp, /function searchSeatAvailabilityLimit/);
   assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\)/);
 
-  const tripPicker = functionSource(publicApp, "openTripSeatPicker", "changeSeatPicker");
+  const tripPicker = functionSource(publicApp, "openTripSeatPicker", "openWhatsappSeatPicker");
   assert.match(tripPicker, /seatPickerLimit = availableFor\(fromIndex, toIndex\)/);
   assert.match(tripPicker, /seatPickerDraft = Math\.max\(1, desiredSeats \|\| 1\)/);
   assert.doesNotMatch(tripPicker, /Math\.min\(seatPickerLimit/);
