@@ -271,14 +271,14 @@ internal object PublicAgendaAutoSync0300 {
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SYNC_SKIPPED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + \"|\" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} capacitySource=unavailable failClosed=true",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} capacitySource=unavailable failClosed=true",
                     )
                     null
                 } else {
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SOURCE_RESOLVED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + \"|\" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} physicalVehicleCapacity=${configuredCapacity ?: -1} physicalEnvelope=$physicalEnvelope capacitySource=${if (remotePublished != null) \"blablacar_remote_published\" else \"vehicle_fallback_remote_unavailable\"}",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} physicalVehicleCapacity=${configuredCapacity ?: -1} physicalEnvelope=$physicalEnvelope capacitySource=${if (remotePublished != null) "blablacar_remote_published" else "vehicle_fallback_remote_unavailable"}",
                     )
                     toPublicTrip(source, physicalEnvelope, nowMillis)
                 }
