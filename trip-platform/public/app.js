@@ -4,10 +4,38 @@ const DateContract = window.RotaCertaDateContract;
 if (!DateContract) throw new Error("Rota Certa date contract unavailable");
 
 const $ = (id) => document.getElementById(id);
+
+function normalizePublicSlug(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
+const RESERVED_PUBLIC_SLUGS = new Set([
+  "v1", "calendar", "api", "admin", "login", "assets", "static",
+  "agenda", "config", "settings", "app", "date-selection", "index",
+]);
+
+function publicSlugFromPath() {
+  const parts = location.pathname.split("/").filter(Boolean);
+  if (parts.length !== 1) return "";
+  let raw = parts[0];
+  try { raw = decodeURIComponent(raw); } catch (_) { return ""; }
+  const normalized = normalizePublicSlug(raw);
+  if (normalized.length < 3 || RESERVED_PUBLIC_SLUGS.has(normalized)) return "";
+  return normalized;
+}
+
 const params = new URLSearchParams(location.search);
 const tripToken = (params.get("trip") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
-const driverUsername = (params.get("motorista") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32);
+const publicSlug = publicSlugFromPath();
+const queryDriverUsername = normalizePublicSlug(params.get("motorista") || "");
+const driverUsername = queryDriverUsername || publicSlug;
+const shortAgendaRoute = Boolean(publicSlug && !tripToken && !agendaToken);
 const portalMode = params.get("portal") === "1";
 const requestedBoardingStopId = (params.get("embarque") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-9_-]/g, "");
@@ -86,9 +114,10 @@ function tracePublicAction(event, details = {}) {
   const payload = {
     event,
     sessionId: publicDebugSessionId,
-    screen: tripToken ? "trip" : (agendaToken ? "agenda" : "unknown"),
+    screen: tripToken ? "trip" : ((agendaToken || publicSlug) ? "agenda" : "unknown"),
     tripToken: tripToken || "",
     agendaToken: tripToken ? "" : (agendaToken || ""),
+    publicSlug: publicSlug || "",
     driverUsername: driverUsername || "",
     statusCode: Number(details.statusCode || 0),
     reason: String(details.reason || "").slice(0, 80),
@@ -303,7 +332,7 @@ function showAccessGate(destination = pendingAuthDestination, message = "") {
   pendingPrivateAction = "";
   showOnly("accessGate");
   updateAuthenticatedChrome();
-  const hasPublicTarget = Boolean(driverUsername && (agendaToken || tripToken));
+  const hasPublicTarget = Boolean(driverUsername && (agendaToken || publicSlug || tripToken));
   show("accessLoginBox", hasPublicTarget);
   show("referralRequestBox", Boolean(referralCode && driverUsername));
   $("accessMessage").textContent = message;
@@ -317,7 +346,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
     $("accessMessage").textContent = "Informe seu WhatsApp com DDD.";
     return false;
   }
-  if (!driverUsername || (!agendaToken && !tripToken)) {
+  if (!driverUsername || (!agendaToken && !publicSlug && !tripToken)) {
     $("accessMessage").textContent = "Este link não identifica uma agenda válida.";
     return false;
   }
@@ -329,7 +358,7 @@ async function requestPublicAgendaAccess(contactInput = "") {
     const response = await fetch("/v1/public/passenger-access", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, driverUsername, agendaToken, tripToken }),
+      body: JSON.stringify({ passengerContact, driverUsername, agendaToken, publicSlug, tripToken }),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -382,7 +411,7 @@ async function continueAfterViewAccess() {
     return showPrivateAuthGate("portal");
   }
   if (tripToken) return loadTrip();
-  if (agendaToken) return loadAgenda();
+  if (agendaToken || publicSlug) return loadAgenda();
   return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
 }
 
@@ -410,7 +439,7 @@ async function continueAfterAuthentication() {
     return;
   }
   if (pendingAuthDestination === "trip" && tripToken) return loadTrip();
-  if (agendaToken) return loadAgenda();
+  if (agendaToken || publicSlug) return loadAgenda();
   return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
 }
 
@@ -499,8 +528,8 @@ async function submitPrivateAuthentication() {
 function closePrivateAuth() {
   pendingPrivateAction = "";
   if (trip) return renderTrip();
-  if (agendaToken && agendaTripsCache.length) return renderAgenda(agendaTripsCache);
-  if (agendaToken) return loadAgenda();
+  if ((agendaToken || publicSlug) && agendaTripsCache.length) return renderAgenda(agendaTripsCache);
+  if (agendaToken || publicSlug) return loadAgenda();
   return showAccessGate("agenda");
 }
 
@@ -531,11 +560,14 @@ async function requestReferralInvite() {
 }
 
 async function loadAgenda() {
-  if (driverUsername.length < 3 || agendaToken.length < 16) return setError("Link de agenda inválido.");
+  if (driverUsername.length < 3 || (!publicSlug && agendaToken.length < 16)) return setError("Link de agenda inválido.");
   let statusCode = 0;
   try {
+    const endpoint = publicSlug
+      ? `/v1/public/agenda/${encodeURIComponent(publicSlug)}`
+      : `/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`;
     const response = await fetch(
-      `/v1/public/drivers/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}/agenda`,
+      endpoint,
       { headers: agendaViewHeaders({ Accept: "application/json" }) },
     );
     statusCode = response.status;
@@ -549,6 +581,7 @@ async function loadAgenda() {
     driverDisplayName = driverProfile.displayName || driverUsername;
     tracePublicAction("PUBLIC_AGENDA_LOADED", { statusCode });
     agendaTripsCache = Array.isArray(body.trips) ? body.trips : [];
+    if (publicSlug) $("subscribeCalendar").textContent = "Compartilhar link da Agenda";
     renderAgenda(agendaTripsCache);
   } catch (error) {
     tracePublicAction("PUBLIC_AGENDA_LOAD_FAILED", { statusCode, reason: "client_load_error" });
@@ -2351,11 +2384,15 @@ function downloadIcs() {
 }
 
 async function shareCalendarFeed() {
-  if (driverUsername.length < 3 || agendaToken.length < 16) return;
-  const url = `${location.origin}/calendar/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}.ics`;
+  if (driverUsername.length < 3) return;
+  const shortUrl = publicSlug ? `${location.origin}/${encodeURIComponent(publicSlug)}` : "";
+  const url = shortUrl || (agendaToken.length >= 16
+    ? `${location.origin}/calendar/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}.ics`
+    : "");
+  if (!url) return;
   const payload = {
     title: "Rota Certa — Agenda de Viagens",
-    text: "Calendário público das viagens.",
+    text: publicSlug ? "Agenda de Viagens." : "Calendário público das viagens.",
     url,
   };
   try {
@@ -2365,7 +2402,7 @@ async function shareCalendarFeed() {
     }
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(url);
-      $("subscribeCalendar").textContent = "Link do calendário copiado";
+      $("subscribeCalendar").textContent = publicSlug ? "Link da Agenda copiado" : "Link do calendário copiado";
       return;
     }
   } catch (_) {}
@@ -2640,9 +2677,8 @@ async function sharePassengerReferral() {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível criar o convite.");
-    const query = new URLSearchParams({ motorista: driverUsername, ref: body.referralCode });
-    if (agendaToken) query.set("agenda", agendaToken);
-    const link = `${location.origin}/?${query.toString()}`;
+    const query = new URLSearchParams({ ref: body.referralCode });
+    const link = `${location.origin}/${encodeURIComponent(driverUsername)}?${query.toString()}`;
     const shareData = { title: "Rota Certa", text: "Fui eu quem te indicou para a Agenda Rota Certa. Solicite seu convite por este link:", url: link };
     if (navigator.share) await navigator.share(shareData);
     else {
@@ -2967,14 +3003,14 @@ function logoutPassengerPortal() {
   $("portalNotifications").innerHTML = '<p class="muted">Nenhuma notificação.</p>';
   setPassengerNotificationBadge(0);
   if (trip) renderTrip();
-  else if (agendaToken) loadAgenda();
+  else if (agendaToken || publicSlug) loadAgenda();
   else showAccessGate("agenda", "Área privada encerrada neste aparelho.");
 }
 
 function closePassengerPortal() {
   if (trip) {
     renderTrip();
-  } else if (agendaToken) {
+  } else if (agendaToken || publicSlug) {
     loadAgenda();
   } else {
     history.back();
@@ -3102,8 +3138,8 @@ window.addEventListener("online", () => {
 
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
-  if (!portalMode && !tripToken && !agendaToken && !referralCode) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
-  if (referralCode && !tripToken && !agendaToken) return showAccessGate("agenda");
+  if (!portalMode && !tripToken && !agendaToken && !publicSlug && !referralCode) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
+  if (referralCode && !tripToken && !agendaToken && !publicSlug) return showAccessGate("agenda");
   await validatePassengerSession();
   if (passengerSessionContact) {
     const opened = await requestPublicAgendaAccess(passengerSessionContact);
