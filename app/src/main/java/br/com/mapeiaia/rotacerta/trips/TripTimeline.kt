@@ -26,6 +26,8 @@ data class TripTimelineEntry(
     val minimumOccupiedSeats: Int,
     val maximumOccupiedSeats: Int,
     val sourcePassengerSeats: Map<BookingSource, Int>,
+    /** Whole-trip operational blocks/holds that are not confirmed passengers. */
+    val operationalBlockedSeats: Int = 0,
     val localTripId: String? = null,
     val blablaTripId: String? = null,
     val blablaTripHref: String? = null,
@@ -113,45 +115,30 @@ internal data class TripChannelAllocationBreakdown(
     val blablaPublishedAllocation: Int?,
     val rotaCertaAllocation: Int?,
     val totalConsidered: Int?,
-    val overAllocatedSeats: Int,
 )
 
 /**
- * BlaBlaCar and Rota Certa are allocation labels inside the same physical limit.
- * They never add capacity. When the external publication exposes N seats, the
- * Rota Certa share is the residual physical capacity.
+ * Channel allocations form a whole-trip operational total. They never replace
+ * the simultaneous physical capacity; the per-segment engine still enforces it.
  */
 internal fun tripChannelAllocationBreakdown(
     physicalPassengerCapacity: Int?,
     blablaPublishedSeats: Int?,
+    rotaCertaSeatAllocation: Int?,
 ): TripChannelAllocationBreakdown {
     val physical = physicalPassengerCapacity?.takeIf { it in 1..999 }
-    val rawExternal = blablaPublishedSeats?.takeIf { it in 0..999 }
-    if (physical == null) {
-        return TripChannelAllocationBreakdown(
-            physicalPassengerCapacity = null,
-            blablaPublishedAllocation = rawExternal,
-            rotaCertaAllocation = null,
-            totalConsidered = null,
-            overAllocatedSeats = 0,
-        )
+    val blabla = blablaPublishedSeats?.takeIf { it in 0..999 }
+    val rotaCerta = rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+    val total = if (blabla != null || rotaCerta != null) {
+        ((blabla ?: 0) + (rotaCerta ?: 0)).coerceAtMost(999)
+    } else {
+        null
     }
-    if (rawExternal == null) {
-        return TripChannelAllocationBreakdown(
-            physicalPassengerCapacity = physical,
-            blablaPublishedAllocation = null,
-            rotaCertaAllocation = physical,
-            totalConsidered = physical,
-            overAllocatedSeats = 0,
-        )
-    }
-    val external = rawExternal.coerceAtMost(physical)
     return TripChannelAllocationBreakdown(
         physicalPassengerCapacity = physical,
-        blablaPublishedAllocation = external,
-        rotaCertaAllocation = (physical - external).coerceAtLeast(0),
-        totalConsidered = physical,
-        overAllocatedSeats = (rawExternal - physical).coerceAtLeast(0),
+        blablaPublishedAllocation = blabla,
+        rotaCertaAllocation = rotaCerta,
+        totalConsidered = total,
     )
 }
 
@@ -194,6 +181,7 @@ object TripTimelineEngine {
                     minimumOccupiedSeats = occupied.minOrNull() ?: 0,
                     maximumOccupiedSeats = occupied.maxOrNull() ?: 0,
                     sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
+                    operationalBlockedSeats = operationalSeatSummary(trip, tripBookings, nowMillis).blockedSeats,
                     localTripId = trip.id,
                     blablaTripId = trip.blablaTripId,
                     blablaTripHref = trip.blablaManageUrl,
