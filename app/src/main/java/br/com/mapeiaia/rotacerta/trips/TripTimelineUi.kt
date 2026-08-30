@@ -738,6 +738,9 @@ internal fun TripDriverDefaultsCard(
     var capacity by remember(settings.vehicleCapacity) {
         mutableStateOf(settings.vehicleCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
     }
+    var rotaCertaAllocation by remember(settings.rotaCertaSeatAllocation) {
+        mutableStateOf(settings.rotaCertaSeatAllocation.takeIf { it in 0..999 }?.toString().orEmpty())
+    }
     val capacityOpenedNs = remember { android.os.SystemClock.elapsedRealtimeNanos() }
     val capacityRenderCount = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     LaunchedEffect(Unit) {
@@ -850,6 +853,16 @@ internal fun TripDriverDefaultsCard(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            OutlinedTextField(
+                value = rotaCertaAllocation,
+                onValueChange = { raw -> rotaCertaAllocation = raw.filter(Char::isDigit).take(3) },
+                label = { Text("Vagas disponibilizadas no Rota Certa") },
+                supportingText = {
+                    Text("Cota operacional por viagem. Não altera a capacidade física do veículo.")
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Text(
                 "A origem de referência é fixa até ser redefinida. O GPS atual continua separado e serve apenas para progresso da rota e próximo embarque.",
                 style = MaterialTheme.typography.bodySmall,
@@ -863,7 +876,12 @@ internal fun TripDriverDefaultsCard(
                 onClick = {
                     val parsed = capacity.toIntOrNull()
                     if (parsed == null || parsed !in 1..999) {
-                        error = "Informe uma capacidade entre 1 e 999 lugares."
+                        error = "Informe uma capacidade de passageiros entre 1 e 999."
+                        return@Button
+                    }
+                    val parsedRotaCerta = rotaCertaAllocation.toIntOrNull()
+                    if (parsedRotaCerta == null || parsedRotaCerta !in 0..999) {
+                        error = "Informe as vagas do Rota Certa entre 0 e 999."
                         return@Button
                     }
                     error = null
@@ -887,14 +905,19 @@ internal fun TripDriverDefaultsCard(
                             traceId,
                         )
                         try {
-                            repository.saveSettings(settings.copy(vehicleCapacity = parsed))
+                            repository.saveSettings(
+                                settings.copy(
+                                    vehicleCapacity = parsed,
+                                    rotaCertaSeatAllocation = parsedRotaCerta,
+                                ),
+                            )
                             AgendaTrace.operationEnd(context, saveOperation, result = "saved", processedCount = 1)
                             UnifiedDebugEventStore.record(
                                 "TRIP_DRIVER_DEFAULTS_SAVED",
                                 context.packageName,
-                                "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                                "vehicleCapacity=$parsed rotaCertaSeatAllocation=$parsedRotaCerta externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
                             )
-                            onChanged("Capacidade de passageiros salva.")
+                            onChanged("Capacidade de passageiros e vagas do Rota Certa salvas.")
                         } catch (failure: kotlinx.coroutines.CancellationException) {
                             AgendaTrace.operationCancelled(context, saveOperation)
                             throw failure
@@ -905,7 +928,7 @@ internal fun TripDriverDefaultsCard(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Salvar capacidade") }
+            ) { Text("Salvar veículo e vagas") }
         }
     }
 }
