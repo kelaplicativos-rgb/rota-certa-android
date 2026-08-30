@@ -105,6 +105,53 @@ internal fun timelinePublicSegmentLoads(
     physicalLoads: List<SegmentLoad>,
 ): List<SegmentLoad> = physicalLoads
 
+internal data class TripChannelAllocationBreakdown(
+    val physicalPassengerCapacity: Int?,
+    val blablaPublishedAllocation: Int?,
+    val rotaCertaAllocation: Int?,
+    val totalConsidered: Int?,
+    val overAllocatedSeats: Int,
+)
+
+/**
+ * BlaBlaCar and Rota Certa are allocation labels inside the same physical limit.
+ * They never add capacity. When the external publication exposes N seats, the
+ * Rota Certa share is the residual physical capacity.
+ */
+internal fun tripChannelAllocationBreakdown(
+    physicalPassengerCapacity: Int?,
+    blablaPublishedSeats: Int?,
+): TripChannelAllocationBreakdown {
+    val physical = physicalPassengerCapacity?.takeIf { it in 1..999 }
+    val rawExternal = blablaPublishedSeats?.takeIf { it in 0..999 }
+    if (physical == null) {
+        return TripChannelAllocationBreakdown(
+            physicalPassengerCapacity = null,
+            blablaPublishedAllocation = rawExternal,
+            rotaCertaAllocation = null,
+            totalConsidered = null,
+            overAllocatedSeats = 0,
+        )
+    }
+    if (rawExternal == null) {
+        return TripChannelAllocationBreakdown(
+            physicalPassengerCapacity = physical,
+            blablaPublishedAllocation = null,
+            rotaCertaAllocation = physical,
+            totalConsidered = physical,
+            overAllocatedSeats = 0,
+        )
+    }
+    val external = rawExternal.coerceAtMost(physical)
+    return TripChannelAllocationBreakdown(
+        physicalPassengerCapacity = physical,
+        blablaPublishedAllocation = external,
+        rotaCertaAllocation = (physical - external).coerceAtLeast(0),
+        totalConsidered = physical,
+        overAllocatedSeats = (rawExternal - physical).coerceAtLeast(0),
+    )
+}
+
 enum class TripTimelineIssue {
     DUPLICATE,
     PHYSICAL_CONFLICT,
@@ -198,18 +245,10 @@ object TripTimelineEngine {
         }
     }
 
-    private fun passengerSeatsBySource(bookings: List<Booking>, nowMillis: Long): Map<BookingSource, Int> {
+    private fun passengerSeatsBySource(bookings: List<Booking>, @Suppress("UNUSED_PARAMETER") nowMillis: Long): Map<BookingSource, Int> {
         val activePassengers = bookings.filter { booking ->
-            booking.capacityClaimType == CapacityClaimType.PASSENGER && when (booking.status) {
-                BookingStatus.REQUESTED,
-                BookingStatus.CONFIRMED,
-                -> true
-                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
-                BookingStatus.REJECTED,
-                BookingStatus.CANCELLED,
-                BookingStatus.EXPIRED,
-                -> false
-            }
+            booking.capacityClaimType in setOf(CapacityClaimType.PASSENGER, CapacityClaimType.EXTERNAL_OCCUPANCY) &&
+                booking.status == BookingStatus.CONFIRMED
         }
         val grouped = activePassengers.groupBy { it.occupancyGroupId?.trim()?.takeIf(String::isNotEmpty) }
         val result = mutableMapOf<BookingSource, Int>()
