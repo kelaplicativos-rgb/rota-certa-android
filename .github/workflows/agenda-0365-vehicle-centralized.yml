@@ -1,6 +1,9 @@
 name: Rota Certa 0.1.365 vehicle settings centralized
 
 on:
+  push:
+    branches:
+      - agent/agenda-vehicle-centralized-0.1.365
   pull_request:
     branches:
       - agent/agenda-simple-reservation-options-0.1.361
