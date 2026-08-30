@@ -83,20 +83,11 @@ function normalizeUsername(value) {
     .slice(0, 32);
 }
 
+// Only real Hosting/API namespaces are unavailable to drivers.
+// All other normalized words are valid public slugs when uniqueness checks pass.
 const RESERVED_PUBLIC_USERNAMES = new Set([
   "v1",
   "calendar",
-  "api",
-  "admin",
-  "login",
-  "assets",
-  "static",
-  "agenda",
-  "config",
-  "settings",
-  "app",
-  "date-selection",
-  "index",
 ]);
 
 function isReservedPublicUsername(value) {
