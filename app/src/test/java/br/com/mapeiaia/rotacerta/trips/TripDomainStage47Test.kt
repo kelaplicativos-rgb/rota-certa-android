@@ -73,13 +73,20 @@ class TripDomainStage47Test {
     }
 
     @Test
-    fun requestedAndCancelledBookingsDoNotConsumeSeats() {
+    fun requestedProtectsSeatWhileRejectedAndCancelledDoNotConsumeSeats() {
         val trip = trip(capacity = 1)
-        val bookings = listOf(
+        val requested = listOf(
             booking("requested", "a", "d", status = BookingStatus.REQUESTED),
             booking("cancelled", "a", "d", status = BookingStatus.CANCELLED),
+            booking("rejected", "a", "d", status = BookingStatus.REJECTED),
         )
-        assertEquals(1, SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookings))
+        assertEquals(0, SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, requested))
+
+        val inactive = listOf(
+            booking("cancelled-only", "a", "d", status = BookingStatus.CANCELLED),
+            booking("rejected-only", "a", "d", status = BookingStatus.REJECTED),
+        )
+        assertEquals(1, SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, inactive))
     }
 
     @Test
