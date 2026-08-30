@@ -122,7 +122,10 @@ class BlaBlaPublishedCapacity0366Test {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertFalse(source.contains("configuredVehicleCapacity.takeIf { it in 1..999 } ?: 4"))
         assertTrue(source.contains("CAPACITY_PUBLIC_SYNC_SKIPPED"))
-        assertTrue(source.contains("remotePublishedCapacity="))
+        assertTrue(source.contains("blablaAvailableSeats="))
+        assertTrue(source.contains("rotaCertaAvailableSeats="))
+        assertTrue(source.contains("combinedAgendaCapacity="))
+        assertTrue(source.contains("capacitySource=additive_pools"))
     }
 
     private fun entry(
