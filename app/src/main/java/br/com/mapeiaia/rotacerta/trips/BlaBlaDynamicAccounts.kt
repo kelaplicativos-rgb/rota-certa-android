@@ -215,6 +215,16 @@ private data class DynamicTripDetail(
 )
 
 @Serializable
+private data class DynamicPublicTripShareEvidence(
+    val tripId: String = "",
+    val shareControlPresent: Boolean = false,
+    val shareInterceptInstalled: Boolean = false,
+    val shareInvoked: Boolean = false,
+    val clickCount: Int = 0,
+    val publicTripHref: String = "",
+)
+
+@Serializable
 private data class DynamicPassengerCardOpenState(
     val found: Boolean = false,
     val clicked: Boolean = false,
@@ -304,6 +314,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var tripRosterReadAttempts = 0
     private var lastTripRosterSignature = ""
     private var tripRosterStablePasses = 0
+    private var publicTripShareReadAttempts = 0
+    private var publicTripShareCaptureInFlight = false
     private var pendingTripDetail: DynamicTripDetail? = null
     private var pendingTripPassengers = mutableListOf<BlaBlaCollectorPassenger>()
     private val pendingTripPassengerCardIndexes = mutableMapOf<Int, Int>()
@@ -548,6 +560,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         tripRosterReadAttempts = 0
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
+        publicTripShareReadAttempts = 0
+        publicTripShareCaptureInFlight = false
         identityConfirmedThisSync = false
         pendingTripDetail = null
         pendingTripPassengers.clear()
