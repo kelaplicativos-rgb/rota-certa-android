@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.358 short public Agenda link build
+name: Rota Certa 0.1.359 flexible public Agenda slug build
 
 on:
   push:
@@ -41,8 +41,8 @@ jobs:
           set -euo pipefail
           BASE=b470eca831621195cf046604a2e86b92df9c1c56
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5651' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.358"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5652' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.359"' app/build.gradle.kts
           grep -Fq 'REJECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'decideDriverBooking' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'Aguardando aprovação' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
@@ -135,20 +135,20 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5651'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.358'" /tmp/aapt.txt
-          mkdir -p /tmp/0358
-          cp "$APK" /tmp/0358/rota-certa-0.1.358-short-public-agenda-link.apk
-          sha256sum /tmp/0358/rota-certa-0.1.358-short-public-agenda-link.apk | tee /tmp/0358/apk.sha256
-          cp /tmp/aapt.txt /tmp/0358/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0358/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0358/gradle.txt
-          git rev-parse HEAD > /tmp/0358/source-head.txt
-          git diff --name-only b470eca831621195cf046604a2e86b92df9c1c56..HEAD > /tmp/0358/changed-files.txt
+          grep -Fq "versionCode='5652'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.359'" /tmp/aapt.txt
+          mkdir -p /tmp/0359
+          cp "$APK" /tmp/0359/rota-certa-0.1.359-flexible-public-slug.apk
+          sha256sum /tmp/0359/rota-certa-0.1.359-flexible-public-slug.apk | tee /tmp/0359/apk.sha256
+          cp /tmp/aapt.txt /tmp/0359/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0359/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0359/gradle.txt
+          git rev-parse HEAD > /tmp/0359/source-head.txt
+          git diff --name-only b470eca831621195cf046604a2e86b92df9c1c56..HEAD > /tmp/0359/changed-files.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.358-short-public-agenda-link
+          name: rota-certa-0.1.359-flexible-public-slug
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0358
+          path: /tmp/0359
