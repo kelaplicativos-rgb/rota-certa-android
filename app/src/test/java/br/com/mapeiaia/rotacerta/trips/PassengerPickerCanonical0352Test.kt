@@ -178,7 +178,7 @@ class PassengerPickerCanonical0352Test {
             capacityClaimType = CapacityClaimType.PASSENGER,
         )
 
-        assertTrue(QuickPassengerEngine.hasActivePassengerBooking(listOf(existing), "passenger-kel"))
+        assertTrue(QuickPassengerEngine.hasActivePassengerBooking(listOf(existing), "passenger-kel", trip.id))
         assertThrows(IllegalArgumentException::class.java) {
             QuickPassengerEngine.build(
                 trip = trip,
@@ -214,7 +214,7 @@ class PassengerPickerCanonical0352Test {
             capacityClaimType = CapacityClaimType.PASSENGER,
         )
 
-        assertFalse(QuickPassengerEngine.hasActivePassengerBooking(listOf(cancelled), "passenger-kel"))
+        assertFalse(QuickPassengerEngine.hasActivePassengerBooking(listOf(cancelled), "passenger-kel", trip.id))
         val plan = QuickPassengerEngine.build(
             trip = trip,
             existingBookings = listOf(cancelled),
@@ -231,6 +231,31 @@ class PassengerPickerCanonical0352Test {
             idFactory = { "new-booking" },
         )
         assertEquals("passenger-kel", plan.passenger.passengerId)
+    }
+
+    @Test
+    fun samePassengerOnAnotherTripDoesNotBlockSelectedTrip() {
+        val trip = sampleTrip()
+        val otherTripBooking = Booking(
+            id = "other-trip-booking",
+            tripId = "trip-other",
+            passengerName = "Kel",
+            passengerContact = "11947434112",
+            passengerId = "passenger-kel",
+            boardingStopId = "x",
+            dropoffStopId = "y",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.PRIVATE,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+        assertFalse(
+            QuickPassengerEngine.hasActivePassengerBooking(
+                existingBookings = listOf(otherTripBooking),
+                passengerId = "passenger-kel",
+                tripId = trip.id,
+            ),
+        )
     }
 
     @Test
