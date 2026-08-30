@@ -249,7 +249,7 @@ fun QuickPassengerPanel(
             reviewPending = false
             return
         }
-        if (QuickPassengerEngine.hasActivePassengerBooking(bookings, canonicalPassengerId)) {
+        if (QuickPassengerEngine.hasActivePassengerBooking(bookings, canonicalPassengerId, trip.id)) {
             AgendaTrace.event(
                 context,
                 "PASSENGER_ALREADY_IN_TRIP",
