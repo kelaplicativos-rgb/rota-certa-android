@@ -323,7 +323,7 @@ internal fun OnlineSettingsEditor(
         modifier = Modifier.fillMaxWidth(),
         enabled = token.isBlank(),
     )
-    Text("A credencial interna não muda ao salvar dados e não aparece no endereço curto. A ação de troca abaixo serve somente para revogar intencionalmente links técnicos antigos.")
+    Text("O token não muda ao salvar dados. A credencial interna não aparece no endereço curto. A ação de troca abaixo serve somente para revogar intencionalmente links técnicos antigos.")
 
     registrationMessage?.let { Text(it) }
     if (token.isBlank()) {
