@@ -15,14 +15,26 @@ function functionSource(source, startName, endName) {
   return source.slice(start, end);
 }
 
-test("public card exposes BlaBlaCar and Rota Certa pools whose total can be seven", () => {
+test("public card exposes real Timeline seats plus the Rota Certa pool", () => {
   const source =
     functionSource(publicApp, "normalizedSeatCount", "seatAvailabilityText");
-  const factory = new Function(source + "; return { normalizedSeatCount, seatSourceBreakdown };");
+  const factory = new Function(
+    "function seatRange(item) { return { minimum: Number(item.capacity || 0), maximum: Number(item.capacity || 0) }; };" +
+    source +
+    "; return { normalizedSeatCount, seatSourceBreakdown };"
+  );
   const { seatSourceBreakdown } = factory();
   assert.deepEqual(
-    seatSourceBreakdown({ capacity: 7, publishedSeats: 3 }),
+    seatSourceBreakdown({ capacity: 7, blablaAvailableSeats: 3, rotaCertaSeatPool: 4 }, 7),
     { blabla: 3, rotaCerta: 4, total: 7 },
+  );
+  assert.deepEqual(
+    seatSourceBreakdown({ capacity: 4, blablaAvailableSeats: 0, rotaCertaSeatPool: 4 }, 4),
+    { blabla: 0, rotaCerta: 4, total: 4 },
+  );
+  assert.deepEqual(
+    seatSourceBreakdown({ capacity: 7, blablaAvailableSeats: 3, rotaCertaSeatPool: 4 }, 6),
+    { blabla: 3, rotaCerta: 3, total: 6 },
   );
   assert.match(publicApp, /BlaBlaCar \$\{sourceBreakdown\.blabla\} • Rota Certa \$\{sourceBreakdown\.rotaCerta\}/);
   assert.match(publicApp, /Disponibilidade combinada/);
@@ -34,4 +46,13 @@ test("existing public BlaBla trip may refresh combined capacity without weakenin
   assert.match(backend, /const externalCapacityChanged = capacityChanged && isExternalBlaBlaTrip\(token, previous\);/);
   assert.match(backend, /assertNoOverbooking\(candidateTrip, loads\);/);
   assert.match(backend, /oldStopIds !== newStopIds/);
+});
+
+
+test("public API preserves raw published capacity and exposes real availability separately", () => {
+  assert.match(backend, /blablaAvailableSeats/);
+  assert.match(backend, /rotaCertaSeatPool/);
+  assert.match(backend, /publishedSeats: data\.publishedSeats/);
+  assert.match(backend, /blablaAvailableSeats: data\.blablaAvailableSeats/);
+  assert.match(backend, /rotaCertaSeatPool: data\.rotaCertaSeatPool/);
 });
