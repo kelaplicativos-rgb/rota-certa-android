@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -482,21 +484,48 @@ internal fun GlobalPassengerFlowPanel(
 
     if (!open) return
 
+
+    val passengerSnapshot = remember(passengerRevision, openRequestToken, resumeRequestToken) {
+        passengerStore.pickerSnapshot()
+    }
+    val passengerObservations = remember(passengerRevision, passengerSnapshot) {
+        passengerSnapshot.profiles.associate { profile -> profile.id to passengerStore.observations(profile.id) }
+    }
     val query = passengerSearch.trim()
-    val queryDigits = query.filter(Char::isDigit)
-    val passengerCandidates = remember(passengerRevision, query) {
-        passengerStore.profiles()
-            .filterNot(PassengerProfile::archived)
-            .filter { profile ->
-                query.isBlank() ||
-                    profile.displayName.contains(query, ignoreCase = true) ||
-                    profile.whatsapp.contains(query, ignoreCase = true) ||
-                    (queryDigits.length >= 4 && profile.whatsapp.filter(Char::isDigit).contains(queryDigits)) ||
-                    profile.id.contains(query, ignoreCase = true) ||
-                    profile.externalPassengerIds.any { it.contains(query, ignoreCase = true) } ||
-                    profile.onlineIdentityIds.any { it.contains(query, ignoreCase = true) }
+    val passengerCandidates = remember(passengerSnapshot, passengerObservations, query) {
+        if (query.isBlank()) {
+            passengerSnapshot.profiles
+        } else {
+            searchCanonicalPassengers(
+                profiles = passengerSnapshot.profiles,
+                observationsByProfile = passengerObservations,
+                raw = query,
+                limit = Int.MAX_VALUE,
+            )
+        }
+    }
+
+    LaunchedEffect(openRequestToken, passengerRevision, selectedPassenger?.id) {
+        if (open && selectedPassenger == null) {
+            AgendaTrace.event(context, "PASSENGER_PICKER_OPENED", "stage=select_passenger")
+            AgendaTrace.event(
+                context,
+                "PASSENGER_SOURCE_COUNT",
+                "count=${passengerSnapshot.rawProfileCount} distinctPassengerIds=${passengerSnapshot.distinctPassengerIdCount}",
+            )
+            AgendaTrace.event(
+                context,
+                "PASSENGER_CANONICAL_COUNT",
+                "count=${passengerSnapshot.profiles.size}",
+            )
+            if (passengerSnapshot.resolvedDuplicateCount > 0) {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGER_DUPLICATE_RESOLVED",
+                    "source=picker count=${passengerSnapshot.resolvedDuplicateCount}",
+                )
             }
-            .take(30)
+        }
     }
 
     AlertDialog(
@@ -504,48 +533,58 @@ internal fun GlobalPassengerFlowPanel(
         title = { Text("➕ Adicionar a uma viagem") },
         text = {
             Column(
-                modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier.heightIn(max = 620.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when {
+
                     selectedPassenger == null -> {
-                        Text("1. Selecionar passageiro", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            "Escolha uma pessoa já cadastrada. O passengerId permanece a identidade; nome e WhatsApp não criam uma identidade nova.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        OutlinedTextField(
-                            value = passengerSearch,
-                            onValueChange = { passengerSearch = it.take(120); error = null },
-                            label = { Text("Buscar por nome, WhatsApp ou identificador") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (passengerCandidates.isEmpty()) {
+                        if (!registeringNew) {
+                            Text("1. Selecionar passageiro", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                if (query.isBlank()) "Nenhum passageiro cadastrado." else "Nenhum passageiro encontrado.",
+                                "Escolha uma pessoa já cadastrada. O passengerId permanece a identidade; nome e WhatsApp não criam uma identidade nova.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                        } else {
-                            passengerCandidates.forEach { profile ->
-                                OutlinedButton(
-                                    enabled = !profile.blocked,
-                                    onClick = {
-                                        selectedPassenger = profile
-                                        selectedEntry = null
-                                        selectedTrip = null
-                                        registeringNew = false
-                                        error = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
+                            OutlinedTextField(
+                                value = passengerSearch,
+                                onValueChange = { passengerSearch = it.take(120); error = null },
+                                label = { Text("Buscar por nome, WhatsApp ou identificador") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (passengerCandidates.isEmpty()) {
+                                Text(
+                                    if (query.isBlank()) "Nenhum passageiro cadastrado." else "Nenhum passageiro encontrado.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    val phone = profile.whatsapp.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()
-                                    Text((if (profile.blocked) "⛔ " else "") + profile.displayName + phone)
+                                    items(passengerCandidates, key = PassengerProfile::id) { profile ->
+                                        OutlinedButton(
+                                            enabled = !profile.blocked,
+                                            onClick = {
+                                                AgendaTrace.event(
+                                                    context,
+                                                    "PASSENGER_SELECTED",
+                                                    "passengerHash=${passengerDebugIdentityHash(profile.id)}",
+                                                )
+                                                selectedPassenger = profile
+                                                selectedEntry = null
+                                                selectedTrip = null
+                                                registeringNew = false
+                                                error = null
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            val phone = formatPassengerContactForDisplay(profile.agendaAccessContact())
+                                            Text((if (profile.blocked) "⛔ " else "") + profile.displayName + " • " + phone)
+                                        }
+                                    }
                                 }
                             }
-                        }
-
-                        if (!registeringNew) {
                             OutlinedButton(
                                 onClick = {
                                     registeringNew = true
@@ -574,20 +613,18 @@ internal fun GlobalPassengerFlowPanel(
                             Button(
                                 enabled = newName.isNotBlank() && passengerContactKey(newWhatsapp).isNotBlank(),
                                 onClick = {
-                                    val contactKey = passengerContactKey(newWhatsapp)
-                                    val exact = (
-                                        passengerStore.exactContactMatches(newWhatsapp) +
-                                            passengerStore.profiles().filter { profile ->
-                                                passengerContactKey(profile.agendaAccessContact()) == contactKey
-                                            }
-                                        )
-                                        .distinctBy(PassengerProfile::id)
+                                    val exact = passengerStore.pickerContactMatches(newWhatsapp)
                                     when {
                                         exact.size > 1 -> {
-                                            error = "Há mais de um cadastro com esse WhatsApp. Selecione a pessoa existente; nenhum passengerId será duplicado."
+                                            error = "Há mais de uma identidade canônica com esse WhatsApp. Selecione a pessoa existente; nenhum passengerId será criado."
                                         }
                                         exact.size == 1 -> {
                                             selectedPassenger = exact.single()
+                                            AgendaTrace.event(
+                                                context,
+                                                "PASSENGER_SELECTED",
+                                                "passengerHash=${passengerDebugIdentityHash(exact.single().id)} source=existing_contact",
+                                            )
                                             registeringNew = false
                                             passengerRevision++
                                             error = null
@@ -605,6 +642,11 @@ internal fun GlobalPassengerFlowPanel(
                                             }
                                                 .onSuccess { created ->
                                                     selectedPassenger = created
+                                                    AgendaTrace.event(
+                                                        context,
+                                                        "PASSENGER_SELECTED",
+                                                        "passengerHash=${passengerDebugIdentityHash(created.id)} source=new_profile",
+                                                    )
                                                     registeringNew = false
                                                     passengerRevision++
                                                     error = null
@@ -631,37 +673,45 @@ internal fun GlobalPassengerFlowPanel(
                         } else if (entries.isEmpty()) {
                             Text("Não há viagens disponíveis na Timeline.", style = MaterialTheme.typography.bodySmall)
                         } else {
-                            entries.sortedBy(TripTimelineEntry::departureAtMillis).forEach { entry ->
-                                val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
-                                val source = if (timelineStrongExternalTripKey(entry) != null) "BlaBlaCar" else "Particular"
-                                val vacancies = if (entry.minimumAvailableSeats == entry.maximumAvailableSeats) {
-                                    "Vagas disponíveis: ${entry.minimumAvailableSeats}"
-                                } else {
-                                    "Vagas disponíveis: ${entry.minimumAvailableSeats}–${entry.maximumAvailableSeats} por trecho"
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        error = null
-                                        runCatching { prepareTimelineTripForPassenger(entry, store) }
-                                            .onSuccess { prepared ->
-                                                selectedEntry = entry
-                                                selectedTrip = prepared.trip
-                                                onChanged(
-                                                    if (prepared.created) {
-                                                        "Viagem real vinculada internamente sem duplicar a publicação."
-                                                    } else {
-                                                        "Viagem selecionada. A capacidade continuará sendo conferida por trecho."
-                                                    },
-                                                )
-                                            }
-                                            .onFailure { error = it.message ?: "Não foi possível preparar esta viagem." }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("${entry.profileLabel} • $date\n${entry.origin} → ${entry.destination}\n$source • $vacancies")
+
+                            val sortedEntries = entries.sortedBy(TripTimelineEntry::departureAtMillis)
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 390.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                items(sortedEntries, key = TripTimelineEntry::id) { entry ->
+                                    val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
+                                    val source = if (timelineStrongExternalTripKey(entry) != null) "BlaBlaCar" else "Particular"
+                                    val vacancies = if (entry.minimumAvailableSeats == entry.maximumAvailableSeats) {
+                                        "Vagas disponíveis: ${entry.minimumAvailableSeats}"
+                                    } else {
+                                        "Vagas disponíveis: ${entry.minimumAvailableSeats}–${entry.maximumAvailableSeats} por trecho"
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            error = null
+                                            runCatching { prepareTimelineTripForPassenger(entry, store) }
+                                                .onSuccess { prepared ->
+                                                    selectedEntry = entry
+                                                    selectedTrip = prepared.trip
+                                                    onChanged(
+                                                        if (prepared.created) {
+                                                            "Viagem real vinculada internamente sem duplicar a publicação."
+                                                        } else {
+                                                            "Viagem selecionada. A capacidade continuará sendo conferida por trecho."
+                                                        },
+                                                    )
+                                                }
+                                                .onFailure { error = it.message ?: "Não foi possível preparar esta viagem." }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text("${entry.profileLabel} • $date\n${entry.origin} → ${entry.destination}\n$source • $vacancies")
+                                    }
                                 }
                             }
                         }
+
                         OutlinedButton(
                             enabled = !passenger.blocked,
                             onClick = {
@@ -672,6 +722,7 @@ internal fun GlobalPassengerFlowPanel(
                         ) { Text("Criar nova viagem") }
                     }
 
+
                     else -> {
                         val passenger = selectedPassenger!!
                         val trip = selectedTrip!!
@@ -679,32 +730,37 @@ internal fun GlobalPassengerFlowPanel(
                         val stops = trip.stops.sortedBy(TripStop::order)
                         val route = listOfNotNull(stops.firstOrNull()?.name, stops.lastOrNull()?.name).joinToString(" → ")
                         val date = formatter.format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault()))
-                        Text("✓ ${passenger.displayName}", style = MaterialTheme.typography.labelLarge)
-                        Text("✓ $date • $route", style = MaterialTheme.typography.labelLarge)
-                        Text("3. Dados da reserva", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            if (entry != null && timelineStrongExternalTripKey(entry) != null) {
-                                "Para viagem BlaBlaCar, escolha os pontos disponíveis da rota."
-                            } else {
-                                "Para viagem particular, utilize a origem e o destino configurados na viagem."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        QuickPassengerPanel(
-                            trip = trip,
-                            store = store,
-                            onChanged = onChanged,
-                            onBlaBlaSyncRequested = if (entry != null && timelineStrongExternalTripKey(entry) != null) {
-                                { onTargetSync(entry, trip) }
-                            } else null,
-                            externalSeatTarget = entry?.let(BlaBlaReliableSeatSyncBridge::targetForTimeline),
-                            onSaved = { open = false },
-                            showExistingPassengers = false,
-                            initialPassenger = passenger,
-                            lockPassengerIdentity = true,
-                            requireConfirmation = true,
-                            primaryActionLabel = "Adicionar à viagem",
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("✓ ${passenger.displayName}", style = MaterialTheme.typography.labelLarge)
+                            Text("✓ $date • $route", style = MaterialTheme.typography.labelLarge)
+                            Text("3. Dados da reserva", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                if (entry != null && timelineStrongExternalTripKey(entry) != null) {
+                                    "Para viagem BlaBlaCar, escolha os pontos disponíveis da rota."
+                                } else {
+                                    "Para viagem particular, utilize a origem e o destino configurados na viagem."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            QuickPassengerPanel(
+                                trip = trip,
+                                store = store,
+                                onChanged = onChanged,
+                                onBlaBlaSyncRequested = if (entry != null && timelineStrongExternalTripKey(entry) != null) {
+                                    { onTargetSync(entry, trip) }
+                                } else null,
+                                externalSeatTarget = entry?.let(BlaBlaReliableSeatSyncBridge::targetForTimeline),
+                                onSaved = { open = false },
+                                showExistingPassengers = false,
+                                initialPassenger = passenger,
+                                lockPassengerIdentity = true,
+                                requireConfirmation = true,
+                                primaryActionLabel = "Adicionar à viagem",
+                            )
+                        }
                     }
                 }
                 error?.let { Text("⚠ $it", style = MaterialTheme.typography.bodySmall) }
