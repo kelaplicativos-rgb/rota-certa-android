@@ -91,8 +91,8 @@ fun QuickPassengerPanel(
     Text(if (lockPassengerIdentity) "Dados da reserva" else "Adicionar passageiro")
     if (lockPassengerIdentity) {
         Text("Passageiro: ${initialPassenger?.displayName ?: name}", style = MaterialTheme.typography.titleSmall)
-        initialPassenger?.whatsapp?.takeIf(String::isNotBlank)?.let {
-            Text("WhatsApp: $it", style = MaterialTheme.typography.bodySmall)
+        initialPassenger?.agendaAccessContact()?.takeIf(String::isNotBlank)?.let {
+            Text("WhatsApp: ${formatPassengerContactForDisplay(it)}", style = MaterialTheme.typography.bodySmall)
         }
         if (selectedPassengerBlocked) {
             Text("⛔ NÃO ACEITO NO MEU CARRO — este passageiro não pode ser incluído.", style = MaterialTheme.typography.bodySmall)
@@ -249,6 +249,16 @@ fun QuickPassengerPanel(
             reviewPending = false
             return
         }
+        if (QuickPassengerEngine.hasActivePassengerBooking(bookings, canonicalPassengerId)) {
+            AgendaTrace.event(
+                context,
+                "PASSENGER_ALREADY_IN_TRIP",
+                "passengerHash=${passengerDebugIdentityHash(canonicalPassengerId)} tripHash=${passengerDebugIdentityHash(trip.id)}",
+            )
+            error = "Este passageiro já está vinculado a esta viagem."
+            reviewPending = false
+            return
+        }
         val request = QuickPassengerRequest(
             passengerName = name,
             passengerContact = contact,
@@ -284,6 +294,11 @@ fun QuickPassengerPanel(
                     ),
                 )
             }.onSuccess {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGER_ADDED_TO_TRIP",
+                    "passengerHash=${passengerDebugIdentityHash(plan.passenger.passengerId)} tripHash=${passengerDebugIdentityHash(trip.id)}",
+                )
                 name = ""
                 contact = ""
                 selectedPassengerId = ""
