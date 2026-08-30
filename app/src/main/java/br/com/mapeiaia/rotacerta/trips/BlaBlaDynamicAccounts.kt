@@ -445,11 +445,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
-            networkDiagnosticRecorder = BlaBlaNetworkDiagnosticRecorder(
-                context = this,
+            networkDiagnosticRecorder = browserOrchestrator.installNetworkEvidenceCapture(
+                androidContext = this,
+                webView = webView,
                 accountId = account.id,
-                appPackageName = packageName,
-            ).also { recorder -> recorder.install(webView) }
+            )
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
