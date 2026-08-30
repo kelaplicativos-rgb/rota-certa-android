@@ -57,8 +57,10 @@ function json(res, status, body) {
   res.send(JSON.stringify(body));
 }
 
-function fail(res, status, code, message) {
-  return json(res, status, { error: code, message });
+function fail(res, status, code, message, details = null) {
+  const body = { error: code, message };
+  if (details && typeof details === "object") Object.assign(body, details);
+  return json(res, status, body);
 }
 
 function safeEqual(a, b) {
@@ -893,6 +895,13 @@ function availableForSegmentRange(trip, loads, fromIndex, toIndex) {
     available = Math.min(available, Number(trip.capacity || 0) - Number(loads[index] || 0));
   }
   return Math.max(0, available);
+}
+
+function currentSeatCapacityMessage(available) {
+  const seats = Math.max(0, Math.floor(Number(available || 0)));
+  if (seats === 0) return "Não há mais vagas disponíveis para este trecho.";
+  if (seats === 1) return "Agora este carro tem apenas 1 vaga disponível para este trecho.";
+  return `Agora este carro tem apenas ${seats} vagas disponíveis para este trecho.`;
 }
 
 function capacityAvailabilityRange(trip, loads) {
@@ -3009,7 +3018,10 @@ async function createBooking(req, res, token) {
       const currentLoads = reconciledSegmentLoads(trip, existing);
       const available = availableForSegmentRange(trip, currentLoads, fromIndex, toIndex);
       if (seats > available) {
-        throw Object.assign(new Error("Essa vaga acabou de ser reservada. Escolha outro trecho ou viagem."), { httpStatus: 409, code: "insufficient_seats" });
+        throw Object.assign(
+          new Error(currentSeatCapacityMessage(available)),
+          { httpStatus: 409, code: "insufficient_seats", availableSeats: available },
+        );
       }
       const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
       const totalFareCents = farePerSeatCents * seats;
@@ -3169,7 +3181,16 @@ async function createBooking(req, res, token) {
       statusCode: error.httpStatus || 400,
       seats,
     }).catch(() => {});
-    return fail(res, error.httpStatus || 400, error.code || "booking_failed", error.message || "Falha ao reservar.");
+    const capacityDetails = Number.isInteger(error.availableSeats)
+      ? { availableSeats: Math.max(0, error.availableSeats) }
+      : null;
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "booking_failed",
+      error.message || "Falha ao reservar.",
+      capacityDetails,
+    );
   }
 }
 
@@ -3330,7 +3351,24 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const seats = req.body && req.body.seats != null ? Number(req.body.seats) : Number(previous.seats || 0);
       if (!passengerName) throw Object.assign(new Error("Informe seu nome."), { httpStatus: 400, code: "passenger_name_required" });
       if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+      if (!capacityIsReliable(token, trip)) {
+        throw Object.assign(new Error("A capacidade desta viagem ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
+      }
       const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const lastStopIndex = Math.max(0, (trip.stops || []).length - 1);
+      if (!itineraryIsAuthoritative(token, trip) && !(fromIndex === 0 && toIndex === lastStopIndex)) {
+        throw Object.assign(new Error("Esse trecho intermediário ainda não foi confirmado pela fonte da viagem."), { httpStatus: 409, code: "itinerary_unconfirmed" });
+      }
+      const capacityCheckAtMillis = Date.now();
+      const otherRecords = records.filter((record) => record.id !== bookingId);
+      const currentLoads = reconciledSegmentLoads(trip, otherRecords, capacityCheckAtMillis);
+      const available = availableForSegmentRange(trip, currentLoads, fromIndex, toIndex);
+      if (seats > available) {
+        throw Object.assign(
+          new Error(currentSeatCapacityMessage(available)),
+          { httpStatus: 409, code: "insufficient_seats", availableSeats: available },
+        );
+      }
       const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
       const totalFareCents = farePerSeatCents * seats;
       const draft = {
@@ -3419,7 +3457,16 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       changed: result.changed,
     });
   } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "booking_update_failed", error.message || "Falha ao alterar reserva.");
+    const capacityDetails = Number.isInteger(error.availableSeats)
+      ? { availableSeats: Math.max(0, error.availableSeats) }
+      : null;
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "booking_update_failed",
+      error.message || "Falha ao alterar reserva.",
+      capacityDetails,
+    );
   }
 }
 
