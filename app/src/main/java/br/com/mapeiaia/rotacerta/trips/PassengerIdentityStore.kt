@@ -786,11 +786,13 @@ internal fun buildPassengerPickerSnapshot(
     val grouped = profiles.indices.groupBy(::find).values
     val canonical = grouped.map { indices ->
         val members = indices.map(profiles::get)
+        val protectedMembers = members.filter(PassengerProfile::blocked)
+        val candidates = protectedMembers.ifEmpty { members }
         val distinctIds = members.map(PassengerProfile::id).distinct()
         if (distinctIds.size == 1) {
-            members.maxWithOrNull(compareBy<PassengerProfile> { it.updatedAtMillis }.thenBy { it.createdAtMillis })!!
+            candidates.maxWithOrNull(compareBy<PassengerProfile> { it.updatedAtMillis }.thenBy { it.createdAtMillis })!!
         } else {
-            members.minWithOrNull(compareBy<PassengerProfile> { it.createdAtMillis }.thenBy { it.id })!!
+            candidates.minWithOrNull(compareBy<PassengerProfile> { it.createdAtMillis }.thenBy { it.id })!!
         }
     }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
 
