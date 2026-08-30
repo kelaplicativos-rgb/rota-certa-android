@@ -33,7 +33,7 @@ internal object PublicAgendaAutoSync0300 {
         context: Context,
         store: TripStore,
         configuredVehicleCapacity: Int,
-        configuredRotaCertaSeatAllocation: Int,
+        configuredRotaCertaSeatAllocation: Int = configuredVehicleCapacity,
         nowMillis: Long = System.currentTimeMillis(),
     ): PublicAgendaAutoSyncResult {
         val settings = store.onlineSettings()
@@ -689,9 +689,9 @@ internal object PublicAgendaAutoSync0300 {
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
         capacity: Int,
-        rotaCertaSeatAllocation: Int = capacity,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
+        rotaCertaSeatAllocation: Int = capacity,
     ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
         if (departure <= nowMillis) return null
