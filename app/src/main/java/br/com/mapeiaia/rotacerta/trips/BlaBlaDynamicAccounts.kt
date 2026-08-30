@@ -225,6 +225,21 @@ private data class DynamicPublicTripShareEvidence(
 )
 
 @Serializable
+private data class DynamicPublicSearchLinkCard(
+    val driverName: String = "",
+    val departureTime: String? = null,
+    val actualDeparture: String? = null,
+    val actualArrival: String? = null,
+    val href: String? = null,
+)
+
+@Serializable
+private data class DynamicPublicSearchLinkPage(
+    val bodyText: String = "",
+    val cards: List<DynamicPublicSearchLinkCard> = emptyList(),
+)
+
+@Serializable
 private data class DynamicPassengerCardOpenState(
     val found: Boolean = false,
     val clicked: Boolean = false,
@@ -316,6 +331,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var tripRosterStablePasses = 0
     private var publicTripShareReadAttempts = 0
     private var publicTripShareCaptureInFlight = false
+    private var publicTripSearchReadAttempts = 0
+    private var publicTripSearchCaptureInFlight = false
     private var pendingTripDetail: DynamicTripDetail? = null
     private var pendingTripPassengers = mutableListOf<BlaBlaCollectorPassenger>()
     private val pendingTripPassengerCardIndexes = mutableMapOf<Int, Int>()
@@ -463,6 +480,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                         val expectedCandidate = candidateIndex
                         view.postDelayed({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
                     }
+                    Phase.PUBLIC_SEARCH_LINK -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
+                        val expectedSync = syncGeneration
+                        val expectedNavigation = navigationGeneration
+                        val expectedCandidate = candidateIndex
+                        view.postDelayed({ capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate) }, PUBLIC_TRIP_SEARCH_SETTLE_MS)
+                    }
                     Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
                     Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
                     Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
@@ -568,6 +591,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
         publicTripShareCaptureInFlight = false
+        publicTripSearchReadAttempts = 0
+        publicTripSearchCaptureInFlight = false
         identityConfirmedThisSync = false
         pendingTripDetail = null
         pendingTripPassengers.clear()
