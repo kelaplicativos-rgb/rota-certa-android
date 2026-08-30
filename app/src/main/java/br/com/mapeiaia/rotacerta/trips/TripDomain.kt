@@ -79,6 +79,13 @@ data class Trip(
     val notes: String = "",
     val remoteId: String? = null,
     val publicUrl: String? = null,
+    /** Strong BlaBlaCar identity captured from the exact external card. */
+    val blablaProfileUuid: String? = null,
+    val blablaTripId: String? = null,
+    /** Authenticated driver/admin target. Never expose this URL to passengers. */
+    val blablaManageUrl: String? = null,
+    /** Exact passenger-facing /trip URL observed for this same BlaBlaCar trip. */
+    val blablaPublicUrl: String? = null,
     /** Public passenger portal is opt-in. A synchronized BlaBlaCar card is never exposed automatically. */
     val publicBookingEnabled: Boolean = false,
     /** True only when intermediate stops are complete/authoritative for this published trip. */
