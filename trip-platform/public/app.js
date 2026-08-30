@@ -1396,15 +1396,21 @@ function renderAgendaCards(entries, container, filtered = false) {
     const stops = orderedStops(item);
     const fromIndex = filtered && Number.isInteger(entry.fromIndex) ? entry.fromIndex : 0;
     const toIndex = filtered && Number.isInteger(entry.toIndex) ? entry.toIndex : stops.length - 1;
+    const segmentAvailable = item.capacityReliable === true
+      ? (filtered && Number.isFinite(Number(entry.available))
+        ? Math.max(0, Number(entry.available))
+        : availableForTripSegment(item, fromIndex, toIndex))
+      : 0;
+    const soldOut = item.capacityReliable === true && segmentAvailable === 0;
+    const actionsEnabled = item.capacityReliable === true && segmentAvailable > 0;
     const from = stops[fromIndex]?.name || "Origem";
     const to = stops[toIndex]?.name || "Destino";
     const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
     const card = document.createElement("article");
-    card.className = full ? "agendaTrip agendaTripFull" : "agendaTrip";
+    card.className = (full || soldOut) ? "agendaTrip agendaTripFull" : "agendaTrip";
 
     const owner = item.driverUsername || driverUsername;
     const detailsParams = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
-    detailsParams.set("lugares", String(searchState.seats));
     if (filtered && Number.isInteger(entry.fromIndex) && Number.isInteger(entry.toIndex)) {
       detailsParams.set("embarque", stops[fromIndex]?.id || "");
       detailsParams.set("destino", stops[toIndex]?.id || "");
@@ -1429,10 +1435,12 @@ function renderAgendaCards(entries, container, filtered = false) {
     time.textContent = `🕘 ${formatTime(item.departureAtMillis)}`;
     const seats = document.createElement("span");
     seats.className = "bigPill";
-    if (filtered && Number.isFinite(Number(entry.available))) {
-      seats.textContent = `🪑 ${Math.max(0, Number(entry.available))} vaga(s) neste trecho`;
+    if (item.capacityReliable !== true) {
+      seats.textContent = "🪑 Vagas em confirmação";
+    } else if (filtered) {
+      seats.textContent = segmentAvailable === 0 ? "🪑 Lotado" : `🪑 ${segmentAvailable} vaga(s) neste trecho`;
     } else {
-      seats.textContent = full ? "🪑 0 vagas" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
+      seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
     }
     meta.append(time, seats);
     const duration = durationFor(item);
