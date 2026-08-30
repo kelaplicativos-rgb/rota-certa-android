@@ -50,7 +50,11 @@ enum class BookingSource {
 
 @Serializable
 enum class CapacityClaimType {
+    /** A real passenger/reservation that occupies a physical seat. */
     PASSENGER,
+    /** Real external occupancy captured without creating a duplicate local passenger identity. */
+    EXTERNAL_OCCUPANCY,
+    /** A seat deliberately unavailable for booking. If linked to a passenger by occupancyGroupId it is a mirror, not an extra seat. */
     RESERVED_SEAT,
 }
 
@@ -146,8 +150,13 @@ data class Booking(
 data class SegmentLoad(
     val from: TripStop,
     val to: TripStop,
+    /** Total physical capacity consumed on this segment: passengers + standalone blocked seats. */
     val occupiedSeats: Int,
     val availableSeats: Int,
+    /** Real passengers occupying seats on this segment, after occupancyGroupId deduplication. */
+    val passengerSeats: Int = occupiedSeats,
+    /** Seats deliberately blocked/unavailable on this segment, excluding mirrors of a passenger claim. */
+    val blockedSeats: Int = 0,
 )
 
 data class SeatAvailability(
@@ -233,11 +242,14 @@ object SeatAvailabilityEngine {
 
         val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         val loads = (boardingIndex until dropoffIndex).map { index ->
+            val state = occupancy[index]
             SegmentLoad(
                 from = orderedStops[index],
                 to = orderedStops[index + 1],
-                occupiedSeats = occupancy[index],
-                availableSeats = (trip.capacity - occupancy[index]).coerceAtLeast(0),
+                occupiedSeats = state.consumedSeats,
+                availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
+                passengerSeats = state.passengerSeats,
+                blockedSeats = state.blockedSeats,
             )
         }
         val available = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
@@ -261,11 +273,14 @@ object SeatAvailabilityEngine {
         if (orderedStops.size < 2) return emptyList()
         val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         return occupancy.indices.map { index ->
+            val state = occupancy[index]
             SegmentLoad(
                 from = orderedStops[index],
                 to = orderedStops[index + 1],
-                occupiedSeats = occupancy[index],
-                availableSeats = (trip.capacity - occupancy[index]).coerceAtLeast(0),
+                occupiedSeats = state.consumedSeats,
+                availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
+                passengerSeats = state.passengerSeats,
+                blockedSeats = state.blockedSeats,
             )
         }
     }
@@ -306,13 +321,26 @@ object SeatAvailabilityEngine {
         }
     }
 
+    private data class SegmentOccupancyState(
+        val passengerSeats: Int,
+        val blockedSeats: Int,
+    ) {
+        val consumedSeats: Int
+            get() = passengerSeats + blockedSeats
+    }
+
+    private data class OccupancyGroupClaims(
+        var passengerSeats: Int = 0,
+        var reservedSeats: Int = 0,
+    )
+
     private fun reconciledOccupancy(
         trip: Trip,
         bookings: List<Booking>,
         orderedStops: List<TripStop>,
         nowMillis: Long,
-    ): IntArray {
-        val claimsBySegment = Array(orderedStops.size - 1) { mutableMapOf<String, Int>() }
+    ): List<SegmentOccupancyState> {
+        val claimsBySegment = Array(orderedStops.size - 1) { mutableMapOf<String, OccupancyGroupClaims>() }
         bookings.asSequence()
             .filter { it.tripId == trip.id }
             .filter { it.seats > 0 }
@@ -324,16 +352,30 @@ object SeatAvailabilityEngine {
                     val explicitGroup = booking.occupancyGroupId?.trim()?.takeIf { it.isNotEmpty() }
                     val claimKey = explicitGroup?.let { "group:$it" } ?: "booking:${booking.id}"
                     for (segment in fromIndex until toIndex) {
-                        val previous = claimsBySegment[segment][claimKey] ?: 0
-                        if (booking.seats > previous) {
-                            claimsBySegment[segment][claimKey] = booking.seats
+                        val group = claimsBySegment[segment].getOrPut(claimKey) { OccupancyGroupClaims() }
+                        when (booking.capacityClaimType) {
+                            CapacityClaimType.PASSENGER,
+                            CapacityClaimType.EXTERNAL_OCCUPANCY,
+                            -> if (booking.seats > group.passengerSeats) group.passengerSeats = booking.seats
+                            CapacityClaimType.RESERVED_SEAT ->
+                                if (booking.seats > group.reservedSeats) group.reservedSeats = booking.seats
                         }
                     }
                 }
             }
-        return IntArray(claimsBySegment.size) { index -> claimsBySegment[index].values.sum() }
-    }
 
+        return claimsBySegment.map { groups ->
+            var passengers = 0
+            var blocked = 0
+            groups.values.forEach { group ->
+                val passenger = group.passengerSeats.coerceAtLeast(0)
+                val consumedByGroup = maxOf(passenger, group.reservedSeats.coerceAtLeast(0))
+                passengers += passenger
+                blocked += (consumedByGroup - passenger).coerceAtLeast(0)
+            }
+            SegmentOccupancyState(passengerSeats = passengers, blockedSeats = blocked)
+        }
+    }
     private fun occupiesCapacity(booking: Booking, nowMillis: Long): Boolean = when (booking.status) {
         BookingStatus.REQUESTED,
         BookingStatus.CONFIRMED,
