@@ -29,6 +29,7 @@ class SettingsRepository(private val context: Context) {
     private val alternativeAddress = stringKey("alternative_address")
     private val tripDepartureAddress = stringKey("trip_departure_address")
     private val vehicleCapacity = intKey("vehicle_capacity")
+    private val rotaCertaSeatAllocation = intKey("rota_certa_seat_allocation")
     private val homeRadiusKm = doubleKey("home_radius_km")
     private val alternativeRadiusKm = doubleKey("alternative_radius_km")
     private val desiredKeywords = stringKey("desired_keywords")
@@ -63,6 +64,9 @@ class SettingsRepository(private val context: Context) {
             alternativeAddress = prefs[alternativeAddress].orEmpty(),
             tripDepartureAddress = prefs[tripDepartureAddress].orEmpty(),
             vehicleCapacity = (prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
+            // Legacy compatibility: before the semantic split, the same value was
+            // also being used as the Rota Certa operational allocation.
+            rotaCertaSeatAllocation = (prefs[rotaCertaSeatAllocation] ?: prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
             homeRadiusKm = prefs[homeRadiusKm] ?: 10.0,
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
@@ -129,6 +133,11 @@ class SettingsRepository(private val context: Context) {
                 prefs[vehicleCapacity] = settings.vehicleCapacity
             } else {
                 prefs.remove(vehicleCapacity)
+            }
+            if (settings.rotaCertaSeatAllocation in 0..999) {
+                prefs[rotaCertaSeatAllocation] = settings.rotaCertaSeatAllocation
+            } else {
+                prefs.remove(rotaCertaSeatAllocation)
             }
             prefs[homeRadiusKm] = settings.homeRadiusKm
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
