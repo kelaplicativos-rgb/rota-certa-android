@@ -91,6 +91,10 @@ class TripsActivity : ComponentActivity() {
                         activity = this,
                         startCreating = intent?.action == TripActions.ACTION_NEW_TRIP,
                         initialTripId = intent?.getStringExtra(TripActions.EXTRA_TRIP_ID),
+                        initialRemoteTripId = intent?.getStringExtra(TripActions.EXTRA_REMOTE_TRIP_ID),
+                        initialBookingId = intent?.getStringExtra(TripActions.EXTRA_BOOKING_ID),
+                        initialPendingOnly = intent?.getBooleanExtra(TripActions.EXTRA_PENDING_ONLY, false) == true,
+                        openReservationRequests = intent?.action == TripActions.ACTION_OPEN_RESERVATION_REQUESTS,
                     )
                 }
             }
@@ -126,6 +130,10 @@ private fun TripApp(
     activity: ComponentActivity,
     startCreating: Boolean,
     initialTripId: String?,
+    initialRemoteTripId: String?,
+    initialBookingId: String?,
+    initialPendingOnly: Boolean,
+    openReservationRequests: Boolean,
 ) {
     val traceId = AgendaTrace.currentTraceId()
     val firstCompositionOperation = remember {
@@ -194,12 +202,17 @@ private fun TripApp(
         mutableStateOf(
             when {
                 startCreating -> TripScreen.CREATE
+                openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.TIMELINE
                 initialTripId != null -> TripScreen.LIST
                 else -> TripScreen.TIMELINE
             },
         )
     }
     var selectedId by remember { mutableStateOf(initialTripId) }
+    var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
+    var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
+    var focusedBookingId by remember { mutableStateOf(initialBookingId) }
+    var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
     var message by remember { mutableStateOf<String?>(null) }
     var driverNotifications by remember { mutableStateOf<List<DriverNotificationItem>>(emptyList()) }
     var driverUnreadCount by remember { mutableStateOf(0) }
@@ -276,6 +289,12 @@ private fun TripApp(
         trips = store.trips()
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        BookingRealtimeEvents0356.changes.collect {
+            refresh()
+            refreshDriverNotifications()
+        }
     }
     androidx.compose.runtime.DisposableEffect(activity) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -531,8 +550,11 @@ private fun TripApp(
                                                 it.remoteId == item.tripId || it.id == item.tripId
                                             }
                                             if (localTrip != null) {
-                                                selectedId = localTrip.id
-                                                screen = TripScreen.LIST
+                                                focusedTripId = localTrip.id
+                                                focusedRemoteTripId = item.tripId
+                                                focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
+                                                reservationPendingOnly = false
+                                                screen = TripScreen.TIMELINE
                                             }
                                             refreshDriverNotifications()
                                         }
@@ -612,6 +634,10 @@ private fun TripApp(
                         screen = TripScreen.LIST
                     },
                     onBack = { activity.finish() },
+                    focusedTripId = focusedTripId
+                        ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
+                    focusedBookingId = focusedBookingId,
+                    reservationPendingOnly = reservationPendingOnly,
                 )
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,

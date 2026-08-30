@@ -184,6 +184,20 @@ internal fun OnlineSettingsEditor(
         modifier = Modifier.fillMaxWidth(),
         enabled = !linkRotationInFlight && !usernameChangeInFlight,
     )
+    val normalizedLinkUsername = DriverIdentityRules.normalizeUsername(driverUsername)
+    val shortLinkPreview = publicBase
+        .takeIf { it.startsWith("https://") }
+        ?.trimEnd('/')
+        ?.let { base ->
+            normalizedLinkUsername
+                .takeIf(DriverIdentityRules::isValidPublicUsername)
+                ?.let { "$base/$it" }
+        }
+    Text("Escolha o nome que quiser para o endereço curto e altere quando precisar. Espaços e acentos são convertidos automaticamente para um link simples. O nome precisa estar disponível; somente endereços técnicos do Rota Certa não podem ser usados.", style = MaterialTheme.typography.bodySmall)
+    shortLinkPreview?.let { Text("Seu endereço: $it", style = MaterialTheme.typography.bodySmall) }
+    if (DriverIdentityRules.isReservedUsername(normalizedLinkUsername)) {
+        Text("Esse endereço é usado internamente pelo Rota Certa. Escolha outro.", style = MaterialTheme.typography.bodySmall)
+    }
 
     HorizontalDivider()
     Text("Dados públicos do motorista", style = MaterialTheme.typography.titleMedium)
@@ -309,7 +323,7 @@ internal fun OnlineSettingsEditor(
         modifier = Modifier.fillMaxWidth(),
         enabled = token.isBlank(),
     )
-    Text("O token não muda ao salvar dados. A troca só acontece pela ação separada Gerar novo link.")
+    Text("O token não muda ao salvar dados. A credencial interna não aparece no endereço curto. A ação de troca abaixo serve somente para revogar intencionalmente links técnicos antigos.")
 
     registrationMessage?.let { Text(it) }
     if (token.isBlank()) {
@@ -317,8 +331,12 @@ internal fun OnlineSettingsEditor(
             enabled = api.startsWith("https://") && publicBase.startsWith("https://") && driverName.isNotBlank(),
             onClick = {
                 val normalizedUsername = DriverIdentityRules.normalizeUsername(driverUsername.ifBlank { driverName })
-                if (!DriverIdentityRules.isValidUsername(normalizedUsername)) {
-                    registrationMessage = "Escolha um nome de usuário com pelo menos 3 caracteres."
+                if (!DriverIdentityRules.isValidPublicUsername(normalizedUsername)) {
+                    registrationMessage = if (DriverIdentityRules.isReservedUsername(normalizedUsername)) {
+                        "Esse endereço é usado internamente pelo Rota Certa. Escolha outro."
+                    } else {
+                        "Escolha um nome de usuário com pelo menos 3 caracteres."
+                    }
                 } else {
                     driverUsername = normalizedUsername
                     registrationScope.launch {
@@ -352,19 +370,28 @@ internal fun OnlineSettingsEditor(
                 clipboard?.setPrimaryClip(ClipData.newPlainText("Link da Agenda Rota Certa", agendaUrl))
                 linkActionMessage = if (clipboard != null) "Link copiado." else "Não foi possível copiar o link."
             }, modifier = Modifier.fillMaxWidth()) { Text("Copiar link") }
+            OutlinedButton(onClick = {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, agendaUrl)
+                }
+                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Compartilhar link da Agenda")) }
+                    .onSuccess { linkActionMessage = "Abrindo opções de compartilhamento…" }
+                    .onFailure { linkActionMessage = "Não foi possível compartilhar o link neste aparelho." }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Compartilhar link") }
             linkActionMessage?.let { Text(it) }
 
             OutlinedButton(
                 enabled = !linkRotationInFlight,
                 onClick = { confirmRegenerateLink = true },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Gerar novo link") }
+            ) { Text("Trocar credencial interna") }
 
             if (confirmRegenerateLink) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Atenção", style = MaterialTheme.typography.titleMedium)
-                        Text("Gerar um novo link invalida imediatamente o link atual. Faça isso somente se realmente quiser substituir o endereço da agenda.")
+                        Text("O endereço curto continuará o mesmo. Esta ação troca a credencial interna e invalida links técnicos antigos que contenham ?agenda=... Use somente para revogação intencional.")
                         Button(
                             enabled = !linkRotationInFlight,
                             onClick = {
@@ -386,12 +413,12 @@ internal fun OnlineSettingsEditor(
                                                 linkActionMessage = "Conflito local detectado. Reabra esta tela antes de tentar novamente."
                                             }
                                         }
-                                        .onFailure { linkActionMessage = "Não foi possível gerar um novo link: ${it.message ?: "erro de conexão"}" }
+                                        .onFailure { linkActionMessage = "Não foi possível trocar a credencial interna: ${it.message ?: "erro de conexão"}" }
                                     linkRotationInFlight = false
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Confirmar novo link") }
+                        ) { Text("Confirmar troca de credencial") }
                         TextButton(enabled = !linkRotationInFlight, onClick = { confirmRegenerateLink = false }) { Text("Cancelar") }
                     }
                 }
@@ -407,8 +434,12 @@ internal fun OnlineSettingsEditor(
                 val candidate = buildSettings()
                 val normalizedUsername = candidate.driverUsername
                 when {
-                    !DriverIdentityRules.isValidUsername(normalizedUsername) -> {
-                        registrationMessage = "Escolha um nome de usuário com pelo menos 3 caracteres."
+                    !DriverIdentityRules.isValidPublicUsername(normalizedUsername) -> {
+                        registrationMessage = if (DriverIdentityRules.isReservedUsername(normalizedUsername)) {
+                            "Esse endereço é usado internamente pelo Rota Certa. Escolha outro."
+                        } else {
+                            "Escolha um nome de usuário com pelo menos 3 caracteres."
+                        }
                     }
                     token.isNotBlank() && normalizedUsername != initial.driverUsername -> {
                         registrationScope.launch {
@@ -423,7 +454,7 @@ internal fun OnlineSettingsEditor(
                                 )
                             }.onSuccess { response ->
                                 driverUsername = response.username
-                                linkActionMessage = "Identificador atualizado sem alterar o token público."
+                                linkActionMessage = "Identificador atualizado sem alterar o token público. Endereços anteriores permanecem como aliases."
                                 onSave(candidate.copy(driverUsername = response.username))
                             }.onFailure {
                                 linkActionMessage = "Não foi possível alterar o identificador: ${it.message ?: "erro de conexão"}"

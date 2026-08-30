@@ -19,10 +19,21 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+
+internal object BookingRealtimeEvents0356 {
+    private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val changes = _changes.asSharedFlow()
+
+    fun notifyChanged() {
+        _changes.tryEmit(Unit)
+    }
+}
 
 internal object BookingPushRegistration0304 {
     suspend fun ensureRegistered(context: Context, store: TripStore): Boolean = withContext(Dispatchers.IO) {
@@ -79,6 +90,7 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             tripTitle = tripTitle,
             seats = seats,
             bookingId = bookingId,
+            remoteTripId = remoteTripId,
         )
 
         UnifiedDebugEventStore.record(
@@ -95,6 +107,7 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
                 )
             }
         }
+        BookingRealtimeEvents0356.notifyChanged()
         TripWidgetProvider.updateAll(this)
     }
 }
@@ -110,13 +123,14 @@ private object BookingNotificationCenter0304 {
         tripTitle: String,
         seats: Int,
         bookingId: String,
+        remoteTripId: String = "",
     ) {
         val spec = when (event) {
             "reservation_created" -> NotificationSpec(
                 channelId = CHANNEL_CREATED,
-                channelName = "Nova reserva",
-                title = "🚨 NOVA RESERVA",
-                body = buildBody(tripTitle, seats, "confirmada"),
+                channelName = "Nova solicitação de reserva",
+                title = "🟠 NOVA SOLICITAÇÃO",
+                body = buildBody(tripTitle, seats, "aguardando aprovação"),
                 sound = Settings.System.DEFAULT_ALARM_ALERT_URI,
                 vibration = longArrayOf(0, 900, 220, 900, 220, 1_200),
                 usage = AudioAttributes.USAGE_ALARM,
@@ -166,8 +180,9 @@ private object BookingNotificationCenter0304 {
 
         val intent = Intent(context, TripsActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            action = "br.com.mapeiaia.rotacerta.trips.OPEN_PUBLIC_BOOKING"
-            putExtra("remoteTripId", bookingId)
+            action = TripActions.ACTION_OPEN_RESERVATION_REQUESTS
+            putExtra(TripActions.EXTRA_REMOTE_TRIP_ID, remoteTripId)
+            putExtra(TripActions.EXTRA_BOOKING_ID, bookingId)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,

@@ -11,7 +11,9 @@ test("public API exposes authoritative availability fields", () => {
   assert.match(api, /availableSeatsMinimum/);
   assert.match(api, /availableSeatsMaximum/);
   assert.match(api, /isFull: fullyOccupied/);
-  assert.match(api, /canReserve: data\.publicBookingEnabled === true && !fullyOccupied/);
+  assert.match(api, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability\.maximum > 0/);
+  assert.match(api, /capacityReliable/);
+  assert.match(api, /availableSeatsMinimum/);
 });
 
 test("FULL trips fail closed even if stale segment loads exist", () => {

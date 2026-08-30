@@ -280,8 +280,8 @@ data class TripOnlineSettings(
 
     val publicAgendaUrl: String?
         get() = publicBaseUrl.takeIf { it.startsWith("https://") }?.trimEnd('/')?.let { base ->
-            val username = driverUsername.takeIf(DriverIdentityRules::isValidUsername) ?: return@let null
-            publicCalendarToken.takeIf { it.length >= 16 }?.let { token -> "$base/?motorista=$username&agenda=$token" }
+            val username = driverUsername.takeIf(DriverIdentityRules::isValidPublicUsername) ?: return@let null
+            publicCalendarToken.takeIf { it.length >= 16 }?.let { "$base/$username" }
         }
 
     val publicCalendarUrl: String?

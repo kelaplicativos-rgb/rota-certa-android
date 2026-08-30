@@ -643,6 +643,13 @@ fun RotaCertaApp(launchIntent: Intent?) {
             Text("Gatilho universal: ao encontrar dois enderecos, usa o ultimo e calcula imediatamente ate o ponto definido por voce.", style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(16.dp))
 
+            if (
+                tab == TAB_CONFIG &&
+                !shortcutCustomizationVisible0179 &&
+                highlightedShortcutModule0171 == null
+            ) {
+                br.com.mapeiaia.rotacerta.trips.ReservationRequestsHomeAlert0356()
+            }
 
             when (tab) {
                 TAB_ANALYSIS -> AnalysisScreen(

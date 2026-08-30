@@ -207,6 +207,7 @@ internal fun planTimelineExternalCapacityClaims(
         BookingStatus.CONFIRMED -> true
         BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > now
         BookingStatus.REQUESTED,
+        BookingStatus.REJECTED,
         BookingStatus.CANCELLED,
         BookingStatus.EXPIRED,
         -> false

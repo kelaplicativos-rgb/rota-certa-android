@@ -19,6 +19,7 @@ enum class BookingStatus {
     REQUESTED,
     HELD,
     CONFIRMED,
+    REJECTED,
     CANCELLED,
     EXPIRED,
 }
@@ -80,6 +81,12 @@ data class Trip(
     val publicUrl: String? = null,
     /** Public passenger portal is opt-in. A synchronized BlaBlaCar card is never exposed automatically. */
     val publicBookingEnabled: Boolean = false,
+    /** True only when intermediate stops are complete/authoritative for this published trip. */
+    val itineraryAuthoritative: Boolean = true,
+    /** BlaBlaCar seat-editor observation. Null for trips without an external publication. */
+    val publishedSeats: Int? = null,
+    /** External trips stay fail-closed until published seats and capacity claims are reconciled. */
+    val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )
@@ -150,6 +157,14 @@ data class SeatAvailabilityRange(
 }
 
 object DriverIdentityRules {
+    // Reserve only paths that are actually owned by Firebase/API routing.
+    // Human-facing words such as "agenda", "admin" or a driver's preferred name
+    // remain available as public slugs when they are not already taken.
+    private val reservedPublicUsernames = setOf(
+        "v1",
+        "calendar",
+    )
+
     fun normalizeUsername(value: String): String {
         val ascii = java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
@@ -159,6 +174,12 @@ object DriverIdentityRules {
 
     fun isValidUsername(value: String): Boolean =
         value.length in 3..32 && value.matches(Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"))
+
+    fun isReservedUsername(value: String): Boolean =
+        normalizeUsername(value) in reservedPublicUsernames
+
+    fun isValidPublicUsername(value: String): Boolean =
+        isValidUsername(value) && !isReservedUsername(value)
 }
 
 object TripFareEngine {
@@ -303,9 +324,11 @@ object SeatAvailabilityEngine {
     }
 
     private fun occupiesCapacity(booking: Booking, nowMillis: Long): Boolean = when (booking.status) {
-        BookingStatus.CONFIRMED -> true
-        BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
         BookingStatus.REQUESTED,
+        BookingStatus.CONFIRMED,
+        -> true
+        BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+        BookingStatus.REJECTED,
         BookingStatus.CANCELLED,
         BookingStatus.EXPIRED,
         -> false

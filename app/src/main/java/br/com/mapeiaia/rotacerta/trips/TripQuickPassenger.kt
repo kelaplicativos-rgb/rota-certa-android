@@ -52,6 +52,7 @@ object QuickPassengerEngine {
                     BookingStatus.CONFIRMED,
                     -> true
                     BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                    BookingStatus.REJECTED,
                     BookingStatus.CANCELLED,
                     BookingStatus.EXPIRED,
                     -> false

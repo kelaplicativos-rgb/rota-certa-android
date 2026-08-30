@@ -21,6 +21,7 @@ internal data class PublicAgendaExternalTrip(
     val bookedSeats: Int,
     val sourceReference: String,
     val capacityClaims: List<Booking> = emptyList(),
+    val publishedSeats: Int? = null,
     val profileUuid: String = "",
     val blablaTripId: String = "",
     val blablaTripHref: String = "",
@@ -378,6 +379,7 @@ internal object PublicAgendaAutoSync0300 {
                         remoteTripId = response.tripId,
                         publicTrip = effectiveTrip,
                         claims = effectiveClaims,
+                        publishedSeats = synthesized.publishedSeats,
                     ).also { synced ->
                         AgendaTrace.operationEnd(
                             context,
@@ -399,6 +401,19 @@ internal object PublicAgendaAutoSync0300 {
                     throw error
                 }
                 seatClaimsSynced += syncedClaims
+                if (synthesized.publishedSeats != null) {
+                    failureStage = "capacity_reliable"
+                    effectiveTrip = effectiveTrip.copy(capacityReliable = true)
+                    api.update(effectiveTrip)
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_CAPACITY_RECONCILE_RESULT",
+                        context.packageName,
+                        "tripKey=" + diagnosticTripKey +
+                            " physicalCapacity=" + effectiveTrip.capacity +
+                            " publishedSeats=" + synthesized.publishedSeats +
+                            " capacityReliable=true claimsSynced=" + syncedClaims,
+                    )
+                }
 
                 failureStage = "binding_save"
                 val bindingOperation = AgendaTrace.operationStart(
@@ -586,15 +601,59 @@ internal object PublicAgendaAutoSync0300 {
             )
         }
 
+    internal fun driverReservedGap(
+        physicalCapacity: Int,
+        publishedSeats: Int?,
+        nonBlaBlaOccupancyImpact: Int,
+    ): Int? {
+        val physical = physicalCapacity.coerceAtLeast(0)
+        val published = publishedSeats?.takeIf { it in 0..physical } ?: return null
+        return (physical - published - nonBlaBlaOccupancyImpact.coerceAtLeast(0)).coerceAtLeast(0)
+    }
+
+    internal fun nonBlaBlaOccupancyImpact(
+        trip: Trip,
+        bookings: List<Booking>,
+    ): Int = SeatAvailabilityEngine.segmentLoads(
+        trip,
+        bookings.filterNot { it.source == BookingSource.BLABLACAR },
+    ).maxOfOrNull(SegmentLoad::occupiedSeats) ?: 0
+
     private suspend fun syncExternalCapacityClaims(
         api: TripRemoteApi,
         remoteTripId: String,
         publicTrip: Trip,
         claims: List<Booking>,
+        publishedSeats: Int?,
     ): Int {
-        val currentIds = claims.map(Booking::id).toSet()
-        val legacyId = "blablacar-${publicTrip.publicToken.take(40)}"
-        val remoteMirrors = api.listBookings(remoteTripId).bookings.filter { remote ->
+        val remoteBookings = api.listBookings(remoteTripId).bookings
+        val nonBlaBlaImpact = nonBlaBlaOccupancyImpact(
+            publicTrip,
+            remoteBookings.map { it.toLocalBooking(publicTrip.id) },
+        )
+        val reservedGap = driverReservedGap(publicTrip.capacity, publishedSeats, nonBlaBlaImpact) ?: 0
+        val stops = publicTrip.stops.sortedBy(TripStop::order)
+        val gapClaim = if (reservedGap > 0 && stops.size >= 2) {
+            Booking(
+                id = "bbg-" + publicTrip.publicToken.take(36),
+                tripId = publicTrip.id,
+                passengerName = "Capacidade reservada fora da publicação",
+                boardingStopId = stops.first().id,
+                dropoffStopId = stops.last().id,
+                seats = reservedGap,
+                status = BookingStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+                capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+                sourceReference = EXTERNAL_MIRROR_PREFIX + publicTrip.publicToken.take(120) + ":driver-gap",
+                occupancyGroupId = "blablacar:" + publicTrip.publicToken + ":driver-gap",
+            )
+        } else {
+            null
+        }
+        val desiredClaims = claims + listOfNotNull(gapClaim)
+        val currentIds = desiredClaims.map(Booking::id).toSet()
+        val legacyId = "blablacar-" + publicTrip.publicToken.take(40)
+        val remoteMirrors = remoteBookings.filter { remote ->
             remote.source == BookingSource.BLABLACAR &&
                 (remote.sourceReference.startsWith(EXTERNAL_MIRROR_PREFIX) || remote.id == legacyId)
         }
@@ -613,7 +672,7 @@ internal object PublicAgendaAutoSync0300 {
                 )
                 synced++
             }
-        claims.forEach { claim ->
+        desiredClaims.forEach { claim ->
             api.upsertDriverBooking(remoteTripId, claim)
             synced++
         }
@@ -643,6 +702,7 @@ internal object PublicAgendaAutoSync0300 {
         val identity = stableIdentity(source)
         val token = "bb${sha256(identity).take(30)}"
         val safeCapacity = capacity.coerceIn(1, 999)
+        val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..safeCapacity }
         val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
         val observedBooked = source.booked_seats.coerceAtLeast(passengerSeats)
         val booked = if (source.availability.equals("full", true)) {
@@ -680,6 +740,9 @@ internal object PublicAgendaAutoSync0300 {
             notes = "",
             remoteId = token,
             publicBookingEnabled = true,
+            itineraryAuthoritative = source.itinerary_authoritative,
+            publishedSeats = verifiedPublishedSeats,
+            capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()
             .ifBlank { source.trip_href.orEmpty() }
@@ -690,6 +753,7 @@ internal object PublicAgendaAutoSync0300 {
             bookedSeats = booked,
             sourceReference = sourceReference,
             capacityClaims = claims,
+            publishedSeats = verifiedPublishedSeats,
             profileUuid = source.profile_uuid.trim(),
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),

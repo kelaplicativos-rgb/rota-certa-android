@@ -39,12 +39,15 @@ test("search filter uses simple browser fields without GPS and keeps dates seats
   assert.match(web, /renderAgendaCards\(result\.matches/);
 });
 
-test("route search is waypoint-order and segment-capacity aware", () => {
-  assert.match(web, /index > fromIndex && stopMatchesSearch/);
+test("route search is canonical-stop, waypoint-order and segment-capacity aware", () => {
+  assert.match(web, /function selectedStopIndex/);
+  assert.match(web, /candidate\.stopId/);
+  assert.match(web, /candidate\.stopIndex > afterIndex/);
+  assert.match(web, /toIndex < 0 \|\| !segmentEvidenceTrusted/);
   assert.match(web, /availableForTripSegment/);
-  assert.match(web, /entry\.available >= seats/);
-  assert.match(web, /O local informado não faz parte do percurso disponível nesta data/);
-  assert.match(web, /Não há \$\{seats\} lugar\(es\) disponível\(is\) nesse trecho/);
+  assert.match(web, /return available >= seats \?/);
+  assert.match(web, /PUBLIC_SEARCH_DIRECTION_REJECTED/);
+  assert.match(web, /Não há " \+ seats \+ " lugar\(es\) disponível\(is\) nesse trecho para essa data\./);
 });
 
 test("search result carries exact segment and seats into direct booking URL", () => {

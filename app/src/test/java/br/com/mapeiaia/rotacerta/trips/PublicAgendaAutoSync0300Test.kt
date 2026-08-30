@@ -113,6 +113,97 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(mirror.sourceReference.startsWith("LOCAL_MIRROR:"))
     }
     @Test
+    fun externalCapacityUsesPublishedSeatsWithoutDoubleSubtractingRotaCertaOccupancy() {
+        assertEquals(1, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 0))
+        assertEquals(0, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 1))
+        assertNull(PublicAgendaAutoSync0300.driverReservedGap(4, null, 0))
+
+        val trip = Trip(
+            title = "A → C",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A"),
+                TripStop(id = "b", order = 1, name = "B"),
+                TripStop(id = "c", order = 2, name = "C"),
+            ),
+        )
+        val rotaCerta = Booking(
+            id = "rc-1",
+            tripId = trip.id,
+            passengerName = "Reserva Rota Certa",
+            boardingStopId = "b",
+            dropoffStopId = "c",
+            seats = 1,
+            status = BookingStatus.REQUESTED,
+            source = BookingSource.ROTA_CERTA,
+        )
+        assertEquals(1, PublicAgendaAutoSync0300.nonBlaBlaOccupancyImpact(trip, listOf(rotaCerta)))
+        assertEquals(0, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 1))
+    }
+
+    @Test
+    fun externalTripPropagatesItineraryAuthorityAndFailsClosedUntilSeatClaimsReconcile() {
+        val authoritative = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2030-09-12",
+            departure_time = "11:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            itinerary_stops = listOf("Santo André", "Três Corações", "São Tomé das Letras"),
+            itinerary_authoritative = true,
+            published_seats = 3,
+        )
+        val published = PublicAgendaAutoSync0300.toPublicTrip(authoritative, 4, 0L, zone)
+        assertNotNull(published)
+        assertTrue(published.trip.itineraryAuthoritative)
+        assertEquals(3, published.trip.publishedSeats)
+        assertEquals(false, published.trip.capacityReliable)
+
+        val unknown = authoritative.copy(published_seats = null)
+        val unknownPublished = PublicAgendaAutoSync0300.toPublicTrip(unknown, 4, 0L, zone)
+        assertNotNull(unknownPublished)
+        assertNull(unknownPublished.publishedSeats)
+        assertEquals(false, unknownPublished.trip.capacityReliable)
+    }
+
+    @Test
+    fun privateSeatGapPlusThreeBlaBlaPassengersConsumesAllFourPhysicalSeats() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile",
+            date = "2030-09-13",
+            departure_time = "11:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            published_seats = 3,
+            booked_seats = 3,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P1", seats = 1),
+                BlaBlaCollectorPassenger(name = "P2", seats = 1),
+                BlaBlaCollectorPassenger(name = "P3", seats = 1),
+            ),
+        )
+        val external = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
+        assertNotNull(external)
+        val gap = PublicAgendaAutoSync0300.driverReservedGap(4, 3, 0)
+        assertEquals(1, gap)
+        val stops = external.trip.stops.sortedBy(TripStop::order)
+        val gapClaim = Booking(
+            id = "driver-gap",
+            tripId = external.trip.id,
+            passengerName = "Capacidade reservada",
+            boardingStopId = stops.first().id,
+            dropoffStopId = stops.last().id,
+            seats = gap!!,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+        )
+        val loads = SeatAvailabilityEngine.segmentLoads(external.trip, external.capacityClaims + gapClaim)
+        assertTrue(loads.all { it.availableSeats == 0 })
+    }
+
+    @Test
     fun departedCollectorTripIsNotRepublished() {
         val departure = LocalDate.of(2030, 9, 10)
             .atTime(LocalTime.of(11, 0))

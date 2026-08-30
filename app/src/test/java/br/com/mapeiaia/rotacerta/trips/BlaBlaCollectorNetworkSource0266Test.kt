@@ -87,6 +87,32 @@ class BlaBlaCollectorNetworkSource0266Test {
     }
 
     @Test
+    fun visualMapCityIsNeverInventedButRealWaypointBecomesReservableEvidence() {
+        val mapOnly = BlaBlaNetworkTripSourceEvidence(
+            tripId = tripId,
+            bookingsComplete = true,
+            waypointsComplete = false,
+            waypoints = emptyList(),
+        )
+        val partial = BlaBlaCollectorNetworkSourceModule.resolve(tripId, mapOnly)!!
+        assertEquals(false, partial.itineraryAuthoritative)
+        assertTrue(partial.itineraryStops.isEmpty())
+        assertTrue("Atibaia" !in partial.itineraryStops)
+
+        val structured = mapOnly.copy(
+            waypointsComplete = true,
+            waypoints = listOf(
+                BlaBlaNetworkWaypointSourceEvidence(label = "Santo André"),
+                BlaBlaNetworkWaypointSourceEvidence(label = "Atibaia"),
+                BlaBlaNetworkWaypointSourceEvidence(label = "São Tomé das Letras"),
+            ),
+        )
+        val authoritative = BlaBlaCollectorNetworkSourceModule.resolve(tripId, structured)!!
+        assertTrue(authoritative.itineraryAuthoritative)
+        assertEquals(listOf("Santo André", "Atibaia", "São Tomé das Letras"), authoritative.itineraryStops)
+    }
+
+    @Test
     fun canonicalApiAmountDoesNotDependOnBrazilianLocaleGrouping() {
         assertEquals(8_900L, BlaBlaCollectorNetworkSourceModule.parseCanonicalMinorUnits("89.00", "BRL"))
         assertEquals(5_200L, BlaBlaCollectorNetworkSourceModule.parseCanonicalMinorUnits("52.00", "BRL"))
