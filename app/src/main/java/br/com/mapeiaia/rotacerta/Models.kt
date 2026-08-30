@@ -7,7 +7,10 @@ data class AppSettings(
     val homeAddress: String = "",
     val alternativeAddress: String = "",
     val tripDepartureAddress: String = "",
+    /** Physical simultaneous passenger capacity of the vehicle. */
     val vehicleCapacity: Int = 0,
+    /** Operational Rota Certa allocation per trip. Separate from physical capacity. */
+    val rotaCertaSeatAllocation: Int = 0,
     val homeRadiusKm: Double = 10.0,
     val alternativeRadiusKm: Double = 10.0,
     val desiredKeywords: String = "",
