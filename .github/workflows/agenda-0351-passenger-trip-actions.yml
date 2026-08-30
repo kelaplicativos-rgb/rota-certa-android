@@ -47,7 +47,8 @@ jobs:
           grep -Fq '3. Dados da reserva' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'primaryActionLabel = "Adicionar à viagem"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
           grep -Fq 'passengerStore.profile(canonicalPassengerId)?.blocked == true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
-          grep -Fq 'addPassengerResumePassengerId = resumePassengerId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt\n          grep -Fq 'applyInternalCancellationTombstones(collectorResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'addPassengerResumePassengerId = resumePassengerId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'applyInternalCancellationTombstones(collectorResponse' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
