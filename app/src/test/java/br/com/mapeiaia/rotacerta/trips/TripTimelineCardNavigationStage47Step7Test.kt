@@ -53,6 +53,52 @@ class TripTimelineCardNavigationStage47Step7Test {
     }
 
     @Test
+    fun persisted_public_binding_enriches_timeline_even_without_rota_certa_booking() {
+        val departure = LocalDate.of(2026, 8, 22).atTime(LocalTime.of(11, 0)).atZone(zone).toInstant().toEpochMilli()
+        val entry = TripTimelineEntry(
+            tripId = "blablacar:hash",
+            profileId = "7371f028-9c55-4903-8444-308015823efd",
+            profileLabel = "Ezequiel S",
+            departureAtMillis = departure,
+            arrivalAtMillis = departure + 5 * 60 * 60 * 1000L,
+            origin = "Santo André",
+            destination = "Três Corações",
+            status = TripStatus.PUBLISHED,
+            capacity = 4,
+            minimumOccupiedSeats = 0,
+            maximumOccupiedSeats = 0,
+            sourcePassengerSeats = emptyMap(),
+            blablaTripId = "trip-456",
+            blablaTripHref = "https://www.blablacar.com.br/rides/offer/trip-456",
+            blablaProfileUuid = "7371f028-9c55-4903-8444-308015823efd",
+        )
+        val binding = PublicExternalTripBinding(
+            remoteTripId = "remote-456",
+            publicToken = "bb123456789012345678901234567890",
+            bookingTripId = "public-external:remote-456",
+            profileUuid = "7371f028-9c55-4903-8444-308015823efd",
+            blablaTripId = "trip-456",
+            blablaTripHref = "https://www.blablacar.com.br/rides/offer/trip-456",
+            blablaPublicHref = "https://www.blablacar.com.br/trip?id=trip-456&search_uuid=noise",
+            title = "Santo André → Três Corações",
+            departureAtMillis = departure,
+            capacity = 4,
+            stops = listOf(
+                TripStop(order = 0, name = "Santo André"),
+                TripStop(order = 1, name = "Três Corações"),
+            ),
+        )
+
+        val enriched = applyPublicExternalBookingsToTimeline(
+            entries = listOf(entry),
+            bindings = listOf(binding),
+            bookings = emptyList(),
+        ).single()
+
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-456", enriched.blablaPublicHref)
+    }
+
+    @Test
     fun ezequiel_and_barbosa_are_checked_as_one_physical_timeline() {
         fun entry(id: String, profile: String, start: Long, end: Long, origin: String, destination: String) = TripTimelineEntry(
             tripId = id, profileId = profile, profileLabel = profile, departureAtMillis = start, arrivalAtMillis = end,
