@@ -67,9 +67,11 @@ class TripStore(context: Context) {
      */
     fun reconcilePhysicalPassengerCapacity(
         capacity: Int,
+        rotaCertaSeatAllocation: Int = capacity,
         nowMillis: Long = System.currentTimeMillis(),
     ): Pair<Int, Int> {
         require(capacity in 1..999) { "Capacidade de passageiros inválida." }
+        require(rotaCertaSeatAllocation in 0..999) { "Vagas do Rota Certa inválidas." }
         val activeStatuses = setOf(
             TripStatus.DRAFT,
             TripStatus.PUBLISHED,
@@ -82,9 +84,13 @@ class TripStore(context: Context) {
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
-            if (shouldApply && trip.capacity != capacity) {
+            if (shouldApply && (trip.capacity != capacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation)) {
                 changedTrips++
-                trip.copy(capacity = capacity, updatedAtMillis = nowMillis)
+                trip.copy(
+                    capacity = capacity,
+                    rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                    updatedAtMillis = nowMillis,
+                )
             } else {
                 trip
             }
