@@ -72,7 +72,7 @@ test("Firebase Hosting supports direct slug and refresh without stealing API/cal
 test("shared and referral links do not re-expose agenda token", () => {
   assert.match(androidUi, /Text\("Compartilhar link"\)/);
   assert.match(androidUi, /putExtra\(Intent\.EXTRA_TEXT, agendaUrl\)/);
-  const referral = between(web, "async function sharePassengerReferral", "function maskWhatsapp");
+  const referral = between(web, "async function sharePassengerReferral", "async function changePassengerPortalPassword");
   assert.match(referral, /encodeURIComponent\(driverUsername\)/);
   assert.doesNotMatch(referral, /query\.set\("agenda"/);
   assert.doesNotMatch(referral, /motorista:/);
