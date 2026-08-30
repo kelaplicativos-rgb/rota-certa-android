@@ -157,20 +157,12 @@ data class SeatAvailabilityRange(
 }
 
 object DriverIdentityRules {
+    // Reserve only paths that are actually owned by Firebase/API routing.
+    // Human-facing words such as "agenda", "admin" or a driver's preferred name
+    // remain available as public slugs when they are not already taken.
     private val reservedPublicUsernames = setOf(
         "v1",
         "calendar",
-        "api",
-        "admin",
-        "login",
-        "assets",
-        "static",
-        "agenda",
-        "config",
-        "settings",
-        "app",
-        "date-selection",
-        "index",
     )
 
     fun normalizeUsername(value: String): String {
