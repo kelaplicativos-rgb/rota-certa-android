@@ -45,11 +45,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           grep -Fq 'versionCode = 5654' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.361"' app/build.gradle.kts
-          grep -Fq 'De onde você vai?' trip-platform/public/index.html
-          grep -Fq 'Para onde você vai?' trip-platform/public/index.html
+          grep -Fq 'class="searchShell cleanSearch hidden"' trip-platform/public/index.html
+          grep -Fq '<h1 class="pageTitle">Escolha sua viagem</h1>' trip-platform/public/index.html
           grep -Fq 'Reservar pelo WhatsApp' trip-platform/public/index.html
           grep -Fq 'Reservar na BlaBlaCar' trip-platform/public/index.html
-          grep -Fq 'Reservar pelo Rota Certa' trip-platform/public/index.html
+          ! grep -Fq 'id="bookRotaCerta"' trip-platform/public/index.html
+          grep -Fq 'choices.append(whatsapp, blabla)' trip-platform/public/app.js
           grep -Fq 'public_trip_href' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
           grep -Fq 'fun publicTrip(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
           grep -Fq 'blablaPublicUrl' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
@@ -157,3 +158,43 @@ jobs:
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0361
+
+      - name: Install Agenda backend dependencies
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy current Agenda backend and hosting
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke live no-filter two-button Agenda
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+          BUST="$(date +%s%N)"
+          for attempt in $(seq 1 24); do
+            curl --fail --silent --show-error "$BASE/?v=$BUST-$attempt" -o /tmp/live-index.html || true
+            curl --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
+            if grep -Fq 'class="searchShell cleanSearch hidden"' /tmp/live-index.html               && grep -Fq '<h1 class="pageTitle">Escolha sua viagem</h1>' /tmp/live-index.html               && grep -Fq 'Reservar pelo WhatsApp' /tmp/live-index.html               && grep -Fq 'Reservar na BlaBlaCar' /tmp/live-index.html               && ! grep -Fq 'id="bookRotaCerta"' /tmp/live-index.html               && grep -Fq 'choices.append(whatsapp, blabla)' /tmp/live-app.js               && ! grep -Fq 'rota.disabled = true' /tmp/live-app.js; then
+              echo "LIVE_AGENDA_NO_FILTER_TWO_BUTTONS=PASS"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Live Agenda did not converge to the current branch."
+          exit 1
