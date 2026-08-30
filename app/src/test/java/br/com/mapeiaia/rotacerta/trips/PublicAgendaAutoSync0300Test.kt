@@ -53,7 +53,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun fullCollectorTripStaysFullAndCannotInventMoreCapacity() {
+    fun blablaFullFlagDoesNotConsumeIndependentRotaCertaAvailabilityPool() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile-barbosa",
             date = "2030-09-11",
@@ -65,8 +65,9 @@ class PublicAgendaAutoSync0300Test {
         )
         val trip = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
         assertNotNull(trip)
-        assertEquals(TripStatus.FULL, trip.trip.status)
+        assertEquals(TripStatus.PUBLISHED, trip.trip.status)
         assertEquals(4, trip.bookedSeats)
+        assertTrue(trip.capacityClaims.isEmpty())
     }
 
     @Test
@@ -120,33 +121,11 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(mirror.sourceReference.startsWith("LOCAL_MIRROR:"))
     }
     @Test
-    fun externalCapacityUsesPublishedSeatsWithoutDoubleSubtractingRotaCertaOccupancy() {
-        assertEquals(1, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 0))
-        assertEquals(0, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 1))
-        assertNull(PublicAgendaAutoSync0300.driverReservedGap(4, null, 0))
-
-        val trip = Trip(
-            title = "A → C",
-            departureAtMillis = 4_000_000_000_000L,
-            capacity = 4,
-            stops = listOf(
-                TripStop(id = "a", order = 0, name = "A"),
-                TripStop(id = "b", order = 1, name = "B"),
-                TripStop(id = "c", order = 2, name = "C"),
-            ),
-        )
-        val rotaCerta = Booking(
-            id = "rc-1",
-            tripId = trip.id,
-            passengerName = "Reserva Rota Certa",
-            boardingStopId = "b",
-            dropoffStopId = "c",
-            seats = 1,
-            status = BookingStatus.REQUESTED,
-            source = BookingSource.ROTA_CERTA,
-        )
-        assertEquals(1, PublicAgendaAutoSync0300.nonBlaBlaOccupancyImpact(trip, listOf(rotaCerta)))
-        assertEquals(0, PublicAgendaAutoSync0300.driverReservedGap(4, 3, 1))
+    fun agendaAddsBlaBlaCarAndRotaCertaAvailableSeatPools() {
+        assertEquals(7, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, 4))
+        assertEquals(4, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(null, 4))
+        assertEquals(3, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, null))
+        assertNull(PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(null, null))
     }
 
     @Test
@@ -175,7 +154,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun privateSeatGapPlusThreeBlaBlaPassengersConsumesAllFourPhysicalSeats() {
+    fun threeBlaBlaAvailablePlusFourRotaCertaAvailablePublishesSevenWithoutDoubleSubtractingPassengers() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile",
             date = "2030-09-13",
@@ -190,24 +169,16 @@ class PublicAgendaAutoSync0300Test {
                 BlaBlaCollectorPassenger(name = "P3", seats = 1),
             ),
         )
-        val external = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
+        val combined = PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, 4)
+        assertEquals(7, combined)
+        val external = PublicAgendaAutoSync0300.toPublicTrip(source, combined!!, 0L, zone)
         assertNotNull(external)
-        val gap = PublicAgendaAutoSync0300.driverReservedGap(4, 3, 0)
-        assertEquals(1, gap)
-        val stops = external.trip.stops.sortedBy(TripStop::order)
-        val gapClaim = Booking(
-            id = "driver-gap",
-            tripId = external.trip.id,
-            passengerName = "Capacidade reservada",
-            boardingStopId = stops.first().id,
-            dropoffStopId = stops.last().id,
-            seats = gap!!,
-            status = BookingStatus.CONFIRMED,
-            source = BookingSource.BLABLACAR,
-            capacityClaimType = CapacityClaimType.RESERVED_SEAT,
-        )
-        val loads = SeatAvailabilityEngine.segmentLoads(external.trip, external.capacityClaims + gapClaim)
-        assertTrue(loads.all { it.availableSeats == 0 })
+        assertEquals(7, external.trip.capacity)
+        assertEquals(3, external.trip.publishedSeats)
+        assertTrue(external.capacityClaims.isEmpty())
+        val loads = SeatAvailabilityEngine.segmentLoads(external.trip, external.capacityClaims)
+        assertTrue(loads.all { it.occupiedSeats == 0 })
+        assertTrue(loads.all { it.availableSeats == 7 })
     }
 
     @Test
