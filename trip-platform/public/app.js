@@ -1486,6 +1486,8 @@ async function reserve() {
       totalFareCents: Number(body.totalFareCents || 0),
       creditAppliedCents: Number(body.creditAppliedCents || 0),
       amountDueCents: Number(body.amountDueCents || 0),
+      status: body.status || "REQUESTED",
+      operationalStatus: body.operationalStatus || "PENDING",
     };
 
     try {
@@ -1539,7 +1541,7 @@ async function reserve() {
       "✓ RESERVA SOLICITADA",
       body.replayed
         ? "Essa solicitação já estava registrada. Nenhuma reserva duplicada foi criada."
-        : "Sua vaga foi registrada e o motorista foi avisado.",
+        : "Sua solicitação foi registrada, a vaga ficou protegida e o motorista foi avisado.",
     );
 
     const observation = `Olá, ${driverDisplayName || "motorista"}. Tenho uma observação sobre minha reserva ${confirmedBooking.bookingId}: `;
@@ -1633,7 +1635,9 @@ function restoreExistingBooking() {
   if (!saved?.bookingId || !saved?.cancellationToken) return false;
 
   confirmedBooking = saved;
-  $("confirmationText").textContent = "Sua reserva já está confirmada neste aparelho.";
+  $("confirmationText").textContent = saved.status === "REQUESTED"
+    ? "Sua solicitação está aguardando aprovação do motorista."
+    : "Sua reserva está registrada neste aparelho.";
   $("cancelCode").textContent = saved.cancellationToken;
   $("cancelBookingId").value = saved.bookingId;
   $("cancelToken").value = saved.cancellationToken;
@@ -2213,11 +2217,18 @@ async function changePassengerPortalPassword() {
 }
 
 function passengerOperationalView(booking) {
-  if (["CANCELLED", "EXPIRED"].includes(String(booking.status || "")) || booking.operationalStatus === "CANCELLED") {
+  const bookingStatus = String(booking.status || "");
+  if (bookingStatus === "REJECTED") {
+    return { key: "REJECTED", icon: "⚪", title: "SOLICITAÇÃO NÃO APROVADA", message: "O motorista recusou esta solicitação." };
+  }
+  if (["CANCELLED", "EXPIRED"].includes(bookingStatus) || booking.operationalStatus === "CANCELLED") {
     return { key: "CANCELLED", icon: "❌", title: "RESERVA CANCELADA", message: "Esta reserva não está mais ativa." };
   }
-  const key = String(booking.operationalStatus || (booking.status === "CONFIRMED" ? "CONFIRMED" : "PENDING"));
-  if (key === "PENDING") return { key, icon: "🟠", title: "AGUARDANDO CONFIRMAÇÃO", message: "Sua solicitação foi recebida." };
+  if (bookingStatus === "REQUESTED") {
+    return { key: "PENDING", icon: "🟠", title: "AGUARDANDO APROVAÇÃO DO MOTORISTA", message: "Sua solicitação foi recebida e aguarda a decisão do motorista." };
+  }
+  const key = String(booking.operationalStatus || (bookingStatus === "CONFIRMED" ? "CONFIRMED" : "PENDING"));
+  if (key === "PENDING") return { key, icon: "🟠", title: "AGUARDANDO APROVAÇÃO DO MOTORISTA", message: "Sua solicitação foi recebida." };
   if (key === "AT_LOCATION") return { key, icon: "📍", title: "MOTORISTA NO LOCAL", message: "O motorista informou que chegou ao local combinado." };
   if (key === "IN_CAR") return { key, icon: "🚗", title: "VOCÊ ESTÁ EMBARCADO", message: "Sua viagem está em andamento." };
   if (key === "COMPLETED") return { key, icon: "✅", title: "VIAGEM CONCLUÍDA", message: "Esta viagem foi concluída." };
@@ -2226,7 +2237,7 @@ function passengerOperationalView(booking) {
 
 function passengerCanCancelBooking(booking) {
   const operational = passengerOperationalView(booking).key;
-  return !["IN_CAR", "COMPLETED", "CANCELLED"].includes(operational) &&
+  return !["IN_CAR", "COMPLETED", "CANCELLED", "REJECTED"].includes(operational) &&
     !["CANCELLED", "EXPIRED"].includes(String(booking.status || ""));
 }
 
@@ -2279,7 +2290,7 @@ function renderPassengerBookings(entries) {
   const history = [];
   entries.forEach((entry) => {
     const view = passengerOperationalView(entry.booking || {});
-    (["COMPLETED", "CANCELLED"].includes(view.key) ? history : active).push(entry);
+    (["COMPLETED", "CANCELLED", "REJECTED"].includes(view.key) ? history : active).push(entry);
   });
 
   const appendSection = (sectionTitle, sectionEntries) => {

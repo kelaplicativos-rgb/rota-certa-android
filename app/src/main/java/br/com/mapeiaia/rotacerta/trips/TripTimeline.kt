@@ -136,9 +136,11 @@ object TripTimelineEngine {
     private fun passengerSeatsBySource(bookings: List<Booking>, nowMillis: Long): Map<BookingSource, Int> {
         val activePassengers = bookings.filter { booking ->
             booking.capacityClaimType == CapacityClaimType.PASSENGER && when (booking.status) {
-                BookingStatus.CONFIRMED -> true
-                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
                 BookingStatus.REQUESTED,
+                BookingStatus.CONFIRMED,
+                -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REJECTED,
                 BookingStatus.CANCELLED,
                 BookingStatus.EXPIRED,
                 -> false
@@ -190,9 +192,11 @@ internal fun filterTimelineEntries(
         .asSequence()
         .filter { booking ->
             booking.capacityClaimType == CapacityClaimType.PASSENGER && booking.seats > 0 && when (booking.status) {
-                BookingStatus.CONFIRMED -> true
-                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
                 BookingStatus.REQUESTED,
+                BookingStatus.CONFIRMED,
+                -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REJECTED,
                 BookingStatus.CANCELLED,
                 BookingStatus.EXPIRED,
                 -> false

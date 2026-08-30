@@ -19,6 +19,7 @@ enum class BookingStatus {
     REQUESTED,
     HELD,
     CONFIRMED,
+    REJECTED,
     CANCELLED,
     EXPIRED,
 }
@@ -303,9 +304,11 @@ object SeatAvailabilityEngine {
     }
 
     private fun occupiesCapacity(booking: Booking, nowMillis: Long): Boolean = when (booking.status) {
-        BookingStatus.CONFIRMED -> true
-        BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
         BookingStatus.REQUESTED,
+        BookingStatus.CONFIRMED,
+        -> true
+        BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+        BookingStatus.REJECTED,
         BookingStatus.CANCELLED,
         BookingStatus.EXPIRED,
         -> false

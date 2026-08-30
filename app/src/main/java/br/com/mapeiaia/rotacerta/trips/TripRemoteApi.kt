@@ -109,6 +109,8 @@ data class RemoteBookingResponse(
     val bookingId: String,
     val cancellationToken: String? = null,
     val availableSeats: Int? = null,
+    val status: String = BookingStatus.REQUESTED.name,
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.PENDING,
 )
 
 @Serializable
@@ -267,6 +269,10 @@ data class DriverNotificationItem(
     val message: String = "",
     val tripId: String = "",
     val bookingId: String = "",
+    val passengerId: String = "",
+    val boardingStopId: String = "",
+    val dropoffStopId: String = "",
+    val seats: Int = 0,
     val driverUsername: String = "",
     val createdAtMillis: Long = 0L,
     val read: Boolean = false,
@@ -327,6 +333,12 @@ data class DriverBookingUpsertResponse(
 @Serializable
 data class DriverOperationalStatusRequest(
     val selection: String,
+)
+
+@Serializable
+data class DriverBookingDecisionRequest(
+    val action: String,
+    val reason: String = "",
 )
 
 class TripRemoteApi(
@@ -658,6 +670,23 @@ class TripRemoteApi(
         method = "POST",
         path = "/v1/driver/trips/$remoteTripId/bookings/$bookingId/operational",
         body = json.encodeToString(DriverOperationalStatusRequest(selection.trim().uppercase())),
+        requireDriverToken = true,
+    )
+
+    suspend fun decideDriverBooking(
+        remoteTripId: String,
+        bookingId: String,
+        action: String,
+        reason: String = "",
+    ): DriverBookingUpsertResponse = request(
+        method = "POST",
+        path = "/v1/driver/trips/\${remoteTripId}/bookings/\${bookingId}/decision",
+        body = json.encodeToString(
+            DriverBookingDecisionRequest(
+                action = action.trim().uppercase(),
+                reason = reason.trim(),
+            ),
+        ),
         requireDriverToken = true,
     )
 
