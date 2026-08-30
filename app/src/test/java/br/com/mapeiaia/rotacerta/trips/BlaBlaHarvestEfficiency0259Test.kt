@@ -58,8 +58,8 @@ class BlaBlaHarvestEfficiency0259Test {
     }
 
     @Test
-    fun automaticPolicyKeepsSeatTraversalOutOfHotPathAndUsesFastProbe() {
-        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
+    fun automaticPolicyReadsPublishedSeatsWithFastBoundedProbe() {
+        assertTrue(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
         assertTrue(BlaBlaHarvestPolicy.AUTOMATIC_PAGE_SETTLE_MS in 1L..300L)
     }
 }
