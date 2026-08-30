@@ -36,6 +36,18 @@ import java.time.format.DateTimeFormatter
 // UUID perfil 1 • UUID perfil 2 (opcional) • Mês — AAAA-MM • Buscar • rotas dinâmicas da Agenda
 // Step7 dynamic accounts: registry starts empty; user adds as many isolated WebView profiles as needed.
 
+
+internal fun shouldLaunchAutomaticSeatQueueContinuation(
+    continuationToken: Int,
+    handledContinuationToken: Int,
+    manualSeatSyncing: Boolean,
+    accountCount: Int,
+): Boolean =
+    continuationToken > handledContinuationToken &&
+        continuationToken > 0 &&
+        !manualSeatSyncing &&
+        accountCount > 0
+
 @Composable
 fun BlaBlaCollectorPanel(
     trips: List<Trip>,
@@ -62,6 +74,7 @@ fun BlaBlaCollectorPanel(
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
     var seatQueueContinuationToken by remember { mutableIntStateOf(0) }
+    var handledSeatQueueContinuationToken by remember { mutableIntStateOf(0) }
     var targetedSyncTripId by remember { mutableStateOf<String?>(null) }
     var syncDateScope by remember { mutableStateOf<LocalDate?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -203,6 +216,15 @@ fun BlaBlaCollectorPanel(
         refresh()
         if (result.resultCode == Activity.RESULT_OK && manualSeatStore.list().isNotEmpty()) {
             seatQueueContinuationToken++
+        } else if (
+            result.resultCode != Activity.RESULT_OK &&
+            result.data?.getBooleanExtra("seat_sync_request_retained", false) == true
+        ) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_SYNC_AUTOMATIC_CHAIN_STOPPED",
+                context.packageName,
+                "reason=pending_or_error requestRetained=true automaticRetry=false manualRetryAvailable=true",
+            )
         }
     }
 
@@ -243,13 +265,26 @@ fun BlaBlaCollectorPanel(
     }
 
     LaunchedEffect(seatQueueContinuationToken, manualSeatSyncing, accounts.size) {
-        if (seatQueueContinuationToken > 0 && !manualSeatSyncing && accounts.isNotEmpty()) {
+        if (
+            shouldLaunchAutomaticSeatQueueContinuation(
+                continuationToken = seatQueueContinuationToken,
+                handledContinuationToken = handledSeatQueueContinuationToken,
+                manualSeatSyncing = manualSeatSyncing,
+                accountCount = accounts.size,
+            )
+        ) {
+            handledSeatQueueContinuationToken = seatQueueContinuationToken
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_SYNC_AUTOMATIC_CONTINUATION_CONSUMED",
+                context.packageName,
+                "token=$seatQueueContinuationToken automaticRetryBudget=1",
+            )
             val launched = launchPendingSeatSync("automatic_queue_continuation")
             if (!launched) {
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_SEAT_SYNC_PENDING",
                     context.packageName,
-                    "reason=queued_target_profile_unresolved retained=true normalSyncContinues=true",
+                    "reason=queued_target_profile_unresolved retained=true normalSyncContinues=true automaticRetry=false",
                 )
             }
         }
