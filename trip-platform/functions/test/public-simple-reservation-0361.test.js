@@ -20,13 +20,10 @@ function functionSource(source, name, nextName) {
   return source.slice(start, end);
 }
 
-test("filter surface is only from, to and one date", () => {
-  assert.match(publicHtml, /De onde você vai\?/);
-  assert.match(publicHtml, /Para onde você vai\?/);
-  assert.match(publicHtml, /<span class="searchLabel">Quando\?<\/span>/);
-  assert.match(publicHtml, />Buscar viagens<\/button>/);
-  assert.doesNotMatch(publicHtml, /id="searchReturn"/);
-  assert.doesNotMatch(publicHtml, /id="searchSeats"/);
+test("public Agenda opens directly on trip cards with the filter hidden", () => {
+  assert.match(publicHtml, /<h1 class="pageTitle">Escolha sua viagem<\/h1>/);
+  assert.match(publicHtml, /class="searchShell cleanSearch hidden"/);
+  assert.match(publicHtml, /id="searchMessage" class="muted hidden"/);
 });
 
 test("route search uses ordered real stops and can return sold-out cards", () => {
@@ -59,14 +56,15 @@ test("WhatsApp asks seats, revalidates with GET, and never creates a booking", (
   assert.doesNotMatch(execute, /pendingBooking/);
 });
 
-test("three choices are explicit and Rota Certa is disabled", () => {
+test("public Agenda exposes exactly WhatsApp and BlaBlaCar reservation choices", () => {
   assert.match(publicHtml, /Reservar pelo WhatsApp/);
   assert.match(publicHtml, /Reservar na BlaBlaCar/);
-  assert.match(publicHtml, /id="bookRotaCerta"[^>]*disabled/);
-  assert.match(publicHtml, /Em breve/);
+  assert.doesNotMatch(publicHtml, /id="bookRotaCerta"/);
+  assert.doesNotMatch(publicHtml, /Reservar pelo Rota Certa/);
   assert.match(publicApp, /bookingChoice bookingWhatsapp/);
   assert.match(publicApp, /bookingChoice bookingBlabla/);
-  assert.match(publicApp, /rota\.disabled = true/);
+  assert.doesNotMatch(publicApp, /bookingChoice bookingSoon/);
+  assert.match(publicApp, /choices\.append\(whatsapp, blabla\)/);
 });
 
 test("BlaBla public link is fail-closed and never uses the admin rides offer URL", () => {
