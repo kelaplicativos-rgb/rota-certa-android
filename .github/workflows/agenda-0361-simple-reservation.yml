@@ -1,9 +1,6 @@
 name: Rota Certa 0.1.362 canonical reservation links
 
 on:
-  push:
-    branches:
-      - agent/agenda-simple-reservation-options-0.1.361
   pull_request:
     branches:
       - agent/build-identification-0.1.360
