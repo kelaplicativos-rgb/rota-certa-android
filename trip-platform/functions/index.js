@@ -657,6 +657,12 @@ function normalizeDriverTrip(raw, previous = null) {
       throw new Error("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.");
     }
   }
+  const rawRotaCertaSeatAllocation = raw.rotaCertaSeatAllocation == null
+    ? Number(previous && previous.rotaCertaSeatAllocation != null ? previous.rotaCertaSeatAllocation : capacity)
+    : Number(raw.rotaCertaSeatAllocation);
+  const rotaCertaSeatAllocation = Number.isInteger(rawRotaCertaSeatAllocation) && rawRotaCertaSeatAllocation >= 0 && rawRotaCertaSeatAllocation <= 999
+    ? rawRotaCertaSeatAllocation
+    : capacity;
   const rawPublishedSeats = raw.publishedSeats == null ? null : Number(raw.publishedSeats);
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
     ? rawPublishedSeats
@@ -679,6 +685,7 @@ function normalizeDriverTrip(raw, previous = null) {
     publicBookingEnabled: raw.publicBookingEnabled === true,
     itineraryAuthoritative: raw.itineraryAuthoritative !== false,
     publishedSeats,
+    rotaCertaSeatAllocation,
     capacityReliable: raw.capacityReliable !== false,
     notes: cleanText(raw.notes, 1200),
   };
@@ -956,7 +963,8 @@ function reconciledSegmentCapacity(trip, records, now = Date.now()) {
     for (let index = fromIndex; index < toIndex; index += 1) {
       const current = claims[index].get(key) || { passengerSeats: 0, reservedSeats: 0 };
       if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
-        current.passengerSeats = Math.max(current.passengerSeats, seats);
+        if (record.status === "CONFIRMED") current.passengerSeats = Math.max(current.passengerSeats, seats);
+        else current.reservedSeats = Math.max(current.reservedSeats, seats);
       } else if (claimType === "RESERVED_SEAT") {
         current.reservedSeats = Math.max(current.reservedSeats, seats);
       }
@@ -993,6 +1001,63 @@ function segmentCapacityPersistence(capacityState) {
     segmentBlockedLoads: capacityState.blockedLoads,
   };
 }
+function operationalSeatLimit(trip) {
+  const blabla = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
+    ? Number(trip.publishedSeats)
+    : 0;
+  const configuredLocal = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
+  const rotaCerta = Number.isInteger(configuredLocal) && configuredLocal >= 0
+    ? configuredLocal
+    : Math.max(0, Number(trip && trip.capacity || 0));
+  return Math.min(999, blabla + rotaCerta);
+}
+
+function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
+  const groups = new Map();
+  for (const record of records || []) {
+    if (!record || Number(record.seats || 0) <= 0 || !recordOccupiesCapacity(record, now)) continue;
+    const group = cleanText(record.occupancyGroupId, 120);
+    const key = group ? `group:${group}` : `booking:${cleanText(record.id, 120)}`;
+    const current = groups.get(key) || { confirmed: 0, blocked: 0 };
+    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const seats = Math.max(0, Number(record.seats || 0));
+    if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
+      if (record.status === "CONFIRMED") current.confirmed = Math.max(current.confirmed, seats);
+      else current.blocked = Math.max(current.blocked, seats);
+    } else if (claimType === "RESERVED_SEAT") {
+      current.blocked = Math.max(current.blocked, seats);
+    }
+    groups.set(key, current);
+  }
+  let confirmedPassengerSeats = 0;
+  let blockedSeats = 0;
+  for (const group of groups.values()) {
+    const confirmed = Math.max(0, Number(group.confirmed || 0));
+    const consumed = Math.max(confirmed, Math.max(0, Number(group.blocked || 0)));
+    confirmedPassengerSeats += confirmed;
+    blockedSeats += Math.max(0, consumed - confirmed);
+  }
+  const totalConsideredSeats = operationalSeatLimit(trip);
+  const consumed = confirmedPassengerSeats + blockedSeats;
+  return {
+    confirmedPassengerSeats,
+    blockedSeats,
+    totalConsideredSeats,
+    operationalAvailableSeats: Math.max(0, totalConsideredSeats - consumed),
+    operationalOverbookingSeats: Math.max(0, consumed - totalConsideredSeats),
+  };
+}
+
+function operationalSeatPersistence(summary) {
+  return {
+    confirmedPassengerSeats: summary.confirmedPassengerSeats,
+    blockedSeats: summary.blockedSeats,
+    totalConsideredSeats: summary.totalConsideredSeats,
+    operationalAvailableSeats: summary.operationalAvailableSeats,
+    operationalOverbookingSeats: summary.operationalOverbookingSeats,
+  };
+}
+
 function assertNoOverbooking(trip, loads) {
   const capacity = Number(trip.capacity || 0);
   if (loads.some((load) => Number(load || 0) > capacity)) {
