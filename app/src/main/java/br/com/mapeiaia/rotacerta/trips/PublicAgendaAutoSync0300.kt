@@ -265,26 +265,39 @@ internal object PublicAgendaAutoSync0300 {
             .asSequence()
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { source ->
-                val blablaAvailable = source.published_seats?.takeIf { it in 0..999 }
-                val rotaCertaAvailable = configuredCapacity?.takeIf { it in 0..999 }
+                val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
+                val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
+                val timelineCapacity = resolveTimelinePublicCapacity(
+                    physicalVehicleCapacity = configuredCapacity,
+                    remotePublishedCapacity = source.published_seats,
+                    occupiedSeats = observedOccupiedSeats,
+                )
+                val blablaTimelineAvailable = timelineCapacity.availableSeats
+                val rotaCertaAvailable = configuredCapacity?.takeIf { it in 1..999 }
                 val combinedAvailable = combinedAgendaAvailableSeats(
-                    blablaAvailableSeats = blablaAvailable,
+                    blablaAvailableSeats = blablaTimelineAvailable,
                     rotaCertaAvailableSeats = rotaCertaAvailable,
                 )
                 if (combinedAvailable == null) {
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SYNC_SKIPPED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaAvailableSeats=${blablaAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} capacitySource=unavailable failClosed=true",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${timelineCapacity.remotePublishedCapacity ?: -1} occupiedSeats=$observedOccupiedSeats timelineAvailableSeats=${blablaTimelineAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} capacitySource=${timelineCapacity.capacitySource} failClosed=true",
                     )
                     null
                 } else {
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SOURCE_RESOLVED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaAvailableSeats=${blablaAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} combinedAgendaCapacity=$combinedAvailable capacitySource=additive_pools",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${timelineCapacity.remotePublishedCapacity ?: -1} occupiedSeats=$observedOccupiedSeats timelineAvailableSeats=${blablaTimelineAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} combinedAgendaCapacity=$combinedAvailable capacitySource=timeline_real_available_plus_rota_certa",
                     )
-                    toPublicTrip(source, combinedAvailable, nowMillis)
+                    toPublicTrip(
+                        source = source,
+                        capacity = combinedAvailable,
+                        blablaAvailableSeats = blablaTimelineAvailable,
+                        rotaCertaSeatPool = rotaCertaAvailable,
+                        nowMillis = nowMillis,
+                    )
                 }
             }
             .filterNot { synthesized ->
@@ -531,7 +544,6 @@ internal object PublicAgendaAutoSync0300 {
         binding: PublicExternalTripBinding,
     ): Trip = publicTrip.copy(
         remoteId = binding.remoteTripId,
-        capacity = binding.capacity,
         stops = binding.stops,
     )
 
@@ -645,9 +657,10 @@ internal object PublicAgendaAutoSync0300 {
         claims: List<Booking>,
     ): Int {
         val remoteBookings = api.listBookings(remoteTripId).bookings
-        // publishedSeats is the BlaBlaCar AVAILABLE pool and configured vehicle
-        // capacity is the independent Rota Certa AVAILABLE pool. BlaBla passenger
-        // rows must not be mirrored as occupancy here or that pool is subtracted twice.
+        // The public trip capacity already contains the real free-seat count resolved
+        // by the same Timeline rule plus the independent Rota Certa pool. BlaBla
+        // passenger rows must not be mirrored here or those occupied seats are
+        // subtracted a second time.
         val desiredClaims = claims
         val currentIds = desiredClaims.map(Booking::id).toSet()
         val legacyId = "blablacar-" + publicTrip.publicToken.take(40)
@@ -680,6 +693,8 @@ internal object PublicAgendaAutoSync0300 {
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
         capacity: Int,
+        blablaAvailableSeats: Int? = null,
+        rotaCertaSeatPool: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): PublicAgendaExternalTrip? {
@@ -743,6 +758,8 @@ internal object PublicAgendaAutoSync0300 {
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
+            blablaAvailableSeats = blablaAvailableSeats?.coerceIn(0, safeCapacity),
+            rotaCertaSeatPool = rotaCertaSeatPool?.coerceIn(0, safeCapacity),
             capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()
