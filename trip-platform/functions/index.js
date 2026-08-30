@@ -651,7 +651,9 @@ function normalizeDriverTrip(raw, previous = null) {
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
-    if (capacity !== previous.capacity || oldStopIds !== newStopIds) {
+    const externalBlaBlaProjection = isExternalBlaBlaTrip("", previous);
+    const protectedCapacityChange = capacity !== Number(previous.capacity || 0) && !externalBlaBlaProjection;
+    if (protectedCapacityChange || oldStopIds !== newStopIds) {
       throw new Error("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.");
     }
   }
@@ -1665,7 +1667,17 @@ async function updateDriverTrip(req, res, token) {
       }
       const normalized = normalizeDriverTrip(req.body || {}, previous);
       const changes = tripRelevantChanges(previous, normalized);
-      const bookingsSnap = changes.length ? await tx.get(ref.collection("bookings")) : null;
+      const capacityChanged = Number(previous.capacity || 0) !== Number(normalized.capacity || 0);
+      const externalCapacityChanged = capacityChanged && isExternalBlaBlaTrip(token, previous);
+      const bookingsSnap = (changes.length || externalCapacityChanged)
+        ? await tx.get(ref.collection("bookings"))
+        : null;
+      if (externalCapacityChanged && bookingsSnap) {
+        const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const candidateTrip = { ...previous, ...normalized };
+        const loads = reconciledSegmentLoads(candidateTrip, records);
+        assertNoOverbooking(candidateTrip, loads);
+      }
       const structuralPendingChange = changes.some((change) =>
         ["departureAtMillis", "stops", "status"].includes(cleanText(change && change.field, 64))
       );
