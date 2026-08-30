@@ -144,7 +144,17 @@ internal object PublicAgendaAutoSync0300 {
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
 
         localTrips.forEach { original ->
-            val publicTrip = original.copy(publicBookingEnabled = true)
+            val physicalCapacity = configuredVehicleCapacity.takeIf { it in 1..999 }
+            if (physicalCapacity == null) {
+                failures++
+                UnifiedDebugEventStore.record(
+                    "CAPACITY_PUBLIC_SYNC_SKIPPED",
+                    context.packageName,
+                    "localTrip=${original.id} capacitySource=vehicle_unconfigured failClosed=true",
+                )
+                return@forEach
+            }
+            val publicTrip = original.copy(capacity = physicalCapacity, publicBookingEnabled = true)
             val localPublishOperation = AgendaTrace.operationStart(
                 context,
                 "LOCAL_TRIP_PUBLISH",
@@ -265,39 +275,24 @@ internal object PublicAgendaAutoSync0300 {
             .asSequence()
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { source ->
-                val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
-                val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
-                val timelineCapacity = resolveTimelinePublicCapacity(
-                    physicalVehicleCapacity = configuredCapacity,
-                    remotePublishedCapacity = source.published_seats,
-                    occupiedSeats = observedOccupiedSeats,
-                )
-                val blablaTimelineAvailable = timelineCapacity.availableSeats
-                val rotaCertaAvailable = configuredCapacity?.takeIf { it in 1..999 }
-                val combinedAvailable = combinedAgendaAvailableSeats(
-                    blablaAvailableSeats = blablaTimelineAvailable,
-                    rotaCertaAvailableSeats = rotaCertaAvailable,
-                )
-                if (combinedAvailable == null) {
+                val physicalCapacity = configuredCapacity
+                if (physicalCapacity == null) {
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SYNC_SKIPPED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${timelineCapacity.remotePublishedCapacity ?: -1} occupiedSeats=$observedOccupiedSeats timelineAvailableSeats=${blablaTimelineAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} capacitySource=${timelineCapacity.capacitySource} failClosed=true",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} publishedSeats=${source.published_seats ?: -1} capacitySource=vehicle_unconfigured failClosed=true",
                     )
                     null
                 } else {
+                    val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
+                    val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
+                    val overbookingSeats = (observedOccupiedSeats - physicalCapacity).coerceAtLeast(0)
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SOURCE_RESOLVED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${timelineCapacity.remotePublishedCapacity ?: -1} occupiedSeats=$observedOccupiedSeats timelineAvailableSeats=${blablaTimelineAvailable ?: -1} rotaCertaAvailableSeats=${rotaCertaAvailable ?: -1} combinedAgendaCapacity=$combinedAvailable capacitySource=timeline_real_available_plus_rota_certa",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} physicalPassengerCapacity=$physicalCapacity publishedSeats=${source.published_seats ?: -1} passengerSeats=$observedOccupiedSeats blockedSeats=0 availableSeats=${(physicalCapacity - observedOccupiedSeats).coerceAtLeast(0)} overbookingSeats=$overbookingSeats capacitySource=vehicle_physical_minus_occupancy",
                     )
-                    toPublicTrip(
-                        source = source,
-                        capacity = combinedAvailable,
-                        blablaAvailableSeats = blablaTimelineAvailable,
-                        rotaCertaSeatPool = rotaCertaAvailable,
-                        nowMillis = nowMillis,
-                    )
+                    toPublicTrip(source, physicalCapacity, nowMillis)
                 }
             }
             .filterNot { synthesized ->
@@ -638,18 +633,6 @@ internal object PublicAgendaAutoSync0300 {
             )
         }
 
-    internal fun combinedAgendaAvailableSeats(
-        blablaAvailableSeats: Int?,
-        rotaCertaAvailableSeats: Int?,
-    ): Int? {
-        val blabla = blablaAvailableSeats?.takeIf { it in 0..999 }
-        val rotaCerta = rotaCertaAvailableSeats?.takeIf { it in 0..999 }
-        if (blabla == null && rotaCerta == null) return null
-        return ((blabla ?: 0) + (rotaCerta ?: 0))
-            .coerceAtMost(999)
-            .takeIf { it > 0 }
-    }
-
     private suspend fun syncExternalCapacityClaims(
         api: TripRemoteApi,
         remoteTripId: String,
@@ -657,10 +640,9 @@ internal object PublicAgendaAutoSync0300 {
         claims: List<Booking>,
     ): Int {
         val remoteBookings = api.listBookings(remoteTripId).bookings
-        // The public trip capacity already contains the real free-seat count resolved
-        // by the same Timeline rule plus the independent Rota Certa pool. BlaBla
-        // passenger rows must not be mirrored here or those occupied seats are
-        // subtracted a second time.
+        // The public trip capacity is the physical vehicle capacity. External
+        // BlaBlaCar occupancy is mirrored as occupancy claims so the same segment
+        // engine used by Rota Certa derives remaining seats without channel capacity.
         val desiredClaims = claims
         val currentIds = desiredClaims.map(Booking::id).toSet()
         val legacyId = "blablacar-" + publicTrip.publicToken.take(40)
@@ -695,8 +677,6 @@ internal object PublicAgendaAutoSync0300 {
         capacity: Int,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
-        blablaAvailableSeats: Int? = null,
-        rotaCertaSeatPool: Int? = null,
     ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
         if (departure <= nowMillis) return null
@@ -718,7 +698,7 @@ internal object PublicAgendaAutoSync0300 {
         val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..safeCapacity }
         val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
         val observedBooked = source.booked_seats.coerceAtLeast(passengerSeats)
-        val booked = observedBooked.coerceAtMost(safeCapacity)
+        val booked = observedBooked.coerceIn(0, 999)
 
         val stopLabels = buildObservedStopLabels(origin, destination, source.itinerary_stops)
         val wholeTripPriceCents = parsePriceCents(source.price)
@@ -758,8 +738,6 @@ internal object PublicAgendaAutoSync0300 {
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
-            blablaAvailableSeats = blablaAvailableSeats?.coerceIn(0, safeCapacity),
-            rotaCertaSeatPool = rotaCertaSeatPool?.coerceIn(0, safeCapacity),
             capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()
@@ -810,16 +788,67 @@ internal object PublicAgendaAutoSync0300 {
         bookedSeats: Int,
         sourceReference: String,
     ): List<Booking> {
-        // The public Agenda uses two additive AVAILABLE pools:
-        // BlaBlaCar published seats + Rota Certa configured seats.
-        // Passenger rows are still retained in the administrative Timeline, but
-        // they are not capacity claims here because publishedSeats is already
-        // the BlaBlaCar availability evidence.
-        @Suppress("UNUSED_VARIABLE")
-        val evidenceScope = listOf(source.trip_id.orEmpty(), trip.publicToken, bookedSeats.toString(), sourceReference)
-        return emptyList()
-    }
+        val stops = trip.stops.sortedBy(TripStop::order)
+        if (stops.size < 2 || bookedSeats <= 0) return emptyList()
+        val first = stops.first()
+        val last = stops.last()
+        fun stopFor(label: String?): TripStop? {
+            val key = label?.takeIf(String::isNotBlank)?.let(::normalizePlace).orEmpty()
+            if (key.isBlank()) return null
+            return stops.firstOrNull { normalizePlace(it.name) == key || normalizePlace(it.address) == key }
+        }
 
+        val claims = mutableListOf<Booking>()
+        var representedSeats = 0
+        source.passengers.forEachIndexed { index, passenger ->
+            val seats = passenger.seats.coerceAtLeast(1)
+            if (representedSeats >= bookedSeats) return@forEachIndexed
+            val effectiveSeats = seats.coerceAtMost(bookedSeats - representedSeats)
+            val from = stopFor(passenger.boarding)
+            val to = stopFor(passenger.dropoff)
+            val fromIndex = from?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            val toIndex = to?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            val boarding = if (fromIndex >= 0 && toIndex > fromIndex) from!! else first
+            val dropoff = if (fromIndex >= 0 && toIndex > fromIndex) to!! else last
+            val reservationKey = externalPassengerReservationKey(source.profile_uuid, passenger.booking_href)
+                .ifBlank { "blablacar:${trip.publicToken}:passenger:$index" }
+            val claimHash = sha256(reservationKey).take(24)
+            val claimId = "bbp-${trip.publicToken.take(24)}-$claimHash"
+            claims += Booking(
+                id = claimId,
+                tripId = trip.id,
+                passengerName = passenger.name.ifBlank { "Passageiro BlaBlaCar" },
+                boardingStopId = boarding.id,
+                dropoffStopId = dropoff.id,
+                seats = effectiveSeats,
+                status = BookingStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+                capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+                sourceReference = "$EXTERNAL_MIRROR_PREFIX${reservationKey.take(180)}",
+                occupancyGroupId = "blablacar:$claimHash",
+            )
+            representedSeats += effectiveSeats
+        }
+
+        val residual = (bookedSeats - representedSeats).coerceAtLeast(0)
+        if (residual > 0) {
+            val residualKey = sha256("${source.profile_uuid}|${source.trip_id.orEmpty()}|residual").take(24)
+            claims += Booking(
+                id = "bbr-${trip.publicToken.take(24)}-$residualKey",
+                tripId = trip.id,
+                passengerName = "Ocupação BlaBlaCar não individualizada",
+                boardingStopId = first.id,
+                dropoffStopId = last.id,
+                seats = residual,
+                status = BookingStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+                capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+                sourceReference = "$EXTERNAL_MIRROR_PREFIX${sourceReference.take(150)}:residual",
+                occupancyGroupId = "blablacar:$residualKey",
+            )
+        }
+        return claims
+    }
     internal fun parsePriceCents(raw: String?): Long {
         val value = raw?.trim().orEmpty()
         if (value.isBlank()) return 0L
