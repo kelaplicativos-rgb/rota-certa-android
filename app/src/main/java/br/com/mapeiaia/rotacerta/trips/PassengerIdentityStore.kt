@@ -172,7 +172,7 @@ class PassengerIdentityStore(context: Context) {
         .orEmpty()
         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
 
-    fun pickerSnapshot(includeArchived: Boolean = false): PassengerPickerSnapshot {
+    internal fun pickerSnapshot(includeArchived: Boolean = false): PassengerPickerSnapshot {
         val raw = profiles().filter { includeArchived || !it.archived }
         val observations = raw.associate { profile -> profile.id to observations(profile.id) }
         return buildPassengerPickerSnapshot(raw, observations)
