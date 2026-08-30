@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.356 backend deploy
+name: Rota Certa 0.1.357 real seat backend deploy
 
 on:
   push:
@@ -49,6 +49,10 @@ jobs:
           grep -Fq 'pending_reservations_require_decision' trip-platform/functions/index.js
           grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' trip-platform/public/app.js
           grep -Fq 'SOLICITAÇÃO NÃO APROVADA' trip-platform/public/app.js
+          grep -Fq 'function seatLimitText' trip-platform/public/app.js
+          grep -Fq 'function openTripSeatPicker' trip-platform/public/app.js
+          grep -Fq 'currentSeatCapacityMessage' trip-platform/functions/index.js
+          grep -Fq 'availableSeats: available' trip-platform/functions/index.js
 
       - name: Configure Firebase authentication
         shell: bash
@@ -87,7 +91,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke deployed 0.1.356 contracts
+      - name: Smoke deployed 0.1.357 contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -97,10 +101,12 @@ jobs:
           for attempt in $(seq 1 24); do
             curl --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
             if grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' /tmp/live-app.js \
-              && grep -Fq 'SOLICITAÇÃO NÃO APROVADA' /tmp/live-app.js; then
+              && grep -Fq 'SOLICITAÇÃO NÃO APROVADA' /tmp/live-app.js \
+              && grep -Fq 'function seatLimitText' /tmp/live-app.js \
+              && grep -Fq 'function openTripSeatPicker' /tmp/live-app.js; then
               exit 0
             fi
             sleep 3
           done
-          echo "Hosting 0.1.356 contract not observed."
+          echo "Hosting 0.1.357 real-seat contract not observed."
           exit 1
