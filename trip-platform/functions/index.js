@@ -17,7 +17,7 @@ const PUBLIC_STATUSES = new Set(["PUBLISHED", "FULL", "STARTING", "ACTIVE"]);
 const DRIVER_MUTABLE_STATUSES = new Set(["DRAFT", "PUBLISHED", "FULL", "STARTING", "ACTIVE", "COMPLETED", "CANCELLED"]);
 const CAPACITY_BOOKING_STATUSES = new Set(["REQUESTED", "HELD", "CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"]);
 const DRIVER_BOOKING_SOURCES = new Set(["BLABLACAR", "PRIVATE", "OTHER"]);
-const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "RESERVED_SEAT"]);
+const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "EXTERNAL_OCCUPANCY", "RESERVED_SEAT"]);
 const PASSENGER_AUTHORIZED_ACCESS_STATUSES = new Set(["ACTIVE", "AUTHORIZED"]);
 const PASSENGER_RESTRICTED_ACCESS_STATUSES = new Set(["SUSPENDED", "BLOCKED"]);
 
@@ -661,14 +661,6 @@ function normalizeDriverTrip(raw, previous = null) {
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
     ? rawPublishedSeats
     : null;
-  const rawBlaBlaAvailableSeats = raw.blablaAvailableSeats == null ? null : Number(raw.blablaAvailableSeats);
-  const blablaAvailableSeats = Number.isInteger(rawBlaBlaAvailableSeats) && rawBlaBlaAvailableSeats >= 0 && rawBlaBlaAvailableSeats <= capacity
-    ? rawBlaBlaAvailableSeats
-    : null;
-  const rawRotaCertaSeatPool = raw.rotaCertaSeatPool == null ? null : Number(raw.rotaCertaSeatPool);
-  const rotaCertaSeatPool = Number.isInteger(rawRotaCertaSeatPool) && rawRotaCertaSeatPool >= 0 && rawRotaCertaSeatPool <= capacity
-    ? rawRotaCertaSeatPool
-    : null;
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
   const blablaTripId = cleanText(raw.blablaTripId, 160);
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
@@ -687,8 +679,6 @@ function normalizeDriverTrip(raw, previous = null) {
     publicBookingEnabled: raw.publicBookingEnabled === true,
     itineraryAuthoritative: raw.itineraryAuthoritative !== false,
     publishedSeats,
-    blablaAvailableSeats,
-    rotaCertaSeatPool,
     capacityReliable: raw.capacityReliable !== false,
     notes: cleanText(raw.notes, 1200),
   };
@@ -736,8 +726,6 @@ function safePublicTrip(token, data) {
     publicBookingEnabled: data.publicBookingEnabled === true,
     itineraryAuthoritative,
     publishedSeats: data.publishedSeats == null ? null : (Number.isInteger(Number(data.publishedSeats)) ? Number(data.publishedSeats) : null),
-    blablaAvailableSeats: data.blablaAvailableSeats == null ? null : (Number.isInteger(Number(data.blablaAvailableSeats)) ? Number(data.blablaAvailableSeats) : null),
-    rotaCertaSeatPool: data.rotaCertaSeatPool == null ? null : (Number.isInteger(Number(data.rotaCertaSeatPool)) ? Number(data.rotaCertaSeatPool) : null),
     capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
@@ -936,7 +924,7 @@ function recordOccupiesCapacity(record, now = Date.now()) {
   return !expiry || expiry > now;
 }
 
-function reconciledSegmentLoads(trip, records, now = Date.now()) {
+function reconciledSegmentCapacity(trip, records, now = Date.now()) {
   const stops = trip.stops || [];
   const claims = Array.from({ length: Math.max(0, stops.length - 1) }, () => new Map());
   for (const record of records) {
@@ -946,15 +934,48 @@ function reconciledSegmentLoads(trip, records, now = Date.now()) {
     if (fromIndex < 0 || toIndex <= fromIndex) continue;
     const group = cleanText(record.occupancyGroupId, 120);
     const key = group ? `group:${group}` : `booking:${cleanText(record.id, 120)}`;
+    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const seats = Math.max(0, Number(record.seats || 0));
     for (let index = fromIndex; index < toIndex; index += 1) {
-      const previous = Number(claims[index].get(key) || 0);
-      const seats = Number(record.seats || 0);
-      if (seats > previous) claims[index].set(key, seats);
+      const current = claims[index].get(key) || { passengerSeats: 0, reservedSeats: 0 };
+      if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
+        current.passengerSeats = Math.max(current.passengerSeats, seats);
+      } else if (claimType === "RESERVED_SEAT") {
+        current.reservedSeats = Math.max(current.reservedSeats, seats);
+      }
+      claims[index].set(key, current);
     }
   }
-  return claims.map((segment) => Array.from(segment.values()).reduce((sum, seats) => sum + Number(seats || 0), 0));
+  const passengerLoads = [];
+  const blockedLoads = [];
+  const loads = [];
+  claims.forEach((segment) => {
+    let passengers = 0;
+    let blocked = 0;
+    for (const group of segment.values()) {
+      const passenger = Math.max(0, Number(group.passengerSeats || 0));
+      const consumed = Math.max(passenger, Math.max(0, Number(group.reservedSeats || 0)));
+      passengers += passenger;
+      blocked += Math.max(0, consumed - passenger);
+    }
+    passengerLoads.push(passengers);
+    blockedLoads.push(blocked);
+    loads.push(passengers + blocked);
+  });
+  return { loads, passengerLoads, blockedLoads };
 }
 
+function reconciledSegmentLoads(trip, records, now = Date.now()) {
+  return reconciledSegmentCapacity(trip, records, now).loads;
+}
+
+function segmentCapacityPersistence(capacityState) {
+  return {
+    segmentLoads: capacityState.loads,
+    segmentPassengerLoads: capacityState.passengerLoads,
+    segmentBlockedLoads: capacityState.blockedLoads,
+  };
+}
 function assertNoOverbooking(trip, loads) {
   const capacity = Number(trip.capacity || 0);
   if (loads.some((load) => Number(load || 0) > capacity)) {
@@ -1486,6 +1507,8 @@ async function createDriverTrip(req, res) {
         driverUsername: driver.username,
         driverDisplayName: driver.displayName,
         segmentLoads: new Array(normalized.stops.length - 1).fill(0),
+        segmentPassengerLoads: new Array(normalized.stops.length - 1).fill(0),
+        segmentBlockedLoads: new Array(normalized.stops.length - 1).fill(0),
         bookingsCount: 0,
         createdAtMillis: now,
         updatedAtMillis: now,
