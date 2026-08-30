@@ -139,6 +139,36 @@
       currentTripId = clean(match && match[1]);
     }
   } catch (_) {}
+
+  const exactPublicTripUrl = (raw) => {
+    if (!currentTripId) return '';
+    try {
+      const url = new URL(raw || '', location.href);
+      if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'www.blablacar.com.br') return '';
+      const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+      if (path !== '/trip' && !path.startsWith('/trip/')) return '';
+      let id = clean(url.searchParams.get('id'));
+      if (!id) {
+        const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
+        id = clean(match && match[1]);
+      }
+      if (!id || id !== currentTripId) return '';
+      url.searchParams.delete('search_uuid');
+      url.hash = '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  };
+  const publicTripCandidates = [location.href];
+  Array.from(document.querySelectorAll('a[href], [data-href]')).forEach((node) => {
+    publicTripCandidates.push(node.href || node.getAttribute('href') || node.getAttribute('data-href') || '');
+  });
+  Array.from(document.querySelectorAll('link[rel="canonical"], meta[property="og:url"], meta[name="twitter:url"]')).forEach((node) => {
+    publicTripCandidates.push(node.href || node.content || node.getAttribute('content') || '');
+  });
+  const publicTripHref = publicTripCandidates.map(exactPublicTripUrl).find(Boolean) || '';
+
   const networkSource = typeof window.__rotaCertaNetworkTripSource === 'function'
     ? window.__rotaCertaNetworkTripSource(currentTripId)
     : null;
@@ -171,6 +201,7 @@ const html = clone.outerHTML || '';
     rosterHasMore: hasMore,
     rosterTerminalEvidence: rosterTerminalEvidence,
     editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
+    publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
     views: Number.isFinite(views) ? views : null,
     domHtml: html.slice(0, 350000)
