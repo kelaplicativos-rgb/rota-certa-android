@@ -293,12 +293,20 @@ internal object PublicAgendaAutoSync0300 {
                     val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
                     val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
                     val overbookingSeats = (observedOccupiedSeats - physicalCapacity).coerceAtLeast(0)
+                    val blablaAllocation = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                    val rotaCertaAllocation = configuredRotaCertaAllocation ?: 0
+                    val totalConsidered = (blablaAllocation + rotaCertaAllocation).coerceAtMost(999)
                     UnifiedDebugEventStore.record(
                         "CAPACITY_PUBLIC_SOURCE_RESOLVED",
                         context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} physicalPassengerCapacity=$physicalCapacity publishedSeats=${source.published_seats ?: -1} passengerSeats=$observedOccupiedSeats blockedSeats=0 availableSeats=${(physicalCapacity - observedOccupiedSeats).coerceAtLeast(0)} overbookingSeats=$overbookingSeats capacitySource=vehicle_physical_minus_occupancy",
+                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} physicalPassengerCapacity=$physicalCapacity blablaAllocation=$blablaAllocation rotaCertaAllocation=$rotaCertaAllocation totalConsidered=$totalConsidered externalConfirmed=$observedOccupiedSeats physicalOverbookingSeats=$overbookingSeats capacitySource=physical_plus_operational_separated",
                     )
-                    toPublicTrip(source, physicalCapacity, nowMillis)
+                    toPublicTrip(
+                        source = source,
+                        capacity = physicalCapacity,
+                        rotaCertaSeatAllocation = rotaCertaAllocation,
+                        nowMillis = nowMillis,
+                    )
                 }
             }
             .filterNot { synthesized ->
