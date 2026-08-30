@@ -689,6 +689,7 @@ internal object PublicAgendaAutoSync0300 {
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
         capacity: Int,
+        rotaCertaSeatAllocation: Int = capacity,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
     ): PublicAgendaExternalTrip? {
@@ -737,6 +738,7 @@ internal object PublicAgendaAutoSync0300 {
             title = "${shortPlace(origin)} → ${shortPlace(destination)}",
             departureAtMillis = departure,
             capacity = safeCapacity,
+            rotaCertaSeatAllocation = rotaCertaSeatAllocation.coerceIn(0, 999),
             status = TripStatus.PUBLISHED,
             stops = stops,
             publicToken = token,
