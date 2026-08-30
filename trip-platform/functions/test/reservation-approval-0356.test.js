@@ -26,5 +26,11 @@ test("0.1.356 approves or rejects transactionally and idempotently", () => {
 
 test("0.1.356 keeps notification read separate from resolution and protects structural edits", () => {
   assert.match(source, /pending_reservations_require_decision/);
-  assert.match(source, /readAtMillis: Date\.now\(\)/);
+  const start = source.indexOf("async function markDriverNotificationRead");
+  const end = source.indexOf("\nasync function markPassengerNotificationRead", start);
+  const markRead = source.slice(start, end);
+  assert.match(markRead, /const now = Date\.now\(\)/);
+  assert.match(markRead, /readAtMillis: now/);
+  assert.doesNotMatch(markRead, /status:\s*"CONFIRMED"/);
+  assert.doesNotMatch(markRead, /status:\s*"REJECTED"/);
 });
