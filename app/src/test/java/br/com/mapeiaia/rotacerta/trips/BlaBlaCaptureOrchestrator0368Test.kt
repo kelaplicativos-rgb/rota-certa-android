@@ -85,6 +85,6 @@ class BlaBlaCaptureOrchestrator0368Test {
         val duplicateAssets = BlaBlaBrowserRequest.values()
             .groupBy { it.assetName }
             .filterValues { it.size > 1 }
-        assertTrue("Duplicate request assets: " + duplicateAssets.keys, duplicateAssets.isEmpty())
+        assertTrue(duplicateAssets.isEmpty(), "Duplicate request assets: " + duplicateAssets.keys)
     }
 }
