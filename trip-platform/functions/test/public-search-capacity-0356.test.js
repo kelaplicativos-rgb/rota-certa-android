@@ -28,11 +28,13 @@ test("accent normalization and segment bottleneck use the real public search fun
   assert.equal(availableForTripSegment(trip, 1, 2), 3);
 });
 
-test("generic cards use whole-trip minimum while canReserve still allows a valid later segment", () => {
-  assert.match(publicApp, /seatRange\(item\)\.minimum >= seats/);
-  assert.match(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
+test("public filter does not ask seats and cards defer quantity to the chosen reservation action", () => {
+  assert.doesNotMatch(publicHtml, /id="searchSeats"/);
+  assert.doesNotMatch(publicHtml, /id="searchReturn"/);
+  assert.doesNotMatch(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
+  assert.match(publicApp, /function openWhatsappSeatPicker/);
+  assert.match(publicApp, /seatPickerLimit = source\.capacityReliable === true/);
   assert.match(backend, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability\.maximum > 0/);
-  assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\) >= seats/);
 });
 
 test("autocomplete retains exact stop ids and intermediate stops require authoritative itinerary", () => {
