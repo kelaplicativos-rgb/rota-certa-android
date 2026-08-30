@@ -8,8 +8,13 @@ const publicApp = fs.readFileSync(path.join(__dirname, "..", "..", "public", "ap
 const publicHtml = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
 function functionSource(source, name, nextName) {
-  const start = source.indexOf("function " + name + "(");
-  const end = source.indexOf("\nfunction " + nextName + "(", start);
+  const syncStart = source.indexOf("function " + name + "(");
+  const asyncStart = source.indexOf("async function " + name + "(");
+  const start = syncStart >= 0 ? syncStart : asyncStart;
+  const syncEnd = source.indexOf("\nfunction " + nextName + "(", start);
+  const asyncEnd = source.indexOf("\nasync function " + nextName + "(", start);
+  const ends = [syncEnd, asyncEnd].filter((value) => value > start);
+  const end = ends.length ? Math.min(...ends) : -1;
   assert.ok(start >= 0 && end > start, "missing function " + name);
   return source.slice(start, end);
 }
