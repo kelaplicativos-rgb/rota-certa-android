@@ -660,7 +660,7 @@ function safePublicTrip(token, data) {
     availableSeatsMinimum: fullyOccupied ? 0 : availability.minimum,
     availableSeatsMaximum: fullyOccupied ? 0 : availability.maximum,
     isFull: fullyOccupied,
-    canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability.minimum > 0,
+    canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability.maximum > 0,
     publicBookingEnabled: data.publicBookingEnabled === true,
     itineraryAuthoritative,
     publishedSeats: data.publishedSeats == null ? null : (Number.isInteger(Number(data.publishedSeats)) ? Number(data.publishedSeats) : null),

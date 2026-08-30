@@ -28,11 +28,11 @@ test("accent normalization and segment bottleneck use the real public search fun
   assert.equal(availableForTripSegment(trip, 1, 2), 3);
 });
 
-test("generic cards and backend both use the whole-trip minimum, never the maximum", () => {
+test("generic cards use whole-trip minimum while canReserve still allows a valid later segment", () => {
   assert.match(publicApp, /seatRange\(item\)\.minimum >= seats/);
   assert.match(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
-  assert.match(backend, /capacityReliable && !fullyOccupied && availability\.minimum > 0/);
-  assert.doesNotMatch(backend, /canReserve:[^\n]*availability\.maximum > 0/);
+  assert.match(backend, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability\.maximum > 0/);
+  assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\) >= seats/);
 });
 
 test("autocomplete retains exact stop ids and intermediate stops require authoritative itinerary", () => {
