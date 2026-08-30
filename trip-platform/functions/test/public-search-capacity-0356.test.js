@@ -78,6 +78,8 @@ test("seat picker uses reconciled availability instead of nominal vehicle capaci
   assert.match(publicHtml, /id="seatPickerAvailability"/);
   assert.match(publicHtml, /id="seatPickerMessage"/);
   assert.doesNotMatch(publicApp, /function maxAgendaCapacity/);
+  assert.doesNotMatch(publicApp, /Math\.min\(9, outbound/);
+  assert.match(publicApp, /Math\.min\(999, Math\.floor\(Number\(params\.get\("lugares"\)/);
   assert.match(publicApp, /function searchSeatAvailabilityLimit/);
   assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\)/);
 
