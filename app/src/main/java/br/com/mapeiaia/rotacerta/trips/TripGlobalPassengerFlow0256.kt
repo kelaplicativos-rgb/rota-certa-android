@@ -163,9 +163,15 @@ internal fun buildTimelineExternalBackingTrip(entry: TripTimelineEntry, capacity
         title = "${labels.first()} → ${labels.last()}",
         departureAtMillis = entry.departureAtMillis,
         capacity = capacity,
+        rotaCertaSeatAllocation = entry.rotaCertaSeatAllocation,
         status = if (entry.status == TripStatus.FULL) TripStatus.FULL else TripStatus.PUBLISHED,
         stops = stops,
         notes = "Backing local de publicação externa; identidade estável preservada pelo Rota Certa.",
+        blablaProfileUuid = entry.blablaProfileUuid,
+        blablaTripId = entry.blablaTripId,
+        blablaManageUrl = entry.blablaTripHref,
+        blablaPublicUrl = entry.blablaPublicHref,
+        publishedSeats = entry.blablaPublishedSeats,
     )
 }
 
@@ -366,7 +372,17 @@ internal fun prepareTimelineTripForPassenger(
     if (strongExternal != null) {
         trip = augmentExternalBackingStops(trip, entry)
         if (trip.status == TripStatus.DRAFT) trip = trip.copy(status = if (entry.status == TripStatus.FULL) TripStatus.FULL else TripStatus.PUBLISHED)
-        if (entry.capacity in 1..999 && trip.capacity != entry.capacity) trip = trip.copy(capacity = entry.capacity)
+        if (entry.capacity in 1..999) {
+            trip = trip.copy(
+                capacity = entry.capacity,
+                rotaCertaSeatAllocation = entry.rotaCertaSeatAllocation ?: trip.rotaCertaSeatAllocation,
+                blablaProfileUuid = entry.blablaProfileUuid ?: trip.blablaProfileUuid,
+                blablaTripId = entry.blablaTripId ?: trip.blablaTripId,
+                blablaManageUrl = entry.blablaTripHref ?: trip.blablaManageUrl,
+                blablaPublicUrl = entry.blablaPublicHref ?: trip.blablaPublicUrl,
+                publishedSeats = entry.blablaPublishedSeats ?: trip.publishedSeats,
+            )
+        }
         trip = store.saveTrip(trip)
 
         val previousClaims = store.bookingsFor(trip.id).filter(::isTimelineExternalCapacityClaim)
