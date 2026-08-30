@@ -259,6 +259,18 @@ private fun TripApp(
         }
         val present = appSettings.vehicleCapacity in 1..999
         val source = if (present) "local_settings" else "local_settings_unconfigured"
+        if (present) {
+            val (changedTrips, changedBindings) = store.reconcilePhysicalPassengerCapacity(appSettings.vehicleCapacity)
+            if (changedTrips > 0 || changedBindings > 0) {
+                trips = store.trips()
+                publicAgendaSyncRevision++
+                UnifiedDebugEventStore.record(
+                    "PHYSICAL_PASSENGER_CAPACITY_RECONCILED",
+                    activity.packageName,
+                    "capacity=${appSettings.vehicleCapacity} trips=$changedTrips bindings=$changedBindings source=vehicle_settings",
+                )
+            }
+        }
         AgendaTrace.event(
             activity,
             "CAPACITY_LOCAL_SETTINGS_RECEIVED",
