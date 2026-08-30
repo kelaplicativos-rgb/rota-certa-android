@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.354 vehicle panel collapsed
+name: Rota Certa 0.1.355 vehicle panel shared pattern
 
 on:
   push:
@@ -31,16 +31,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate 0.1.354 causal scope
+      - name: Validate 0.1.355 causal scope
         shell: bash
         run: |
           set -euo pipefail
           BASE=6b0f38b348a915c9d04cdbcdcd84284c426faa33
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5647' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.354"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5648' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.355"' app/build.gradle.kts
           grep -Fq 'var driverDefaultsExpanded by remember { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'Text(if (driverDefaultsExpanded) "🚗 Dados do veículo ▲" else "🚗 Dados do veículo ▼")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'if (driverDefaultsExpanded) {' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaVehiclePanelCollapsed0354Test.kt
 
@@ -110,20 +110,20 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5647'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.354'" /tmp/aapt.txt
-          mkdir -p /tmp/0354
-          cp "$APK" /tmp/0354/rota-certa-0.1.354-vehicle-panel-collapsed.apk
-          sha256sum /tmp/0354/rota-certa-0.1.354-vehicle-panel-collapsed.apk | tee /tmp/0354/apk.sha256
-          cp /tmp/aapt.txt /tmp/0354/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0354/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0354/gradle.txt
-          git rev-parse HEAD > /tmp/0354/source-head.txt
-          git diff --name-only 6b0f38b348a915c9d04cdbcdcd84284c426faa33..HEAD > /tmp/0354/changed-files.txt
+          grep -Fq "versionCode='5648'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.355'" /tmp/aapt.txt
+          mkdir -p /tmp/0355
+          cp "$APK" /tmp/0355/rota-certa-0.1.355-vehicle-panel-shared-pattern.apk
+          sha256sum /tmp/0355/rota-certa-0.1.355-vehicle-panel-shared-pattern.apk | tee /tmp/0355/apk.sha256
+          cp /tmp/aapt.txt /tmp/0355/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0355/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0355/gradle.txt
+          git rev-parse HEAD > /tmp/0355/source-head.txt
+          git diff --name-only 6b0f38b348a915c9d04cdbcdcd84284c426faa33..HEAD > /tmp/0355/changed-files.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.354-vehicle-panel-collapsed
+          name: rota-certa-0.1.355-vehicle-panel-shared-pattern
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0354
+          path: /tmp/0355
