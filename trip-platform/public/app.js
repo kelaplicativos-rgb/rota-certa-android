@@ -686,6 +686,16 @@ function normalizedSeatCount(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
+function seatSourceBreakdown(item) {
+  const total = normalizedSeatCount(item && item.capacity);
+  const rawBlaBla = item && item.publishedSeats != null ? Number(item.publishedSeats) : NaN;
+  if (!Number.isInteger(rawBlaBla) || rawBlaBla < 0 || rawBlaBla > total) {
+    return { blabla: null, rotaCerta: null, total };
+  }
+  const blabla = normalizedSeatCount(rawBlaBla);
+  return { blabla, rotaCerta: Math.max(0, total - blabla), total };
+}
+
 function seatAvailabilityText(available) {
   const seats = normalizedSeatCount(available);
   if (seats === 0) return "Nenhuma vaga disponível para este trecho.";
@@ -1448,6 +1458,13 @@ function renderAgendaCards(entries, container, filtered = false) {
       seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
     }
     meta.append(time, seats);
+    const sourceBreakdown = seatSourceBreakdown(item);
+    if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
+      const seatSources = document.createElement("span");
+      seatSources.className = "bigPill";
+      seatSources.textContent = `BlaBlaCar ${sourceBreakdown.blabla} • Rota Certa ${sourceBreakdown.rotaCerta}`;
+      meta.appendChild(seatSources);
+    }
     const duration = durationFor(item);
     if (duration) {
       const durationPill = document.createElement("span");
@@ -1790,7 +1807,14 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  addFact("Capacidade", `${trip.capacity} lugar(es)`);
+  const sourceBreakdown = seatSourceBreakdown(trip);
+  if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
+    addFact("Vagas BlaBlaCar", `${sourceBreakdown.blabla} lugar(es)`);
+    addFact("Vagas Rota Certa", `${sourceBreakdown.rotaCerta} lugar(es)`);
+    addFact("Disponibilidade combinada", `${sourceBreakdown.total} lugar(es)`);
+  } else {
+    addFact("Capacidade", `${trip.capacity} lugar(es)`);
+  }
   const duration = durationFor(trip);
   if (duration) addFact("Duração prevista", duration);
 
