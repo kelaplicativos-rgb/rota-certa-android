@@ -196,6 +196,34 @@ class PassengerTripActions0351Test {
     }
 
     @Test
+    fun tripOpenActionStaysAtTripLevelAndPassengerRowsNeverFallbackToTripLink() {
+        val operational = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        val rowStart = operational.indexOf("val passengerTarget = externalPassengerTarget(passenger)")
+        val rowEnd = operational.indexOf("OutlinedButton(", rowStart)
+        assertTrue(rowStart >= 0)
+        assertTrue(rowEnd > rowStart)
+        val passengerRowAction = operational.substring(rowStart, rowEnd)
+        assertTrue(passengerRowAction.contains("openExternalPassengerBlaBla(context, passenger)"))
+        assertTrue(passengerRowAction.contains("contentDescription = \"Abrir passageiro no BlaBlaCar\""))
+        assertFalse(passengerRowAction.contains("externalTripTarget("))
+        assertFalse(passengerRowAction.contains("openExternalTripBlaBla("))
+
+        val tripActionStart = operational.indexOf("private fun TripBlaBlaTripActionRow(")
+        val tripActionEnd = operational.indexOf("internal data class PassengerPickupMapTarget", tripActionStart)
+        assertTrue(tripActionStart >= 0)
+        assertTrue(tripActionEnd > tripActionStart)
+        val tripAction = operational.substring(tripActionStart, tripActionEnd)
+        assertTrue(tripAction.contains("openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)"))
+        assertTrue(tripAction.contains("contentDescription = \"Abrir viagem no BlaBlaCar\""))
+
+        val topCall = operational.indexOf("TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)")
+        val emptyReturn = operational.indexOf("if (rawRows.isEmpty()) return")
+        assertTrue(topCall >= 0)
+        assertTrue(emptyReturn > topCall)
+    }
+
+    @Test
     fun blockedPassengerIsRejectedAgainAtSaveAndExistingCancellationPathRemains() {
         val quick = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt").readText()
         val flow = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt").readText()
