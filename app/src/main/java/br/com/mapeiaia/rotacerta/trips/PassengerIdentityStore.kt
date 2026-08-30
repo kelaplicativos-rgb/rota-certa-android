@@ -151,6 +151,13 @@ data class PassengerPersistentHistory(
     ).maxOrNull() ?: profile.updatedAtMillis
 }
 
+internal data class PassengerPickerSnapshot(
+    val rawProfileCount: Int,
+    val distinctPassengerIdCount: Int,
+    val profiles: List<PassengerProfile>,
+    val resolvedDuplicateCount: Int,
+)
+
 class PassengerIdentityStore(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -164,6 +171,12 @@ class PassengerIdentityStore(context: Context) {
     fun profiles(): List<PassengerProfile> = decode<List<PassengerProfile>>(prefs.getString(profilesKey, null))
         .orEmpty()
         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+
+    internal fun pickerSnapshot(includeArchived: Boolean = false): PassengerPickerSnapshot {
+        val raw = profiles().filter { includeArchived || !it.archived }
+        val observations = raw.associate { profile -> profile.id to observations(profile.id) }
+        return buildPassengerPickerSnapshot(raw, observations)
+    }
 
     fun profile(id: String?): PassengerProfile? {
         val canonical = id?.trim()?.takeIf(String::isNotEmpty) ?: return null
@@ -281,12 +294,39 @@ class PassengerIdentityStore(context: Context) {
         val name = booking.passengerName.trim().take(120)
         if (name.isBlank()) return null
         val phone = booking.passengerContact.trim().take(40)
+        val explicitPassengerId = booking.passengerId.trim()
+        val exactContacts = if (explicitPassengerId.isBlank() && passengerContactKey(phone).isNotBlank()) {
+            exactContactMatches(phone)
+        } else {
+            emptyList()
+        }
+        val resolvedAmbiguousContact = if (exactContacts.size > 1) {
+            val observations = exactContacts.associate { profile -> profile.id to observations(profile.id) }
+            buildPassengerPickerSnapshot(exactContacts, observations).profiles.singleOrNull()
+        } else {
+            null
+        }
         val existing = resolveCanonicalPassenger(
-            passengerId = booking.passengerId,
+            passengerId = explicitPassengerId,
             whatsapp = phone,
-        )
+        ) ?: resolvedAmbiguousContact
+        if (existing == null && explicitPassengerId.isBlank() && exactContacts.size > 1) {
+            AgendaTrace.event(
+                appContext,
+                "PASSENGER_IDENTITY_AMBIGUOUS",
+                "source=local_booking matches=${exactContacts.size} action=preserve_without_new_profile",
+            )
+            return null
+        }
+        if (resolvedAmbiguousContact != null) {
+            AgendaTrace.event(
+                appContext,
+                "PASSENGER_DUPLICATE_RESOLVED",
+                "source=local_booking matches=${exactContacts.size} canonical=1",
+            )
+        }
         val base = existing ?: PassengerProfile(
-            id = booking.passengerId.trim().takeIf(String::isNotEmpty) ?: UUID.randomUUID().toString(),
+            id = explicitPassengerId.takeIf(String::isNotEmpty) ?: UUID.randomUUID().toString(),
             displayName = name,
             whatsapp = phone,
             createdAtMillis = booking.createdAtMillis,
@@ -335,8 +375,22 @@ class PassengerIdentityStore(context: Context) {
         val externalId = stableExternalPassengerId(externalPassengerId) ?: return null
         val name = displayName.trim().take(120).ifBlank { "Passageiro" }
         val phone = whatsapp.orEmpty().trim().take(40)
-        val existing = profileByExternalPassengerId(externalId)
-            ?: exactContactMatches(phone).singleOrNull()
+        val contactMatches = exactContactMatches(phone)
+        val safeContactMatch = when {
+            contactMatches.size <= 1 -> contactMatches.singleOrNull()
+            else -> {
+                val observations = contactMatches.associate { profile -> profile.id to observations(profile.id) }
+                buildPassengerPickerSnapshot(contactMatches, observations).profiles.singleOrNull()
+            }
+        }
+        val existing = profileByExternalPassengerId(externalId) ?: safeContactMatch
+        if (safeContactMatch != null && contactMatches.size > 1) {
+            AgendaTrace.event(
+                appContext,
+                "PASSENGER_DUPLICATE_RESOLVED",
+                "source=external_passenger matches=${contactMatches.size} canonical=1",
+            )
+        }
         val base = existing ?: PassengerProfile(
             displayName = name,
             whatsapp = phone,
@@ -524,8 +578,19 @@ class PassengerIdentityStore(context: Context) {
         if (key.isBlank()) return emptyList()
         return profiles().filter { profile ->
             passengerContactKey(profile.whatsapp) == key ||
+                passengerContactKey(profile.agendaAccessContact()) == key ||
                 observations(profile.id).any { observation -> passengerContactKey(observation.whatsapp) == key }
         }.distinctBy(PassengerProfile::id)
+    }
+
+    fun pickerContactMatches(raw: String): List<PassengerProfile> {
+        val key = passengerContactKey(raw)
+        if (key.isBlank()) return emptyList()
+        return pickerSnapshot().profiles.filter { profile ->
+            passengerContactKey(profile.whatsapp) == key ||
+                passengerContactKey(profile.agendaAccessContact()) == key ||
+                observations(profile.id).any { observation -> passengerContactKey(observation.whatsapp) == key }
+        }
     }
 
     fun externalMetadata(reservationKey: String?): ExternalPassengerMetadata? {
@@ -623,6 +688,122 @@ internal fun passengerContactKey(raw: String?): String {
     return if (digits.startsWith("55") && digits.length in 12..13) digits.drop(2) else digits
 }
 
+internal fun formatPassengerContactForDisplay(raw: String?): String {
+    val key = passengerContactKey(raw)
+    return when (key.length) {
+        11 -> "+55 ${key.substring(0, 2)} ${key.substring(2, 7)}-${key.substring(7)}"
+        10 -> "+55 ${key.substring(0, 2)} ${key.substring(2, 6)}-${key.substring(6)}"
+        else -> raw?.trim().orEmpty().ifBlank { "telefone não informado" }
+    }
+}
+
+internal fun passengerDebugIdentityHash(raw: String?): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return "none"
+    return MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
+private fun safeLegacyPassengerPickerGroup(members: List<PassengerProfile>): Boolean {
+    if (members.size < 2) return false
+    if (members.map(PassengerProfile::blocked).distinct().size > 1) return false
+
+    fun hasStrongConflict(selector: (PassengerProfile) -> Set<String>): Boolean {
+        val nonEmpty = members.map(selector).filter { it.isNotEmpty() }
+        if (nonEmpty.size < 2) return false
+        return nonEmpty.indices.any { left ->
+            (left + 1 until nonEmpty.size).any { right -> nonEmpty[left].intersect(nonEmpty[right]).isEmpty() }
+        }
+    }
+    if (hasStrongConflict(PassengerProfile::externalPassengerIds)) return false
+    if (hasStrongConflict(PassengerProfile::onlineIdentityIds)) return false
+
+    val referralKeys = members.mapNotNull { passengerContactKey(it.referredByContact).takeIf(String::isNotBlank) }.distinct()
+    if (referralKeys.size > 1) return false
+    val financialStates = members.map { Triple(it.creditBalanceCents, it.creditEarnedCents, it.creditSpentCents) }.distinct()
+    if (financialStates.size > 1 && financialStates.any { it.first != 0L || it.second != 0L || it.third != 0L }) return false
+    return true
+}
+
+internal fun buildPassengerPickerSnapshot(
+    profiles: List<PassengerProfile>,
+    observationsByProfile: Map<String, List<PassengerIdentityObservation>> = emptyMap(),
+): PassengerPickerSnapshot {
+    if (profiles.isEmpty()) return PassengerPickerSnapshot(0, 0, emptyList(), 0)
+
+    val parent = IntArray(profiles.size) { it }
+    fun find(index: Int): Int {
+        var cursor = index
+        while (parent[cursor] != cursor) {
+            parent[cursor] = parent[parent[cursor]]
+            cursor = parent[cursor]
+        }
+        return cursor
+    }
+    fun union(left: Int, right: Int) {
+        val a = find(left)
+        val b = find(right)
+        if (a != b) parent[b] = a
+    }
+
+    val byPassengerId = mutableMapOf<String, Int>()
+    val byExternalId = mutableMapOf<String, Int>()
+    val byOnlineId = mutableMapOf<String, Int>()
+    profiles.forEachIndexed { index, profile ->
+        profile.id.trim().takeIf(String::isNotEmpty)?.let { id ->
+            byPassengerId.putIfAbsent(id, index)?.let { union(index, it) }
+        }
+        profile.externalPassengerIds.forEach { raw ->
+            stableExternalPassengerId(raw)?.let { id ->
+                byExternalId.putIfAbsent(id, index)?.let { union(index, it) }
+            }
+        }
+        profile.onlineIdentityIds.forEach { raw ->
+            stableExternalPassengerId(raw)?.let { id ->
+                byOnlineId.putIfAbsent(id, index)?.let { union(index, it) }
+            }
+        }
+    }
+
+    val legacyGroups = linkedMapOf<String, MutableList<Int>>()
+    profiles.forEachIndexed { index, profile ->
+        val nameKey = normalizePassengerSearch(profile.displayName)
+        val contactKey = passengerContactKey(profile.agendaAccessContact())
+        if (nameKey.isNotBlank() && contactKey.isNotBlank()) {
+            legacyGroups.getOrPut("$contactKey|$nameKey") { mutableListOf() }.add(index)
+        }
+    }
+    legacyGroups.values.forEach { indices ->
+        if (indices.size < 2) return@forEach
+        val members = indices.map(profiles::get)
+        if (!safeLegacyPassengerPickerGroup(members)) return@forEach
+        val first = indices.first()
+        indices.drop(1).forEach { union(first, it) }
+    }
+
+    val grouped = profiles.indices.groupBy(::find).values
+    val canonical = grouped.map { indices ->
+        val members = indices.map(profiles::get)
+        val protectedMembers = members.filter(PassengerProfile::blocked)
+        val candidates = protectedMembers.ifEmpty { members }
+        val distinctIds = members.map(PassengerProfile::id).distinct()
+        if (distinctIds.size == 1) {
+            candidates.maxWithOrNull(compareBy<PassengerProfile> { it.updatedAtMillis }.thenBy { it.createdAtMillis })!!
+        } else {
+            candidates.minWithOrNull(compareBy<PassengerProfile> { it.createdAtMillis }.thenBy { it.id })!!
+        }
+    }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+
+    return PassengerPickerSnapshot(
+        rawProfileCount = profiles.size,
+        distinctPassengerIdCount = profiles.map(PassengerProfile::id).distinct().size,
+        profiles = canonical,
+        resolvedDuplicateCount = (profiles.size - canonical.size).coerceAtLeast(0),
+    )
+}
+
 /** Stable metadata identity only when the collector exposed a stable booking reference. */
 internal fun externalPassengerReservationKey(profileUuid: String?, bookingHref: String?): String? {
     val profile = profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: return null
@@ -668,9 +849,9 @@ class PassengerRepository(context: Context) {
     private val store = PassengerIdentityStore(context.applicationContext)
 
     fun search(raw: String, limit: Int = 12): List<PassengerProfile> {
-        val profiles = store.profiles()
-        val observations = profiles.associate { profile -> profile.id to store.observations(profile.id) }
-        return searchCanonicalPassengers(profiles, observations, raw, limit)
+        val snapshot = store.pickerSnapshot()
+        val observations = snapshot.profiles.associate { profile -> profile.id to store.observations(profile.id) }
+        return searchCanonicalPassengers(snapshot.profiles, observations, raw, limit)
     }
 
     fun resolve(

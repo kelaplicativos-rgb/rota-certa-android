@@ -35,6 +35,30 @@ data class QuickPassengerPlan(
 }
 
 object QuickPassengerEngine {
+    fun hasActivePassengerBooking(
+        existingBookings: List<Booking>,
+        passengerId: String,
+        tripId: String? = null,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val canonicalPassengerId = passengerId.trim()
+        if (canonicalPassengerId.isBlank()) return false
+        return existingBookings.any { booking ->
+            (tripId == null || booking.tripId == tripId) &&
+                booking.capacityClaimType == CapacityClaimType.PASSENGER &&
+                booking.passengerId.trim() == canonicalPassengerId &&
+                when (booking.status) {
+                    BookingStatus.REQUESTED,
+                    BookingStatus.CONFIRMED,
+                    -> true
+                    BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                    BookingStatus.CANCELLED,
+                    BookingStatus.EXPIRED,
+                    -> false
+                }
+        }
+    }
+
     fun build(
         trip: Trip,
         existingBookings: List<Booking>,
@@ -53,6 +77,9 @@ object QuickPassengerEngine {
         }
         require(request.mirrorSource == null || request.linkReservedSeatBookingId == null) {
             "Escolha uma vaga espelho nova ou uma vaga existente, não as duas."
+        }
+        require(!hasActivePassengerBooking(existingBookings, request.passengerId, trip.id, nowMillis)) {
+            "Este passageiro já possui vínculo ativo nesta viagem."
         }
 
         val linked = request.linkReservedSeatBookingId?.let { id ->

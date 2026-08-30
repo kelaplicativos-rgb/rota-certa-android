@@ -31,7 +31,7 @@ class PassengerTripActions0351Test {
         assertTrue(booking > trip)
         assertTrue(flow.contains("Cadastrar novo passageiro"))
         assertTrue(flow.contains("Cadastrar e continuar"))
-        assertTrue(flow.contains("passengerStore.exactContactMatches(newWhatsapp)"))
+        assertTrue(flow.contains("passengerStore.pickerContactMatches(newWhatsapp)"))
         assertTrue(flow.contains("profile.agendaAccessContact()"))
         assertTrue(flow.contains("agendaAccessWhatsapp = newWhatsapp.trim()"))
         assertTrue(flow.contains("entry.minimumAvailableSeats"))
