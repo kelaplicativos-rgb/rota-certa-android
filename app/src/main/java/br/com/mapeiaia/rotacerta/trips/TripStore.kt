@@ -207,6 +207,7 @@ data class PublicExternalTripBinding(
     val profileUuid: String = "",
     val blablaTripId: String = "",
     val blablaTripHref: String = "",
+    val blablaPublicHref: String = "",
     val title: String,
     val departureAtMillis: Long,
     val capacity: Int,
@@ -240,6 +241,10 @@ data class PublicExternalTripBinding(
         stops = stops,
         publicToken = publicToken,
         remoteId = remoteTripId,
+        blablaProfileUuid = profileUuid.takeIf(String::isNotBlank),
+        blablaTripId = blablaTripId.takeIf(String::isNotBlank),
+        blablaManageUrl = blablaTripHref.takeIf(String::isNotBlank),
+        blablaPublicUrl = blablaPublicHref.takeIf(String::isNotBlank),
         publicBookingEnabled = true,
     )
 }
