@@ -2539,7 +2539,7 @@ async function cancelActiveBookingsForBlockedPassenger(driverUsername, passenger
         }, { merge: true });
       });
       tx.update(tripRef, {
-        ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
+        ...canonicalCapacityPersistence(trip, updatedRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3514,7 +3514,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         updatedAtMillis: now,
       });
       tx.update(tripRef, {
-        ...segmentCapacityPersistence(capacityState),
+        ...canonicalCapacityPersistence(trip, reconciledRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3818,7 +3818,7 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       tx.update(tripRef, {
-        ...segmentCapacityPersistence(capacityState),
+        ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3969,8 +3969,9 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         const capacityState = reconciledSegmentCapacity(trip, candidates, now);
       const loads = capacityState.loads;
         assertNoOverbooking(trip, loads);
+        assertNoOperationalOverbooking(trip, candidates, now);
         tx.update(tripRef, {
-          ...segmentCapacityPersistence(capacityState),
+          ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           updatedAtMillis: now,
         });
@@ -4156,6 +4157,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
       const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
@@ -4163,7 +4165,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         movePassengerBookingIndex(tx, previous.passengerContact, updated.passengerContact, token, bookingId, now);
       }
       tx.update(tripRef, {
-        ...segmentCapacityPersistence(capacityState),
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -4194,8 +4196,8 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       delete safeBooking.idempotencyFingerprint;
       return {
         booking: safeBooking,
-        ...segmentCapacityPersistence(capacityState),
-        availableSeats: fromIndex >= 0 ? availableForSegmentRange(trip, loads, fromIndex, toIndex) : null,
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
+        availableSeats: fromIndex >= 0 ? availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now) : null,
         notified: relevantChanges.length > 0,
         changed: true,
       };
@@ -4267,13 +4269,14 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
       const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       if (changes.length) {
         tx.update(tripRef, {
-          ...segmentCapacityPersistence(capacityState),
+          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           updatedAtMillis: now,
         });
@@ -4295,7 +4298,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete safeBooking.idempotencyFingerprint;
       return {
         booking: safeBooking,
-        availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+        availableSeats: availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now),
         driverUsername,
         tripTitle: cleanText(trip.title, 180),
         changed: changes.length > 0,
@@ -4381,7 +4384,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
       });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       tx.update(tripRef, {
-        ...segmentCapacityPersistence(capacityState),
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -4444,17 +4447,23 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
       const capacityState = reconciledSegmentCapacity(trip, candidateRecords);
       const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
-      const range = capacityAvailabilityRange(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords);
+      const operational = reconciledOperationalSeatSummary(trip, candidateRecords);
+      const physicalRange = capacityAvailabilityRange(trip, loads);
+      const range = {
+        minimum: Math.min(physicalRange.minimum, operational.operationalAvailableSeats),
+        maximum: Math.min(physicalRange.maximum, operational.operationalAvailableSeats),
+      };
       const normalizedPersisted = { ...normalized };
       delete normalizedPersisted.id;
       tx.set(bookingRef, normalizedPersisted, { merge: true });
       tx.update(tripRef, {
-        ...segmentCapacityPersistence(capacityState),
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState),
         bookingsCount: candidateRecords.length,
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: Date.now(),
       });
-      return { booking: normalized, ...segmentCapacityPersistence(capacityState), range };
+      return { booking: normalized, ...canonicalCapacityPersistence(trip, candidateRecords, capacityState), range };
     });
     return json(res, 200, {
       booking: result.booking,
