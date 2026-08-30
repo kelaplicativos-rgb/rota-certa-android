@@ -1,0 +1,152 @@
+name: Rota Certa 0.1.361 simple Agenda reservations
+
+on:
+  push:
+    branches:
+      - agent/agenda-simple-reservation-options-0.1.361
+  pull_request:
+    branches:
+      - agent/build-identification-0.1.360
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-simple-reservation-0361-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prove source and causal scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=41c846b53fb474c1ac72764efae206477b6c889a
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5654' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.361"' app/build.gradle.kts
+          grep -Fq 'De onde você vai?' trip-platform/public/index.html
+          grep -Fq 'Para onde você vai?' trip-platform/public/index.html
+          grep -Fq 'Reservar pelo WhatsApp' trip-platform/public/index.html
+          grep -Fq 'Reservar na BlaBlaCar' trip-platform/public/index.html
+          grep -Fq 'Reservar pelo Rota Certa' trip-platform/public/index.html
+          grep -Fq 'public_trip_href' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'fun publicTrip(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq 'blablaPublicUrl' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'publicTripHref' app/src/main/assets/blablacar/scripts/trip_detail.js
+          test -f trip-platform/functions/test/public-simple-reservation-0361.test.js
+
+          CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
+          test -z "$CHANGED_FAROL"
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol-before.sha256
+
+      - name: Backend and public Agenda tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --check app/src/main/assets/blablacar/scripts/trip_detail.js
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
+          node --test trip-platform/functions/test/public-simple-reservation-0361.test.js
+          node --test trip-platform/functions/test/public-short-agenda-link-0358.test.js
+          node --test trip-platform/functions/test/stable-agenda-link-0307.test.js
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cmp -s /tmp/farol-before.sha256 <(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5654'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.361'" /tmp/aapt.txt
+          mkdir -p /tmp/0361
+          cp "$APK" /tmp/0361/rota-certa-0.1.361-agenda-simples-reservas.apk
+          sha256sum /tmp/0361/rota-certa-0.1.361-agenda-simples-reservas.apk | tee /tmp/0361/apk.sha256
+          cp /tmp/aapt.txt /tmp/0361/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0361/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0361/gradle.txt
+          git rev-parse HEAD > /tmp/0361/source-head.txt
+          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0361/changed-files.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0361/dex-strings.txt
+          grep -Fq "${GITHUB_SHA}" /tmp/0361/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0361/dex-strings.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.361-agenda-simples-reservas
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0361
