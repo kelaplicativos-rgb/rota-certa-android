@@ -129,6 +129,6 @@ class PassengerTripActions0351Test {
         assertTrue(quick.contains("TripRemoteApi(settings).upsertDriverBooking"))
         assertTrue(quick.contains("store.saveBooking(plan.passenger)"))
         assertTrue(operational.contains("BookingStatus.CANCELLED"))
-        assertTrue(operational.contains("PASSENGER_CANCEL_SUCCESS"))
+        assertTrue(operational.contains("BOOKING_CANCEL_PERSISTED"))\n        assertTrue(operational.contains("SEGMENT_CAPACITY_RECALCULATED"))\n        assertTrue(operational.contains("PUBLIC_BOOKING_CANCEL_SYNC"))
     }
 }
