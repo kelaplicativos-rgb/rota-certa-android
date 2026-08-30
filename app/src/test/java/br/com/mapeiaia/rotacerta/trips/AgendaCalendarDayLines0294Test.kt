@@ -89,10 +89,12 @@ class AgendaCalendarDayLines0294Test {
 
         val days = combinedTimelineCalendarDays(entries, response)
 
-        assertEquals(LocalDate.of(2026, 9, 1), days.first().date)
-        assertEquals(LocalDate.of(2026, 9, 30), days.last().date)
+        assertEquals(
+            listOf(LocalDate.of(2026, 9, 4), LocalDate.of(2026, 9, 7)),
+            days.map { it.date },
+        )
         assertTrue(days.none { it.date.monthValue == 8 })
-        assertTrue(days.first { it.date == LocalDate.of(2026, 9, 5) }.items.isEmpty())
+        assertTrue(days.none { it.items.isEmpty() })
     }
 
     @Test
@@ -132,47 +134,78 @@ class AgendaCalendarDayLines0294Test {
     }
 
     @Test
-    fun dateCardAppearsOnlyWhenThatCalendarDayHasNoTravelCard() {
-        assertTrue(
-            shouldRenderTimelineEmptyDayCard(
-                isOperationalCalendarDate = true,
-                operationalCardCount = 0,
-                publicCardCount = 0,
+    fun timelineCompositionContainsOnlyDatesBackedByRealContent() {
+        val zone = ZoneId.of("America/Sao_Paulo")
+        fun entry(id: String, date: LocalDate): TripTimelineEntry {
+            val departure = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            return TripTimelineEntry(
+                id,
+                "profile-$id",
+                "Perfil $id",
+                departure,
+                departure + 60L * 60L * 1000L,
+                "Origem",
+                "Destino",
+                TripStatus.PUBLISHED,
+                4,
+                0,
+                0,
+                emptyMap(),
+            )
+        }
+
+        val days = combinedTimelineCalendarDays(
+            entries = listOf(
+                entry("past", LocalDate.of(2026, 8, 28)),
+                entry("today", LocalDate.of(2026, 8, 29)),
+                entry("future", LocalDate.of(2026, 9, 4)),
             ),
+            publicResponse = null,
         )
-        assertFalse(
-            shouldRenderTimelineEmptyDayCard(
-                isOperationalCalendarDate = true,
-                operationalCardCount = 1,
-                publicCardCount = 0,
+
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 29),
+                LocalDate.of(2026, 9, 4),
             ),
+            days.map { it.date },
         )
-        assertFalse(
-            shouldRenderTimelineEmptyDayCard(
-                isOperationalCalendarDate = true,
-                operationalCardCount = 0,
-                publicCardCount = 1,
-            ),
-        )
-        assertFalse(
-            shouldRenderTimelineEmptyDayCard(
-                isOperationalCalendarDate = false,
-                operationalCardCount = 0,
-                publicCardCount = 0,
-            ),
-        )
+        assertTrue(days.all { it.items.isNotEmpty() })
     }
 
     @Test
-    fun publicSearchDoesNotRenderStandaloneDayHeaders() {
+    fun yearBoundaryAndRecompositionDoNotMaterializeIntermediateDays() {
+        val zone = ZoneId.of("America/Sao_Paulo")
+        fun entry(id: String, date: LocalDate): TripTimelineEntry {
+            val departure = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            return TripTimelineEntry(
+                id, "profile-$id", "Perfil $id", departure, null,
+                "Origem", "Destino", TripStatus.PUBLISHED, 4, 0, 0, emptyMap(),
+            )
+        }
+        val input = listOf(
+            entry("dec", LocalDate.of(2026, 12, 31)),
+            entry("jan", LocalDate.of(2027, 1, 2)),
+        )
+        val first = combinedTimelineCalendarDays(input, null)
+        val reopened = combinedTimelineCalendarDays(input, null)
+
+        assertEquals(listOf(LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 2)), first.map { it.date })
+        assertEquals(first.map { it.date }, reopened.map { it.date })
+    }
+
+    @Test
+    fun timelineRendersDateHeaderOnlyForContentGroups() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt",
         ).readText()
-        assertTrue(source.contains("shouldRenderTimelineEmptyDayCard("))
-        assertTrue(source.contains("operationalCardCount = day.items.size"))
-        assertTrue(source.contains("publicCardCount = dayPublicCards.size"))
+        assertTrue(source.contains("val dates = entriesByDate.keys.toCollection(linkedSetOf())"))
+        assertTrue(source.contains("publicCards.mapNotNullTo(dates)"))
+        assertTrue(source.contains("AgendaCalendarDayLine(day.date)"))
         assertTrue(source.contains("Consulta pública • \$publicDateLabel"))
-        assertTrue(!source.contains("agendaCalendarDaysForPeriod<TripTimelineEntry>"))
+        assertTrue(!source.contains("shouldRenderTimelineEmptyDayCard("))
+        assertTrue(!source.contains("agendaCalendarDaysForItems(visibleEntries)"))
     }
 
     @Test
