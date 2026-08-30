@@ -334,7 +334,9 @@ object SeatAvailabilityEngine {
                 overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
-        val available = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
+        val physicalAvailable = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
+        val operationalAvailable = operationalSeatSummary(trip, bookings, nowMillis).availableSeats
+        val available = minOf(physicalAvailable, operationalAvailable)
         return SeatAvailability(
             boardingStop = orderedStops[boardingIndex],
             dropoffStop = orderedStops[dropoffIndex],
@@ -372,19 +374,24 @@ object SeatAvailabilityEngine {
         trip: Trip,
         bookings: List<Booking>,
         nowMillis: Long = System.currentTimeMillis(),
-    ): Int = segmentLoads(trip, bookings, nowMillis)
-        .minOfOrNull(SegmentLoad::availableSeats)
-        ?: trip.capacity
+    ): Int {
+        val physical = segmentLoads(trip, bookings, nowMillis)
+            .minOfOrNull(SegmentLoad::availableSeats)
+            ?: trip.capacity
+        return minOf(physical, operationalSeatSummary(trip, bookings, nowMillis).availableSeats)
+    }
 
     fun availableSeatRange(
         trip: Trip,
         bookings: List<Booking>,
         nowMillis: Long = System.currentTimeMillis(),
     ): SeatAvailabilityRange {
-        val available = segmentLoads(trip, bookings, nowMillis).map(SegmentLoad::availableSeats)
+        val physical = segmentLoads(trip, bookings, nowMillis).map(SegmentLoad::availableSeats)
+        val operational = operationalSeatSummary(trip, bookings, nowMillis).availableSeats
+        val available = physical.map { minOf(it, operational) }
         return SeatAvailabilityRange(
-            minimum = available.minOrNull() ?: trip.capacity,
-            maximum = available.maxOrNull() ?: trip.capacity,
+            minimum = available.minOrNull() ?: minOf(trip.capacity, operational),
+            maximum = available.maxOrNull() ?: minOf(trip.capacity, operational),
         )
     }
 
@@ -397,7 +404,8 @@ object SeatAvailabilityEngine {
             return trip.status
         }
         val loads = segmentLoads(trip, bookings, nowMillis)
-        return if (loads.isNotEmpty() && loads.all { it.availableSeats == 0 }) {
+        val operationalAvailable = operationalSeatSummary(trip, bookings, nowMillis).availableSeats
+        return if (operationalAvailable == 0 || (loads.isNotEmpty() && loads.all { it.availableSeats == 0 })) {
             TripStatus.FULL
         } else {
             TripStatus.PUBLISHED
