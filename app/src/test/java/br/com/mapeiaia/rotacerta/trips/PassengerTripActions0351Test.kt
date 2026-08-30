@@ -1,6 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -193,6 +195,78 @@ class PassengerTripActions0351Test {
             listOf(2, 2, 1),
             SeatAvailabilityEngine.segmentLoads(trip, listOf(occupied, allowed.passenger)).map { it.occupiedSeats },
         )
+    }
+
+    @Test
+    fun timelineCompositionUsesOnlyDatesBackedByVisibleContent() {
+        val zone = ZoneId.of("America/Sao_Paulo")
+        fun entry(id: String, date: LocalDate): TripTimelineEntry {
+            val departure = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            return TripTimelineEntry(
+                id,
+                "profile-$id",
+                "Perfil $id",
+                departure,
+                departure + 60L * 60L * 1000L,
+                "Origem",
+                "Destino",
+                TripStatus.PUBLISHED,
+                4,
+                0,
+                0,
+                emptyMap(),
+            )
+        }
+
+        val days = combinedTimelineCalendarDays(
+            entries = listOf(
+                entry("past", LocalDate.of(2026, 8, 28)),
+                entry("today", LocalDate.of(2026, 8, 29)),
+                entry("future", LocalDate.of(2026, 9, 4)),
+            ),
+            publicResponse = null,
+        )
+
+        assertEquals(
+            listOf(
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 29),
+                LocalDate.of(2026, 9, 4),
+            ),
+            days.map { it.date },
+        )
+        assertTrue(days.all { it.items.isNotEmpty() })
+    }
+
+    @Test
+    fun timelineMonthYearBoundaryAndRecompositionDoNotCreateEmptyDates() {
+        val zone = ZoneId.of("America/Sao_Paulo")
+        fun entry(id: String, date: LocalDate): TripTimelineEntry {
+            val departure = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            return TripTimelineEntry(
+                id, "profile-$id", "Perfil $id", departure, null,
+                "Origem", "Destino", TripStatus.PUBLISHED, 4, 0, 0, emptyMap(),
+            )
+        }
+        val input = listOf(
+            entry("dec", LocalDate.of(2026, 12, 31)),
+            entry("jan", LocalDate.of(2027, 1, 2)),
+        )
+        val first = combinedTimelineCalendarDays(input, null)
+        val reopened = combinedTimelineCalendarDays(input, null)
+
+        assertEquals(listOf(LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 2)), first.map { it.date })
+        assertEquals(first.map { it.date }, reopened.map { it.date })
+    }
+
+    @Test
+    fun timelineDateSourceContractDoesNotUseMonthExpansion() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(timeline.contains("val dates = entriesByDate.keys.toCollection(linkedSetOf())"))
+        assertTrue(timeline.contains("publicCards.mapNotNullTo(dates)"))
+        assertTrue(timeline.contains("AgendaCalendarDayLine(day.date)"))
+        assertFalse(timeline.contains("shouldRenderTimelineEmptyDayCard("))
+        assertFalse(timeline.contains("agendaCalendarDaysForItems(visibleEntries)"))
     }
 
     @Test
