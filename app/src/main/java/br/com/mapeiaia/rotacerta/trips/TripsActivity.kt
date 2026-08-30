@@ -186,6 +186,10 @@ private fun TripApp(
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var publicAgendaSyncRevision by remember { mutableStateOf(0) }
     var refreshAllRunning by remember { mutableStateOf(false) }
+    var pendingCreateForPassengerId by remember { mutableStateOf("") }
+    var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
+    var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
+    var addPassengerResumeToken by remember { mutableStateOf(0) }
     var screen by remember {
         mutableStateOf(
             when {
@@ -551,14 +555,26 @@ private fun TripApp(
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
                     defaultCapacity = appSettings.vehicleCapacity,
-                    onCancel = { screen = TripScreen.TIMELINE },
+                    onCancel = {
+                        pendingCreateForPassengerId = ""
+                        screen = TripScreen.TIMELINE
+                    },
                     onSave = { trip ->
                         store.saveTrip(trip)
                         refresh()
                         publicAgendaSyncRevision++
                         selectedId = trip.id
+                        val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
+                        pendingCreateForPassengerId = ""
+                        if (resumePassengerId != null) {
+                            addPassengerResumePassengerId = resumePassengerId
+                            addPassengerResumeTripId = trip.id
+                            addPassengerResumeToken++
+                            message = "Viagem criada. Continue a inclusão do passageiro já selecionado."
+                        } else {
+                            message = "Viagem criada. Publique quando estiver pronta."
+                        }
                         screen = TripScreen.TIMELINE
-                        message = "Viagem criada. Publique quando estiver pronta."
                     },
                 )
                 TripScreen.TIMELINE -> TripTimelineScreen(
@@ -569,7 +585,17 @@ private fun TripApp(
                     autoSyncToken = autoBlaBlaSyncToken,
                     forceAllSyncToken = forceAllBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
-                    onCreateTrip = { screen = TripScreen.CREATE },
+                    onCreateTrip = {
+                        pendingCreateForPassengerId = ""
+                        screen = TripScreen.CREATE
+                    },
+                    onCreateTripForPassenger = { passengerId ->
+                        pendingCreateForPassengerId = passengerId
+                        screen = TripScreen.CREATE
+                    },
+                    addPassengerResumeToken = addPassengerResumeToken,
+                    addPassengerResumePassengerId = addPassengerResumePassengerId,
+                    addPassengerResumeTripId = addPassengerResumeTripId,
                     onPinShortcut = {
                         val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
                         message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
