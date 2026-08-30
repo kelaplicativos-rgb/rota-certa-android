@@ -49,6 +49,8 @@ test("WhatsApp asks seats, revalidates with GET, and never creates a booking", (
   const execute = functionSource(publicApp, "openWhatsappFromSeatPicker", "safeBlaBlaPublicUrl");
   assert.match(execute, /fetch\(\`\/v1\/public\/trips\//);
   assert.match(execute, /availableForTripSegment\(trip, fromIndex, toIndex\)/);
+  assert.match(execute, /whatsappDigits\(driverProfile\.whatsapp \|\| ""\)/);
+  assert.match(backend, /whatsapp: cleanText\(driver\.driverWhatsapp, 24\)/);
   assert.match(execute, /https:\/\/wa\.me\//);
   assert.match(execute, /availability_revalidated_no_booking/);
   assert.doesNotMatch(execute, /method:\s*"POST"/);
@@ -77,4 +79,7 @@ test("BlaBla public link is fail-closed and never uses the admin rides offer URL
   const safe = functionSource(publicApp, "safeBlaBlaPublicUrl", "stopMatchesSearch");
   assert.match(safe, /hostname\.toLowerCase\(\) !== "www\.blablacar\.com\.br"/);
   assert.match(safe, /path !== "\/trip"/);
+  assert.match(safe, /expectedTripId/);
+  assert.match(safe, /actualTripId !== expectedTripId/);
+  assert.match(safe, /searchParams\.delete\("search_uuid"\)/);
 });
