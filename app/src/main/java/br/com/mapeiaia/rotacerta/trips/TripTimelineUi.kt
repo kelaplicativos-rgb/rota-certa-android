@@ -916,9 +916,11 @@ internal fun applyPublicExternalBookingsToTimeline(
         .filter { it.source == BookingSource.ROTA_CERTA || it.sourceReference.startsWith("PUBLIC_LINK:") }
         .filter { booking ->
             booking.seats > 0 && when (booking.status) {
-                BookingStatus.CONFIRMED -> true
-                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
                 BookingStatus.REQUESTED,
+                BookingStatus.CONFIRMED,
+                -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REJECTED,
                 BookingStatus.CANCELLED,
                 BookingStatus.EXPIRED,
                 -> false

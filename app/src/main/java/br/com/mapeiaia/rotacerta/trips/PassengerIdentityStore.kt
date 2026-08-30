@@ -344,7 +344,7 @@ class PassengerIdentityStore(context: Context) {
             source = "LOCAL_${booking.source.name}",
         )
         val occurrenceStatus = when (booking.status) {
-            BookingStatus.CANCELLED, BookingStatus.EXPIRED -> PassengerOccurrenceStatus.CANCELLED
+            BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED -> PassengerOccurrenceStatus.CANCELLED
             BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED -> PassengerOccurrenceStatus.RESERVED
         }
         recordOccurrence(

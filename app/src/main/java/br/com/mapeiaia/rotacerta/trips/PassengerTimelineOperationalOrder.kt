@@ -81,5 +81,5 @@ private fun passengerTimelineReservationPriority(status: BookingStatus?): Int = 
     BookingStatus.CONFIRMED -> 1
     BookingStatus.REQUESTED -> 2
     null -> 3
-    BookingStatus.CANCELLED, BookingStatus.EXPIRED -> 4
+    BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED -> 4
 }
