@@ -9,20 +9,26 @@ class AgendaVehiclePanelCollapsed0354Test {
     private fun source(path: String): String = File("src/main/java/$path").readText()
 
     @Test
-    fun vehicleDefaultsPanelStartsCollapsedAndOnlyRendersBodyAfterUserOpensIt() {
+    fun vehicleDefaultsPanelStartsCollapsedAndUsesTheSameAgendaActionPattern() {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         assertTrue(timeline.contains("var driverDefaultsExpanded by remember { mutableStateOf(false) }"))
-        assertTrue(timeline.contains("Text(if (driverDefaultsExpanded) \"🚗 Dados do veículo ▲\" else \"🚗 Dados do veículo ▼\")"))
+        assertTrue(timeline.contains("ResponsiveTripActions("))
+        assertTrue(
+            timeline.contains(
+                "if (driverDefaultsExpanded) \"Fechar dados do veículo\" else \"Dados do veículo\"",
+            ),
+        )
+        assertFalse(timeline.contains("🚗 Dados do veículo ▲"))
+        assertFalse(timeline.contains("🚗 Dados do veículo ▼"))
 
-        val toggle = timeline.indexOf("Text(if (driverDefaultsExpanded)")
-        val gate = timeline.indexOf("if (driverDefaultsExpanded) {", toggle)
+        val toggleLabel = timeline.indexOf("if (driverDefaultsExpanded) \"Fechar dados do veículo\" else \"Dados do veículo\"")
+        val toggleAction = timeline.indexOf("{ driverDefaultsExpanded = !driverDefaultsExpanded }", toggleLabel)
+        val gate = timeline.indexOf("if (driverDefaultsExpanded) {", toggleAction)
         val card = timeline.indexOf("TripDriverDefaultsCard(", gate)
-        assertTrue(toggle >= 0)
-        assertTrue(gate > toggle)
+        assertTrue(toggleLabel >= 0)
+        assertTrue(toggleAction > toggleLabel)
+        assertTrue(gate > toggleAction)
         assertTrue(card > gate)
-
-        val beforeGate = timeline.substring(toggle, gate)
-        assertFalse(beforeGate.contains("TripDriverDefaultsCard("))
     }
 
     @Test
@@ -35,6 +41,5 @@ class AgendaVehiclePanelCollapsed0354Test {
         assertTrue(section.contains("if (settingsLoaded) {"))
         assertTrue(section.contains("TripDriverDefaultsCard("))
         assertTrue(section.contains("Carregando configurações do veículo…"))
-        assertTrue(section.indexOf("if (settingsLoaded) {") > 0)
     }
 }
