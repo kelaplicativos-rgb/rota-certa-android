@@ -1111,8 +1111,16 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
-            entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                Text("BlaBlaCar: $published lugar(es) publicados • dado do canal, não capacidade física", style = MaterialTheme.typography.bodySmall)
+            val allocation = tripChannelAllocationBreakdown(entry.capacity, entry.blablaPublishedSeats)
+            if (allocation.blablaPublishedAllocation != null && allocation.rotaCertaAllocation != null && allocation.totalConsidered != null) {
+                Text(
+                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} • Rota Certa: ${allocation.rotaCertaAllocation} • Total considerado: ${allocation.totalConsidered}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
+                    Text("BlaBlaCar: $published lugar(es) publicados • aguardando capacidade física para fechar o total", style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
@@ -1126,15 +1134,15 @@ private fun TimelineEntryCard(
             val physicalCapacity = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    Text("👥 Passageiros: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
                     if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
                     Text("Capacidade de passageiros: ${physicalCapacity ?: entry.capacity} • ocupação aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED ->
-                    Text("👥 Passageiros: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.COMPLETE_EMPTY ->
-                    Text("👥 Passageiros: 0 • 🪑 Vagas disponíveis: ${free ?: physicalCapacity ?: 0} ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: ${free ?: physicalCapacity ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
@@ -1150,7 +1158,7 @@ private fun TimelineEntryCard(
             if (sourceLine.isNotBlank()) Text(sourceLine, style = MaterialTheme.typography.bodySmall)
 
             when {
-                TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros acima da capacidade física.")
+                TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros confirmados + vagas bloqueadas ultrapassam a capacidade física.")
                 TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> Text("❌ Conflito real de horário/local.")
                 TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
                 TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
