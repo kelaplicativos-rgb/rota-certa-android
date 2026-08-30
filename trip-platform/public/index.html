@@ -177,11 +177,13 @@
     <div class="pickerHeader"><button id="seatBack" class="backButton" type="button">‹</button><h1 class="stepTitle">Quantos lugares?</h1></div>
     <div class="card seatPickerCard">
       <p class="lead">Selecione quantos lugares você precisa.</p>
+      <p id="seatPickerAvailability" class="availability" aria-live="polite"></p>
       <div class="seatStepper">
         <button id="seatMinus" class="seatStepperButton" type="button" aria-label="Diminuir">−</button>
         <span id="seatPickerValue" class="seatStepperValue">1</span>
         <button id="seatPlus" class="seatStepperButton" type="button" aria-label="Aumentar">+</button>
       </div>
+      <p id="seatPickerMessage" class="muted" aria-live="polite"></p>
       <button id="seatConfirm" class="primary seatPickerConfirm" type="button">Confirmar</button>
     </div>
   </section>
