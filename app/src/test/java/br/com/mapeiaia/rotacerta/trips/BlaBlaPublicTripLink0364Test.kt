@@ -43,7 +43,7 @@ class BlaBlaPublicTripLink0364Test {
         assertTrue(dynamic.contains("PUBLIC_TRIP_SHARE_FALLBACK_REQUIRED"))
         assertTrue(dynamic.contains("beginExactPublicTripSearch"))
         assertTrue(dynamic.contains("Phase.PUBLIC_SEARCH_LINK"))
-        assertTrue(dynamic.contains("BlaBlaPublicPlaceDirectory.searchUrl"))
+        assertTrue(dynamic.contains("BlaBlaPublicPlaceDirectory::searchUrl"))
         assertTrue(dynamic.contains("BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS"))
         assertTrue(dynamic.contains("exactPublicTripHrefForTrip"))
         assertTrue(dynamic.contains("source=exact_public_search exactTrip=true"))
