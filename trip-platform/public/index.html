@@ -140,9 +140,10 @@
   <section id="error" class="card error hidden"></section>
 
   <section id="agenda" class="hidden">
-    <h1 class="pageTitle">Para onde você quer ir?</h1>
+    <h1 class="pageTitle">Escolha sua viagem</h1>
     <p id="driverName" class="lead"></p>
-    <div class="searchShell cleanSearch" aria-label="Buscar viagens">
+    <!-- Filtro preservado para uso futuro, mas fora da interface pública por decisão de produto. -->
+    <div class="searchShell cleanSearch hidden" aria-label="Buscar viagens">
       <label class="cleanSearchField searchSuggestHost">De onde você vai?
         <input id="searchFromInput" autocomplete="off" aria-autocomplete="list" aria-controls="searchFromSuggestions" placeholder="Comece a digitar">
         <div id="searchFromSuggestions" class="searchSuggestions hidden" role="listbox"></div>
@@ -156,8 +157,7 @@
       </div>
       <button id="searchSubmit" class="searchSubmit" type="button">Buscar viagens</button>
     </div>
-    <p id="searchMessage" class="muted"></p>
-    <p class="lead">Ou veja todas as próximas viagens publicadas logo abaixo.</p>
+    <p id="searchMessage" class="muted hidden"></p>
     <div id="agendaTrips"></div>
     <div class="card">
       <button id="subscribeCalendar" class="secondary">Compartilhar calendário das viagens</button>
@@ -229,7 +229,6 @@
       <div class="stickyInner">
         <button id="startBooking" class="bookingChoice bookingWhatsapp" type="button">Reservar pelo WhatsApp</button>
         <a id="bookBlaBla" class="bookingChoice bookingBlabla" rel="noopener noreferrer">Reservar na BlaBlaCar</a>
-        <button id="bookRotaCerta" class="bookingChoice bookingSoon" type="button" disabled>Reservar pelo Rota Certa <span class="bookingChoiceSmall">Em breve</span></button>
       </div>
     </div>
   </section>
