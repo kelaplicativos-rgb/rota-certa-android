@@ -969,8 +969,9 @@ internal fun applyPublicExternalBookingsToTimeline(
     val publicLoads = SeatAvailabilityEngine.segmentLoads(publicTrip, active, nowMillis)
     val publicConsumed = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
         ?: active.sumOf(Booking::seats)
-    val publicPassengers = publicLoads.maxOfOrNull(SegmentLoad::passengerSeats)
-        ?: active.filter { it.capacityClaimType == CapacityClaimType.PASSENGER }.sumOf(Booking::seats)
+    val publicOperational = operationalSeatSummary(publicTrip, active, nowMillis)
+    val publicPassengers = publicOperational.confirmedPassengerSeats
+    val publicBlocked = publicOperational.blockedSeats
     val externalRosterSeats = enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
     val combinedPhysical = externalRosterSeats + publicConsumed
     val sources = enriched.sourcePassengerSeats.toMutableMap().apply {
@@ -981,6 +982,7 @@ internal fun applyPublicExternalBookingsToTimeline(
         minimumOccupiedSeats = maxOf(enriched.minimumOccupiedSeats, combinedPhysical),
         maximumOccupiedSeats = maxOf(enriched.maximumOccupiedSeats, combinedPhysical),
         sourcePassengerSeats = sources.filterValues { it > 0 },
+        operationalBlockedSeats = maxOf(enriched.operationalBlockedSeats, publicBlocked),
     )
 }
 
