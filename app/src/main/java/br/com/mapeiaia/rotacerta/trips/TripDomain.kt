@@ -157,6 +157,22 @@ data class SeatAvailabilityRange(
 }
 
 object DriverIdentityRules {
+    private val reservedPublicUsernames = setOf(
+        "v1",
+        "calendar",
+        "api",
+        "admin",
+        "login",
+        "assets",
+        "static",
+        "agenda",
+        "config",
+        "settings",
+        "app",
+        "date-selection",
+        "index",
+    )
+
     fun normalizeUsername(value: String): String {
         val ascii = java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFD)
             .replace(Regex("\\p{M}+"), "")
@@ -166,6 +182,12 @@ object DriverIdentityRules {
 
     fun isValidUsername(value: String): Boolean =
         value.length in 3..32 && value.matches(Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"))
+
+    fun isReservedUsername(value: String): Boolean =
+        normalizeUsername(value) in reservedPublicUsernames
+
+    fun isValidPublicUsername(value: String): Boolean =
+        isValidUsername(value) && !isReservedUsername(value)
 }
 
 object TripFareEngine {
