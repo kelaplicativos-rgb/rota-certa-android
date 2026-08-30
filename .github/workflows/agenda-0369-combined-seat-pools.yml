@@ -42,23 +42,38 @@ jobs:
           grep -Fq 'versionCode = 5663' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.370"' app/build.gradle.kts
           grep -Fq 'timelinePublicCapacityResolution' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
-          grep -Fq 'blablacar_remote_published' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'capacitySource = if (physical != null) "vehicle_physical_capacity" else "unavailable"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'tripChannelAllocationBreakdown' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'operationalSeatSummary' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'EXTERNAL_OCCUPANCY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'rotaCertaSeatAllocation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'rotaCertaSeatAllocation' app/src/main/java/br/com/mapeiaia/rotacerta/Models.kt
+          grep -Fq 'rota_certa_seat_allocation' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
           grep -Fq 'published_seats = current.published_seats ?: previous?.published_seats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
           grep -Fq 'CAPACITY_PUBLIC_SOURCE_RESOLVED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'CAPACITY_PUBLIC_SYNC_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'capacitySource=timeline_real_available_plus_rota_certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'combinedAgendaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'resolveTimelinePublicCapacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'blablaAvailableSeats = blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'rotaCertaSeatPool = rotaCertaSeatPool' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'capacitySource=physical_plus_operational_separated' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'capacity = physicalCapacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'rotaCertaSeatAllocation = rotaCertaAllocation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          ! grep -Fq 'combinedAgendaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          ! grep -Fq 'blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          ! grep -Fq 'rotaCertaSeatPool' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           ! grep -Fq 'capacity = binding.capacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
-          grep -Fq 'rotaCertaSeatPool' trip-platform/functions/index.js
           grep -Fq 'AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt
           ! grep -Fq 'driverReservedGap(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'BlaBlaCar ${sourceBreakdown.blabla} • Rota Certa ${sourceBreakdown.rotaCerta}' trip-platform/public/app.js
-          grep -Fq 'externalBlaBlaProjection' trip-platform/functions/index.js
-          grep -Fq 'externalCapacityChanged' trip-platform/functions/index.js
+          grep -Fq 'reconciledOperationalSeatSummary' trip-platform/functions/index.js
+          grep -Fq 'availableForBooking' trip-platform/functions/index.js
+          grep -Fq 'operationalOverbookingSeats' trip-platform/functions/index.js
+          grep -Fq 'segmentPassengerLoads' trip-platform/functions/index.js
+          grep -Fq 'segmentBlockedLoads' trip-platform/functions/index.js
+          ! grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
+          ! grep -Fq 'rotaCertaSeatPool' trip-platform/functions/index.js
+          grep -Fq 'Passageiros confirmados' trip-platform/public/app.js
+          grep -Fq 'Total considerado' trip-platform/public/app.js
+          grep -Fq 'Capacidade de passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Vagas disponibilizadas no Rota Certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Passageiros confirmados' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Vagas disponíveis' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCombinedSeatPools0369Test.kt
           test -f trip-platform/functions/test/public-combined-capacity-0369.test.js
           grep -Fq 'handledSeatQueueContinuationToken' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
