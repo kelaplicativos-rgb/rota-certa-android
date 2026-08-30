@@ -1712,6 +1712,7 @@ function defaultBookingIntent() {
 }
 
 function startQuickReservation(auto = false) {
+  if (!trip || isFullTrip(trip) || trip.canReserve === false || bookingRequestInFlight) return;
   return openTripSeatPicker(auto);
 }
 
