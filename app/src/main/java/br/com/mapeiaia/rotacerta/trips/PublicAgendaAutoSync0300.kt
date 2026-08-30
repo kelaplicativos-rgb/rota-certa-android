@@ -827,6 +827,7 @@ internal object PublicAgendaAutoSync0300 {
             val boarding = if (fromIndex >= 0 && toIndex > fromIndex) from!! else first
             val dropoff = if (fromIndex >= 0 && toIndex > fromIndex) to!! else last
             val reservationKey = externalPassengerReservationKey(source.profile_uuid, passenger.booking_href)
+                .orEmpty()
                 .ifBlank { "blablacar:${trip.publicToken}:passenger:$index" }
             val claimHash = sha256(reservationKey).take(24)
             val claimId = "bbp-${trip.publicToken.take(24)}-$claimHash"
