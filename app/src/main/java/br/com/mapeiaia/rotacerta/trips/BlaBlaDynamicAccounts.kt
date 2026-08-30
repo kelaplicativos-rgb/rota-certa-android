@@ -1354,9 +1354,145 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             }
 
             UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_SHARE_FALLBACK_REQUIRED",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0} attempts=${publicTripShareReadAttempts + 1} systemShareOpened=false next=exact_public_search",
+            )
+            beginExactPublicTripSearch(expectedSync, expectedCandidate)
+        }
+    }
+
+    private fun beginExactPublicTripSearch(expectedSync: Long, expectedCandidate: Int) {
+        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+            recordStale("public_search_link_pending_mismatch", expectedSync, expectedCandidate)
+            return
+        }
+        val candidate = candidates.getOrNull(expectedCandidate) ?: run {
+            recordStale("public_search_link_candidate_missing", expectedSync, expectedCandidate)
+            return
+        }
+        val definition = account.verifiedDefinition()
+        val detail = pendingTripDetail?.detail
+        val normalized = if (definition != null && detail != null) {
+            BlaBlaDomNormalizer.toTrip(
+                account = definition,
+                candidate = candidate,
+                detail = detail,
+                today = LocalDate.now(),
+                authenticatedProfileSessionVerified = identityConfirmedThisSync,
+            )
+        } else {
+            null
+        }
+        val date = normalized?.date
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val from = listOf(candidate.origin, normalized?.actual_departure.orEmpty())
+            .map(String::trim)
+            .firstOrNull { it.isNotBlank() && BlaBlaPublicPlaceDirectory.supported(it) }
+        val to = listOf(candidate.destination, normalized?.actual_arrival.orEmpty())
+            .map(String::trim)
+            .firstOrNull { it.isNotBlank() && BlaBlaPublicPlaceDirectory.supported(it) }
+        val task = if (date != null && from != null && to != null) {
+            BlaBlaPublicSearchTask(date = date, from = from, to = to)
+        } else {
+            null
+        }
+        val searchUrl = task?.let(BlaBlaPublicPlaceDirectory::searchUrl)
+        val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+        if (tripId.isBlank() || searchUrl.isNullOrBlank()) {
+            UnifiedDebugEventStore.record(
                 "PUBLIC_TRIP_LINK_UNAVAILABLE",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId source=share_action shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0} attempts=${publicTripShareReadAttempts + 1} systemShareOpened=false action=continue_without_inventing_link",
+                "account=${account.displayLabel} tripId=$tripId source=exact_public_search reason=search_scope_unavailable datePresent=${date != null} fromSupported=${from != null} toSupported=${to != null} action=continue_without_inventing_link",
+            )
+            loadNextPassengerContact(expectedSync, expectedCandidate)
+            return
+        }
+
+        publicTripSearchReadAttempts = 0
+        publicTripSearchCaptureInFlight = false
+        enterBrowserPhase(
+            Phase.PUBLIC_SEARCH_LINK,
+            BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+            "resolve_public_trip_from_exact_search",
+        )
+        statusView.text = "${account.displayLabel} • procurando link público exato do card…"
+        UnifiedDebugEventStore.record(
+            "PUBLIC_TRIP_EXACT_SEARCH_STARTED",
+            packageName,
+            "account=${account.displayLabel} tripId=$tripId date=$date from=${from.take(80)} to=${to.take(80)}",
+        )
+        loadTrackedUrl(searchUrl)
+    }
+
+    private fun capturePublicTripFromExactSearch(
+        expectedSync: Long,
+        expectedNavigation: Long,
+        expectedCandidate: Int,
+    ) {
+        if (
+            phase != Phase.PUBLIC_SEARCH_LINK ||
+            expectedSync != syncGeneration ||
+            expectedNavigation != navigationGeneration ||
+            expectedCandidate != candidateIndex ||
+            !pendingTripIsCurrent(expectedSync, expectedCandidate)
+        ) {
+            recordStale("public_search_link_before_evaluate", expectedSync, expectedCandidate)
+            return
+        }
+        val candidate = candidates.getOrNull(expectedCandidate) ?: run {
+            recordStale("public_search_link_candidate_missing_after_navigation", expectedSync, expectedCandidate)
+            return
+        }
+        val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+        if (tripId.isBlank()) {
+            loadNextPassengerContact(expectedSync, expectedCandidate)
+            return
+        }
+        if (publicTripSearchCaptureInFlight) return
+        publicTripSearchCaptureInFlight = true
+        evaluateRequest<DynamicPublicSearchLinkPage>(BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS) { evidence ->
+            publicTripSearchCaptureInFlight = false
+            if (
+                phase != Phase.PUBLIC_SEARCH_LINK ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedCandidate != candidateIndex ||
+                !pendingTripIsCurrent(expectedSync, expectedCandidate)
+            ) {
+                recordStale("public_search_link_after_evaluate", expectedSync, expectedCandidate)
+                return@evaluateRequest
+            }
+
+            val captured = exactPublicTripHrefForTrip(
+                expectedTripId = tripId,
+                hrefs = evidence?.cards.orEmpty().map { it.href },
+            )
+            if (captured != null) {
+                pendingTripDetail = pendingTripDetail?.copy(publicTripHref = captured)
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId source=exact_public_search exactTrip=true cards=${evidence?.cards?.size ?: 0}",
+                )
+                loadNextPassengerContact(expectedSync, expectedCandidate)
+                return@evaluateRequest
+            }
+
+            if (publicTripSearchReadAttempts < MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS) {
+                publicTripSearchReadAttempts++
+                statusView.text =
+                    "${account.displayLabel} • confirmando link público ${publicTripSearchReadAttempts + 1}/$MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS…"
+                webView.postDelayed({
+                    capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate)
+                }, PUBLIC_TRIP_SEARCH_RETRY_MS)
+                return@evaluateRequest
+            }
+
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_UNAVAILABLE",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId source=exact_public_search cards=${evidence?.cards?.size ?: 0} attempts=${publicTripSearchReadAttempts + 1} reason=no_exact_trip_id_match action=continue_without_inventing_link",
             )
             loadNextPassengerContact(expectedSync, expectedCandidate)
         }
