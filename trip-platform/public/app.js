@@ -3183,13 +3183,15 @@ $("searchToInput").addEventListener("keydown", (event) => handleSearchKeydown("t
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".searchSuggestHost")) closeSearchSuggestions();
 });
-$("searchDeparture").addEventListener("click", () => openCalendarPicker("departure"));
-$("searchReturn").addEventListener("click", () => openCalendarPicker("returnDate"));
-$("searchSeats").addEventListener("click", openSeatPicker);
+$("searchDeparture").addEventListener("click", openCalendarPicker);
 $("searchSubmit").addEventListener("click", submitTripSearch);
 $("calendarBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
-$("calendarNoReturn").addEventListener("click", clearReturnDate);
 $("seatBack").addEventListener("click", () => {
+  if (seatPickerChannel === "whatsapp") {
+    if (seatPickerReturnView === "searchResults") return showOnly("searchResults");
+    if (seatPickerReturnView === "agenda") return renderAgenda(agendaTripsCache);
+    return renderTrip();
+  }
   if (seatPickerMode === "booking" && trip) renderTrip();
   else renderAgenda(agendaTripsCache);
 });
@@ -3228,11 +3230,15 @@ $("contact").addEventListener("input", (event) => {
 $("messageToDriver").addEventListener("input", () => {
   setWhatsappLink($("driverWhatsappReview"), $("messageToDriver").value);
 });
-$("startBooking").addEventListener("click", () => startQuickReservation(false));
-$("adjustBooking").addEventListener("click", () => {
-  if (!passengerSessionToken) return showPrivateAuthGate("booking");
-  openBookingFlow();
+$("startBooking").addEventListener("click", () => {
+  const stops = orderedStops(trip);
+  let fromIndex = requestedBoardingStopId ? stops.findIndex((stop) => stop.id === requestedBoardingStopId) : 0;
+  let toIndex = requestedDropoffStopId ? stops.findIndex((stop) => stop.id === requestedDropoffStopId) : stops.length - 1;
+  if (fromIndex < 0) fromIndex = 0;
+  if (toIndex <= fromIndex) toIndex = stops.length - 1;
+  openWhatsappSeatPicker(trip, fromIndex, toIndex, "trip");
 });
+$("bookBlaBla").addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED"));
 $("reserve").addEventListener("click", reviewBooking);
 $("quickUndo").addEventListener("click", undoQuickBooking);
 $("quickDismiss").addEventListener("click", hideQuickBookingNotice);
