@@ -11,7 +11,7 @@ const driverUsername = (params.get("motorista") || "").toLowerCase().replace(/[^
 const portalMode = params.get("portal") === "1";
 const requestedBoardingStopId = (params.get("embarque") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-9_-]/g, "");
-const requestedSeats = Math.max(1, Math.min(9, Number(params.get("lugares") || 1) || 1));
+const requestedSeats = Math.max(1, Math.min(999, Math.floor(Number(params.get("lugares") || 1) || 1)));
 const referralCode = (params.get("ref") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
 const directReserveRequested = params.get("reservar") === "1";
 
@@ -720,13 +720,13 @@ function searchSeatAvailabilityLimit() {
     searchState.selectedFrom,
     searchState.selectedTo,
   );
-  if (!searchState.returnDate) return Math.min(9, outbound);
+  if (!searchState.returnDate) return outbound;
   const returning = bestSearchAvailability(
     searchState.returnDate,
     searchState.selectedTo,
     searchState.selectedFrom,
   );
-  return Math.min(9, outbound, returning);
+  return Math.min(outbound, returning);
 }
 
 function updateSeatPickerUi(capacityChanged = false) {
