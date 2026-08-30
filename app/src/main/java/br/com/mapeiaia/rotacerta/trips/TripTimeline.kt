@@ -47,51 +47,42 @@ data class TripTimelineEntry(
 }
 
 /**
- * Resolves the passenger-facing capacity without changing the vehicle's physical
- * capacity. BlaBlaCar's exact publication setting is authoritative when present.
- *
- * Rota Certa/private passenger claims are added back only because the existing
- * reliable seat writer deliberately reduces the BlaBlaCar publication by those
- * exact seats. This prevents double-decrementing a seat already committed through
- * Rota Certa while still honoring a driver/family seat removed directly in
- * BlaBlaCar.
+ * Resolves public availability from the physical passenger capacity only.
+ * BlaBlaCar published seats remain channel metadata and NEVER redefine or add
+ * to the vehicle's physical capacity.
  */
 internal data class TimelinePublicCapacityResolution(
     val physicalVehicleCapacity: Int?,
     val remotePublishedCapacity: Int?,
-    val nonBlaBlaOccupiedSeats: Int,
+    val passengerSeats: Int,
+    val blockedSeats: Int,
     val effectiveCapacity: Int?,
     val availableSeats: Int?,
+    val overbookingSeats: Int,
     val capacitySource: String,
 )
 
 internal fun resolveTimelinePublicCapacity(
     physicalVehicleCapacity: Int?,
     remotePublishedCapacity: Int?,
-    occupiedSeats: Int,
-    nonBlaBlaOccupiedSeats: Int = 0,
+    passengerSeats: Int,
+    blockedSeats: Int = 0,
 ): TimelinePublicCapacityResolution {
     val physical = physicalVehicleCapacity?.takeIf { it in 1..999 }
     val remote = remotePublishedCapacity?.takeIf { it in 0..999 }
-    val safeNonBlaBlaOccupied = nonBlaBlaOccupiedSeats.coerceAtLeast(0)
-    val remoteWithLocalClaims = remote?.let { (it + safeNonBlaBlaOccupied).coerceAtMost(999) }
-    val effective = when {
-        remoteWithLocalClaims != null && physical != null -> minOf(remoteWithLocalClaims, physical)
-        remoteWithLocalClaims != null -> remoteWithLocalClaims
-        else -> physical
-    }
-    val source = when {
-        remote != null -> "blablacar_remote_published"
-        physical != null -> "vehicle_fallback_remote_unavailable"
-        else -> "unavailable"
-    }
+    val passengers = passengerSeats.coerceAtLeast(0)
+    val blocked = blockedSeats.coerceAtLeast(0)
+    val consumed = passengers + blocked
+    val overbooking = physical?.let { (consumed - it).coerceAtLeast(0) } ?: 0
     return TimelinePublicCapacityResolution(
         physicalVehicleCapacity = physical,
         remotePublishedCapacity = remote,
-        nonBlaBlaOccupiedSeats = safeNonBlaBlaOccupied,
-        effectiveCapacity = effective,
-        availableSeats = effective?.let { (it - occupiedSeats.coerceAtLeast(0)).coerceAtLeast(0) },
-        capacitySource = source,
+        passengerSeats = passengers,
+        blockedSeats = blocked,
+        effectiveCapacity = physical,
+        availableSeats = physical?.let { (it - consumed).coerceAtLeast(0) },
+        overbookingSeats = overbooking,
+        capacitySource = if (physical != null) "vehicle_physical_capacity" else "unavailable",
     )
 }
 
@@ -99,27 +90,20 @@ internal fun timelinePublicCapacityResolution(
     entry: TripTimelineEntry,
     occupiedSeats: Int = entry.maximumOccupiedSeats,
 ): TimelinePublicCapacityResolution {
-    val nonBlaBlaOccupied = entry.sourcePassengerSeats
-        .filterKeys { it != BookingSource.BLABLACAR }
-        .values
-        .sumOf { it.coerceAtLeast(0) }
+    val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+    val blocked = (occupiedSeats.coerceAtLeast(0) - passengers).coerceAtLeast(0)
     return resolveTimelinePublicCapacity(
         physicalVehicleCapacity = entry.capacity,
         remotePublishedCapacity = entry.blablaPublishedSeats,
-        occupiedSeats = occupiedSeats,
-        nonBlaBlaOccupiedSeats = nonBlaBlaOccupied,
+        passengerSeats = passengers,
+        blockedSeats = blocked,
     )
 }
 
 internal fun timelinePublicSegmentLoads(
-    entry: TripTimelineEntry,
+    @Suppress("UNUSED_PARAMETER") entry: TripTimelineEntry,
     physicalLoads: List<SegmentLoad>,
-): List<SegmentLoad> {
-    val publicCapacity = timelinePublicCapacityResolution(entry).effectiveCapacity ?: return physicalLoads
-    return physicalLoads.map { load ->
-        load.copy(availableSeats = (publicCapacity - load.occupiedSeats).coerceAtLeast(0))
-    }
-}
+): List<SegmentLoad> = physicalLoads
 
 enum class TripTimelineIssue {
     DUPLICATE,
