@@ -1420,7 +1420,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "PUBLIC_TRIP_EXACT_SEARCH_STARTED",
             packageName,
-            "account=${account.displayLabel} tripId=$tripId date=$date from=${from.take(80)} to=${to.take(80)}",
+            "account=${account.displayLabel} tripId=$tripId date=$date from=${from.orEmpty().take(80)} to=${to.orEmpty().take(80)}",
         )
         loadTrackedUrl(searchUrl)
     }
@@ -2258,6 +2258,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
         publicTripShareCaptureInFlight = false
+        publicTripSearchReadAttempts = 0
+        publicTripSearchCaptureInFlight = false
         pendingEditHref = ""
         pendingOptionsHref = ""
         pendingPublishedSeats = null
@@ -2573,6 +2575,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         append(" quarantinedCards=").append(quarantinedCardTraversalKeys.size)
         append(" detailInFlight=").append(detailCaptureInFlight)
         append(" publicShareInFlight=").append(publicTripShareCaptureInFlight)
+        append(" publicSearchInFlight=").append(publicTripSearchCaptureInFlight)
         append(" passengerInFlight=").append(passengerCaptureInFlight || passengerCardCaptureInFlight)
         append(" editInFlight=").append(editCaptureInFlight)
         append(" optionsInFlight=").append(optionsCaptureInFlight)
@@ -2590,7 +2593,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return normalized.contains("continuar com e-mail") || normalized.contains("como você deseja se conectar") || normalized.contains("como voce deseja se conectar")
     }
 
-    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PUBLIC_SHARE, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
+    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PUBLIC_SHARE, PUBLIC_SEARCH_LINK, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
 
     companion object {
         private const val HOME_URL = "https://www.blablacar.com.br/"
@@ -2606,6 +2609,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
         private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 4
         private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
+        private const val MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS = 3
+        private const val PUBLIC_TRIP_SEARCH_SETTLE_MS = 2_500L
+        private const val PUBLIC_TRIP_SEARCH_RETRY_MS = 900L
         private const val MAX_PASSENGER_CARD_READ_ATTEMPTS = 4
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
         private const val MAX_EDIT_LINK_READ_ATTEMPTS = 5
