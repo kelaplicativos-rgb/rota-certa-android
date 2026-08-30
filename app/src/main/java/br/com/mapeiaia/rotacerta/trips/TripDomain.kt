@@ -94,13 +94,9 @@ data class Trip(
     val publicBookingEnabled: Boolean = false,
     /** True only when intermediate stops are complete/authoritative for this published trip. */
     val itineraryAuthoritative: Boolean = true,
-    /** BlaBlaCar seat-editor observation (published capacity), not the current free-seat count. */
+    /** BlaBlaCar seat-editor observation only. It is channel metadata, never physical vehicle capacity. */
     val publishedSeats: Int? = null,
-    /** Real free BlaBlaCar seats resolved by the same rule used by the administrative Timeline. */
-    val blablaAvailableSeats: Int? = null,
-    /** Independent Rota Certa seat pool configured by the driver for the public Agenda. */
-    val rotaCertaSeatPool: Int? = null,
-    /** External trips stay fail-closed until published seats and capacity claims are reconciled. */
+    /** External trips stay fail-closed until physical capacity and occupancy claims are reconciled. */
     val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
