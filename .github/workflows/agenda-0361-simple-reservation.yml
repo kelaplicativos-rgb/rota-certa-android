@@ -124,6 +124,10 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
           ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
