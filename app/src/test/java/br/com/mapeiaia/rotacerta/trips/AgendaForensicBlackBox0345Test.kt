@@ -65,6 +65,7 @@ class AgendaForensicBlackBox0345Test {
     fun capacityWaitingToPersistedValueAndSaveAreObservable() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
+        val reliableSeatSync = source("br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt")
         assertTrue(activity.contains("collectAsState(initial = null)"))
         assertTrue(activity.contains("CAPACITY_INITIAL_STATE"))
         assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_REQUEST"))
@@ -80,7 +81,11 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC"))
-        assertTrue(activity.contains("CAPACITY_REMOTE_CONFIRMATION"))
+        assertTrue(activity.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
+        assertFalse(activity.contains("\"CAPACITY_REMOTE_CONFIRMATION\""))
+        assertTrue(reliableSeatSync.contains("\"CAPACITY_REMOTE_CONFIRMATION\""))
+        assertTrue(reliableSeatSync.contains("remoteReadback="))
+        assertTrue(reliableSeatSync.contains("confirmed=true"))
     }
 
     @Test

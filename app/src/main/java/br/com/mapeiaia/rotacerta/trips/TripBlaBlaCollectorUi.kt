@@ -61,6 +61,7 @@ fun BlaBlaCollectorPanel(
     var syncQueue by remember { mutableStateOf<List<String>>(emptyList()) }
     var syncCursor by remember { mutableIntStateOf(0) }
     var handledAutoSyncToken by remember { mutableIntStateOf(0) }
+    var seatQueueContinuationToken by remember { mutableIntStateOf(0) }
     var targetedSyncTripId by remember { mutableStateOf<String?>(null) }
     var syncDateScope by remember { mutableStateOf<LocalDate?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -200,6 +201,7 @@ fun BlaBlaCollectorPanel(
         // Seat-only writer already reloads the exact options page and verifies the
         // published number. Do not chain a full trip/account collector sync here.
         refresh()
+        if (manualSeatStore.list().isNotEmpty()) seatQueueContinuationToken++
     }
 
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
@@ -236,6 +238,19 @@ fun BlaBlaCollectorPanel(
         )
         seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target, pending.id))
         return true
+    }
+
+    LaunchedEffect(seatQueueContinuationToken, manualSeatSyncing, accounts.size) {
+        if (seatQueueContinuationToken > 0 && !manualSeatSyncing && accounts.isNotEmpty()) {
+            val launched = launchPendingSeatSync("automatic_queue_continuation")
+            if (!launched) {
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_SEAT_SYNC_PENDING",
+                    context.packageName,
+                    "reason=queued_target_profile_unresolved retained=true normalSyncContinues=true",
+                )
+            }
+        }
     }
 
     fun clearPendingSeatSyncs() {
@@ -281,11 +296,9 @@ fun BlaBlaCollectorPanel(
 
         val requestedProfile = autoSyncProfileUuid?.trim()?.takeIf(String::isNotEmpty)
         val requestedTrip = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
-        val pendingManualSeat = if (requestedProfile == null) null else {
-            pendingSeatRequest()?.takeIf { pending ->
-                pending.profileUuid.equals(requestedProfile, ignoreCase = true) &&
-                    (requestedTrip == null || pending.tripId == requestedTrip)
-            }
+        val pendingManualSeat = pendingSeatRequest()?.takeIf { pending ->
+            (requestedProfile == null || pending.profileUuid.equals(requestedProfile, ignoreCase = true)) &&
+                (requestedTrip == null || pending.tripId == requestedTrip)
         }
         if (pendingManualSeat != null) {
             val target = accounts.singleOrNull { account ->

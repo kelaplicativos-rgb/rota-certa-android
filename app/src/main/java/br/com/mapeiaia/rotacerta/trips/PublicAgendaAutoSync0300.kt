@@ -379,7 +379,17 @@ internal object PublicAgendaAutoSync0300 {
                         publicTrip = effectiveTrip,
                         claims = effectiveClaims,
                     ).also { synced ->
-                        AgendaTrace.operationEnd(context, externalCapacityOperation, result = "synced", processedCount = synced)
+                        AgendaTrace.operationEnd(
+                            context,
+                            externalCapacityOperation,
+                            result = if (synced > 0) "claims_applied" else "no_applicable_claims",
+                            processedCount = synced,
+                        )
+                        UnifiedDebugEventStore.record(
+                            "EXTERNAL_CAPACITY_CLAIMS_RESULT",
+                            context.packageName,
+                            "claimsFound=${effectiveClaims.size} claimsApplicable=$synced mutationsSent=0 mutationsConfirmed=0 scope=public_agenda_only",
+                        )
                     }
                 } catch (error: CancellationException) {
                     AgendaTrace.operationCancelled(context, externalCapacityOperation)

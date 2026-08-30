@@ -73,6 +73,8 @@ internal object PublicBookingRemoteSync0296 {
         var imported = 0
         val changed = linkedSetOf<String>()
         val changedExternalRemoteIds = linkedSetOf<String>()
+        val externalSeatDeltaByRemoteId = linkedMapOf<String, Int>()
+        val externalSeatStateKeyByRemoteId = linkedMapOf<String, String>()
         candidates.forEach { trip ->
             val remoteTripId = trip.remoteId ?: return@forEach
             val remote = runCatching { api.listBookings(remoteTripId).bookings }
@@ -116,7 +118,20 @@ internal object PublicBookingRemoteSync0296 {
                     val existing = store.bookings().firstOrNull { it.id == incoming.id }
                     val mapped = incoming.toLocalBooking(binding.bookingTripId, existing)
                     if (existing != mapped) {
+                        val backingTrip = binding.asTrip()
+                        val beforeBookings = store.bookingsFor(binding.bookingTripId)
                         store.saveBooking(mapped)
+                        val afterBookings = store.bookingsFor(binding.bookingTripId)
+                        val seatDelta = publicBookingSeatDelta(backingTrip, beforeBookings, afterBookings)
+                        externalSeatDeltaByRemoteId[binding.remoteTripId] =
+                            (externalSeatDeltaByRemoteId[binding.remoteTripId] ?: 0) + seatDelta
+                        externalSeatStateKeyByRemoteId[binding.remoteTripId] = seatSyncDiagnosticKey(
+                            afterBookings
+                                .sortedBy(Booking::id)
+                                .joinToString("|") { booking ->
+                                    "${booking.id}:${booking.status.name}:${booking.seats}:${booking.boardingStopId}:${booking.dropoffStopId}"
+                                },
+                        )
                         imported++
                         changed += binding.bookingTripId
                         changedExternalRemoteIds += binding.remoteTripId
@@ -141,22 +156,14 @@ internal object PublicBookingRemoteSync0296 {
         var queued = 0
         changed.forEach { localTripId ->
             val trip = store.getTrip(localTripId) ?: return@forEach
+            AgendaTrace.event(context, "BOOKING_SEAT_SYNC_REQUESTED", "source=local changedTrip=true", traceId, reconcileOperation.operationId)
             val exact = merged.filter { it.localTripId == localTripId || (it.tripId == localTripId && it.localTripId == localTripId) }
             if (exact.size != 1) {
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_BOOKING_SEAT_SYNC_PENDING",
-                    context.packageName,
-                    "localTrip=$localTripId reason=strong_timeline_match_count_${exact.size}",
-                )
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_BLOCKED", "source=local reason=strong_timeline_match_count_${exact.size}", traceId, reconcileOperation.operationId)
+                UnifiedDebugEventStore.record("PUBLIC_BOOKING_SEAT_SYNC_PENDING", context.packageName, "localTrip=$localTripId reason=strong_timeline_match_count_${exact.size}")
                 return@forEach
             }
-            AgendaTrace.event(
-                context,
-                "BOOKING_SEAT_SYNC_QUEUE",
-                "source=local changedTrip=true",
-                traceId,
-                reconcileOperation.operationId,
-            )
+            AgendaTrace.event(context, "BOOKING_SEAT_SYNC_IDENTITY_RESOLVED", "source=local resolution=timeline_strong", traceId, reconcileOperation.operationId)
             val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
                 context = context,
                 entry = exact.single(),
@@ -164,35 +171,64 @@ internal object PublicBookingRemoteSync0296 {
                 store = store,
                 reason = "automatic_after_public_link_booking",
             )
-            if (result.shouldSync) queued++
+            if (result.shouldSync) {
+                queued++
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_ENQUEUED", "source=local changedTrip=true", traceId, reconcileOperation.operationId)
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_QUEUE", "source=local changedTrip=true", traceId, reconcileOperation.operationId)
+            } else {
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_BLOCKED", "source=local reason=desired_state_unavailable", traceId, reconcileOperation.operationId)
+            }
         }
 
         changedExternalRemoteIds.forEach { remoteTripId ->
             val binding = store.publicExternalBinding(remoteTripId) ?: return@forEach
+            val tripKey = seatSyncDiagnosticKey("${binding.profileUuid}|${binding.blablaTripId}|${binding.remoteTripId}")
+            val seatDelta = externalSeatDeltaByRemoteId[remoteTripId] ?: 0
+            AgendaTrace.event(context, "BOOKING_SEAT_SYNC_REQUESTED", "source=external changedTrip=true tripKey=$tripKey", traceId, reconcileOperation.operationId)
             val exact = merged.filter(binding::matches)
-            if (exact.size != 1) {
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_BOOKING_EXTERNAL_SEAT_SYNC_PENDING",
-                    context.packageName,
-                    "remoteTripPresent=true reason=strong_timeline_match_count_${exact.size}",
-                )
-                return@forEach
+            val resolution = resolvePublicBookingSeatSyncIdentity(binding, exact.size)
+            val result = when (resolution) {
+                PublicBookingSeatSyncIdentityResolution.TIMELINE_STRONG -> {
+                    AgendaTrace.event(context, "BOOKING_SEAT_SYNC_IDENTITY_RESOLVED", "source=external resolution=timeline_strong tripKey=$tripKey", traceId, reconcileOperation.operationId)
+                    BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
+                        context = context,
+                        entry = exact.single(),
+                        trip = binding.asTrip(),
+                        store = store,
+                        reason = "automatic_after_public_link_booking_external_card",
+                    )
+                }
+                PublicBookingSeatSyncIdentityResolution.PERSISTED_STRONG_BINDING -> {
+                    if (seatDelta == 0) {
+                        UnifiedDebugEventStore.record("BOOKING_SEAT_SYNC_NOOP", context.packageName, "source=external resolution=persisted_binding reason=segment_bottleneck_unchanged tripKey=$tripKey")
+                        return@forEach
+                    }
+                    AgendaTrace.event(context, "BOOKING_SEAT_SYNC_IDENTITY_RESOLVED", "source=external resolution=persisted_binding profileUuidPresent=true blablaTripIdPresent=true tripKey=$tripKey", traceId, reconcileOperation.operationId)
+                    BlaBlaReliableSeatSyncBridge.enqueuePublicBookingDelta(
+                        context = context,
+                        binding = binding,
+                        seatDelta = seatDelta,
+                        stateKey = externalSeatStateKeyByRemoteId[remoteTripId].orEmpty(),
+                        reason = "automatic_after_public_link_booking_strong_binding",
+                    )
+                }
+                PublicBookingSeatSyncIdentityResolution.BLOCKED -> {
+                    AgendaTrace.event(context, "BOOKING_SEAT_SYNC_BLOCKED", "source=external reason=strong_timeline_match_count_${exact.size} strongBinding=false tripKey=$tripKey", traceId, reconcileOperation.operationId)
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_BOOKING_EXTERNAL_SEAT_SYNC_PENDING",
+                        context.packageName,
+                        "remoteTripPresent=true profileUuidPresent=${binding.profileUuid.isNotBlank()} blablaTripIdPresent=${binding.blablaTripId.isNotBlank()} reason=strong_timeline_match_count_${exact.size}",
+                    )
+                    return@forEach
+                }
             }
-            AgendaTrace.event(
-                context,
-                "BOOKING_SEAT_SYNC_QUEUE",
-                "source=external changedTrip=true",
-                traceId,
-                reconcileOperation.operationId,
-            )
-            val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
-                context = context,
-                entry = exact.single(),
-                trip = binding.asTrip(),
-                store = store,
-                reason = "automatic_after_public_link_booking_external_card",
-            )
-            if (result.shouldSync) queued++
+            if (result.shouldSync) {
+                queued++
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_ENQUEUED", "source=external resolution=${resolution.name.lowercase()} tripKey=$tripKey", traceId, reconcileOperation.operationId)
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_QUEUE", "source=external changedTrip=true tripKey=$tripKey", traceId, reconcileOperation.operationId)
+            } else if (!result.noOp) {
+                AgendaTrace.event(context, "BOOKING_SEAT_SYNC_BLOCKED", "source=external reason=${result.blockedReason ?: "enqueue_rejected"} resolution=${resolution.name.lowercase()} tripKey=$tripKey", traceId, reconcileOperation.operationId)
+            }
         }
         UnifiedDebugEventStore.record(
             "PUBLIC_BOOKING_PULL_RECONCILED",
@@ -323,3 +359,27 @@ internal object TripPublicBookingLink0296 {
         }.getOrDefault(false)
     }
 }
+
+
+internal enum class PublicBookingSeatSyncIdentityResolution {
+    TIMELINE_STRONG,
+    PERSISTED_STRONG_BINDING,
+    BLOCKED,
+}
+
+internal fun resolvePublicBookingSeatSyncIdentity(
+    binding: PublicExternalTripBinding,
+    timelineMatchCount: Int,
+): PublicBookingSeatSyncIdentityResolution = when {
+    timelineMatchCount == 1 -> PublicBookingSeatSyncIdentityResolution.TIMELINE_STRONG
+    binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank() ->
+        PublicBookingSeatSyncIdentityResolution.PERSISTED_STRONG_BINDING
+    else -> PublicBookingSeatSyncIdentityResolution.BLOCKED
+}
+
+internal fun publicBookingSeatDelta(
+    trip: Trip,
+    beforeBookings: List<Booking>,
+    afterBookings: List<Booking>,
+): Int = SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, afterBookings) -
+    SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, beforeBookings)
