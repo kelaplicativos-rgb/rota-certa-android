@@ -287,7 +287,7 @@ internal fun planTimelineExternalCapacityClaims(
                     seats = seats,
                     status = BookingStatus.CONFIRMED,
                     source = BookingSource.BLABLACAR,
-                    capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+                    capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
                     sourceReference = "$EXTERNAL_CAPACITY_PREFIX$refHash",
                     createdAtMillis = now,
                     updatedAtMillis = now,
@@ -298,7 +298,7 @@ internal fun planTimelineExternalCapacityClaims(
 }
 
 internal fun isTimelineExternalCapacityClaim(booking: Booking): Boolean =
-    booking.capacityClaimType == CapacityClaimType.RESERVED_SEAT &&
+    booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY &&
         booking.sourceReference.startsWith(EXTERNAL_CAPACITY_PREFIX)
 
 internal data class TimelineSeatSyncPlan(
