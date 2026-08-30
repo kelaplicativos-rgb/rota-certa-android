@@ -142,7 +142,6 @@ object TripPhysicalRideConsolidator {
                 BookingSource.PRIVATE, BookingSource.OTHER -> values.sum()
             }
         }.toMap()
-        val passengerSeats = sources.values.sum()
         val blockedSeats = group.maxOfOrNull(TripTimelineEntry::operationalBlockedSeats) ?: 0
         // Whole-trip passenger totals may exceed simultaneous vehicle capacity when
         // people use non-overlapping segments. Physical overbooking must therefore
