@@ -31,6 +31,31 @@ function normalizeUsername(value) {
     .slice(0, 32);
 }
 
+async function resolveDriverUsername(usernameRaw) {
+  const requestedUsername = normalizeUsername(usernameRaw);
+  if (!requestedUsername) return null;
+  const directSnap = await db.collection("tripDrivers").doc(requestedUsername).get();
+  if (directSnap.exists) {
+    const data = directSnap.data();
+    return {
+      canonicalUsername: requestedUsername,
+      publicUsername: normalizeUsername(data.publicUsername) || requestedUsername,
+      driverSnap: directSnap,
+    };
+  }
+  const aliasSnap = await db.collection("tripDriverAliases").doc(requestedUsername).get();
+  if (!aliasSnap.exists) return null;
+  const canonicalUsername = normalizeUsername(aliasSnap.data().canonicalUsername);
+  if (!canonicalUsername) return null;
+  const driverSnap = await db.collection("tripDrivers").doc(canonicalUsername).get();
+  if (!driverSnap.exists) return null;
+  return {
+    canonicalUsername,
+    publicUsername: normalizeUsername(driverSnap.data().publicUsername) || canonicalUsername,
+    driverSnap,
+  };
+}
+
 async function agendaHashForDriver(username, driverSnap) {
   const linkRef = db.collection("tripPublicAgendaLinks").doc(username);
   const linkSnap = await linkRef.get();
@@ -102,12 +127,12 @@ function tripEvent(id, trip) {
 }
 
 async function driverAgenda(usernameRaw, agendaToken) {
-  const username = normalizeUsername(usernameRaw);
+  const resolvedDriver = await resolveDriverUsername(usernameRaw);
+  const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   if (!username || !agendaToken) return null;
-  const driverRef = db.collection("tripDrivers").doc(username);
-  const driverSnap = await driverRef.get();
-  const agendaHash = driverSnap.exists ? await agendaHashForDriver(username, driverSnap) : "";
-  if (!driverSnap.exists || !safeEqual(sha256Hex(agendaToken), agendaHash)) return null;
+  const driverSnap = resolvedDriver.driverSnap;
+  const agendaHash = await agendaHashForDriver(username, driverSnap);
+  if (!safeEqual(sha256Hex(agendaToken), agendaHash)) return null;
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const cutoff = Date.now() - 6 * 60 * 60 * 1000;
   const documents = snapshot.docs
@@ -117,7 +142,7 @@ async function driverAgenda(usernameRaw, agendaToken) {
     })
     .sort((a, b) => Number(a.data().departureAtMillis || 0) - Number(b.data().departureAtMillis || 0))
     .slice(0, 100);
-  return { username, driver: driverSnap.data(), documents };
+  return { username: resolvedDriver.publicUsername, driver: driverSnap.data(), documents };
 }
 
 async function legacyAgenda(supplied) {
