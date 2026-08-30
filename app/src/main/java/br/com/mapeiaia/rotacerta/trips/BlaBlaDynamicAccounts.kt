@@ -19,6 +19,7 @@ import androidx.webkit.WebViewFeature
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.serializer
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -297,7 +298,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private lateinit var store: BlaBlaDynamicSessionStore
     private lateinit var passengerIdentityStore: PassengerIdentityStore
     private lateinit var publicProfileStore: BlaBlaPublicProfileStore
-    private lateinit var browserScripts: BlaBlaBrowserScriptRegistry
     private val browserOrchestrator = BlaBlaBrowserOrchestrator()
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
@@ -365,7 +365,6 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         store = BlaBlaDynamicSessionStore(this)
         passengerIdentityStore = PassengerIdentityStore(this)
         publicProfileStore = BlaBlaPublicProfileStore(this)
-        browserScripts = BlaBlaBrowserScriptRegistry(this)
         account = registry.get(intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID)) ?: run {
             finish()
             return
@@ -2468,47 +2467,17 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         arguments: Map<String, String> = emptyMap(),
         crossinline callback: (T?) -> Unit,
     ) {
-        val contextAtStart = browserExecutionContext()
-        val previous = browserOrchestrator.current()
-        val token = browserOrchestrator.startOrReuse(request, contextAtStart, reason = "webview_evaluate")
-        if (previous?.generation != token.generation) {
-            UnifiedDebugEventStore.record(
-                "BROWSER_REQUEST_STARTED",
-                packageName,
-                "account=${account.displayLabel} request=${request.name} token=${token.generation} sync=${contextAtStart.syncGeneration} nav=${contextAtStart.navigationGeneration} tripId=${contextAtStart.tripId} passengerKeyPresent=${contextAtStart.passengerKey.isNotBlank()} mutates=${request.mutatesRemoteState}",
-            )
-        }
-        val script = runCatching { browserScripts.script(request, arguments) }.getOrElse { error ->
-            UnifiedDebugEventStore.record(
-                "BROWSER_REQUEST_SCRIPT_ERROR",
-                packageName,
-                "account=${account.displayLabel} request=${request.name} error=${error.javaClass.simpleName}",
-            )
-            callback(null)
-            return
-        }
-        evaluate<T>(script) { result ->
-            val currentContext = browserExecutionContext()
-            if (!browserOrchestrator.isCurrent(token, currentContext)) {
-                UnifiedDebugEventStore.record(
-                    "BROWSER_STALE_CALLBACK_IGNORED",
-                    packageName,
-                    "account=${account.displayLabel} request=${request.name} token=${token.generation} current=${browserOrchestrator.current()?.generation ?: -1L}",
-                )
-                return@evaluate
-            }
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = webView,
+            request = request,
+            executionContext = browserExecutionContext(),
+            currentContext = ::browserExecutionContext,
+            deserializer = serializer<T>(),
+            arguments = arguments,
+            reason = "dynamic_account_collection",
+        ) { result ->
             callback(result)
-        }
-    }
-
-    private inline fun <reified T> evaluate(script: String, crossinline callback: (T?) -> Unit) {
-        webView.evaluateJavascript(script) { encoded ->
-            val decoded = runCatching {
-                if (encoded.isNullOrBlank() || encoded == "null") return@runCatching null
-                val raw = json.parseToJsonElement(encoded).jsonPrimitive.content
-                json.decodeFromString<T>(raw)
-            }.getOrNull()
-            callback(decoded)
         }
     }
 
