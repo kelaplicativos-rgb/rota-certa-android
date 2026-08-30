@@ -58,3 +58,69 @@ test("free text must resolve canonically before search and direct POST is fail-c
   assert.match(backend, /code: "insufficient_seats"/);
   assert.match(backend, /PUBLIC_BOOKING_BLOCKED_NO_CAPACITY/);
 });
+
+test("real-seat copy is exact for zero, singular, plural and changed capacity", () => {
+  const copySource = functionSource(publicApp, "normalizedSeatCount", "bestSearchAvailability");
+  const copy = new Function(copySource + "; return { seatAvailabilityText, seatLimitText };")();
+  assert.equal(copy.seatAvailabilityText(0), "Nenhuma vaga disponível para este trecho.");
+  assert.equal(copy.seatAvailabilityText(1), "1 vaga disponível para este trecho.");
+  assert.equal(copy.seatAvailabilityText(2), "2 vagas disponíveis para este trecho.");
+  assert.equal(copy.seatAvailabilityText(3), "3 vagas disponíveis para este trecho.");
+  assert.equal(copy.seatAvailabilityText(4), "4 vagas disponíveis para este trecho.");
+  assert.equal(copy.seatLimitText(1, false), "Este carro tem apenas 1 vaga disponível para este trecho.");
+  assert.equal(copy.seatLimitText(2, false), "Este carro tem apenas 2 vagas disponíveis para este trecho.");
+  assert.equal(copy.seatLimitText(3, false), "Este carro tem apenas 3 vagas disponíveis para este trecho.");
+  assert.equal(copy.seatLimitText(0, true), "Não há mais vagas disponíveis para este trecho.");
+  assert.equal(copy.seatLimitText(2, true), "Agora este carro tem apenas 2 vagas disponíveis para este trecho.");
+});
+
+test("seat picker uses reconciled availability instead of nominal vehicle capacity", () => {
+  assert.match(publicHtml, /id="seatPickerAvailability"/);
+  assert.match(publicHtml, /id="seatPickerMessage"/);
+  assert.doesNotMatch(publicApp, /function maxAgendaCapacity/);
+  assert.match(publicApp, /function searchSeatAvailabilityLimit/);
+  assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\)/);
+
+  const tripPicker = functionSource(publicApp, "openTripSeatPicker", "changeSeatPicker");
+  assert.match(tripPicker, /seatPickerLimit = availableFor\(fromIndex, toIndex\)/);
+  assert.match(tripPicker, /seatPickerDraft = Math\.max\(1, desiredSeats \|\| 1\)/);
+  assert.doesNotMatch(tripPicker, /Math\.min\(seatPickerLimit/);
+
+  const plusMinus = functionSource(publicApp, "changeSeatPicker", "confirmSeatPicker");
+  assert.match(plusMinus, /candidate > seatPickerLimit/);
+  assert.match(plusMinus, /seatLimitText\(seatPickerLimit, false\)/);
+  assert.match(plusMinus, /seatPickerDraft = Math\.max\(1, seatPickerDraft - 1\)/);
+});
+
+test("booking form never silently reduces an over-limit request", () => {
+  const refresh = functionSource(publicApp, "refreshAvailability", "traceSearchChanged");
+  assert.doesNotMatch(refresh, /seatsInput\.value = String\(available\)/);
+  assert.match(refresh, /seatAvailabilityText\(available\)/);
+  assert.match(refresh, /seatLimitText\(available, false\)/);
+  assert.match(refresh, /requested > available/);
+
+  const review = functionSource(publicApp, "reviewBooking", "requestIdentity");
+  assert.match(review, /seatLimitText\(available, true\)/);
+});
+
+test("all reservation entry points pass through the real-seat picker before server save", () => {
+  const quick = functionSource(publicApp, "startQuickReservation", "refreshTripAvailabilitySummary");
+  assert.match(quick, /openTripSeatPicker\(auto\)/);
+  assert.doesNotMatch(quick, /return reserve\(\)/);
+
+  const confirm = functionSource(publicApp, "confirmSeatPicker", "stopMatchesSearch");
+  assert.match(confirm, /seatPickerLimit < 1 \|\| seatPickerDraft > seatPickerLimit/);
+  assert.match(confirm, /pendingBooking = \{ \.\.\.seatPickerBookingIntent, seats: seatPickerDraft \}/);
+  assert.match(confirm, /return reserve\(\)/);
+});
+
+test("server reports authoritative capacity after a transactional race", () => {
+  const messageSource = functionSource(backend, "currentSeatCapacityMessage", "capacityAvailabilityRange");
+  const currentSeatCapacityMessage = new Function(messageSource + "; return currentSeatCapacityMessage;")();
+  assert.equal(currentSeatCapacityMessage(0), "Não há mais vagas disponíveis para este trecho.");
+  assert.equal(currentSeatCapacityMessage(1), "Agora este carro tem apenas 1 vaga disponível para este trecho.");
+  assert.equal(currentSeatCapacityMessage(2), "Agora este carro tem apenas 2 vagas disponíveis para este trecho.");
+  assert.match(backend, /code: "insufficient_seats", availableSeats: available/);
+  assert.match(backend, /capacityDetails = Number\.isInteger\(error\.availableSeats\)/);
+});
+
