@@ -39,7 +39,7 @@ test("public filter does not ask seats and cards defer quantity to the chosen re
   assert.doesNotMatch(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
   assert.match(publicApp, /function openWhatsappSeatPicker/);
   assert.match(publicApp, /seatPickerLimit = source\.capacityReliable === true/);
-  assert.match(backend, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability\.maximum > 0/);
+  assert.match(backend, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availableMaximum > 0/);
 });
 
 test("autocomplete retains exact stop ids and intermediate stops require authoritative itinerary", () => {
