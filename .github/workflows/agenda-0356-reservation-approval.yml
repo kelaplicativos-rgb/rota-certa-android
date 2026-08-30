@@ -1,19 +1,19 @@
-name: Rota Certa 0.1.359 flexible public Agenda slug build
+name: Rota Certa 0.1.360 installed build identification
 
 on:
   push:
     branches:
-      - agent/agenda-reservation-approval-0.1.356
+      - agent/build-identification-0.1.360
   pull_request:
     branches:
-      - agent/agenda-vehicle-panel-collapsed-0.1.354
+      - agent/agenda-reservation-approval-0.1.356
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0356-reservation-approval-${{ github.ref }}
+  group: build-identification-0360-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,10 +39,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=b470eca831621195cf046604a2e86b92df9c1c56
+          BASE=9f74bd41015377655046f8a80fe7687c1a14c6c5
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5652' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.359"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5653' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.360"' app/build.gradle.kts
           grep -Fq 'REJECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'decideDriverBooking' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'Aguardando aprovação' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
@@ -60,6 +60,14 @@ jobs:
           grep -Fq 'publicSlugFromPath' trip-platform/public/app.js
           grep -Fq '/v1/public/agenda/' trip-platform/public/app.js
           grep -Fq 'Trocar credencial interna' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/AppBuildInfo.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/AppBuildInfoTest.kt
+          grep -Fq 'BUILD_GIT_SHA' app/build.gradle.kts
+          grep -Fq 'BUILD_GIT_BRANCH' app/build.gradle.kts
+          grep -Fq 'BUILD_GENERATED_AT' app/build.gradle.kts
+          grep -Fq 'Sobre o Rota Certa' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -Fq 'Copiar informações da versão' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -Fq 'AppBuildInfo.reportHeader(context)' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
@@ -123,32 +131,39 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests and installable APK
+      - name: Unit tests lint and installable APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5652'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.359'" /tmp/aapt.txt
-          mkdir -p /tmp/0359
-          cp "$APK" /tmp/0359/rota-certa-0.1.359-flexible-public-slug.apk
-          sha256sum /tmp/0359/rota-certa-0.1.359-flexible-public-slug.apk | tee /tmp/0359/apk.sha256
-          cp /tmp/aapt.txt /tmp/0359/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0359/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0359/gradle.txt
-          git rev-parse HEAD > /tmp/0359/source-head.txt
-          git diff --name-only b470eca831621195cf046604a2e86b92df9c1c56..HEAD > /tmp/0359/changed-files.txt
+          grep -Fq "versionCode='5653'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.360'" /tmp/aapt.txt
+          mkdir -p /tmp/0360
+          cp "$APK" /tmp/0360/rota-certa-0.1.360-build-identification.apk
+          sha256sum /tmp/0360/rota-certa-0.1.360-build-identification.apk | tee /tmp/0360/apk.sha256
+          cp /tmp/aapt.txt /tmp/0360/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0360/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0360/gradle.txt
+          git rev-parse HEAD > /tmp/0360/source-head.txt
+          git diff --name-only 9f74bd41015377655046f8a80fe7687c1a14c6c5..HEAD > /tmp/0360/changed-files.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0360/dex-strings.txt
+          grep -Fq "${GITHUB_SHA}" /tmp/0360/dex-strings.txt
+          EXPECTED_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+          if [ -n "$EXPECTED_BRANCH" ]; then
+            grep -Fq "$EXPECTED_BRANCH" /tmp/0360/dex-strings.txt
+          fi
+          grep -Fq 'Sobre o Rota Certa' /tmp/0360/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.359-flexible-public-slug
+          name: rota-certa-0.1.360-build-identification
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0359
+          path: /tmp/0360
