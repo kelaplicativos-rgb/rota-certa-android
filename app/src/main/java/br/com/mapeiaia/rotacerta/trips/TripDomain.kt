@@ -176,6 +176,86 @@ data class SeatAvailabilityRange(
     val variesBySegment: Boolean
         get() = minimum != maximum
 }
+data class TripOperationalSeatSummary(
+    val blablaPublishedSeats: Int,
+    val rotaCertaAllocatedSeats: Int,
+    val totalConsideredSeats: Int,
+    val confirmedPassengerSeats: Int,
+    val blockedSeats: Int,
+    val availableSeats: Int,
+    val overbookingSeats: Int,
+)
+
+/**
+ * Whole-trip operational inventory. This is deliberately separate from physical
+ * per-segment capacity. A trip may serve more unique passengers across different
+ * segments than the simultaneous physical capacity, but no segment may exceed it.
+ */
+fun operationalSeatSummary(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long = System.currentTimeMillis(),
+): TripOperationalSeatSummary {
+    val blabla = trip.publishedSeats?.takeIf { it in 0..999 } ?: 0
+    val rotaCerta = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+        ?: trip.capacity.coerceAtLeast(0)
+    val total = (blabla + rotaCerta).coerceAtMost(999)
+
+    data class Group(var confirmed: Int = 0, var blocked: Int = 0)
+    val groups = mutableMapOf<String, Group>()
+    bookings.asSequence()
+        .filter { it.tripId == trip.id && it.seats > 0 }
+        .filter { booking ->
+            when (booking.status) {
+                BookingStatus.CONFIRMED,
+                BookingStatus.REQUESTED,
+                -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REJECTED,
+                BookingStatus.CANCELLED,
+                BookingStatus.EXPIRED,
+                -> false
+            }
+        }
+        .forEach { booking ->
+            val key = booking.occupancyGroupId?.trim()?.takeIf(String::isNotEmpty)
+                ?.let { "group:$it" }
+                ?: "booking:${booking.id}"
+            val group = groups.getOrPut(key) { Group() }
+            when (booking.capacityClaimType) {
+                CapacityClaimType.PASSENGER,
+                CapacityClaimType.EXTERNAL_OCCUPANCY,
+                -> when (booking.status) {
+                    BookingStatus.CONFIRMED -> group.confirmed = maxOf(group.confirmed, booking.seats)
+                    BookingStatus.REQUESTED,
+                    BookingStatus.HELD,
+                    -> group.blocked = maxOf(group.blocked, booking.seats)
+                    BookingStatus.REJECTED,
+                    BookingStatus.CANCELLED,
+                    BookingStatus.EXPIRED,
+                    -> Unit
+                }
+                CapacityClaimType.RESERVED_SEAT -> group.blocked = maxOf(group.blocked, booking.seats)
+            }
+        }
+
+    var confirmed = 0
+    var blocked = 0
+    groups.values.forEach { group ->
+        confirmed += group.confirmed.coerceAtLeast(0)
+        blocked += (maxOf(group.confirmed, group.blocked) - group.confirmed).coerceAtLeast(0)
+    }
+    val consumed = confirmed + blocked
+    return TripOperationalSeatSummary(
+        blablaPublishedSeats = blabla,
+        rotaCertaAllocatedSeats = rotaCerta,
+        totalConsideredSeats = total,
+        confirmedPassengerSeats = confirmed,
+        blockedSeats = blocked,
+        availableSeats = (total - consumed).coerceAtLeast(0),
+        overbookingSeats = (consumed - total).coerceAtLeast(0),
+    )
+}
 
 object DriverIdentityRules {
     // Reserve only paths that are actually owned by Firebase/API routing.
