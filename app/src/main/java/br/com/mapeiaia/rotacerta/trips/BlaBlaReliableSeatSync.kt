@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.security.MessageDigest
 import java.util.Locale
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -386,7 +387,52 @@ data class BlaBlaDesiredSeatSyncRequestResult(
     val shouldSync: Boolean,
     val message: String,
     val desiredPublishedSeats: Int? = null,
+    val noOp: Boolean = false,
+    val blockedReason: String? = null,
 )
+
+internal enum class BlaBlaPublicBookingQueueMergeKind { DELTA, ABSOLUTE, NO_OP, BLOCKED }
+
+internal data class BlaBlaPublicBookingQueueMerge(
+    val kind: BlaBlaPublicBookingQueueMergeKind,
+    val seatDelta: Int = 0,
+    val desiredPublishedSeats: Int? = null,
+)
+
+internal fun mergePublicBookingSeatWork(
+    existing: BlaBlaManualSeatSyncRequest?,
+    existingAttempt: BlaBlaManualSeatSyncAttempt?,
+    incomingDelta: Int,
+): BlaBlaPublicBookingQueueMerge {
+    if (incomingDelta == 0) return BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.NO_OP)
+    if (existing == null) return BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.DELTA, seatDelta = incomingDelta)
+    val baseAbsolute = existingAttempt?.targetSeats ?: existing.desiredPublishedSeats
+    if (baseAbsolute != null) {
+        val desired = baseAbsolute + incomingDelta
+        return if (desired >= 0) {
+            BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.ABSOLUTE, desiredPublishedSeats = desired)
+        } else {
+            BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.BLOCKED)
+        }
+    }
+    if (existing.source != PUBLIC_BOOKING_SEAT_SYNC_SOURCE) {
+        return BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.BLOCKED)
+    }
+    val mergedDelta = existing.seatDelta + incomingDelta
+    return if (mergedDelta == 0) {
+        BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.NO_OP)
+    } else {
+        BlaBlaPublicBookingQueueMerge(BlaBlaPublicBookingQueueMergeKind.DELTA, seatDelta = mergedDelta)
+    }
+}
+
+internal fun seatSyncDiagnosticKey(value: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(value.toByteArray(Charsets.UTF_8))
+    .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    .take(12)
+
+internal fun seatSyncAccountMatches(expectedProfileUuid: String, actualProfileUuid: String?): Boolean =
+    actualProfileUuid?.trim()?.equals(expectedProfileUuid.trim(), ignoreCase = true) == true
 
 /**
  * Single bridge for manual/private booking -> exact external publication.
@@ -442,6 +488,17 @@ object BlaBlaReliableSeatSyncBridge {
             source = "DESIRED_STATE",
         )
         requestStore.replacePublication(request).forEach(attemptStore::clear)
+        val tripKey = seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}")
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIGGER",
+            context.packageName,
+            "tripKey=$tripKey bookingKey=${seatSyncDiagnosticKey(request.localBookingId)} profileUuidPresent=true blablaTripIdPresent=true seatDelta=0 desired=${plan.desiredPublishedSeats} reason=$reason",
+        )
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIP_RESOLUTION",
+            context.packageName,
+            "tripKey=$tripKey profileUuidPresent=true blablaTripIdPresent=true resolution=timeline_strong",
+        )
         val message = "Estado desejado calculado: ${plan.desiredPublishedSeats} vaga(s) • conferindo somente as vagas da publicação correta…"
         statusStore.markDesired(target.profileUuid, target.tripId, plan.desiredPublishedSeats, message)
         UnifiedDebugEventStore.record(
@@ -450,6 +507,98 @@ object BlaBlaReliableSeatSyncBridge {
             "reason=$reason desired=${plan.desiredPublishedSeats} segments=${plan.loads.size} profileUuidPresent=true tripIdPresent=true request=${request.id}",
         )
         return BlaBlaDesiredSeatSyncRequestResult(true, message, plan.desiredPublishedSeats)
+    }
+
+    fun enqueuePublicBookingDelta(
+        context: Context,
+        binding: PublicExternalTripBinding,
+        seatDelta: Int,
+        stateKey: String,
+        reason: String,
+    ): BlaBlaDesiredSeatSyncRequestResult {
+        if (seatDelta == 0) {
+            return BlaBlaDesiredSeatSyncRequestResult(false, "Nenhuma alteração externa necessária.", noOp = true)
+        }
+        val target = normalizeTarget(BlaBlaManualSeatExternalTarget(binding.profileUuid, binding.blablaTripId))
+            ?: return BlaBlaDesiredSeatSyncRequestResult(
+                false,
+                "Vagas aguardando sincronização ⚠️ • binding forte incompleto.",
+                blockedReason = "strong_binding_invalid",
+            )
+        val requestStore = BlaBlaManualSeatSyncRequestStore(context)
+        val attemptStore = BlaBlaManualSeatSyncAttemptStore(context)
+        val samePublication = requestStore.list().filter { queued ->
+            queued.profileUuid.equals(target.profileUuid, ignoreCase = true) && queued.tripId == target.tripId
+        }
+        if (samePublication.size > 1) {
+            UnifiedDebugEventStore.record(
+                "SEAT_SYNC_FAILED",
+                context.packageName,
+                "tripKey=${seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}")} reason=ambiguous_pending_publication_queue",
+            )
+            return BlaBlaDesiredSeatSyncRequestResult(
+                false,
+                "Vagas aguardando sincronização ⚠️ • fila ambígua para a publicação.",
+                blockedReason = "ambiguous_pending_publication_queue",
+            )
+        }
+        val existing = samePublication.singleOrNull()
+        val existingAttempt = existing?.let { attemptStore.get(it.id) }
+        val merged = mergePublicBookingSeatWork(existing, existingAttempt, seatDelta)
+        if (merged.kind == BlaBlaPublicBookingQueueMergeKind.BLOCKED) {
+            return BlaBlaDesiredSeatSyncRequestResult(
+                false,
+                "Vagas aguardando sincronização ⚠️ • conflito com uma alteração externa já em curso.",
+                blockedReason = "pending_write_conflict",
+            )
+        }
+        if (merged.kind == BlaBlaPublicBookingQueueMergeKind.NO_OP) {
+            existing?.let {
+                requestStore.remove(it.id)
+                attemptStore.clear(it.id)
+            }
+            UnifiedDebugEventStore.record(
+                "BOOKING_SEAT_SYNC_NOOP",
+                context.packageName,
+                "tripKey=${seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}")} reason=coalesced_delta_zero",
+            )
+            return BlaBlaDesiredSeatSyncRequestResult(
+                false,
+                "Alterações de vaga se compensaram; nenhuma mutação externa é necessária.",
+                noOp = true,
+            )
+        }
+        val normalizedStateKey = stateKey.trim().ifBlank {
+            seatSyncDiagnosticKey("${binding.bookingTripId}|${System.currentTimeMillis()}")
+        }
+        val request = BlaBlaManualSeatSyncRequest(
+            id = "public-seat-${seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}|$normalizedStateKey|${merged.seatDelta}|${merged.desiredPublishedSeats ?: -1}")}",
+            profileUuid = target.profileUuid,
+            tripId = target.tripId,
+            seatDelta = merged.seatDelta,
+            desiredPublishedSeats = merged.desiredPublishedSeats,
+            desiredStateReason = reason,
+            localTripId = binding.bookingTripId,
+            localBookingId = "public-booking-${seatSyncDiagnosticKey("${binding.bookingTripId}|$normalizedStateKey")}",
+            source = PUBLIC_BOOKING_SEAT_SYNC_SOURCE,
+        )
+        requestStore.replacePublication(request).forEach(attemptStore::clear)
+        val tripKey = seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}")
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIGGER",
+            context.packageName,
+            "tripKey=$tripKey bookingKey=${seatSyncDiagnosticKey(request.localBookingId)} profileUuidPresent=true blablaTripIdPresent=true seatDelta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} reason=$reason",
+        )
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIP_RESOLUTION",
+            context.packageName,
+            "tripKey=$tripKey profileUuidPresent=true blablaTripIdPresent=true resolution=persisted_strong_binding",
+        )
+        return BlaBlaDesiredSeatSyncRequestResult(
+            true,
+            "Vaga da reserva enfileirada para a publicação BlaBlaCar exata.",
+            desiredPublishedSeats = request.desiredPublishedSeats,
+        )
     }
 
     fun enqueueForManualBooking(
@@ -673,6 +822,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     private var afterArchiveSaved = false
     private var verifyReadAttempts = 0
     private var verificationReloadScheduled = false
+    private var capacityBefore = -1
+    private var capacityAfter = -1
+    private var mutationAttempted = false
+    private var mutationSucceeded = false
+    private var readbackSucceeded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -696,12 +850,26 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             )
             return
         }
-        if (!account.profileUuid.equals(request.profileUuid, ignoreCase = true)) {
+        if (!seatSyncAccountMatches(request.profileUuid, account.profileUuid)) {
+            UnifiedDebugEventStore.record(
+                "SEAT_SYNC_ACCOUNT_RESOLUTION",
+                packageName,
+                "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true accountMatched=false",
+            )
             finishPending("UUID da conta não corresponde à publicação.", rotate = false)
             return
         }
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_ACCOUNT_RESOLUTION",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true accountMatched=true",
+        )
         val desiredPublishedSeats = request.desiredPublishedSeats
-        if (desiredPublishedSeats == null && (request.source !in setOf(BookingSource.PRIVATE.name, BookingSource.OTHER.name) || request.seatDelta == 0)) {
+        val publicBookingDelta = request.source == PUBLIC_BOOKING_SEAT_SYNC_SOURCE
+        if (
+            desiredPublishedSeats == null &&
+            (request.source !in setOf(BookingSource.PRIVATE.name, BookingSource.OTHER.name, PUBLIC_BOOKING_SEAT_SYNC_SOURCE) || request.seatDelta == 0)
+        ) {
             finishInvalid("Operação externa legada inválida; ela foi descartada para não bloquear a fila.")
             return
         }
@@ -720,9 +888,10 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             return
         }
 
-        val ledgerEntry = if (desiredPublishedSeats == null) ledger.entry(request.localBookingId) else null
+        val manualDeltaRequest = desiredPublishedSeats == null && !publicBookingDelta
+        val ledgerEntry = if (manualDeltaRequest) ledger.entry(request.localBookingId) else null
         if (
-            desiredPublishedSeats == null &&
+            manualDeltaRequest &&
             request.seatDelta < 0 &&
             ledgerEntry != null &&
             ledgerEntry.externallyReducedSeats == -request.seatDelta &&
@@ -732,7 +901,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             completeNoOp("Redução externa desse passageiro já estava confirmada.")
             return
         }
-        if (desiredPublishedSeats == null && request.seatDelta > 0) {
+        if (manualDeltaRequest && request.seatDelta > 0) {
             if (ledgerEntry == null) {
                 completeNoOp("A vaga já foi devolvida ou não havia redução externa comprovada.")
                 return
@@ -783,6 +952,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             packageName,
             "request=${request.id} booking=${request.localBookingId} delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} tripIdPresent=true profileUuidPresent=true",
         )
+        UnifiedDebugEventStore.record(
+            "BOOKING_SEAT_SYNC_EXECUTING",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true",
+        )
         webView.loadUrl(reliableOptionsUrl(request.tripId))
     }
 
@@ -820,6 +994,12 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         return@read
                     }
                     beforeReadAttempts = 0
+                    capacityBefore = state.seats
+                    UnifiedDebugEventStore.record(
+                        "SEAT_SYNC_BEFORE",
+                        packageName,
+                        "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityBefore=$capacityBefore profileUuidPresent=true blablaTripIdPresent=true",
+                    )
                     if (!BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)) {
                         finishPending("A identidade da página de vagas não foi confirmada.", rotate = true)
                         return@read
@@ -850,6 +1030,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                         "EXTERNAL_SEAT_SYNC_RELIABLE_DECISION",
                         packageName,
                         "request=${request.id} current=${state.seats} delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} action=${decision.action.name} target=${decision.targetSeats ?: -1} attempt=${existingAttempt != null} compensation=${existingAttempt?.compensateAfterCancellation == true}",
+                    )
+                    UnifiedDebugEventStore.record(
+                        "SEAT_SYNC_DESIRED",
+                        packageName,
+                        "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityBefore=${state.seats} capacityExpected=${decision.targetSeats ?: -1} reservedSeats=${kotlin.math.abs(request.seatDelta)}",
                     )
                     when (decision.action) {
                         BlaBlaReliableSeatSyncAction.COMPLETE_ALREADY_APPLIED -> completeVerified(decision.targetSeats ?: state.seats, alreadyApplied = true)
@@ -911,7 +1096,14 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                 }
                 seatBrowser.read { state ->
                     val exactPage = state != null && BlaBlaHarvestAssociation.optionsPageMatches(request.tripId, state.pageUrl)
-                    val verified = exactPage && state.seats == expectedSeats
+                    capacityAfter = state?.seats ?: -1
+                    readbackSucceeded = exactPage && state != null && state.seats >= 0
+                    UnifiedDebugEventStore.record(
+                        "SEAT_SYNC_READBACK_RESULT",
+                        packageName,
+                        "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityExpected=$expectedSeats capacityAfter=$capacityAfter readbackSucceeded=$readbackSucceeded exactPage=$exactPage",
+                    )
+                    val verified = exactPage && state?.seats == expectedSeats
                     if (verified) {
                         verifyReadAttempts = 0
                         if (verifyingCompensation) {
@@ -946,7 +1138,19 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         verificationReloadScheduled = false
         statusView.text = "${account.displayLabel} • $before → $target vagas • salvando…"
         phase = Phase.SAVING
+        mutationAttempted = true
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_MUTATION_START",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityBefore=$before capacityExpected=$target mutationAttempted=true",
+        )
         seatBrowser.adjustAndSave(before, target) { saved, reason ->
+            mutationSucceeded = saved
+            UnifiedDebugEventStore.record(
+                "SEAT_SYNC_MUTATION_RESULT",
+                packageName,
+                "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityBefore=$before capacityExpected=$target mutationAttempted=true mutationSucceeded=$saved reasonKey=${seatSyncDiagnosticKey(reason)}",
+            )
             if (!saved) {
                 finishPending(
                     "A alteração de vagas não foi confirmada pelo orquestrador ($reason).",
@@ -954,6 +1158,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                 )
                 return@adjustAndSave
             }
+            UnifiedDebugEventStore.record(
+                "BOOKING_SEAT_SYNC_REMOTE_MUTATION_SENT",
+                packageName,
+                "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} mutationSent=true capacityExpected=$target",
+            )
             scheduleVerificationReload("browser_orchestrator")
         }
         webView.postDelayed({
@@ -971,6 +1180,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             packageName,
             "request=${request.id} origin=$origin expected=$expectedSeats writeRepeated=false",
         )
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_READBACK_START",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityExpected=$expectedSeats remoteReadback=true",
+        )
         webView.postDelayed({
             busy = false
             webView.loadUrl(reliableOptionsUrl(request.tripId))
@@ -984,8 +1198,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         } else {
             "Vagas sincronizadas ✅ • $afterSeats vaga(s) publicadas"
         }
+        val publicBookingDelta = request.source == PUBLIC_BOOKING_SEAT_SYNC_SOURCE
         if (desiredRequest) {
             publicationSeatStateStore.markSynced(request.profileUuid, request.tripId, afterSeats, verifiedMessage)
+        } else if (publicBookingDelta) {
+            // Public-link booking deltas are isolated from the manual/private compensation ledger.
         } else if (request.seatDelta < 0) {
             ledger.markVerifiedDecrease(request)
         } else {
@@ -997,7 +1214,25 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
         UnifiedDebugEventStore.record(
             "EXTERNAL_SEAT_SYNC_RELIABLE_VERIFIED",
             packageName,
-            "request=${request.id} booking=${request.localBookingId} after=$afterSeats delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} alreadyApplied=$alreadyApplied ledger=${request.desiredPublishedSeats == null}",
+            "request=${request.id} booking=${request.localBookingId} after=$afterSeats delta=${request.seatDelta} desired=${request.desiredPublishedSeats ?: -1} alreadyApplied=$alreadyApplied ledger=${request.desiredPublishedSeats == null && !publicBookingDelta}",
+        )
+        val readback = readbackSucceeded || alreadyApplied
+        val before = capacityBefore.takeIf { it >= 0 } ?: afterSeats
+        val mutationSent = mutationSucceeded && !alreadyApplied
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_CONFIRMED",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true capacityBefore=$before reservedSeats=${kotlin.math.abs(request.seatDelta)} capacityExpected=$afterSeats capacityAfter=$afterSeats mutationAttempted=$mutationAttempted mutationSucceeded=$mutationSucceeded readbackSucceeded=$readback confirmed=true",
+        )
+        UnifiedDebugEventStore.record(
+            "BOOKING_SEAT_SYNC_REMOTE_CONFIRMED",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} capacityAfter=$afterSeats confirmed=true",
+        )
+        UnifiedDebugEventStore.record(
+            "CAPACITY_REMOTE_CONFIRMATION",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true capacityBefore=$before capacityExpected=$afterSeats capacityAfter=$afterSeats mutationSent=$mutationSent remoteReadback=$readback confirmed=true",
         )
         setResult(
             RESULT_OK,
@@ -1047,6 +1282,7 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     }
 
     private fun finishInvalid(message: String) {
+        recordSeatSyncFailure("invalid_request")
         if (::request.isInitialized) {
             requestStore.remove(request.id)
             attemptStore.clear(request.id)
@@ -1059,6 +1295,14 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
     }
 
     private fun finishPending(message: String, rotate: Boolean) {
+        recordSeatSyncFailure(
+            when {
+                expectedSeats >= 0 && capacityAfter >= 0 && capacityAfter != expectedSeats -> "remote_capacity_mismatch"
+                phase == Phase.VERIFY && !readbackSucceeded -> "remote_readback_unavailable"
+                capacityBefore < 0 -> "capacity_before_unknown"
+                else -> "pending"
+            },
+        )
         if (::request.isInitialized) {
             if (request.desiredPublishedSeats != null && ::publicationSeatStateStore.isInitialized) {
                 publicationSeatStateStore.markPending(
@@ -1086,6 +1330,29 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
                 .putExtra("seat_sync_request_retained", ::request.isInitialized),
         )
         finish()
+    }
+
+    private fun tripDiagnosticKey(): String =
+        if (::request.isInitialized) seatSyncDiagnosticKey("${request.profileUuid}|${request.tripId}") else "unresolved"
+
+    private fun bookingDiagnosticKey(): String =
+        if (::request.isInitialized) seatSyncDiagnosticKey(request.localBookingId) else "unresolved"
+
+    private fun recordSeatSyncFailure(reason: String) {
+        if (!::request.isInitialized) return
+        val normalizedReason = reason.trim().ifBlank { "unknown" }
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_FAILED",
+            packageName,
+            "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true capacityBefore=$capacityBefore reservedSeats=${kotlin.math.abs(request.seatDelta)} capacityExpected=$expectedSeats capacityAfter=$capacityAfter mutationAttempted=$mutationAttempted mutationSucceeded=$mutationSucceeded readbackSucceeded=$readbackSucceeded confirmed=false reason=$normalizedReason",
+        )
+        if (expectedSeats >= 0 || mutationAttempted) {
+            UnifiedDebugEventStore.record(
+                "CAPACITY_REMOTE_CONFIRMATION",
+                packageName,
+                "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true capacityBefore=$capacityBefore capacityExpected=$expectedSeats capacityAfter=$capacityAfter mutationSent=$mutationSucceeded remoteReadback=$readbackSucceeded confirmed=false reason=$normalizedReason",
+            )
+        }
     }
 
     private fun attemptMatchesRequest(attempt: BlaBlaManualSeatSyncAttempt): Boolean =

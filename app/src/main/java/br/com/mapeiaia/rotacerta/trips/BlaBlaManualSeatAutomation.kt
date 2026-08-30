@@ -27,6 +27,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonPrimitive
 
+internal const val PUBLIC_BOOKING_SEAT_SYNC_SOURCE = "PUBLIC_BOOKING_DELTA"
+
 /**
  * A manual/private passenger changes the Rota Certa occupancy immediately.
  * This request is only an external mirror request for the exact publication
@@ -85,8 +87,13 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
 
     fun discardLegacyDeltaRequests(): List<String> {
         val current = list()
-        val legacy = current.filter { it.desiredPublishedSeats == null }
-        if (legacy.isNotEmpty()) save(current.filter { it.desiredPublishedSeats != null })
+        val legacy = current.filter {
+            it.desiredPublishedSeats == null && it.source != PUBLIC_BOOKING_SEAT_SYNC_SOURCE
+        }
+        if (legacy.isNotEmpty()) {
+            val legacyIds = legacy.map(BlaBlaManualSeatSyncRequest::id).toSet()
+            save(current.filterNot { it.id in legacyIds })
+        }
         return legacy.map(BlaBlaManualSeatSyncRequest::id)
     }
 

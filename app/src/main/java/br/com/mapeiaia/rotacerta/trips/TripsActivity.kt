@@ -361,9 +361,14 @@ private fun TripApp(
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
             if (result.importedCount > 0) {
                 refresh()
-                publicAgendaSyncRevision++
                 message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
-                if (result.seatSyncQueued > 0) autoBlaBlaSyncToken++
+                if (result.seatSyncQueued > 0) {
+                    autoBlaBlaSyncToken++
+                } else {
+                    // A alteração pontual de vagas não depende de republicar todas as viagens.
+                    // Full sync fica como recuperação quando nenhuma mutação exata pôde ser enfileirada.
+                    publicAgendaSyncRevision++
+                }
             }
             AgendaTrace.operationEnd(
                 activity,
@@ -417,13 +422,13 @@ private fun TripApp(
                     AgendaTrace.operationEnd(
                         activity,
                         capacityPublicSyncOperation,
-                        result = if (syncResult.failures == 0) "confirmed" else "partial",
+                        result = if (syncResult.failures == 0) "completed" else "partial",
                         processedCount = syncResult.localPublished + syncResult.externalPublished,
                     )
                     AgendaTrace.event(
                         activity,
-                        "CAPACITY_REMOTE_CONFIRMATION",
-                        "source=remote success=${syncResult.failures == 0} published=${syncResult.localPublished + syncResult.externalPublished} claims=${syncResult.seatClaimsSynced}",
+                        "CAPACITY_PUBLIC_AGENDA_SYNC_RESULT",
+                        "source=public_agenda completed=${syncResult.failures == 0} published=${syncResult.localPublished + syncResult.externalPublished} claims=${syncResult.seatClaimsSynced} remoteBlaBlaMutationConfirmed=false",
                         traceId,
                         capacityPublicSyncOperation.operationId,
                     )
