@@ -219,7 +219,9 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
-        val capacity = configuredVehicleCapacity.takeIf { it in 1..999 } ?: 4
+        // Vehicle capacity is only the physical envelope/fallback. Never invent
+        // four seats when neither vehicle settings nor this publication provide evidence.
+        val configuredCapacity = configuredVehicleCapacity.takeIf { it in 1..999 }
         val connectedAccountsOperation = AgendaTrace.operationStart(
             context,
             "CONNECTED_ACCOUNTS_READ",
@@ -262,7 +264,25 @@ internal object PublicAgendaAutoSync0300 {
             .orEmpty()
             .asSequence()
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
-            .mapNotNull { toPublicTrip(it, capacity, nowMillis) }
+            .mapNotNull { source ->
+                val remotePublished = source.published_seats?.takeIf { it in 0..999 }
+                val physicalEnvelope = configuredCapacity ?: remotePublished?.takeIf { it in 1..999 }
+                if (physicalEnvelope == null) {
+                    UnifiedDebugEventStore.record(
+                        "CAPACITY_PUBLIC_SYNC_SKIPPED",
+                        context.packageName,
+                        "tripKey=${sha256(source.profile_uuid + \"|\" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} capacitySource=unavailable failClosed=true",
+                    )
+                    null
+                } else {
+                    UnifiedDebugEventStore.record(
+                        "CAPACITY_PUBLIC_SOURCE_RESOLVED",
+                        context.packageName,
+                        "tripKey=${sha256(source.profile_uuid + \"|\" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} remotePublishedCapacity=${remotePublished ?: -1} physicalVehicleCapacity=${configuredCapacity ?: -1} physicalEnvelope=$physicalEnvelope capacitySource=${if (remotePublished != null) \"blablacar_remote_published\" else \"vehicle_fallback_remote_unavailable\"}",
+                    )
+                    toPublicTrip(source, physicalEnvelope, nowMillis)
+                }
+            }
             .filterNot { synthesized ->
                 localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
             }
