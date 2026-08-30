@@ -1499,13 +1499,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       blabla.setAttribute("aria-disabled", "true");
     }
 
-    const rota = document.createElement("button");
-    rota.type = "button";
-    rota.className = "bookingChoice bookingSoon";
-    rota.disabled = true;
-    rota.textContent = "Reservar pelo Rota Certa — Em breve";
-
-    choices.append(whatsapp, blabla, rota);
+    choices.append(whatsapp, blabla);
     card.appendChild(choices);
     container.appendChild(card);
   });
