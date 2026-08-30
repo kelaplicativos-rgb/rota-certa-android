@@ -1,13 +1,13 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Stage47Reliability0251Test {
     @Test
-    fun automaticPublishedSeatLookupIsDisabled() {
-        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
+    fun automaticPublishedSeatLookupIsEnabledForAgendaAvailability() {
+        assertTrue(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
     }
 
     @Test
