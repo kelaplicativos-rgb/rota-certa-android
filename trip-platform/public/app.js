@@ -14,9 +14,10 @@ function normalizePublicSlug(value) {
     .slice(0, 32);
 }
 
+// Keep only paths that Firebase/Functions really own.
+// Driver-chosen words such as "agenda" are valid when registered server-side.
 const RESERVED_PUBLIC_SLUGS = new Set([
-  "v1", "calendar", "api", "admin", "login", "assets", "static",
-  "agenda", "config", "settings", "app", "date-selection", "index",
+  "v1", "calendar",
 ]);
 
 function publicSlugFromPath() {
