@@ -94,7 +94,6 @@ fun TripTimelineScreen(
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
     var autoSyncTripId by remember { mutableStateOf<String?>(null) }
     var showPublisher by remember { mutableStateOf(false) }
-    var driverDefaultsExpanded by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
@@ -308,37 +307,6 @@ fun TripTimelineScreen(
             AgendaTrace.event(context, "USER_BACK", "source=timeline_header", traceId)
             onBack()
         }) { Text("Voltar") }
-    }
-
-    ResponsiveTripActions(
-        actions = listOf(
-            ResponsiveTripAction(
-                if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo",
-            ) { driverDefaultsExpanded = !driverDefaultsExpanded },
-        ),
-    )
-    if (driverDefaultsExpanded) {
-        if (settingsLoaded) {
-            TripDriverDefaultsCard(
-                settings = appSettings,
-                repository = settingsRepository,
-                referenceOrigin = referenceOrigin,
-                onReferenceChanged = { origin ->
-                    referenceOrigin = origin
-                    onChanged("Origem de referência definida pelo GPS. Os cards foram reclassificados.")
-                },
-                onChanged = onChanged,
-            )
-        } else {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
     }
 
     GlobalPassengerFlowPanel(
@@ -717,7 +685,7 @@ internal fun BlaBlaPublicTimelineCard(
 }
 
 @Composable
-private fun TripDriverDefaultsCard(
+internal fun TripDriverDefaultsCard(
     settings: AppSettings,
     repository: SettingsRepository,
     referenceOrigin: TripReferenceOrigin?,
