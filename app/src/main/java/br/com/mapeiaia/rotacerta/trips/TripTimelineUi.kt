@@ -250,7 +250,7 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CAPACITY_RESOLVED",
                     context.packageName,
-                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} remotePublishedCapacity=${resolution.remotePublishedCapacity ?: -1} occupiedSeats=${entry.maximumOccupiedSeats} segmentOccupiedSeats=${entry.maximumOccupiedSeats} effectiveCapacity=${resolution.effectiveCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} capacitySource=${resolution.capacitySource} physicalVehicleCapacity=${resolution.physicalVehicleCapacity ?: -1}",
+                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.remotePublishedCapacity ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} physicalPassengerCapacity=${resolution.physicalVehicleCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
                 )
             }
     }
@@ -842,7 +842,7 @@ internal fun TripDriverDefaultsCard(
                         traceId,
                     )
                 },
-                label = { Text("Capacidade do veículo") },
+                label = { Text("Capacidade de passageiros") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -851,7 +851,7 @@ internal fun TripDriverDefaultsCard(
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "A capacidade física informada aqui é a referência do Rota Certa. A leitura externa de lugares publicados não define essa capacidade.",
+                "Capacidade de passageiros é o limite físico do veículo. Reservas, passageiros e lugares publicados na BlaBlaCar não aumentam nem redefinem esse número.",
                 style = MaterialTheme.typography.bodySmall,
             )
             error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -890,7 +890,7 @@ internal fun TripDriverDefaultsCard(
                                 context.packageName,
                                 "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
                             )
-                            onChanged("Capacidade do veículo salva.")
+                            onChanged("Capacidade de passageiros salva.")
                         } catch (failure: kotlinx.coroutines.CancellationException) {
                             AgendaTrace.operationCancelled(context, saveOperation)
                             throw failure
@@ -940,12 +940,14 @@ internal fun applyPublicExternalBookingsToTimeline(
 
     val publicTrip = binding.asTrip()
     val publicLoads = SeatAvailabilityEngine.segmentLoads(publicTrip, active, nowMillis)
-    val publicOccupied = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
+    val publicConsumed = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
         ?: active.sumOf(Booking::seats)
+    val publicPassengers = publicLoads.maxOfOrNull(SegmentLoad::passengerSeats)
+        ?: active.filter { it.capacityClaimType == CapacityClaimType.PASSENGER }.sumOf(Booking::seats)
     val externalRosterSeats = enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
-    val combinedPhysical = externalRosterSeats + publicOccupied
+    val combinedPhysical = externalRosterSeats + publicConsumed
     val sources = enriched.sourcePassengerSeats.toMutableMap().apply {
-        this[BookingSource.ROTA_CERTA] = publicOccupied
+        this[BookingSource.ROTA_CERTA] = publicPassengers
     }
 
     enriched.copy(
@@ -1110,24 +1112,29 @@ private fun TimelineEntryCard(
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
             entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                Text("BlaBlaCar publica: $published vaga(s) • capacidade pública remota desta viagem", style = MaterialTheme.typography.bodySmall)
+                Text("BlaBlaCar: $published lugar(es) publicados • dado do canal, não capacidade física", style = MaterialTheme.typography.bodySmall)
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val occupied = publicLoads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
-            val effectiveCapacity = publicCapacity.effectiveCapacity ?: entry.capacity
+            val passengers = publicLoads?.maxOfOrNull(SegmentLoad::passengerSeats)
+                ?: entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+            val blocked = publicLoads?.maxOfOrNull(SegmentLoad::blockedSeats)
+                ?: publicCapacity.blockedSeats
+            val free = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+                ?: publicCapacity.availableSeats
+            val physicalCapacity = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val free = (effectiveCapacity - occupied).coerceAtLeast(0)
-                    Text("$occupied/$effectiveCapacity ocupadas • $free livre(s) ${statusMark(entry)}")
+                    Text("👥 Passageiros: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
+                    if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
-                    Text("Capacidade pública: $effectiveCapacity • reservas aguardando leitura ⏳")
+                    Text("Capacidade de passageiros: ${physicalCapacity ?: entry.capacity} • ocupação aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED ->
-                    Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
+                    Text("👥 Passageiros: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.COMPLETE_EMPTY ->
-                    Text("BlaBlaCar: 0 lugares reservados ${statusMark(entry)}")
+                    Text("👥 Passageiros: 0 • 🪑 Vagas disponíveis: ${free ?: physicalCapacity ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
@@ -1214,12 +1221,12 @@ private fun TimelineEntryCard(
                     } else {
                         val publicLoads = timelinePublicSegmentLoads(entry, seatPlan.loads)
                         publicLoads.forEach { load ->
-                            Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
+                            Text("${load.from.name} → ${load.to.name}    👥 ${load.passengerSeats} • 🚫 ${load.blockedSeats} • 🪑 ${load.availableSeats}")
                         }
                         entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
                             Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("💺 ${publicLoads.minOf(SegmentLoad::availableSeats)} = menor disponibilidade pública relevante", style = MaterialTheme.typography.bodySmall)
+                        Text("🪑 ${publicLoads.minOf(SegmentLoad::availableSeats)} = menor disponibilidade real entre os trechos", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
