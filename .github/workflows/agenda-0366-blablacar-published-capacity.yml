@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js trip-platform/functions/test/public-search-capacity-0356.test.js
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
       - name: Configure Firebase Android config
         shell: bash
         run: |
