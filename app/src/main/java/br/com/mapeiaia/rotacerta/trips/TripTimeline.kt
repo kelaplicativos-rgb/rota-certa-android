@@ -19,7 +19,10 @@ data class TripTimelineEntry(
     val origin: String,
     val destination: String,
     val status: TripStatus,
+    /** Physical simultaneous passenger capacity. */
     val capacity: Int,
+    /** Operational Rota Certa allocation; separate from physical capacity. */
+    val rotaCertaSeatAllocation: Int? = null,
     val minimumOccupiedSeats: Int,
     val maximumOccupiedSeats: Int,
     val sourcePassengerSeats: Map<BookingSource, Int>,
@@ -187,6 +190,7 @@ object TripTimelineEngine {
                     destination = stops.last().name,
                     status = trip.status,
                     capacity = trip.capacity,
+                    rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation,
                     minimumOccupiedSeats = occupied.minOrNull() ?: 0,
                     maximumOccupiedSeats = occupied.maxOrNull() ?: 0,
                     sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
