@@ -77,6 +77,8 @@ data class BlaBlaCollectorTrip(
     val flags: List<String> = emptyList(),
     val availability: String = "unknown",
     val trip_href: String? = null,
+    /** Passenger-facing public /trip URL. Never synthesize this from the admin URL. */
+    val public_trip_href: String? = null,
     val trip_id: String? = null,
     val uuid_validation: String = "unknown",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
