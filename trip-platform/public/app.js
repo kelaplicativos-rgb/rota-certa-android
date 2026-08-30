@@ -1031,9 +1031,8 @@ function availableForTripSegment(item, fromIndex, toIndex) {
 }
 
 function tripSearchEligible(item, dateKey) {
-  return item?.status === "PUBLISHED" &&
+  return ["PUBLISHED", "FULL"].includes(item?.status) &&
     item?.publicBookingEnabled === true &&
-    item?.capacityReliable === true &&
     dateKeyFromMillis(item.departureAtMillis) === dateKey &&
     orderedStops(item).length >= 2;
 }
@@ -1082,7 +1081,8 @@ function buildSearchSuggestions(kind, query, dateKey = searchState.departure, se
       for (let fromIndex = 0; fromIndex < stops.length - 1; fromIndex += 1) {
         if (!stopEvidenceTrusted(item, fromIndex, stops)) continue;
         const hasDestination = stops.some((_, toIndex) =>
-          toIndex > fromIndex && publicSegmentReservable(item, fromIndex, toIndex, seats, dateKey)
+          toIndex > fromIndex && stopEvidenceTrusted(item, toIndex, stops) &&
+            segmentEvidenceTrusted(item, fromIndex, toIndex)
         );
         if (hasDestination) addStopSuggestion(groups, item, stops[fromIndex], fromIndex);
       }
@@ -1095,7 +1095,7 @@ function buildSearchSuggestions(kind, query, dateKey = searchState.departure, se
     fromIndexes.forEach((fromIndex) => {
       for (let toIndex = fromIndex + 1; toIndex < stops.length; toIndex += 1) {
         if (!stopEvidenceTrusted(item, toIndex, stops)) continue;
-        if (publicSegmentReservable(item, fromIndex, toIndex, seats, dateKey)) {
+        if (segmentEvidenceTrusted(item, fromIndex, toIndex)) {
           addStopSuggestion(groups, item, stops[toIndex], toIndex);
         }
       }
@@ -1277,16 +1277,16 @@ function matchTripSegment(item, fromSelection, toSelection, dateKey, seats) {
   if (fromIndex < 0) return null;
   const toIndex = selectedStopIndex(item, toSelection, fromIndex);
   if (toIndex < 0 || !segmentEvidenceTrusted(item, fromIndex, toIndex)) return null;
-  const available = availableForTripSegment(item, fromIndex, toIndex);
-  return available >= seats ? { item, fromIndex, toIndex, available } : null;
+  const available = item.capacityReliable === true ? availableForTripSegment(item, fromIndex, toIndex) : 0;
+  return { item, fromIndex, toIndex, available, capacityReliable: item.capacityReliable === true };
 }
 
 function searchDirection(fromSelection, toSelection, dateKey, seats) {
   const eligible = agendaTripsCache.filter((item) => tripSearchEligible(item, dateKey));
   const matches = eligible.map((item) => matchTripSegment(item, fromSelection, toSelection, dateKey, seats)).filter(Boolean);
   if (!matches.length) {
-    tracePublicAction("PUBLIC_SEARCH_DIRECTION_REJECTED", { seats, reason: "route_or_capacity" });
-    return { matches: [], reason: "Não há " + seats + " lugar(es) disponível(is) nesse trecho para essa data." };
+    tracePublicAction("PUBLIC_SEARCH_DIRECTION_REJECTED", { seats, reason: "route_or_date" });
+    return { matches: [], reason: "Não há viagem publicada com essas paradas, nessa ordem, para essa data." };
   }
   matches.forEach((entry) => tracePublicAction("PUBLIC_SEARCH_MATCH_CONFIRMED", {
     seats,
@@ -1305,9 +1305,7 @@ function renderSearchSummary() {
   route.textContent = `${searchState.from} → ${searchState.to}`;
   const meta = document.createElement("div");
   meta.className = "searchSummaryMeta";
-  const parts = [formatSearchDate(searchState.departure), searchState.seats === 1 ? "1 passageiro" : `${searchState.seats} passageiros`];
-  if (searchState.returnDate) parts.push(`volta ${formatSearchDate(searchState.returnDate)}`);
-  meta.textContent = parts.join(" • ");
+  meta.textContent = formatSearchDate(searchState.departure);
   summary.append(route, meta);
 }
 
@@ -1350,19 +1348,9 @@ function submitTripSearch() {
     $("searchMessage").textContent = "Origem e destino precisam ser diferentes.";
     return;
   }
-  const outbound = searchDirection(fromResolution.selection, toResolution.selection, searchState.departure, searchState.seats);
-  const returning = searchState.returnDate
-    ? searchDirection(toResolution.selection, fromResolution.selection, searchState.returnDate, searchState.seats)
-    : null;
+  const outbound = searchDirection(fromResolution.selection, toResolution.selection, searchState.departure, 1);
   renderSearchSummary();
-  renderDirectionResult("outboundResult", "Ida", outbound);
-  if (returning) {
-    show("returnResult", true);
-    renderDirectionResult("returnResult", "Volta", returning);
-  } else {
-    show("returnResult", false);
-    $("returnResult").innerHTML = "";
-  }
+  renderDirectionResult("outboundResult", "Viagens disponíveis", outbound);
   showOnly("searchResults");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1384,15 +1372,19 @@ function renderAgenda(trips) {
   updateSearchUi();
   const container = $("agendaTrips");
   container.innerHTML = "";
-  const compatibleTrips = trips.filter((item) => wholeTripReservable(item, searchState.seats));
-  if (!compatibleTrips.length) {
+  const visibleTrips = trips.filter((item) =>
+    ["PUBLISHED", "FULL"].includes(item?.status) &&
+    item?.publicBookingEnabled === true &&
+    orderedStops(item).length >= 2
+  );
+  if (!visibleTrips.length) {
     const empty = document.createElement("div");
     empty.className = "card muted";
-    empty.textContent = "Nenhuma próxima viagem possui " + searchState.seats + " lugar(es) disponível(is) durante todo o percurso.";
+    empty.textContent = "Nenhuma próxima viagem publicada.";
     container.appendChild(empty);
     return;
   }
-  renderAgendaCards(compatibleTrips.map((item) => ({ item })), container, false);
+  renderAgendaCards(visibleTrips.map((item) => ({ item })), container, false);
 }
 
 
