@@ -187,8 +187,12 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val merged = remember(mergedRaw, appSettings.vehicleCapacity) {
-        applyConfiguredVehicleCapacity(mergedRaw, appSettings.vehicleCapacity)
+    val merged = remember(mergedRaw, appSettings.vehicleCapacity, appSettings.rotaCertaSeatAllocation) {
+        applyConfiguredVehicleCapacity(
+            mergedRaw,
+            appSettings.vehicleCapacity,
+            appSettings.rotaCertaSeatAllocation,
+        )
     }
     val directionGeo = remember(merged, trips, appSettings) {
         TripTimelineGeoResolver.resolveTrustedStops(
@@ -960,9 +964,16 @@ internal fun applyPublicExternalBookingsToTimeline(
 internal fun applyConfiguredVehicleCapacity(
     entries: List<TripTimelineEntry>,
     vehicleCapacity: Int,
+    rotaCertaSeatAllocation: Int = vehicleCapacity,
 ): List<TripTimelineEntry> {
     if (vehicleCapacity !in 1..999) return entries
-    return entries.map { entry -> if (entry.capacity == vehicleCapacity) entry else entry.copy(capacity = vehicleCapacity) }
+    val localAllocation = rotaCertaSeatAllocation.takeIf { it in 0..999 }
+    return entries.map { entry ->
+        entry.copy(
+            capacity = vehicleCapacity,
+            rotaCertaSeatAllocation = localAllocation ?: entry.rotaCertaSeatAllocation,
+        )
+    }
 }
 
 internal enum class TimelineOccupancyReadState {
