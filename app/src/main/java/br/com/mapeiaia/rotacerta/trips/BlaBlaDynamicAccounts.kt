@@ -207,6 +207,7 @@ private data class DynamicTripDetail(
     val rosterHasMore: Boolean = false,
     val rosterTerminalEvidence: Boolean = false,
     val editHref: String = "",
+    val publicTripHref: String = "",
     val itineraryStops: List<String> = emptyList(),
     val itineraryAuthoritative: Boolean = false,
     val views: Int? = null,
@@ -1799,6 +1800,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .filter(String::isNotBlank)
                 .distinct(),
             itinerary_authoritative = result.itineraryAuthoritative,
+            public_trip_href = BlaBlaCollectorUrlModule.publicTrip(result.publicTripHref, normalizedTrip.trip_id),
             published_seats = pendingPublishedSeats,
         )
         collected += trip
