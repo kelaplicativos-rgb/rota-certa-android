@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/agenda-passenger-trip-actions-0.1.351-r2
+  pull_request:
+    branches:
+      - agent/agenda-operational-status-my-trips-0.1.350
   workflow_dispatch:
 
 permissions:
