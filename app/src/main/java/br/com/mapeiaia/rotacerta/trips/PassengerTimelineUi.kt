@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
 import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.security.MessageDigest
 import java.text.Normalizer
 import kotlinx.coroutines.launch
 
@@ -130,7 +131,6 @@ internal fun EnhancedPassengerTimelineSection(
     var historyRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var editManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var cancelManualRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
-    var cancelExternalRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var createProfileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var fareEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var boardingAddressEditRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
@@ -186,17 +186,34 @@ internal fun EnhancedPassengerTimelineSection(
                 onChanged("Esta ocorrência já foi concluída. A conclusão é permanente; apenas o pagamento ainda pode ser confirmado.")
                 return@select
             }
+            if (passenger.operationalStatus == PassengerOperationalStatus.CANCELLED && selection != "CANCELLED") {
+                onChanged("Esta reserva já foi cancelada. Uma nova participação precisa nascer como nova reserva/ocorrência.")
+                return@select
+            }
             if (selection == "CANCELLED") {
-                when {
-                    currentBooking?.source?.let {
-                        it in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER)
-                    } == true -> {
-                        cancelManualRow = passenger
-                    }
-                    BookingSource.BLABLACAR in passenger.sources -> {
-                        cancelExternalRow = passenger
-                    }
-                    else -> onChanged("Não foi possível identificar a reserva exata para cancelar com segurança.")
+                val trace = passengerCancellationDebugContext(entry, passenger, currentBooking)
+                val inCarBefore = passenger.operationalStatus == PassengerOperationalStatus.IN_CAR
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_CHANGE_REQUESTED",
+                    context.packageName,
+                    "$trace requested=CANCELLED",
+                )
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_PREVIOUS",
+                    context.packageName,
+                    "$trace bookingStatus=${passenger.bookingStatus?.name ?: "EXTERNAL_ONLY"} operationalStatus=${passenger.operationalStatus.name} inCar=$inCarBefore seats=${passenger.seats}",
+                )
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_CANCEL_SELECTED",
+                    context.packageName,
+                    "$trace source=TIMELINE internalOnly=true",
+                )
+                if (currentBooking != null ||
+                    (BookingSource.BLABLACAR in passenger.sources && !passenger.externalReservationKey.isNullOrBlank())
+                ) {
+                    cancelManualRow = passenger
+                } else {
+                    onChanged("Não foi possível identificar a reserva/ocorrência exata para cancelar com segurança.")
                 }
                 return@select
             }
@@ -726,131 +743,226 @@ internal fun EnhancedPassengerTimelineSection(
             row.localBookingId?.let { bookingId ->
                 store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
                     candidate.id == bookingId &&
-                        candidate.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
-                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD, BookingStatus.REQUESTED)
                 }
             }
         }
+        val externalOnly =
+            booking == null &&
+                BookingSource.BLABLACAR in row.sources &&
+                !row.externalReservationKey.isNullOrBlank()
         AlertDialog(
             onDismissRequest = { cancelManualRow = null },
-            title = { Text("Cancelar este passageiro e liberar a(s) vaga(s)?") },
+            title = { Text("Cancelar no Rota Certa e liberar a(s) vaga(s)?") },
             text = {
                 Text(
-                    if (booking?.source == BookingSource.ROTA_CERTA) {
-                        "A reserva feita pelo Rota Certa será cancelada pelo painel administrativo e as vagas serão recalculadas em todos os trechos afetados."
+                    if (BookingSource.BLABLACAR in row.sources) {
+                        "O cancelamento é interno no Rota Certa. A reserva BlaBlaCar não será cancelada automaticamente. " +
+                            "A ocorrência ficará cancelada, fora do carro e deixará de ocupar as vagas internas desta viagem."
                     } else {
-                        "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir."
+                        "A reserva será cancelada no Rota Certa, o passageiro sairá da ocupação ativa e as vagas serão recalculadas somente nos trechos desta reserva."
                     },
                 )
             },
             confirmButton = {
                 TextButton(
-                    enabled = currentTrip != null && booking != null,
+                    enabled = (currentTrip != null && booking != null) || externalOnly,
                     onClick = {
-                        val selectedTrip = currentTrip ?: return@TextButton
-                        val selectedBooking = booking ?: return@TextButton
-                        if (selectedBooking.source == BookingSource.ROTA_CERTA) {
-                            val remoteTripId = selectedTrip.remoteId
-                            if (remoteTripId.isNullOrBlank()) {
-                                onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de cancelar.")
-                                return@TextButton
+                        val trace = passengerCancellationDebugContext(entry, row, booking)
+                        val inCarBefore = row.operationalStatus == PassengerOperationalStatus.IN_CAR
+                        val seatsBefore = booking?.seats ?: row.seats
+                        scope.launch {
+                            UnifiedDebugEventStore.record(
+                                "BOOKING_CANCEL_START",
+                                context.packageName,
+                                "$trace seatsBefore=$seatsBefore inCarBefore=$inCarBefore source=TIMELINE",
+                            )
+                            UnifiedDebugEventStore.record(
+                                "BOOKING_SEATS_RELEASE_START",
+                                context.packageName,
+                                "$trace seatsBefore=$seatsBefore",
+                            )
+
+                            val reservationKey = row.externalReservationKey
+                            val existingExternal = reservationKey?.let(passengerStore::externalMetadata)
+                            val cancelledExternal = reservationKey?.let { key ->
+                                passengerStore.saveExternalMetadata(
+                                    (existingExternal ?: ExternalPassengerMetadata(
+                                        reservationKey = key,
+                                        passengerId = row.passengerId.orEmpty(),
+                                        externalPassengerId = row.externalPassengerId.orEmpty(),
+                                        externalTripId = entry.blablaTripId.orEmpty(),
+                                        externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                                    )).copy(
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                    ),
+                                )
                             }
-                            scope.launch {
-                                runCatching {
-                                    TripRemoteApi(store.onlineSettings()).cancelProtectedDriverBooking(remoteTripId, selectedBooking.id)
-                                }.onSuccess { response ->
-                                    store.saveBooking(
-                                        response.booking.toLocalBooking(selectedTrip.id, selectedBooking).copy(
-                                            status = BookingStatus.CANCELLED,
-                                            operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                            lastDriverSelection = "CANCELLED",
-                                        ),
-                                    )
+
+                            val selectedBooking = booking
+                            val selectedTrip = currentTrip
+                            var onlineSyncSucceeded = false
+                            var onlineSyncPendingReason: String? = null
+                            if (selectedBooking != null && selectedTrip != null) {
+                                val beforeLoads = SeatAvailabilityEngine.segmentLoads(
+                                    selectedTrip,
+                                    store.bookingsFor(selectedTrip.id),
+                                )
+                                val localCancelled = store.saveBooking(
+                                    selectedBooking.copy(
+                                        status = BookingStatus.CANCELLED,
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                    ),
+                                )
+                                val settings = store.onlineSettings()
+                                val remoteTripId = selectedTrip.remoteId
+                                if (settings.configured && !remoteTripId.isNullOrBlank()) {
+                                    runCatching {
+                                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
+                                            remoteTripId = remoteTripId,
+                                            bookingId = selectedBooking.id,
+                                            selection = "CANCELLED",
+                                        )
+                                    }.onSuccess { response ->
+                                        store.saveBooking(
+                                            response.booking.toLocalBooking(selectedTrip.id, localCancelled).copy(
+                                                status = BookingStatus.CANCELLED,
+                                                operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                                lastDriverSelection = "CANCELLED",
+                                            ),
+                                        )
+                                        onlineSyncSucceeded = true
+                                        UnifiedDebugEventStore.record(
+                                            "PUBLIC_BOOKING_CANCEL_SYNC",
+                                            context.packageName,
+                                            "$trace result=success passengerNotified=${response.passengerNotified}",
+                                        )
+                                    }.onFailure { error ->
+                                        onlineSyncPendingReason = (error.message ?: error.javaClass.simpleName).take(120)
+                                        UnifiedDebugEventStore.record(
+                                            "PUBLIC_BOOKING_CANCEL_SYNC",
+                                            context.packageName,
+                                            "$trace result=pending reasonClass=${error.javaClass.simpleName}",
+                                        )
+                                    }
+                                } else {
+                                    onlineSyncPendingReason = "remote_unavailable"
                                     UnifiedDebugEventStore.record(
-                                        "PASSENGER_CANCEL_SUCCESS",
+                                        "PUBLIC_BOOKING_CANCEL_SYNC",
                                         context.packageName,
-                                        "source=ROTA_CERTA seats=" + selectedBooking.seats,
+                                        "$trace result=local_only reason=remote_unavailable",
                                     )
-                                    UnifiedDebugEventStore.record(
-                                        "AGENDA_ROTA_CERTA_ADMIN_CANCELLED",
-                                        context.packageName,
-                                        "timeline=true seats=${selectedBooking.seats} protectedRoute=true",
-                                    )
-                                    cancelManualRow = null
-                                    onChanged("Reserva Rota Certa cancelada pelo painel administrativo. Vagas por trecho recalculadas.")
-                                    onSyncSeatsOnly?.invoke()
-                                }.onFailure { error ->
-                                    onChanged("Não foi possível cancelar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
                                 }
+
+                                val afterLoads = SeatAvailabilityEngine.segmentLoads(
+                                    selectedTrip,
+                                    store.bookingsFor(selectedTrip.id),
+                                )
+                                val beforeOccupied = beforeLoads.sumOf { it.occupiedSeats }
+                                val afterOccupied = afterLoads.sumOf { it.occupiedSeats }
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_CANCEL_PERSISTED",
+                                    context.packageName,
+                                    "$trace bookingStatus=CANCELLED operationalStatus=CANCELLED",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PASSENGER_IN_CAR_CLEARED",
+                                    context.packageName,
+                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_SEATS_RELEASE_END",
+                                    context.packageName,
+                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 occupiedSegmentsBefore=$beforeOccupied occupiedSegmentsAfter=$afterOccupied",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "SEGMENT_CAPACITY_RECALCULATED",
+                                    context.packageName,
+                                    "$trace segments=${afterLoads.size} occupiedBefore=$beforeOccupied occupiedAfter=$afterOccupied",
+                                )
+                            } else if (externalOnly && cancelledExternal != null) {
+                                val passengerId = cancelledExternal.passengerId.ifBlank { row.passengerId.orEmpty() }
+                                if (passengerId.isNotBlank()) {
+                                    passengerStore.recordOccurrence(
+                                        passengerId = passengerId,
+                                        rideKey = externalPassengerOccurrenceKey(
+                                            driverProfileUuid = entry.blablaProfileUuid,
+                                            externalTripId = entry.blablaTripId,
+                                            reservationKey = row.externalReservationKey,
+                                            externalPassengerId = row.externalPassengerId,
+                                        ),
+                                        status = PassengerOccurrenceStatus.CANCELLED,
+                                        tripId = entry.tripId,
+                                        externalTripId = entry.blablaTripId.orEmpty(),
+                                        driverProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                                        source = "BLABLACAR",
+                                        reservationKey = row.externalReservationKey.orEmpty(),
+                                        boarding = row.boarding.orEmpty(),
+                                        dropoff = row.dropoff.orEmpty(),
+                                        seats = row.seats,
+                                    )
+                                }
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_CANCEL_PERSISTED",
+                                    context.packageName,
+                                    "$trace authority=EXTERNAL_RESERVATION_METADATA operationalStatus=CANCELLED",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PASSENGER_IN_CAR_CLEARED",
+                                    context.packageName,
+                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_SEATS_RELEASE_END",
+                                    context.packageName,
+                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 authority=external_tombstone",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "SEGMENT_CAPACITY_RECALCULATED",
+                                    context.packageName,
+                                    "$trace source=collector_overlay exactReservation=true",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PUBLIC_BOOKING_CANCEL_SYNC",
+                                    context.packageName,
+                                    "$trace result=queued_via_public_agenda_sync externalPlatformChanged=false",
+                                )
+                            } else {
+                                cancelManualRow = null
+                                onChanged("A reserva/ocorrência deixou de estar disponível antes da confirmação. Nada foi alterado.")
+                                return@launch
                             }
-                        } else {
-                            store.saveBooking(
-                                selectedBooking.copy(
-                                    status = BookingStatus.CANCELLED,
-                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                    lastDriverSelection = "CANCELLED",
-                                ),
-                            )
-                            UnifiedDebugEventStore.record(
-                                "PASSENGER_CANCEL_SUCCESS",
-                                context.packageName,
-                                "source=MANUAL seats=" + selectedBooking.seats,
-                            )
-                            UnifiedDebugEventStore.record(
-                                "AGENDA_MANUAL_PASSENGER_CANCELLED",
-                                context.packageName,
-                                "timeline=true seats=${selectedBooking.seats} desiredStateRecalculation=true",
-                            )
+
+                            identityRevision++
                             cancelManualRow = null
-                            onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
-                            onSyncSeatsOnly?.invoke()
+                            UnifiedDebugEventStore.record(
+                                "TIMELINE_AFTER_CANCEL",
+                                context.packageName,
+                                "$trace activeBooking=false seatsAfter=0 inCarAfter=false",
+                            )
+                            UnifiedDebugEventStore.record(
+                                "PASSENGER_STATUS_CHANGE_END",
+                                context.packageName,
+                                "$trace final=CANCELLED onlineSync=$onlineSyncSucceeded",
+                            )
+                            onChanged(
+                                when {
+                                    BookingSource.BLABLACAR in row.sources && onlineSyncPendingReason == null ->
+                                        "Reserva cancelada dentro do Rota Certa. Passageiro fora do carro e vagas internas liberadas. A BlaBlaCar não foi alterada."
+                                    onlineSyncPendingReason != null ->
+                                        "Reserva cancelada e vagas liberadas no Rota Certa. Sincronização online pendente: $onlineSyncPendingReason"
+                                    else ->
+                                        "Reserva cancelada. Passageiro fora do carro e vagas por trecho recalculadas."
+                                },
+                            )
                         }
                     },
                 ) { Text("Cancelar reserva") }
             },
             dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Voltar") } },
-        )
-    }
-
-    cancelExternalRow?.let { row ->
-        AlertDialog(
-            onDismissRequest = { cancelExternalRow = null },
-            title = { Text("Cancelar este passageiro e liberar a(s) vaga(s)?") },
-            text = {
-                Text(
-                    "A reserva BlaBlaCar só será marcada como cancelada depois que a identidade exata " +
-                        "for localizada na sessão correta e a ausência for verificada. Sem identidade forte, nada será alterado.",
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        UnifiedDebugEventStore.record(
-                            "PASSENGER_CANCEL_REQUESTED",
-                            context.packageName,
-                            "source=BLABLACAR timeline=true",
-                        )
-                        val queued = BlaBlaExactPassengerCancellationCoordinator.enqueueExact(
-                            context = context,
-                            entry = entry,
-                            row = row,
-                        )
-                        cancelExternalRow = null
-                        if (queued) {
-                            context.startActivity(BlaBlaBlockedPassengerCancellationIntents.process(context))
-                            onChanged(
-                                "Cancelamento BlaBlaCar iniciado na reserva exata. A vaga só será liberada após a verificação externa.",
-                            )
-                        } else {
-                            onChanged(
-                                "A reserva externa não pôde ser identificada com segurança. Nada foi cancelado e nenhuma vaga foi liberada.",
-                            )
-                        }
-                    },
-                ) { Text("Cancelar reserva") }
-            },
-            dismissButton = { TextButton(onClick = { cancelExternalRow = null }) { Text("Voltar") } },
         )
     }
 
@@ -943,6 +1055,25 @@ internal fun EnhancedPassengerTimelineSection(
             },
         )
     }
+}
+
+private fun passengerCancellationDebugContext(
+    entry: TripTimelineEntry,
+    row: EnhancedPassengerCardRow,
+    booking: Booking?,
+): String = listOf(
+    "tripKey=" + passengerCancellationHash(entry.localTripId ?: entry.blablaTripId ?: entry.tripId),
+    "bookingKey=" + passengerCancellationHash(booking?.id ?: row.externalReservationKey),
+    "passengerKey=" + passengerCancellationHash(row.passengerId ?: row.externalPassengerId),
+).joinToString(" ")
+
+private fun passengerCancellationHash(raw: String?): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return "none"
+    return MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }
 
 internal fun enhancedPassengerRows(

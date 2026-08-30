@@ -50,6 +50,9 @@ jobs:
           grep -Fq 'completed_booking_not_cancelable' trip-platform/functions/index.js
           grep -Fq 'passenger_cancel_locked_after_boarding' trip-platform/functions/index.js
           grep -Fq 'PASSENGER_STATUS_REALTIME_PUBLISHED' trip-platform/functions/index.js
+          grep -Fq 'BOOKING_CANCELLED_BY_DRIVER' trip-platform/functions/index.js
+          grep -Fq 'applyInternalCancellationTombstones' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'PUBLIC_BOOKING_CANCEL_SYNC' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'AGUARDANDO CONFIRMAÇÃO' trip-platform/public/app.js
           grep -Fq 'VOCÊ ESTÁ EMBARCADO' trip-platform/public/app.js
           grep -Fq 'PAGAMENTO CONFIRMADO' trip-platform/public/app.js
@@ -58,7 +61,7 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED="^(.github/workflows/agenda-0350-operational-status-my-trips.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(BlaBlaBlockedPassengerCancellation.kt|PassengerIdentityStore.kt|PassengerTimelineUi.kt|TripDomain.kt|TripRemoteApi.kt|TripStore.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerOperationalStatus0350Test.kt|trip-platform/functions/index.js|trip-platform/functions/test/(bidirectional-notifications-0349.test.js|passenger-operational-status-0350.test.js)|trip-platform/public/app.js)$"
+          ALLOWED="^(.github/workflows/agenda-0350-operational-status-my-trips.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(BlaBlaBlockedPassengerCancellation.kt|PassengerIdentityStore.kt|PassengerTimelineUi.kt|PublicAgendaAutoSync0300.kt|TripDomain.kt|TripRemoteApi.kt|TripStore.kt|TripsActivity.kt|TripTimelineUi.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerOperationalStatus0350Test.kt|trip-platform/functions/index.js|trip-platform/functions/test/(bidirectional-notifications-0349.test.js|passenger-operational-status-0350.test.js)|trip-platform/public/app.js)$"
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
       - uses: actions/setup-node@v4

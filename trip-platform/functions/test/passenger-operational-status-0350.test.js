@@ -52,7 +52,10 @@ test("driver operational endpoint writes the same booking and emits persistent p
   assert.match(op, /PASSENGER_IN_CAR/);
   assert.match(op, /PASSENGER_PAYMENT_CONFIRMED/);
   assert.match(op, /PASSENGER_COMPLETED/);
+  assert.match(op, /BOOKING_CANCELLED_BY_DRIVER/);
+  assert.match(op, /afterBookingStatus = selection === "CANCELLED"/);
   assert.match(op, /writeChangeEventAndNotifications/);
+  assert.match(op, /refundBookingCreditsIfNeeded/);
   assert.match(op, /selection === "PAID" \? beforeOperational/);
 });
 
@@ -108,6 +111,15 @@ test("completed occurrence cannot regress or be cancelled retroactively", () => 
   assert.match(admin, /completed_booking_not_cancelable/);
   assert.match(timeline, /A conclusão é permanente/);
   assert.match(exactCancel, /reason=occurrence_completed/);
+});
+
+test("Timeline Status Cancelado is internal and never starts BlaBlaCar cancellation", () => {
+  assert.match(timeline, /O cancelamento é interno no Rota Certa/);
+  assert.match(timeline, /selection = "CANCELLED"/);
+  assert.match(timeline, /BOOKING_CANCEL_PERSISTED/);
+  assert.match(timeline, /SEGMENT_CAPACITY_RECALCULATED/);
+  assert.match(timeline, /PUBLIC_BOOKING_CANCEL_SYNC/);
+  assert.doesNotMatch(timeline, /BlaBlaExactPassengerCancellationCoordinator\.enqueueExact/);
 });
 
 test("exact BlaBlaCar cancellation fails closed and verifies absence before local cancellation", () => {

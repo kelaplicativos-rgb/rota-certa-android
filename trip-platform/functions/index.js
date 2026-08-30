@@ -3202,7 +3202,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
   if (!driver) return;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const selection = cleanText(req.body && req.body.selection, 32).toUpperCase();
-  const allowed = new Set(["CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED"]);
+  const allowed = new Set(["CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED"]);
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   if (!allowed.has(selection)) return fail(res, 400, "invalid_operational_status", "Estado operacional inválido.");
 
@@ -3221,6 +3221,12 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
+        if (selection === "CANCELLED" && previous.status === "CANCELLED") {
+          const safe = { ...previous };
+          delete safe.cancellationHash;
+          delete safe.idempotencyFingerprint;
+          return { booking: safe, changed: false, eventType: "BOOKING_CANCELLED_BY_DRIVER" };
+        }
         throw Object.assign(new Error("Esta reserva não está mais ativa."), { httpStatus: 409, code: "booking_inactive" });
       }
 
@@ -3234,9 +3240,11 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
       }
       const afterOperational = selection === "PAID" ? beforeOperational : selection;
       const afterPayment = selection === "PAID" ? "PAID" : beforePayment;
-      const afterBookingStatus = selection === "CONFIRMED" && (previous.status === "REQUESTED" || previous.status === "HELD")
-        ? "CONFIRMED"
-        : previous.status;
+      const afterBookingStatus = selection === "CANCELLED"
+        ? "CANCELLED"
+        : (selection === "CONFIRMED" && (previous.status === "REQUESTED" || previous.status === "HELD")
+          ? "CONFIRMED"
+          : previous.status);
 
       if (
         beforeOperational === afterOperational &&
@@ -3283,7 +3291,8 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         : selection === "AT_LOCATION" ? "PASSENGER_AT_LOCATION"
           : selection === "IN_CAR" ? "PASSENGER_IN_CAR"
             : selection === "PAID" ? "PASSENGER_PAYMENT_CONFIRMED"
-              : "PASSENGER_COMPLETED";
+              : selection === "CANCELLED" ? "BOOKING_CANCELLED_BY_DRIVER"
+                : "PASSENGER_COMPLETED";
       const passengerContact = cleanText(updated.passengerContact, 40);
       const passengerId = cleanText(updated.passengerId, 120) ||
         cleanText(passengerIdentityByContact.get(passengerContact), 120);
@@ -3317,9 +3326,12 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
     });
 
     if (result.changed) {
+      if (result.eventType === "BOOKING_CANCELLED_BY_DRIVER") {
+        await refundBookingCreditsIfNeeded(token, bookingId);
+      }
       const debugEvent = result.eventType === "PASSENGER_PAYMENT_CONFIRMED"
         ? "PASSENGER_PAYMENT_CONFIRMED"
-        : "PASSENGER_STATUS_CHANGED";
+        : (result.eventType === "BOOKING_CANCELLED_BY_DRIVER" ? "BOOKING_CANCEL_PERSISTED" : "PASSENGER_STATUS_CHANGED");
       await appendPublicDebugEvent({
         driverUsername: driver.username,
         event: debugEvent,
@@ -3328,15 +3340,17 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         screen: "timeline",
         reason: result.eventType.toLowerCase(),
         statusCode: 200,
+        seats: Number(result.booking.seats || 0),
       }).catch(() => {});
       await appendPublicDebugEvent({
         driverUsername: driver.username,
-        event: "PASSENGER_STATUS_REALTIME_PUBLISHED",
+        event: result.eventType === "BOOKING_CANCELLED_BY_DRIVER" ? "PUBLIC_BOOKING_CANCEL_SYNC" : "PASSENGER_STATUS_REALTIME_PUBLISHED",
         source: "server",
         tripToken: token,
         screen: "timeline",
         reason: result.eventType.toLowerCase(),
         statusCode: 200,
+        seats: Number(result.booking.seats || 0),
       }).catch(() => {});
     }
 

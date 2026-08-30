@@ -95,23 +95,41 @@ class TripStore(context: Context) {
         // operational/payment choice against those refreshes, while still accepting a real
         // server-side driver mutation (which always carries lastDriverSelection).
         val withPreservedOperationalState = existing?.let { current ->
+            val explicitCancellationTombstone =
+                current.status == BookingStatus.CANCELLED && current.lastDriverSelection == "CANCELLED"
             withPreservedLocalMetadata.copy(
-                operationalStatus = if (
+                status = if (explicitCancellationTombstone) BookingStatus.CANCELLED else withPreservedLocalMetadata.status,
+                operationalStatus = when {
+                    explicitCancellationTombstone -> PassengerOperationalStatus.CANCELLED
+                    withPreservedLocalMetadata.status == BookingStatus.CANCELLED -> PassengerOperationalStatus.CANCELLED
                     withPreservedLocalMetadata.lastDriverSelection.isBlank() &&
-                    withPreservedLocalMetadata.operationalStatus == PassengerOperationalStatus.CONFIRMED &&
-                    current.operationalStatus != PassengerOperationalStatus.CONFIRMED
-                ) current.operationalStatus else withPreservedLocalMetadata.operationalStatus,
+                        withPreservedLocalMetadata.operationalStatus == PassengerOperationalStatus.CONFIRMED &&
+                        current.operationalStatus != PassengerOperationalStatus.CONFIRMED -> current.operationalStatus
+                    else -> withPreservedLocalMetadata.operationalStatus
+                },
                 paymentStatus = if (
                     withPreservedLocalMetadata.lastDriverSelection.isBlank() &&
                     current.paymentStatus == PassengerPaymentStatus.PAID &&
                     withPreservedLocalMetadata.paymentStatus == PassengerPaymentStatus.UNPAID
                 ) PassengerPaymentStatus.PAID else withPreservedLocalMetadata.paymentStatus,
-                lastDriverSelection = withPreservedLocalMetadata.lastDriverSelection.ifBlank { current.lastDriverSelection },
+                lastDriverSelection = when {
+                    explicitCancellationTombstone -> "CANCELLED"
+                    withPreservedLocalMetadata.status == BookingStatus.CANCELLED -> "CANCELLED"
+                    else -> withPreservedLocalMetadata.lastDriverSelection.ifBlank { current.lastDriverSelection }
+                },
             )
         } ?: withPreservedLocalMetadata
-        val identity = passengerIdentityStore.ensureLocalBookingProfile(withPreservedOperationalState)
-        val normalized = withPreservedOperationalState.copy(
-            passengerId = identity?.id ?: withPreservedOperationalState.passengerId,
+        val invariantState = if (withPreservedOperationalState.status == BookingStatus.CANCELLED) {
+            withPreservedOperationalState.copy(
+                operationalStatus = PassengerOperationalStatus.CANCELLED,
+                lastDriverSelection = "CANCELLED",
+            )
+        } else {
+            withPreservedOperationalState
+        }
+        val identity = passengerIdentityStore.ensureLocalBookingProfile(invariantState)
+        val normalized = invariantState.copy(
+            passengerId = identity?.id ?: invariantState.passengerId,
             updatedAtMillis = System.currentTimeMillis(),
         )
         val current = all.filterNot { it.id == normalized.id }

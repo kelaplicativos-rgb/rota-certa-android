@@ -65,4 +65,94 @@ class PassengerOperationalStatus0350Test {
         assertEquals(listOf(2, 2), SeatAvailabilityEngine.segmentLoads(trip, listOf(operationalOnly)).map { it.occupiedSeats })
         assertEquals(listOf(0, 0), SeatAvailabilityEngine.segmentLoads(trip, listOf(cancelled)).map { it.occupiedSeats })
     }
+    @Test
+    fun cancellationOfOneSeatReturnsExactlyOneSeat() {
+        val oneSeat = confirmed.copy(seats = 1)
+        val cancelled = oneSeat.copy(
+            status = BookingStatus.CANCELLED,
+            operationalStatus = PassengerOperationalStatus.CANCELLED,
+            lastDriverSelection = "CANCELLED",
+        )
+
+        assertEquals(listOf(1, 1), SeatAvailabilityEngine.segmentLoads(trip, listOf(oneSeat)).map { it.occupiedSeats })
+        assertEquals(listOf(0, 0), SeatAvailabilityEngine.segmentLoads(trip, listOf(cancelled)).map { it.occupiedSeats })
+    }
+
+    @Test
+    fun cancellationReleasesOnlyTheBookedSegmentsForMultiSeatReservation() {
+        val segmented = trip.copy(
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A"),
+                TripStop(id = "b", order = 1, name = "B"),
+                TripStop(id = "c", order = 2, name = "C"),
+                TripStop(id = "d", order = 3, name = "D"),
+            ),
+        )
+        val booking = confirmed.copy(
+            tripId = segmented.id,
+            boardingStopId = "b",
+            dropoffStopId = "d",
+            seats = 2,
+        )
+        val before = SeatAvailabilityEngine.segmentLoads(segmented, listOf(booking)).map { it.occupiedSeats }
+        val after = SeatAvailabilityEngine.segmentLoads(
+            segmented,
+            listOf(
+                booking.copy(
+                    status = BookingStatus.CANCELLED,
+                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                    lastDriverSelection = "CANCELLED",
+                ),
+            ),
+        ).map { it.occupiedSeats }
+
+        assertEquals(listOf(0, 2, 2), before)
+        assertEquals(listOf(0, 0, 0), after)
+    }
+
+    @Test
+    fun exactExternalCancellationTombstoneRemovesOnlyThatOccurrenceAndItsSeats() {
+        val cancelledPassenger = BlaBlaCollectorPassenger(
+            name = "Cancelado",
+            seats = 2,
+            boarding = "B",
+            dropoff = "D",
+            booking_href = "/rides/booking/cancelled",
+        )
+        val activePassenger = BlaBlaCollectorPassenger(
+            name = "Ativo",
+            seats = 1,
+            boarding = "A",
+            dropoff = "D",
+            booking_href = "/rides/booking/active",
+        )
+        val source = BlaBlaCollectorMonthResponse(
+            status = "ok",
+            trips = listOf(
+                BlaBlaCollectorTrip(
+                    profile_uuid = "driver-profile",
+                    date = "2030-09-10",
+                    departure_time = "11:00",
+                    search_from = "A",
+                    search_to = "D",
+                    availability = "full",
+                    passengers = listOf(cancelledPassenger, activePassenger),
+                    booked_seats = 3,
+                    passenger_roster_complete = true,
+                ),
+            ),
+        )
+        val cancelledKey = externalPassengerReservationKey(
+            "driver-profile",
+            cancelledPassenger.booking_href,
+        )!!
+
+        val filtered = applyInternalCancellationTombstones(source, setOf(cancelledKey))!!
+        val tripAfter = filtered.trips.single()
+
+        assertEquals(listOf("Ativo"), tripAfter.passengers.map(BlaBlaCollectorPassenger::name))
+        assertEquals(1, tripAfter.booked_seats)
+        assertEquals("internal_cancelled", tripAfter.availability)
+    }
+
 }

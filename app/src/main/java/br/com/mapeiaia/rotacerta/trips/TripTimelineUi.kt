@@ -163,11 +163,15 @@ fun TripTimelineScreen(
         }
     }
     val publicExternalBindings = store.publicExternalBindings()
-    val mergedRaw = remember(localEntries, collectorResponse, bookings, publicExternalBindings) {
+    val internallyCancelledExternalReservationKeys = passengerIdentityStore.internallyCancelledExternalReservationKeys()
+    val collectorResponseForTimeline = remember(collectorResponse, internallyCancelledExternalReservationKeys) {
+        applyInternalCancellationTombstones(collectorResponse, internallyCancelledExternalReservationKeys)
+    }
+    val mergedRaw = remember(localEntries, collectorResponseForTimeline, bookings, publicExternalBindings) {
         val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE", "TripTimelineScreen", traceId)
         try {
             applyPublicExternalBookingsToTimeline(
-                entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponse),
+                entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponseForTimeline),
                 bindings = publicExternalBindings,
                 bookings = bookings,
             ).also {
