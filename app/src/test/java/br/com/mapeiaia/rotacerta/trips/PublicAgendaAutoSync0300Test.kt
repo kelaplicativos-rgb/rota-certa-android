@@ -154,7 +154,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun threeBlaBlaAvailablePlusFourRotaCertaAvailablePublishesSevenWithoutDoubleSubtractingPassengers() {
+    fun threePublishedButThreeOccupiedUsesZeroTimelineFreePlusFourRotaCerta() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile",
             date = "2030-09-13",
@@ -169,16 +169,31 @@ class PublicAgendaAutoSync0300Test {
                 BlaBlaCollectorPassenger(name = "P3", seats = 1),
             ),
         )
-        val combined = PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, 4)
-        assertEquals(7, combined)
-        val external = PublicAgendaAutoSync0300.toPublicTrip(source, combined!!, 0L, zone)
+        val timeline = resolveTimelinePublicCapacity(
+            physicalVehicleCapacity = 4,
+            remotePublishedCapacity = source.published_seats,
+            occupiedSeats = source.booked_seats,
+        )
+        assertEquals(0, timeline.availableSeats)
+        val combined = PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(timeline.availableSeats, 4)
+        assertEquals(4, combined)
+        val external = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = combined!!,
+            nowMillis = 0L,
+            zoneId = zone,
+            blablaAvailableSeats = timeline.availableSeats,
+            rotaCertaSeatPool = 4,
+        )
         assertNotNull(external)
-        assertEquals(7, external.trip.capacity)
+        assertEquals(4, external.trip.capacity)
         assertEquals(3, external.trip.publishedSeats)
+        assertEquals(0, external.trip.blablaAvailableSeats)
+        assertEquals(4, external.trip.rotaCertaSeatPool)
         assertTrue(external.capacityClaims.isEmpty())
         val loads = SeatAvailabilityEngine.segmentLoads(external.trip, external.capacityClaims)
         assertTrue(loads.all { it.occupiedSeats == 0 })
-        assertTrue(loads.all { it.availableSeats == 7 })
+        assertTrue(loads.all { it.availableSeats == 4 })
     }
 
     @Test
@@ -231,7 +246,7 @@ class PublicAgendaAutoSync0300Test {
             id = "public:$token",
             title = "Santo André → São Thomé das Letras",
             departureAtMillis = 4_000_000_000_000L,
-            capacity = 4,
+            capacity = 6,
             status = TripStatus.PUBLISHED,
             publicToken = token,
             remoteId = token,
@@ -260,6 +275,7 @@ class PublicAgendaAutoSync0300Test {
         )
         val preserved = PublicAgendaAutoSync0300.preserveExternalBindingShape(observed, binding)
         assertEquals(listOf("old-sa", "old-pa", "old-stl"), preserved.stops.map(TripStop::id))
+        assertEquals(6, preserved.capacity)
 
         val matchingClaim = Booking(
             id = "claim-1",
