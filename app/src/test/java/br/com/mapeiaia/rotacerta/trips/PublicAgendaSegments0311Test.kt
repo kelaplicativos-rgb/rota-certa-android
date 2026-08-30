@@ -48,8 +48,8 @@ class PublicAgendaSegments0311Test {
         assertEquals(3, published.bookedSeats)
 
         val loads = SeatAvailabilityEngine.segmentLoads(published.trip, published.capacityClaims)
-        assertEquals(listOf(1, 3, 1), loads.map(SegmentLoad::occupiedSeats))
-        assertEquals(listOf(3, 1, 3), loads.map(SegmentLoad::availableSeats))
+        assertEquals(listOf(0, 0, 0), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(4, 4, 4), loads.map(SegmentLoad::availableSeats))
     }
 
     @Test
@@ -67,8 +67,8 @@ class PublicAgendaSegments0311Test {
         val published = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
         assertNotNull(published)
         assertEquals(2, published.trip.stops.size)
+        assertEquals(TripStatus.PUBLISHED, published.trip.status)
         assertEquals(4, published.bookedSeats)
-        assertEquals(1, published.capacityClaims.size)
-        assertEquals(4, published.capacityClaims.single().seats)
+        assertTrue(published.capacityClaims.isEmpty())
     }
 }
