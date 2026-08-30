@@ -249,18 +249,20 @@ class PassengerCanonical0317Test {
         assertTrue(source.contains("syncPendingOnly = false"))
     }
     @Test
-    fun passengerToolbarGroupsAddAndManageBehindSingleEntry() {
+    fun passengerToolbarSeparatesAdminAddToTripAndNewTrip() {
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         val addFlow = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt").readText()
 
-        assertTrue(timeline.contains("ResponsiveTripAction(\"👥 Passageiros\")"))
-        assertTrue(timeline.contains("showPassengerMenu = true"))
-        assertTrue(timeline.contains("Text(\"+ Adicionar passageiro\")"))
-        assertTrue(timeline.contains("Text(\"👥 Ver / gerenciar passageiros\")"))
+        assertTrue(timeline.contains("ResponsiveTripAction(\"👥 Passageiros\", onClick = onOpenPassengers)"))
+        assertTrue(timeline.contains("ResponsiveTripAction(\"➕ Adicionar a uma viagem\")"))
+        assertTrue(timeline.contains("ResponsiveTripAction(\"🛣️ Nova viagem\", onClick = onCreateTrip)"))
         assertTrue(timeline.contains("passengerAddRequestToken++"))
-        assertTrue(timeline.contains("onOpenPassengers()"))
-        assertTrue(timeline.contains("passengerMenuActionLocked"))
-        assertFalse(addFlow.contains("Text(\"+ Passageiro\")"))
+        assertFalse(timeline.contains("showPassengerMenu"))
+        assertFalse(timeline.contains("passengerMenuActionLocked"))
+        assertFalse(timeline.contains("👥 Ver / gerenciar passageiros"))
+        assertTrue(addFlow.contains("1. Selecionar passageiro"))
+        assertTrue(addFlow.contains("2. Selecionar viagem"))
+        assertTrue(addFlow.contains("3. Dados da reserva"))
         assertTrue(addFlow.contains("LaunchedEffect(openRequestToken)"))
         assertTrue(addFlow.contains("QuickPassengerPanel("))
     }
