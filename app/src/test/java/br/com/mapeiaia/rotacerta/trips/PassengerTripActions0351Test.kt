@@ -58,7 +58,7 @@ class PassengerTripActions0351Test {
         )
         val plan = QuickPassengerEngine.build(
             trip = trip,
-            existing = emptyList(),
+            existingBookings = emptyList(),
             request = QuickPassengerRequest(
                 passengerName = "Pessoa",
                 passengerContact = "11999999999",
