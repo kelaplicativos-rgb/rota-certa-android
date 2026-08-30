@@ -69,6 +69,8 @@ let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
 let seatPickerMode = "search";
 let seatPickerBookingIntent = null;
+let seatPickerChannel = "internal";
+let seatPickerReturnView = "trip";
 let seatPickerLimit = 0;
 let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
@@ -613,16 +615,11 @@ function updateSearchUi() {
   if (fromInput && fromInput.value !== searchState.from) fromInput.value = searchState.from;
   if (toInput && toInput.value !== searchState.to) toInput.value = searchState.to;
   $("searchDepartureValue").textContent = formatSearchDate(searchState.departure);
-  const returnValue = $("searchReturnValue");
-  returnValue.textContent = searchState.returnDate ? formatSearchDate(searchState.returnDate) : "Data";
-  returnValue.classList.toggle("searchPlaceholder", !searchState.returnDate);
-  $("searchSeatsValue").textContent = searchState.seats === 1 ? "1 passageiro" : `${searchState.seats} passageiros`;
 }
 
-function openCalendarPicker(target) {
-  calendarPickerTarget = target;
-  $("calendarTitle").textContent = target === "returnDate" ? "Quando você volta?" : "Quando você vai?";
-  show("calendarNoReturn", target === "returnDate");
+function openCalendarPicker() {
+  calendarPickerTarget = "departure";
+  $("calendarTitle").textContent = "Quando?";
   renderCalendarMonths();
   showOnly("calendarPicker");
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -631,17 +628,10 @@ function openCalendarPicker(target) {
 function renderCalendarMonths() {
   const container = $("calendarMonths");
   container.innerHTML = "";
-  let minimumKey = localTodayKey();
-  if (
-    calendarPickerTarget === "returnDate" &&
-    DateContract.normalizeKey(searchState.departure) &&
-    DateContract.compareKeys(searchState.departure, minimumKey) >= 0
-  ) {
-    minimumKey = searchState.departure;
-  }
+  const minimumKey = localTodayKey();
   const minimum = DateContract.parseKey(minimumKey);
   const monthStart = new Date(minimum.getFullYear(), minimum.getMonth(), 1);
-  const selected = calendarPickerTarget === "returnDate" ? searchState.returnDate : searchState.departure;
+  const selected = searchState.departure;
   const week = ["D", "S", "T", "Q", "Q", "S", "S"];
   for (let offset = 0; offset < 12; offset += 1) {
     const first = new Date(monthStart.getFullYear(), monthStart.getMonth() + offset, 1);
@@ -678,12 +668,9 @@ function renderCalendarMonths() {
 }
 
 function selectCalendarDate(key) {
-  if (calendarPickerTarget === "returnDate") searchState.returnDate = key;
-  else {
-    searchState.departure = key;
-    if (searchState.returnDate && DateContract.isBefore(searchState.returnDate, key)) searchState.returnDate = "";
-    invalidateSearchSelections();
-  }
+  searchState.departure = key;
+  searchState.returnDate = "";
+  invalidateSearchSelections();
   updateSearchUi();
   renderAgenda(agendaTripsCache);
 }
@@ -798,6 +785,8 @@ function openSeatPicker() {
 
 function openTripSeatPicker(auto = false, intentOverride = null, capacityChanged = false) {
   if (!trip || bookingRequestInFlight) return;
+  seatPickerChannel = "internal";
+  seatPickerReturnView = "trip";
   if (auto) {
     if (directReserveConsumed) return;
     directReserveConsumed = true;
@@ -835,6 +824,37 @@ function openTripSeatPicker(auto = false, intentOverride = null, capacityChanged
   showOnly("seatPicker");
 }
 
+function openWhatsappSeatPicker(source, fromIndex = 0, toIndex = null, returnView = "searchResults") {
+  if (!source) return;
+  const stops = orderedStops(source);
+  const resolvedTo = Number.isInteger(toIndex) ? toIndex : stops.length - 1;
+  if (fromIndex < 0 || resolvedTo <= fromIndex || resolvedTo >= stops.length) return;
+  if (!segmentEvidenceTrusted(source, fromIndex, resolvedTo)) {
+    showQuickBookingNotice("Trecho indisponível", "Esse trecho ainda não foi confirmado pela fonte da viagem.", true);
+    return;
+  }
+  trip = source;
+  seatPickerMode = "booking";
+  seatPickerChannel = "whatsapp";
+  seatPickerReturnView = returnView;
+  seatPickerBookingIntent = {
+    boardingStopId: stops[fromIndex].id,
+    dropoffStopId: stops[resolvedTo].id,
+    creditToUseCents: 0,
+    quick: false,
+  };
+  seatPickerLimit = source.capacityReliable === true
+    ? availableForTripSegment(source, fromIndex, resolvedTo)
+    : 0;
+  seatPickerDraft = 1;
+  updateSeatPickerUi(seatPickerLimit < 1);
+  if (source.capacityReliable !== true) {
+    $("seatPickerMessage").textContent = "As vagas desta viagem ainda não foram confirmadas.";
+  }
+  tracePublicAction("PUBLIC_SEAT_PICKER_OPENED", { seats: 1, fromIndex, toIndex: resolvedTo, reason: "whatsapp" });
+  showOnly("seatPicker");
+}
+
 function changeSeatPicker(delta) {
   if (seatPickerMode === "search") seatPickerLimit = searchSeatAvailabilityLimit();
   if (delta < 0) {
@@ -856,7 +876,7 @@ function changeSeatPicker(delta) {
   updateSeatPickerUi(false);
 }
 
-function confirmSeatPicker() {
+async function confirmSeatPicker() {
   if (seatPickerMode === "search") {
     seatPickerLimit = searchSeatAvailabilityLimit();
     if (seatPickerLimit < 1 || seatPickerDraft > seatPickerLimit) {
@@ -874,6 +894,9 @@ function confirmSeatPicker() {
     updateSeatPickerUi(true);
     return;
   }
+  if (seatPickerChannel === "whatsapp") {
+    return openWhatsappFromSeatPicker();
+  }
   pendingBooking = { ...seatPickerBookingIntent, seats: seatPickerDraft };
   persistPendingBookingIntent(pendingBooking);
   const stops = orderedStops();
@@ -887,6 +910,85 @@ function confirmSeatPicker() {
     return updateExistingReservation();
   }
   return reserve();
+}
+
+async function openWhatsappFromSeatPicker() {
+  const intent = seatPickerBookingIntent;
+  const token = publicTripKey(trip);
+  if (!intent || !token) return;
+  $("seatConfirm").disabled = true;
+  $("seatPickerMessage").textContent = "Confirmando as vagas…";
+  try {
+    const response = await fetch(`/v1/public/trips/${encodeURIComponent(token)}`, {
+      headers: agendaViewHeaders({ Accept: "application/json" }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível confirmar as vagas agora.");
+    trip = body;
+    if (body.driver) {
+      driverProfile = body.driver;
+      driverDisplayName = driverProfile.displayName || driverDisplayName;
+    }
+    const stops = orderedStops(trip);
+    const fromIndex = stops.findIndex((stop) => stop.id === intent.boardingStopId);
+    const toIndex = stops.findIndex((stop) => stop.id === intent.dropoffStopId);
+    if (trip.capacityReliable !== true || !segmentEvidenceTrusted(trip, fromIndex, toIndex)) {
+      seatPickerLimit = 0;
+      updateSeatPickerUi(true);
+      $("seatPickerMessage").textContent = "As vagas deste trecho ainda não foram confirmadas.";
+      return;
+    }
+    const available = availableForTripSegment(trip, fromIndex, toIndex);
+    seatPickerLimit = available;
+    if (available < 1 || seatPickerDraft > available) {
+      updateSeatPickerUi(true);
+      $("seatPickerMessage").textContent = seatLimitText(available, true);
+      return;
+    }
+    const digits = whatsappDigits(driverProfile.whatsapp || "");
+    if (!digits) {
+      $("seatPickerMessage").textContent = "O motorista ainda não cadastrou um WhatsApp válido.";
+      return;
+    }
+    const from = stops[fromIndex];
+    const to = stops[toIndex];
+    const time = formatTime(from?.plannedDepartureMillis || from?.plannedArrivalMillis || trip.departureAtMillis);
+    const fare = fareForTripSegment(trip, fromIndex, toIndex);
+    const quantity = seatPickerDraft === 1 ? "1 lugar" : `${seatPickerDraft} lugares`;
+    const message = [
+      "Olá! Quero viajar com você.",
+      `${from?.name || "Embarque"} → ${to?.name || "Destino"}`,
+      `${formatDateOnly(trip.departureAtMillis)} às ${time} • ${quantity}`,
+      fare > 0 ? `Valor: ${formatMoney(fare * seatPickerDraft)}` : "",
+      `Viagem: ${trip.title || ((from?.name || "") + " → " + (to?.name || ""))}`,
+      "Ainda está disponível?",
+    ].filter(Boolean).join("\n");
+    tracePublicAction("PUBLIC_WHATSAPP_RESERVATION_OPENED", {
+      seats: seatPickerDraft,
+      fromIndex,
+      toIndex,
+      reason: "availability_revalidated_no_booking",
+    });
+    location.href = `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  } catch (error) {
+    $("seatPickerMessage").textContent = error.message || "Não foi possível confirmar as vagas agora.";
+  } finally {
+    $("seatConfirm").disabled = seatPickerLimit < 1 || seatPickerDraft > seatPickerLimit;
+  }
+}
+
+function safeBlaBlaPublicUrl(item) {
+  const raw = String(item?.blablaPublicUrl || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (path !== "/trip" && !path.startsWith("/trip/")) return "";
+    return url.href;
+  } catch (_) {
+    return "";
+  }
 }
 
 function stopMatchesSearch(stop, query) {
