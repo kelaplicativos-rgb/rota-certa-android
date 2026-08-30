@@ -1145,7 +1145,11 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
-            val allocation = tripChannelAllocationBreakdown(entry.capacity, entry.blablaPublishedSeats)
+            val allocation = tripChannelAllocationBreakdown(
+                entry.capacity,
+                entry.blablaPublishedSeats,
+                entry.rotaCertaSeatAllocation,
+            )
             if (allocation.blablaPublishedAllocation != null && allocation.rotaCertaAllocation != null && allocation.totalConsidered != null) {
                 Text(
                     "BlaBlaCar: ${allocation.blablaPublishedAllocation} • Rota Certa: ${allocation.rotaCertaAllocation} • Total considerado: ${allocation.totalConsidered}",
@@ -1153,18 +1157,24 @@ private fun TimelineEntryCard(
                 )
             } else {
                 entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                    Text("BlaBlaCar: $published lugar(es) publicados • aguardando capacidade física para fechar o total", style = MaterialTheme.typography.bodySmall)
+                    Text("BlaBlaCar: $published lugar(es) publicados • aguardando a cota do Rota Certa para fechar o total", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val passengers = publicLoads?.maxOfOrNull(SegmentLoad::passengerSeats)
-                ?: entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
-            val blocked = publicLoads?.maxOfOrNull(SegmentLoad::blockedSeats)
-                ?: publicCapacity.blockedSeats
-            val free = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+            val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+            val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
+            val physicalFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
                 ?: publicCapacity.availableSeats
+            val operationalFree = allocation.totalConsidered?.let { total ->
+                (total - passengers - blocked).coerceAtLeast(0)
+            }
+            val free = when {
+                physicalFree != null && operationalFree != null -> minOf(physicalFree, operationalFree)
+                operationalFree != null -> operationalFree
+                else -> physicalFree
+            }
             val physicalCapacity = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
@@ -1182,8 +1192,7 @@ private fun TimelineEntryCard(
             }
 
             TextButton(onClick = { showSeatDetails = true }) {
-                val publicMinimum = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
-                Text(if (publicMinimum != null) "💺 $publicMinimum" else "💺 ⏳")
+                Text(if (free != null) "💺 $free" else "💺 ⏳")
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
