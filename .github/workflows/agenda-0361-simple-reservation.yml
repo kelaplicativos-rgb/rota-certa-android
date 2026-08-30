@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-simple-reservation-0361-${{ github.ref }}
+  group: agenda-simple-reservation-0361-live
   cancel-in-progress: true
 
 jobs:
@@ -160,12 +160,10 @@ jobs:
           path: /tmp/0361
 
       - name: Install Agenda backend dependencies
-        if: github.event_name != 'pull_request'
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
       - name: Deploy current Agenda backend and hosting
-        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -180,7 +178,6 @@ jobs:
           fi
 
       - name: Smoke live no-filter two-button Agenda
-        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
