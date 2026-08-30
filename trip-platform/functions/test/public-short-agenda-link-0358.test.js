@@ -51,10 +51,16 @@ test("legacy technical Agenda URL remains accepted", () => {
   assert.match(web, /\/v1\/public\/drivers\/\$\{encodeURIComponent\(driverUsername\)\}\/\$\{encodeURIComponent\(agendaToken\)\}\/agenda/);
 });
 
-test("reserved public identifiers are rejected while normalization remains canonical", () => {
-  for (const reserved of ["v1", "calendar", "api", "admin", "login", "assets", "static", "agenda", "config", "settings"]) {
-    assert.match(api, new RegExp('"' + reserved + '"'));
-    assert.match(web, new RegExp('"' + reserved + '"'));
+test("only real technical routes are reserved and ordinary words remain available", () => {
+  const apiReserved = between(api, "const RESERVED_PUBLIC_USERNAMES = new Set([", "]);");
+  const webReserved = between(web, "const RESERVED_PUBLIC_SLUGS = new Set([", "]);");
+  for (const reserved of ["v1", "calendar"]) {
+    assert.match(apiReserved, new RegExp('"' + reserved + '"'));
+    assert.match(webReserved, new RegExp('"' + reserved + '"'));
+  }
+  for (const allowed of ["agenda", "api", "admin", "login", "assets", "static", "config", "settings"]) {
+    assert.doesNotMatch(apiReserved, new RegExp('"' + allowed + '"'));
+    assert.doesNotMatch(webReserved, new RegExp('"' + allowed + '"'));
   }
   assert.match(api, /isReservedPublicUsername\(username\)/);
   assert.match(api, /isReservedPublicUsername\(requestedUsername\)/);
