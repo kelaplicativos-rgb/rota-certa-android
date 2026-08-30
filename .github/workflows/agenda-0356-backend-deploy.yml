@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.358 short public Agenda link backend deploy
+name: Rota Certa 0.1.359 flexible public Agenda slug backend deploy
 
 on:
   push:
@@ -95,7 +95,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke deployed 0.1.358 short-link contracts
+      - name: Smoke deployed 0.1.359 flexible-slug contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -112,7 +112,9 @@ jobs:
               && grep -Fq '/v1/public/agenda/' /tmp/live-app.js; then
               curl --fail --silent --show-error --dump-header /tmp/slug.headers "$BASE/viagem-certa" -o /tmp/slug.html
               grep -Fq 'Rota Certa' /tmp/slug.html
-              if grep -Eiq '^location:.*(motorista=|agenda=)' /tmp/slug.headers; then
+              curl --fail --silent --show-error --dump-header /tmp/agenda-slug.headers "$BASE/agenda" -o /tmp/agenda-slug.html
+              grep -Fq 'Rota Certa' /tmp/agenda-slug.html
+              if grep -Eiq '^location:.*(motorista=|agenda=)' /tmp/slug.headers /tmp/agenda-slug.headers; then
                 echo "Short route redirected to a technical token URL."
                 exit 1
               fi
@@ -120,5 +122,5 @@ jobs:
             fi
             sleep 3
           done
-          echo "Hosting 0.1.358 short-link contract not observed."
+          echo "Hosting 0.1.359 flexible-slug contract not observed."
           exit 1
