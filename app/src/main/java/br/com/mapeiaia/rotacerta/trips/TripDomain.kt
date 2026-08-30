@@ -76,7 +76,10 @@ data class Trip(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val departureAtMillis: Long,
+    /** Physical simultaneous passenger capacity of the vehicle. */
     val capacity: Int = 3,
+    /** Operational Rota Certa allocation for this trip; never a physical capacity. */
+    val rotaCertaSeatAllocation: Int? = null,
     val status: TripStatus = TripStatus.DRAFT,
     val stops: List<TripStop>,
     val publicToken: String = UUID.randomUUID().toString().replace("-", ""),
