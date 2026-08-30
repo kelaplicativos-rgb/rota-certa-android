@@ -693,10 +693,10 @@ internal object PublicAgendaAutoSync0300 {
     internal fun toPublicTrip(
         source: BlaBlaCollectorTrip,
         capacity: Int,
-        blablaAvailableSeats: Int? = null,
-        rotaCertaSeatPool: Int? = null,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
+        blablaAvailableSeats: Int? = null,
+        rotaCertaSeatPool: Int? = null,
     ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
         if (departure <= nowMillis) return null
