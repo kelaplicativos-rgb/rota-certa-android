@@ -680,7 +680,7 @@ class TripRemoteApi(
         reason: String = "",
     ): DriverBookingUpsertResponse = request(
         method = "POST",
-        path = "/v1/driver/trips/\${remoteTripId}/bookings/\${bookingId}/decision",
+        path = "/v1/driver/trips/$remoteTripId/bookings/$bookingId/decision",
         body = json.encodeToString(
             DriverBookingDecisionRequest(
                 action = action.trim().uppercase(),

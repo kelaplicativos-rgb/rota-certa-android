@@ -72,6 +72,9 @@ fun TripTimelineScreen(
     onOpenPassengers: () -> Unit,
     onBack: () -> Unit,
     onManageLocal: (String) -> Unit,
+    focusedTripId: String? = null,
+    focusedBookingId: String? = null,
+    reservationPendingOnly: Boolean = false,
 ) {
     val context = LocalContext.current
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
@@ -228,12 +231,33 @@ fun TripTimelineScreen(
     val searchedEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
     }
-    val visibleEntries = if (syncPendingOnly) {
-        searchedEntries.filter { candidate -> pendingSyncEntries.any { it.tripId == candidate.tripId } }
-    } else {
-        searchedEntries
+    val focusedBookingTripId = focusedBookingId
+        ?.let { targetId -> bookings.firstOrNull { it.id == targetId } }
+        ?.tripId
+    val reservationTripIds = bookings
+        .filter { it.status == BookingStatus.REQUESTED }
+        .map(Booking::tripId)
+        .toSet()
+    val reservationFilteredEntries = when {
+        focusedTripId != null || focusedBookingTripId != null -> {
+            val targets = setOfNotNull(focusedTripId, focusedBookingTripId)
+            searchedEntries.filter { candidate ->
+                candidate.tripId in targets || candidate.localTripId in targets
+            }
+        }
+        reservationPendingOnly -> searchedEntries.filter { candidate ->
+            candidate.tripId in reservationTripIds || candidate.localTripId in reservationTripIds
+        }
+        else -> searchedEntries
     }
-    val publicResponseForTimeline = publicSearchResponse.takeIf { !showArchived && !syncPendingOnly }
+    val visibleEntries = if (syncPendingOnly) {
+        reservationFilteredEntries.filter { candidate -> pendingSyncEntries.any { it.tripId == candidate.tripId } }
+    } else {
+        reservationFilteredEntries
+    }
+    val publicResponseForTimeline = publicSearchResponse.takeIf {
+        !showArchived && !syncPendingOnly && !reservationPendingOnly && focusedTripId == null && focusedBookingTripId == null
+    }
     val publicTimelineCards = remember(publicResponseForTimeline, searchQuery) {
         publicResponseForTimeline?.cards.orEmpty()
             .filter { card -> publicSearchCardMatchesTimelineSearch(card, searchQuery) }
@@ -559,6 +583,7 @@ fun TripTimelineScreen(
                     onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
                 }
             },
+            focusedBookingId = focusedBookingId,
         ) {
             archiveStore.setArchived(entry, !archived)
             archiveRevision++
@@ -1006,6 +1031,7 @@ private fun TimelineEntryCard(
     currentCoordinate: Coordinate?,
     onManualSeatSyncRequested: () -> Unit,
     onSyncExactCard: () -> Unit,
+    focusedBookingId: String? = null,
     onArchive: () -> Unit,
 ) {
     val direction = timelineDirectionState(
@@ -1116,6 +1142,7 @@ private fun TimelineEntryCard(
                 onChanged = onChanged,
                 onSyncExactCard = onSyncExactCard,
                 onSyncSeatsOnly = { requestSeatOnlySync(trip, "manual_card_shortcut") },
+                focusedBookingId = focusedBookingId,
                 onAddManualPassenger = {
                     runCatching { prepareTimelineTripForPassenger(entry, store) }
                         .onSuccess { preparation -> directPassengerTrip = preparation.trip }

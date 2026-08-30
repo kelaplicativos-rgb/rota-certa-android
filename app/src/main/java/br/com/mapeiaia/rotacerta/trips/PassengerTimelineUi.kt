@@ -83,6 +83,7 @@ internal fun EnhancedPassengerTimelineSection(
     onSyncExactCard: (() -> Unit)? = null,
     onSyncSeatsOnly: (() -> Unit)? = null,
     onAddManualPassenger: (() -> Unit)? = null,
+    focusedBookingId: String? = null,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -125,6 +126,7 @@ internal fun EnhancedPassengerTimelineSection(
     // "next action" status in the card. The pickup/dropoff emojis are the
     // explicit GPS actions while the place labels keep their existing editor action.
     val rows = passengerTimelineOperationalOrder(rawRows, progress)
+        .sortedBy { row -> if (row.localBookingId == focusedBookingId) 0 else 1 }
 
     var profileRow by remember { mutableStateOf<EnhancedPassengerCardRow?>(null) }
     var blockProfile by remember { mutableStateOf<PassengerProfile?>(null) }
@@ -168,8 +170,16 @@ internal fun EnhancedPassengerTimelineSection(
         var statusMenuOpen by remember(passenger.localBookingId, passenger.externalPassengerId) {
             mutableStateOf(false)
         }
+        var decisionRunning by remember(passenger.localBookingId) { mutableStateOf<String?>(null) }
+        var rejectConfirmOpen by remember(passenger.localBookingId) { mutableStateOf(false) }
+        var rejectReason by remember(passenger.localBookingId) { mutableStateOf("") }
+        val pendingApproval = currentBooking?.status == BookingStatus.REQUESTED &&
+            currentBooking.source == BookingSource.ROTA_CERTA
+        val rejected = currentBooking?.status == BookingStatus.REJECTED
         val completed = completionService.isCompleted(entry, passenger)
         val statusLabel = when {
+            rejected -> "Recusado"
+            pendingApproval -> "Aguardando aprovação"
             completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED -> "Concluído"
             passenger.lastDriverSelection == "PAID" -> "Pago"
             passenger.operationalStatus == PassengerOperationalStatus.AT_LOCATION -> "No local"
@@ -218,6 +228,10 @@ internal fun EnhancedPassengerTimelineSection(
                 return@select
             }
 
+            if (pendingApproval) {
+                onChanged("Use Aprovar ou Recusar para resolver esta solicitação. O seletor operacional não aprova reservas pendentes.")
+                return@select
+            }
             scope.launch {
                 if (selection == "COMPLETED") {
                     val completion = completionService.confirm(entry, passenger)
@@ -442,6 +456,126 @@ internal fun EnhancedPassengerTimelineSection(
                 }
             }
 
+
+            if (pendingApproval) {
+                Text(
+                    "🟠 Aguardando aprovação",
+                    color = Color(0xFFFF9800),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        enabled = decisionRunning == null,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            val selectedTrip = trip
+                            val booking = currentBooking
+                            val remoteTripId = selectedTrip?.remoteId
+                            if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                                onChanged("Não foi possível localizar a viagem/reserva canônica para aprovar.")
+                            } else {
+                                decisionRunning = "APPROVE"
+                                scope.launch {
+                                    val settings = store.onlineSettings()
+                                    runCatching {
+                                        require(settings.configured) { "Integração online não configurada." }
+                                        TripRemoteApi(settings).decideDriverBooking(
+                                            remoteTripId = remoteTripId,
+                                            bookingId = booking.id,
+                                            action = "APPROVE",
+                                        )
+                                    }.onSuccess { response ->
+                                        store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                        BookingRealtimeEvents0356.notifyChanged()
+                                        onSyncSeatsOnly?.invoke()
+                                        onChanged("Reserva aprovada ✅")
+                                    }.onFailure { error ->
+                                        onChanged(
+                                            "Não foi possível aprovar. A solicitação continua aguardando aprovação: " +
+                                                (error.message ?: error.javaClass.simpleName),
+                                        )
+                                    }
+                                    decisionRunning = null
+                                }
+                            }
+                        },
+                    ) { Text(if (decisionRunning == "APPROVE") "Aprovando…" else "Aprovar") }
+                    OutlinedButton(
+                        enabled = decisionRunning == null,
+                        modifier = Modifier.weight(1f),
+                        onClick = { rejectConfirmOpen = true },
+                    ) { Text("Recusar") }
+                }
+            }
+
+            if (rejectConfirmOpen) {
+                AlertDialog(
+                    onDismissRequest = { if (decisionRunning == null) rejectConfirmOpen = false },
+                    title = { Text("Recusar solicitação?") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("A mesma reserva será marcada como Recusada e as vagas deste trecho serão liberadas.")
+                            OutlinedTextField(
+                                value = rejectReason,
+                                onValueChange = { rejectReason = it.take(240) },
+                                label = { Text("Motivo opcional") },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = decisionRunning == null,
+                            onClick = {
+                                val selectedTrip = trip
+                                val booking = currentBooking
+                                val remoteTripId = selectedTrip?.remoteId
+                                if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                                    rejectConfirmOpen = false
+                                    onChanged("Não foi possível localizar a viagem/reserva canônica para recusar.")
+                                } else {
+                                    decisionRunning = "REJECT"
+                                    scope.launch {
+                                        val settings = store.onlineSettings()
+                                        runCatching {
+                                            require(settings.configured) { "Integração online não configurada." }
+                                            TripRemoteApi(settings).decideDriverBooking(
+                                                remoteTripId = remoteTripId,
+                                                bookingId = booking.id,
+                                                action = "REJECT",
+                                                reason = rejectReason,
+                                            )
+                                        }.onSuccess { response ->
+                                            store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                            BookingRealtimeEvents0356.notifyChanged()
+                                            onSyncSeatsOnly?.invoke()
+                                            rejectConfirmOpen = false
+                                            rejectReason = ""
+                                            onChanged("Solicitação recusada")
+                                        }.onFailure { error ->
+                                            onChanged(
+                                                "Não foi possível recusar. A solicitação continua aguardando aprovação: " +
+                                                    (error.message ?: error.javaClass.simpleName),
+                                            )
+                                        }
+                                        decisionRunning = null
+                                    }
+                                }
+                            },
+                        ) { Text(if (decisionRunning == "REJECT") "Recusando…" else "Recusar") }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            enabled = decisionRunning == null,
+                            onClick = { rejectConfirmOpen = false },
+                        ) { Text("Voltar") }
+                    },
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -461,24 +595,47 @@ internal fun EnhancedPassengerTimelineSection(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                Column {
+                if (pendingApproval || rejected || currentBooking?.status == BookingStatus.CANCELLED) {
                     OutlinedButton(
-                        onClick = { statusMenuOpen = true },
+                        onClick = {},
+                        enabled = false,
                         contentPadding = COMPACT_ACTION_PADDING,
                         modifier = Modifier.heightIn(min = 40.dp),
                     ) {
-                        Text(statusLabel + " ▼", maxLines = 1)
+                        Text(statusLabel, maxLines = 1)
                     }
-                    DropdownMenu(
-                        expanded = statusMenuOpen,
-                        onDismissRequest = { statusMenuOpen = false },
-                    ) {
-                        DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
-                        DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
-                        DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
-                        DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
-                        DropdownMenuItem(text = { Text("Concluído") }, onClick = { selectOperationalStatus("COMPLETED") })
-                        DropdownMenuItem(text = { Text("Cancelar") }, onClick = { selectOperationalStatus("CANCELLED") })
+                } else {
+                    Column {
+                        OutlinedButton(
+                            onClick = { statusMenuOpen = true },
+                            contentPadding = COMPACT_ACTION_PADDING,
+                            modifier = Modifier.heightIn(min = 40.dp),
+                        ) {
+                            Text(statusLabel + " ▼", maxLines = 1)
+                        }
+                        DropdownMenu(
+                            expanded = statusMenuOpen,
+                            onDismissRequest = { statusMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
+                            DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
+                            DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
+                            DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
+                            DropdownMenuItem(text = { Text("Concluído") }, onClick = { selectOperationalStatus("COMPLETED") })
+                        }
+                    }
+                    if (!completed && passenger.operationalStatus != PassengerOperationalStatus.CANCELLED) {
+                        TextButton(
+                            onClick = {
+                                if (currentBooking != null ||
+                                    (BookingSource.BLABLACAR in passenger.sources && !passenger.externalReservationKey.isNullOrBlank())
+                                ) {
+                                    cancelManualRow = passenger
+                                } else {
+                                    onChanged("Não foi possível identificar a reserva/ocorrência exata para cancelar com segurança.")
+                                }
+                            },
+                        ) { Text("Cancelar") }
                     }
                 }
             }
