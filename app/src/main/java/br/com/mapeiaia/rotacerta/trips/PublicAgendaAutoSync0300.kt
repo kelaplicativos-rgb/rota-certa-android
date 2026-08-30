@@ -155,7 +155,11 @@ internal object PublicAgendaAutoSync0300 {
                 )
                 return@forEach
             }
-            val publicTrip = original.copy(capacity = physicalCapacity, publicBookingEnabled = true)
+            val publicTrip = original.copy(
+                capacity = physicalCapacity,
+                rotaCertaSeatAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 },
+                publicBookingEnabled = true,
+            )
             val localPublishOperation = AgendaTrace.operationStart(
                 context,
                 "LOCAL_TRIP_PUBLISH",
@@ -233,6 +237,7 @@ internal object PublicAgendaAutoSync0300 {
         // Vehicle capacity is only the physical envelope/fallback. Never invent
         // four seats when neither vehicle settings nor this publication provide evidence.
         val configuredCapacity = configuredVehicleCapacity.takeIf { it in 1..999 }
+        val configuredRotaCertaAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 }
         val connectedAccountsOperation = AgendaTrace.operationStart(
             context,
             "CONNECTED_ACCOUNTS_READ",
