@@ -686,26 +686,23 @@ function normalizedSeatCount(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
-function seatSourceBreakdown(item, availableOverride = null) {
-  const total = normalizedSeatCount(item && item.capacity);
-  const rawBlaBla = item && item.blablaAvailableSeats != null ? Number(item.blablaAvailableSeats) : NaN;
-  const rawRotaCerta = item && item.rotaCertaSeatPool != null ? Number(item.rotaCertaSeatPool) : NaN;
-  if (
-    !Number.isInteger(rawBlaBla) || rawBlaBla < 0 ||
-    !Number.isInteger(rawRotaCerta) || rawRotaCerta < 0 ||
-    rawBlaBla + rawRotaCerta !== total
-  ) {
-    return { blabla: null, rotaCerta: null, total };
+function segmentLoadRange(item, field, fromIndex = 0, toIndex = null) {
+  const stops = orderedStops(item);
+  const end = Number.isInteger(toIndex) ? toIndex : Math.max(0, stops.length - 1);
+  const fallbackLoads = Array.isArray(item && item.segmentLoads) ? item.segmentLoads.map(normalizedSeatCount) : [];
+  let loads = Array.isArray(item && item[field]) ? item[field].map(normalizedSeatCount) : [];
+  if (!loads.length && field === "segmentPassengerLoads") loads = fallbackLoads;
+  if (!loads.length && field === "segmentBlockedLoads") loads = fallbackLoads.map(() => 0);
+  const selected = loads.slice(Math.max(0, fromIndex), Math.max(0, end));
+  if (!selected.length) return { minimum: 0, maximum: 0 };
+  return { minimum: Math.min(...selected), maximum: Math.max(...selected) };
+}
+
+function rangeText(range, singular, plural) {
+  if (range.minimum === range.maximum) {
+    return `${range.maximum} ${range.maximum === 1 ? singular : plural}`;
   }
-  const available = availableOverride == null
-    ? seatRange(item).minimum
-    : normalizedSeatCount(availableOverride);
-  const currentTotal = Math.min(total, available);
-  // Public Rota Certa bookings consume the Rota Certa pool first. Only after
-  // that pool reaches zero can the combined inventory consume BlaBlaCar seats.
-  const blabla = Math.min(rawBlaBla, currentTotal);
-  const rotaCerta = Math.max(0, Math.min(rawRotaCerta, currentTotal - blabla));
-  return { blabla, rotaCerta, total: currentTotal };
+  return `${range.minimum}–${range.maximum} ${plural} por trecho`;
 }
 
 function seatAvailabilityText(available) {
@@ -1470,12 +1467,20 @@ function renderAgendaCards(entries, container, filtered = false) {
       seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
     }
     meta.append(time, seats);
-    const sourceBreakdown = seatSourceBreakdown(item, segmentAvailable);
-    if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
-      const seatSources = document.createElement("span");
-      seatSources.className = "bigPill";
-      seatSources.textContent = `BlaBlaCar ${sourceBreakdown.blabla} • Rota Certa ${sourceBreakdown.rotaCerta}`;
-      meta.appendChild(seatSources);
+    if (item.capacityReliable === true) {
+      const passengerRange = segmentLoadRange(item, "segmentPassengerLoads", fromIndex, toIndex);
+      const passengers = document.createElement("span");
+      passengers.className = "bigPill";
+      passengers.textContent = `👥 Passageiros: ${rangeText(passengerRange, "passageiro", "passageiros")}`;
+      meta.appendChild(passengers);
+
+      const blockedRange = segmentLoadRange(item, "segmentBlockedLoads", fromIndex, toIndex);
+      if (blockedRange.maximum > 0) {
+        const blocked = document.createElement("span");
+        blocked.className = "bigPill";
+        blocked.textContent = `🚫 Vagas bloqueadas: ${rangeText(blockedRange, "vaga", "vagas")}`;
+        meta.appendChild(blocked);
+      }
     }
     const duration = durationFor(item);
     if (duration) {
@@ -1819,13 +1824,19 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  const sourceBreakdown = seatSourceBreakdown(trip, seatRange(trip).minimum);
-  if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
-    addFact("Vagas BlaBlaCar", `${sourceBreakdown.blabla} lugar(es)`);
-    addFact("Vagas Rota Certa", `${sourceBreakdown.rotaCerta} lugar(es)`);
-    addFact("Disponibilidade combinada", `${sourceBreakdown.total} lugar(es)`);
+  addFact("Capacidade de passageiros", `${trip.capacity} lugar(es)`);
+  if (trip.capacityReliable === true) {
+    const passengerRange = segmentLoadRange(trip, "segmentPassengerLoads");
+    const blockedRange = segmentLoadRange(trip, "segmentBlockedLoads");
+    const available = seatRange(trip);
+    addFact("Passageiros", rangeText(passengerRange, "passageiro", "passageiros"));
+    if (blockedRange.maximum > 0) addFact("Vagas bloqueadas", rangeText(blockedRange, "vaga", "vagas"));
+    addFact("Vagas disponíveis", rangeText(available, "vaga", "vagas"));
   } else {
-    addFact("Capacidade", `${trip.capacity} lugar(es)`);
+    addFact("Ocupação", "aguardando sincronização");
+  }
+  if (trip.publishedSeats != null) {
+    addFact("BlaBlaCar", `${normalizedSeatCount(trip.publishedSeats)} lugar(es) publicados — dado do canal`);
   }
   const duration = durationFor(trip);
   if (duration) addFact("Duração prevista", duration);
