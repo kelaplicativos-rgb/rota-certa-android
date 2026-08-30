@@ -286,12 +286,13 @@ fun TripTimelineScreen(
         }) { Text("Voltar") }
     }
 
-    OutlinedButton(
-        onClick = { driverDefaultsExpanded = !driverDefaultsExpanded },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(if (driverDefaultsExpanded) "🚗 Dados do veículo ▲" else "🚗 Dados do veículo ▼")
-    }
+    ResponsiveTripActions(
+        actions = listOf(
+            ResponsiveTripAction(
+                if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo",
+            ) { driverDefaultsExpanded = !driverDefaultsExpanded },
+        ),
+    )
     if (driverDefaultsExpanded) {
         if (settingsLoaded) {
             TripDriverDefaultsCard(
