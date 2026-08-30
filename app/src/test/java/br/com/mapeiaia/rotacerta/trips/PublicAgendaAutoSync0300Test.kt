@@ -53,7 +53,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun blablaFullFlagDoesNotConsumeIndependentRotaCertaAvailabilityPool() {
+    fun blablaBookedEvidenceRemainsOccupancyAndNeverBecomesPhysicalCapacity() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile-barbosa",
             date = "2030-09-11",
@@ -63,11 +63,19 @@ class PublicAgendaAutoSync0300Test {
             availability = "full",
             booked_seats = 7,
         )
-        val trip = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
+        val trip = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            rotaCertaSeatAllocation = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
         assertNotNull(trip)
-        assertEquals(TripStatus.PUBLISHED, trip.trip.status)
-        assertEquals(4, trip.bookedSeats)
-        assertTrue(trip.capacityClaims.isEmpty())
+        assertEquals(4, trip.trip.capacity)
+        assertEquals(4, trip.trip.rotaCertaSeatAllocation)
+        assertEquals(7, trip.bookedSeats)
+        assertEquals(7, trip.capacityClaims.sumOf(Booking::seats))
+        assertTrue(trip.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
     }
 
     @Test
@@ -121,11 +129,16 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(mirror.sourceReference.startsWith("LOCAL_MIRROR:"))
     }
     @Test
-    fun agendaAddsBlaBlaCarAndRotaCertaAvailableSeatPools() {
-        assertEquals(7, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, 4))
-        assertEquals(4, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(null, 4))
-        assertEquals(3, PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(3, null))
-        assertNull(PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(null, null))
+    fun channelAllocationsBuildOperationalTotalWithoutChangingPhysicalCapacity() {
+        val breakdown = tripChannelAllocationBreakdown(
+            physicalPassengerCapacity = 7,
+            blablaPublishedSeats = 3,
+            rotaCertaSeatAllocation = 4,
+        )
+        assertEquals(7, breakdown.physicalPassengerCapacity)
+        assertEquals(3, breakdown.blablaPublishedAllocation)
+        assertEquals(4, breakdown.rotaCertaAllocation)
+        assertEquals(7, breakdown.totalConsidered)
     }
 
     @Test
@@ -154,7 +167,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun threePublishedButThreeOccupiedUsesZeroTimelineFreePlusFourRotaCerta() {
+    fun publicProjectionKeepsPublishedAllocationAndExternalPassengersSeparate() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile",
             date = "2030-09-13",
@@ -164,36 +177,28 @@ class PublicAgendaAutoSync0300Test {
             published_seats = 3,
             booked_seats = 3,
             passengers = listOf(
-                BlaBlaCollectorPassenger(name = "P1", seats = 1),
-                BlaBlaCollectorPassenger(name = "P2", seats = 1),
-                BlaBlaCollectorPassenger(name = "P3", seats = 1),
+                BlaBlaCollectorPassenger(name = "P1", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p1"),
+                BlaBlaCollectorPassenger(name = "P2", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p2"),
+                BlaBlaCollectorPassenger(name = "P3", seats = 1, booking_href = "https://www.blablacar.com.br/rides/offer/trip/passenger/p3"),
             ),
         )
-        val timeline = resolveTimelinePublicCapacity(
-            physicalVehicleCapacity = 4,
-            remotePublishedCapacity = source.published_seats,
-            occupiedSeats = source.booked_seats,
-        )
-        assertEquals(0, timeline.availableSeats)
-        val combined = PublicAgendaAutoSync0300.combinedAgendaAvailableSeats(timeline.availableSeats, 4)
-        assertEquals(4, combined)
         val external = PublicAgendaAutoSync0300.toPublicTrip(
             source = source,
-            capacity = combined!!,
+            capacity = 7,
+            rotaCertaSeatAllocation = 4,
             nowMillis = 0L,
             zoneId = zone,
-            blablaAvailableSeats = timeline.availableSeats,
-            rotaCertaSeatPool = 4,
         )
         assertNotNull(external)
-        assertEquals(4, external.trip.capacity)
+        assertEquals(7, external.trip.capacity)
         assertEquals(3, external.trip.publishedSeats)
-        assertEquals(0, external.trip.blablaAvailableSeats)
-        assertEquals(4, external.trip.rotaCertaSeatPool)
-        assertTrue(external.capacityClaims.isEmpty())
-        val loads = SeatAvailabilityEngine.segmentLoads(external.trip, external.capacityClaims)
-        assertTrue(loads.all { it.occupiedSeats == 0 })
-        assertTrue(loads.all { it.availableSeats == 4 })
+        assertEquals(4, external.trip.rotaCertaSeatAllocation)
+        assertEquals(3, external.capacityClaims.sumOf(Booking::seats))
+        assertTrue(external.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
+        val summary = operationalSeatSummary(external.trip, external.capacityClaims)
+        assertEquals(7, summary.totalConsideredSeats)
+        assertEquals(3, summary.confirmedPassengerSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test
