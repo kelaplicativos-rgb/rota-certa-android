@@ -193,10 +193,10 @@ internal fun OnlineSettingsEditor(
                 .takeIf(DriverIdentityRules::isValidPublicUsername)
                 ?.let { "$base/$it" }
         }
-    Text("Este campo controla o endereço curto depois da barra. O token interno não aparece no link compartilhado.", style = MaterialTheme.typography.bodySmall)
+    Text("Escolha o nome que quiser para o endereço curto e altere quando precisar. Espaços e acentos são convertidos automaticamente para um link simples. O nome precisa estar disponível; somente endereços técnicos do Rota Certa não podem ser usados.", style = MaterialTheme.typography.bodySmall)
     shortLinkPreview?.let { Text("Seu endereço: $it", style = MaterialTheme.typography.bodySmall) }
     if (DriverIdentityRules.isReservedUsername(normalizedLinkUsername)) {
-        Text("Esse identificador é reservado pelo Rota Certa. Escolha outro.", style = MaterialTheme.typography.bodySmall)
+        Text("Esse endereço é usado internamente pelo Rota Certa. Escolha outro.", style = MaterialTheme.typography.bodySmall)
     }
 
     HorizontalDivider()
@@ -333,7 +333,7 @@ internal fun OnlineSettingsEditor(
                 val normalizedUsername = DriverIdentityRules.normalizeUsername(driverUsername.ifBlank { driverName })
                 if (!DriverIdentityRules.isValidPublicUsername(normalizedUsername)) {
                     registrationMessage = if (DriverIdentityRules.isReservedUsername(normalizedUsername)) {
-                        "Esse identificador é reservado pelo Rota Certa. Escolha outro."
+                        "Esse endereço é usado internamente pelo Rota Certa. Escolha outro."
                     } else {
                         "Escolha um nome de usuário com pelo menos 3 caracteres."
                     }
@@ -436,7 +436,7 @@ internal fun OnlineSettingsEditor(
                 when {
                     !DriverIdentityRules.isValidPublicUsername(normalizedUsername) -> {
                         registrationMessage = if (DriverIdentityRules.isReservedUsername(normalizedUsername)) {
-                            "Esse identificador é reservado pelo Rota Certa. Escolha outro."
+                            "Esse endereço é usado internamente pelo Rota Certa. Escolha outro."
                         } else {
                             "Escolha um nome de usuário com pelo menos 3 caracteres."
                         }
