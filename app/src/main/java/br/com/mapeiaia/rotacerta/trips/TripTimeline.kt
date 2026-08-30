@@ -65,18 +65,16 @@ internal data class TimelinePublicCapacityResolution(
     val capacitySource: String,
 )
 
-internal fun timelinePublicCapacityResolution(
-    entry: TripTimelineEntry,
-    occupiedSeats: Int = entry.maximumOccupiedSeats,
+internal fun resolveTimelinePublicCapacity(
+    physicalVehicleCapacity: Int?,
+    remotePublishedCapacity: Int?,
+    occupiedSeats: Int,
+    nonBlaBlaOccupiedSeats: Int = 0,
 ): TimelinePublicCapacityResolution {
-    val physical = entry.capacity.takeIf { it in 1..999 }
-    val remote = entry.blablaPublishedSeats?.takeIf { it in 0..999 }
-    val nonBlaBlaOccupied = entry.sourcePassengerSeats
-        .filterKeys { it != BookingSource.BLABLACAR }
-        .values
-        .sumOf { it.coerceAtLeast(0) }
-
-    val remoteWithLocalClaims = remote?.let { (it + nonBlaBlaOccupied).coerceAtMost(999) }
+    val physical = physicalVehicleCapacity?.takeIf { it in 1..999 }
+    val remote = remotePublishedCapacity?.takeIf { it in 0..999 }
+    val safeNonBlaBlaOccupied = nonBlaBlaOccupiedSeats.coerceAtLeast(0)
+    val remoteWithLocalClaims = remote?.let { (it + safeNonBlaBlaOccupied).coerceAtMost(999) }
     val effective = when {
         remoteWithLocalClaims != null && physical != null -> minOf(remoteWithLocalClaims, physical)
         remoteWithLocalClaims != null -> remoteWithLocalClaims
@@ -90,10 +88,26 @@ internal fun timelinePublicCapacityResolution(
     return TimelinePublicCapacityResolution(
         physicalVehicleCapacity = physical,
         remotePublishedCapacity = remote,
-        nonBlaBlaOccupiedSeats = nonBlaBlaOccupied,
+        nonBlaBlaOccupiedSeats = safeNonBlaBlaOccupied,
         effectiveCapacity = effective,
         availableSeats = effective?.let { (it - occupiedSeats.coerceAtLeast(0)).coerceAtLeast(0) },
         capacitySource = source,
+    )
+}
+
+internal fun timelinePublicCapacityResolution(
+    entry: TripTimelineEntry,
+    occupiedSeats: Int = entry.maximumOccupiedSeats,
+): TimelinePublicCapacityResolution {
+    val nonBlaBlaOccupied = entry.sourcePassengerSeats
+        .filterKeys { it != BookingSource.BLABLACAR }
+        .values
+        .sumOf { it.coerceAtLeast(0) }
+    return resolveTimelinePublicCapacity(
+        physicalVehicleCapacity = entry.capacity,
+        remotePublishedCapacity = entry.blablaPublishedSeats,
+        occupiedSeats = occupiedSeats,
+        nonBlaBlaOccupiedSeats = nonBlaBlaOccupied,
     )
 }
 
