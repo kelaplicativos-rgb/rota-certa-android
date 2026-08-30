@@ -32,6 +32,7 @@ class BlaBlaBrowserOrchestrator0318Test {
         val token = orchestrator.start(BlaBlaBrowserRequest.PASSENGER_CONTACT, base, "contact")
         assertFalse(orchestrator.isCurrent(token, base.copy(navigationGeneration = 4)))
         assertFalse(orchestrator.isCurrent(token, base.copy(passengerKey = "passenger|two")))
+        assertFalse(orchestrator.isCurrent(token, base.copy(expectedProfileUuid = "175a7068-50d8-40c3-a27a-214b9c6e0461")))
         assertTrue(orchestrator.isCurrent(token, base))
     }
 
@@ -45,18 +46,25 @@ class BlaBlaBrowserOrchestrator0318Test {
     }
 
     @Test
-    fun browserCollectorNoLongerEmbedsLargeRequestScriptsInline() {
+    fun browserCollectorsUseTheSingleOrchestratorExecutionAuthority() {
         val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         val publicSearch = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt").readText()
+        val seatController = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaSeatBrowserController.kt").readText()
+        val orchestrator = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator.kt").readText()
         assertFalse(dynamic.contains("private val IDENTITY_JS"))
         assertFalse(dynamic.contains("private val RIDE_LIST_JS"))
         assertFalse(dynamic.contains("private val TRIP_DETAIL_DYNAMIC_JS"))
         assertFalse(dynamic.contains("private val PASSENGER_CONTACT_JS"))
         assertFalse(publicSearch.contains("EXTRACT_PUBLIC_SEARCH_JS"))
-        assertTrue(dynamic.contains("BlaBlaBrowserScriptRegistry"))
-        assertTrue(dynamic.contains("BlaBlaBrowserOrchestrator"))
-        assertTrue(publicSearch.contains("BlaBlaBrowserScriptRegistry"))
-        assertTrue(publicSearch.contains("BlaBlaBrowserOrchestrator"))
+        assertFalse(dynamic.contains("BlaBlaBrowserScriptRegistry"))
+        assertFalse(publicSearch.contains("BlaBlaBrowserScriptRegistry"))
+        assertFalse(seatController.contains("BlaBlaBrowserScriptRegistry"))
+        assertTrue(dynamic.contains("executeCollectionStep"))
+        assertTrue(publicSearch.contains("executeCollectionStep"))
+        assertTrue(seatController.contains("executeCollectionStep"))
+        assertTrue(seatController.contains("executeRemoteWrite"))
+        assertTrue(orchestrator.contains("BlaBlaBrowserScriptRegistry"))
+        assertTrue(orchestrator.contains("webView.evaluateJavascript(script)"))
     }
 
     @Test
