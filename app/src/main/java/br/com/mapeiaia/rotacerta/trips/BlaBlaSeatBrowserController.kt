@@ -24,6 +24,7 @@ internal class BlaBlaSeatBrowserController(
     private val expectedProfileUuid: String,
     private val tripId: String,
 ) {
+    private val androidContext = context.applicationContext
     private val orchestrator = BlaBlaBrowserOrchestrator()
     private var interactionGeneration = 0L
 
@@ -103,7 +104,7 @@ internal class BlaBlaSeatBrowserController(
         val onResult: (T?) -> Unit = { result -> callback(result) }
         if (request.operation == BlaBlaBrowserOperation.REMOTE_WRITE) {
             orchestrator.executeRemoteWrite(
-                androidContext = context,
+                androidContext = androidContext,
                 webView = webView,
                 request = request,
                 executionContext = executionContext,
@@ -115,7 +116,7 @@ internal class BlaBlaSeatBrowserController(
             )
         } else {
             orchestrator.executeCollectionStep(
-                androidContext = context,
+                androidContext = androidContext,
                 webView = webView,
                 request = request,
                 executionContext = executionContext,
