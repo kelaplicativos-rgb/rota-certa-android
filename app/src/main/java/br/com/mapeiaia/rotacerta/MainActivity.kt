@@ -1956,6 +1956,30 @@ private fun DiagnosticExpander(
 }
 
 @Composable
+private fun AboutRotaCertaCard() {
+    val context = LocalContext.current
+    ExpandableCard(title = "Sobre o Rota Certa", initiallyExpanded = false) {
+        Text("Versão: ${AppBuildInfo.versionName}")
+        Text("Build: ${AppBuildInfo.versionCode}")
+        Text("Commit: ${AppBuildInfo.commitShort}")
+        Text("Branch: ${AppBuildInfo.branch}")
+        Text("Build gerada em: ${AppBuildInfo.buildGeneratedAt}")
+        OutlinedButton(
+            onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText("Versão do Rota Certa", AppBuildInfo.copyText()),
+                )
+                Toast.makeText(context, "Informações da versão copiadas.", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Copiar informações da versão")
+        }
+    }
+}
+
+@Composable
 private fun SavedPlacesCard(
     savedPlaces: List<SavedPlace>,
     highlightedSavedPlaceId: String?,
@@ -2289,6 +2313,10 @@ private fun SettingsScreen(
                     hasAlwaysPermission = hasAlwaysLocationPermission(context),
                     onOpenLocationSettings = { openAppLocationSettings(context) },
                 )
+                if (selectedGroup == BUBBLE_GROUP_GENERAL) {
+                    Spacer(Modifier.height(10.dp))
+                    AboutRotaCertaCard()
+                }
             } // legacy_access_groups_to_general_checklist_7
             BUBBLE_GROUP_ALERTS -> SavedPlacesModuleCard(
                 savedPlaces = savedPlaces,
@@ -3009,6 +3037,8 @@ private suspend fun buildManualSupportReport(
     val complementaryEvents = DiagnosticLogStore.dump()
 
     return buildString {
+        appendLine(AppBuildInfo.reportHeader(context))
+        appendLine()
         appendLine(br.com.mapeiaia.rotacerta.trips.AgendaForensicReportBuilder.build(context))
         appendLine()
         appendLine("ROTA CERTA DIAGNOSTICO DE SESSAO")
