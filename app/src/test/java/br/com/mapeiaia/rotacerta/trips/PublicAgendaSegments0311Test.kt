@@ -53,7 +53,7 @@ class PublicAgendaSegments0311Test {
     }
 
     @Test
-    fun fullTripWithoutRosterUsesObservedFullStateWithoutInventingStops() {
+    fun blablaFullFlagWithoutRosterDoesNotInventOccupiedAgendaSeats() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile-test",
             date = "2030-10-05",
@@ -68,7 +68,7 @@ class PublicAgendaSegments0311Test {
         assertNotNull(published)
         assertEquals(2, published.trip.stops.size)
         assertEquals(TripStatus.PUBLISHED, published.trip.status)
-        assertEquals(4, published.bookedSeats)
+        assertEquals(0, published.bookedSeats)
         assertTrue(published.capacityClaims.isEmpty())
     }
 }
