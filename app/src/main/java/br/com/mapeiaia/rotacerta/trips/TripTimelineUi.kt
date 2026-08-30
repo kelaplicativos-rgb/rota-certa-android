@@ -238,13 +238,12 @@ fun TripTimelineScreen(
             .filter { card -> publicSearchCardMatchesTimelineSearch(card, searchQuery) }
             .sortedBy(::publicSearchCardDepartureSortMillis)
     }
-    val operationalTimelineDates = remember(visibleEntries) {
-        agendaCalendarDaysForItems(visibleEntries) { entry ->
-            Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        }.mapTo(linkedSetOf()) { it.date }
-    }
-    val timelineCalendarDays = remember(visibleEntries, publicResponseForTimeline) {
-        combinedTimelineCalendarDays(visibleEntries, publicResponseForTimeline)
+    val timelineCalendarDays = remember(visibleEntries, publicResponseForTimeline, publicTimelineCards) {
+        combinedTimelineCalendarDays(
+            entries = visibleEntries,
+            publicResponse = publicResponseForTimeline,
+            publicCards = publicTimelineCards,
+        )
     }
     val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
@@ -497,22 +496,14 @@ fun TripTimelineScreen(
         return
     }
     if (visibleEntries.isEmpty() && publicTimelineCards.isEmpty() && searchQuery.isNotBlank()) {
-        Text("Nenhum card corresponde à busca; os dias continuam visíveis abaixo.")
+        Text("Nenhum card corresponde à busca.")
     }
 
     timelineCalendarDays.forEach { day ->
         val dayPublicCards = publicTimelineCards.filter { card ->
             runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
         }
-        if (
-            shouldRenderTimelineEmptyDayCard(
-                isOperationalCalendarDate = day.date in operationalTimelineDates,
-                operationalCardCount = day.items.size,
-                publicCardCount = dayPublicCards.size,
-            )
-        ) {
-            AgendaCalendarDayLine(day.date)
-        }
+        AgendaCalendarDayLine(day.date)
         var publicCardIndex = 0
         day.items.forEach { entry ->
             while (
@@ -575,12 +566,6 @@ fun TripTimelineScreen(
     }
 }
 
-internal fun shouldRenderTimelineEmptyDayCard(
-    isOperationalCalendarDate: Boolean,
-    operationalCardCount: Int,
-    publicCardCount: Int,
-): Boolean = isOperationalCalendarDate && operationalCardCount == 0 && publicCardCount == 0
-
 internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
     BlaBlaPublicationSeatSyncVisualState.PENDING,
     BlaBlaPublicationSeatSyncVisualState.SYNCING,
@@ -614,21 +599,14 @@ internal fun publicSearchCardDepartureSortMillis(card: BlaBlaPublicSearchCard): 
 internal fun combinedTimelineCalendarDays(
     entries: List<TripTimelineEntry>,
     publicResponse: BlaBlaPublicSearchResponse?,
+    publicCards: List<BlaBlaPublicSearchCard> = publicResponse?.cards.orEmpty(),
 ): List<AgendaCalendarDay<TripTimelineEntry>> {
     val entriesByDate = entries.groupBy { entry ->
         Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     }
-    val dates = agendaCalendarDaysForItems(entries) { entry ->
-        Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-    }.mapTo(linkedSetOf()) { it.date }
-
-    if (publicResponse != null) {
-        // Public Search may contribute real cards, but its requested day/month must never
-        // manufacture empty visual days. The continuous empty-day ruler belongs only
-        // to the operational Timeline.
-        publicResponse.cards.mapNotNullTo(dates) { card ->
-            runCatching { LocalDate.parse(card.date) }.getOrNull()
-        }
+    val dates = entriesByDate.keys.toCollection(linkedSetOf())
+    publicCards.mapNotNullTo(dates) { card ->
+        runCatching { LocalDate.parse(card.date) }.getOrNull()
     }
     return dates.sorted().map { date -> AgendaCalendarDay(date, entriesByDate[date].orEmpty()) }
 }
