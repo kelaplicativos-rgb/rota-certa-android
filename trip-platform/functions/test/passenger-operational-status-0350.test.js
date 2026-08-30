@@ -27,6 +27,7 @@ test("BookingStatus remains reservation/capacity only and operational/payment st
   assert.match(bookingStatus, /REQUESTED/);
   assert.match(bookingStatus, /HELD/);
   assert.match(bookingStatus, /CONFIRMED/);
+  assert.match(bookingStatus, /REJECTED/);
   assert.match(bookingStatus, /CANCELLED/);
   assert.match(bookingStatus, /EXPIRED/);
   assert.doesNotMatch(bookingStatus, /AT_LOCATION|IN_CAR|PAID|COMPLETED/);
@@ -38,9 +39,11 @@ test("BookingStatus remains reservation/capacity only and operational/payment st
   assert.match(domain, /PAID/);
 });
 
-test("new Rota Certa booking starts operationally pending without changing confirmed capacity claim", () => {
-  assert.match(api, /status: "CONFIRMED",[\s\S]{0,200}operationalStatus: "PENDING"/);
-  assert.match(api, /paymentStatus: "UNPAID"/);
+test("new Rota Certa request is canonical REQUESTED and operationally pending while protecting capacity", () => {
+  const create = block(api, "async function createBooking", "async function cancelPublicBooking");
+  assert.match(create, /status: "REQUESTED",[\s\S]{0,200}operationalStatus: "PENDING"/);
+  assert.match(create, /occupancyGroupId: bookingId/);
+  assert.match(create, /paymentStatus: "UNPAID"/);
 });
 
 test("driver operational endpoint writes the same booking and emits persistent passenger notification", () => {
@@ -64,7 +67,7 @@ test("passenger cannot cancel normally after boarding or completion", () => {
   assert.match(cancel, /operationalStatus === "IN_CAR"/);
   assert.match(cancel, /operationalStatus === "COMPLETED"/);
   assert.match(cancel, /passenger_cancel_locked_after_boarding/);
-  assert.match(web, /!\["IN_CAR", "COMPLETED", "CANCELLED"\]\.includes\(operational\)/);
+  assert.match(web, /!\["IN_CAR", "COMPLETED", "CANCELLED", "REJECTED"\]\.includes\(operational\)/);
   assert.match(web, /A viagem já foi iniciada\. Fale com o motorista/);
 });
 
@@ -81,7 +84,8 @@ test("Timeline exposes one status menu and old standalone completion shortcut is
 });
 
 test("Minhas Viagens renders active/history states, payment in parallel and near-realtime refresh", () => {
-  assert.match(web, /AGUARDANDO CONFIRMAÇÃO/);
+  assert.match(web, /AGUARDANDO APROVAÇÃO DO MOTORISTA/);
+  assert.match(web, /SOLICITAÇÃO NÃO APROVADA/);
   assert.match(web, /RESERVA CONFIRMADA/);
   assert.match(web, /MOTORISTA NO LOCAL/);
   assert.match(web, /VOCÊ ESTÁ EMBARCADO/);
