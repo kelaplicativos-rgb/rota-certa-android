@@ -221,6 +221,40 @@ fun TripTimelineScreen(
             throw error
         }
     }
+    val capacityAuditKey = remember(entries) {
+        entries.joinToString("|") { entry ->
+            listOf(
+                entry.tripId,
+                entry.blablaProfileUuid.orEmpty(),
+                entry.blablaTripId.orEmpty(),
+                entry.capacity.toString(),
+                (entry.blablaPublishedSeats ?: -1).toString(),
+                entry.maximumOccupiedSeats.toString(),
+                entry.sourcePassengerSeats.entries.sortedBy { it.key.name }
+                    .joinToString(",") { item -> item.key.name + ":" + item.value },
+            ).joinToString("~")
+        }
+    }
+    LaunchedEffect(capacityAuditKey) {
+        entries.asSequence()
+            .filter { entry ->
+                !entry.blablaTripId.isNullOrBlank() ||
+                    !entry.blablaTripHref.isNullOrBlank() ||
+                    !entry.blablaProfileUuid.isNullOrBlank()
+            }
+            .forEach { entry ->
+                val resolution = timelinePublicCapacityResolution(entry)
+                val tripKey = seatSyncDiagnosticKey(
+                    entry.blablaProfileUuid.orEmpty() + "|" + (entry.blablaTripId ?: entry.tripId),
+                )
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_CAPACITY_RESOLVED",
+                    context.packageName,
+                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} remotePublishedCapacity=${resolution.remotePublishedCapacity ?: -1} occupiedSeats=${entry.maximumOccupiedSeats} segmentOccupiedSeats=${entry.maximumOccupiedSeats} effectiveCapacity=${resolution.effectiveCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} capacitySource=${resolution.capacitySource} physicalVehicleCapacity=${resolution.physicalVehicleCapacity ?: -1}",
+                )
+            }
+    }
+
     val pendingSyncEntries = entries.filter { entry ->
         val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
         val tripId = entry.blablaTripId?.trim().orEmpty()
@@ -1076,17 +1110,20 @@ private fun TimelineEntryCard(
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
             entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                Text("BlaBlaCar publica: $published vaga(s) • não define a capacidade física", style = MaterialTheme.typography.bodySmall)
+                Text("BlaBlaCar publica: $published vaga(s) • capacidade pública remota desta viagem", style = MaterialTheme.typography.bodySmall)
             }
 
-            val occupied = seatPlan?.loads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
+            val publicCapacity = timelinePublicCapacityResolution(entry)
+            val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
+            val occupied = publicLoads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
+            val effectiveCapacity = publicCapacity.effectiveCapacity ?: entry.capacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val free = (entry.capacity - occupied).coerceAtLeast(0)
-                    Text("$occupied/${entry.capacity} ocupadas • $free livre(s) ${statusMark(entry)}")
+                    val free = (effectiveCapacity - occupied).coerceAtLeast(0)
+                    Text("$occupied/$effectiveCapacity ocupadas • $free livre(s) ${statusMark(entry)}")
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
-                    Text("Capacidade: ${entry.capacity} • reservas aguardando leitura ⏳")
+                    Text("Capacidade pública: $effectiveCapacity • reservas aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED ->
                     Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
                 TimelineOccupancyReadState.COMPLETE_EMPTY ->
@@ -1096,7 +1133,8 @@ private fun TimelineEntryCard(
             }
 
             TextButton(onClick = { showSeatDetails = true }) {
-                Text(if (seatPlan != null) "💺 ${seatPlan.desiredPublishedSeats}" else "💺 ⏳")
+                val publicMinimum = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+                Text(if (publicMinimum != null) "💺 $publicMinimum" else "💺 ⏳")
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
@@ -1174,13 +1212,14 @@ private fun TimelineEntryCard(
                     if (seatPlan == null) {
                         Text("Leitura por trecho pendente. O Rota Certa não vai inventar disponibilidade enquanto os passageiros externos não estiverem completos.")
                     } else {
-                        seatPlan.loads.forEach { load ->
+                        val publicLoads = timelinePublicSegmentLoads(entry, seatPlan.loads)
+                        publicLoads.forEach { load ->
                             Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
                         }
                         entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
                             Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("💺 ${seatPlan.desiredPublishedSeats} = menor disponibilidade física relevante", style = MaterialTheme.typography.bodySmall)
+                        Text("💺 ${publicLoads.minOf(SegmentLoad::availableSeats)} = menor disponibilidade pública relevante", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

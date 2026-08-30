@@ -1,0 +1,132 @@
+name: Rota Certa 0.1.366 BlaBlaCar published capacity
+
+on:
+  push:
+    branches:
+      - agent/blablacar-published-capacity-0.1.366
+  pull_request:
+    branches:
+      - agent/agenda-vehicle-centralized-0.1.365
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-blablacar-published-capacity-0366
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove source, capacity contract and FAROL isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=a8ffae3569336ebbd85900d73e4c56667e836720
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'versionCode = 5659' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.366"' app/build.gradle.kts
+          grep -Fq 'timelinePublicCapacityResolution' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'blablacar_remote_published' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'published_seats = current.published_seats ?: previous?.published_seats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
+          grep -Fq 'CAPACITY_PUBLIC_SOURCE_RESOLVED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CAPACITY_PUBLIC_SYNC_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          ! grep -Fq 'configuredVehicleCapacity.takeIf { it in 1..999 } ?: 4' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.sha256
+
+      - name: Public capacity backend regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
+      - name: Configure Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cmp -s /tmp/farol.sha256 <(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5659'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.366'" /tmp/aapt.txt
+
+          mkdir -p /tmp/0366
+          cp "$APK" /tmp/0366/rota-certa-0.1.366-capacidade-publicada-blablacar.apk
+          sha256sum /tmp/0366/rota-certa-0.1.366-capacidade-publicada-blablacar.apk | tee /tmp/0366/apk.sha256
+          cp /tmp/aapt.txt /tmp/0366/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0366/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0366/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0366/changed-files.txt
+          git rev-parse HEAD > /tmp/0366/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0366/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0366/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0366/dex-strings.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.366-capacidade-publicada-blablacar
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0366
