@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.363 BlaBla public share capture
+name: Rota Certa 0.1.364 BlaBla exact public link
 
 on:
   pull_request:
@@ -40,8 +40,8 @@ jobs:
           BASE=41c846b53fb474c1ac72764efae206477b6c889a
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5656' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.363"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5657' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.364"' app/build.gradle.kts
           grep -Fq 'class="searchShell cleanSearch hidden"' trip-platform/public/index.html
           grep -Fq '<h1 class="pageTitle">Escolha sua viagem</h1>' trip-platform/public/index.html
           grep -Fq 'Reservar pelo WhatsApp' trip-platform/public/index.html
@@ -63,7 +63,12 @@ jobs:
           grep -Fq 'TRIP_PUBLIC_SHARE("trip_public_share.js")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserRequest.kt
           grep -Fq 'Phase.PUBLIC_SHARE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'PUBLIC_TRIP_LINK_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_TRIP_SHARE_FALLBACK_REQUIRED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'beginExactPublicTripSearch' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'Phase.PUBLIC_SEARCH_LINK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'exactPublicTripHrefForTrip' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicTripShare0363Test.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicTripLink0364Test.kt
           test -f trip-platform/functions/test/public-simple-reservation-0361.test.js
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
@@ -147,27 +152,27 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5656'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.363'" /tmp/aapt.txt
-          mkdir -p /tmp/0363
-          cp "$APK" /tmp/0363/rota-certa-0.1.363-captura-link-publico-card.apk
-          sha256sum /tmp/0363/rota-certa-0.1.363-captura-link-publico-card.apk | tee /tmp/0363/apk.sha256
-          cp /tmp/aapt.txt /tmp/0363/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0363/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0363/gradle.txt
-          git rev-parse HEAD > /tmp/0363/source-head.txt
-          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0363/changed-files.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0363/dex-strings.txt
+          grep -Fq "versionCode='5657'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.364'" /tmp/aapt.txt
+          mkdir -p /tmp/0364
+          cp "$APK" /tmp/0364/rota-certa-0.1.364-link-publico-exato-card.apk
+          sha256sum /tmp/0364/rota-certa-0.1.364-link-publico-exato-card.apk | tee /tmp/0364/apk.sha256
+          cp /tmp/aapt.txt /tmp/0364/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0364/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0364/gradle.txt
+          git rev-parse HEAD > /tmp/0364/source-head.txt
+          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0364/changed-files.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0364/dex-strings.txt
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          grep -Fq "$SOURCE_SHA" /tmp/0363/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0363/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0364/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0364/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.363-captura-link-publico-card
+          name: rota-certa-0.1.364-link-publico-exato-card
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0363
+          path: /tmp/0364
 
       - name: Install Agenda backend dependencies
         shell: bash
