@@ -254,8 +254,8 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
-    fun automaticPublishedSeatLookupRemainsOutsideNormalSync() {
-        assertFalse(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
+    fun automaticPublishedSeatLookupRunsInsideNormalReadOnlySync() {
+        assertTrue(BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP)
     }
 
     @Test
