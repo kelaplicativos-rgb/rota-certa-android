@@ -661,6 +661,14 @@ function normalizeDriverTrip(raw, previous = null) {
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
     ? rawPublishedSeats
     : null;
+  const rawBlaBlaAvailableSeats = raw.blablaAvailableSeats == null ? null : Number(raw.blablaAvailableSeats);
+  const blablaAvailableSeats = Number.isInteger(rawBlaBlaAvailableSeats) && rawBlaBlaAvailableSeats >= 0 && rawBlaBlaAvailableSeats <= capacity
+    ? rawBlaBlaAvailableSeats
+    : null;
+  const rawRotaCertaSeatPool = raw.rotaCertaSeatPool == null ? null : Number(raw.rotaCertaSeatPool);
+  const rotaCertaSeatPool = Number.isInteger(rawRotaCertaSeatPool) && rawRotaCertaSeatPool >= 0 && rawRotaCertaSeatPool <= capacity
+    ? rawRotaCertaSeatPool
+    : null;
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
   const blablaTripId = cleanText(raw.blablaTripId, 160);
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
@@ -679,6 +687,8 @@ function normalizeDriverTrip(raw, previous = null) {
     publicBookingEnabled: raw.publicBookingEnabled === true,
     itineraryAuthoritative: raw.itineraryAuthoritative !== false,
     publishedSeats,
+    blablaAvailableSeats,
+    rotaCertaSeatPool,
     capacityReliable: raw.capacityReliable !== false,
     notes: cleanText(raw.notes, 1200),
   };
@@ -726,6 +736,8 @@ function safePublicTrip(token, data) {
     publicBookingEnabled: data.publicBookingEnabled === true,
     itineraryAuthoritative,
     publishedSeats: data.publishedSeats == null ? null : (Number.isInteger(Number(data.publishedSeats)) ? Number(data.publishedSeats) : null),
+    blablaAvailableSeats: data.blablaAvailableSeats == null ? null : (Number.isInteger(Number(data.blablaAvailableSeats)) ? Number(data.blablaAvailableSeats) : null),
+    rotaCertaSeatPool: data.rotaCertaSeatPool == null ? null : (Number.isInteger(Number(data.rotaCertaSeatPool)) ? Number(data.rotaCertaSeatPool) : null),
     capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
