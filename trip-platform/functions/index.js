@@ -603,6 +603,10 @@ function normalizeDriverTrip(raw, previous = null) {
       throw new Error("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.");
     }
   }
+  const rawPublishedSeats = raw.publishedSeats == null ? null : Number(raw.publishedSeats);
+  const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
+    ? rawPublishedSeats
+    : null;
   return {
     localTripId: cleanText(raw.id, 100),
     title: cleanText(raw.title, 220),
@@ -611,8 +615,27 @@ function normalizeDriverTrip(raw, previous = null) {
     status,
     stops,
     publicBookingEnabled: raw.publicBookingEnabled === true,
+    itineraryAuthoritative: raw.itineraryAuthoritative !== false,
+    publishedSeats,
+    capacityReliable: raw.capacityReliable !== false,
     notes: cleanText(raw.notes, 1200),
   };
+}
+
+function isExternalBlaBlaTrip(token, data) {
+  return cleanText(data && data.localTripId, 120).startsWith("public:bb") || String(token || "").startsWith("bb");
+}
+
+function capacityIsReliable(token, data) {
+  if (data && data.capacityReliable === true) return true;
+  if (data && data.capacityReliable === false) return false;
+  return !isExternalBlaBlaTrip(token, data);
+}
+
+function itineraryIsAuthoritative(token, data) {
+  if (data && data.itineraryAuthoritative === true) return true;
+  if (data && data.itineraryAuthoritative === false) return false;
+  return !isExternalBlaBlaTrip(token, data);
 }
 
 function safePublicTrip(token, data) {
@@ -623,6 +646,8 @@ function safePublicTrip(token, data) {
     : [];
   const availability = capacityAvailabilityRange({ capacity }, segmentLoads);
   const fullyOccupied = data.status === "FULL" || (segmentLoads.length === expectedSegments && expectedSegments > 0 && segmentLoads.every((load) => load >= capacity));
+  const capacityReliable = capacityIsReliable(token, data);
+  const itineraryAuthoritative = itineraryIsAuthoritative(token, data);
   return {
     tripId: token,
     publicToken: token,
@@ -635,8 +660,11 @@ function safePublicTrip(token, data) {
     availableSeatsMinimum: fullyOccupied ? 0 : availability.minimum,
     availableSeatsMaximum: fullyOccupied ? 0 : availability.maximum,
     isFull: fullyOccupied,
-    canReserve: data.publicBookingEnabled === true && !fullyOccupied && availability.maximum > 0,
+    canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability.minimum > 0,
     publicBookingEnabled: data.publicBookingEnabled === true,
+    itineraryAuthoritative,
+    publishedSeats: data.publishedSeats == null ? null : (Number.isInteger(Number(data.publishedSeats)) ? Number(data.publishedSeats) : null),
+    capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
     driverUsername: data.driverUsername || "",
@@ -2970,7 +2998,14 @@ async function createBooking(req, res, token) {
         tx.get(ledgerRef),
       ]);
       const existing = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      if (!capacityIsReliable(token, trip)) {
+        throw Object.assign(new Error("A capacidade desta viagem ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
+      }
       const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const lastStopIndex = Math.max(0, (trip.stops || []).length - 1);
+      if (!itineraryIsAuthoritative(token, trip) && !(fromIndex === 0 && toIndex === lastStopIndex)) {
+        throw Object.assign(new Error("Esse trecho intermediário ainda não foi confirmado pela fonte da viagem."), { httpStatus: 409, code: "itinerary_unconfirmed" });
+      }
       const currentLoads = reconciledSegmentLoads(trip, existing);
       const available = availableForSegmentRange(trip, currentLoads, fromIndex, toIndex);
       if (seats > available) {
@@ -3112,6 +3147,18 @@ async function createBooking(req, res, token) {
       replayed: result.replayed,
     });
   } catch (error) {
+    if (["insufficient_seats", "capacity_unconfirmed"].includes(error.code)) {
+      await appendPublicDebugEvent({
+        driverUsername: debugDriverUsername,
+        event: "PUBLIC_BOOKING_BLOCKED_NO_CAPACITY",
+        source: "server",
+        tripToken: token,
+        screen: "trip",
+        reason: error.code,
+        statusCode: error.httpStatus || 409,
+        seats,
+      }).catch(() => {});
+    }
     await appendPublicDebugEvent({
       driverUsername: debugDriverUsername,
       event: "PUBLIC_RESERVATION_FAILED",

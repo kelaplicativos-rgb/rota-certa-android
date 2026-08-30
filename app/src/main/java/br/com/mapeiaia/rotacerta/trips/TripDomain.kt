@@ -81,6 +81,12 @@ data class Trip(
     val publicUrl: String? = null,
     /** Public passenger portal is opt-in. A synchronized BlaBlaCar card is never exposed automatically. */
     val publicBookingEnabled: Boolean = false,
+    /** True only when intermediate stops are complete/authoritative for this published trip. */
+    val itineraryAuthoritative: Boolean = true,
+    /** BlaBlaCar seat-editor observation. Null for trips without an external publication. */
+    val publishedSeats: Int? = null,
+    /** External trips stay fail-closed until published seats and capacity claims are reconciled. */
+    val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 )

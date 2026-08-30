@@ -208,6 +208,7 @@ private data class DynamicTripDetail(
     val rosterTerminalEvidence: Boolean = false,
     val editHref: String = "",
     val itineraryStops: List<String> = emptyList(),
+    val itineraryAuthoritative: Boolean = false,
     val views: Int? = null,
     val domHtml: String = "",
 )
@@ -1037,6 +1038,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     } else {
                         result.itineraryStops
                     },
+                    itineraryAuthoritative = resolution.itineraryAuthoritative,
                 )
             } ?: result).let { source ->
                 source.copy(
@@ -1796,6 +1798,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 .map(String::trim)
                 .filter(String::isNotBlank)
                 .distinct(),
+            itinerary_authoritative = result.itineraryAuthoritative,
             published_seats = pendingPublishedSeats,
         )
         collected += trip

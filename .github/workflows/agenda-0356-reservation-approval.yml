@@ -52,6 +52,7 @@ jobs:
           grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' trip-platform/public/app.js
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/ReservationApproval0356Test.kt
           test -f trip-platform/functions/test/reservation-approval-0356.test.js
+          test -f trip-platform/functions/test/public-search-capacity-0356.test.js
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
@@ -63,6 +64,7 @@ jobs:
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/app.js
           node --test trip-platform/functions/test/reservation-approval-0356.test.js
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
 
       - name: Configure Firebase authentication
         shell: bash
