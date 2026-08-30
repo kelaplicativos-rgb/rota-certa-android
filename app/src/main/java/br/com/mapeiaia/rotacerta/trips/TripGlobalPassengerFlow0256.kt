@@ -511,7 +511,7 @@ internal fun GlobalPassengerFlowPanel(
                     selectedPassenger == null -> {
                         Text("1. Selecionar passageiro", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "Escolha uma pessoa já cadastrada. Nome e WhatsApp continuam editáveis; passengerId permanece a identidade.",
+                            "Escolha uma pessoa já cadastrada. O passengerId permanece a identidade; nome e WhatsApp não criam uma identidade nova.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         OutlinedTextField(
@@ -574,7 +574,14 @@ internal fun GlobalPassengerFlowPanel(
                             Button(
                                 enabled = newName.isNotBlank() && passengerContactKey(newWhatsapp).isNotBlank(),
                                 onClick = {
-                                    val exact = passengerStore.exactContactMatches(newWhatsapp)
+                                    val contactKey = passengerContactKey(newWhatsapp)
+                                    val exact = (
+                                        passengerStore.exactContactMatches(newWhatsapp) +
+                                            passengerStore.profiles().filter { profile ->
+                                                passengerContactKey(profile.agendaAccessContact()) == contactKey
+                                            }
+                                        )
+                                        .distinctBy(PassengerProfile::id)
                                     when {
                                         exact.size > 1 -> {
                                             error = "Há mais de um cadastro com esse WhatsApp. Selecione a pessoa existente; nenhum passengerId será duplicado."
@@ -587,7 +594,15 @@ internal fun GlobalPassengerFlowPanel(
                                             onChanged("Passageiro existente reconhecido e selecionado sem duplicar a identidade.")
                                         }
                                         else -> {
-                                            runCatching { passengerStore.createProfile(newName, newWhatsapp) }
+                                            runCatching {
+                                                passengerStore.saveProfile(
+                                                    PassengerProfile(
+                                                        displayName = newName.trim(),
+                                                        whatsapp = newWhatsapp.trim(),
+                                                        agendaAccessWhatsapp = newWhatsapp.trim(),
+                                                    ),
+                                                )
+                                            }
                                                 .onSuccess { created ->
                                                     selectedPassenger = created
                                                     registeringNew = false
@@ -619,6 +634,11 @@ internal fun GlobalPassengerFlowPanel(
                             entries.sortedBy(TripTimelineEntry::departureAtMillis).forEach { entry ->
                                 val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
                                 val source = if (timelineStrongExternalTripKey(entry) != null) "BlaBlaCar" else "Particular"
+                                val vacancies = if (entry.minimumAvailableSeats == entry.maximumAvailableSeats) {
+                                    "Vagas disponíveis: ${entry.minimumAvailableSeats}"
+                                } else {
+                                    "Vagas disponíveis: ${entry.minimumAvailableSeats}–${entry.maximumAvailableSeats} por trecho"
+                                }
                                 OutlinedButton(
                                     onClick = {
                                         error = null
@@ -638,7 +658,7 @@ internal fun GlobalPassengerFlowPanel(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text("${entry.profileLabel} • $date\n${entry.origin} → ${entry.destination}\n$source")
+                                    Text("${entry.profileLabel} • $date\n${entry.origin} → ${entry.destination}\n$source • $vacancies")
                                 }
                             }
                         }
