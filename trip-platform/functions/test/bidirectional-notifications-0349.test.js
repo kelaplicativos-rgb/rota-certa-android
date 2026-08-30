@@ -81,7 +81,7 @@ test("passenger Minhas Viagens exposes bell badge persistent list and polling", 
   assert.match(html, /id="portalMarkAllNotificationsRead"/);
   assert.match(web, /loadPassengerNotifications/);
   assert.match(web, /markAllPassengerNotificationsRead/);
-  assert.match(web, /15_000/);
+  assert.match(web, /2_500/);
   assert.match(web, /passengerNotificationTarget/);
 });
 

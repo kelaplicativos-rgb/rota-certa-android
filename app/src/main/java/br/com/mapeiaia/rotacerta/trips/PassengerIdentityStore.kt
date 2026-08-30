@@ -54,6 +54,13 @@ data class ExternalPassengerMetadata(
     val externalPassengerId: String = "",
     val externalTripId: String = "",
     val externalProfileUuid: String = "",
+    /**
+     * Operational authority only for an exact external reservation that has no local Booking.
+     * This metadata never contributes a capacity claim; a linked local Booking always wins.
+     */
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -533,14 +540,16 @@ class PassengerIdentityStore(context: Context) {
 
     fun saveExternalMetadata(metadata: ExternalPassengerMetadata): ExternalPassengerMetadata {
         require(metadata.reservationKey.isNotBlank()) { "Referência externa inválida." }
+        val existing = externalMetadata(metadata.reservationKey)
         val latitude = validLatitude(metadata.boardingLatitude)
         val longitude = validLongitude(metadata.boardingLongitude)
         val hasCoordinatePair = latitude != null && longitude != null
-        val normalized = metadata.copy(
+        val requested = metadata.copy(
             passengerId = metadata.passengerId.trim(),
             externalPassengerId = stableExternalPassengerId(metadata.externalPassengerId).orEmpty(),
             externalTripId = stableExternalPassengerId(metadata.externalTripId).orEmpty(),
             externalProfileUuid = metadata.externalProfileUuid.trim().lowercase().take(80),
+            lastDriverSelection = metadata.lastDriverSelection.trim().uppercase().take(32),
             fareCurrencyCode = metadata.fareCurrencyCode.trim().uppercase().take(3),
             boardingAddress = metadata.boardingAddress.trim().take(500),
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
@@ -552,10 +561,31 @@ class PassengerIdentityStore(context: Context) {
             boardingLocationCollectedAtMillis = metadata.boardingLocationCollectedAtMillis.takeIf { hasCoordinatePair },
             updatedAtMillis = System.currentTimeMillis(),
         )
+        val normalized = when {
+            existing?.operationalStatus == PassengerOperationalStatus.CANCELLED &&
+                existing.lastDriverSelection == "CANCELLED" -> requested.copy(
+                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                    lastDriverSelection = "CANCELLED",
+                )
+            requested.operationalStatus == PassengerOperationalStatus.CANCELLED -> requested.copy(
+                lastDriverSelection = "CANCELLED",
+            )
+            else -> requested
+        }
         val current = externalMetadata().filterNot { it.reservationKey == normalized.reservationKey }
         saveExternalMetadataList(listOf(normalized) + current)
         return normalized
     }
+
+    fun internallyCancelledExternalReservationKeys(): Set<String> = externalMetadata()
+        .asSequence()
+        .filter {
+            it.operationalStatus == PassengerOperationalStatus.CANCELLED &&
+                it.lastDriverSelection == "CANCELLED"
+        }
+        .map(ExternalPassengerMetadata::reservationKey)
+        .filter(String::isNotBlank)
+        .toSet()
 
     private fun saveExternalMetadataList(value: List<ExternalPassengerMetadata>) {
         prefs.edit().putString(externalMetadataKey, json.encodeToString(value)).apply()
@@ -658,8 +688,40 @@ internal fun mergePassengerOccurrenceStatus(
 ): PassengerOccurrenceStatus = when {
     existing == PassengerOccurrenceStatus.COMPLETED -> PassengerOccurrenceStatus.COMPLETED
     incoming == PassengerOccurrenceStatus.COMPLETED -> PassengerOccurrenceStatus.COMPLETED
+    existing == PassengerOccurrenceStatus.CANCELLED -> PassengerOccurrenceStatus.CANCELLED
     existing != null && incoming in setOf(PassengerOccurrenceStatus.OBSERVED, PassengerOccurrenceStatus.CAPTURED) -> existing
     else -> incoming
+}
+
+internal fun applyInternalCancellationTombstones(
+    response: BlaBlaCollectorMonthResponse?,
+    cancelledReservationKeys: Set<String>,
+): BlaBlaCollectorMonthResponse? {
+    if (response == null || cancelledReservationKeys.isEmpty()) return response
+    return response.copy(
+        trips = response.trips.map { trip ->
+            val cancelled = trip.passengers.filter { passenger ->
+                externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href) in cancelledReservationKeys
+            }
+            if (cancelled.isEmpty()) {
+                trip
+            } else {
+                val cancelledSeats = cancelled.sumOf { it.seats.coerceAtLeast(1) }
+                val remainingPassengers = trip.passengers.filterNot { passenger ->
+                    externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href) in cancelledReservationKeys
+                }
+                val remainingPassengerSeats = remainingPassengers.sumOf { it.seats.coerceAtLeast(1) }
+                val adjustedBookedSeats = (trip.booked_seats - cancelledSeats)
+                    .coerceAtLeast(remainingPassengerSeats)
+                    .coerceAtLeast(0)
+                trip.copy(
+                    passengers = remainingPassengers,
+                    booked_seats = adjustedBookedSeats,
+                    availability = if (trip.availability.equals("full", ignoreCase = true)) "internal_cancelled" else trip.availability,
+                )
+            }
+        },
+    )
 }
 
 internal fun searchCanonicalPassengers(

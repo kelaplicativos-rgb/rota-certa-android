@@ -105,6 +105,9 @@ data class RemoteBooking(
     val dropoffStopId: String,
     val seats: Int = 1,
     val status: String = "CONFIRMED",
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
     val source: BookingSource = BookingSource.OTHER,
@@ -285,6 +288,9 @@ data class DriverBookingUpsertRequest(
     val dropoffStopId: String,
     val seats: Int = 1,
     val status: String = BookingStatus.CONFIRMED.name,
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val holdExpiresAtMillis: Long? = null,
     val source: BookingSource = BookingSource.OTHER,
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
@@ -298,6 +304,13 @@ data class DriverBookingUpsertResponse(
     val segmentLoads: List<Int> = emptyList(),
     val availableSeatsMinimum: Int = 0,
     val availableSeatsMaximum: Int = 0,
+    val changed: Boolean = false,
+    val passengerNotified: Boolean = false,
+)
+
+@Serializable
+data class DriverOperationalStatusRequest(
+    val selection: String,
 )
 
 class TripRemoteApi(
@@ -554,6 +567,9 @@ class TripRemoteApi(
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,
                 status = booking.status.name,
+                operationalStatus = booking.operationalStatus,
+                paymentStatus = booking.paymentStatus,
+                lastDriverSelection = booking.lastDriverSelection,
                 holdExpiresAtMillis = booking.holdExpiresAtMillis,
                 source = booking.source,
                 capacityClaimType = booking.capacityClaimType,
@@ -578,6 +594,9 @@ class TripRemoteApi(
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,
                 status = booking.status.name,
+                operationalStatus = booking.operationalStatus,
+                paymentStatus = booking.paymentStatus,
+                lastDriverSelection = booking.lastDriverSelection,
                 holdExpiresAtMillis = booking.holdExpiresAtMillis,
                 source = booking.source,
                 capacityClaimType = booking.capacityClaimType,
@@ -595,6 +614,17 @@ class TripRemoteApi(
         method = "POST",
         path = "/v1/driver/trips/$remoteTripId/bookings/$bookingId/admin/cancel",
         body = "{}",
+        requireDriverToken = true,
+    )
+
+    suspend fun updateDriverPassengerOperationalStatus(
+        remoteTripId: String,
+        bookingId: String,
+        selection: String,
+    ): DriverBookingUpsertResponse = request(
+        method = "POST",
+        path = "/v1/driver/trips/$remoteTripId/bookings/$bookingId/operational",
+        body = json.encodeToString(DriverOperationalStatusRequest(selection.trim().uppercase())),
         requireDriverToken = true,
     )
 
@@ -650,7 +680,7 @@ class TripRemoteApi(
 }
 
 /**
- * Server contract does not yet carry passengerId/fare/exact-address fields.
+ * Server contract carries operational/payment state; passengerId/fare/exact-address remain local-preserved metadata.
  * Preserve those local-only values when a remote refresh updates the same Booking.
  */
 fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = null): Booking = Booking(
@@ -662,6 +692,9 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     dropoffStopId = dropoffStopId,
     seats = seats,
     status = runCatching { BookingStatus.valueOf(status) }.getOrDefault(BookingStatus.CONFIRMED),
+    operationalStatus = operationalStatus,
+    paymentStatus = paymentStatus,
+    lastDriverSelection = lastDriverSelection,
     holdExpiresAtMillis = holdExpiresAtMillis,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,

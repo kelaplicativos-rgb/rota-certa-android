@@ -237,10 +237,16 @@ internal object PublicAgendaAutoSync0300 {
             result = "read",
             processedCount = connectedAccounts.size,
         )
+        val internallyCancelledExternalReservationKeys =
+            PassengerIdentityStore(context).internallyCancelledExternalReservationKeys()
+        val allConnectedResponseForInternalAgenda = applyInternalCancellationTombstones(
+            allConnectedResponse,
+            internallyCancelledExternalReservationKeys,
+        )
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_ALL_CONNECTED_ACCOUNTS",
             context.packageName,
-            "accounts=${connectedAccounts.size} trips=${allConnectedResponse?.trips?.size ?: 0} selectionFilter=false",
+            "accounts=${connectedAccounts.size} trips=${allConnectedResponse?.trips?.size ?: 0} selectionFilter=false internalCancellationTombstones=${internallyCancelledExternalReservationKeys.size}",
         )
         val externalDiscoveryOperation = AgendaTrace.operationStart(
             context,
@@ -249,7 +255,7 @@ internal object PublicAgendaAutoSync0300 {
             traceId,
             syncOperation.operationId,
         )
-        val externalTrips = allConnectedResponse
+        val externalTrips = allConnectedResponseForInternalAgenda
             ?.trips
             .orEmpty()
             .asSequence()

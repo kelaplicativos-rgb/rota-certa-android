@@ -38,13 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
 import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.security.MessageDigest
 import java.text.Normalizer
 import kotlinx.coroutines.launch
 
@@ -61,6 +60,9 @@ internal data class EnhancedPassengerCardRow(
     val externalBookingHref: String? = null,
     val externalProfileUuid: String? = null,
     val bookingStatus: BookingStatus? = null,
+    val operationalStatus: PassengerOperationalStatus = PassengerOperationalStatus.CONFIRMED,
+    val paymentStatus: PassengerPaymentStatus = PassengerPaymentStatus.UNPAID,
+    val lastDriverSelection: String = "",
     val fareMinorUnits: Long? = null,
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
@@ -158,9 +160,215 @@ internal fun EnhancedPassengerTimelineSection(
         if (index > 0) HorizontalDivider()
         val rowProfile = passenger.passengerId?.let(passengerStore::profile)
             ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
+        val currentBooking = trip?.let { currentTrip ->
+            passenger.localBookingId?.let { bookingId ->
+                store.bookingsFor(currentTrip.id).firstOrNull { it.id == bookingId }
+            }
+        }
+        var statusMenuOpen by remember(passenger.localBookingId, passenger.externalPassengerId) {
+            mutableStateOf(false)
+        }
+        val completed = completionService.isCompleted(entry, passenger)
+        val statusLabel = when {
+            completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED -> "Concluído"
+            passenger.lastDriverSelection == "PAID" -> "Pago"
+            passenger.operationalStatus == PassengerOperationalStatus.AT_LOCATION -> "No local"
+            passenger.operationalStatus == PassengerOperationalStatus.IN_CAR -> "No carro"
+            passenger.operationalStatus == PassengerOperationalStatus.CANCELLED -> "Cancelado"
+            passenger.operationalStatus == PassengerOperationalStatus.PENDING -> "Aguardando"
+            else -> "Confirmado"
+        }
+        val selectOperationalStatus: (String) -> Unit = select@{ selection ->
+            statusMenuOpen = false
+            val occurrenceCompleted =
+                completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED
+            if (occurrenceCompleted && selection !in setOf("COMPLETED", "PAID")) {
+                onChanged("Esta ocorrência já foi concluída. A conclusão é permanente; apenas o pagamento ainda pode ser confirmado.")
+                return@select
+            }
+            if (passenger.operationalStatus == PassengerOperationalStatus.CANCELLED && selection != "CANCELLED") {
+                onChanged("Esta reserva já foi cancelada. Uma nova participação precisa nascer como nova reserva/ocorrência.")
+                return@select
+            }
+            if (selection == "CANCELLED") {
+                val trace = passengerCancellationDebugContext(entry, passenger, currentBooking)
+                val inCarBefore = passenger.operationalStatus == PassengerOperationalStatus.IN_CAR
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_CHANGE_REQUESTED",
+                    context.packageName,
+                    "$trace requested=CANCELLED",
+                )
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_PREVIOUS",
+                    context.packageName,
+                    "$trace bookingStatus=${passenger.bookingStatus?.name ?: "EXTERNAL_ONLY"} operationalStatus=${passenger.operationalStatus.name} inCar=$inCarBefore seats=${passenger.seats}",
+                )
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_CANCEL_SELECTED",
+                    context.packageName,
+                    "$trace source=TIMELINE internalOnly=true",
+                )
+                if (currentBooking != null ||
+                    (BookingSource.BLABLACAR in passenger.sources && !passenger.externalReservationKey.isNullOrBlank())
+                ) {
+                    cancelManualRow = passenger
+                } else {
+                    onChanged("Não foi possível identificar a reserva/ocorrência exata para cancelar com segurança.")
+                }
+                return@select
+            }
+
+            scope.launch {
+                if (selection == "COMPLETED") {
+                    val completion = completionService.confirm(entry, passenger)
+                    if (completion == null) {
+                        onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
+                        return@launch
+                    }
+                    completionRevision++
+                    identityRevision++
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_COMPLETION_SUCCESS",
+                        context.packageName,
+                        "timeline=true newlyCompleted=" + completion.newlyCompleted,
+                    )
+                }
+
+                val selectedTrip = trip
+                val booking = currentBooking
+                if (booking == null) {
+                    val reservationKey = passenger.externalReservationKey
+                    if (BookingSource.BLABLACAR in passenger.sources && !reservationKey.isNullOrBlank()) {
+                        val currentMetadata = passengerStore.externalMetadata(reservationKey)
+                            ?: ExternalPassengerMetadata(
+                                reservationKey = reservationKey,
+                                passengerId = passenger.passengerId.orEmpty(),
+                                externalPassengerId = passenger.externalPassengerId.orEmpty(),
+                                externalTripId = entry.blablaTripId.orEmpty(),
+                                externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                            )
+                        val nextOperational = when (selection) {
+                            "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+                            "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+                            "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+                            "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+                            "PAID" -> currentMetadata.operationalStatus
+                            else -> currentMetadata.operationalStatus
+                        }
+                        val nextPayment = if (selection == "PAID") {
+                            PassengerPaymentStatus.PAID
+                        } else {
+                            currentMetadata.paymentStatus
+                        }
+                        passengerStore.saveExternalMetadata(
+                            currentMetadata.copy(
+                                operationalStatus = nextOperational,
+                                paymentStatus = nextPayment,
+                                lastDriverSelection = selection,
+                            ),
+                        )
+                        identityRevision++
+                        UnifiedDebugEventStore.record(
+                            if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
+                            context.packageName,
+                            "timeline=true selection=" + selection + " authority=EXTERNAL_RESERVATION_METADATA",
+                        )
+                        onChanged(
+                            when (selection) {
+                                "CONFIRMED" -> "Passageiro BlaBlaCar confirmado."
+                                "AT_LOCATION" -> "Status BlaBlaCar alterado para No local."
+                                "IN_CAR" -> "Status BlaBlaCar alterado para No carro."
+                                "PAID" -> "Pagamento BlaBlaCar confirmado; fase da viagem preservada."
+                                "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService; ocorrência externa atualizada."
+                                else -> "Status externo atualizado."
+                            },
+                        )
+                        return@launch
+                    }
+                    onChanged("Não foi possível identificar a ocorrência exata para alterar o status com segurança.")
+                    return@launch
+                }
+                if (selectedTrip == null) {
+                    onChanged("A Booking foi localizada, mas a viagem correspondente não está disponível para sincronização.")
+                    return@launch
+                }
+
+                val nextOperational = when (selection) {
+                    "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+                    "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+                    "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+                    "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+                    "PAID" -> booking.operationalStatus
+                    else -> booking.operationalStatus
+                }
+                val nextPayment = if (selection == "PAID") {
+                    PassengerPaymentStatus.PAID
+                } else {
+                    booking.paymentStatus
+                }
+                val nextBookingStatus = if (
+                    selection == "CONFIRMED" &&
+                    booking.status in setOf(BookingStatus.REQUESTED, BookingStatus.HELD)
+                ) BookingStatus.CONFIRMED else booking.status
+
+                val localNext = booking.copy(
+                    status = nextBookingStatus,
+                    operationalStatus = nextOperational,
+                    paymentStatus = nextPayment,
+                    lastDriverSelection = selection,
+                )
+                store.saveBooking(localNext)
+
+                val settings = store.onlineSettings()
+                val remoteTripId = selectedTrip.remoteId
+                if (settings.configured && !remoteTripId.isNullOrBlank()) {
+                    runCatching {
+                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
+                            remoteTripId = remoteTripId,
+                            bookingId = booking.id,
+                            selection = selection,
+                        )
+                    }.onSuccess { response ->
+                        store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, localNext))
+                        UnifiedDebugEventStore.record(
+                            "PASSENGER_STATUS_REALTIME_PUBLISHED",
+                            context.packageName,
+                            "timeline=true selection=" + selection,
+                        )
+                    }.onFailure { error ->
+                        UnifiedDebugEventStore.record(
+                            "PASSENGER_STATUS_REALTIME_FAILED",
+                            context.packageName,
+                            "timeline=true selection=" + selection + " reason=" +
+                                (error.message ?: error.javaClass.simpleName).take(120),
+                        )
+                        onChanged(
+                            "Status salvo localmente; sincronização online pendente: " +
+                                (error.message ?: error.javaClass.simpleName),
+                        )
+                        return@launch
+                    }
+                }
+
+                UnifiedDebugEventStore.record(
+                    if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
+                    context.packageName,
+                    "timeline=true selection=" + selection + " bookingPresent=true",
+                )
+                val message = when (selection) {
+                    "CONFIRMED" -> "Passageiro confirmado."
+                    "AT_LOCATION" -> "Status alterado para No local."
+                    "IN_CAR" -> "Status alterado para No carro."
+                    "PAID" -> "Pagamento confirmado; fase da viagem preservada."
+                    "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService e sincronizada."
+                    else -> "Status atualizado."
+                }
+                onChanged(message)
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             val phone = passenger.phone
-            val completed = completionService.isCompleted(entry, passenger)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -217,36 +425,6 @@ internal fun EnhancedPassengerTimelineSection(
                     }
                 }
 
-                IconButton(
-                    onClick = {
-                        val result = completionService.confirm(entry, passenger)
-                        if (result == null) {
-                            onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
-                        } else {
-                            completionRevision++
-                            identityRevision++
-                            onChanged(
-                                if (result.newlyCompleted) {
-                                    "✅ ${result.profile.displayName} marcado como VIAJOU. Histórico concluído atualizado."
-                                } else {
-                                    "✅ ${result.profile.displayName} já estava marcado como VIAJOU; nenhum registro duplicado foi criado."
-                                },
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .semantics {
-                            contentDescription = if (completed) {
-                                "Viagem concluída para ${passenger.name}"
-                            } else {
-                                "Marcar ${passenger.name} como viagem concluída"
-                            }
-                        },
-                ) {
-                    Text(if (completed) "✅" else "☑️")
-                }
-
                 OutlinedButton(
                     onClick = {
                         if (passenger.fareMinorUnits != null) {
@@ -270,19 +448,45 @@ internal fun EnhancedPassengerTimelineSection(
                 }
             }
 
-            TextButton(
-                onClick = {
-                    historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
-                },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = COMPACT_NAME_PADDING,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                TextButton(
+                    onClick = {
+                        historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = COMPACT_NAME_PADDING,
+                ) {
+                    Text(
+                        (if (rowProfile?.blocked == true) "🚫 " else "") + passenger.name.ifBlank { "Passageiro" },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Column {
+                    OutlinedButton(
+                        onClick = { statusMenuOpen = true },
+                        contentPadding = COMPACT_ACTION_PADDING,
+                        modifier = Modifier.heightIn(min = 40.dp),
+                    ) {
+                        Text(statusLabel + " ▼", maxLines = 1)
+                    }
+                    DropdownMenu(
+                        expanded = statusMenuOpen,
+                        onDismissRequest = { statusMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
+                        DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
+                        DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
+                        DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
+                        DropdownMenuItem(text = { Text("Concluído") }, onClick = { selectOperationalStatus("COMPLETED") })
+                        DropdownMenuItem(text = { Text("Cancelar") }, onClick = { selectOperationalStatus("CANCELLED") })
+                    }
+                }
             }
 
             Row(
@@ -539,68 +743,226 @@ internal fun EnhancedPassengerTimelineSection(
             row.localBookingId?.let { bookingId ->
                 store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
                     candidate.id == bookingId &&
-                        candidate.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
-                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
+                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD, BookingStatus.REQUESTED)
                 }
             }
         }
+        val externalOnly =
+            booking == null &&
+                BookingSource.BLABLACAR in row.sources &&
+                !row.externalReservationKey.isNullOrBlank()
         AlertDialog(
             onDismissRequest = { cancelManualRow = null },
-            title = { Text("Cancelar passageiro desta viagem?") },
+            title = { Text("Cancelar no Rota Certa e liberar a(s) vaga(s)?") },
             text = {
                 Text(
-                    if (booking?.source == BookingSource.ROTA_CERTA) {
-                        "A reserva feita pelo Rota Certa será cancelada pelo painel administrativo e as vagas serão recalculadas em todos os trechos afetados."
+                    if (BookingSource.BLABLACAR in row.sources) {
+                        "O cancelamento é interno no Rota Certa. A reserva BlaBlaCar não será cancelada automaticamente. " +
+                            "A ocorrência ficará cancelada, fora do carro e deixará de ocupar as vagas internas desta viagem."
                     } else {
-                        "A reserva particular será cancelada na Agenda. Se a redução externa já estiver comprovada, o Rota Certa devolverá ${booking?.seats ?: row.seats} vaga(s) à mesma publicação BlaBlaCar e confirmará o número final antes de concluir."
+                        "A reserva será cancelada no Rota Certa, o passageiro sairá da ocupação ativa e as vagas serão recalculadas somente nos trechos desta reserva."
                     },
                 )
             },
             confirmButton = {
                 TextButton(
-                    enabled = currentTrip != null && booking != null,
+                    enabled = (currentTrip != null && booking != null) || externalOnly,
                     onClick = {
-                        val selectedTrip = currentTrip ?: return@TextButton
-                        val selectedBooking = booking ?: return@TextButton
-                        if (selectedBooking.source == BookingSource.ROTA_CERTA) {
-                            val remoteTripId = selectedTrip.remoteId
-                            if (remoteTripId.isNullOrBlank()) {
-                                onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de cancelar.")
-                                return@TextButton
-                            }
-                            scope.launch {
-                                runCatching {
-                                    TripRemoteApi(store.onlineSettings()).cancelProtectedDriverBooking(remoteTripId, selectedBooking.id)
-                                }.onSuccess {
-                                    store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
-                                    UnifiedDebugEventStore.record(
-                                        "AGENDA_ROTA_CERTA_ADMIN_CANCELLED",
-                                        context.packageName,
-                                        "timeline=true seats=${selectedBooking.seats} protectedRoute=true",
-                                    )
-                                    cancelManualRow = null
-                                    onChanged("Reserva Rota Certa cancelada pelo painel administrativo. Vagas por trecho recalculadas.")
-                                    onSyncSeatsOnly?.invoke()
-                                }.onFailure { error ->
-                                    onChanged("Não foi possível cancelar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
-                                }
-                            }
-                        } else {
-                            store.saveBooking(selectedBooking.copy(status = BookingStatus.CANCELLED))
+                        val trace = passengerCancellationDebugContext(entry, row, booking)
+                        val inCarBefore = row.operationalStatus == PassengerOperationalStatus.IN_CAR
+                        val seatsBefore = booking?.seats ?: row.seats
+                        scope.launch {
                             UnifiedDebugEventStore.record(
-                                "AGENDA_MANUAL_PASSENGER_CANCELLED",
+                                "BOOKING_CANCEL_START",
                                 context.packageName,
-                                "timeline=true seats=${selectedBooking.seats} desiredStateRecalculation=true",
+                                "$trace seatsBefore=$seatsBefore inCarBefore=$inCarBefore source=TIMELINE",
                             )
+                            UnifiedDebugEventStore.record(
+                                "BOOKING_SEATS_RELEASE_START",
+                                context.packageName,
+                                "$trace seatsBefore=$seatsBefore",
+                            )
+
+                            val reservationKey = row.externalReservationKey
+                            val existingExternal = reservationKey?.let(passengerStore::externalMetadata)
+                            val cancelledExternal = reservationKey?.let { key ->
+                                passengerStore.saveExternalMetadata(
+                                    (existingExternal ?: ExternalPassengerMetadata(
+                                        reservationKey = key,
+                                        passengerId = row.passengerId.orEmpty(),
+                                        externalPassengerId = row.externalPassengerId.orEmpty(),
+                                        externalTripId = entry.blablaTripId.orEmpty(),
+                                        externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                                    )).copy(
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                    ),
+                                )
+                            }
+
+                            val selectedBooking = booking
+                            val selectedTrip = currentTrip
+                            var onlineSyncSucceeded = false
+                            var onlineSyncPendingReason: String? = null
+                            if (selectedBooking != null && selectedTrip != null) {
+                                val beforeLoads = SeatAvailabilityEngine.segmentLoads(
+                                    selectedTrip,
+                                    store.bookingsFor(selectedTrip.id),
+                                )
+                                val localCancelled = store.saveBooking(
+                                    selectedBooking.copy(
+                                        status = BookingStatus.CANCELLED,
+                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                        lastDriverSelection = "CANCELLED",
+                                    ),
+                                )
+                                val settings = store.onlineSettings()
+                                val remoteTripId = selectedTrip.remoteId
+                                if (settings.configured && !remoteTripId.isNullOrBlank()) {
+                                    runCatching {
+                                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
+                                            remoteTripId = remoteTripId,
+                                            bookingId = selectedBooking.id,
+                                            selection = "CANCELLED",
+                                        )
+                                    }.onSuccess { response ->
+                                        store.saveBooking(
+                                            response.booking.toLocalBooking(selectedTrip.id, localCancelled).copy(
+                                                status = BookingStatus.CANCELLED,
+                                                operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                                lastDriverSelection = "CANCELLED",
+                                            ),
+                                        )
+                                        onlineSyncSucceeded = true
+                                        UnifiedDebugEventStore.record(
+                                            "PUBLIC_BOOKING_CANCEL_SYNC",
+                                            context.packageName,
+                                            "$trace result=success passengerNotified=${response.passengerNotified}",
+                                        )
+                                    }.onFailure { error ->
+                                        onlineSyncPendingReason = (error.message ?: error.javaClass.simpleName).take(120)
+                                        UnifiedDebugEventStore.record(
+                                            "PUBLIC_BOOKING_CANCEL_SYNC",
+                                            context.packageName,
+                                            "$trace result=pending reasonClass=${error.javaClass.simpleName}",
+                                        )
+                                    }
+                                } else {
+                                    onlineSyncPendingReason = "remote_unavailable"
+                                    UnifiedDebugEventStore.record(
+                                        "PUBLIC_BOOKING_CANCEL_SYNC",
+                                        context.packageName,
+                                        "$trace result=local_only reason=remote_unavailable",
+                                    )
+                                }
+
+                                val afterLoads = SeatAvailabilityEngine.segmentLoads(
+                                    selectedTrip,
+                                    store.bookingsFor(selectedTrip.id),
+                                )
+                                val beforeOccupied = beforeLoads.sumOf { it.occupiedSeats }
+                                val afterOccupied = afterLoads.sumOf { it.occupiedSeats }
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_CANCEL_PERSISTED",
+                                    context.packageName,
+                                    "$trace bookingStatus=CANCELLED operationalStatus=CANCELLED",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PASSENGER_IN_CAR_CLEARED",
+                                    context.packageName,
+                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_SEATS_RELEASE_END",
+                                    context.packageName,
+                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 occupiedSegmentsBefore=$beforeOccupied occupiedSegmentsAfter=$afterOccupied",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "SEGMENT_CAPACITY_RECALCULATED",
+                                    context.packageName,
+                                    "$trace segments=${afterLoads.size} occupiedBefore=$beforeOccupied occupiedAfter=$afterOccupied",
+                                )
+                            } else if (externalOnly && cancelledExternal != null) {
+                                val passengerId = cancelledExternal.passengerId.ifBlank { row.passengerId.orEmpty() }
+                                if (passengerId.isNotBlank()) {
+                                    passengerStore.recordOccurrence(
+                                        passengerId = passengerId,
+                                        rideKey = externalPassengerOccurrenceKey(
+                                            driverProfileUuid = entry.blablaProfileUuid,
+                                            externalTripId = entry.blablaTripId,
+                                            reservationKey = row.externalReservationKey,
+                                            externalPassengerId = row.externalPassengerId,
+                                        ),
+                                        status = PassengerOccurrenceStatus.CANCELLED,
+                                        tripId = entry.tripId,
+                                        externalTripId = entry.blablaTripId.orEmpty(),
+                                        driverProfileUuid = entry.blablaProfileUuid.orEmpty(),
+                                        source = "BLABLACAR",
+                                        reservationKey = row.externalReservationKey.orEmpty(),
+                                        boarding = row.boarding.orEmpty(),
+                                        dropoff = row.dropoff.orEmpty(),
+                                        seats = row.seats,
+                                    )
+                                }
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_CANCEL_PERSISTED",
+                                    context.packageName,
+                                    "$trace authority=EXTERNAL_RESERVATION_METADATA operationalStatus=CANCELLED",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PASSENGER_IN_CAR_CLEARED",
+                                    context.packageName,
+                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "BOOKING_SEATS_RELEASE_END",
+                                    context.packageName,
+                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 authority=external_tombstone",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "SEGMENT_CAPACITY_RECALCULATED",
+                                    context.packageName,
+                                    "$trace source=collector_overlay exactReservation=true",
+                                )
+                                UnifiedDebugEventStore.record(
+                                    "PUBLIC_BOOKING_CANCEL_SYNC",
+                                    context.packageName,
+                                    "$trace result=queued_via_public_agenda_sync externalPlatformChanged=false",
+                                )
+                            } else {
+                                cancelManualRow = null
+                                onChanged("A reserva/ocorrência deixou de estar disponível antes da confirmação. Nada foi alterado.")
+                                return@launch
+                            }
+
+                            identityRevision++
                             cancelManualRow = null
-                            onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
-                            onSyncSeatsOnly?.invoke()
+                            UnifiedDebugEventStore.record(
+                                "TIMELINE_AFTER_CANCEL",
+                                context.packageName,
+                                "$trace activeBooking=false seatsAfter=0 inCarAfter=false",
+                            )
+                            UnifiedDebugEventStore.record(
+                                "PASSENGER_STATUS_CHANGE_END",
+                                context.packageName,
+                                "$trace final=CANCELLED onlineSync=$onlineSyncSucceeded",
+                            )
+                            onChanged(
+                                when {
+                                    BookingSource.BLABLACAR in row.sources && onlineSyncPendingReason == null ->
+                                        "Reserva cancelada dentro do Rota Certa. Passageiro fora do carro e vagas internas liberadas. A BlaBlaCar não foi alterada."
+                                    onlineSyncPendingReason != null ->
+                                        "Reserva cancelada e vagas liberadas no Rota Certa. Sincronização online pendente: $onlineSyncPendingReason"
+                                    else ->
+                                        "Reserva cancelada. Passageiro fora do carro e vagas por trecho recalculadas."
+                                },
+                            )
                         }
                     },
-                ) { Text("Cancelar e devolver vaga(s)") }
+                ) { Text("Cancelar reserva") }
             },
-            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Manter passageiro") } },
+            dismissButton = { TextButton(onClick = { cancelManualRow = null }) { Text("Voltar") } },
         )
     }
 
@@ -695,6 +1057,25 @@ internal fun EnhancedPassengerTimelineSection(
     }
 }
 
+private fun passengerCancellationDebugContext(
+    entry: TripTimelineEntry,
+    row: EnhancedPassengerCardRow,
+    booking: Booking?,
+): String = listOf(
+    "tripKey=" + passengerCancellationHash(entry.localTripId ?: entry.blablaTripId ?: entry.tripId),
+    "bookingKey=" + passengerCancellationHash(booking?.id ?: row.externalReservationKey),
+    "passengerKey=" + passengerCancellationHash(row.passengerId ?: row.externalPassengerId),
+).joinToString(" ")
+
+private fun passengerCancellationHash(raw: String?): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return "none"
+    return MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
 internal fun enhancedPassengerRows(
     entry: TripTimelineEntry,
     trip: Trip?,
@@ -719,6 +1100,9 @@ internal fun enhancedPassengerRows(
             externalReservationKey = metadataKey,
             externalBookingHref = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty),
             externalProfileUuid = entry.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty),
+            operationalStatus = metadata?.operationalStatus ?: PassengerOperationalStatus.CONFIRMED,
+            paymentStatus = metadata?.paymentStatus ?: PassengerPaymentStatus.UNPAID,
+            lastDriverSelection = metadata?.lastDriverSelection.orEmpty(),
             fareMinorUnits = metadata?.fareMinorUnits,
             fareCurrencyCode = metadata?.fareCurrencyCode.orEmpty(),
             boardingAddress = metadata?.boardingAddress.orEmpty(),
@@ -768,6 +1152,9 @@ internal fun enhancedPassengerRows(
                     },
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
+                    operationalStatus = booking.operationalStatus,
+                    paymentStatus = booking.paymentStatus,
+                    lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank) ?: current.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank) ?: current.boardingAddress,
@@ -787,6 +1174,9 @@ internal fun enhancedPassengerRows(
                     passengerId = booking.passengerId.takeIf(String::isNotBlank),
                     localBookingId = booking.id,
                     bookingStatus = booking.status,
+                    operationalStatus = booking.operationalStatus,
+                    paymentStatus = booking.paymentStatus,
+                    lastDriverSelection = booking.lastDriverSelection,
                     fareMinorUnits = booking.fareMinorUnits,
                     fareCurrencyCode = booking.fareCurrencyCode,
                     boardingAddress = booking.boardingAddress,
