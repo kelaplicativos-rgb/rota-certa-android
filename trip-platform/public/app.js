@@ -979,12 +979,17 @@ async function openWhatsappFromSeatPicker() {
 
 function safeBlaBlaPublicUrl(item) {
   const raw = String(item?.blablaPublicUrl || "").trim();
-  if (!raw) return "";
+  const expectedTripId = String(item?.blablaTripId || "").trim();
+  if (!raw || !expectedTripId) return "";
   try {
     const url = new URL(raw);
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
     if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
+    const actualTripId = String(url.searchParams.get("id") || url.pathname.match(/\/trip\/([^/?#]+)/i)?.[1] || "").trim();
+    if (!actualTripId || actualTripId !== expectedTripId) return "";
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
     return url.href;
   } catch (_) {
     return "";
