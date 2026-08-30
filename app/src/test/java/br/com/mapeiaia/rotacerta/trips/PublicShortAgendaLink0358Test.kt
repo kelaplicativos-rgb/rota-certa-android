@@ -24,7 +24,9 @@ class PublicShortAgendaLink0358Test {
         assertEquals("ezequiel-viagens", DriverIdentityRules.normalizeUsername("Ézequiel Viagens"))
         assertEquals("motorista123", DriverIdentityRules.normalizeUsername("Motorista123"))
         assertTrue(DriverIdentityRules.isValidPublicUsername("viagem-certa"))
-        assertFalse(DriverIdentityRules.isValidPublicUsername("admin"))
+        assertTrue(DriverIdentityRules.isValidPublicUsername("agenda"))
+        assertTrue(DriverIdentityRules.isValidPublicUsername("admin"))
+        assertTrue(DriverIdentityRules.isValidPublicUsername("ezequiel"))
         assertFalse(DriverIdentityRules.isValidPublicUsername("calendar"))
         assertFalse(DriverIdentityRules.isValidPublicUsername("v1"))
     }
@@ -32,7 +34,7 @@ class PublicShortAgendaLink0358Test {
     @Test
     fun settingsUiMakesShortAddressAndCredentialRotationUnambiguous() {
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt").readText()
-        assertTrue(ui.contains("Este campo controla o endereço curto depois da barra"))
+        assertTrue(ui.contains("Escolha o nome que quiser para o endereço curto"))
         assertTrue(ui.contains("Seu endereço:"))
         assertTrue(ui.contains("Compartilhar link"))
         assertTrue(ui.contains("Trocar credencial interna"))
