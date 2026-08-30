@@ -1,3 +1,6 @@
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Properties
 
@@ -19,6 +22,37 @@ val localProperties = Properties().apply {
 val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }
     ?: System.getenv("GOOGLE_MAPS_API_KEY")?.takeIf { it.isNotBlank() }
     ?: ""
+
+fun gitOutput(vararg args: String): String = runCatching {
+    val process = ProcessBuilder(listOf("git") + args)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+    if (process.waitFor() == 0) output else ""
+}.getOrDefault("")
+
+fun firstNonBlank(vararg values: String?): String =
+    values.firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
+
+val buildGitSha = firstNonBlank(
+    System.getenv("ROTA_CERTA_GIT_SHA"),
+    System.getenv("GITHUB_SHA"),
+    gitOutput("rev-parse", "HEAD"),
+).ifBlank { "unavailable" }
+
+val detectedBuildBranch = firstNonBlank(
+    System.getenv("ROTA_CERTA_GIT_BRANCH"),
+    System.getenv("GITHUB_HEAD_REF"),
+    System.getenv("GITHUB_REF_NAME"),
+    gitOutput("rev-parse", "--abbrev-ref", "HEAD"),
+)
+val buildGitBranch = detectedBuildBranch.takeUnless { it == "HEAD" }.orEmpty().ifBlank { "unavailable" }
+
+val buildGeneratedAt = firstNonBlank(System.getenv("ROTA_CERTA_BUILD_TIME")).ifBlank {
+    ZonedDateTime.now(ZoneId.of("America/Sao_Paulo"))
+        .format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+}
 
 val minimumVersionCode = 5_020
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
@@ -60,11 +94,14 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5652
-        versionName = "0.1.359"
+        versionCode = 5653
+        versionName = "0.1.360"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
+        buildConfigField("String", "BUILD_GIT_SHA", "\"${buildGitSha.escapeForBuildConfig()}\"")
+        buildConfigField("String", "BUILD_GIT_BRANCH", "\"${buildGitBranch.escapeForBuildConfig()}\"")
+        buildConfigField("String", "BUILD_GENERATED_AT", "\"${buildGeneratedAt.escapeForBuildConfig()}\"")
     }
 
     signingConfigs {
