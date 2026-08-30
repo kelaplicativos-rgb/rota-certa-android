@@ -1092,6 +1092,32 @@ function operationalSeatPersistence(summary) {
   };
 }
 
+function canonicalCapacityPersistence(trip, records, capacityState = null, now = Date.now()) {
+  const segments = capacityState || reconciledSegmentCapacity(trip, records, now);
+  const operational = reconciledOperationalSeatSummary(trip, records, now);
+  return {
+    ...segmentCapacityPersistence(segments),
+    ...operationalSeatPersistence(operational),
+  };
+}
+
+function assertNoOperationalOverbooking(trip, records, now = Date.now()) {
+  const summary = reconciledOperationalSeatSummary(trip, records, now);
+  if (summary.operationalOverbookingSeats > 0) {
+    throw Object.assign(
+      new Error("O total confirmado/bloqueado ultrapassaria o limite operacional da viagem."),
+      { httpStatus: 409, code: "operational_overbooking", operationalOverbookingSeats: summary.operationalOverbookingSeats },
+    );
+  }
+  return summary;
+}
+
+function availableForBooking(trip, records, loads, fromIndex, toIndex, now = Date.now()) {
+  const physical = availableForSegmentRange(trip, loads, fromIndex, toIndex);
+  const operational = reconciledOperationalSeatSummary(trip, records, now).operationalAvailableSeats;
+  return Math.max(0, Math.min(physical, operational));
+}
+
 function assertNoOverbooking(trip, loads) {
   const capacity = Number(trip.capacity || 0);
   if (loads.some((load) => Number(load || 0) > capacity)) {
