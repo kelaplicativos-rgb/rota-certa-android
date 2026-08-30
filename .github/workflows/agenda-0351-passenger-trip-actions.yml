@@ -58,7 +58,7 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED='^(.github/workflows/agenda-0351-passenger-trip-actions.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(PublicAgendaSettingsUi.kt|TripGlobalPassengerFlow0256.kt|TripQuickPassengerUi.kt|TripRemoteApi.kt|TripTimelineUi.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/(OnlineSettingsVehicleUsername0351Test.kt|PassengerCanonical0317Test.kt|PassengerTripActions0351Test.kt)|trip-platform/calendar-functions/index.js|trip-platform/functions/index.js|trip-platform/functions/test/driver-username-alias-0351.test.js)$'
+          ALLOWED='^(.github/workflows/agenda-0351-passenger-trip-actions.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(PassengerTimelineUi.kt|PublicAgendaSettingsUi.kt|TripGlobalPassengerFlow0256.kt|TripQuickPassengerUi.kt|TripRemoteApi.kt|TripTimelineUi.kt|TripsActivity.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/(OnlineSettingsVehicleUsername0351Test.kt|PassengerCanonical0317Test.kt|PassengerTripActions0351Test.kt)|trip-platform/calendar-functions/index.js|trip-platform/functions/index.js|trip-platform/functions/test/driver-username-alias-0351.test.js)$'
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
 
