@@ -48,8 +48,10 @@ class PublicAgendaSegments0311Test {
         assertEquals(3, published.bookedSeats)
 
         val loads = SeatAvailabilityEngine.segmentLoads(published.trip, published.capacityClaims)
-        assertEquals(listOf(0, 0, 0), loads.map(SegmentLoad::occupiedSeats))
-        assertEquals(listOf(4, 4, 4), loads.map(SegmentLoad::availableSeats))
+        assertEquals(listOf(1, 3, 1), loads.map(SegmentLoad::passengerSeats))
+        assertEquals(listOf(0, 0, 0), loads.map(SegmentLoad::blockedSeats))
+        assertEquals(listOf(3, 1, 3), loads.map(SegmentLoad::availableSeats))
+        assertTrue(published.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
     }
 
     @Test
