@@ -316,6 +316,9 @@ function tripRelevantChanges(previous, updated) {
     changedField("status", previous && previous.status, updated && updated.status),
     changedField("title", previous && previous.title, updated && updated.title),
     changedField("stops", previous && previous.stops, updated && updated.stops),
+    changedField("capacity", Number(previous && previous.capacity || 0), Number(updated && updated.capacity || 0)),
+    changedField("rotaCertaSeatAllocation", Number(previous && previous.rotaCertaSeatAllocation || 0), Number(updated && updated.rotaCertaSeatAllocation || 0)),
+    changedField("publishedSeats", previous && previous.publishedSeats, updated && updated.publishedSeats),
   ].filter(Boolean);
 }
 
@@ -1850,11 +1853,15 @@ async function updateDriverTrip(req, res, token) {
       const bookingsSnap = (changes.length || externalCapacityChanged)
         ? await tx.get(ref.collection("bookings"))
         : null;
-      if (externalCapacityChanged && bookingsSnap) {
+      let capacityPersistence = {};
+      if (bookingsSnap) {
         const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const candidateTrip = { ...previous, ...normalized };
-        const loads = reconciledSegmentLoads(candidateTrip, records);
+        const capacityState = reconciledSegmentCapacity(candidateTrip, records);
+        const loads = capacityState.loads;
         assertNoOverbooking(candidateTrip, loads);
+        assertNoOperationalOverbooking(candidateTrip, records);
+        capacityPersistence = canonicalCapacityPersistence(candidateTrip, records, capacityState);
       }
       const structuralPendingChange = changes.some((change) =>
         ["departureAtMillis", "stops", "status"].includes(cleanText(change && change.field, 64))
@@ -1877,6 +1884,7 @@ async function updateDriverTrip(req, res, token) {
       const now = Date.now();
       tx.update(ref, {
         ...normalized,
+        ...capacityPersistence,
         publicUrl,
         driverUsername: ownerUsername,
         driverDisplayName: ownerDisplayName,
