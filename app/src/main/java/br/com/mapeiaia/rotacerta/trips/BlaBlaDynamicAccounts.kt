@@ -457,6 +457,12 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureProfileReviewsPage() }, 850)
                     Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureRideList() }, 900)
                     Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
+                    Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
+                        val expectedSync = syncGeneration
+                        val expectedNavigation = navigationGeneration
+                        val expectedCandidate = candidateIndex
+                        view.postDelayed({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
+                    }
                     Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
                     Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
                     Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
@@ -2089,6 +2095,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         tripRosterReadAttempts = 0
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
+        publicTripShareReadAttempts = 0
+        publicTripShareCaptureInFlight = false
         pendingEditHref = ""
         pendingOptionsHref = ""
         pendingPublishedSeats = null
@@ -2403,6 +2411,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         append(" completedCards=").append(completedCardTraversalKeys.size)
         append(" quarantinedCards=").append(quarantinedCardTraversalKeys.size)
         append(" detailInFlight=").append(detailCaptureInFlight)
+        append(" publicShareInFlight=").append(publicTripShareCaptureInFlight)
         append(" passengerInFlight=").append(passengerCaptureInFlight || passengerCardCaptureInFlight)
         append(" editInFlight=").append(editCaptureInFlight)
         append(" optionsInFlight=").append(optionsCaptureInFlight)
@@ -2420,7 +2429,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         return normalized.contains("continuar com e-mail") || normalized.contains("como você deseja se conectar") || normalized.contains("como voce deseja se conectar")
     }
 
-    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
+    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PUBLIC_SHARE, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
 
     companion object {
         private const val HOME_URL = "https://www.blablacar.com.br/"
@@ -2434,6 +2443,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
+        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 4
+        private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
         private const val MAX_PASSENGER_CARD_READ_ATTEMPTS = 4
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
         private const val MAX_EDIT_LINK_READ_ATTEMPTS = 5
