@@ -679,7 +679,7 @@ internal fun GlobalPassengerFlowPanel(
                                 modifier = Modifier.fillMaxWidth().heightIn(max = 390.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                items(sortedEntries, key = TripTimelineEntry::id) { entry ->
+                                items(sortedEntries, key = TripTimelineEntry::tripId) { entry ->
                                     val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
                                     val source = if (timelineStrongExternalTripKey(entry) != null) "BlaBlaCar" else "Particular"
                                     val vacancies = if (entry.minimumAvailableSeats == entry.maximumAvailableSeats) {
