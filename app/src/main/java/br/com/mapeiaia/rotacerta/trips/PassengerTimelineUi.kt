@@ -1739,6 +1739,7 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
     entry.sourcePassengerSeats[BookingSource.BLABLACAR]?.let { it > 0 } == true ||
         !entry.blablaTripId.isNullOrBlank() ||
         !entry.blablaTripHref.isNullOrBlank() ||
+        !entry.blablaPublicHref.isNullOrBlank() ||
         !entry.blablaProfileUuid.isNullOrBlank()
 
 @Composable
@@ -1805,6 +1806,20 @@ private fun TripBlaBlaTripActionRow(
                 contentPadding = COMPACT_ACTION_PADDING,
             ) { Text("🔄") }
         }
+        if (!entry.blablaPublicHref.isNullOrBlank()) {
+            TextButton(
+                onClick = {
+                    if (!openPublicTripBlaBla(context, entry.blablaPublicHref, entry.blablaTripId)) {
+                        Toast.makeText(
+                            context,
+                            "Link público desta viagem não confere com o card. Sincronize novamente.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                contentPadding = COMPACT_ACTION_PADDING,
+            ) { Text("🔗 Público") }
+        }
         IconButton(
             onClick = {
                 if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
@@ -1856,6 +1871,21 @@ internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPas
     val href = row.externalBookingHref?.trim()?.takeIf(String::isNotEmpty) ?: return null
     if (!href.startsWith("https://www.blablacar.com.br/") || !href.contains("/rides/offer/passenger/")) return null
     return ExternalPassengerTarget(profileUuid = profileUuid, href = href)
+}
+
+private fun openPublicTripBlaBla(context: Context, href: String?, expectedTripId: String?): Boolean {
+    val target = BlaBlaCollectorUrlModule.publicTrip(href, expectedTripId) ?: return false
+    UnifiedDebugEventStore.record(
+        "BLABLACAR_PUBLIC_TRIP_OPEN_EXPLICIT",
+        context.packageName,
+        "timeline=true expected_trip_id_present=${!expectedTripId.isNullOrBlank()} public_href_present=true",
+    )
+    return runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(target)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        true
+    }.getOrDefault(false)
 }
 
 private fun openExternalTripBlaBla(context: Context, profileUuid: String?, href: String?): Boolean {

@@ -911,6 +911,13 @@ internal fun applyPublicExternalBookingsToTimeline(
     nowMillis: Long = System.currentTimeMillis(),
 ): List<TripTimelineEntry> = entries.map { entry ->
     val binding = bindings.firstOrNull { it.matches(entry) } ?: return@map entry
+    val enriched = entry.copy(
+        blablaTripId = entry.blablaTripId ?: binding.blablaTripId.takeIf(String::isNotBlank),
+        blablaTripHref = entry.blablaTripHref ?: binding.blablaTripHref.takeIf(String::isNotBlank),
+        blablaPublicHref = entry.blablaPublicHref
+            ?: BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, binding.blablaTripId),
+        blablaProfileUuid = entry.blablaProfileUuid ?: binding.profileUuid.takeIf(String::isNotBlank),
+    )
     val active = bookings
         .filter { it.tripId == binding.bookingTripId }
         .filter { it.source == BookingSource.ROTA_CERTA || it.sourceReference.startsWith("PUBLIC_LINK:") }
@@ -927,21 +934,21 @@ internal fun applyPublicExternalBookingsToTimeline(
             }
         }
 
-    if (active.isEmpty()) return@map entry
+    if (active.isEmpty()) return@map enriched
 
     val publicTrip = binding.asTrip()
     val publicLoads = SeatAvailabilityEngine.segmentLoads(publicTrip, active, nowMillis)
     val publicOccupied = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
         ?: active.sumOf(Booking::seats)
-    val externalRosterSeats = entry.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
+    val externalRosterSeats = enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
     val combinedPhysical = externalRosterSeats + publicOccupied
-    val sources = entry.sourcePassengerSeats.toMutableMap().apply {
+    val sources = enriched.sourcePassengerSeats.toMutableMap().apply {
         this[BookingSource.ROTA_CERTA] = publicOccupied
     }
 
-    entry.copy(
-        minimumOccupiedSeats = maxOf(entry.minimumOccupiedSeats, combinedPhysical),
-        maximumOccupiedSeats = maxOf(entry.maximumOccupiedSeats, combinedPhysical),
+    enriched.copy(
+        minimumOccupiedSeats = maxOf(enriched.minimumOccupiedSeats, combinedPhysical),
+        maximumOccupiedSeats = maxOf(enriched.maximumOccupiedSeats, combinedPhysical),
         sourcePassengerSeats = sources.filterValues { it > 0 },
     )
 }
@@ -965,6 +972,7 @@ internal enum class TimelineOccupancyReadState {
 private fun hasExternalPublication(entry: TripTimelineEntry): Boolean =
     !entry.blablaTripId.isNullOrBlank() ||
         !entry.blablaTripHref.isNullOrBlank() ||
+        !entry.blablaPublicHref.isNullOrBlank() ||
         !entry.blablaProfileUuid.isNullOrBlank()
 
 internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState = when {

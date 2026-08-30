@@ -8,8 +8,13 @@ const publicApp = fs.readFileSync(path.join(__dirname, "..", "..", "public", "ap
 const publicHtml = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
 function functionSource(source, name, nextName) {
-  const start = source.indexOf("function " + name + "(");
-  const end = source.indexOf("\nfunction " + nextName + "(", start);
+  const syncStart = source.indexOf("function " + name + "(");
+  const asyncStart = source.indexOf("async function " + name + "(");
+  const start = syncStart >= 0 ? syncStart : asyncStart;
+  const syncEnd = source.indexOf("\nfunction " + nextName + "(", start);
+  const asyncEnd = source.indexOf("\nasync function " + nextName + "(", start);
+  const ends = [syncEnd, asyncEnd].filter((value) => value > start);
+  const end = ends.length ? Math.min(...ends) : -1;
   assert.ok(start >= 0 && end > start, "missing function " + name);
   return source.slice(start, end);
 }
@@ -28,11 +33,13 @@ test("accent normalization and segment bottleneck use the real public search fun
   assert.equal(availableForTripSegment(trip, 1, 2), 3);
 });
 
-test("generic cards use whole-trip minimum while canReserve still allows a valid later segment", () => {
-  assert.match(publicApp, /seatRange\(item\)\.minimum >= seats/);
-  assert.match(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
+test("public filter does not ask seats and cards defer quantity to the chosen reservation action", () => {
+  assert.doesNotMatch(publicHtml, /id="searchSeats"/);
+  assert.doesNotMatch(publicHtml, /id="searchReturn"/);
+  assert.doesNotMatch(publicApp, /detailsParams\.set\("lugares", String\(searchState\.seats\)\)/);
+  assert.match(publicApp, /function openWhatsappSeatPicker/);
+  assert.match(publicApp, /seatPickerLimit = source\.capacityReliable === true/);
   assert.match(backend, /canReserve: data\.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability\.maximum > 0/);
-  assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\) >= seats/);
 });
 
 test("autocomplete retains exact stop ids and intermediate stops require authoritative itinerary", () => {
@@ -83,7 +90,7 @@ test("seat picker uses reconciled availability instead of nominal vehicle capaci
   assert.match(publicApp, /function searchSeatAvailabilityLimit/);
   assert.match(publicApp, /availableForTripSegment\(item, fromIndex, toIndex\)/);
 
-  const tripPicker = functionSource(publicApp, "openTripSeatPicker", "changeSeatPicker");
+  const tripPicker = functionSource(publicApp, "openTripSeatPicker", "openWhatsappSeatPicker");
   assert.match(tripPicker, /seatPickerLimit = availableFor\(fromIndex, toIndex\)/);
   assert.match(tripPicker, /seatPickerDraft = Math\.max\(1, desiredSeats \|\| 1\)/);
   assert.doesNotMatch(tripPicker, /Math\.min\(seatPickerLimit/);

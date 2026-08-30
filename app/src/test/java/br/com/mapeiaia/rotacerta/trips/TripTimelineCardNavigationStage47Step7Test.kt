@@ -28,6 +28,7 @@ class TripTimelineCardNavigationStage47Step7Test {
                 date = "2026-08-21", departure_time = "11:20", arrival_time = "17:10",
                 actual_departure = "Santo André, SP", actual_arrival = "Três Corações, MG",
                 price = "R$ 89,00", trip_href = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc",
+                public_trip_href = "https://www.blablacar.com.br/trip?id=trip-123&search_uuid=public-noise",
                 trip_id = "trip-123", uuid_validation = "verified_from_authenticated_profile_session",
             )),
         )
@@ -38,6 +39,7 @@ class TripTimelineCardNavigationStage47Step7Test {
         assertEquals("local-1", card.localTripId)
         assertEquals("trip-123", card.blablaTripId)
         assertEquals("https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc", card.blablaTripHref)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", card.blablaPublicHref)
         assertEquals("7371f028-9c55-4903-8444-308015823efd", card.blablaProfileUuid)
         assertEquals("R$ 89,00", card.blablaPrice)
         // Once an external publication is reconciled to an existing local trip, the local
@@ -48,6 +50,52 @@ class TripTimelineCardNavigationStage47Step7Test {
         assertEquals("Três Corações", card.destination)
         assertEquals(1, card.sourcePassengerSeats[BookingSource.PRIVATE])
         assertFalse(TripTimelineIssue.DUPLICATE in card.issues)
+    }
+
+    @Test
+    fun persisted_public_binding_enriches_timeline_even_without_rota_certa_booking() {
+        val departure = LocalDate.of(2026, 8, 22).atTime(LocalTime.of(11, 0)).atZone(zone).toInstant().toEpochMilli()
+        val entry = TripTimelineEntry(
+            tripId = "blablacar:hash",
+            profileId = "7371f028-9c55-4903-8444-308015823efd",
+            profileLabel = "Ezequiel S",
+            departureAtMillis = departure,
+            arrivalAtMillis = departure + 5 * 60 * 60 * 1000L,
+            origin = "Santo André",
+            destination = "Três Corações",
+            status = TripStatus.PUBLISHED,
+            capacity = 4,
+            minimumOccupiedSeats = 0,
+            maximumOccupiedSeats = 0,
+            sourcePassengerSeats = emptyMap(),
+            blablaTripId = "trip-456",
+            blablaTripHref = "https://www.blablacar.com.br/rides/offer/trip-456",
+            blablaProfileUuid = "7371f028-9c55-4903-8444-308015823efd",
+        )
+        val binding = PublicExternalTripBinding(
+            remoteTripId = "remote-456",
+            publicToken = "bb123456789012345678901234567890",
+            bookingTripId = "public-external:remote-456",
+            profileUuid = "7371f028-9c55-4903-8444-308015823efd",
+            blablaTripId = "trip-456",
+            blablaTripHref = "https://www.blablacar.com.br/rides/offer/trip-456",
+            blablaPublicHref = "https://www.blablacar.com.br/trip?id=trip-456&search_uuid=noise",
+            title = "Santo André → Três Corações",
+            departureAtMillis = departure,
+            capacity = 4,
+            stops = listOf(
+                TripStop(order = 0, name = "Santo André"),
+                TripStop(order = 1, name = "Três Corações"),
+            ),
+        )
+
+        val enriched = applyPublicExternalBookingsToTimeline(
+            entries = listOf(entry),
+            bindings = listOf(binding),
+            bookings = emptyList(),
+        ).single()
+
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-456", enriched.blablaPublicHref)
     }
 
     @Test

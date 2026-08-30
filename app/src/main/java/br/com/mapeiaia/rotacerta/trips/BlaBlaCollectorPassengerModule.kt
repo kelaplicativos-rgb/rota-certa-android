@@ -92,10 +92,10 @@ internal object BlaBlaCollectorPassengerModule {
         current: BlaBlaCollectorTrip,
     ): BlaBlaCollectorTrip {
         if (previous == null || !current.passenger_roster_complete) {
-            return BlaBlaPassengerRosterReconciler.reconcile(previous, current)
+            return preserveStableTripMetadata(previous, BlaBlaPassengerRosterReconciler.reconcile(previous, current))
         }
         if (current.passengers.isEmpty()) {
-            return current.copy(booked_seats = 0)
+            return preserveStableTripMetadata(previous, current.copy(booked_seats = 0))
         }
         val enriched = current.passengers.map { incoming ->
             val confirmed = previous.passengers.firstOrNull { prior ->
@@ -114,11 +114,22 @@ internal object BlaBlaCollectorPassengerModule {
             }
         }
         val occupied = enriched.sumOf { it.seats.coerceAtLeast(1) }
-        return current.copy(
-            passengers = enriched,
-            booked_seats = maxOf(current.booked_seats, occupied),
+        return preserveStableTripMetadata(
+            previous,
+            current.copy(
+                passengers = enriched,
+                booked_seats = maxOf(current.booked_seats, occupied),
+            ),
         )
     }
+
+    private fun preserveStableTripMetadata(
+        previous: BlaBlaCollectorTrip?,
+        current: BlaBlaCollectorTrip,
+    ): BlaBlaCollectorTrip = current.copy(
+        public_trip_href = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
+            ?: previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty),
+    )
 
     private fun duplicateEvidenceMatches(
         left: BlaBlaCollectorPassenger,

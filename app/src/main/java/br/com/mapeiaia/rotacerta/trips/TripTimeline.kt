@@ -26,6 +26,8 @@ data class TripTimelineEntry(
     val localTripId: String? = null,
     val blablaTripId: String? = null,
     val blablaTripHref: String? = null,
+    /** Exact passenger-facing public BlaBlaCar URL captured for this same card. */
+    val blablaPublicHref: String? = null,
     val blablaProfileUuid: String? = null,
     val blablaPrice: String? = null,
     val blablaAvailability: String? = null,
@@ -83,6 +85,10 @@ object TripTimelineEngine {
                     maximumOccupiedSeats = occupied.maxOrNull() ?: 0,
                     sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
                     localTripId = trip.id,
+                    blablaTripId = trip.blablaTripId,
+                    blablaTripHref = trip.blablaManageUrl,
+                    blablaPublicHref = trip.blablaPublicUrl,
+                    blablaProfileUuid = trip.blablaProfileUuid,
                 )
             }
             .sortedBy(TripTimelineEntry::departureAtMillis)

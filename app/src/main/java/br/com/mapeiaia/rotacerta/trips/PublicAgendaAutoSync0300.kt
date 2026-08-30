@@ -25,6 +25,7 @@ internal data class PublicAgendaExternalTrip(
     val profileUuid: String = "",
     val blablaTripId: String = "",
     val blablaTripHref: String = "",
+    val blablaPublicHref: String = "",
 )
 
 internal object PublicAgendaAutoSync0300 {
@@ -432,6 +433,7 @@ internal object PublicAgendaAutoSync0300 {
                             profileUuid = synthesized.profileUuid,
                             blablaTripId = synthesized.blablaTripId,
                             blablaTripHref = synthesized.blablaTripHref,
+                            blablaPublicHref = synthesized.blablaPublicHref,
                             title = effectiveTrip.title,
                             departureAtMillis = effectiveTrip.departureAtMillis,
                             capacity = effectiveTrip.capacity,
@@ -739,6 +741,13 @@ internal object PublicAgendaAutoSync0300 {
             publicToken = token,
             notes = "",
             remoteId = token,
+            blablaProfileUuid = source.profile_uuid.trim().takeIf(String::isNotEmpty),
+            blablaTripId = source.trip_id.orEmpty().trim().takeIf(String::isNotEmpty),
+            blablaManageUrl = source.trip_href
+                ?.takeIf(BlaBlaCollectorUrlModule::isManageTarget)
+                ?.let(BlaBlaCollectorUrlModule::canonical)
+                ?.takeIf(String::isNotBlank),
+            blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(source.public_trip_href, source.trip_id),
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
@@ -757,6 +766,7 @@ internal object PublicAgendaAutoSync0300 {
             profileUuid = source.profile_uuid.trim(),
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),
+            blablaPublicHref = trip.blablaPublicUrl.orEmpty(),
         )
     }
 

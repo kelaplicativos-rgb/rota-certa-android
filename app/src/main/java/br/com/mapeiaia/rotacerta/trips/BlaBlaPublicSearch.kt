@@ -292,6 +292,16 @@ class BlaBlaPublicSearchStore(context: Context) {
     }
 }
 
+internal fun exactPublicTripHrefForTrip(
+    expectedTripId: String?,
+    hrefs: List<String?>,
+): String? {
+    val expected = expectedTripId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    return hrefs.firstNotNullOfOrNull { raw ->
+        BlaBlaCollectorUrlModule.publicTrip(raw, expected)
+    }
+}
+
 internal fun publicSearchTripIdFromHref(raw: String?): String? {
     val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
     val uri = runCatching { URI(if (value.startsWith('/')) "https://www.blablacar.com.br$value" else value) }.getOrNull() ?: return null

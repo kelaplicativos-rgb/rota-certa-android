@@ -78,6 +78,18 @@ internal object BlaBlaCollectorUrlModule {
     fun isSpecificTrip(raw: String?): Boolean =
         isAllowed(raw) && !isPassenger(raw) && !isEditOrOptions(raw) && tripId(raw) != null
 
+    /** Passenger-facing exact trip URL. Administrative /rides/offer URLs are rejected. */
+    fun publicTrip(raw: String?, expectedTripId: String? = null): String? {
+        val value = canonical(raw).takeIf(String::isNotBlank) ?: return null
+        val uri = parseAllowed(value) ?: return null
+        val path = uri.path.orEmpty().trimEnd('/').lowercase()
+        if (path != "/trip" && !path.startsWith("/trip/")) return null
+        val actualTripId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val expected = expectedTripId?.trim()?.takeIf(String::isNotEmpty)
+        if (expected != null && actualTripId != expected) return null
+        return value
+    }
+
     /** URLs the authenticated management browser may open on explicit user action. */
     fun isManageTarget(raw: String?): Boolean =
         isSpecificTrip(raw) || (isAllowed(raw) && isPassenger(raw))

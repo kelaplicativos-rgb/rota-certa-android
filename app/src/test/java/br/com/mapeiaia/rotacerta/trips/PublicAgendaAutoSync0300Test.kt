@@ -24,6 +24,8 @@ class PublicAgendaAutoSync0300Test {
             actual_departure = "Santo André, SP",
             actual_arrival = "São Thomé das Letras, MG",
             price = "R$ 93,00",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-123",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-123&search_uuid=private-noise",
             trip_id = "trip-123",
             booked_seats = 2,
             passenger_roster_complete = true,
@@ -42,6 +44,11 @@ class PublicAgendaAutoSync0300Test {
         assertEquals("trip-123", trip.sourceReference)
         assertTrue(trip.trip.publicBookingEnabled)
         assertTrue(trip.trip.publicToken.startsWith("bb"))
+        assertEquals("profile-ezequiel", trip.trip.blablaProfileUuid)
+        assertEquals("trip-123", trip.trip.blablaTripId)
+        assertEquals("https://www.blablacar.com.br/rides/offer/trip-123", trip.trip.blablaManageUrl)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", trip.trip.blablaPublicUrl)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", trip.blablaPublicHref)
         assertEquals("", trip.trip.notes)
     }
 

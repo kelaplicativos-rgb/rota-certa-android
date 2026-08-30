@@ -582,6 +582,44 @@ function cleanText(value, max = 240) {
   return String(value || "").trim().slice(0, max);
 }
 
+function blaBlaExternalTripId(url) {
+  const queryId = cleanText(url.searchParams.get("id"), 160);
+  if (queryId) return queryId;
+  const match = url.pathname.match(/\/(?:trip|rides\/offer)\/([^/?#]+)/i);
+  if (!match || /^(?:edit|passenger)$/i.test(match[1])) return "";
+  return cleanText(match[1], 160);
+}
+
+function normalizeBlaBlaUrl(raw, expectedTripId = "", publicOnly = false) {
+  const value = cleanText(raw, 1200);
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
+    const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+    if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";
+    if (!publicOnly && !(path.includes("/trip") || path.includes("/rides/offer"))) return "";
+    const actualTripId = blaBlaExternalTripId(url);
+    if (!actualTripId) return "";
+    const expected = cleanText(expectedTripId, 160);
+    if (expected && actualTripId !== expected) return "";
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
+    return url.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function normalizeBlaBlaManageUrl(raw, expectedTripId = "") {
+  return normalizeBlaBlaUrl(raw, expectedTripId, false);
+}
+
+function normalizeBlaBlaPublicUrl(raw, expectedTripId = "") {
+  return normalizeBlaBlaUrl(raw, expectedTripId, true);
+}
+
 function normalizeStops(rawStops) {
   if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > 24) {
     throw new Error("A viagem precisa ter entre 2 e 24 paradas.");
@@ -621,6 +659,10 @@ function normalizeDriverTrip(raw, previous = null) {
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
     ? rawPublishedSeats
     : null;
+  const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
+  const blablaTripId = cleanText(raw.blablaTripId, 160);
+  const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
+  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId);
   return {
     localTripId: cleanText(raw.id, 100),
     title: cleanText(raw.title, 220),
@@ -628,6 +670,10 @@ function normalizeDriverTrip(raw, previous = null) {
     capacity,
     status,
     stops,
+    blablaProfileUuid,
+    blablaTripId,
+    blablaManageUrl,
+    blablaPublicUrl,
     publicBookingEnabled: raw.publicBookingEnabled === true,
     itineraryAuthoritative: raw.itineraryAuthoritative !== false,
     publishedSeats,
@@ -681,6 +727,7 @@ function safePublicTrip(token, data) {
     capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
+    blablaPublicUrl: normalizeBlaBlaPublicUrl(data.blablaPublicUrl, cleanText(data.blablaTripId, 160)) || null,
     driverUsername: data.driverUsername || "",
     driverDisplayName: data.driverDisplayName || "",
     updatedAtMillis: data.updatedAtMillis || null,

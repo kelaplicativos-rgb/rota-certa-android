@@ -17,6 +17,7 @@ internal enum class BlaBlaBrowserRequest(
     RIDE_LIST("ride_list.js"),
     TRIP_OPEN("trip_open.js", mutatesRemoteState = true),
     TRIP_DETAIL("trip_detail.js"),
+    TRIP_PUBLIC_SHARE("trip_public_share.js"),
     TRIP_ITINERARY("trip_itinerary.js"),
     TRIP_EDIT("trip_edit.js"),
 
