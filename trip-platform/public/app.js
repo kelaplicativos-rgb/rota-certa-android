@@ -1462,38 +1462,51 @@ function renderAgendaCards(entries, container, filtered = false) {
 
     card.append(date, routeFrom, arrow, routeTo, meta, bottom);
 
-    if (full) {
-      const action = document.createElement("div");
-      action.className = "agendaAction";
-      action.textContent = "CHEIO";
+    const details = document.createElement("a");
+    details.className = "agendaDetailsLink";
+    details.href = `/?${detailsParams.toString()}`;
+    details.textContent = "Ver detalhes";
+    details.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+    card.appendChild(details);
+
+    if (soldOut || full) {
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
-      fullWord.textContent = "Cheio";
+      fullWord.textContent = "Lotado";
       bottom.appendChild(fullWord);
-      card.appendChild(action);
-    } else {
-      const details = document.createElement("a");
-      details.className = "agendaDetailsLink";
-      details.href = `/?${detailsParams.toString()}`;
-      details.textContent = "Ver detalhes";
-      details.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
-
-      const reserveParams = new URLSearchParams(detailsParams);
-      reserveParams.set("reservar", "1");
-      const action = document.createElement("a");
-      action.className = "agendaAction";
-      action.href = `/?${reserveParams.toString()}`;
-      action.textContent = "RESERVAR";
-      action.addEventListener("click", () => {
-        tracePublicAction("PUBLIC_TRIP_SELECTED");
-        tracePublicAction("PUBLIC_RESERVATION_STARTED", {
-          seats: searchState.seats,
-          fromIndex,
-          toIndex,
-        });
-      });
-      card.append(details, action);
     }
+
+    const choices = document.createElement("div");
+    choices.className = "reservationChoices";
+
+    const whatsapp = document.createElement("button");
+    whatsapp.type = "button";
+    whatsapp.className = "bookingChoice bookingWhatsapp";
+    whatsapp.textContent = actionsEnabled ? "Reservar pelo WhatsApp" : (soldOut || full ? "WhatsApp — Lotado" : "WhatsApp — vagas em confirmação");
+    whatsapp.disabled = !actionsEnabled;
+    whatsapp.addEventListener("click", () => openWhatsappSeatPicker(item, fromIndex, toIndex, filtered ? "searchResults" : "agenda"));
+
+    const blablaUrl = safeBlaBlaPublicUrl(item);
+    const blabla = document.createElement("a");
+    blabla.className = "bookingChoice bookingBlabla";
+    blabla.textContent = blablaUrl && actionsEnabled ? "Reservar na BlaBlaCar" : (blablaUrl ? "BlaBlaCar — indisponível" : "BlaBlaCar — link indisponível");
+    if (blablaUrl && actionsEnabled) {
+      blabla.href = blablaUrl;
+      blabla.target = "_blank";
+      blabla.rel = "noopener noreferrer";
+      blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED", { fromIndex, toIndex }));
+    } else {
+      blabla.setAttribute("aria-disabled", "true");
+    }
+
+    const rota = document.createElement("button");
+    rota.type = "button";
+    rota.className = "bookingChoice bookingSoon";
+    rota.disabled = true;
+    rota.textContent = "Reservar pelo Rota Certa — Em breve";
+
+    choices.append(whatsapp, blabla, rota);
+    card.appendChild(choices);
     container.appendChild(card);
   });
 }
