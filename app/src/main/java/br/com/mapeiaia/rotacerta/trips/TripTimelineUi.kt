@@ -63,6 +63,10 @@ fun TripTimelineScreen(
     forceAllSyncToken: Int,
     onRequestBlaBlaSync: () -> Unit,
     onCreateTrip: () -> Unit,
+    onCreateTripForPassenger: (String) -> Unit,
+    addPassengerResumeToken: Int,
+    addPassengerResumePassengerId: String?,
+    addPassengerResumeTripId: String?,
     onPinShortcut: () -> Unit,
     onOpenOnlineSettings: () -> Unit,
     onOpenPassengers: () -> Unit,
@@ -87,8 +91,6 @@ fun TripTimelineScreen(
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
     var autoSyncTripId by remember { mutableStateOf<String?>(null) }
     var showPublisher by remember { mutableStateOf(false) }
-    var showPassengerMenu by remember { mutableStateOf(false) }
-    var passengerMenuActionLocked by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
@@ -309,7 +311,7 @@ fun TripTimelineScreen(
         openRequestToken = passengerAddRequestToken,
         formatter = formatter,
         onChanged = onChanged,
-        onNewTrip = onCreateTrip,
+        onNewTrip = onCreateTripForPassenger,
         onTargetSync = { entry, selectedTrip ->
             val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
                 context = context,
@@ -325,6 +327,9 @@ fun TripTimelineScreen(
                 onRequestBlaBlaSync()
             }
         },
+        resumeRequestToken = addPassengerResumeToken,
+        resumePassengerId = addPassengerResumePassengerId,
+        resumeTripId = addPassengerResumeTripId,
     )
 
     val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
@@ -370,13 +375,11 @@ fun TripTimelineScreen(
 
     ResponsiveTripActions(
         actions = listOf(
-            ResponsiveTripAction("Nova viagem", onClick = onCreateTrip),
+            ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
+            ResponsiveTripAction("➕ Adicionar a uma viagem") { passengerAddRequestToken++ },
+            ResponsiveTripAction("🛣️ Nova viagem", onClick = onCreateTrip),
             ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
-            ResponsiveTripAction("👥 Passageiros") {
-                passengerMenuActionLocked = false
-                showPassengerMenu = true
-            },
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
                 showSync = !showSync
@@ -392,47 +395,6 @@ fun TripTimelineScreen(
         onPublicSearchResponse = { publicSearchResponse = it },
         publicSearchClearToken = publicSearchClearToken,
     )
-
-    if (showPassengerMenu) {
-        AlertDialog(
-            onDismissRequest = {
-                passengerMenuActionLocked = false
-                showPassengerMenu = false
-            },
-            title = { Text("Passageiros") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            if (!passengerMenuActionLocked) {
-                                passengerMenuActionLocked = true
-                                showPassengerMenu = false
-                                passengerAddRequestToken++
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("+ Adicionar passageiro") }
-                    OutlinedButton(
-                        onClick = {
-                            if (!passengerMenuActionLocked) {
-                                passengerMenuActionLocked = true
-                                showPassengerMenu = false
-                                onOpenPassengers()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("👥 Ver / gerenciar passageiros") }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    passengerMenuActionLocked = false
-                    showPassengerMenu = false
-                }) { Text("Fechar") }
-            },
-        )
-    }
 
     if (showTimelineClearDialog) {
         AlertDialog(
