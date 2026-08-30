@@ -91,6 +91,7 @@ fun TripTimelineScreen(
     var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
     var autoSyncTripId by remember { mutableStateOf<String?>(null) }
     var showPublisher by remember { mutableStateOf(false) }
+    var driverDefaultsExpanded by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
@@ -285,25 +286,33 @@ fun TripTimelineScreen(
         }) { Text("Voltar") }
     }
 
-    if (settingsLoaded) {
-        TripDriverDefaultsCard(
-            settings = appSettings,
-            repository = settingsRepository,
-            referenceOrigin = referenceOrigin,
-            onReferenceChanged = { origin ->
-                referenceOrigin = origin
-                onChanged("Origem de referência definida pelo GPS. Os cards foram reclassificados.")
-            },
-            onChanged = onChanged,
-        )
-    } else {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("Dados do veículo", style = MaterialTheme.typography.titleSmall)
-                Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
+    ResponsiveTripActions(
+        actions = listOf(
+            ResponsiveTripAction(
+                if (driverDefaultsExpanded) "Fechar dados do veículo" else "Dados do veículo",
+            ) { driverDefaultsExpanded = !driverDefaultsExpanded },
+        ),
+    )
+    if (driverDefaultsExpanded) {
+        if (settingsLoaded) {
+            TripDriverDefaultsCard(
+                settings = appSettings,
+                repository = settingsRepository,
+                referenceOrigin = referenceOrigin,
+                onReferenceChanged = { origin ->
+                    referenceOrigin = origin
+                    onChanged("Origem de referência definida pelo GPS. Os cards foram reclassificados.")
+                },
+                onChanged = onChanged,
+            )
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -759,7 +768,6 @@ private fun TripDriverDefaultsCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Dados do veículo", style = MaterialTheme.typography.titleSmall)
             Text(
                 if (referenceOrigin == null) "Origem de referência ainda não definida." else "📍 Origem definida por GPS",
                 style = MaterialTheme.typography.bodyMedium,
