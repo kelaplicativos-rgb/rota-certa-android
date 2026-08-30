@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.361 simple Agenda reservations
+name: Rota Certa 0.1.362 canonical reservation links
 
 on:
   push:
@@ -43,8 +43,8 @@ jobs:
           BASE=41c846b53fb474c1ac72764efae206477b6c889a
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5654' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.361"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5655' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.362"' app/build.gradle.kts
           grep -Fq 'class="searchShell cleanSearch hidden"' trip-platform/public/index.html
           grep -Fq '<h1 class="pageTitle">Escolha sua viagem</h1>' trip-platform/public/index.html
           grep -Fq 'Reservar pelo WhatsApp' trip-platform/public/index.html
@@ -55,6 +55,11 @@ jobs:
           grep -Fq 'fun publicTrip(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
           grep -Fq 'blablaPublicUrl' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'publicTripHref' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'val blablaPublicHref: String? = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'blablaPublicHref = BlaBlaCollectorUrlModule.publicTrip(trip.public_trip_href, trip.trip_id)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'Text("🔗 Público")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'whatsapp = settings.driverWhatsapp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicDriverProfile.kt
+          grep -Fq 'driverWhatsapp = publicProfile.whatsapp.trim()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           test -f trip-platform/functions/test/public-simple-reservation-0361.test.js
 
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
@@ -137,27 +142,27 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5654'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.361'" /tmp/aapt.txt
-          mkdir -p /tmp/0361
-          cp "$APK" /tmp/0361/rota-certa-0.1.361-agenda-simples-reservas.apk
-          sha256sum /tmp/0361/rota-certa-0.1.361-agenda-simples-reservas.apk | tee /tmp/0361/apk.sha256
-          cp /tmp/aapt.txt /tmp/0361/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0361/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0361/gradle.txt
-          git rev-parse HEAD > /tmp/0361/source-head.txt
-          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0361/changed-files.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0361/dex-strings.txt
+          grep -Fq "versionCode='5655'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.362'" /tmp/aapt.txt
+          mkdir -p /tmp/0362
+          cp "$APK" /tmp/0362/rota-certa-0.1.362-links-canonicos-reserva.apk
+          sha256sum /tmp/0362/rota-certa-0.1.362-links-canonicos-reserva.apk | tee /tmp/0362/apk.sha256
+          cp /tmp/aapt.txt /tmp/0362/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0362/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0362/gradle.txt
+          git rev-parse HEAD > /tmp/0362/source-head.txt
+          git diff --name-only 41c846b53fb474c1ac72764efae206477b6c889a..HEAD > /tmp/0362/changed-files.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0362/dex-strings.txt
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-          grep -Fq "$SOURCE_SHA" /tmp/0361/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0361/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0362/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0362/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.361-agenda-simples-reservas
+          name: rota-certa-0.1.362-links-canonicos-reserva
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0361
+          path: /tmp/0362
 
       - name: Install Agenda backend dependencies
         shell: bash
