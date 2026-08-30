@@ -711,7 +711,7 @@ private fun safeLegacyPassengerPickerGroup(members: List<PassengerProfile>): Boo
     if (members.map(PassengerProfile::blocked).distinct().size > 1) return false
 
     fun hasStrongConflict(selector: (PassengerProfile) -> Set<String>): Boolean {
-        val nonEmpty = members.map(selector).filter(Set<String>::isNotEmpty)
+        val nonEmpty = members.map(selector).filter { it.isNotEmpty() }
         if (nonEmpty.size < 2) return false
         return nonEmpty.indices.any { left ->
             (left + 1 until nonEmpty.size).any { right -> nonEmpty[left].intersect(nonEmpty[right]).isEmpty() }
