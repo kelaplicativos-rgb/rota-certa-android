@@ -706,6 +706,21 @@ function safePublicTrip(token, data) {
   const segmentLoads = Array.isArray(data.segmentLoads)
     ? data.segmentLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
     : [];
+  const rawPassengerLoads = Array.isArray(data.segmentPassengerLoads)
+    ? data.segmentPassengerLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
+    : [];
+  const rawBlockedLoads = Array.isArray(data.segmentBlockedLoads)
+    ? data.segmentBlockedLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
+    : [];
+  const segmentPassengerLoads = segmentLoads.map((load, index) => {
+    const raw = rawPassengerLoads.length === segmentLoads.length ? rawPassengerLoads[index] : load;
+    return Math.min(load, Math.max(0, Number(raw || 0)));
+  });
+  const segmentBlockedLoads = segmentLoads.map((load, index) => {
+    const passenger = segmentPassengerLoads[index] || 0;
+    const raw = rawBlockedLoads.length === segmentLoads.length ? rawBlockedLoads[index] : 0;
+    return Math.min(Math.max(0, load - passenger), Math.max(0, Number(raw || 0)));
+  });
   const availability = capacityAvailabilityRange({ capacity }, segmentLoads);
   const fullyOccupied = data.status === "FULL" || (segmentLoads.length === expectedSegments && expectedSegments > 0 && segmentLoads.every((load) => load >= capacity));
   const capacityReliable = capacityIsReliable(token, data);
@@ -719,6 +734,8 @@ function safePublicTrip(token, data) {
     status: fullyOccupied ? "FULL" : data.status,
     stops: data.stops,
     segmentLoads,
+    segmentPassengerLoads,
+    segmentBlockedLoads,
     availableSeatsMinimum: fullyOccupied ? 0 : availability.minimum,
     availableSeatsMaximum: fullyOccupied ? 0 : availability.maximum,
     isFull: fullyOccupied,
