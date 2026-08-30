@@ -17,7 +17,7 @@ function block(source, start, end) {
   return source.slice(from, to);
 }
 
-test("authenticated passenger reserves in one action without repeated identity form or review screen", () => {
+test("authenticated passenger sees real seats before the direct reservation is submitted", () => {
   const quick = block(web, "function startQuickReservation", "function refreshTripAvailabilitySummary");
   const reserve = block(web, "async function reserve()", "async function undoQuickBooking");
   assert.match(html, /id="startBooking"[^>]*>RESERVAR</);
@@ -25,16 +25,16 @@ test("authenticated passenger reserves in one action without repeated identity f
   assert.match(html, /id="contact" type="hidden"/);
   assert.doesNotMatch(html, /<label>Seu nome\s*<input id="name"/);
   assert.doesNotMatch(html, /<label>Seu WhatsApp\s*<input id="contact"/);
-  assert.match(quick, /return reserve\(\)/);
+  assert.match(quick, /return openTripSeatPicker\(auto\)/);
   assert.match(reserve, /body: JSON\.stringify\(\{ \.\.\.bookingPayload, idempotencyKey \}\)/);
   assert.doesNotMatch(reserve, /showOnly\("review"\)/);
 });
 
-test("unauthenticated reservation intent is persisted and resumes automatically after private authentication", () => {
-  const quick = block(web, "function startQuickReservation", "function refreshTripAvailabilitySummary");
+test("unauthenticated seat-confirmed intent is persisted and resumes after private authentication", () => {
+  const confirm = block(web, "function confirmSeatPicker", "function stopMatchesSearch");
   const afterAuth = block(web, "async function continueAfterAuthentication", "async function loginAccessGate");
-  assert.match(quick, /persistPendingBookingIntent\(intent\)/);
-  assert.match(quick, /showPrivateAuthGate\("trip", "reserve"\)/);
+  assert.match(confirm, /persistPendingBookingIntent\(pendingBooking\)/);
+  assert.match(confirm, /showPrivateAuthGate\("trip", "reserve"\)/);
   assert.match(afterAuth, /resume === "reserve"/);
   assert.match(afterAuth, /restorePendingBookingIntent\(\)/);
   assert.match(afterAuth, /return reserve\(\)/);
@@ -73,7 +73,8 @@ test("double tap converges through client in-flight guard and stable server idem
 
 test("success is shown only after an OK response and capacity is updated immediately", () => {
   const reserve = block(web, "async function reserve()", "async function undoQuickBooking");
-  assert.match(reserve, /if \(!response\.ok\) throw new Error/);
+  assert.match(reserve, /if \(!response\.ok\) \{/);
+  assert.match(reserve, /failure\.availableSeats/);
   assert.match(reserve, /recomputeLoadsAfterBooking/);
   assert.match(reserve, /"✓ RESERVA SOLICITADA"/);
   assert.match(reserve, /PUBLIC_SEATS_UPDATED/);
