@@ -686,14 +686,26 @@ function normalizedSeatCount(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
-function seatSourceBreakdown(item) {
+function seatSourceBreakdown(item, availableOverride = null) {
   const total = normalizedSeatCount(item && item.capacity);
-  const rawBlaBla = item && item.publishedSeats != null ? Number(item.publishedSeats) : NaN;
-  if (!Number.isInteger(rawBlaBla) || rawBlaBla < 0 || rawBlaBla > total) {
+  const rawBlaBla = item && item.blablaAvailableSeats != null ? Number(item.blablaAvailableSeats) : NaN;
+  const rawRotaCerta = item && item.rotaCertaSeatPool != null ? Number(item.rotaCertaSeatPool) : NaN;
+  if (
+    !Number.isInteger(rawBlaBla) || rawBlaBla < 0 ||
+    !Number.isInteger(rawRotaCerta) || rawRotaCerta < 0 ||
+    rawBlaBla + rawRotaCerta !== total
+  ) {
     return { blabla: null, rotaCerta: null, total };
   }
-  const blabla = normalizedSeatCount(rawBlaBla);
-  return { blabla, rotaCerta: Math.max(0, total - blabla), total };
+  const available = availableOverride == null
+    ? seatRange(item).minimum
+    : normalizedSeatCount(availableOverride);
+  const currentTotal = Math.min(total, available);
+  // Public Rota Certa bookings consume the Rota Certa pool first. Only after
+  // that pool reaches zero can the combined inventory consume BlaBlaCar seats.
+  const blabla = Math.min(rawBlaBla, currentTotal);
+  const rotaCerta = Math.max(0, Math.min(rawRotaCerta, currentTotal - blabla));
+  return { blabla, rotaCerta, total: currentTotal };
 }
 
 function seatAvailabilityText(available) {
@@ -1458,7 +1470,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
     }
     meta.append(time, seats);
-    const sourceBreakdown = seatSourceBreakdown(item);
+    const sourceBreakdown = seatSourceBreakdown(item, segmentAvailable);
     if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
       const seatSources = document.createElement("span");
       seatSources.className = "bigPill";
@@ -1807,7 +1819,7 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  const sourceBreakdown = seatSourceBreakdown(trip);
+  const sourceBreakdown = seatSourceBreakdown(trip, seatRange(trip).minimum);
   if (sourceBreakdown.blabla != null && sourceBreakdown.rotaCerta != null) {
     addFact("Vagas BlaBlaCar", `${sourceBreakdown.blabla} lugar(es)`);
     addFact("Vagas Rota Certa", `${sourceBreakdown.rotaCerta} lugar(es)`);
