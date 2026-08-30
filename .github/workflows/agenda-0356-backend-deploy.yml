@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.357 real seat backend deploy
+name: Rota Certa 0.1.358 short public Agenda link backend deploy
 
 on:
   push:
@@ -53,6 +53,10 @@ jobs:
           grep -Fq 'function openTripSeatPicker' trip-platform/public/app.js
           grep -Fq 'currentSeatCapacityMessage' trip-platform/functions/index.js
           grep -Fq 'availableSeats: available' trip-platform/functions/index.js
+          grep -Fq 'function publicAgendaUrlFor' trip-platform/functions/index.js
+          grep -Fq 'getPublicDriverAgenda(res, req, parts[3], "", true)' trip-platform/functions/index.js
+          grep -Fq 'function publicSlugFromPath' trip-platform/public/app.js
+          node --test trip-platform/functions/test/public-short-agenda-link-0358.test.js
 
       - name: Configure Firebase authentication
         shell: bash
@@ -91,7 +95,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke deployed 0.1.357 contracts
+      - name: Smoke deployed 0.1.358 short-link contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -103,10 +107,18 @@ jobs:
             if grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' /tmp/live-app.js \
               && grep -Fq 'SOLICITAÇÃO NÃO APROVADA' /tmp/live-app.js \
               && grep -Fq 'function seatLimitText' /tmp/live-app.js \
-              && grep -Fq 'function openTripSeatPicker' /tmp/live-app.js; then
+              && grep -Fq 'function openTripSeatPicker' /tmp/live-app.js \
+              && grep -Fq 'function publicSlugFromPath' /tmp/live-app.js \
+              && grep -Fq '/v1/public/agenda/' /tmp/live-app.js; then
+              curl --fail --silent --show-error --dump-header /tmp/slug.headers "$BASE/viagem-certa" -o /tmp/slug.html
+              grep -Fq 'Rota Certa' /tmp/slug.html
+              if grep -Eiq '^location:.*(motorista=|agenda=)' /tmp/slug.headers; then
+                echo "Short route redirected to a technical token URL."
+                exit 1
+              fi
               exit 0
             fi
             sleep 3
           done
-          echo "Hosting 0.1.357 real-seat contract not observed."
+          echo "Hosting 0.1.358 short-link contract not observed."
           exit 1
