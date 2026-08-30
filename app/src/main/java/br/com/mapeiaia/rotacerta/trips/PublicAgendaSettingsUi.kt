@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.SettingsRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -90,6 +93,12 @@ internal fun OnlineSettingsEditor(
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
+    val vehicleSettingsRepository = remember(context) { SettingsRepository(context) }
+    val vehicleAppSettingsState by vehicleSettingsRepository.settings.collectAsState(initial = null)
+    val vehicleAppSettings = vehicleAppSettingsState
+    val vehicleReferenceStore = remember(context) { TripReferenceOriginStore(context) }
+    var vehicleReferenceOrigin by remember { mutableStateOf(vehicleReferenceStore.read()) }
+    var vehicleSettingsMessage by remember { mutableStateOf<String?>(null) }
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val profileStore = remember(context) { BlaBlaPublicProfileStore(context) }
     val initialResolvedProfile = remember(context, initial) { PublicDriverProfileResolver(context).resolve(initial) }
@@ -288,6 +297,26 @@ internal fun OnlineSettingsEditor(
         Text(if (vehicleExpanded) "🚗 Veículo ▲" else "🚗 Veículo ▼")
     }
     if (vehicleExpanded) {
+        if (vehicleAppSettings != null) {
+            TripDriverDefaultsCard(
+                settings = vehicleAppSettings,
+                repository = vehicleSettingsRepository,
+                referenceOrigin = vehicleReferenceOrigin,
+                onReferenceChanged = { origin -> vehicleReferenceOrigin = origin },
+                onChanged = { message -> vehicleSettingsMessage = message },
+            )
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        vehicleSettingsMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
         PublicProfileTextField("Marca/modelo", PublicDriverProfileFields.VEHICLE, publicProfileMode, vehicleMakeModel,
             automaticSnapshot?.vehicleMakeModel.orEmpty(), publicProfileOverrideFields, { vehicleMakeModel = it.take(120) }, { publicProfileOverrideFields = it }, { it.take(120) })
         PublicProfileTextField("Cor", PublicDriverProfileFields.VEHICLE_COLOR, publicProfileMode, vehicleColor,
