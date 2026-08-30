@@ -397,19 +397,13 @@ internal fun EnhancedPassengerTimelineSection(
                 }
 
                 val passengerTarget = externalPassengerTarget(passenger)
-                val tripTarget = externalTripTarget(entry.blablaProfileUuid, entry.blablaTripHref)
-                if (passengerTarget != null || tripTarget != null) {
+                if (passengerTarget != null) {
                     IconButton(
                         onClick = {
-                            val opened = if (passengerTarget != null) {
-                                openExternalPassengerBlaBla(context, passenger)
-                            } else {
-                                openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)
-                            }
-                            if (!opened) {
+                            if (!openExternalPassengerBlaBla(context, passenger)) {
                                 Toast.makeText(
                                     context,
-                                    "Conta BlaBlaCar desta viagem não está conectada.",
+                                    "Conta BlaBlaCar deste passageiro não está conectada.",
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }
@@ -418,7 +412,7 @@ internal fun EnhancedPassengerTimelineSection(
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_blablacar_action),
-                            contentDescription = if (passengerTarget != null) "Abrir passageiro no BlaBlaCar" else "Abrir viagem no BlaBlaCar",
+                            contentDescription = "Abrir passageiro no BlaBlaCar",
                             tint = Color.Unspecified,
                             modifier = Modifier.size(22.dp),
                         )

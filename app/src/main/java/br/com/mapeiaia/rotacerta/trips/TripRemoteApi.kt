@@ -30,6 +30,22 @@ data class DriverRegistrationResponse(
 )
 
 @Serializable
+data class DriverUsernameChangeRequest(
+    val username: String,
+    val currentPublicAgendaToken: String,
+    val requestId: String,
+)
+
+@Serializable
+data class DriverUsernameChangeResponse(
+    val username: String,
+    val publicAgendaToken: String,
+    val publicAgendaUrl: String,
+    val calendarUrl: String,
+    val changed: Boolean = false,
+)
+
+@Serializable
 data class DriverPushTokenRequest(
     val token: String,
     val appVersion: String = "",
@@ -323,6 +339,23 @@ class TripRemoteApi(
         path = "/v1/drivers/register",
         body = json.encodeToString(DriverRegistrationRequest(displayName.trim(), username.trim())),
         requireDriverToken = false,
+    )
+
+    suspend fun changeDriverUsername(
+        username: String,
+        currentPublicAgendaToken: String,
+        requestId: String,
+    ): DriverUsernameChangeResponse = request(
+        method = "POST",
+        path = "/v1/driver/username",
+        body = json.encodeToString(
+            DriverUsernameChangeRequest(
+                username = username.trim(),
+                currentPublicAgendaToken = currentPublicAgendaToken.trim(),
+                requestId = requestId.trim(),
+            ),
+        ),
+        requireDriverToken = true,
     )
 
     suspend fun registerPushToken(

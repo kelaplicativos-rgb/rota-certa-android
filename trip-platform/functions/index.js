@@ -81,24 +81,64 @@ function normalizeUsername(value) {
     .slice(0, 32);
 }
 
+function driverAliasRef(username) {
+  return db.collection("tripDriverAliases").doc(normalizeUsername(username));
+}
+
+async function resolveDriverUsername(usernameRaw) {
+  const requestedUsername = normalizeUsername(usernameRaw);
+  if (!requestedUsername) return null;
+
+  const directSnap = await db.collection("tripDrivers").doc(requestedUsername).get();
+  if (directSnap.exists) {
+    const data = directSnap.data();
+    return {
+      requestedUsername,
+      canonicalUsername: requestedUsername,
+      publicUsername: normalizeUsername(data.publicUsername) || requestedUsername,
+      driverSnap: directSnap,
+    };
+  }
+
+  const aliasSnap = await driverAliasRef(requestedUsername).get();
+  if (!aliasSnap.exists) return null;
+  const canonicalUsername = normalizeUsername(aliasSnap.data().canonicalUsername);
+  if (!canonicalUsername) return null;
+  const driverSnap = await db.collection("tripDrivers").doc(canonicalUsername).get();
+  if (!driverSnap.exists) return null;
+  const data = driverSnap.data();
+  return {
+    requestedUsername,
+    canonicalUsername,
+    publicUsername: normalizeUsername(data.publicUsername) || canonicalUsername,
+    driverSnap,
+  };
+}
+
 async function requireDriver(req, res) {
   const supplied = req.get("X-Rota-Certa-Driver-Token") || "";
   const username = normalizeUsername(req.get("X-Rota-Certa-Driver-Username") || "");
   if (username) {
-    const driverSnap = await db.collection("tripDrivers").doc(username).get();
-    if (!driverSnap.exists || !safeEqual(sha256Hex(supplied), driverSnap.data().driverTokenHash || "")) {
+    const resolved = await resolveDriverUsername(username);
+    const driverSnap = resolved && resolved.driverSnap;
+    if (!driverSnap || !driverSnap.exists || !safeEqual(sha256Hex(supplied), driverSnap.data().driverTokenHash || "")) {
       fail(res, 401, "driver_auth_required", "Autenticação do motorista inválida.");
       return null;
     }
     const data = driverSnap.data();
-    return { username, displayName: cleanText(data.displayName, 120), legacy: false };
+    return {
+      username: resolved.canonicalUsername,
+      publicUsername: resolved.publicUsername,
+      displayName: cleanText(data.displayName, 120),
+      legacy: false,
+    };
   }
   const expected = driverTokenSecret.value() || "";
   if (!safeEqual(supplied, expected)) {
     fail(res, 401, "driver_auth_required", "Autenticação do motorista inválida.");
     return null;
   }
-  return { username: "", displayName: "", legacy: true };
+  return { username: "", publicUsername: "", displayName: "", legacy: true };
 }
 
 async function registerDriverPushToken(req, res) {
@@ -681,12 +721,13 @@ async function resolvePublicDebugTarget(body) {
     if (!username) return null;
     return { driverUsername: username, tripToken, agendaToken: "" };
   }
-  const driverUsername = normalizeUsername(body && body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(body && body.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const agendaToken = cleanText(body && body.agendaToken, 80).replace(/[^A-Za-z0-9_-]/g, "");
   if (driverUsername.length >= 3 && agendaToken.length >= 16) {
-    const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get();
-    const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(driverUsername, driverSnap) : "";
-    if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) return null;
+    const driverSnap = resolvedDriver.driverSnap;
+    const agendaHash = await publicAgendaLinkHash(driverUsername, driverSnap);
+    if (!tokenMatches(agendaToken, agendaHash)) return null;
     return { driverUsername, tripToken: "", agendaToken };
   }
   return null;
@@ -924,15 +965,22 @@ async function registerDriver(req, res) {
   const publicAgendaToken = crypto.randomBytes(24).toString("base64url");
   const ref = db.collection("tripDrivers").doc(username);
   const linkRef = publicAgendaLinkRef(username);
+  const aliasRef = driverAliasRef(username);
   const now = Date.now();
   try {
     await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
-      const existingLink = await tx.get(linkRef);
-      if (existing.exists || existingLink.exists) throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      const [existing, existingLink, existingAlias] = await Promise.all([
+        tx.get(ref),
+        tx.get(linkRef),
+        tx.get(aliasRef),
+      ]);
+      if (existing.exists || existingLink.exists || existingAlias.exists) {
+        throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      }
       const agendaTokenHash = sha256Hex(publicAgendaToken);
       tx.create(ref, {
         username,
+        publicUsername: username,
         displayName,
         driverTokenHash: sha256Hex(driverToken),
         agendaTokenHash,
@@ -958,6 +1006,98 @@ async function registerDriver(req, res) {
     });
   } catch (error) {
     return fail(res, error.httpStatus || 500, error.code || "driver_registration_failed", error.message || "Falha ao gerar o link do motorista.");
+  }
+}
+
+async function changeDriverUsername(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) {
+    return fail(res, 409, "driver_identity_required", "Cadastre a identidade do motorista antes de alterar o identificador público.");
+  }
+
+  const requestedUsername = normalizeUsername(req.body && req.body.username);
+  const currentToken = cleanIdentifier(req.body && req.body.currentPublicAgendaToken);
+  const requestId = cleanIdentifier(req.body && req.body.requestId, 100);
+  if (requestedUsername.length < 3 || requestedUsername.length > 32) {
+    return fail(res, 400, "invalid_username", "Nome de usuário inválido.");
+  }
+  if (currentToken.length < 16) {
+    return fail(res, 400, "agenda_token_required", "Token público atual obrigatório.");
+  }
+  if (requestId.length < 8) {
+    return fail(res, 400, "request_id_required", "Identificador da operação obrigatório.");
+  }
+
+  const driverRef = db.collection("tripDrivers").doc(driver.username);
+  const initialDriverSnap = await driverRef.get();
+  if (!initialDriverSnap.exists) return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
+  const storedHash = await publicAgendaLinkHash(driver.username, initialDriverSnap);
+  if (!tokenMatches(currentToken, storedHash)) {
+    return fail(res, 409, "agenda_token_mismatch", "O token público atual não confere. Nenhum identificador foi alterado.");
+  }
+
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const canonicalSnap = await tx.get(driverRef);
+      if (!canonicalSnap.exists) {
+        throw Object.assign(new Error("Motorista não encontrado."), { httpStatus: 404, code: "driver_not_found" });
+      }
+
+      const candidateDriverRef = db.collection("tripDrivers").doc(requestedUsername);
+      const candidateAliasRef = driverAliasRef(requestedUsername);
+      const [candidateDriverSnap, candidateAliasSnap] = await Promise.all([
+        tx.get(candidateDriverRef),
+        tx.get(candidateAliasRef),
+      ]);
+
+      if (candidateDriverSnap.exists && requestedUsername !== driver.username) {
+        throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      }
+      if (
+        candidateAliasSnap.exists &&
+        normalizeUsername(candidateAliasSnap.data().canonicalUsername) !== driver.username
+      ) {
+        throw Object.assign(new Error("Esse nome de usuário já está em uso."), { httpStatus: 409, code: "username_taken" });
+      }
+
+      const data = canonicalSnap.data();
+      const livePublicUsername = normalizeUsername(data.publicUsername) || driver.username;
+      if (requestedUsername === livePublicUsername) {
+        return { changed: false, publicUsername: livePublicUsername };
+      }
+
+      const now = Date.now();
+      if (requestedUsername !== driver.username) {
+        tx.set(candidateAliasRef, {
+          canonicalUsername: driver.username,
+          createdAtMillis: candidateAliasSnap.exists ? Number(candidateAliasSnap.data().createdAtMillis || now) : now,
+          updatedAtMillis: now,
+          lastRequestIdHash: sha256Hex(requestId),
+        }, { merge: true });
+      }
+      tx.update(driverRef, {
+        publicUsername: requestedUsername,
+        updatedAtMillis: now,
+        lastUsernameChangeRequestIdHash: sha256Hex(requestId),
+      });
+      return { changed: true, publicUsername: requestedUsername };
+    });
+
+    console.log("PUBLIC_USERNAME_CHANGED", {
+      canonicalUsername: driver.username,
+      publicUsername: result.publicUsername,
+      changed: result.changed,
+    });
+    return json(res, 200, {
+      username: result.publicUsername,
+      publicAgendaToken: currentToken,
+      publicAgendaUrl: publicAgendaUrlFor(req, result.publicUsername, currentToken),
+      calendarUrl: publicCalendarUrlFor(req, result.publicUsername, currentToken),
+      changed: result.changed,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 500, error.code || "username_change_failed", error.message || "Falha ao alterar o identificador público.");
   }
 }
 
@@ -1011,10 +1151,10 @@ async function ensureDriverPublicAgenda(req, res) {
 
   return json(res, 200, {
     displayName: cleanText(update.displayName, 120) || cleanText(data.displayName, 120) || driver.displayName,
-    username: driver.username,
+    username: driver.publicUsername || driver.username,
     publicAgendaToken: suppliedToken,
-    publicAgendaUrl: publicAgendaUrlFor(req, driver.username, suppliedToken),
-    calendarUrl: publicCalendarUrlFor(req, driver.username, suppliedToken),
+    publicAgendaUrl: publicAgendaUrlFor(req, driver.publicUsername || driver.username, suppliedToken),
+    calendarUrl: publicCalendarUrlFor(req, driver.publicUsername || driver.username, suppliedToken),
     repaired: false,
   });
 }
@@ -1088,10 +1228,10 @@ async function regenerateDriverPublicAgenda(req, res) {
     console.log("PUBLIC_LINK_ROTATED", { driverUsername: driver.username, generation: result.generation });
     return json(res, 200, {
       displayName: result.displayName,
-      username: driver.username,
+      username: driver.publicUsername || driver.username,
       publicAgendaToken,
-      publicAgendaUrl: publicAgendaUrlFor(req, driver.username, publicAgendaToken),
-      calendarUrl: publicCalendarUrlFor(req, driver.username, publicAgendaToken),
+      publicAgendaUrl: publicAgendaUrlFor(req, driver.publicUsername || driver.username, publicAgendaToken),
+      calendarUrl: publicCalendarUrlFor(req, driver.publicUsername || driver.username, publicAgendaToken),
       repaired: true,
     });
   } catch (error) {
@@ -1144,22 +1284,21 @@ function safePublicDriverProfile(data, username = "") {
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
-  const username = normalizeUsername(usernameRaw);
+  const resolvedDriver = await resolveDriverUsername(usernameRaw);
+  const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   if (!username || !agendaToken) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
-  const driverSnap = await db.collection("tripDrivers").doc(username).get();
-  const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(username, driverSnap) : "";
-  if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) {
-    if (driverSnap.exists) {
-      await appendPublicDebugEvent({
-        driverUsername: username,
-        event: "PUBLIC_AGENDA_LOAD_FAILED",
-        source: "server",
-        agendaToken,
-        screen: "agenda",
-        reason: "agenda_not_found",
-        statusCode: 404,
-      }).catch(() => {});
-    }
+  const driverSnap = resolvedDriver.driverSnap;
+  const agendaHash = await publicAgendaLinkHash(username, driverSnap);
+  if (!tokenMatches(agendaToken, agendaHash)) {
+    await appendPublicDebugEvent({
+      driverUsername: username,
+      event: "PUBLIC_AGENDA_LOAD_FAILED",
+      source: "server",
+      agendaToken,
+      screen: "agenda",
+      reason: "agenda_not_found",
+      statusCode: 404,
+    }).catch(() => {});
     return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   }
   const view = await requirePassengerAgendaView(req, res, username);
@@ -1180,7 +1319,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
     statusCode: 200,
   }).catch(() => {});
   return json(res, 200, {
-    driver: safePublicDriverProfile(driver, username),
+    driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
   });
 }
@@ -1198,7 +1337,7 @@ async function createDriverTrip(req, res) {
   const token = requestedToken.length >= 16 ? requestedToken : crypto.randomBytes(24).toString("base64url");
   const ref = db.collection("trips").doc(token);
   const now = Date.now();
-  const publicUrl = publicUrlFor(req, token, driver.username);
+  const publicUrl = publicUrlFor(req, token, driver.publicUsername || driver.username);
   try {
     await db.runTransaction(async (tx) => {
       const existing = await tx.get(ref);
@@ -1757,16 +1896,16 @@ async function openPassengerAgendaView(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
   }
-  const username = normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
   const tripToken = cleanText(req.body && req.body.tripToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
   if (!username) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
   if (!agendaToken && !tripToken) return fail(res, 400, "agenda_target_required", "Agenda não identificada.");
 
   if (agendaToken) {
-    const driverSnap = await db.collection("tripDrivers").doc(username).get();
-    const agendaHash = driverSnap.exists ? await publicAgendaLinkHash(username, driverSnap) : "";
-    if (!driverSnap.exists || !tokenMatches(agendaToken, agendaHash)) {
+    const agendaHash = await publicAgendaLinkHash(username, resolvedDriver.driverSnap);
+    if (!tokenMatches(agendaToken, agendaHash)) {
       return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
     }
   }
@@ -2398,7 +2537,8 @@ async function updateDriverReferralSettings(req, res) {
 }
 
 async function createPassengerReferral(req, res) {
-  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   const authorized = await requirePassengerDriverAccess(req, res, driverUsername, session);
@@ -2417,7 +2557,8 @@ async function createPassengerReferral(req, res) {
 
 async function requestPassengerReferralInvite(req, res) {
   await enforceBookingRateLimit(req);
-  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const referralCode = cleanText(req.body && req.body.referralCode, 80).replace(/[^A-Za-z0-9_-]/g, "");
   const displayName = cleanText(req.body && req.body.displayName, 120);
   if (!driverUsername || !referralCode || !displayName) return fail(res, 400, "invalid_referral_request", "Preencha os dados do convite.");
@@ -2458,7 +2599,8 @@ async function requestPassengerReferralInvite(req, res) {
 }
 
 async function getPassengerCredits(req, res) {
-  const driverUsername = normalizeUsername(req.query && req.query.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.query && req.query.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   const authorized = await requirePassengerDriverAccess(req, res, driverUsername, session);
@@ -2588,7 +2730,8 @@ async function registerPassengerAccount(req, res) {
 
 async function activatePassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
-  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   if (!driverUsername) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
   const view = await requirePassengerAgendaView(req, res, driverUsername);
   if (!view) return;
@@ -2652,7 +2795,8 @@ async function loginPassengerAccount(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", "Telefone ou senha inválidos.");
   }
-  const driverUsername = normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
   if (!accountSnap.exists) return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
   const account = accountSnap.data();
@@ -3789,6 +3933,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
+    if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
     if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);

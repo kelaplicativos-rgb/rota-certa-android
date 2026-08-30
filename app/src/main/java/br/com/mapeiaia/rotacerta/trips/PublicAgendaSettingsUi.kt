@@ -123,6 +123,8 @@ internal fun OnlineSettingsEditor(
     var linkActionMessage by remember { mutableStateOf<String?>(null) }
     var confirmRegenerateLink by remember { mutableStateOf(false) }
     var linkRotationInFlight by remember { mutableStateOf(false) }
+    var usernameChangeInFlight by remember { mutableStateOf(false) }
+    var vehicleExpanded by remember { mutableStateOf(false) }
     val registrationScope = rememberCoroutineScope()
 
     val selectedProfile = linkedProfiles.firstOrNull { it.id == selectedPublicProfileAccountId }
@@ -180,7 +182,7 @@ internal fun OnlineSettingsEditor(
         { driverUsername = DriverIdentityRules.normalizeUsername(it) },
         label = { Text("Nome de usuário no link") },
         modifier = Modifier.fillMaxWidth(),
-        enabled = token.isBlank(),
+        enabled = !linkRotationInFlight && !usernameChangeInFlight,
     )
 
     HorizontalDivider()
@@ -263,12 +265,23 @@ internal fun OnlineSettingsEditor(
         { driverReviewCount = it.filter(Char::isDigit).take(7) }, { publicProfileOverrideFields = it }, { it.filter(Char::isDigit).take(7) })
     PublicProfileTextField("Selo ou destaque", PublicDriverProfileFields.BADGE, publicProfileMode, driverBadge,
         automaticSnapshot?.badge.orEmpty(), publicProfileOverrideFields, { driverBadge = it.take(80) }, { publicProfileOverrideFields = it }, { it.take(80) })
-    PublicProfileTextField("Veículo — marca/modelo", PublicDriverProfileFields.VEHICLE, publicProfileMode, vehicleMakeModel,
-        automaticSnapshot?.vehicleMakeModel.orEmpty(), publicProfileOverrideFields, { vehicleMakeModel = it.take(120) }, { publicProfileOverrideFields = it }, { it.take(120) })
-    PublicProfileTextField("Cor do veículo", PublicDriverProfileFields.VEHICLE_COLOR, publicProfileMode, vehicleColor,
-        automaticSnapshot?.vehicleColor.orEmpty(), publicProfileOverrideFields, { vehicleColor = it.take(60) }, { publicProfileOverrideFields = it }, { it.take(60) })
-    PublicProfileTextField("Comodidades", PublicDriverProfileFields.AMENITIES, publicProfileMode, vehicleAmenities,
-        automaticSnapshot?.amenities.orEmpty(), publicProfileOverrideFields, { vehicleAmenities = it.take(240) }, { publicProfileOverrideFields = it }, { it.take(240) })
+
+    HorizontalDivider()
+    OutlinedButton(
+        onClick = { vehicleExpanded = !vehicleExpanded },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(if (vehicleExpanded) "🚗 Veículo ▲" else "🚗 Veículo ▼")
+    }
+    if (vehicleExpanded) {
+        PublicProfileTextField("Marca/modelo", PublicDriverProfileFields.VEHICLE, publicProfileMode, vehicleMakeModel,
+            automaticSnapshot?.vehicleMakeModel.orEmpty(), publicProfileOverrideFields, { vehicleMakeModel = it.take(120) }, { publicProfileOverrideFields = it }, { it.take(120) })
+        PublicProfileTextField("Cor", PublicDriverProfileFields.VEHICLE_COLOR, publicProfileMode, vehicleColor,
+            automaticSnapshot?.vehicleColor.orEmpty(), publicProfileOverrideFields, { vehicleColor = it.take(60) }, { publicProfileOverrideFields = it }, { it.take(60) })
+        PublicProfileTextField("Comodidades", PublicDriverProfileFields.AMENITIES, publicProfileMode, vehicleAmenities,
+            automaticSnapshot?.amenities.orEmpty(), publicProfileOverrideFields, { vehicleAmenities = it.take(240) }, { publicProfileOverrideFields = it }, { it.take(240) })
+    }
+
     PublicProfileTextField("Preferências", PublicDriverProfileFields.PREFERENCES, publicProfileMode, driverPreferences,
         automaticSnapshot?.preferences.orEmpty(), publicProfileOverrideFields, { driverPreferences = it.take(240) }, { publicProfileOverrideFields = it }, { it.take(240) })
 
@@ -388,7 +401,40 @@ internal fun OnlineSettingsEditor(
 
     if (!profileSelectionValid) Text("Antes de salvar, confirme o UUID do perfil BlaBlaCar selecionado.")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = profileSelectionValid && !linkRotationInFlight, onClick = { onSave(buildSettings()) }) { Text("Salvar") }
-        TextButton(enabled = !linkRotationInFlight, onClick = onCancel) { Text("Voltar") }
+        Button(
+            enabled = profileSelectionValid && !linkRotationInFlight && !usernameChangeInFlight,
+            onClick = {
+                val candidate = buildSettings()
+                val normalizedUsername = candidate.driverUsername
+                when {
+                    !DriverIdentityRules.isValidUsername(normalizedUsername) -> {
+                        registrationMessage = "Escolha um nome de usuário com pelo menos 3 caracteres."
+                    }
+                    token.isNotBlank() && normalizedUsername != initial.driverUsername -> {
+                        registrationScope.launch {
+                            usernameChangeInFlight = true
+                            val requestId = UUID.randomUUID().toString()
+                            val authSettings = candidate.copy(driverUsername = initial.driverUsername)
+                            runCatching {
+                                TripRemoteApi(authSettings).changeDriverUsername(
+                                    username = normalizedUsername,
+                                    currentPublicAgendaToken = candidate.publicCalendarToken,
+                                    requestId = requestId,
+                                )
+                            }.onSuccess { response ->
+                                driverUsername = response.username
+                                linkActionMessage = "Identificador atualizado sem alterar o token público."
+                                onSave(candidate.copy(driverUsername = response.username))
+                            }.onFailure {
+                                linkActionMessage = "Não foi possível alterar o identificador: ${it.message ?: "erro de conexão"}"
+                            }
+                            usernameChangeInFlight = false
+                        }
+                    }
+                    else -> onSave(candidate)
+                }
+            },
+        ) { Text(if (usernameChangeInFlight) "Salvando…" else "Salvar") }
+        TextButton(enabled = !linkRotationInFlight && !usernameChangeInFlight, onClick = onCancel) { Text("Voltar") }
     }
 }
