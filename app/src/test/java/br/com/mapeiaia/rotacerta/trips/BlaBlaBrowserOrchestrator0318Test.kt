@@ -77,6 +77,7 @@ class BlaBlaBrowserOrchestrator0318Test {
             "ride_list.js",
             "trip_open.js",
             "trip_detail.js",
+            "trip_public_share.js",
             "trip_itinerary.js",
             "passenger_roster.js",
             "passenger_open.js",
