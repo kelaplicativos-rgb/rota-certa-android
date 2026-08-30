@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/agenda-reservation-approval-0.1.356
+  pull_request:
+    branches:
+      - agent/agenda-vehicle-panel-collapsed-0.1.354
   workflow_dispatch:
 
 permissions:
