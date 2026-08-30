@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.356 reservation approval build
+name: Rota Certa 0.1.357 real seat limit build
 
 on:
   push:
@@ -41,8 +41,8 @@ jobs:
           set -euo pipefail
           BASE=b470eca831621195cf046604a2e86b92df9c1c56
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -Fq 'versionCode = 5649' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.356"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5650' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.357"' app/build.gradle.kts
           grep -Fq 'REJECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'decideDriverBooking' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'Aguardando aprovação' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
@@ -50,6 +50,9 @@ jobs:
           grep -Fq 'RESERVATION_REQUESTED' trip-platform/functions/index.js
           grep -Fq 'mutateDriverBookingDecision' trip-platform/functions/index.js
           grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' trip-platform/public/app.js
+          grep -Fq 'seatPickerAvailability' trip-platform/public/index.html
+          grep -Fq 'currentSeatCapacityMessage' trip-platform/functions/index.js
+          grep -Fq 'otherRecords = records.filter((record) => record.id !== bookingId)' trip-platform/functions/index.js
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/ReservationApproval0356Test.kt
           test -f trip-platform/functions/test/reservation-approval-0356.test.js
           test -f trip-platform/functions/test/public-search-capacity-0356.test.js
@@ -125,20 +128,20 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5649'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.356'" /tmp/aapt.txt
-          mkdir -p /tmp/0356
-          cp "$APK" /tmp/0356/rota-certa-0.1.356-reservation-approval.apk
-          sha256sum /tmp/0356/rota-certa-0.1.356-reservation-approval.apk | tee /tmp/0356/apk.sha256
-          cp /tmp/aapt.txt /tmp/0356/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0356/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0356/gradle.txt
-          git rev-parse HEAD > /tmp/0356/source-head.txt
-          git diff --name-only b470eca831621195cf046604a2e86b92df9c1c56..HEAD > /tmp/0356/changed-files.txt
+          grep -Fq "versionCode='5650'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.357'" /tmp/aapt.txt
+          mkdir -p /tmp/0357
+          cp "$APK" /tmp/0357/rota-certa-0.1.357-real-seat-limit.apk
+          sha256sum /tmp/0357/rota-certa-0.1.357-real-seat-limit.apk | tee /tmp/0357/apk.sha256
+          cp /tmp/aapt.txt /tmp/0357/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0357/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0357/gradle.txt
+          git rev-parse HEAD > /tmp/0357/source-head.txt
+          git diff --name-only b470eca831621195cf046604a2e86b92df9c1c56..HEAD > /tmp/0357/changed-files.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.356-reservation-approval
+          name: rota-certa-0.1.357-real-seat-limit
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0356
+          path: /tmp/0357
