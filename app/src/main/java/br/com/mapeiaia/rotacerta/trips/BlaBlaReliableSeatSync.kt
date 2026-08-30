@@ -488,6 +488,17 @@ object BlaBlaReliableSeatSyncBridge {
             source = "DESIRED_STATE",
         )
         requestStore.replacePublication(request).forEach(attemptStore::clear)
+        val tripKey = seatSyncDiagnosticKey("${target.profileUuid}|${target.tripId}")
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIGGER",
+            context.packageName,
+            "tripKey=$tripKey bookingKey=${seatSyncDiagnosticKey(request.localBookingId)} profileUuidPresent=true blablaTripIdPresent=true seatDelta=0 desired=${plan.desiredPublishedSeats} reason=$reason",
+        )
+        UnifiedDebugEventStore.record(
+            "SEAT_SYNC_TRIP_RESOLUTION",
+            context.packageName,
+            "tripKey=$tripKey profileUuidPresent=true blablaTripIdPresent=true resolution=timeline_strong",
+        )
         val message = "Estado desejado calculado: ${plan.desiredPublishedSeats} vaga(s) • conferindo somente as vagas da publicação correta…"
         statusStore.markDesired(target.profileUuid, target.tripId, plan.desiredPublishedSeats, message)
         UnifiedDebugEventStore.record(
@@ -840,6 +851,11 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
             return
         }
         if (!seatSyncAccountMatches(request.profileUuid, account.profileUuid)) {
+            UnifiedDebugEventStore.record(
+                "SEAT_SYNC_ACCOUNT_RESOLUTION",
+                packageName,
+                "tripKey=${tripDiagnosticKey()} bookingKey=${bookingDiagnosticKey()} profileUuidPresent=true blablaTripIdPresent=true accountMatched=false",
+            )
             finishPending("UUID da conta não corresponde à publicação.", rotate = false)
             return
         }
@@ -1280,7 +1296,12 @@ class BlaBlaReliableSeatSyncActivity : Activity() {
 
     private fun finishPending(message: String, rotate: Boolean) {
         recordSeatSyncFailure(
-            if (expectedSeats >= 0 && capacityAfter >= 0 && capacityAfter != expectedSeats) "remote_capacity_mismatch" else "pending",
+            when {
+                expectedSeats >= 0 && capacityAfter >= 0 && capacityAfter != expectedSeats -> "remote_capacity_mismatch"
+                phase == Phase.VERIFY && !readbackSucceeded -> "remote_readback_unavailable"
+                capacityBefore < 0 -> "capacity_before_unknown"
+                else -> "pending"
+            },
         )
         if (::request.isInitialized) {
             if (request.desiredPublishedSeats != null && ::publicationSeatStateStore.isInitialized) {

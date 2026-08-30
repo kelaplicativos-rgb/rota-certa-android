@@ -201,7 +201,9 @@ fun BlaBlaCollectorPanel(
         // Seat-only writer already reloads the exact options page and verifies the
         // published number. Do not chain a full trip/account collector sync here.
         refresh()
-        if (manualSeatStore.list().isNotEmpty()) seatQueueContinuationToken++
+        if (result.resultCode == Activity.RESULT_OK && manualSeatStore.list().isNotEmpty()) {
+            seatQueueContinuationToken++
+        }
     }
 
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
