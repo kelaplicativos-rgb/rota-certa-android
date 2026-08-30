@@ -49,12 +49,13 @@ test("only explicit regeneration creates a new agenda token", () => {
   assert.match(api, /\/v1\/driver\/agenda\/regenerate/);
 });
 
-test("Android blocks manual token edits and requires two-step regeneration", () => {
+test("Android blocks manual token edits and keeps explicit two-step credential rotation", () => {
   assert.match(settingsUi, /Token público da agenda de viagens — fixo/);
   assert.match(settingsUi, /enabled = token\.isBlank\(\)/);
-  assert.match(settingsUi, /Text\("Gerar novo link"\)/);
-  assert.match(settingsUi, /Gerar um novo link invalida imediatamente o link atual/);
-  assert.match(settingsUi, /Text\("Confirmar novo link"\)/);
+  assert.match(settingsUi, /Text\("Trocar credencial interna"\)/);
+  assert.match(settingsUi, /O endereço curto continuará o mesmo/);
+  assert.match(settingsUi, /invalida links técnicos antigos que contenham \?agenda=/);
+  assert.match(settingsUi, /Text\("Confirmar troca de credencial"\)/);
   assert.match(settingsUi, /regeneratePublicAgenda\(expectedCurrent, rotationId\)/);
   assert.match(settingsUi, /onRotateLink\(expectedCurrent, response\.publicAgendaToken\)/);
 });
