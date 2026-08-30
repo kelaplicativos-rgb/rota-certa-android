@@ -60,7 +60,7 @@ jobs:
           CHANGED_FAROL="$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' || true)"
           test -z "$CHANGED_FAROL"
 
-          ALLOWED='^(.github/workflows/agenda-0352-passenger-picker-canonical.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(PassengerIdentityStore.kt|TripGlobalPassengerFlow0256.kt|TripQuickPassenger.kt|TripQuickPassengerUi.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/(PassengerPickerCanonical0352Test.kt|PassengerTripActions0351Test.kt))
+          ALLOWED='^(.github/workflows/agenda-0352-passenger-picker-canonical.yml|app/build.gradle.kts|app/src/main/java/br/com/mapeiaia/rotacerta/trips/(PassengerIdentityStore.kt|TripGlobalPassengerFlow0256.kt|TripQuickPassenger.kt|TripQuickPassengerUi.kt)|app/src/test/java/br/com/mapeiaia/rotacerta/trips/(PassengerPickerCanonical0352Test.kt|PassengerTripActions0351Test.kt))$'
           UNEXPECTED="$(git diff --name-only "$BASE"..HEAD | grep -Ev "$ALLOWED" || true)"
           test -z "$UNEXPECTED"
 
