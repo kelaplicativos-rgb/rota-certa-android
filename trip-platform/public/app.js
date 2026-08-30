@@ -38,6 +38,9 @@ let agendaTripsCache = [];
 let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agenda");
 let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
+let seatPickerMode = "search";
+let seatPickerBookingIntent = null;
+let seatPickerLimit = 0;
 let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
 let passengerViewAccountActivated = false;
@@ -657,26 +660,199 @@ function clearReturnDate() {
   renderAgenda(agendaTripsCache);
 }
 
-function openSeatPicker() {
-  seatPickerDraft = searchState.seats;
+function normalizedSeatCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+function seatAvailabilityText(available) {
+  const seats = normalizedSeatCount(available);
+  if (seats === 0) return "Nenhuma vaga disponível para este trecho.";
+  if (seats === 1) return "1 vaga disponível para este trecho.";
+  return `${seats} vagas disponíveis para este trecho.`;
+}
+
+function seatLimitText(available, changed = false) {
+  const seats = normalizedSeatCount(available);
+  if (seats === 0) return changed
+    ? "Não há mais vagas disponíveis para este trecho."
+    : "Não há vagas disponíveis para este trecho.";
+  const prefix = changed ? "Agora este carro tem" : "Este carro tem";
+  return seats === 1
+    ? `${prefix} apenas 1 vaga disponível para este trecho.`
+    : `${prefix} apenas ${seats} vagas disponíveis para este trecho.`;
+}
+
+function bestSearchAvailability(dateKey, fromSelection = null, toSelection = null) {
+  let best = 0;
+  agendaTripsCache.filter((item) => tripSearchEligible(item, dateKey)).forEach((item) => {
+    const stops = orderedStops(item);
+    const fromIndexes = [];
+    if (fromSelection) {
+      const exactFrom = selectedStopIndex(item, fromSelection);
+      if (exactFrom >= 0) fromIndexes.push(exactFrom);
+    } else {
+      for (let index = 0; index < stops.length - 1; index += 1) {
+        if (stopEvidenceTrusted(item, index, stops)) fromIndexes.push(index);
+      }
+    }
+    fromIndexes.forEach((fromIndex) => {
+      if (toSelection) {
+        const toIndex = selectedStopIndex(item, toSelection, fromIndex);
+        if (toIndex > fromIndex && segmentEvidenceTrusted(item, fromIndex, toIndex)) {
+          best = Math.max(best, availableForTripSegment(item, fromIndex, toIndex));
+        }
+        return;
+      }
+      for (let toIndex = fromIndex + 1; toIndex < stops.length; toIndex += 1) {
+        if (!stopEvidenceTrusted(item, toIndex, stops)) continue;
+        if (!segmentEvidenceTrusted(item, fromIndex, toIndex)) continue;
+        best = Math.max(best, availableForTripSegment(item, fromIndex, toIndex));
+      }
+    });
+  });
+  return best;
+}
+
+function searchSeatAvailabilityLimit() {
+  const outbound = bestSearchAvailability(
+    searchState.departure,
+    searchState.selectedFrom,
+    searchState.selectedTo,
+  );
+  if (!searchState.returnDate) return Math.min(9, outbound);
+  const returning = bestSearchAvailability(
+    searchState.returnDate,
+    searchState.selectedTo,
+    searchState.selectedFrom,
+  );
+  return Math.min(9, outbound, returning);
+}
+
+function updateSeatPickerUi(capacityChanged = false) {
   $("seatPickerValue").textContent = String(seatPickerDraft);
+  if (seatPickerMode === "booking") {
+    $("seatPickerAvailability").textContent = seatAvailabilityText(seatPickerLimit);
+    $("seatPickerMessage").textContent = seatPickerDraft > seatPickerLimit
+      ? seatLimitText(seatPickerLimit, capacityChanged)
+      : "";
+  } else {
+    const seats = normalizedSeatCount(seatPickerLimit);
+    $("seatPickerAvailability").textContent = seats === 0
+      ? "Nenhuma viagem disponível para os filtros atuais."
+      : (seats === 1
+        ? "Há no máximo 1 vaga real disponível nos filtros atuais."
+        : `Há no máximo ${seats} vagas reais disponíveis nos filtros atuais.`);
+    $("seatPickerMessage").textContent = seatPickerDraft > seatPickerLimit
+      ? (seats === 0
+        ? "Não há vagas disponíveis para os filtros atuais."
+        : `A busca atual possui no máximo ${seats} ${seats === 1 ? "vaga disponível" : "vagas disponíveis"}.`)
+      : "";
+  }
+  $("seatMinus").disabled = seatPickerDraft <= 1;
+  $("seatConfirm").disabled = seatPickerLimit < 1 || seatPickerDraft > seatPickerLimit;
+}
+
+function openSeatPicker() {
+  seatPickerMode = "search";
+  seatPickerBookingIntent = null;
+  seatPickerLimit = searchSeatAvailabilityLimit();
+  seatPickerDraft = Math.max(1, normalizedSeatCount(searchState.seats));
+  updateSeatPickerUi(seatPickerDraft > seatPickerLimit);
   showOnly("seatPicker");
 }
 
-function maxAgendaCapacity() {
-  return Math.max(1, Math.min(9, ...agendaTripsCache.map((item) => Number(item.capacity || 1))));
+function openTripSeatPicker(auto = false, intentOverride = null, capacityChanged = false) {
+  if (!trip || bookingRequestInFlight) return;
+  if (auto) {
+    if (directReserveConsumed) return;
+    directReserveConsumed = true;
+  }
+  if (trip.capacityReliable !== true) {
+    showQuickBookingNotice("Reserva indisponível", "A capacidade desta viagem ainda não foi confirmada.", true);
+    return;
+  }
+  const stops = orderedStops();
+  if (stops.length < 2) return;
+  const requestedIntent = intentOverride || {};
+  const desiredBoarding = requestedIntent.boardingStopId || requestedBoardingStopId;
+  const desiredDropoff = requestedIntent.dropoffStopId || requestedDropoffStopId;
+  let fromIndex = desiredBoarding ? stops.findIndex((stop) => stop.id === desiredBoarding) : 0;
+  let toIndex = desiredDropoff ? stops.findIndex((stop) => stop.id === desiredDropoff) : stops.length - 1;
+  if (fromIndex < 0) fromIndex = 0;
+  if (toIndex <= fromIndex) toIndex = stops.length - 1;
+  if (!segmentEvidenceTrusted(trip, fromIndex, toIndex)) {
+    showQuickBookingNotice("Reserva indisponível", "Esse trecho ainda não foi confirmado pela fonte da viagem.", true);
+    return;
+  }
+
+  seatPickerMode = "booking";
+  seatPickerBookingIntent = {
+    boardingStopId: stops[fromIndex].id,
+    dropoffStopId: stops[toIndex].id,
+    creditToUseCents: Math.max(0, Number(requestedIntent.creditToUseCents || 0)),
+    quick: requestedIntent.quick !== false,
+  };
+  seatPickerLimit = availableFor(fromIndex, toIndex);
+  const desiredSeats = normalizedSeatCount(requestedIntent.seats == null ? requestedSeats : requestedIntent.seats);
+  seatPickerDraft = Math.max(1, desiredSeats || 1);
+  updateSeatPickerUi(capacityChanged || seatPickerDraft > seatPickerLimit);
+  tracePublicAction("PUBLIC_SEAT_PICKER_OPENED", { seats: seatPickerDraft, fromIndex, toIndex });
+  showOnly("seatPicker");
 }
 
 function changeSeatPicker(delta) {
-  seatPickerDraft = Math.max(1, Math.min(maxAgendaCapacity(), seatPickerDraft + delta));
-  $("seatPickerValue").textContent = String(seatPickerDraft);
+  if (seatPickerMode === "search") seatPickerLimit = searchSeatAvailabilityLimit();
+  if (delta < 0) {
+    seatPickerDraft = Math.max(1, seatPickerDraft - 1);
+    updateSeatPickerUi(seatPickerDraft > seatPickerLimit);
+    return;
+  }
+  const candidate = seatPickerDraft + 1;
+  if (candidate > seatPickerLimit) {
+    updateSeatPickerUi(false);
+    $("seatPickerMessage").textContent = seatPickerMode === "booking"
+      ? seatLimitText(seatPickerLimit, false)
+      : (seatPickerLimit === 0
+        ? "Não há vagas disponíveis para os filtros atuais."
+        : `A busca atual possui no máximo ${seatPickerLimit} ${seatPickerLimit === 1 ? "vaga disponível" : "vagas disponíveis"}.`);
+    return;
+  }
+  seatPickerDraft = candidate;
+  updateSeatPickerUi(false);
 }
 
 function confirmSeatPicker() {
-  searchState.seats = seatPickerDraft;
-  invalidateSearchSelections();
-  updateSearchUi();
-  renderAgenda(agendaTripsCache);
+  if (seatPickerMode === "search") {
+    seatPickerLimit = searchSeatAvailabilityLimit();
+    if (seatPickerLimit < 1 || seatPickerDraft > seatPickerLimit) {
+      updateSeatPickerUi(true);
+      return;
+    }
+    searchState.seats = seatPickerDraft;
+    invalidateSearchSelections();
+    updateSearchUi();
+    renderAgenda(agendaTripsCache);
+    return;
+  }
+
+  if (!seatPickerBookingIntent || seatPickerLimit < 1 || seatPickerDraft > seatPickerLimit) {
+    updateSeatPickerUi(true);
+    return;
+  }
+  pendingBooking = { ...seatPickerBookingIntent, seats: seatPickerDraft };
+  persistPendingBookingIntent(pendingBooking);
+  const stops = orderedStops();
+  tracePublicAction("PUBLIC_RESERVATION_STARTED", {
+    seats: seatPickerDraft,
+    fromIndex: stops.findIndex((stop) => stop.id === pendingBooking.boardingStopId),
+    toIndex: stops.findIndex((stop) => stop.id === pendingBooking.dropoffStopId),
+  });
+  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
+  if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
+    return updateExistingReservation();
+  }
+  return reserve();
 }
 
 function stopMatchesSearch(stop, query) {
@@ -1536,26 +1712,7 @@ function defaultBookingIntent() {
 }
 
 function startQuickReservation(auto = false) {
-  if (!trip || isFullTrip(trip) || trip.canReserve === false || bookingRequestInFlight) return;
-  if (auto) {
-    if (directReserveConsumed) return;
-    directReserveConsumed = true;
-  }
-  const intent = defaultBookingIntent();
-  if (!intent) {
-    showQuickBookingNotice("Reserva indisponível", "As vagas mudaram ou esse trecho não está mais disponível.", true);
-    return;
-  }
-  pendingBooking = intent;
-  persistPendingBookingIntent(intent);
-  const stops = orderedStops();
-  tracePublicAction("PUBLIC_RESERVATION_STARTED", {
-    seats: intent.seats,
-    fromIndex: stops.findIndex((stop) => stop.id === intent.boardingStopId),
-    toIndex: stops.findIndex((stop) => stop.id === intent.dropoffStopId),
-  });
-  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
-  return reserve();
+  return openTripSeatPicker(auto);
 }
 
 function refreshTripAvailabilitySummary() {
@@ -1624,15 +1781,12 @@ function refreshAvailability() {
     requested = 1;
     seatsInput.value = "1";
   }
-  if (available > 0 && requested > available) {
-    requested = available;
-    seatsInput.value = String(available);
-  }
 
   const fareText = farePerSeatCents > 0 ? ` • ${formatMoney(farePerSeatCents)} por pessoa` : "";
-  $("availability").textContent = available > 0
-    ? `${available} lugar(es) disponível(is) neste trecho${fareText}`
-    : "Sem vagas neste trecho. Escolha outro embarque ou destino.";
+  $("availability").textContent = seatAvailabilityText(available) + fareText;
+  $("bookingMessage").textContent = requested > available
+    ? seatLimitText(available, false)
+    : "";
   $("reserve").disabled = available < 1 || requested > available || !$("dropoff").value;
 }
 
@@ -1660,7 +1814,7 @@ function reviewBooking() {
   const toIndex = stops.findIndex((s) => s.id === $("dropoff").value);
   const available = availableFor(fromIndex, toIndex);
   if (available < seats) {
-    return void ($("bookingMessage").textContent = "As vagas mudaram. Escolha uma quantidade disponível.");
+    return void ($("bookingMessage").textContent = seatLimitText(available, true));
   }
 
   const farePerSeatCents = fareFor(fromIndex, toIndex);
@@ -1759,7 +1913,12 @@ async function reserve() {
       showPrivateAuthGate("trip", "reserve");
       return;
     }
-    if (!response.ok) throw new Error(body.message || "Não foi possível reservar.");
+    if (!response.ok) {
+      const failure = new Error(body.message || "Não foi possível reservar.");
+      failure.code = body.error || "";
+      failure.availableSeats = Number.isInteger(Number(body.availableSeats)) ? Number(body.availableSeats) : null;
+      throw failure;
+    }
 
     confirmedBooking = {
       bookingId: body.bookingId,
@@ -1845,11 +2004,20 @@ async function reserve() {
       fromIndex,
       toIndex,
     });
-    if (statusCode === 409) await loadTrip();
-    else showOnly("trip");
-    showQuickBookingNotice("Reserva não concluída", error.message || "Falha ao registrar a reserva.", true);
     pendingBooking = intent;
     persistPendingBookingIntent(intent);
+    if (statusCode === 409) {
+      await loadTrip();
+      if (error.code === "insufficient_seats") {
+        openTripSeatPicker(false, intent, true);
+      }
+    } else {
+      showOnly("trip");
+    }
+    const currentMessage = error.code === "insufficient_seats" && Number.isInteger(error.availableSeats)
+      ? seatLimitText(error.availableSeats, true)
+      : (error.message || "Falha ao registrar a reserva.");
+    showQuickBookingNotice("Reserva não concluída", currentMessage, true);
   } finally {
     bookingRequestInFlight = false;
     if (!confirmedBooking) {
@@ -1981,7 +2149,12 @@ async function updateExistingReservation() {
       showPrivateAuthGate("review", "update");
       return;
     }
-    if (!response.ok) throw new Error(body.message || "Não foi possível alterar a reserva.");
+    if (!response.ok) {
+      const failure = new Error(body.message || "Não foi possível alterar a reserva.");
+      failure.code = body.error || "";
+      failure.availableSeats = Number.isInteger(Number(body.availableSeats)) ? Number(body.availableSeats) : null;
+      throw failure;
+    }
 
     confirmedBooking = {
       ...confirmedBooking,
@@ -2011,7 +2184,15 @@ async function updateExistingReservation() {
     window.scrollTo({ top: 0, behavior: "smooth" });
     await refreshTripSilently();
   } catch (error) {
-    $("reviewMessage").textContent = error.message || "Falha ao alterar reserva.";
+    if (statusCode === 409 && error.code === "insufficient_seats") {
+      await refreshTripSilently();
+      openTripSeatPicker(false, pendingBooking, true);
+      $("seatPickerMessage").textContent = Number.isInteger(error.availableSeats)
+        ? seatLimitText(error.availableSeats, true)
+        : (error.message || "A disponibilidade mudou.");
+    } else {
+      $("reviewMessage").textContent = error.message || "Falha ao alterar reserva.";
+    }
   } finally {
     $("confirmReserve").disabled = false;
   }
@@ -2833,7 +3014,10 @@ $("searchSeats").addEventListener("click", openSeatPicker);
 $("searchSubmit").addEventListener("click", submitTripSearch);
 $("calendarBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
 $("calendarNoReturn").addEventListener("click", clearReturnDate);
-$("seatBack").addEventListener("click", () => renderAgenda(agendaTripsCache));
+$("seatBack").addEventListener("click", () => {
+  if (seatPickerMode === "booking" && trip) renderTrip();
+  else renderAgenda(agendaTripsCache);
+});
 $("seatMinus").addEventListener("click", () => changeSeatPicker(-1));
 $("seatPlus").addEventListener("click", () => changeSeatPicker(1));
 $("seatConfirm").addEventListener("click", confirmSeatPicker);
