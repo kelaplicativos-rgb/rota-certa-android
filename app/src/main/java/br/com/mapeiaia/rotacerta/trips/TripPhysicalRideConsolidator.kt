@@ -142,7 +142,11 @@ object TripPhysicalRideConsolidator {
                 BookingSource.PRIVATE, BookingSource.OTHER -> values.sum()
             }
         }.toMap()
-        val occupied = sources.values.sum()
+        val passengerSeats = sources.values.sum()
+        val blockedSeats = group.maxOfOrNull { entry ->
+            (entry.maximumOccupiedSeats - entry.sourcePassengerSeats.values.sum()).coerceAtLeast(0)
+        } ?: 0
+        val occupied = passengerSeats + blockedSeats
         val capacity = group.maxOfOrNull(TripTimelineEntry::capacity) ?: 0
         val external = group.firstOrNull {
             !it.blablaTripHref.isNullOrBlank() ||
@@ -185,8 +189,10 @@ object TripPhysicalRideConsolidator {
     }
 
     private fun recalculateOccupancy(entry: TripTimelineEntry): TripTimelineEntry {
-        val occupied = entry.sourcePassengerSeats.values.sum()
-        if (entry.sourcePassengerSeats.isEmpty()) return entry
+        val passengers = entry.sourcePassengerSeats.values.sum()
+        val blocked = (entry.maximumOccupiedSeats - passengers).coerceAtLeast(0)
+        val occupied = passengers + blocked
+        if (entry.sourcePassengerSeats.isEmpty() && entry.maximumOccupiedSeats <= 0) return entry
         val cleanIssues = entry.issues - TripTimelineIssue.OVERBOOKING
         val issues = if (entry.capacity > 0 && occupied > entry.capacity) cleanIssues + TripTimelineIssue.OVERBOOKING else cleanIssues
         val status = if (entry.capacity > 0 && occupied >= entry.capacity) TripStatus.FULL else entry.status
