@@ -38,12 +38,14 @@ object QuickPassengerEngine {
     fun hasActivePassengerBooking(
         existingBookings: List<Booking>,
         passengerId: String,
+        tripId: String? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ): Boolean {
         val canonicalPassengerId = passengerId.trim()
         if (canonicalPassengerId.isBlank()) return false
         return existingBookings.any { booking ->
-            booking.capacityClaimType == CapacityClaimType.PASSENGER &&
+            (tripId == null || booking.tripId == tripId) &&
+                booking.capacityClaimType == CapacityClaimType.PASSENGER &&
                 booking.passengerId.trim() == canonicalPassengerId &&
                 when (booking.status) {
                     BookingStatus.REQUESTED,
@@ -76,7 +78,7 @@ object QuickPassengerEngine {
         require(request.mirrorSource == null || request.linkReservedSeatBookingId == null) {
             "Escolha uma vaga espelho nova ou uma vaga existente, não as duas."
         }
-        require(!hasActivePassengerBooking(existingBookings, request.passengerId, nowMillis)) {
+        require(!hasActivePassengerBooking(existingBookings, request.passengerId, trip.id, nowMillis)) {
             "Este passageiro já possui vínculo ativo nesta viagem."
         }
 
