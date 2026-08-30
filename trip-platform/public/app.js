@@ -242,6 +242,8 @@ function availableFor(fromIndex, toIndex) {
   for (let i = fromIndex; i < toIndex; i += 1) {
     available = Math.min(available, Number(trip.capacity || 0) - Number((trip.segmentLoads || [])[i] || 0));
   }
+  const operational = Number(trip.operationalAvailableSeats);
+  if (Number.isFinite(operational)) available = Math.min(available, Math.max(0, operational));
   return Math.max(0, available);
 }
 
@@ -1051,6 +1053,8 @@ function availableForTripSegment(item, fromIndex, toIndex) {
   for (let index = fromIndex; index < toIndex; index += 1) {
     available = Math.min(available, Number(item.capacity || 0) - Number((item.segmentLoads || [])[index] || 0));
   }
+  const operational = Number(item.operationalAvailableSeats);
+  if (Number.isFinite(operational)) available = Math.min(available, Math.max(0, operational));
   return Math.max(0, available);
 }
 
@@ -1468,18 +1472,27 @@ function renderAgendaCards(entries, container, filtered = false) {
     }
     meta.append(time, seats);
     if (item.capacityReliable === true) {
-      const passengerRange = segmentLoadRange(item, "segmentPassengerLoads", fromIndex, toIndex);
       const passengers = document.createElement("span");
       passengers.className = "bigPill";
-      passengers.textContent = `👥 Passageiros: ${rangeText(passengerRange, "passageiro", "passageiros")}`;
+      passengers.textContent = `👥 Passageiros confirmados: ${normalizedSeatCount(item.confirmedPassengerSeats)}`;
       meta.appendChild(passengers);
 
-      const blockedRange = segmentLoadRange(item, "segmentBlockedLoads", fromIndex, toIndex);
-      if (blockedRange.maximum > 0) {
+      const blockedTotal = normalizedSeatCount(item.blockedSeats);
+      if (blockedTotal > 0) {
         const blocked = document.createElement("span");
         blocked.className = "bigPill";
-        blocked.textContent = `🚫 Vagas bloqueadas: ${rangeText(blockedRange, "vaga", "vagas")}`;
+        blocked.textContent = `🚫 Vagas bloqueadas: ${blockedTotal}`;
         meta.appendChild(blocked);
+      }
+
+      const blablaAllocation = item.publishedSeats == null ? null : normalizedSeatCount(item.publishedSeats);
+      const rotaAllocation = item.rotaCertaSeatAllocation == null ? null : normalizedSeatCount(item.rotaCertaSeatAllocation);
+      const totalConsidered = item.totalConsideredSeats == null ? null : normalizedSeatCount(item.totalConsideredSeats);
+      if (blablaAllocation != null && rotaAllocation != null && totalConsidered != null) {
+        const allocation = document.createElement("span");
+        allocation.className = "bigPill";
+        allocation.textContent = `BlaBlaCar ${blablaAllocation} • Rota Certa ${rotaAllocation} • Total ${totalConsidered}`;
+        meta.appendChild(allocation);
       }
     }
     const duration = durationFor(item);
@@ -1824,19 +1837,17 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  addFact("Capacidade de passageiros", `${trip.capacity} lugar(es)`);
+  addFact("Capacidade de passageiros", `${trip.capacity} lugar(es) físicos simultâneos`);
+  if (trip.publishedSeats != null) addFact("BlaBlaCar", `${normalizedSeatCount(trip.publishedSeats)} lugar(es) publicados`);
+  if (trip.rotaCertaSeatAllocation != null) addFact("Rota Certa", `${normalizedSeatCount(trip.rotaCertaSeatAllocation)} lugar(es) disponibilizados`);
+  if (trip.totalConsideredSeats != null) addFact("Total considerado", `${normalizedSeatCount(trip.totalConsideredSeats)} lugar(es)`);
   if (trip.capacityReliable === true) {
-    const passengerRange = segmentLoadRange(trip, "segmentPassengerLoads");
-    const blockedRange = segmentLoadRange(trip, "segmentBlockedLoads");
     const available = seatRange(trip);
-    addFact("Passageiros", rangeText(passengerRange, "passageiro", "passageiros"));
-    if (blockedRange.maximum > 0) addFact("Vagas bloqueadas", rangeText(blockedRange, "vaga", "vagas"));
+    addFact("Passageiros confirmados", normalizedSeatCount(trip.confirmedPassengerSeats));
+    if (normalizedSeatCount(trip.blockedSeats) > 0) addFact("Vagas bloqueadas", normalizedSeatCount(trip.blockedSeats));
     addFact("Vagas disponíveis", rangeText(available, "vaga", "vagas"));
   } else {
     addFact("Ocupação", "aguardando sincronização");
-  }
-  if (trip.publishedSeats != null) {
-    addFact("BlaBlaCar", `${normalizedSeatCount(trip.publishedSeats)} lugar(es) publicados — dado do canal`);
   }
   const duration = durationFor(trip);
   if (duration) addFact("Duração prevista", duration);
