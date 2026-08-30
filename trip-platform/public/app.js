@@ -1576,19 +1576,41 @@ function renderTrip() {
     show("notes", false);
   }
 
-  show("tripSticky", !full && trip.canReserve !== false);
-  $("startBooking").disabled = full || trip.canReserve === false;
-  $("adjustBooking").disabled = full || trip.canReserve === false;
-  $("startBooking").textContent = full ? "Cheio" : "RESERVAR";
+  const actionStops = orderedStops(trip);
+  let actionFromIndex = requestedBoardingStopId ? actionStops.findIndex((stop) => stop.id === requestedBoardingStopId) : 0;
+  let actionToIndex = requestedDropoffStopId ? actionStops.findIndex((stop) => stop.id === requestedDropoffStopId) : actionStops.length - 1;
+  if (actionFromIndex < 0) actionFromIndex = 0;
+  if (actionToIndex <= actionFromIndex) actionToIndex = actionStops.length - 1;
+  const actionAvailable = trip.capacityReliable === true && segmentEvidenceTrusted(trip, actionFromIndex, actionToIndex)
+    ? availableForTripSegment(trip, actionFromIndex, actionToIndex)
+    : 0;
+  const canUseExternalActions = trip.capacityReliable === true && actionAvailable > 0;
+
+  show("tripSticky", true);
+  $("startBooking").disabled = !canUseExternalActions;
+  $("startBooking").textContent = canUseExternalActions
+    ? "Reservar pelo WhatsApp"
+    : (actionAvailable === 0 && trip.capacityReliable === true ? "WhatsApp — Lotado" : "WhatsApp — vagas em confirmação");
+
+  const blablaUrl = safeBlaBlaPublicUrl(trip);
+  const blabla = $("bookBlaBla");
+  if (blablaUrl && canUseExternalActions) {
+    blabla.href = blablaUrl;
+    blabla.target = "_blank";
+    blabla.removeAttribute("aria-disabled");
+  } else {
+    blabla.removeAttribute("href");
+    blabla.setAttribute("aria-disabled", "true");
+  }
+  blabla.textContent = blablaUrl && canUseExternalActions
+    ? "Reservar na BlaBlaCar"
+    : (blablaUrl ? "BlaBlaCar — indisponível" : "BlaBlaCar — link indisponível");
 
   prepareBookingSelectors();
   restoreCancellation();
   const restored = restoreExistingBooking();
   if (!restored) {
     setWhatsappLink($("driverWhatsappTrip"), defaultDriverMessage());
-    if (directReserveRequested && !directReserveConsumed) {
-      queueMicrotask(() => startQuickReservation(true));
-    }
   }
 }
 
