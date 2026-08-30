@@ -1222,7 +1222,11 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 )
             }
             networkResolution?.let(::saveNetworkPassengerMetadata)
-            pendingTripDetail = identityAcceptedResult
+            val passivePublicHref = BlaBlaCollectorUrlModule.publicTrip(
+                identityAcceptedResult.publicTripHref,
+                candidateTripId,
+            )
+            pendingTripDetail = identityAcceptedResult.copy(publicTripHref = passivePublicHref.orEmpty())
             pendingTripPassengers = (
                 networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers
             ).toMutableList()
@@ -1235,6 +1239,94 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             passengerContactIndex = 0
             passengerContactReadAttempts = 0
             passengerCardReadAttempts = 0
+            publicTripShareReadAttempts = 0
+            publicTripShareCaptureInFlight = false
+            if (passivePublicHref != null) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId source=passive_dom exactTrip=true",
+                )
+                loadNextPassengerContact(expectedSync, expectedCandidate)
+            } else {
+                enterBrowserPhase(
+                    Phase.PUBLIC_SHARE,
+                    BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+                    "capture_documented_share_action",
+                )
+                statusView.text = "${account.displayLabel} • capturando link público do card…"
+                capturePublicTripShare(expectedSync, navigationGeneration, expectedCandidate)
+            }
+        }
+    }
+
+    private fun capturePublicTripShare(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int) {
+        if (
+            phase != Phase.PUBLIC_SHARE ||
+            expectedSync != syncGeneration ||
+            expectedNavigation != navigationGeneration ||
+            expectedCandidate != candidateIndex ||
+            !pendingTripIsCurrent(expectedSync, expectedCandidate)
+        ) {
+            recordStale("public_share_before_evaluate", expectedSync, expectedCandidate)
+            return
+        }
+        val tripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+            .orEmpty()
+        if (
+            tripId.isBlank() ||
+            BlaBlaTripIdentity.externalTripIdFromHref(webView.url.orEmpty()) != tripId
+        ) {
+            recordStale("public_share_trip_identity_mismatch", expectedSync, expectedCandidate)
+            return
+        }
+        if (publicTripShareCaptureInFlight) return
+        publicTripShareCaptureInFlight = true
+        evaluateRequest<DynamicPublicTripShareEvidence>(BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE) { evidence ->
+            publicTripShareCaptureInFlight = false
+            if (
+                phase != Phase.PUBLIC_SHARE ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedCandidate != candidateIndex ||
+                !pendingTripIsCurrent(expectedSync, expectedCandidate)
+            ) {
+                recordStale("public_share_after_evaluate", expectedSync, expectedCandidate)
+                return@evaluateRequest
+            }
+
+            val captured = BlaBlaCollectorUrlModule.publicTrip(evidence?.publicTripHref, tripId)
+            if (captured != null) {
+                pendingTripDetail = pendingTripDetail?.copy(publicTripHref = captured)
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_CAPTURED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId source=share_action exactTrip=true shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0}",
+                )
+                loadNextPassengerContact(expectedSync, expectedCandidate)
+                return@evaluateRequest
+            }
+
+            val shouldRetry =
+                publicTripShareReadAttempts < MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS &&
+                    evidence?.shareControlPresent == true &&
+                    evidence.shareInterceptInstalled
+            if (shouldRetry) {
+                publicTripShareReadAttempts++
+                statusView.text =
+                    "${account.displayLabel} • capturando link público ${publicTripShareReadAttempts + 1}/$MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS…"
+                webView.postDelayed({
+                    capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate)
+                }, PUBLIC_TRIP_SHARE_RETRY_MS)
+                return@evaluateRequest
+            }
+
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_UNAVAILABLE",
+                packageName,
+                "account=${account.displayLabel} tripId=$tripId source=share_action shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0} attempts=${publicTripShareReadAttempts + 1} systemShareOpened=false action=continue_without_inventing_link",
+            )
             loadNextPassengerContact(expectedSync, expectedCandidate)
         }
     }
