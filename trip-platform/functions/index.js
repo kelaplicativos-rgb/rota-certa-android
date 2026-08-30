@@ -83,6 +83,27 @@ function normalizeUsername(value) {
     .slice(0, 32);
 }
 
+const RESERVED_PUBLIC_USERNAMES = new Set([
+  "v1",
+  "calendar",
+  "api",
+  "admin",
+  "login",
+  "assets",
+  "static",
+  "agenda",
+  "config",
+  "settings",
+  "app",
+  "date-selection",
+  "index",
+]);
+
+function isReservedPublicUsername(value) {
+  const username = normalizeUsername(value);
+  return Boolean(username && RESERVED_PUBLIC_USERNAMES.has(username));
+}
+
 function driverAliasRef(username) {
   return db.collection("tripDriverAliases").doc(normalizeUsername(username));
 }
@@ -765,6 +786,12 @@ async function resolvePublicDebugTarget(body) {
     if (!username) return null;
     return { driverUsername: username, tripToken, agendaToken: "" };
   }
+  const publicSlug = normalizeUsername(body && body.publicSlug);
+  if (publicSlug.length >= 3 && !isReservedPublicUsername(publicSlug)) {
+    const resolved = await resolveDriverUsername(publicSlug);
+    if (!resolved) return null;
+    return { driverUsername: resolved.canonicalUsername, tripToken: "", agendaToken: "" };
+  }
   const resolvedDriver = await resolveDriverUsername(body && body.driverUsername);
   const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const agendaToken = cleanText(body && body.agendaToken, 80).replace(/[^A-Za-z0-9_-]/g, "");
@@ -966,10 +993,11 @@ function publicUrlFor(req, token, username = "") {
   return base ? `${base}/${query}` : `/${query}`;
 }
 
-function publicAgendaUrlFor(req, username, agendaToken) {
+function publicAgendaUrlFor(req, username) {
   const base = publicBaseFor(req);
-  const query = `?motorista=${encodeURIComponent(username)}&agenda=${encodeURIComponent(agendaToken)}`;
-  return base ? `${base}/${query}` : `/${query}`;
+  const slug = normalizeUsername(username);
+  const path = `/${encodeURIComponent(slug)}`;
+  return base ? `${base}${path}` : path;
 }
 
 function publicCalendarUrlFor(req, username, agendaToken) {
@@ -1012,6 +1040,7 @@ async function registerDriver(req, res) {
   const username = normalizeUsername(req.body && req.body.username);
   if (!displayName) return fail(res, 400, "driver_name_required", "Informe o nome público do motorista.");
   if (username.length < 3 || username.length > 32) return fail(res, 400, "invalid_username", "Nome de usuário inválido.");
+  if (isReservedPublicUsername(username)) return fail(res, 409, "username_reserved", "Esse identificador é reservado pelo Rota Certa.");
   const driverToken = crypto.randomBytes(32).toString("base64url");
   const publicAgendaToken = crypto.randomBytes(24).toString("base64url");
   const ref = db.collection("tripDrivers").doc(username);
@@ -1072,6 +1101,9 @@ async function changeDriverUsername(req, res) {
   const requestId = cleanIdentifier(req.body && req.body.requestId, 100);
   if (requestedUsername.length < 3 || requestedUsername.length > 32) {
     return fail(res, 400, "invalid_username", "Nome de usuário inválido.");
+  }
+  if (isReservedPublicUsername(requestedUsername)) {
+    return fail(res, 409, "username_reserved", "Esse identificador é reservado pelo Rota Certa.");
   }
   if (currentToken.length < 16) {
     return fail(res, 400, "agenda_token_required", "Token público atual obrigatório.");
@@ -1334,23 +1366,25 @@ function safePublicDriverProfile(data, username = "") {
   };
 }
 
-async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken) {
+async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
-  if (!username || !agendaToken) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+  if (!username || (!shortRoute && !agendaToken)) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
   const driverSnap = resolvedDriver.driverSnap;
-  const agendaHash = await publicAgendaLinkHash(username, driverSnap);
-  if (!tokenMatches(agendaToken, agendaHash)) {
-    await appendPublicDebugEvent({
-      driverUsername: username,
-      event: "PUBLIC_AGENDA_LOAD_FAILED",
-      source: "server",
-      agendaToken,
-      screen: "agenda",
-      reason: "agenda_not_found",
-      statusCode: 404,
-    }).catch(() => {});
-    return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+  if (!shortRoute) {
+    const agendaHash = await publicAgendaLinkHash(username, driverSnap);
+    if (!tokenMatches(agendaToken, agendaHash)) {
+      await appendPublicDebugEvent({
+        driverUsername: username,
+        event: "PUBLIC_AGENDA_LOAD_FAILED",
+        source: "server",
+        agendaToken,
+        screen: "agenda",
+        reason: "agenda_not_found",
+        statusCode: 404,
+      }).catch(() => {});
+      return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+    }
   }
   const view = await requirePassengerAgendaView(req, res, username);
   if (!view) return;
@@ -1959,12 +1993,17 @@ async function openPassengerAgendaView(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
   }
-  const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
+  const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
+  if (publicSlug && isReservedPublicUsername(publicSlug)) {
+    return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+  }
+  const requestedDriverUsername = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(requestedDriverUsername);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
   const tripToken = cleanText(req.body && req.body.tripToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
   if (!username) return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
-  if (!agendaToken && !tripToken) return fail(res, 400, "agenda_target_required", "Agenda não identificada.");
+  if (!agendaToken && !tripToken && !publicSlug) return fail(res, 400, "agenda_target_required", "Agenda não identificada.");
 
   if (agendaToken) {
     const agendaHash = await publicAgendaLinkHash(username, resolvedDriver.driverSnap);
@@ -4252,6 +4291,10 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda" && req.method === "GET") {
+      if (isReservedPublicUsername(parts[3])) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+      return await getPublicDriverAgenda(res, req, parts[3], "", true);
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "drivers" && parts[5] === "agenda" && req.method === "GET") {
       return await getPublicDriverAgenda(res, req, parts[3], parts[4]);
