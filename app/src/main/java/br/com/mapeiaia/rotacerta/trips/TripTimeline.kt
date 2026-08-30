@@ -95,7 +95,8 @@ internal fun timelinePublicCapacityResolution(
     entry: TripTimelineEntry,
     occupiedSeats: Int = entry.maximumOccupiedSeats,
 ): TimelinePublicCapacityResolution {
-    val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+    val confirmedWholeTrip = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+    val passengers = minOf(occupiedSeats.coerceAtLeast(0), confirmedWholeTrip)
     val blocked = (occupiedSeats.coerceAtLeast(0) - passengers).coerceAtLeast(0)
     return resolveTimelinePublicCapacity(
         physicalVehicleCapacity = entry.capacity,
