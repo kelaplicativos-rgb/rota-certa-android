@@ -129,6 +129,9 @@ internal object BlaBlaCollectorPassengerModule {
     ): BlaBlaCollectorTrip = current.copy(
         public_trip_href = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
             ?: previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty),
+        // A partial/reloaded snapshot cannot erase the last seat-editor value
+        // confirmed for this same strong trip identity.
+        published_seats = current.published_seats ?: previous?.published_seats,
     )
 
     private fun duplicateEvidenceMatches(
