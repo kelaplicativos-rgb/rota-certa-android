@@ -61,6 +61,55 @@ class TripStore(context: Context) {
         return normalized
     }
 
+    /**
+     * Migrates active/future trips to the explicitly configured physical passenger capacity.
+     * Reservations never call this method; only vehicle configuration may change this value.
+     */
+    fun reconcilePhysicalPassengerCapacity(
+        capacity: Int,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Pair<Int, Int> {
+        require(capacity in 1..999) { "Capacidade de passageiros inválida." }
+        val activeStatuses = setOf(
+            TripStatus.DRAFT,
+            TripStatus.PUBLISHED,
+            TripStatus.FULL,
+            TripStatus.STARTING,
+            TripStatus.ACTIVE,
+        )
+        val currentTrips = trips()
+        var changedTrips = 0
+        val reconciledTrips = currentTrips.map { trip ->
+            val shouldApply = trip.status in activeStatuses &&
+                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
+            if (shouldApply && trip.capacity != capacity) {
+                changedTrips++
+                trip.copy(capacity = capacity, updatedAtMillis = nowMillis)
+            } else {
+                trip
+            }
+        }
+
+        val currentBindings = publicExternalBindings()
+        var changedBindings = 0
+        val reconciledBindings = currentBindings.map { binding ->
+            if (binding.departureAtMillis >= nowMillis && binding.capacity != capacity) {
+                changedBindings++
+                binding.copy(capacity = capacity, updatedAtMillis = nowMillis)
+            } else {
+                binding
+            }
+        }
+
+        if (changedTrips > 0 || changedBindings > 0) {
+            prefs.edit()
+                .putString(tripsKey, json.encodeToString(reconciledTrips))
+                .putString(publicExternalBindingsKey, json.encodeToString(reconciledBindings))
+                .apply()
+        }
+        return changedTrips to changedBindings
+    }
+
     fun deleteTrip(id: String) {
         prefs.edit()
             .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))
