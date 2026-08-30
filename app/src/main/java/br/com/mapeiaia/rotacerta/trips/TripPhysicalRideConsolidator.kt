@@ -144,7 +144,11 @@ object TripPhysicalRideConsolidator {
         }.toMap()
         val occupied = sources.values.sum()
         val capacity = group.maxOfOrNull(TripTimelineEntry::capacity) ?: 0
-        val external = group.firstOrNull { !it.blablaTripHref.isNullOrBlank() }
+        val external = group.firstOrNull {
+            !it.blablaTripHref.isNullOrBlank() ||
+                !it.blablaPublicHref.isNullOrBlank() ||
+                !it.blablaTripId.isNullOrBlank()
+        }
         val local = group.firstOrNull { it.localTripId != null }
         val cleanIssues = group.flatMap(TripTimelineEntry::issues).toSet() - setOf(
             TripTimelineIssue.PHYSICAL_CONFLICT,
@@ -163,6 +167,7 @@ object TripPhysicalRideConsolidator {
             localTripId = local?.localTripId,
             blablaTripId = external?.blablaTripId,
             blablaTripHref = external?.blablaTripHref,
+            blablaPublicHref = external?.blablaPublicHref,
             blablaProfileUuid = external?.blablaProfileUuid,
             blablaPrice = external?.blablaPrice,
             blablaAvailability = external?.blablaAvailability,
