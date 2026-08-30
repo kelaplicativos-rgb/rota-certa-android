@@ -28,6 +28,7 @@ class TripTimelineCardNavigationStage47Step7Test {
                 date = "2026-08-21", departure_time = "11:20", arrival_time = "17:10",
                 actual_departure = "Santo André, SP", actual_arrival = "Três Corações, MG",
                 price = "R$ 89,00", trip_href = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc",
+                public_trip_href = "https://www.blablacar.com.br/trip?id=trip-123&search_uuid=public-noise",
                 trip_id = "trip-123", uuid_validation = "verified_from_authenticated_profile_session",
             )),
         )
@@ -38,6 +39,7 @@ class TripTimelineCardNavigationStage47Step7Test {
         assertEquals("local-1", card.localTripId)
         assertEquals("trip-123", card.blablaTripId)
         assertEquals("https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc", card.blablaTripHref)
+        assertEquals("https://www.blablacar.com.br/trip?id=trip-123", card.blablaPublicHref)
         assertEquals("7371f028-9c55-4903-8444-308015823efd", card.blablaProfileUuid)
         assertEquals("R$ 89,00", card.blablaPrice)
         // Once an external publication is reconciled to an existing local trip, the local
