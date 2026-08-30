@@ -146,13 +146,15 @@ data class Booking(
 data class SegmentLoad(
     val from: TripStop,
     val to: TripStop,
-    /** Total physical capacity consumed on this segment: passengers + standalone blocked seats. */
+    /** Total physical capacity consumed on this segment: confirmed passengers + blocked/held seats. */
     val occupiedSeats: Int,
     val availableSeats: Int,
-    /** Real passengers occupying seats on this segment, after occupancyGroupId deduplication. */
+    /** Confirmed real passengers on this segment, after occupancyGroupId deduplication. */
     val passengerSeats: Int = occupiedSeats,
-    /** Seats deliberately blocked/unavailable on this segment, excluding mirrors of a passenger claim. */
+    /** Seats unavailable but not yet a confirmed passenger: explicit blocks, holds and pending requests. */
     val blockedSeats: Int = 0,
+    /** Positive only when confirmed + blocked exceeds the physical passenger capacity. */
+    val overbookingSeats: Int = 0,
 )
 
 data class SeatAvailability(
@@ -246,6 +248,7 @@ object SeatAvailabilityEngine {
                 availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
                 passengerSeats = state.passengerSeats,
                 blockedSeats = state.blockedSeats,
+                overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
         val available = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
@@ -277,6 +280,7 @@ object SeatAvailabilityEngine {
                 availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
                 passengerSeats = state.passengerSeats,
                 blockedSeats = state.blockedSeats,
+                overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
     }
@@ -352,7 +356,17 @@ object SeatAvailabilityEngine {
                         when (booking.capacityClaimType) {
                             CapacityClaimType.PASSENGER,
                             CapacityClaimType.EXTERNAL_OCCUPANCY,
-                            -> if (booking.seats > group.passengerSeats) group.passengerSeats = booking.seats
+                            -> when (booking.status) {
+                                BookingStatus.CONFIRMED ->
+                                    if (booking.seats > group.passengerSeats) group.passengerSeats = booking.seats
+                                BookingStatus.REQUESTED,
+                                BookingStatus.HELD,
+                                -> if (booking.seats > group.reservedSeats) group.reservedSeats = booking.seats
+                                BookingStatus.REJECTED,
+                                BookingStatus.CANCELLED,
+                                BookingStatus.EXPIRED,
+                                -> Unit
+                            }
                             CapacityClaimType.RESERVED_SEAT ->
                                 if (booking.seats > group.reservedSeats) group.reservedSeats = booking.seats
                         }
