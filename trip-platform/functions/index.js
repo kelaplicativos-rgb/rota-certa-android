@@ -2960,6 +2960,8 @@ async function createBooking(req, res, token) {
           amountDueCents: Number(existingData.amountDueCents ?? existingData.totalFareCents ?? 0),
           driverUsername: debugDriverUsername,
           tripTitle: cleanText(trip.title, 180),
+          status: cleanText(existingData.status, 24) || "REQUESTED",
+          operationalStatus: cleanText(existingData.operationalStatus, 32) || "PENDING",
         };
       }
 
@@ -3063,6 +3065,8 @@ async function createBooking(req, res, token) {
         amountDueCents,
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
+        status: "REQUESTED",
+        operationalStatus: "PENDING",
       };
     });
     const statusCode = result.replayed ? 200 : 201;
@@ -3103,8 +3107,8 @@ async function createBooking(req, res, token) {
       totalFareCents: result.totalFareCents,
       creditAppliedCents: result.creditAppliedCents,
       amountDueCents: result.amountDueCents,
-      status: "REQUESTED",
-      operationalStatus: "PENDING",
+      status: result.status,
+      operationalStatus: result.operationalStatus,
       replayed: result.replayed,
     });
   } catch (error) {
@@ -3403,6 +3407,13 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
       if (!passengerId) throw Object.assign(new Error("A reserva não possui passengerId canônico."), { httpStatus: 409, code: "canonical_passenger_required" });
       const seats = Number(previous.seats || 0);
       if (!Number.isInteger(seats) || seats <= 0) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 409, code: "invalid_booking_seats" });
+      if (cleanText(previous.source, 32) !== "ROTA_CERTA" || cleanText(previous.capacityClaimType, 32) !== "PASSENGER") {
+        throw Object.assign(new Error("A solicitação não possui o claim canônico de passageiro."), { httpStatus: 409, code: "invalid_pending_capacity_claim" });
+      }
+      const occupancyGroupId = cleanText(previous.occupancyGroupId, 120);
+      if (!occupancyGroupId) {
+        throw Object.assign(new Error("A retenção de vaga da solicitação não possui identidade canônica."), { httpStatus: 409, code: "missing_pending_occupancy_group" });
+      }
       bookingSegmentRange(trip, previous.boardingStopId, previous.dropoffStopId);
 
       const targetStatus = action === "APPROVE" ? "CONFIRMED" : "REJECTED";

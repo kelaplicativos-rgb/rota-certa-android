@@ -117,6 +117,7 @@ data class RemoteBookingResponse(
 data class RemoteBooking(
     val id: String,
     val tripId: String = "",
+    val passengerId: String = "",
     val passengerName: String,
     val passengerContact: String = "",
     val boardingStopId: String,
@@ -764,7 +765,7 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     capacityClaimType = capacityClaimType,
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
-    passengerId = existingLocal?.passengerId.orEmpty(),
+    passengerId = existingLocal?.passengerId?.takeIf(String::isNotBlank) ?: passengerId,
     fareMinorUnits = existingLocal?.fareMinorUnits,
     fareCurrencyCode = existingLocal?.fareCurrencyCode.orEmpty(),
     boardingAddress = existingLocal?.boardingAddress.orEmpty(),
