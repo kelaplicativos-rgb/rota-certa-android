@@ -60,6 +60,21 @@ internal class BlaBlaBrowserOrchestrator {
 
 
     /**
+     * Installs the network-first observer through the same capture authority.
+     * Response interpretation remains in the dedicated normalization module.
+     */
+    fun installNetworkEvidenceCapture(
+        androidContext: Context,
+        webView: WebView,
+        accountId: String,
+    ): BlaBlaNetworkDiagnosticRecorder =
+        BlaBlaNetworkDiagnosticRecorder(
+            context = androidContext,
+            accountId = accountId,
+            appPackageName = androidContext.packageName,
+        ).also { recorder -> recorder.install(webView) }
+
+    /**
      * Canonical path for BlaBlaCar data collection. CAPTURE and browser-only
      * NAVIGATION are allowed; REMOTE_WRITE is rejected fail-closed.
      */
