@@ -1837,7 +1837,6 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  addFact("Capacidade de passageiros", `${trip.capacity} lugar(es) físicos simultâneos`);
   if (trip.blablaAvailableSeats != null) addFact("Vagas BlaBlaCar", `${normalizedSeatCount(trip.blablaAvailableSeats)} disponíveis`);
   if (trip.rotaCertaAvailableSeats != null) addFact("Vagas Rota Certa", `${normalizedSeatCount(trip.rotaCertaAvailableSeats)} disponíveis`);
   if (trip.totalAvailableSeats != null) addFact("Total disponível", `${normalizedSeatCount(trip.totalAvailableSeats)} vaga(s)`);
