@@ -21,13 +21,9 @@ data class TripTimelineEntry(
     val status: TripStatus,
     /** Physical simultaneous passenger capacity. */
     val capacity: Int,
-    /** Operational Rota Certa allocation; separate from physical capacity. */
-    val rotaCertaSeatAllocation: Int? = null,
     val minimumOccupiedSeats: Int,
     val maximumOccupiedSeats: Int,
     val sourcePassengerSeats: Map<BookingSource, Int>,
-    /** Whole-trip operational blocks/holds that are not confirmed passengers. */
-    val operationalBlockedSeats: Int = 0,
     val localTripId: String? = null,
     val blablaTripId: String? = null,
     val blablaTripHref: String? = null,
@@ -43,6 +39,10 @@ data class TripTimelineEntry(
     val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val blablaPassengerRosterComplete: Boolean? = null,
     val issues: Set<TripTimelineIssue> = emptySet(),
+    /** Operational Rota Certa allocation; separate from physical capacity. */
+    val rotaCertaSeatAllocation: Int? = null,
+    /** Whole-trip operational blocks/holds that are not confirmed passengers. */
+    val operationalBlockedSeats: Int = 0,
 ) {
     val minimumAvailableSeats: Int
         get() = (capacity - maximumOccupiedSeats).coerceAtLeast(0)
