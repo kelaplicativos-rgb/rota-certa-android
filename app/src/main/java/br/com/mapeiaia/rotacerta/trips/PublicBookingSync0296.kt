@@ -4,10 +4,16 @@ import android.content.Context
 import android.content.Intent
 import br.com.mapeiaia.rotacerta.DebugLogPreferenceStore
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
 internal data class PublicBookingPullResult(
@@ -28,11 +34,56 @@ private data class BookingFetchBatch0373(
     val bookings: List<RemoteBooking>,
 )
 
-internal object PublicBookingRemoteSync0296 {
-    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult =
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            pullAndReconcileOnIo(context, store)
+internal data class BookingSingleFlightResult0380<T>(
+    val value: T,
+    val coalesced: Boolean,
+)
+
+internal class BookingReconcileSingleFlight0380<T>(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+) {
+    private val mutex = Mutex()
+    private val flights = mutableMapOf<String, Deferred<T>>()
+
+    suspend fun execute(key: String, block: suspend () -> T): BookingSingleFlightResult0380<T> {
+        var coalesced = false
+        val deferred = mutex.withLock {
+            flights[key]?.takeIf { !it.isCompleted }?.also {
+                coalesced = true
+            } ?: scope.async { block() }.also { flights[key] = it }
         }
+        return try {
+            BookingSingleFlightResult0380(deferred.await(), coalesced)
+        } finally {
+            if (deferred.isCompleted) {
+                mutex.withLock {
+                    if (flights[key] === deferred) flights.remove(key)
+                }
+            }
+        }
+    }
+}
+
+internal object PublicBookingRemoteSync0296 {
+    private val reconcileSingleFlight = BookingReconcileSingleFlight0380<PublicBookingPullResult>()
+
+    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult {
+        val applicationContext = context.applicationContext
+        val scopeKey = store.bookingReconcileScopeKey()
+        val flight = reconcileSingleFlight.execute(scopeKey) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                pullAndReconcileOnIo(applicationContext, store)
+            }
+        }
+        if (flight.coalesced) {
+            UnifiedDebugEventStore.record(
+                "BOOKING_RECONCILE_COALESCED",
+                applicationContext.packageName,
+                "scope=tenant tenantKey=${seatSyncDiagnosticKey(scopeKey)} reused=true",
+            )
+        }
+        return flight.value
+    }
 
     private suspend fun pullAndReconcileOnIo(context: Context, store: TripStore): PublicBookingPullResult {
         val traceId = AgendaTrace.currentTraceId()
@@ -43,7 +94,8 @@ internal object PublicBookingRemoteSync0296 {
             "PublicBookingRemoteSync0296.pullAndReconcile",
             traceId,
         )
-        val settings = store.onlineSettings()
+        try {
+            val settings = store.onlineSettings()
         if (!settings.configured) {
             AgendaTrace.operationEnd(context, reconcileOperation, result = "not_configured", processedCount = 0)
             return PublicBookingPullResult(0, emptySet(), 0)
@@ -196,15 +248,27 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
-        var imported = 0
-        val changed = linkedSetOf<String>()
-        pendingImports.forEach { mapped ->
-            val saved = store.saveBooking(mapped)
-            bookingSnapshot[saved.id] = saved
-            imported++
-            changed += saved.tripId
+        val importedBookings = try {
+            store.saveBookingsBatch(
+                bookingsToSave = pendingImports,
+                preserveSourceUpdatedAt = true,
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            AgendaTrace.operationCancelled(context, importOperation, result = "cancelled")
+            throw cancelled
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, importOperation, error)
+            throw error
         }
+        val imported = importedBookings.size
+        val changed = importedBookings.mapTo(linkedSetOf(), Booking::tripId)
+        importedBookings.forEach { saved -> bookingSnapshot[saved.id] = saved }
         AgendaTrace.operationEnd(context, importOperation, processedCount = imported)
+        UnifiedDebugEventStore.record(
+            "BOOKING_IMPORT_BATCH_0380",
+            context.packageName,
+            "requested=${pendingImports.size} imported=$imported changedTrips=${changed.size} bookingSnapshotWrites=${if (imported > 0) 1 else 0}",
+        )
         UnifiedDebugEventStore.record(
             "BOOKING_RECONCILE_PHASES_0373",
             context.packageName,
@@ -222,17 +286,16 @@ internal object PublicBookingRemoteSync0296 {
         // mutating it here and also counting this booking would subtract the same seat twice.
         // A normal collector refresh remains responsible for observing genuine external changes.
         val queued = 0
+        val inventoryUpdated = store.reconcileBookingDerivedInventory(changed)
+        val tripsAfterImport = store.trips().associateBy(Trip::id)
+        val bookingsAfterImport = store.bookings().groupBy(Booking::tripId)
         changed.forEach { tripId ->
-            val trip = store.getTrip(tripId) ?: return@forEach
-            val bookingsForTrip = store.bookingsFor(tripId)
-            val derivedCapacity = operationalInventoryCapacity(trip, bookingsForTrip)
-            if (trip.capacity != derivedCapacity) {
-                store.saveTrip(trip.copy(capacity = derivedCapacity))
-            }
+            val trip = tripsAfterImport[tripId] ?: return@forEach
+            val bookingsForTrip = bookingsAfterImport[tripId].orEmpty()
             UnifiedDebugEventStore.record(
                 "BOOKING_INVENTORY_RECALCULATED",
                 context.packageName,
-                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip.copy(capacity = derivedCapacity), bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory",
+                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated",
             )
         }
         UnifiedDebugEventStore.record(
@@ -249,6 +312,13 @@ internal object PublicBookingRemoteSync0296 {
             processedCount = remoteFetched,
         )
         return PublicBookingPullResult(imported, changed, queued)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            AgendaTrace.operationCancelled(context, reconcileOperation, result = "cancelled")
+            throw cancelled
+        } catch (error: Throwable) {
+            AgendaTrace.operationError(context, reconcileOperation, error)
+            throw error
+        }
     }
 
     private const val BOOKING_FETCH_CONCURRENCY_0373 = 4

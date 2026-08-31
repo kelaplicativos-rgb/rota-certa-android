@@ -359,6 +359,110 @@ class PassengerIdentityStore(context: Context) {
     }
 
     /**
+     * Fast path for reconcile batches that already carry the canonical passengerId from
+     * the server. Profiles, observations and ride occurrences are updated in memory and
+     * each backing collection is serialized once for the whole batch.
+     */
+    internal fun ensureStrongLocalBookingProfilesBatch(
+        bookings: List<Booking>,
+    ): Map<String, String> {
+        val eligible = bookings.filter {
+            it.capacityClaimType == CapacityClaimType.PASSENGER &&
+                it.passengerId.isNotBlank() &&
+                it.passengerName.isNotBlank()
+        }
+        if (eligible.isEmpty()) return emptyMap()
+
+        val now = System.currentTimeMillis()
+        val profileById = LinkedHashMap<String, PassengerProfile>().apply {
+            profiles().forEach { put(it.id, it) }
+        }
+        val observationList = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+            .orEmpty()
+            .toMutableList()
+        val latestObservationByPassenger = observationList
+            .groupBy(PassengerIdentityObservation::passengerId)
+            .mapValues { (_, items) -> items.maxByOrNull(PassengerIdentityObservation::observedAtMillis) }
+            .toMutableMap()
+        val rideByKey = LinkedHashMap<String, PassengerRideRecord>().apply {
+            decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
+                .orEmpty()
+                .forEach { put(it.passengerId + "|" + it.rideKey, it) }
+        }
+        val resolved = LinkedHashMap<String, String>()
+
+        eligible.forEach { booking ->
+            val passengerId = booking.passengerId.trim()
+            val name = booking.passengerName.trim().take(120)
+            val phone = booking.passengerContact.trim().take(40)
+            val base = profileById[passengerId] ?: PassengerProfile(
+                id = passengerId,
+                displayName = name,
+                whatsapp = phone,
+                createdAtMillis = booking.createdAtMillis,
+            )
+            profileById[passengerId] = base.copy(
+                displayName = name,
+                whatsapp = phone.ifBlank { base.whatsapp },
+                updatedAtMillis = now,
+            )
+            resolved[booking.id] = passengerId
+
+            val previousObservation = latestObservationByPassenger[passengerId]
+            if (
+                previousObservation == null ||
+                previousObservation.displayName != name ||
+                previousObservation.whatsapp != phone ||
+                previousObservation.photoUrl.isNotBlank() ||
+                previousObservation.externalPassengerId.isNotBlank()
+            ) {
+                val observation = PassengerIdentityObservation(
+                    passengerId = passengerId,
+                    displayName = name,
+                    whatsapp = phone,
+                    source = "LOCAL_${booking.source.name}",
+                    observedAtMillis = now,
+                )
+                observationList.add(0, observation)
+                latestObservationByPassenger[passengerId] = observation
+            }
+
+            val rideKey = "local:${booking.id}"
+            val mapKey = passengerId + "|" + rideKey
+            val existingRide = rideByKey[mapKey]
+            val requestedStatus = when (booking.status) {
+                BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED ->
+                    PassengerOccurrenceStatus.CANCELLED
+                BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED ->
+                    PassengerOccurrenceStatus.RESERVED
+            }
+            val mergedStatus = mergePassengerOccurrenceStatus(existingRide?.status, requestedStatus)
+            rideByKey[mapKey] = (existingRide ?: PassengerRideRecord(
+                passengerId = passengerId,
+                rideKey = rideKey,
+                observedAtMillis = now,
+            )).copy(
+                status = mergedStatus,
+                tripId = booking.tripId.trim().take(160).ifBlank { existingRide?.tripId.orEmpty() },
+                source = booking.source.name,
+                seats = booking.seats.coerceAtLeast(1),
+                completedAtMillis = when (mergedStatus) {
+                    PassengerOccurrenceStatus.COMPLETED -> existingRide?.completedAtMillis ?: now
+                    else -> null
+                },
+                updatedAtMillis = now,
+            )
+        }
+
+        prefs.edit()
+            .putString(profilesKey, json.encodeToString(profileById.values.toList()))
+            .putString(observationsKey, json.encodeToString(observationList))
+            .putString(rideRecordsKey, json.encodeToString(rideByKey.values.toList()))
+            .apply()
+        return resolved
+    }
+
+    /**
      * BlaBlaCar identity is automatically persisted only from a strong stable passenger UUID/id.
      * Name, phone and future photo changes become observations; they never create a new person
      * while the same external UUID is present.
