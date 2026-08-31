@@ -48,7 +48,7 @@ jobs:
           test -s "$FAROL"
           sha256sum "$FAROL" | tee farol-before.sha256
           grep -Fq 'versionCode = 5673' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.379"' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.380"' app/build.gradle.kts
 
       - name: Prove feature source boundaries
         shell: bash
