@@ -486,12 +486,12 @@ fun BlaBlaCollectorPanel(
                     message = "Card exato sem link canônico; sincronização individual não iniciada."
                     onChanged(message.orEmpty())
                 } else {
-                UnifiedDebugEventStore.record(
-                    "AGENDA_SYNC_SESSION_LAUNCH",
-                    context.packageName,
-                    "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} dateScoped=${dateScope.isNotEmpty()} sequentialGate=true",
-                )
-                syncSessionInFlight = true
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_SYNC_SESSION_LAUNCH",
+                        context.packageName,
+                        "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} dateScoped=${dateScope.isNotEmpty()} sequentialGate=true",
+                    )
+                    syncSessionInFlight = true
                     sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
                 }
             } else if (dateScope.isNotEmpty()) {
