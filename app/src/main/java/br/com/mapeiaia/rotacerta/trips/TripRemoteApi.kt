@@ -106,6 +106,15 @@ data class DriverAgendaEnsureResponse(
 )
 
 @Serializable
+data class DriverTesterLinkResponse(
+    val active: Boolean = false,
+    val generation: Long = 0L,
+    val expiresAtMillis: Long = 0L,
+    val revokedAtMillis: Long = 0L,
+    val testUrl: String = "",
+)
+
+@Serializable
 data class RemoteBookingResponse(
     val bookingId: String,
     val cancellationToken: String? = null,
@@ -487,6 +496,26 @@ class TripRemoteApi(
                 rotationId = rotationId.trim(),
             ),
         ),
+        requireDriverToken = true,
+    )
+
+    suspend fun testerLinkStatus(): DriverTesterLinkResponse = request(
+        method = "GET",
+        path = "/v1/driver/test-link",
+        requireDriverToken = true,
+    )
+
+    suspend fun generateTesterLink(): DriverTesterLinkResponse = request(
+        method = "POST",
+        path = "/v1/driver/test-link/generate",
+        body = "{}",
+        requireDriverToken = true,
+    )
+
+    suspend fun revokeTesterLink(): DriverTesterLinkResponse = request(
+        method = "POST",
+        path = "/v1/driver/test-link/revoke",
+        body = "{}",
         requireDriverToken = true,
     )
 

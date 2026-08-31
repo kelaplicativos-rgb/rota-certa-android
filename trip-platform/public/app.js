@@ -43,6 +43,7 @@ const requestedDropoffStopId = (params.get("destino") || "").replace(/[^A-Za-z0-
 const requestedSeats = Math.max(1, Math.min(999, Math.floor(Number(params.get("lugares") || 1) || 1)));
 const referralCode = (params.get("ref") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
 const directReserveRequested = params.get("reservar") === "1";
+const testerBootstrapToken = (params.get("tester") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 240);
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -59,6 +60,12 @@ let passengerSessionToken = (() => {
 })();
 let passengerAgendaViewToken = (() => {
   try { return sessionStorage.getItem("rotacerta-agenda-view-session") || ""; } catch (_) { return ""; }
+})();
+let testerSessionToken = (() => {
+  try { return sessionStorage.getItem("rotacerta-tester-session") || ""; } catch (_) { return ""; }
+})();
+let testerSessionContext = (() => {
+  try { return JSON.parse(sessionStorage.getItem("rotacerta-tester-context") || "null"); } catch (_) { return null; }
 })();
 let passengerSessionContact = (() => {
   try { return localStorage.getItem("rotacerta-passenger-contact") || ""; } catch (_) { return ""; }
@@ -311,15 +318,86 @@ function defaultDriverMessage() {
 }
 
 
+function isTesterMode() {
+  return Boolean(testerSessionToken);
+}
+
+function hasPrivatePortalSession() {
+  return Boolean(testerSessionToken || passengerSessionToken);
+}
+
+function testerHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (testerSessionToken) headers["X-Rota-Certa-Tester-Session"] = testerSessionToken;
+  return headers;
+}
+
+function saveTesterSession(token, context = null) {
+  testerSessionToken = String(token || "");
+  testerSessionContext = context || null;
+  try {
+    if (testerSessionToken) sessionStorage.setItem("rotacerta-tester-session", testerSessionToken);
+    else sessionStorage.removeItem("rotacerta-tester-session");
+    if (testerSessionContext) sessionStorage.setItem("rotacerta-tester-context", JSON.stringify(testerSessionContext));
+    else sessionStorage.removeItem("rotacerta-tester-context");
+  } catch (_) {}
+  updateTesterChrome();
+  updateAuthenticatedChrome();
+}
+
+function updateTesterChrome() {
+  show("testModeBanner", isTesterMode());
+  if (isTesterMode() && $("testModeDetail")) {
+    const id = String(testerSessionContext?.testSessionId || "");
+    $("testModeDetail").textContent = `Tudo que você reservar, alterar ou cancelar aqui fica somente nesta simulação${id ? ` • sessão ${id.slice(0, 8)}` : ""}.`;
+  }
+}
+
+function bookingStoragePrefix() {
+  if (!isTesterMode()) return "rotacerta-";
+  const sessionKey = String(testerSessionContext?.testSessionId || "session").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40);
+  return `rotacerta-tester-${sessionKey}-`;
+}
+
+async function resetTesterSimulation() {
+  if (!isTesterMode()) return;
+  const button = $("resetTestSimulation");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch("/v1/tester/reset", {
+      method: "POST",
+      headers: testerHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
+      body: "{}",
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || "Não foi possível reiniciar a simulação.");
+    confirmedBooking = null;
+    pendingBooking = null;
+    editingExistingBooking = false;
+    try {
+      const prefix = bookingStoragePrefix();
+      Object.keys(localStorage).filter((key) => key.startsWith(prefix + "booking-") || key.startsWith(prefix + "booking-intent-")).forEach((key) => localStorage.removeItem(key));
+    } catch (_) {}
+    if (tripToken) await loadTrip();
+    else await loadAgenda();
+  } catch (error) {
+    setError(error.message || "Falha ao reiniciar a simulação.");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function authenticatedHeaders(extra = {}) {
   const headers = { ...extra };
-  if (passengerSessionToken) headers.Authorization = `Bearer ${passengerSessionToken}`;
+  if (testerSessionToken) headers["X-Rota-Certa-Tester-Session"] = testerSessionToken;
+  else if (passengerSessionToken) headers.Authorization = `Bearer ${passengerSessionToken}`;
   return headers;
 }
 
 function agendaViewHeaders(extra = {}) {
   const headers = { ...extra };
-  if (passengerAgendaViewToken) headers["X-Rota-Certa-Agenda-View-Token"] = passengerAgendaViewToken;
+  if (testerSessionToken) headers["X-Rota-Certa-Tester-Session"] = testerSessionToken;
+  else if (passengerAgendaViewToken) headers["X-Rota-Certa-Agenda-View-Token"] = passengerAgendaViewToken;
   return headers;
 }
 
@@ -341,9 +419,10 @@ function saveAgendaViewSession(token) {
 }
 
 function updateAuthenticatedChrome() {
-  show("openPassengerPortal", Boolean(passengerAgendaViewToken || passengerSessionToken));
-  show("passengerNotificationsBell", Boolean(passengerSessionToken));
-  if (!passengerSessionToken) {
+  show("openPassengerPortal", Boolean(isTesterMode() || passengerAgendaViewToken || passengerSessionToken));
+  show("passengerNotificationsBell", Boolean(passengerSessionToken && !isTesterMode()));
+  show("portalLogout", Boolean(!isTesterMode()));
+  if (!passengerSessionToken || isTesterMode()) {
     passengerUnreadNotificationCount = 0;
     show("passengerNotificationBadge", false);
   }
@@ -470,6 +549,11 @@ async function loginAccessGate() {
 }
 
 function showPrivateAuthGate(destination = "portal", resumeAction = "") {
+  if (isTesterMode()) {
+    pendingAuthDestination = destination;
+    pendingPrivateAction = resumeAction;
+    return continueAfterAuthentication();
+  }
   if (!passengerAgendaViewToken || !passengerSessionContact) {
     return showAccessGate(destination, "Informe seu WhatsApp para continuar.");
   }
@@ -595,6 +679,10 @@ async function loadAgenda() {
     statusCode = response.status;
     const body = await response.json();
     if (!response.ok && (response.status === 401 || response.status === 403)) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        return setError(body.message || "Sessão de teste encerrada. Gere um novo link de teste no aplicativo.");
+      }
       saveAgendaViewSession("");
       return showAccessGate("agenda", body.message || "Informe seu WhatsApp novamente.");
     }
@@ -944,7 +1032,7 @@ async function confirmSeatPicker() {
     fromIndex: stops.findIndex((stop) => stop.id === pendingBooking.boardingStopId),
     toIndex: stops.findIndex((stop) => stop.id === pendingBooking.dropoffStopId),
   });
-  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("trip", "reserve");
   if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
     return updateExistingReservation();
   }
@@ -1544,6 +1632,21 @@ function renderAgendaCards(entries, container, filtered = false) {
       const choices = document.createElement("div");
       choices.className = "reservationChoices";
 
+      if (isTesterMode()) {
+        const tester = document.createElement("button");
+        tester.type = "button";
+        tester.className = "bookingChoice bookingTester";
+        tester.textContent = "🧪 Abrir para simular";
+        tester.addEventListener("click", () => {
+          const target = item.publicUrl || `/?motorista=${encodeURIComponent(item.driverUsername || driverUsername)}&trip=${encodeURIComponent(item.publicToken || item.tripId)}`;
+          location.href = target;
+        });
+        choices.appendChild(tester);
+        card.appendChild(choices);
+        container.appendChild(card);
+        return;
+      }
+
       const whatsapp = document.createElement("button");
       whatsapp.type = "button";
       whatsapp.className = "bookingChoice bookingWhatsapp";
@@ -1580,6 +1683,10 @@ async function loadTrip() {
     statusCode = response.status;
     const body = await response.json();
     if (!response.ok && (response.status === 401 || response.status === 403)) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        return setError(body.message || "Sessão de teste encerrada. Gere um novo link de teste no aplicativo.");
+      }
       saveAgendaViewSession("");
       return showAccessGate("trip", body.message || "Informe seu WhatsApp novamente.");
     }
@@ -1641,9 +1748,12 @@ function renderTrip() {
     : 0;
   const canUseExternalActions = trip.capacityReliable === true && actionAvailable > 0;
 
-  show("tripSticky", canUseExternalActions);
-  $("startBooking").disabled = !canUseExternalActions;
-  $("startBooking").textContent = "Reservar pelo WhatsApp";
+  const testerCanReserve = isTesterMode() && trip.canReserve !== false && canUseExternalActions;
+  if (isTesterMode()) show("tripSticky", testerCanReserve);
+  else show("tripSticky", canUseExternalActions);
+  $("startBooking").disabled = !(isTesterMode() ? testerCanReserve : canUseExternalActions);
+  $("startBooking").textContent = isTesterMode() ? "🧪 Simular reserva" : "Reservar pelo WhatsApp";
+  show("bookBlaBla", !isTesterMode());
 
   const blablaUrl = safeBlaBlaPublicUrl(trip);
   const blabla = $("bookBlaBla");
@@ -1828,6 +1938,7 @@ function renderDriverProfile() {
   (driverProfile.preferences || []).forEach((item) => pushTag(item));
 
   setWhatsappLink($("driverWhatsappTrip"), defaultDriverMessage());
+  if (isTesterMode()) show("driverWhatsappTrip", false);
 }
 
 function renderTripFacts() {
@@ -2069,7 +2180,7 @@ function reviewBooking() {
   if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
     return updateExistingReservation();
   }
-  if (!passengerSessionToken) return showPrivateAuthGate("booking", "reserve");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("booking", "reserve");
   return reserve();
 }
 
@@ -2080,7 +2191,9 @@ function requestIdentity(payload) {
     seats: payload.seats,
     creditToUseCents: payload.creditToUseCents || 0,
   });
-  const key = `rotacerta-booking-intent-${tripToken}`;
+  const key = isTesterMode()
+    ? `${bookingStoragePrefix()}booking-intent-${tripToken}`
+    : `rotacerta-booking-intent-${tripToken}`;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(key) || "null"); } catch (_) {}
   if (saved?.fingerprint === fingerprint && saved?.idempotencyKey) return saved.idempotencyKey;
@@ -2097,7 +2210,7 @@ async function reserve() {
   if (!trip) return;
   if (!pendingBooking) pendingBooking = restorePendingBookingIntent();
   if (!pendingBooking || bookingRequestInFlight) return;
-  if (!passengerSessionToken) return showPrivateAuthGate("trip", "reserve");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("trip", "reserve");
   if (editingExistingBooking && confirmedBooking?.bookingId && confirmedBooking?.cancellationToken) {
     return updateExistingReservation();
   }
@@ -2126,19 +2239,25 @@ async function reserve() {
   });
 
   try {
-    const response = await fetch(`/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`, {
+    const bookingEndpoint = isTesterMode()
+      ? `/v1/tester/trips/${encodeURIComponent(tripToken)}/bookings`
+      : `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings`;
+    const response = await fetch(bookingEndpoint, {
       method: "POST",
-      headers: {
+      headers: authenticatedHeaders({
         "Content-Type": "application/json",
         Accept: "application/json",
         "Idempotency-Key": idempotencyKey,
-        Authorization: `Bearer ${passengerSessionToken}`,
-      },
+      }),
       body: JSON.stringify({ ...bookingPayload, idempotencyKey }),
     });
     statusCode = response.status;
     const body = await response.json();
     if (response.status === 401) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        return setError(body.message || "Sessão de teste encerrada.");
+      }
       savePassengerSession("");
       passengerViewAccountActivated = true;
       pendingBooking = intent;
@@ -2170,8 +2289,11 @@ async function reserve() {
     };
 
     try {
+      const bookingKey = isTesterMode()
+        ? `${bookingStoragePrefix()}booking-${body.bookingId}`
+        : `rotacerta-booking-${body.bookingId}`;
       localStorage.setItem(
-        `rotacerta-booking-${body.bookingId}`,
+        bookingKey,
         JSON.stringify({ trip: tripToken, cancellationToken: body.cancellationToken }),
       );
       localStorage.setItem(cancellationStorageKey(), JSON.stringify(confirmedBooking));
@@ -2263,14 +2385,16 @@ async function reserve() {
 async function undoQuickBooking() {
   const booking = confirmedBooking;
   if (!booking?.bookingId || !booking?.cancellationToken || !tripToken) return;
-  if (!passengerSessionToken) return showPrivateAuthGate("trip", "undo");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("trip", "undo");
   $("quickUndo").disabled = true;
   showQuickBookingNotice("Desfazendo…", "Cancelando a solicitação e devolvendo a vaga.");
   tracePublicAction("PUBLIC_RESERVATION_CANCEL_STARTED");
   let statusCode = 0;
   try {
     const response = await fetch(
-      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(booking.bookingId)}/cancel`,
+      isTesterMode()
+        ? `/v1/tester/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(booking.bookingId)}/cancel`
+        : `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(booking.bookingId)}/cancel`,
       {
         method: "POST",
         headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
@@ -2288,8 +2412,13 @@ async function undoQuickBooking() {
 
     try {
       localStorage.removeItem(cancellationStorageKey());
-      localStorage.removeItem(`rotacerta-booking-${booking.bookingId}`);
-      localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+      if (isTesterMode()) {
+        localStorage.removeItem(`${bookingStoragePrefix()}booking-${booking.bookingId}`);
+        localStorage.removeItem(`${bookingStoragePrefix()}booking-intent-${tripToken}`);
+      } else {
+        localStorage.removeItem(`rotacerta-booking-${booking.bookingId}`);
+        localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+      }
     } catch (_) {}
     clearPendingBookingIntent();
     confirmedBooking = null;
@@ -2306,7 +2435,7 @@ async function undoQuickBooking() {
 }
 
 function cancellationStorageKey() {
-  return `rotacerta-booking-trip-${tripToken}`;
+  return `${bookingStoragePrefix()}booking-trip-${tripToken}`;
 }
 
 function restoreCancellation() {
@@ -2355,7 +2484,7 @@ function beginExistingReservationEdit() {
 
 async function updateExistingReservation() {
   if (!trip || !pendingBooking || !confirmedBooking?.bookingId || !confirmedBooking?.cancellationToken) return;
-  if (!passengerSessionToken) return showPrivateAuthGate("review", "update");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("review", "update");
 
   $("confirmReserve").disabled = true;
   $("reviewMessage").textContent = "Atualizando sua reserva…";
@@ -2363,7 +2492,9 @@ async function updateExistingReservation() {
 
   try {
     const response = await fetch(
-      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(confirmedBooking.bookingId)}`,
+      isTesterMode()
+        ? `/v1/tester/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(confirmedBooking.bookingId)}`
+        : `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(confirmedBooking.bookingId)}`,
       {
         method: "PUT",
         headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
@@ -2444,7 +2575,7 @@ async function refreshTripSilently() {
 }
 
 async function cancelReservation() {
-  if (!passengerSessionToken) return showPrivateAuthGate("review", "cancel");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("review", "cancel");
   const bookingId = $("cancelBookingId").value.trim();
   const cancellationToken = $("cancelToken").value.trim();
 
@@ -2460,7 +2591,9 @@ async function cancelReservation() {
 
   try {
     const response = await fetch(
-      `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`,
+      isTesterMode()
+        ? `/v1/tester/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`
+        : `/v1/public/trips/${encodeURIComponent(tripToken)}/bookings/${encodeURIComponent(bookingId)}/cancel`,
       {
         method: "POST",
         headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
@@ -2479,8 +2612,13 @@ async function cancelReservation() {
 
     try {
       localStorage.removeItem(cancellationStorageKey());
-      localStorage.removeItem(`rotacerta-booking-${bookingId}`);
-      localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+      if (isTesterMode()) {
+        localStorage.removeItem(`${bookingStoragePrefix()}booking-${bookingId}`);
+        localStorage.removeItem(`${bookingStoragePrefix()}booking-intent-${tripToken}`);
+      } else {
+        localStorage.removeItem(`rotacerta-booking-${bookingId}`);
+        localStorage.removeItem(`rotacerta-booking-intent-${tripToken}`);
+      }
     } catch (_) {}
 
     confirmedBooking = null;
@@ -2610,11 +2748,10 @@ async function shareCalendarFeed() {
 
 
 function portalHeaders() {
-  return {
+  return authenticatedHeaders({
     Accept: "application/json",
     "Content-Type": "application/json",
-    Authorization: `Bearer ${passengerSessionToken}`,
-  };
+  });
 }
 
 function setPassengerNotificationBadge(count) {
@@ -2660,7 +2797,7 @@ function renderPassengerNotifications(entries, unreadCount) {
     message.textContent = item.message || "";
     button.append(title, message);
     button.addEventListener("click", async () => {
-      if (!passengerSessionToken) return showPrivateAuthGate("portal");
+      if (!hasPrivatePortalSession()) return showPrivateAuthGate("portal");
       try {
         if (!item.read) {
           await fetch("/v1/passenger/me/notifications/" + encodeURIComponent(item.id) + "/read", {
@@ -2682,6 +2819,11 @@ function renderPassengerNotifications(entries, unreadCount) {
 }
 
 async function loadPassengerNotifications(options = {}) {
+  if (isTesterMode()) {
+    setPassengerNotificationBadge(0);
+    if ($("portalNotifications")) $("portalNotifications").innerHTML = '<p class="muted">🧪 Notificações reais ficam desativadas no Modo Teste.</p>';
+    return;
+  }
   if (!passengerSessionToken) {
     setPassengerNotificationBadge(0);
     return;
@@ -2744,14 +2886,22 @@ function savePassengerSession(token) {
 }
 
 function openPassengerPortal() {
-  if (!passengerSessionToken) return showPrivateAuthGate("portal");
-  tracePublicAction("PUBLIC_PASSENGER_PORTAL_OPENED", { reason: "authenticated" });
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("portal");
+  tracePublicAction("PUBLIC_PASSENGER_PORTAL_OPENED", { reason: isTesterMode() ? "tester" : "authenticated" });
   showOnly("passengerPortal");
   $("portalMessage").textContent = "";
   show("portalLoginBox", false);
   show("portalAuthenticated", true);
-  if (passengerMustChangePassword) $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
-  loadPassengerCredits();
+  if (isTesterMode()) {
+    $("portalMessage").textContent = "🧪 Esta área mostra somente reservas simuladas desta sessão.";
+    show("portalNotificationsCard", true);
+    show("portalReferralShare", false);
+    show("portalChangePassword", false);
+    show("portalNewPassword", false);
+  } else if (passengerMustChangePassword) {
+    $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
+  }
+  if (!isTesterMode()) loadPassengerCredits();
   loadPassengerBookings();
   loadPassengerNotifications();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2830,6 +2980,15 @@ function portalStopName(tripItem, stopId) {
 
 
 async function loadPassengerCredits() {
+  if (isTesterMode()) {
+    passengerCreditBalanceCents = 0;
+    if ($("portalCreditBalance")) $("portalCreditBalance").textContent = formatMoney(0);
+    if ($("bookingCreditBalance")) $("bookingCreditBalance").textContent = formatMoney(0);
+    show("bookingCreditBox", false);
+    if ($("portalCreditEntries")) $("portalCreditEntries").innerHTML = '<p class="muted">🧪 Créditos reais não são usados na simulação.</p>';
+    if ($("portalReferralInfo")) $("portalReferralInfo").textContent = "Indicações reais ficam desativadas no Modo Teste.";
+    return;
+  }
   if (!passengerSessionToken || !driverUsername) return;
   try {
     const response = await fetch(`/v1/passenger/me/credits?driverUsername=${encodeURIComponent(driverUsername)}`, { headers: portalHeaders() });
@@ -2865,6 +3024,7 @@ async function loadPassengerCredits() {
 }
 
 async function sharePassengerReferral() {
+  if (isTesterMode()) return;
   if (!passengerSessionToken || !driverUsername) return;
   $("portalReferralShare").disabled = true;
   $("portalReferralMessage").textContent = "Criando seu convite…";
@@ -2895,6 +3055,7 @@ async function sharePassengerReferral() {
 }
 
 async function changePassengerPortalPassword() {
+  if (isTesterMode()) return;
   const password = $("portalNewPassword").value;
   if (password.length < 8 || password.length > 72) {
     $("portalPasswordMessage").textContent = "Use uma senha de 8 a 72 caracteres.";
@@ -3121,7 +3282,9 @@ function renderPassengerBookings(entries) {
           try {
             const token = tripItem.publicToken || tripItem.tripId;
             const response = await fetch(
-              "/v1/passenger/me/bookings/" + encodeURIComponent(token) + "/" + encodeURIComponent(booking.id) + "/cancel",
+              isTesterMode()
+                ? "/v1/tester/trips/" + encodeURIComponent(token) + "/bookings/" + encodeURIComponent(booking.id) + "/cancel"
+                : "/v1/passenger/me/bookings/" + encodeURIComponent(token) + "/" + encodeURIComponent(booking.id) + "/cancel",
               { method: "POST", headers: portalHeaders(), body: "{}" },
             );
             const body = await response.json();
@@ -3166,16 +3329,20 @@ function renderPassengerBookings(entries) {
 }
 
 async function loadPassengerBookings(options = {}) {
-  if (!passengerSessionToken) return;
+  if (!hasPrivatePortalSession()) return;
   show("portalLoginBox", false);
   show("portalAuthenticated", true);
   const container = $("portalBookings");
   const silent = options.silent === true;
   if (!silent) container.innerHTML = '<p class="muted">Carregando reservas…</p>';
   try {
-    const response = await fetch("/v1/passenger/me/bookings", { headers: portalHeaders() });
+    const response = await fetch(isTesterMode() ? "/v1/tester/me/bookings" : "/v1/passenger/me/bookings", { headers: portalHeaders() });
     const body = await response.json();
     if (response.status === 401) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        return setError(body.message || "Sessão de teste encerrada.");
+      }
       savePassengerSession("");
       show("portalLoginBox", true);
       show("portalAuthenticated", false);
@@ -3184,7 +3351,7 @@ async function loadPassengerBookings(options = {}) {
     }
     if (!response.ok) throw new Error(body.message || "Não foi possível carregar as reservas.");
     renderPassengerBookings(Array.isArray(body.bookings) ? body.bookings : []);
-    await loadPassengerCredits();
+    if (!isTesterMode()) await loadPassengerCredits();
   } catch (error) {
     container.innerHTML = "";
     const message = document.createElement("p");
@@ -3292,6 +3459,7 @@ $("messageToDriver").addEventListener("input", () => {
   setWhatsappLink($("driverWhatsappReview"), $("messageToDriver").value);
 });
 $("startBooking").addEventListener("click", () => {
+  if (isTesterMode()) return openTripSeatPicker(false);
   const stops = orderedStops(trip);
   let fromIndex = requestedBoardingStopId ? stops.findIndex((stop) => stop.id === requestedBoardingStopId) : 0;
   let toIndex = requestedDropoffStopId ? stops.findIndex((stop) => stop.id === requestedDropoffStopId) : stops.length - 1;
@@ -3311,11 +3479,11 @@ $("editReservation").addEventListener("click", () => {
 $("backToTrip").addEventListener("click", goBackToTrip);
 $("backToAgenda").addEventListener("click", goBackToAgenda);
 $("changeReservation").addEventListener("click", () => {
-  if (!passengerSessionToken) return showPrivateAuthGate("review", "edit");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("review", "edit");
   beginExistingReservationEdit();
 });
 $("showCancel").addEventListener("click", () => {
-  if (!passengerSessionToken) return showPrivateAuthGate("review", "showCancel");
+  if (!hasPrivatePortalSession()) return showPrivateAuthGate("review", "showCancel");
   showOnly("cancelBooking");
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
@@ -3324,25 +3492,68 @@ $("cancelReservation").addEventListener("click", cancelReservation);
 $("googleCalendar").addEventListener("click", openGoogleCalendar);
 $("downloadIcs").addEventListener("click", downloadIcs);
 $("subscribeCalendar").addEventListener("click", shareCalendarFeed);
+$("resetTestSimulation").addEventListener("click", resetTesterSimulation);
 
 tracePublicAction("PUBLIC_LINK_OPENED");
 
 setInterval(() => {
-  if (passengerSessionToken && !document.hidden) {
+  if (passengerSessionToken && !isTesterMode() && !document.hidden) {
     loadPassengerNotifications({ silent: true });
     loadPassengerBookings({ silent: true });
   }
 }, 2_500);
 
 window.addEventListener("online", () => {
-  if (passengerSessionToken) {
+  if (passengerSessionToken && !isTesterMode()) {
     loadPassengerNotifications({ silent: true });
     loadPassengerBookings({ silent: true });
   }
 });
 
+async function bootstrapTesterExperience() {
+  if (testerBootstrapToken) {
+    try {
+      const response = await fetch("/v1/public/tester/bootstrap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ bootstrapToken: testerBootstrapToken }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || "Link de teste inválido ou expirado.");
+      saveTesterSession(body.sessionToken, body);
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete("tester");
+      history.replaceState(null, "", cleanUrl.pathname + (cleanUrl.search ? cleanUrl.search : "") + cleanUrl.hash);
+    } catch (error) {
+      saveTesterSession("");
+      setError(error.message || "Não foi possível iniciar o Modo Teste.");
+      return true;
+    }
+  } else if (testerSessionToken) {
+    try {
+      const response = await fetch("/v1/tester/session", { headers: testerHeaders({ Accept: "application/json" }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || "Sessão de teste encerrada.");
+      saveTesterSession(testerSessionToken, body);
+    } catch (error) {
+      saveTesterSession("");
+      setError(error.message || "Sessão de teste encerrada.");
+      return true;
+    }
+  }
+  if (!isTesterMode()) return false;
+  updateTesterChrome();
+  if (portalMode) return openPassengerPortal(), true;
+  if (tripToken) return await loadTrip(), true;
+  if (agendaToken || publicSlug) return await loadAgenda(), true;
+  setError("O link de teste não identifica uma agenda válida.");
+  return true;
+}
+
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
+  updateTesterChrome();
+  if (await bootstrapTesterExperience()) return;
   if (!portalMode && !tripToken && !agendaToken && !publicSlug && !referralCode) return setError("Este link não identifica uma agenda ou viagem do Rota Certa.");
   if (referralCode && !tripToken && !agendaToken && !publicSlug) return showAccessGate("agenda");
   await validatePassengerSession();
