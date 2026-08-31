@@ -152,6 +152,8 @@ jobs:
       - name: Setup Gradle cache
         id: setup-gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Record setup-gradle cache state before build
         shell: bash
@@ -162,8 +164,10 @@ jobs:
           if find "$NORMAL_HOME/wrapper/dists" -type f -path '*/gradle-8.10.2/bin/gradle' -print -quit 2>/dev/null | grep -q .; then
             DIST_REUSED=true
           fi
+          CACHE_RESTORED="${GRADLE_BUILD_ACTION_CACHE_RESTORED:-false}"
           {
             echo "GRADLE_CACHE_CONFIGURED=true"
+            echo "GRADLE_CACHE_RESTORED=$CACHE_RESTORED"
             echo "GRADLE_USER_HOME=$NORMAL_HOME"
             echo "WRAPPER_DISTRIBUTION_REUSED_BEFORE_BUILD=$DIST_REUSED"
           } | tee /tmp/cache-before.txt
