@@ -5,10 +5,12 @@ on:
     branches:
       - agent/gradle-mirror-8.10.2-0.1.374
     paths:
+      - 'gradlew'
       - 'gradle/wrapper/gradle-wrapper.properties'
       - '.github/workflows/infra-gradle-8.10.2-mirror.yml'
   pull_request:
     paths:
+      - 'gradlew'
       - 'gradle/wrapper/gradle-wrapper.properties'
       - '.github/workflows/infra-gradle-8.10.2-mirror.yml'
   workflow_dispatch:
@@ -55,7 +57,7 @@ jobs:
           BASE=5b2304314a3dc047b703953a24be84624c9d5edc
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           test "$(git diff --name-only "$BASE"..HEAD -- app/src | wc -l)" -eq 0
-          test "$(git diff --name-only "$BASE"..HEAD -- . ':!gradle/wrapper/gradle-wrapper.properties' ':!.github/workflows/infra-gradle-8.10.2-mirror.yml' | wc -l)" -eq 0
+          test "$(git diff --name-only "$BASE"..HEAD -- . ':!gradlew' ':!gradle/wrapper/gradle-wrapper.properties' ':!.github/workflows/infra-gradle-8.10.2-mirror.yml' | wc -l)" -eq 0
 
           LEGACY_HOST_FOR_SCAN="$(printf '%s.%s.%s' services gradle org)"
           if grep -RIl --exclude-dir=.git --exclude-dir=.gradle --exclude-dir=build --fixed-strings "$LEGACY_HOST_FOR_SCAN" . >/tmp/legacy-versioned-refs.txt; then
@@ -66,6 +68,10 @@ jobs:
           grep -Fq "distributionSha256Sum=$GRADLE_SHA256" gradle/wrapper/gradle-wrapper.properties
           grep -Fq 'networkTimeout=60000' gradle/wrapper/gradle-wrapper.properties
           grep -Fq 'validateDistributionUrl=true' gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'distribution_sha256=$(read_property distributionSha256Sum)' gradlew
+          grep -Fq 'actual_sha256=$(sha256sum "$tmp_part"' gradlew
+          grep -Fq 'network_timeout_seconds=' gradlew
+          grep -Fq 'Downloading Gradle $gradle_version from $distribution_url' gradlew
 
           {
             echo "SOURCE_BRANCH=$SOURCE_BRANCH"
