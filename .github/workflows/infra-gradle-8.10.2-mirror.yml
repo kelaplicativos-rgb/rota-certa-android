@@ -1,0 +1,133 @@
+name: Rota Certa infra Gradle 8.10.2 mirror
+
+on:
+  push:
+    branches:
+      - agent/gradle-mirror-8.10.2-0.1.374
+    paths:
+      - '.github/workflows/infra-gradle-8.10.2-mirror.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: infra-gradle-8.10.2-mirror
+  cancel-in-progress: false
+
+jobs:
+  ensure-mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GRADLE_VERSION: '8.10.2'
+      GRADLE_ASSET: gradle-8.10.2-bin.zip
+      GRADLE_SHA256: 31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
+      INFRA_TAG: infra-gradle-8.10.2
+      UPSTREAM_URL: https://github.com/gradle/gradle-distributions/releases/download/v8.10.2/gradle-8.10.2-bin.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Ensure immutable-by-policy mirror asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="$GITHUB_REPOSITORY"
+          MIRROR_URL="https://github.com/${REPO}/releases/download/${INFRA_TAG}/${GRADLE_ASSET}"
+          LATEST_BEFORE="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
+          echo "LATEST_BEFORE=${LATEST_BEFORE}"
+
+          release_exists=false
+          if gh api "repos/${REPO}/releases/tags/${INFRA_TAG}" >/tmp/infra-release.json 2>/dev/null; then
+            release_exists=true
+          fi
+
+          asset_id=""
+          asset_digest=""
+          if [ "$release_exists" = true ]; then
+            asset_id="$(jq -r --arg name "$GRADLE_ASSET" '.assets[]? | select(.name == $name) | .id' /tmp/infra-release.json | head -1)"
+            asset_digest="$(jq -r --arg name "$GRADLE_ASSET" '.assets[]? | select(.name == $name) | .digest // empty' /tmp/infra-release.json | head -1)"
+            if [ -n "$asset_id" ]; then
+              if [ -n "$asset_digest" ] && [ "$asset_digest" != "sha256:${GRADLE_SHA256}" ]; then
+                echo "Existing mirror asset digest is unexpected: ${asset_digest}" >&2
+                exit 41
+              fi
+              echo "Mirror asset already exists; refusing replacement/clobber."
+            fi
+          fi
+
+          if [ -z "$asset_id" ]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              --output "/tmp/${GRADLE_ASSET}" \
+              "$UPSTREAM_URL"
+            ACTUAL="$(sha256sum "/tmp/${GRADLE_ASSET}" | awk '{print $1}')"
+            echo "UPSTREAM_DOWNLOADED_SHA256=${ACTUAL}"
+            test "$ACTUAL" = "$GRADLE_SHA256"
+
+            if [ "$release_exists" = false ]; then
+              cat >/tmp/release-notes.txt <<EOF
+          Technical infrastructure mirror for the Rota Certa build.
+
+          Asset: ${GRADLE_ASSET}
+          Gradle: ${GRADLE_VERSION} (-bin)
+          SHA-256: ${GRADLE_SHA256}
+          Upstream source used for bootstrap: ${UPSTREAM_URL}
+
+          This is infrastructure only. It is a prerelease, is not the application's latest release,
+          and the asset must never be silently replaced. A different byte stream requires a new tag.
+          EOF
+              gh release create "$INFRA_TAG" "/tmp/${GRADLE_ASSET}#Gradle ${GRADLE_VERSION} binary distribution mirror" \
+                --repo "$REPO" \
+                --title "Infrastructure mirror — Gradle ${GRADLE_VERSION}" \
+                --notes-file /tmp/release-notes.txt \
+                --prerelease \
+                --latest=false \
+                --target "$GITHUB_SHA"
+            else
+              gh release upload "$INFRA_TAG" "/tmp/${GRADLE_ASSET}#Gradle ${GRADLE_VERSION} binary distribution mirror" \
+                --repo "$REPO"
+            fi
+          fi
+
+          gh api "repos/${REPO}/releases/tags/${INFRA_TAG}" >/tmp/infra-release-after.json
+          jq -e --arg name "$GRADLE_ASSET" '.assets[] | select(.name == $name)' /tmp/infra-release-after.json >/tmp/asset.json
+          test "$(jq -r '.draft' /tmp/infra-release-after.json)" = "false"
+          test "$(jq -r '.prerelease' /tmp/infra-release-after.json)" = "true"
+
+          LATEST_AFTER="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
+          echo "LATEST_AFTER=${LATEST_AFTER}"
+          test "$LATEST_AFTER" = "$LATEST_BEFORE"
+
+          curl --fail --silent --show-error --location --head "$MIRROR_URL" >/tmp/mirror-headers.txt
+          ! grep -qi 'services\.gradle\.org' /tmp/mirror-headers.txt
+
+          HTTP_RESULT="$(curl --fail --silent --show-error --location \
+            --output "/tmp/mirror-${GRADLE_ASSET}" \
+            --write-out '%{http_code} %{url_effective}' \
+            "$MIRROR_URL")"
+          MIRROR_SHA="$(sha256sum "/tmp/mirror-${GRADLE_ASSET}" | awk '{print $1}')"
+          test "$MIRROR_SHA" = "$GRADLE_SHA256"
+
+          {
+            echo "MIRROR_URL=${MIRROR_URL}"
+            echo "MIRROR_HTTP_RESULT=${HTTP_RESULT}"
+            echo "MIRROR_DOWNLOADED_SHA256=${MIRROR_SHA}"
+            echo "GRADLE_ZIP_SHA256=${MIRROR_SHA}"
+            echo "LATEST_RELEASE_UNCHANGED=true"
+          } | tee /tmp/mirror-validation.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-8.10.2-mirror-bootstrap-evidence
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            /tmp/mirror-validation.txt
+            /tmp/mirror-headers.txt
+            /tmp/infra-release-after.json
+            /tmp/asset.json
