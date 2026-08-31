@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: agenda-combined-seat-pools-0369
@@ -180,3 +180,71 @@ jobs:
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0376
+
+  transport-0378:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/fix-public-sync-single-flight-0.1.373
+
+      - name: Apply exact tested 0.1.378 patch
+        shell: bash
+        env:
+          BASE_SHA: a89050539a5867f1092142829b23eaf9a6f14c10
+          TARGET_BRANCH: agent/fix-public-sync-single-flight-0.1.373
+          TRANSPORT_BRANCH: agent/executor-capacity-0378-transport
+        run: |
+          set -euo pipefail
+          TRANSPORT_COMMIT="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          git fetch origin "$TRANSPORT_BRANCH"
+          git show "origin/$TRANSPORT_BRANCH:.executor-capacity-0378/patch.gz.b64.00" > /tmp/p0
+          git show "origin/$TRANSPORT_BRANCH:.executor-capacity-0378/patch.gz.b64.01" > /tmp/p1
+          cat /tmp/p0 /tmp/p1 | base64 -d | gzip -d > /tmp/capacity-0378.patch
+          PATCH_SHA="$(sha256sum /tmp/capacity-0378.patch | awk '{print $1}')"
+          echo "PATCH_SHA=$PATCH_SHA"
+          test "$PATCH_SHA" = "03d353404b030fd4a2745c76beacb8f615a2f5d1c41043f4ebc462513822e114"
+
+          git checkout "$BASE_SHA" -- .github/workflows/agenda-0369-combined-seat-pools.yml
+          patch --batch --forward -p5 < /tmp/capacity-0378.patch
+          git diff --check
+          mapfile -t CHANGED < <(git status --short | sed -E 's/^.. //' | sort)
+          printf 'Changed files (%s):\n' "${#CHANGED[@]}"
+          printf '%s\n' "${CHANGED[@]}"
+          test "${#CHANGED[@]}" -eq 15
+          grep -Fq 'versionCode = 5671' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.378"' app/build.gradle.kts
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          BEFORE_FAROL="$(git show "$BASE_SHA:$FAROL" | sha256sum | awk '{print $1}')"
+          AFTER_FAROL="$(sha256sum "$FAROL" | awk '{print $1}')"
+          test "$BEFORE_FAROL" = "$AFTER_FAROL"
+          test "$AFTER_FAROL" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+          git config user.name 'executor-capacity-0378'
+          git config user.email 'executor-capacity-0378@users.noreply.github.com'
+          git add \
+            .github/workflows/agenda-0356-backend-deploy.yml \
+            .github/workflows/agenda-0369-combined-seat-pools.yml \
+            app/build.gradle.kts \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRecordOrigin0373.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaCapacityPropagation0378Test.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaIncrementalAvailability0375Test.kt \
+            trip-platform/functions/index.js \
+            trip-platform/functions/test/public-capacity-ordering-0378.test.js \
+            trip-platform/functions/test/public-incremental-capacity-0375.test.js \
+            trip-platform/public/app.js
+          git diff --cached --check
+          git commit -m 'fix: propagate capacity atomically across public agenda'
+          NEW_SHA="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$TRANSPORT_COMMIT"
+          echo "NEW_SHA=$NEW_SHA"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
