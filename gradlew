@@ -22,11 +22,11 @@ fi
 
 read_property() {
   key=$1
-  sed -n "s/^\${key}=//p" "$PROPERTIES" | tail -1
+  sed -n "s/^${key}=//p" "$PROPERTIES" | tail -1
 }
 
 # gradle-wrapper.properties uses Java-properties escaping (for example https\\://).
-distribution_url=$(read_property distributionUrl | sed 's/\\\\:/:/g; s/\\\\\\\\/\\\\/g')
+distribution_url=$(read_property distributionUrl | sed 's/\\:/:/g')
 distribution_sha256=$(read_property distributionSha256Sum)
 network_timeout_ms=$(read_property networkTimeout)
 validate_distribution_url=$(read_property validateDistributionUrl)
