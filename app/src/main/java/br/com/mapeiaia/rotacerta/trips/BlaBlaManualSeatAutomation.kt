@@ -87,14 +87,17 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
 
     fun discardLegacyDeltaRequests(): List<String> {
         val current = list()
-        val legacy = current.filter {
-            it.desiredPublishedSeats == null && it.source != PUBLIC_BOOKING_SEAT_SYNC_SOURCE
+        val retired = current.filter { request ->
+            request.source == PUBLIC_BOOKING_SEAT_SYNC_SOURCE ||
+                request.source in setOf(BookingSource.PRIVATE.name, BookingSource.OTHER.name) ||
+                request.desiredStateReason.startsWith("automatic_", ignoreCase = true) ||
+                request.desiredPublishedSeats == null
         }
-        if (legacy.isNotEmpty()) {
-            val legacyIds = legacy.map(BlaBlaManualSeatSyncRequest::id).toSet()
-            save(current.filterNot { it.id in legacyIds })
+        if (retired.isNotEmpty()) {
+            val retiredIds = retired.map(BlaBlaManualSeatSyncRequest::id).toSet()
+            save(current.filterNot { it.id in retiredIds })
         }
-        return legacy.map(BlaBlaManualSeatSyncRequest::id)
+        return retired.map(BlaBlaManualSeatSyncRequest::id)
     }
 
     fun remove(id: String) {
@@ -121,47 +124,16 @@ class BlaBlaManualSeatSyncRequestStore(context: Context) {
 object BlaBlaManualSeatSyncCoordinator {
     fun enqueueForManualBooking(
         context: Context,
-        trip: Trip,
+        @Suppress("UNUSED_PARAMETER") trip: Trip,
         booking: Booking,
         seatDelta: Int,
     ): BlaBlaManualSeatSyncRequest? {
         if (booking.source !in setOf(BookingSource.PRIVATE, BookingSource.OTHER)) return null
         if (seatDelta == 0 || kotlin.math.abs(seatDelta) != booking.seats) return null
-
-        val response = BlaBlaCollectorStateStore(context).lastResponse() ?: return pending(
-            context,
-            "collector_snapshot_missing",
-            trip,
-            booking,
-        )
-        val match = BlaBlaManualSeatTripResolver.resolveExact(trip, response) ?: return pending(
-            context,
-            "external_trip_not_unique",
-            trip,
-            booking,
-        )
-        val request = BlaBlaManualSeatSyncRequest(
-            profileUuid = match.profile_uuid,
-            tripId = match.trip_id.orEmpty(),
-            seatDelta = seatDelta,
-            localTripId = trip.id,
-            localBookingId = booking.id,
-            source = booking.source.name,
-        )
-        BlaBlaManualSeatSyncRequestStore(context).enqueue(request)
         UnifiedDebugEventStore.record(
-            "EXTERNAL_SEAT_SYNC_QUEUED",
+            "EXTERNAL_SEAT_WRITE_SKIPPED",
             context.packageName,
-            "source=${booking.source.name} manual=true profileUuidPresent=true tripIdPresent=true delta=$seatDelta request=${request.id}",
-        )
-        return request
-    }
-
-    private fun pending(context: Context, reason: String, trip: Trip, booking: Booking): BlaBlaManualSeatSyncRequest? {
-        UnifiedDebugEventStore.record(
-            "EXTERNAL_SEAT_SYNC_PENDING",
-            context.packageName,
-            "reason=$reason source=${booking.source.name} manual=true localTripPresent=${trip.id.isNotBlank()} seats=${booking.seats}",
+            "reason=independent_channel_inventory source=${booking.source.name} manual=true booking=${booking.id} seats=${booking.seats}",
         )
         return null
     }
