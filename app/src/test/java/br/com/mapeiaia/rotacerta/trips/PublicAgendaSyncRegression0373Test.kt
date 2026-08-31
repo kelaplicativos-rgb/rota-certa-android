@@ -200,6 +200,7 @@ class PublicAgendaSyncRegression0373Test {
             val executions = AtomicInteger(0)
             val firstEntered = CompletableDeferred<Unit>()
             val releaseFirst = CompletableDeferred<Unit>()
+            val events = java.util.Collections.synchronizedList(mutableListOf<String>())
             val coordinator = PublicAgendaSyncCoordinator0373(
                 scope = workerScope,
                 signatureProvider = { "signature-${version.get()}" },
@@ -211,16 +212,20 @@ class PublicAgendaSyncRegression0373Test {
                     }
                     PublicAgendaAutoSyncResult(externalPublished = 1)
                 },
+                eventSink = { event, _ -> events += event },
             )
-            val completions = async { coordinator.completions.take(2).toList() }
             coordinator.request(4, "initial")
             withTimeout(2_000L) { firstEntered.await() }
             version.set(2)
             coordinator.request(4, "changed")
             releaseFirst.complete(Unit)
-            withTimeout(2_000L) { completions.await() }
-            delay(100L)
+            withTimeout(2_000L) {
+                while (executions.get() < 2) delay(10L)
+            }
+            delay(150L)
             assertEquals(2, executions.get())
+            assertTrue(events.contains("CAPACITY_PUBLIC_SYNC_COALESCED"))
+            assertTrue(events.contains("CAPACITY_PUBLIC_SYNC_DIRTY_PENDING"))
         } finally {
             workerScope.cancel()
         }
