@@ -526,10 +526,10 @@ internal object PublicAgendaAutoSync0300 {
     }
 
     internal fun isImmutablePublicTripShapeFailure(error: Throwable): Boolean =
-        error is IllegalStateException &&
-            error.message.orEmpty().contains(
-                "Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.",
-            )
+        error is IllegalStateException && error.message.orEmpty().let { message ->
+            message.contains("A estrutura de paradas não pode mudar depois da primeira reserva.") ||
+                message.contains("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.")
+        }
 
     internal fun preserveExternalBindingShape(
         publicTrip: Trip,
