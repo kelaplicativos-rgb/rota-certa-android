@@ -80,7 +80,7 @@ data class BlaBlaPublicSearchQueryResult(
     val error: String? = null,
     val queryId: String = "",
     val direction: String = "",
-    val coverageStatus: String = "PENDING_UNKNOWN",
+    val coverageStatus: String = "",
     val startedAtMillis: Long = 0L,
     val finishedAtMillis: Long = 0L,
     val evidence: BlaBlaPublicSearchQueryEvidence = BlaBlaPublicSearchQueryEvidence(),
