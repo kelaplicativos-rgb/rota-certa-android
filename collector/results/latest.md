@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-08-31**
-- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
+- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
 - Motoristas visíveis: **4**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,9 +12,9 @@
 
 ## Motoristas
 
-1. **Marco Luiz Pereira Loureiro** — 19:00 — Três Corações → São Paulo — R$ 90,00
-2. **Gilson** — 19:30 — Três Corações → São Paulo — R$ 89,00
-3. **Luciano** — 19:40 — Minas Gerais → São Paulo — R$ 85,00 — Super Driver
-4. **Guilherme** — 22:50 — Minas Gerais → São Paulo — R$ 91,00
+1. **Heverton** — 17:00 — São Paulo → Três Corações — sem preço — Cheio
+2. **Lenilson** — 19:30 — São Paulo → Três Corações — R$ 90,00
+3. **Wigder** — 20:00 — São Paulo → São Lourenço — R$ 80,00
+4. **José Americo** — 20:30 — São Paulo → Três Corações — R$ 81,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
