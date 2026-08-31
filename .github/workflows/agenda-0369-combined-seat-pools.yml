@@ -1,9 +1,9 @@
-name: Rota Certa 0.1.372 Unified trip inventory
+name: Rota Certa 0.1.373 Public sync single-flight
 
 on:
   push:
     branches:
-      - agent/agenda-combined-seat-pools-0.1.369
+      - agent/fix-public-sync-single-flight-0.1.373
   pull_request:
     branches:
       - agent/blablacar-capture-orchestrator-0.1.368
@@ -36,11 +36,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=736705c5a8297d553a6d17e01856886bf228492d
+          BASE=3533dfa1b2d54a863b07d42f43974242fcf94ccf
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5665' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.372"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5666' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.373"' app/build.gradle.kts
 
           # Canonical rule: BlaBla current remaining seats + Rota Certa allocation,
           # normalized into one trip inventory and one segment engine.
@@ -73,7 +73,15 @@ jobs:
           ! grep -Fq 'capacity = binding.capacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'externalSeatMutation=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           grep -Fq 'EXTERNAL_SEAT_WRITE_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
-          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0372Test.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0373Test.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncRegression0373Test.kt
+          grep -Fq 'recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq '.filter(Trip::isCanonicalLocalPublishSource)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'Channel.CONFLATED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt
+          grep -Fq 'CAPACITY_PUBLIC_SYNC_IDENTICAL_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt
+          grep -Fq 'publicAgendaSyncCoordinator.request(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'TripApp.publicAgendaEffect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'it.isCanonicalLocalPublishSource()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
 
           # FAROL remains outside this PR.
           test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
@@ -140,24 +148,24 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5665'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.372'" /tmp/aapt.txt
+          grep -Fq "versionCode='5666'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.373'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0372
-          cp "$APK" /tmp/0372/rota-certa-0.1.372-unified-trip-inventory.apk
-          sha256sum /tmp/0372/rota-certa-0.1.372-unified-trip-inventory.apk | tee /tmp/0372/apk.sha256
-          cp /tmp/aapt.txt /tmp/0372/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0372/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0372/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0372/changed-files.txt
-          git rev-parse HEAD > /tmp/0372/source-head.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0372/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0372/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0372/dex-strings.txt
+          mkdir -p /tmp/0373
+          cp "$APK" /tmp/0373/rota-certa-0.1.373-public-sync-single-flight.apk
+          sha256sum /tmp/0373/rota-certa-0.1.373-public-sync-single-flight.apk | tee /tmp/0373/apk.sha256
+          cp /tmp/aapt.txt /tmp/0373/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0373/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0373/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0373/changed-files.txt
+          git rev-parse HEAD > /tmp/0373/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0373/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0373/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0373/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.372-unified-trip-inventory
+          name: rota-certa-0.1.373-public-sync-single-flight
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0372
+          path: /tmp/0373
