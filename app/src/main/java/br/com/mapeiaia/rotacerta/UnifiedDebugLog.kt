@@ -34,7 +34,7 @@ object DebugLogPreferenceStore {
  */
 object UnifiedDebugEventStore {
     const val MAX_EVENTS = 6_000
-    private const val MAX_DETAILS = 1_000
+    private const val MAX_DETAILS = 1_200
     private const val MAX_OVERHEAD_SAMPLES = 2_048
 
     data class SnapshotEvent(
@@ -75,7 +75,7 @@ object UnifiedDebugEventStore {
         details: String = "",
         nowMillis: Long = System.currentTimeMillis(),
     ) {
-        recordFlight(stage, packageName, details, nowMillis)
+        recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)
         if (!runCatching { DiagnosticRuntimeGate.isEnabled(nowMillis) }.getOrDefault(false)) return
         runCatching {
             recordInMemory(
@@ -100,7 +100,7 @@ object UnifiedDebugEventStore {
         nowMillis: Long = System.currentTimeMillis(),
         monotonicNs: Long = SystemClock.elapsedRealtimeNanos(),
     ) {
-        recordFlight(stage, packageName, details, nowMillis)
+        recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)
         runCatching {
             recordInMemory(
                 stage = stage,
@@ -208,6 +208,17 @@ object UnifiedDebugEventStore {
 
     private fun maskSensitive(value: String): String = value
         .replace(
+            Regex("(?is)-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)* PRIVATE KEY-----"),
+            "[chave privada mascarada]",
+        )
+        .replace(
+            Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+\\-/]+=*"),
+            "Bearer [segredo mascarado]",
+        )
+        .replace(
+            Regex("(?i)([\"']?(?:authorization|proxy-authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|password|senha|secret|client[_-]?secret|api[_-]?key|private[_-]?key|jwt|session[_-]?token|view[_-]?token|x-rota-certa-driver-token)[\"']?\\s*[:=]\\s*)(?:\"[^\"]*\"|'[^']*'|[^,|;\\s}]+)"),
+        ) { match -> "${match.groupValues[1]}[segredo mascarado]" }
+        .replace(
             Regex("(?<!\\d)(?:\\+?55\\s*)?(?:\\(?\\d{2}\\)?\\s*)?9?\\d{4}[-\\s]?\\d{4}(?!\\d)"),
             "[telefone mascarado]",
         )
@@ -219,9 +230,6 @@ object UnifiedDebugEventStore {
             Regex("(?i)https?://[^\\s|;]+"),
             "[url mascarada]",
         )
-        .replace(
-            Regex("(?i)\\b(token|cookie|authorization|password|senha|secret|jwt|sessionToken|accessToken|viewToken)\\s*[:=]\\s*(?:\"[^\"]*\"|'[^']*'|[^|;\\s]+)"),
-        ) { match -> "${match.groupValues[1]}=[segredo mascarado]" }
         .replace(
             Regex("(?i)\\b(eventText|accessibilityText|rawText|messageText)\\s*[:=]\\s*([^|;]+)"),
         ) { match -> "${match.groupValues[1]}=[texto mascarado]" }

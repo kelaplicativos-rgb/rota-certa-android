@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -364,6 +365,22 @@ data class DriverCapacitySnapshotResponse(
     val availableSeatsMaximum: Int = 0,
     val occupancyRevision: Long = 0L,
     val changed: Boolean = false,
+)
+
+internal class TripRemoteApiException(
+    val httpMethod: String,
+    val endpoint: String,
+    val httpStatus: Int,
+    val backendErrorCode: String,
+    val sanitizedResponse: String,
+    val requestId: String,
+    val correlationId: String,
+) : IllegalStateException(
+    buildString {
+        append("Servidor respondeu HTTP ").append(httpStatus)
+        if (backendErrorCode.isNotBlank()) append(" code=").append(backendErrorCode)
+        if (sanitizedResponse.isNotBlank()) append(": ").append(sanitizedResponse.take(240))
+    },
 )
 
 @Serializable
@@ -804,12 +821,42 @@ class TripRemoteApi(
                 ?.use { it.readText() }
                 .orEmpty()
             if (status !in 200..299) {
-                throw IllegalStateException("Servidor respondeu HTTP $status: ${responseText.take(240)}")
+                val sanitizedResponse = UnifiedDebugEventStore.sanitizeForExport(responseText).take(600)
+                throw TripRemoteApiException(
+                    httpMethod = method,
+                    endpoint = path.take(220),
+                    httpStatus = status,
+                    backendErrorCode = backendErrorCode(responseText),
+                    sanitizedResponse = sanitizedResponse,
+                    requestId = responseHeader(connection, "X-Request-Id", "Request-Id"),
+                    correlationId = responseHeader(connection, "X-Correlation-Id", "Correlation-Id"),
+                )
             }
             json.decodeFromString<T>(responseText)
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun responseHeader(connection: HttpURLConnection, vararg names: String): String =
+        names.asSequence()
+            .mapNotNull { name -> connection.getHeaderField(name)?.trim()?.takeIf(String::isNotBlank) }
+            .firstOrNull()
+            ?.let { UnifiedDebugEventStore.sanitizeForExport(it) }
+            ?.take(120)
+            .orEmpty()
+
+    private fun backendErrorCode(responseText: String): String {
+        val patterns = listOf(
+            Regex("(?i)\\\"(?:errorCode|error_code|code)\\\"\\s*:\\s*\\\"([^\\\"]{1,96})\\\""),
+            Regex("(?i)\\b(?:errorCode|error_code|code)\\s*[:=]\\s*([A-Z0-9_.-]{2,96})"),
+        )
+        return patterns.asSequence()
+            .mapNotNull { it.find(responseText)?.groupValues?.getOrNull(1) }
+            .firstOrNull()
+            ?.let { UnifiedDebugEventStore.sanitizeForExport(it) }
+            ?.take(96)
+            .orEmpty()
     }
 }
 

@@ -22,6 +22,7 @@ internal data class PublicAgendaSyncCompletion0373(
     val reason: String,
     val durationMs: Long,
     val errorClass: String = "",
+    val errorEvidence: String = "",
 )
 
 internal class PublicAgendaSyncCoordinator0373(
@@ -98,18 +99,26 @@ internal class PublicAgendaSyncCoordinator0373(
                     )
                     throw cancelled
                 } catch (error: Throwable) {
+                    val evidence = AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "CAPACITY_PUBLIC_SYNC",
+                        component = "PublicAgendaSyncCoordinator0373",
+                        method = "drain",
+                    )
                     PublicAgendaSyncCompletion0373(
                         result = null,
                         reason = request.reason,
                         durationMs = ((System.nanoTime() - started).coerceAtLeast(0L)) / 1_000_000L,
                         errorClass = error.javaClass.simpleName,
+                        errorEvidence = "signature=${before.take(12)} $evidence",
                     )
                 } finally {
                     active.set(false)
                 }
                 eventSink(
                     "CAPACITY_PUBLIC_SYNC_SINGLE_FLIGHT_END",
-                    "reason=${request.reason} scope=active_tenant durationMs=${completion.durationMs} error=${completion.errorClass.ifBlank { "none" }} local=${completion.result?.localPublished ?: 0} external=${completion.result?.externalPublished ?: 0} failures=${completion.result?.failures ?: 0}",
+                    "reason=${request.reason} scope=active_tenant durationMs=${completion.durationMs} local=${completion.result?.localPublished ?: 0} external=${completion.result?.externalPublished ?: 0} failures=${completion.result?.failures ?: 0} " +
+                        completion.errorEvidence.ifBlank { "error=none" },
                 )
                 _completions.emit(completion)
             }

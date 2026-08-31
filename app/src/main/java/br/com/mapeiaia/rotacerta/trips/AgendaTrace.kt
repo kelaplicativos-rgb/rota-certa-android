@@ -65,7 +65,7 @@ internal data class AgendaOperationToken(
 
 internal object AgendaTrace {
     private const val AGENDA_PACKAGE_PREFIX = "br.com.mapeiaia.rotacerta.trips."
-    private const val DETAIL_LIMIT = 760
+    private const val DETAIL_LIMIT = 1_160
     private const val EXTRA_TRACE_ID = "br.com.mapeiaia.rotacerta.extra.AGENDA_TRACE_ID"
     private const val EXTRA_TRACE_START_NS = "br.com.mapeiaia.rotacerta.extra.AGENDA_TRACE_START_NS"
     private const val EXTRA_TRACE_START_WALL = "br.com.mapeiaia.rotacerta.extra.AGENDA_TRACE_START_WALL"
@@ -261,21 +261,22 @@ internal object AgendaTrace {
         token: AgendaOperationToken,
         result: String = "ok",
         processedCount: Int? = null,
-    ) = terminal(context, token, "END", result, processedCount, null)
+    ) = terminal(context, token, "END", result, processedCount, null, null)
 
     fun operationError(
         context: Context,
         token: AgendaOperationToken,
         error: Throwable,
         processedCount: Int? = null,
-    ) = terminal(context, token, "ERROR", "error", processedCount, error.javaClass.simpleName)
+        failureContext: AgendaFailureTripContext? = null,
+    ) = terminal(context, token, "ERROR", "error", processedCount, error, failureContext)
 
     fun operationCancelled(
         context: Context,
         token: AgendaOperationToken,
         result: String = "cancelled",
         processedCount: Int? = null,
-    ) = terminal(context, token, "CANCELLED", result, processedCount, null)
+    ) = terminal(context, token, "CANCELLED", result, processedCount, null, null)
 
     fun activeOperationSummary(): String {
         val active = activeOperations.values.maxByOrNull(AgendaOperationToken::startedNs)
@@ -371,16 +372,29 @@ internal object AgendaTrace {
         terminal: String,
         result: String,
         processedCount: Int?,
-        exceptionClass: String?,
+        error: Throwable?,
+        failureContext: AgendaFailureTripContext?,
     ) {
         val endNs = SystemClock.elapsedRealtimeNanos()
         val durationMs = ((endNs - token.startedNs).coerceAtLeast(0L)) / 1_000_000L
+        val failureEvidence = error?.let { failure ->
+            val component = token.origin.substringBeforeLast('.', token.origin)
+            val method = token.origin.substringAfterLast('.', "")
+            AgendaFailureEvidence.describe(
+                error = failure,
+                operation = token.operation,
+                component = component,
+                method = method,
+                trip = failureContext,
+                timestampMillis = System.currentTimeMillis(),
+            )
+        }
         val details = buildString {
             append(operationDetails(token))
             append(" durationMs=").append(durationMs)
             append(" result=").append(safeKey(result).ifBlank { "unknown" })
             processedCount?.let { append(" processed=").append(it.coerceAtLeast(0)) }
-            exceptionClass?.let { append(" exceptionClass=").append(safeKey(it)) }
+            failureEvidence?.let { append(' ').append(it) }
         }
         activeOperations.remove(token.operationId)
         val terminalStage = when (terminal) {
@@ -391,6 +405,15 @@ internal object AgendaTrace {
         }
         event(context, terminalStage, details, token.traceId, token.operationId)
         event(context, "${token.operation}_$terminal", details, token.traceId, token.operationId)
+        if (failureEvidence != null) {
+            event(
+                context,
+                "AGENDA_FAILURE_EVIDENCE",
+                failureEvidence,
+                token.traceId,
+                token.operationId,
+            )
+        }
         if (durationMs >= 1_000L) {
             event(
                 context,

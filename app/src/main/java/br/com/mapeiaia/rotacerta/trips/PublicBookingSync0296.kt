@@ -126,14 +126,32 @@ internal object PublicBookingRemoteSync0296 {
                                     BookingFetchBatch0373(target, remote)
                                 },
                                 onFailure = { error ->
+                                    val targetTrip = persistedTrips.firstOrNull { it.id == target.localTripId }
+                                    val targetContext = targetTrip?.let { trip ->
+                                        AgendaFailureEvidence.tripContext(
+                                            trip = trip,
+                                            bookings = bookingSnapshot.values.filter { it.tripId == trip.id },
+                                            tripKey = seatSyncDiagnosticKey(trip.id),
+                                            publicIdentity = target.remoteTripId,
+                                            origin = resolvedTripRecordOrigin(trip).name,
+                                        )
+                                    } ?: AgendaFailureTripContext(
+                                        tripKey = seatSyncDiagnosticKey(target.localTripId),
+                                        canonicalIdentity = target.localTripId,
+                                        publicIdentity = target.remoteTripId,
+                                        origin = if (target.localCandidate) TripRecordOrigin.LOCAL.name else TripRecordOrigin.EXTERNAL_BACKING.name,
+                                    )
                                     UnifiedDebugEventStore.record(
                                         if (target.localCandidate) "PUBLIC_BOOKING_PULL_FAILED"
                                         else "PUBLIC_BOOKING_EXTERNAL_PULL_FAILED",
                                         context.packageName,
-                                        buildString {
-                                            if (target.localCandidate) append("localTrip=${target.localTripId} ")
-                                            append("remoteTripPresent=true reason=${error.javaClass.simpleName}")
-                                        },
+                                        AgendaFailureEvidence.describe(
+                                            error = error,
+                                            operation = "BOOKING_REMOTE_FETCH",
+                                            component = "PublicBookingRemoteSync0296",
+                                            method = "pullAndReconcileOnIo",
+                                            trip = targetContext,
+                                        ),
                                     )
                                     null
                                 },
@@ -279,7 +297,12 @@ internal object PublicBookingRemoteSync0296 {
             UnifiedDebugEventStore.record(
                 "PUBLIC_LINK_DEBUG_PULL_FAILED",
                 context.packageName,
-                "reason=${error.javaClass.simpleName}",
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PUBLIC_LINK_DEBUG_PULL",
+                    component = "PublicBookingRemoteSync0296",
+                    method = "pullPublicLinkDebugTrace",
+                ),
             )
             return
         }

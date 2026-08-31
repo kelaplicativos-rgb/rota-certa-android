@@ -390,6 +390,18 @@ private fun TripApp(
                 val bookingSync = runCatching {
                     PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
                 }
+                bookingSync.exceptionOrNull()?.let { error ->
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_BOOKING_RECONCILE_FAILED",
+                        activity.packageName,
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "BOOKING_RECONCILE",
+                            component = "TripsActivity",
+                            method = "requestFullTimelineRefresh",
+                        ),
+                    )
+                }
                 AgendaTrace.event(
                     activity,
                     "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
@@ -486,6 +498,23 @@ private fun TripApp(
                 .filter { (tripId, revision) -> previous[tripId] != revision }
                 .map { it.key }
             changedIds.forEach { tripId ->
+                val failureTrip = trips.firstOrNull { it.id == tripId }
+                val failureBookings = bookings.filter { it.tripId == tripId }
+                val failureContext = failureTrip?.let { trip ->
+                    val withAllocation = trip.copy(
+                        rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    )
+                    AgendaFailureEvidence.tripContext(
+                        trip = withAllocation.copy(
+                            capacity = operationalInventoryCapacity(withAllocation, failureBookings),
+                        ),
+                        bookings = failureBookings,
+                        tripKey = seatSyncDiagnosticKey(tripId),
+                        publicIdentity = trip.remoteId,
+                        origin = resolvedTripRecordOrigin(trip).name,
+                        revision = current[tripId].orEmpty(),
+                    )
+                }
                 runCatching {
                     PublicAgendaAutoSync0300.syncLocalTripIncremental(
                         context = activity,
@@ -497,7 +526,14 @@ private fun TripApp(
                     UnifiedDebugEventStore.record(
                         "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
                         activity.packageName,
-                        "tripKey=${seatSyncDiagnosticKey(tripId)} reason=${error.javaClass.simpleName} fullSyncRequested=false failClosed=true",
+                        "fullSyncRequested=false failClosed=true " +
+                            AgendaFailureEvidence.describe(
+                                error = error,
+                                operation = "PUBLISH_INCREMENTAL_CAPACITY",
+                                component = "TripsActivity",
+                                method = "syncLocalTripIncremental",
+                                trip = failureContext,
+                            ),
                     )
                 }
             }

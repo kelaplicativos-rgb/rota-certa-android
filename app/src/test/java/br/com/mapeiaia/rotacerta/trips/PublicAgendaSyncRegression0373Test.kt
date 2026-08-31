@@ -151,7 +151,9 @@ class PublicAgendaSyncRegression0373Test {
         val backing = buildTimelineExternalBackingTrip(externalEntry("illegal-state-regression"), 4)
         val remoteApi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
         assertFalse(backing.isCanonicalLocalPublishSource())
-        assertTrue(remoteApi.contains("throw IllegalStateException(\"Servidor respondeu HTTP"))
+        assertTrue(remoteApi.contains("internal class TripRemoteApiException("))
+        assertTrue(remoteApi.contains(") : IllegalStateException("))
+        assertTrue(remoteApi.contains("throw TripRemoteApiException("))
     }
 
     @Test

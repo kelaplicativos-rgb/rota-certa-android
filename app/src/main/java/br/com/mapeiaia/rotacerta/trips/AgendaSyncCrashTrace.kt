@@ -15,8 +15,9 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Normal checkpoints are memory-only and schedule coalesced background
  * persistence. Crash handling performs the minimum synchronous flush required
- * for process-death recovery. No passenger values, URLs, exception messages,
- * cookies, tokens or request bodies are persisted.
+ * for process-death recovery. Throwable evidence is bounded and sanitized through
+ * the same central diagnostic policy; passenger values, URLs, cookies, tokens and
+ * request bodies are not intentionally persisted.
  */
 internal object AgendaSyncCrashTraceStore {
     private const val DIRECTORY = "agenda-sync-diagnostic"
@@ -74,18 +75,25 @@ internal object AgendaSyncCrashTraceStore {
             .getOrDefault("snapshot_failed")
         val activeContext = sanitize(AgendaTrace.activeOperationSummary()).take(700)
         val incomplete = !activeContext.contains("operationId=none")
+        val failureEvidence = AgendaFailureEvidence.describe(
+            error = error,
+            operation = "UNCAUGHT_AGENDA_SYNC_CRASH",
+            component = "AgendaSyncCrashTraceStore",
+            method = "record",
+        )
         val text = buildString {
-            appendLine("schema=3")
+            appendLine("schema=4")
             appendLine("capturedAt=${formatDate(System.currentTimeMillis())}")
             appendLine("thread=${sanitize(thread.name).take(80)}")
-            appendLine("exception=${error.javaClass.name}")
+            appendLine("failureEvidence=${sanitize(failureEvidence).take(2_400)}")
             appendLine("checkpoint=$checkpoint")
             appendLine("activeContext=$activeContext")
             appendLine("OPERATION_INCOMPLETE_DUE_PROCESS_TERMINATION=$incomplete")
             appendLine("snapshot=$snapshot")
             var current: Throwable? = error
             var causeIndex = 0
-            while (current != null && causeIndex < MAX_CAUSES) {
+            val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+            while (current != null && causeIndex < MAX_CAUSES && seen.add(current)) {
                 appendLine("cause[$causeIndex]=${current.javaClass.name}")
                 current.stackTrace.take(MAX_FRAMES).forEachIndexed { frameIndex, frame ->
                     appendLine(
@@ -96,7 +104,7 @@ internal object AgendaSyncCrashTraceStore {
                 current = current.cause
                 causeIndex++
             }
-            appendLine("messageCaptured=false")
+            appendLine("messageCaptured=true_sanitized_bounded")
             appendLine("personalValuesCaptured=false")
         }.take(MAX_EXPORT_CHARS)
 
@@ -114,7 +122,15 @@ internal object AgendaSyncCrashTraceStore {
             "nenhuma exceção Java da sincronização foi capturada nesta instalação/versão."
         } else {
             runCatching { file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS) }
-                .getOrElse { "falha ao ler a evidência de crash da Agenda: ${it.javaClass.simpleName}" }
+                .getOrElse { error ->
+                    "falha ao ler a evidência de crash da Agenda: " +
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "READ_PERSISTED_AGENDA_CRASH_EVIDENCE",
+                            component = "AgendaSyncCrashTraceStore",
+                            method = "export",
+                        )
+                }
         }
         val memoryBreadcrumbs = snapshotBreadcrumbs()
         val breadcrumbText = if (memoryBreadcrumbs.isNotEmpty()) {
@@ -178,7 +194,15 @@ internal object AgendaSyncCrashTraceStore {
             ?.takeLast(MAX_BREADCRUMB_CHARS)
             ?.takeIf(String::isNotBlank)
             ?: "sem checkpoints persistidos da Agenda"
-    }.getOrElse { "falha ao ler checkpoints persistidos: ${it.javaClass.simpleName}" }
+    }.getOrElse { error ->
+        "falha ao ler checkpoints persistidos: " +
+            AgendaFailureEvidence.describe(
+                error = error,
+                operation = "READ_PERSISTED_AGENDA_BREADCRUMBS",
+                component = "AgendaSyncCrashTraceStore",
+                method = "readPersistedBreadcrumbs",
+            )
+    }
 
     private fun currentCheckpoint(context: Context): String {
         if (lastCheckpoint != "not_armed") return lastCheckpoint
@@ -213,12 +237,9 @@ internal object AgendaSyncCrashTraceStore {
         File(File(context.applicationContext.filesDir, DIRECTORY), BREADCRUMB_FILE_NAME)
 
     private fun sanitize(value: String): String =
-        value.replace(Regex("[\\r\\n\\t]+"), " ")
+        br.com.mapeiaia.rotacerta.UnifiedDebugEventStore.sanitizeForExport(value)
+            .replace(Regex("[\\r\\n\\t]+"), " ")
             .replace(Regex("\\s{2,}"), " ")
-            .replace(Regex("(?i)https?://[^\\s|;]+"), "[url mascarada]")
-            .replace(
-                Regex("(?i)\\b(token|cookie|authorization|password|senha|secret|jwt|sessionToken|accessToken|viewToken)\\s*[:=]\\s*[^|;\\s]+"),
-            ) { match -> "${match.groupValues[1]}=[segredo mascarado]" }
             .trim()
 
     private fun formatDate(value: Long): String =

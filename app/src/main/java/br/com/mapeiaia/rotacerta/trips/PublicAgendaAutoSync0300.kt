@@ -30,6 +30,7 @@ internal data class PublicAgendaExternalTrip(
     val blablaPublicHref: String = "",
     val sourceComplete: Boolean = false,
     val snapshotRevision: String = "",
+    val realAvailableSeats: Int = 0,
 )
 
 private data class ExternalCapacitySnapshotSyncResult(
@@ -114,7 +115,12 @@ internal object PublicAgendaAutoSync0300 {
                 UnifiedDebugEventStore.record(
                     "PUBLIC_DRIVER_PROFILE_SYNC_FAILED",
                     context.packageName,
-                    "reason=${error.javaClass.simpleName}",
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "PROFILE_SYNC",
+                        component = "PublicAgendaAutoSync0300",
+                        method = "ensurePublicAgenda",
+                    ),
                 )
             }
         val canonicalPassengerProfiles = PassengerIdentityStore(context).profiles()
@@ -148,7 +154,13 @@ internal object PublicAgendaAutoSync0300 {
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNC_FAILED",
                     context.packageName,
-                    "canonicalPassengers=${canonicalPassengerProfiles.size} reason=${error.javaClass.simpleName}",
+                    "canonicalPassengers=${canonicalPassengerProfiles.size} " +
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "PASSENGER_DIRECTORY_SYNC",
+                            component = "PublicAgendaAutoSync0300",
+                            method = "syncPassengerDirectory",
+                        ),
                 )
             }
 
@@ -184,6 +196,24 @@ internal object PublicAgendaAutoSync0300 {
         )
 
         localTrips.forEach { original ->
+            val localBookings = store.bookingsFor(original.id)
+            val localAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+            val localFailureTrip = original.copy(
+                rotaCertaSeatAllocation = localAllocation,
+                capacity = operationalInventoryCapacity(
+                    original.copy(rotaCertaSeatAllocation = localAllocation),
+                    localBookings,
+                ),
+            )
+            val localRevision = localCapacitySnapshotRevision(original, localBookings, localAllocation)
+            val localFailureContext = AgendaFailureEvidence.tripContext(
+                trip = localFailureTrip,
+                bookings = localBookings,
+                tripKey = sha256(original.id).take(12),
+                publicIdentity = original.remoteId,
+                origin = resolvedTripRecordOrigin(original).name,
+                revision = localRevision,
+            )
             val localPublishOperation = AgendaTrace.operationStart(
                 context,
                 "LOCAL_CAPACITY_SNAPSHOT",
@@ -192,7 +222,6 @@ internal object PublicAgendaAutoSync0300 {
                 syncOperation.operationId,
             )
             try {
-                val localBookings = store.bookingsFor(original.id)
                 val changed = syncLocalTripIncremental(
                     context = context,
                     store = store,
@@ -212,15 +241,23 @@ internal object PublicAgendaAutoSync0300 {
                 AgendaTrace.operationCancelled(context, localPublishOperation)
                 throw error
             } catch (error: Throwable) {
-                AgendaTrace.operationError(context, localPublishOperation, error)
+                AgendaTrace.operationError(
+                    context,
+                    localPublishOperation,
+                    error,
+                    failureContext = localFailureContext,
+                )
                 failures++
-                val stackSite = error.stackTrace.firstOrNull {
-                    it.className.startsWith("br.com.mapeiaia.rotacerta")
-                }?.let { "${it.fileName}:${it.lineNumber}" }.orEmpty()
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_LOCAL_PUBLISH_FAILED",
                     context.packageName,
-                    "trip=${original.id} source=${resolvedTripRecordOrigin(original).name} strongExternalIdentity=${canonicalExternalTripIdentityKey(original.blablaProfileUuid, original.blablaTripId, original.blablaManageUrl) != null} operation=LOCAL_CAPACITY_SNAPSHOT exception=${error.javaClass.simpleName} stackSite=$stackSite detail=${safeSyncFailureDetail0373(error)}",
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "LOCAL_CAPACITY_SNAPSHOT",
+                        component = "PublicAgendaAutoSync0300",
+                        method = "syncLocalTripIncremental",
+                        trip = localFailureContext,
+                    ),
                 )
             }
         }
@@ -299,6 +336,19 @@ internal object PublicAgendaAutoSync0300 {
 
         externalTrips.forEachIndexed { index, synthesized ->
             val diagnosticTripKey = sha256(synthesized.trip.publicToken).take(12)
+            val resolvedPublicIdentity = store.publicExternalBindings()
+                .firstOrNull { it.publicToken == synthesized.trip.publicToken }
+                ?.remoteTripId
+            val externalFailureContext = AgendaFailureEvidence.tripContext(
+                trip = synthesized.trip,
+                bookings = synthesized.capacityClaims,
+                tripKey = diagnosticTripKey,
+                publicIdentity = resolvedPublicIdentity,
+                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                revision = synthesized.snapshotRevision,
+                confirmedSeatsOverride = synthesized.bookedSeats,
+                realAvailableSeatsOverride = synthesized.realAvailableSeats,
+            )
             val operation = AgendaTrace.operationStart(
                 context,
                 "EXTERNAL_CAPACITY_SNAPSHOT",
@@ -329,11 +379,23 @@ internal object PublicAgendaAutoSync0300 {
                 throw error
             } catch (error: Throwable) {
                 failures++
-                AgendaTrace.operationError(context, operation, error)
+                AgendaTrace.operationError(
+                    context,
+                    operation,
+                    error,
+                    failureContext = externalFailureContext,
+                )
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED",
                     context.packageName,
-                    "index=${index + 1}/${externalTrips.size} tripKey=$diagnosticTripKey stage=atomic_capacity_snapshot reason=${error.javaClass.simpleName} claims=${synthesized.capacityClaims.size} bookedSeats=${synthesized.bookedSeats} sourceComplete=${synthesized.sourceComplete} profileUuidPresent=${synthesized.profileUuid.isNotBlank()} blablaTripIdPresent=${synthesized.blablaTripId.isNotBlank()}",
+                    "index=${index + 1}/${externalTrips.size} sourceComplete=${synthesized.sourceComplete} claims=${synthesized.capacityClaims.size} " +
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "EXTERNAL_CAPACITY_SNAPSHOT",
+                            component = "PublicAgendaAutoSync0300",
+                            method = "syncExternalCapacitySnapshot",
+                            trip = externalFailureContext,
+                        ),
                 )
             }
         }
@@ -392,6 +454,14 @@ internal object PublicAgendaAutoSync0300 {
         )
         val mirrors = localCapacityMirrors(publicTrip, localBookings)
         val revision = localCapacitySnapshotRevision(publicTrip, localBookings, allocation)
+        val failureContext = AgendaFailureEvidence.tripContext(
+            trip = publicTrip,
+            bookings = localBookings,
+            tripKey = sha256(original.id).take(12),
+            publicIdentity = original.remoteId,
+            origin = resolvedTripRecordOrigin(original).name,
+            revision = revision,
+        )
         val api = TripRemoteApi(settings)
         var remoteTripId = publicTrip.remoteId?.takeIf(String::isNotBlank) ?: publicTrip.publicToken
         var created = false
@@ -406,20 +476,36 @@ internal object PublicAgendaAutoSync0300 {
         )
 
         val response = try {
-            reconcile()
+            try {
+                reconcile()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isRemoteTripNotFound(error)) throw error
+                val published = api.publish(publicTrip.copy(capacityReliable = false, remoteId = null))
+                created = true
+                remoteTripId = published.tripId
+                publicTrip = publicTrip.copy(
+                    remoteId = published.tripId,
+                    publicToken = published.publicToken,
+                    publicUrl = published.publicUrl,
+                )
+                store.saveTrip(publicTrip.copy(capacityReliable = true))
+                reconcile()
+            }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
-            if (!isRemoteTripNotFound(error)) throw error
-            val published = api.publish(publicTrip.copy(capacityReliable = false, remoteId = null))
-            created = true
-            remoteTripId = published.tripId
-            publicTrip = publicTrip.copy(
-                remoteId = published.tripId,
-                publicToken = published.publicToken,
-                publicUrl = published.publicUrl,
+            UnifiedDebugEventStore.record(
+                "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED_DETAIL",
+                context.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PUBLISH_INCREMENTAL_CAPACITY",
+                    component = "PublicAgendaAutoSync0300",
+                    method = "syncLocalTripIncremental",
+                    trip = failureContext,
+                ),
             )
-            store.saveTrip(publicTrip.copy(capacityReliable = true))
-            reconcile()
+            throw error
         }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
         UnifiedDebugEventStore.record(
@@ -476,19 +562,47 @@ internal object PublicAgendaAutoSync0300 {
 
         val startedAt = System.nanoTime()
         val tripKey = sha256(synthesized.trip.publicToken).take(12)
+        val failureContext = AgendaFailureEvidence.tripContext(
+            trip = synthesized.trip,
+            bookings = synthesized.capacityClaims,
+            tripKey = tripKey,
+            publicIdentity = store.publicExternalBindings()
+                .firstOrNull { it.publicToken == synthesized.trip.publicToken }
+                ?.remoteTripId,
+            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+            revision = synthesized.snapshotRevision,
+            confirmedSeatsOverride = synthesized.bookedSeats,
+            realAvailableSeatsOverride = synthesized.realAvailableSeats,
+        )
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_INCREMENTAL_START",
             context.packageName,
             "tripKey=$tripKey sourceComplete=${synthesized.sourceComplete} revision=${synthesized.snapshotRevision.takeLast(12)} fullSyncRequested=false",
         )
-        val result = syncExternalCapacitySnapshot(
-            context = context,
-            store = store,
-            api = TripRemoteApi(settings),
-            synthesized = synthesized,
-            traceId = AgendaTrace.currentTraceId(),
-            parentOperationId = null,
-        )
+        val result = try {
+            syncExternalCapacitySnapshot(
+                context = context,
+                store = store,
+                api = TripRemoteApi(settings),
+                synthesized = synthesized,
+                traceId = AgendaTrace.currentTraceId(),
+                parentOperationId = null,
+            )
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            UnifiedDebugEventStore.record(
+                "PUBLIC_EXTERNAL_CAPACITY_INCREMENTAL_FAILED_DETAIL",
+                context.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PUBLISH_INCREMENTAL_CAPACITY",
+                    component = "PublicAgendaAutoSync0300",
+                    method = "syncExternalTripIncremental",
+                    trip = failureContext,
+                ),
+            )
+            throw error
+        }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_INCREMENTAL_END",
@@ -528,7 +642,23 @@ internal object PublicAgendaAutoSync0300 {
                 UnifiedDebugEventStore.record(
                     "PUBLIC_CAPACITY_FAIL_CLOSED",
                     context.packageName,
-                    "tripKey=$diagnosticTripKey action=no_remote_mutation reason=incomplete_source_publish_failed error=${error.javaClass.simpleName}",
+                    "action=no_remote_mutation reason=incomplete_source_publish_failed " +
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "EXTERNAL_CAPACITY_SNAPSHOT",
+                            component = "PublicAgendaAutoSync0300",
+                            method = "syncExternalCapacitySnapshot",
+                            trip = AgendaFailureEvidence.tripContext(
+                                trip = publicTrip,
+                                bookings = synthesized.capacityClaims,
+                                tripKey = diagnosticTripKey,
+                                publicIdentity = existingBinding?.remoteTripId,
+                                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                                revision = synthesized.snapshotRevision,
+                                confirmedSeatsOverride = synthesized.bookedSeats,
+                                realAvailableSeatsOverride = synthesized.realAvailableSeats,
+                            ),
+                        ),
                 )
                 return ExternalCapacitySnapshotSyncResult(published = false, changed = false)
             }
@@ -629,13 +759,6 @@ internal object PublicAgendaAutoSync0300 {
 
     private fun isRemoteTripNotFound(error: Throwable): Boolean =
         error is IllegalStateException && error.message.orEmpty().contains("HTTP 404")
-
-    private fun safeSyncFailureDetail0373(error: Throwable): String =
-        error.message.orEmpty()
-            .replace(Regex("[\\r\\n\\t]+"), " ")
-            .replace(Regex("\\s+"), " ")
-            .take(220)
-            .ifBlank { "none" }
 
     internal fun isImmutablePublicTripShapeFailure(error: Throwable): Boolean =
         error is IllegalStateException && error.message.orEmpty().let { message ->
@@ -866,6 +989,7 @@ internal object PublicAgendaAutoSync0300 {
             blablaPublicHref = trip.blablaPublicUrl.orEmpty(),
             sourceComplete = verifiedPublishedSeats != null && source.passenger_roster_complete,
             snapshotRevision = externalCapacitySnapshotRevision(source, rotaCertaSeatAllocation),
+            realAvailableSeats = (safeCapacity - booked).coerceAtLeast(0),
         )
     }
 

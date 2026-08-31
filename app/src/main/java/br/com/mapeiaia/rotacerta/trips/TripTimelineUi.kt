@@ -511,10 +511,37 @@ fun TripTimelineScreen(
                                             configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                                         )
                                     }.onFailure { error ->
+                                        val sourceFailureContext = AgendaFailureTripContext(
+                                            tripKey = seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty()),
+                                            canonicalIdentity = canonicalExternalTripIdentityKey(
+                                                source.profile_uuid,
+                                                source.trip_id,
+                                                source.trip_href,
+                                            ).orEmpty(),
+                                            publicIdentity = "<unresolved>",
+                                            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                                            route = listOfNotNull(
+                                                source.actual_departure?.takeIf(String::isNotBlank) ?: source.search_from?.takeIf(String::isNotBlank),
+                                                source.actual_arrival?.takeIf(String::isNotBlank) ?: source.search_to?.takeIf(String::isNotBlank),
+                                            ).joinToString(" -> "),
+                                            date = source.date,
+                                            time = source.departure_time.orEmpty(),
+                                            revision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                                source,
+                                                appSettings.rotaCertaSeatAllocation,
+                                            ),
+                                        )
                                         UnifiedDebugEventStore.record(
                                             "PUBLIC_AGENDA_INCREMENTAL_FAILED",
                                             context.packageName,
-                                            "tripKey=${seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty())} reason=${error.javaClass.simpleName} fullSyncRequested=false failClosed=true",
+                                            "fullSyncRequested=false failClosed=true " +
+                                                AgendaFailureEvidence.describe(
+                                                    error = error,
+                                                    operation = "PUBLISH_INCREMENTAL_CAPACITY",
+                                                    component = "TripTimelineUi",
+                                                    method = "syncExternalTripIncremental",
+                                                    trip = sourceFailureContext,
+                                                ),
                                         )
                                     }
                                 }
