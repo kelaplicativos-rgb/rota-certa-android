@@ -32,7 +32,7 @@ internal class PublicAgendaSyncCoordinator0373(
 ) {
     private val requests = Channel<PublicAgendaSyncRequest0373>(Channel.CONFLATED)
     private val active = AtomicBoolean(false)
-    private val _completions = MutableSharedFlow<PublicAgendaSyncCompletion0373>(extraBufferCapacity = 8)
+    private val _completions = MutableSharedFlow<PublicAgendaSyncCompletion0373>(replay = 1, extraBufferCapacity = 8)
     val completions: SharedFlow<PublicAgendaSyncCompletion0373> = _completions
 
     private var lastCompletedSignature: String? = null
