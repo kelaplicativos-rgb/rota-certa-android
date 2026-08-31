@@ -64,7 +64,8 @@ test("shadow bookings reuse canonical production capacity math and never write r
   assert.match(create, /assertNoOverbooking/);
   assert.match(create, /assertNoOperationalOverbooking/);
   assert.match(create, /shadowMap\[bookingId\] = candidate/);
-  assert.match(create, /tester\.ref\.set\(\{ shadowBookings: shadowMap/);
+  assert.match(create, /db\.runTransaction/);
+  assert.match(create, /tx\.set\(tester\.ref, \{/);
   assert.doesNotMatch(create, /collection\("bookings"\)\.doc\([^\n]+\)\.(set|create|update)/);
   assert.doesNotMatch(create, /sendDriverPush|appendTripChangeEvent|passengerBookingIndexRef|appendBookingLedger/);
   const overlay = block(api, "async function testerOverlayPublicTrip", "async function getTesterContext");
@@ -77,7 +78,8 @@ test("shadow bookings reuse canonical production capacity math and never write r
 test("shadow cancellation and reset alter only the tester session namespace", () => {
   const cancel = block(api, "async function cancelTesterBooking", "async function listTesterBookings");
   assert.match(cancel, /status: "CANCELLED"/);
-  assert.match(cancel, /tester\.ref\.set\(\{ shadowBookings: shadowMap/);
+  assert.match(cancel, /db\.runTransaction/);
+  assert.match(cancel, /tx\.set\(tester\.ref, \{/);
   const reset = block(api, "async function resetTesterSimulation", "async function blockTesterFromRealPassengerMutation");
   assert.match(reset, /shadowBookings: \{\}/);
   assert.doesNotMatch(reset, /collection\("trips"\)/);
@@ -98,8 +100,8 @@ test("portal consumes bootstrap without WhatsApp, cleans URL and keeps persisten
 test("browser shadow state is isolated per testSessionId and real external effects stay disabled", () => {
   assert.match(web, /rotacerta-tester-\$\{sessionKey\}-/);
   assert.match(web, /\/v1\/tester\/reset/);
-  assert.match(web, /Notificações reais ficam desativadas no Modo Teste/);
-  assert.match(web, /if \(isTesterMode\(\)\) return;/);
+  assert.match(web, /\/v1\/tester\/me\/notifications/);
+  assert.match(web, /\/v1\/tester\/me\/credits/);
   assert.match(web, /isTesterMode\(\) \? "\/v1\/tester\/me\/bookings"/);
 });
 
