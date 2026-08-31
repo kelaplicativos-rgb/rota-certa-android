@@ -154,7 +154,7 @@ internal object PublicAgendaAutoSync0300 {
             val publicTrip = withAllocation.copy(
                 capacity = operationalInventoryCapacity(withAllocation, localBookings),
             )
-            val localPublishOperation = AgendaTrace.operationStart(            val localPublishOperation = AgendaTrace.operationStart(
+            val localPublishOperation = AgendaTrace.operationStart(
                 context,
                 "LOCAL_TRIP_PUBLISH",
                 "PublicAgendaAutoSync0300",
@@ -292,7 +292,7 @@ internal object PublicAgendaAutoSync0300 {
                     nowMillis = nowMillis,
                 )
             }
-            .filterNot { synthesized ->            .filterNot { synthesized ->
+            .filterNot { synthesized ->
                 localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
             }
             .distinctBy { it.trip.publicToken }
