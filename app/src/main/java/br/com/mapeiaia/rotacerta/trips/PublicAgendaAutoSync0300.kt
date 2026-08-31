@@ -8,6 +8,8 @@ import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal data class PublicAgendaAutoSyncResult(
     val localPublished: Int = 0,
@@ -35,6 +37,22 @@ internal object PublicAgendaAutoSync0300 {
         configuredVehicleCapacity: Int,
         configuredRotaCertaSeatAllocation: Int = 0,
         nowMillis: Long = System.currentTimeMillis(),
+    ): PublicAgendaAutoSyncResult = withContext(Dispatchers.IO) {
+        syncOnIo(
+            context = context,
+            store = store,
+            configuredVehicleCapacity = configuredVehicleCapacity,
+            configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
+            nowMillis = nowMillis,
+        )
+    }
+
+    private suspend fun syncOnIo(
+        context: Context,
+        store: TripStore,
+        configuredVehicleCapacity: Int,
+        configuredRotaCertaSeatAllocation: Int,
+        nowMillis: Long,
     ): PublicAgendaAutoSyncResult {
         val settings = store.onlineSettings()
         if (!settings.configured) return PublicAgendaAutoSyncResult()
@@ -139,10 +157,22 @@ internal object PublicAgendaAutoSync0300 {
             traceId,
             syncOperation.operationId,
         )
-        val localTrips = store.trips()
+        val persistedTrips = store.trips()
+        val localTrips = persistedTrips
+            .filter(Trip::isCanonicalLocalPublishSource)
             .filter { it.departureAtMillis > nowMillis }
             .filter { it.status in PUBLIC_LOCAL_STATUSES }
+        val externalBackingsExcluded = persistedTrips.count {
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
+                it.departureAtMillis > nowMillis &&
+                it.status in PUBLIC_LOCAL_STATUSES
+        }
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
+        UnifiedDebugEventStore.record(
+            "PUBLIC_AGENDA_LOCAL_SOURCE_CLASSIFIED",
+            context.packageName,
+            "persisted=${persistedTrips.size} local=${localTrips.size} externalBackingsExcluded=$externalBackingsExcluded sourceAuthority=trip_record_origin_strong_identity",
+        )
 
         localTrips.forEach { original ->
             val localBookings = store.bookingsFor(original.id)
@@ -220,10 +250,13 @@ internal object PublicAgendaAutoSync0300 {
                 }
                 AgendaTrace.operationError(context, localPublishOperation, error)
                 failures++
+                val stackSite = error.stackTrace.firstOrNull {
+                    it.className.startsWith("br.com.mapeiaia.rotacerta")
+                }?.let { "${it.fileName}:${it.lineNumber}" }.orEmpty()
                 UnifiedDebugEventStore.record(
                     "PUBLIC_AGENDA_LOCAL_PUBLISH_FAILED",
                     context.packageName,
-                    "localTrip=${original.id} reason=${error.javaClass.simpleName}",
+                    "trip=${original.id} source=${resolvedTripRecordOrigin(original).name} strongExternalIdentity=${canonicalExternalTripIdentityKey(original.blablaProfileUuid, original.blablaTripId, original.blablaManageUrl) != null} operation=LOCAL_TRIP_PUBLISH exception=${error.javaClass.simpleName} stackSite=$stackSite detail=${safeSyncFailureDetail0373(error)}",
                 )
             }
         }
@@ -524,6 +557,13 @@ internal object PublicAgendaAutoSync0300 {
             throw error
         }
     }
+
+    private fun safeSyncFailureDetail0373(error: Throwable): String =
+        error.message.orEmpty()
+            .replace(Regex("[\\r\\n\\t]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .take(220)
+            .ifBlank { "none" }
 
     internal fun isImmutablePublicTripShapeFailure(error: Throwable): Boolean =
         error is IllegalStateException && error.message.orEmpty().let { message ->
