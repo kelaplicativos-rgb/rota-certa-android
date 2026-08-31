@@ -9,8 +9,8 @@ import kotlin.test.assertTrue
 class AgendaCombinedSeatPools0369Test {
     private fun trip(
         physicalCapacity: Int,
-        blablaAllocation: Int? = null,
-        rotaCertaAllocation: Int? = null,
+        blablaAvailable: Int? = null,
+        rotaCertaAvailable: Int? = null,
         stops: List<TripStop> = listOf(
             TripStop(id = "a", order = 0, name = "A"),
             TripStop(id = "b", order = 1, name = "B"),
@@ -20,10 +20,11 @@ class AgendaCombinedSeatPools0369Test {
         title = "A → B",
         departureAtMillis = 4_000_000_000_000L,
         capacity = physicalCapacity,
-        rotaCertaSeatAllocation = rotaCertaAllocation,
+        rotaCertaSeatAllocation = rotaCertaAvailable,
         status = TripStatus.PUBLISHED,
         stops = stops,
-        publishedSeats = blablaAllocation,
+        // Legacy persisted name; semantically this is the current BlaBlaCar free-seat value.
+        publishedSeats = blablaAvailable,
     )
 
     private fun booking(
@@ -50,80 +51,137 @@ class AgendaCombinedSeatPools0369Test {
     )
 
     @Test
-    fun finalRuleThreePlusFourMinusFiveEqualsTwoWithoutChangingPhysicalCapacity() {
+    fun latestRuleTwoBlaBlaFreePlusFourRotaCertaFreeEqualsSixImmediately() {
         val trip = trip(
             physicalCapacity = 7,
-            blablaAllocation = 3,
-            rotaCertaAllocation = 4,
-        )
-        val bookings = listOf(
-            booking("blabla", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY, group = "bb"),
-            booking("rota", trip, 2, BookingSource.ROTA_CERTA, group = "family-linked"),
-            // The family representation is already inside the Rota Certa booking.
-            booking("family-mirror", trip, 1, BookingSource.PRIVATE, CapacityClaimType.RESERVED_SEAT, group = "family-linked"),
+            blablaAvailable = 2,
+            rotaCertaAvailable = 4,
         )
 
-        val summary = operationalSeatSummary(trip, bookings)
+        val summary = operationalSeatSummary(trip, emptyList())
+
         assertTrue(summary.operationalLimitConfigured)
-        assertEquals(3, summary.blablaPublishedSeats)
+        assertEquals(2, summary.blablaAvailableSeats)
         assertEquals(4, summary.rotaCertaAllocatedSeats)
-        assertEquals(7, summary.totalConsideredSeats)
-        assertEquals(5, summary.confirmedPassengerSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(6, summary.totalAvailableSeats)
+        assertEquals(6, summary.availableSeats)
+        assertEquals(0, summary.confirmedPassengerSeats)
         assertEquals(0, summary.blockedSeats)
-        assertEquals(2, summary.availableSeats)
-        assertEquals(0, summary.overbookingSeats)
-
-        val availability = SeatAvailabilityEngine.availability(trip, bookings, "a", "b", requestedSeats = 2)
-        assertEquals(2, availability.availableSeats)
-        assertTrue(availability.canBook)
-        assertFalse(SeatAvailabilityEngine.availability(trip, bookings, "a", "b", requestedSeats = 3).canBook)
     }
 
     @Test
-    fun independentFamilyPassengerConsumesOneMoreSeat() {
-        val trip = trip(7, blablaAllocation = 3, rotaCertaAllocation = 4)
+    fun BlaBlaConfirmedPassengersDoNotSubtractFreeSeatsAgain() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
         val bookings = listOf(
-            booking("blabla", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY),
-            booking("rota", trip, 2, BookingSource.ROTA_CERTA),
+            booking(
+                "blabla-already-accounted",
+                trip,
+                3,
+                BookingSource.BLABLACAR,
+                CapacityClaimType.EXTERNAL_OCCUPANCY,
+                group = "bb",
+            ),
+        )
+
+        val summary = operationalSeatSummary(trip, bookings)
+
+        assertEquals(3, summary.confirmedPassengerSeats)
+        assertEquals(2, summary.blablaAvailableSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(6, summary.availableSeats)
+    }
+
+    @Test
+    fun localRotaCertaPassengerConsumesOnlyRotaCertaPool() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val bookings = listOf(
+            booking("rota", trip, 1, BookingSource.ROTA_CERTA),
+        )
+
+        val summary = operationalSeatSummary(trip, bookings)
+
+        assertEquals(1, summary.confirmedPassengerSeats)
+        assertEquals(2, summary.blablaAvailableSeats)
+        assertEquals(3, summary.rotaCertaAvailableSeats)
+        assertEquals(5, summary.availableSeats)
+    }
+
+    @Test
+    fun familyMirrorInsideSameStrongGroupIsNotCountedTwice() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val bookings = listOf(
+            booking(
+                "external",
+                trip,
+                1,
+                BookingSource.BLABLACAR,
+                CapacityClaimType.EXTERNAL_OCCUPANCY,
+                group = "same-reservation",
+            ),
+            booking(
+                "family-mirror",
+                trip,
+                1,
+                BookingSource.ROTA_CERTA,
+                CapacityClaimType.PASSENGER,
+                group = "same-reservation",
+            ),
+        )
+
+        val summary = operationalSeatSummary(trip, bookings)
+
+        assertEquals(1, summary.confirmedPassengerSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(6, summary.availableSeats)
+    }
+
+    @Test
+    fun independentFamilyPassengerConsumesOneRotaCertaSeat() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val bookings = listOf(
+            booking("external", trip, 1, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY),
             booking("family-independent", trip, 1, BookingSource.PRIVATE),
         )
+
         val summary = operationalSeatSummary(trip, bookings)
-        assertEquals(6, summary.confirmedPassengerSeats)
-        assertEquals(1, summary.availableSeats)
+
+        assertEquals(2, summary.confirmedPassengerSeats)
+        assertEquals(3, summary.rotaCertaAvailableSeats)
+        assertEquals(5, summary.availableSeats)
     }
 
     @Test
-    fun blockedSeatReducesAvailabilityButIsNotAConfirmedPassenger() {
-        val trip = trip(7, blablaAllocation = 3, rotaCertaAllocation = 4)
-        val bookings = listOf(
-            booking("blabla", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY),
-            booking("rota", trip, 2, BookingSource.ROTA_CERTA),
-            booking("blocked", trip, 1, BookingSource.OTHER, CapacityClaimType.RESERVED_SEAT),
+    fun blockedSeatReducesRotaCertaAvailabilityButIsNotConfirmedPassenger() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val blocked = booking(
+            "blocked",
+            trip,
+            1,
+            BookingSource.OTHER,
+            CapacityClaimType.RESERVED_SEAT,
         )
-        val summary = operationalSeatSummary(trip, bookings)
-        assertEquals(5, summary.confirmedPassengerSeats)
+
+        val summary = operationalSeatSummary(trip, listOf(blocked))
+
+        assertEquals(0, summary.confirmedPassengerSeats)
         assertEquals(1, summary.blockedSeats)
-        assertEquals(1, summary.availableSeats)
+        assertEquals(3, summary.rotaCertaAvailableSeats)
+        assertEquals(5, summary.availableSeats)
     }
 
     @Test
-    fun cancellationReleasesExactlyTheCancelledSeats() {
-        val trip = trip(7, blablaAllocation = 3, rotaCertaAllocation = 4)
-        val active = listOf(
-            booking("blabla", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY),
-            booking("rota", trip, 2, BookingSource.ROTA_CERTA),
-        )
-        assertEquals(2, operationalSeatSummary(trip, active).availableSeats)
+    fun cancellationReleasesRotaCertaSeatImmediately() {
+        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val active = booking("rota", trip, 1, BookingSource.ROTA_CERTA)
+        assertEquals(5, operationalSeatSummary(trip, listOf(active)).availableSeats)
 
-        val cancelled = active.map { booking ->
-            if (booking.id == "rota") booking.copy(status = BookingStatus.CANCELLED) else booking
-        }
-        assertEquals(3, operationalSeatSummary(trip, cancelled).confirmedPassengerSeats)
-        assertEquals(4, operationalSeatSummary(trip, cancelled).availableSeats)
+        val cancelled = active.copy(status = BookingStatus.CANCELLED)
+        assertEquals(6, operationalSeatSummary(trip, listOf(cancelled)).availableSeats)
     }
 
     @Test
-    fun segmentReuseStillUsesPhysicalCapacityPerSegment() {
+    fun physicalSegmentEngineRemainsSeparateFromGlobalChannelAvailability() {
         val trip = trip(
             physicalCapacity = 4,
             stops = listOf(
@@ -139,37 +197,6 @@ class AgendaCombinedSeatPools0369Test {
         val loads = SeatAvailabilityEngine.segmentLoads(trip, bookings)
         assertEquals(listOf(3, 1), loads.map(SegmentLoad::passengerSeats))
         assertEquals(listOf(1, 3), loads.map(SegmentLoad::availableSeats))
-        assertEquals(1, SeatAvailabilityEngine.availability(trip, bookings, "a", "b").availableSeats)
-        assertEquals(3, SeatAvailabilityEngine.availability(trip, bookings, "b", "c").availableSeats)
-    }
-
-    @Test
-    fun sameStrongOccupancyGroupIsCountedOnceAcrossRepresentations() {
-        val trip = trip(7, blablaAllocation = 3, rotaCertaAllocation = 4)
-        val bookings = listOf(
-            booking("external", trip, 1, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY, group = "reservation-strong-id"),
-            booking("local-mirror", trip, 1, BookingSource.ROTA_CERTA, CapacityClaimType.PASSENGER, group = "reservation-strong-id"),
-        )
-        val summary = operationalSeatSummary(trip, bookings)
-        assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(6, summary.availableSeats)
-        assertEquals(1, SeatAvailabilityEngine.segmentLoads(trip, bookings).single().passengerSeats)
-    }
-
-    @Test
-    fun pendingRequestBlocksAvailabilityButDoesNotBecomeConfirmedPassenger() {
-        val trip = trip(7, blablaAllocation = 3, rotaCertaAllocation = 4)
-        val pending = booking(
-            "pending",
-            trip,
-            2,
-            BookingSource.ROTA_CERTA,
-            status = BookingStatus.REQUESTED,
-        )
-        val summary = operationalSeatSummary(trip, listOf(pending))
-        assertEquals(0, summary.confirmedPassengerSeats)
-        assertEquals(2, summary.blockedSeats)
-        assertEquals(5, summary.availableSeats)
     }
 
     @Test
@@ -184,26 +211,27 @@ class AgendaCombinedSeatPools0369Test {
     }
 
     @Test
-    fun architectureNoLongerAddsChannelNumbersIntoPhysicalCapacity() {
+    fun architectureUsesSeatEditorAsFreeSeatEvidenceAndKeepsPhysicalCapacitySeparate() {
         val agenda = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         val domain = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt").readText()
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
+        assertTrue(agenda.contains("blablaAvailable"))
+        assertTrue(agenda.contains("rotaCertaAvailable"))
+        assertTrue(agenda.contains("totalAvailable"))
         assertTrue(agenda.contains("capacity = physicalCapacity"))
-        assertTrue(agenda.contains("rotaCertaSeatAllocation"))
-        assertTrue(agenda.contains("totalConsidered"))
-        assertFalse(agenda.contains("combinedAgendaAvailableSeats"))
-        assertFalse(agenda.contains("blablaAvailableSeats"))
-        assertFalse(agenda.contains("rotaCertaSeatPool"))
-        assertTrue(domain.contains("operationalSeatSummary"))
+        assertTrue(agenda.contains("capacitySource=channel_free_seats_plus_physical_separate"))
+        assertTrue(domain.contains("blablaAvailableSeats"))
+        assertTrue(domain.contains("rotaCertaAvailableSeats"))
         assertTrue(domain.contains("EXTERNAL_OCCUPANCY"))
         assertTrue(ui.contains("Capacidade de passageiros"))
-        assertTrue(ui.contains("Passageiros confirmados"))
-        assertTrue(ui.contains("Vagas disponíveis"))
+        assertTrue(ui.contains("Vagas disponibilizadas no Rota Certa"))
+        assertTrue(ui.contains("Total disponível"))
+        assertFalse(ui.contains("Capacidade do veículo"))
     }
 
     @Test
-    fun normalSynchronizationReadsPublishedSeatsButCannotWriteThem() {
+    fun normalSynchronizationReadsSeatOptionsButCannotWriteThem() {
         val policy = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaHarvestPolicy.kt").readText()
         val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         assertTrue(policy.contains("AUTOMATIC_PUBLISHED_SEAT_LOOKUP: Boolean = true"))
