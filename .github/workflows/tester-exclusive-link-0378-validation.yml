@@ -133,3 +133,83 @@ jobs:
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0378
+
+      - name: Configure Firebase deploy authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy exact HEAD tester backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke live tester isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/0378/live-health.json
+          grep -Fq '"ok":true' /tmp/0378/live-health.json
+
+          CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/0378/bootstrap-invalid.json -w '%{http_code}'             -X POST "$BASE/v1/public/tester/bootstrap"             -H 'Content-Type: application/json'             --data '{"bootstrapToken":"invalid-ci-bootstrap-token"}')"
+          test "$CODE" = "401"
+          grep -Fq 'tester_bootstrap_invalid' /tmp/0378/bootstrap-invalid.json
+
+          CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/0378/driver-auth-probe.json -w '%{http_code}'             "$BASE/v1/driver/test-link")"
+          test "$CODE" = "401"
+          grep -Fq 'driver_auth_required' /tmp/0378/driver-auth-probe.json
+
+          CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/0378/tester-session-probe.json -w '%{http_code}'             "$BASE/v1/tester/session")"
+          test "$CODE" = "401"
+          grep -Fq 'tester_session_required' /tmp/0378/tester-session-probe.json
+
+          BUST="$(date +%s%N)"
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/0378/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/0378/live-index.html
+          grep -Fq 'bootstrapTesterExperience' /tmp/0378/live-app.js
+          grep -Fq 'X-Rota-Certa-Tester-Session' /tmp/0378/live-app.js
+          grep -Fq 'MODO TESTE' /tmp/0378/live-index.html
+          printf '%s\n' "${GITHUB_SHA}" > /tmp/0378/deployed-source-head.txt
+          echo "LIVE_TESTER_CONTRACT=PASS"
+
+      - name: Upload deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.378-tester-exclusive-link-live
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            /tmp/0378/live-health.json
+            /tmp/0378/bootstrap-invalid.json
+            /tmp/0378/driver-auth-probe.json
+            /tmp/0378/tester-session-probe.json
+            /tmp/0378/deployed-source-head.txt
