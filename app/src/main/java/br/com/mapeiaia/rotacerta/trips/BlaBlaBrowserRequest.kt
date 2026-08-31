@@ -40,6 +40,7 @@ internal enum class BlaBlaBrowserRequest(
     SEAT_SAVE("seat_save.js", BlaBlaBrowserOperation.REMOTE_WRITE),
 
     PUBLIC_SEARCH_FORM("public_search_form.js", BlaBlaBrowserOperation.NAVIGATION),
+    PUBLIC_SEARCH_SCROLL("public_search_scroll.js", BlaBlaBrowserOperation.NAVIGATION),
     PUBLIC_SEARCH_RESULTS("public_search_results.js"),
     PUBLIC_RESULT_OPEN("public_result_open.js", BlaBlaBrowserOperation.NAVIGATION),
     PUBLIC_DRIVER_PROFILE_OPEN("public_driver_profile_open.js", BlaBlaBrowserOperation.NAVIGATION),
