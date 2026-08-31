@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 class PublicBooking0296Test {
