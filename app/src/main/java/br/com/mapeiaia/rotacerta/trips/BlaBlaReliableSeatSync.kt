@@ -603,156 +603,50 @@ object BlaBlaReliableSeatSyncBridge {
 
     fun enqueueForManualBooking(
         context: Context,
-        trip: Trip,
+        @Suppress("UNUSED_PARAMETER") trip: Trip,
         booking: Booking,
         seatDelta: Int,
-        explicitTarget: BlaBlaManualSeatExternalTarget? = null,
+        @Suppress("UNUSED_PARAMETER") explicitTarget: BlaBlaManualSeatExternalTarget? = null,
     ): BlaBlaManualSeatSyncRequest? {
         if (booking.source !in setOf(BookingSource.PRIVATE, BookingSource.OTHER)) return null
         if (seatDelta == 0 || kotlin.math.abs(seatDelta) != booking.seats) return null
-
-        val requestStore = BlaBlaManualSeatSyncRequestStore(context)
-        val ledger = BlaBlaManualSeatSyncLedger(context)
-        val bindingStore = BlaBlaManualSeatBookingBindingStore(context)
-        val normalizedExplicit = explicitTarget?.let(::normalizeTarget)
-        val bound = bindingStore.target(booking.id)?.let(::normalizeTarget)
-        val resolved = normalizedExplicit ?: bound ?: resolveFallbackTarget(context, trip)
-
-        if (resolved == null) {
-            recordPending(context, booking, "external_target_unresolved")
-            return null
-        }
-
-        if (seatDelta < 0) {
-            val verified = ledger.entry(booking.id)
-            if (
-                verified != null &&
-                verified.externallyReducedSeats == booking.seats &&
-                verified.profileUuid.equals(resolved.profileUuid, ignoreCase = true) &&
-                verified.tripId == resolved.tripId
-            ) {
-                UnifiedDebugEventStore.record(
-                    "EXTERNAL_SEAT_SYNC_DUPLICATE_SKIPPED",
-                    context.packageName,
-                    "booking=${booking.id} direction=decrease verified=true",
-                )
-                return null
+        BlaBlaManualSeatSyncRequestStore(context).list()
+            .filter { it.localBookingId == booking.id }
+            .forEach { stale ->
+                BlaBlaManualSeatSyncRequestStore(context).remove(stale.id)
+                BlaBlaManualSeatSyncAttemptStore(context).clear(stale.id)
             }
-        } else {
-            val verified = ledger.entry(booking.id)
-            if (
-                verified == null ||
-                verified.externallyReducedSeats != booking.seats ||
-                !verified.profileUuid.equals(resolved.profileUuid, ignoreCase = true) ||
-                verified.tripId != resolved.tripId
-            ) {
-                recordPending(context, booking, "reverse_without_matching_verified_decrease")
-                return null
-            }
-        }
-
-        bindingStore.bind(booking.id, resolved)
-        requestStore.list().firstOrNull { queued ->
-            queued.localBookingId == booking.id &&
-                queued.profileUuid.equals(resolved.profileUuid, ignoreCase = true) &&
-                queued.tripId == resolved.tripId &&
-                queued.seatDelta == seatDelta
-        }?.let { existing ->
-            UnifiedDebugEventStore.record(
-                "EXTERNAL_SEAT_SYNC_DUPLICATE_SKIPPED",
-                context.packageName,
-                "booking=${booking.id} direction=${if (seatDelta < 0) "decrease" else "reverse"} queued=true request=${existing.id}",
-            )
-            return existing
-        }
-
-        val request = BlaBlaManualSeatSyncRequest(
-            profileUuid = resolved.profileUuid,
-            tripId = resolved.tripId,
-            seatDelta = seatDelta,
-            localTripId = trip.id,
-            localBookingId = booking.id,
-            source = booking.source.name,
-        )
-        requestStore.enqueue(request)
         UnifiedDebugEventStore.record(
-            "EXTERNAL_SEAT_SYNC_QUEUED_RELIABLE",
+            "EXTERNAL_SEAT_WRITE_SKIPPED",
             context.packageName,
-            "manual=true booking=${booking.id} profileUuidPresent=true tripIdPresent=true delta=$seatDelta request=${request.id} strongBinding=${normalizedExplicit != null || bound != null}",
+            "reason=independent_channel_inventory source=${booking.source.name} booking=${booking.id} seats=${booking.seats}",
         )
-        return request
+        return null
     }
 
     fun onManualBookingCancelled(
         context: Context,
-        trip: Trip,
+        @Suppress("UNUSED_PARAMETER") trip: Trip,
         booking: Booking,
-        explicitTarget: BlaBlaManualSeatExternalTarget? = null,
+        @Suppress("UNUSED_PARAMETER") explicitTarget: BlaBlaManualSeatExternalTarget? = null,
     ): BlaBlaManualSeatCancellationResult {
         val requestStore = BlaBlaManualSeatSyncRequestStore(context)
         val attemptStore = BlaBlaManualSeatSyncAttemptStore(context)
-        val ledger = BlaBlaManualSeatSyncLedger(context)
-        val bindingStore = BlaBlaManualSeatBookingBindingStore(context)
-        val verified = ledger.entry(booking.id)
-
-        if (verified != null && verified.externallyReducedSeats == booking.seats) {
-            requestStore.list()
-                .filter { it.localBookingId == booking.id && it.seatDelta < 0 }
-                .forEach { stale ->
-                    requestStore.remove(stale.id)
-                    attemptStore.clear(stale.id)
-                }
-            val reverseTarget = BlaBlaManualSeatExternalTarget(verified.profileUuid, verified.tripId)
-            bindingStore.bind(booking.id, reverseTarget)
-            val reverse = enqueueForManualBooking(
-                context = context,
-                trip = trip,
-                booking = booking,
-                seatDelta = booking.seats,
-                explicitTarget = reverseTarget,
-            )
-            return if (reverse != null) {
-                BlaBlaManualSeatCancellationResult(
-                    shouldSync = true,
-                    message = "Passageiro manual cancelado. Vaga interna liberada • devolvendo ${booking.seats} vaga(s) à mesma publicação BlaBlaCar…",
-                )
-            } else {
-                BlaBlaManualSeatCancellationResult(
-                    shouldSync = false,
-                    message = "Passageiro manual cancelado. Vaga interna liberada • devolução externa pendente ⚠️",
-                )
+        requestStore.list()
+            .filter { it.localBookingId == booking.id }
+            .forEach { stale ->
+                requestStore.remove(stale.id)
+                attemptStore.clear(stale.id)
             }
-        }
-
-        val pending = requestStore.list().filter { it.localBookingId == booking.id && it.seatDelta < 0 }
-        if (pending.isNotEmpty()) {
-            val attempted = pending.firstOrNull { attemptStore.get(it.id) != null }
-            pending.filterNot { it.id == attempted?.id }.forEach { duplicate ->
-                requestStore.remove(duplicate.id)
-                attemptStore.clear(duplicate.id)
-            }
-            if (attempted != null) {
-                attemptStore.markCompensation(attempted.id)
-                return BlaBlaManualSeatCancellationResult(
-                    shouldSync = true,
-                    message = "Passageiro manual cancelado. Vaga interna liberada • conferindo se a redução externa chegou a ser aplicada antes de devolver a vaga…",
-                )
-            }
-            pending.forEach { neverStarted ->
-                requestStore.remove(neverStarted.id)
-                attemptStore.clear(neverStarted.id)
-            }
-            bindingStore.remove(booking.id)
-            return BlaBlaManualSeatCancellationResult(
-                shouldSync = false,
-                message = "Passageiro manual cancelado. Vaga interna liberada • a redução externa ainda não tinha começado e foi cancelada com segurança.",
-            )
-        }
-
-        bindingStore.remove(booking.id)
+        BlaBlaManualSeatBookingBindingStore(context).remove(booking.id)
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_WRITE_SKIPPED",
+            context.packageName,
+            "reason=independent_channel_inventory action=cancel source=${booking.source.name} booking=${booking.id}",
+        )
         return BlaBlaManualSeatCancellationResult(
             shouldSync = false,
-            message = "Passageiro manual cancelado. Vaga interna liberada • nenhuma vaga externa foi adicionada porque não existe redução externa confirmada.",
+            message = "Passageiro manual cancelado. A vaga da viagem foi liberada sem alterar a cota BlaBlaCar.",
         )
     }
 
