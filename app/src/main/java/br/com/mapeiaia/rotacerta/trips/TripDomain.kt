@@ -319,21 +319,30 @@ fun operationalSeatSummary(
 
     var confirmedPassengers = 0
     var blockedSeats = 0
-    var rotaCertaConsumed = 0
 
     groups.values.forEach { group ->
         val confirmed = maxOf(group.externalConfirmed, group.localConfirmed).coerceAtLeast(0)
-        val localDemand = maxOf(group.localConfirmed, group.localBlocked).coerceAtLeast(0)
-        val extraLocalBeyondExternal = (localDemand - group.externalConfirmed).coerceAtLeast(0)
-
         confirmedPassengers += confirmed
         blockedSeats += (group.localBlocked - maxOf(group.externalConfirmed, group.localConfirmed)).coerceAtLeast(0)
-        rotaCertaConsumed += if (group.externalConfirmed > 0) extraLocalBeyondExternal else localDemand
     }
 
-    val rotaCertaAvailable = (rotaCertaAllocated - rotaCertaConsumed).coerceAtLeast(0)
-    val totalAvailable = (blablaAvailable + rotaCertaAvailable).coerceAtMost(999)
-    val overbooking = (rotaCertaConsumed - rotaCertaAllocated).coerceAtLeast(0)
+    // Reconstruct the simultaneous ceiling from the current BlaBlaCar free-seat
+    // value, the external passengers already represented by that value and the
+    // Rota Certa allocation. Then use the existing segment engine as the canonical
+    // availability source. This preserves seat reuse after an intermediate drop-off.
+    val derivedCapacity = operationalInventoryCapacity(trip, bookings)
+    val derivedTrip = trip.copy(capacity = derivedCapacity)
+    val canonicalLoads = SeatAvailabilityEngine.segmentLoads(derivedTrip, bookings, nowMillis)
+    val totalAvailable = canonicalLoads.minOfOrNull(SegmentLoad::availableSeats)
+        ?: derivedCapacity
+    val overbooking = canonicalLoads.maxOfOrNull(SegmentLoad::overbookingSeats) ?: 0
+
+    // Channel attribution after local occupancy is informational only. The booking
+    // guard uses the combined per-segment inventory above, so local reservations may
+    // consume any seat that is genuinely free in the combined inventory.
+    val combinedBeforeLocal = (blablaAvailable + rotaCertaAllocated).coerceAtMost(999)
+    val localConsumptionAtBottleneck = (combinedBeforeLocal - totalAvailable).coerceAtLeast(0)
+    val rotaCertaAvailable = (rotaCertaAllocated - localConsumptionAtBottleneck).coerceAtLeast(0)
 
     return TripOperationalSeatSummary(
         operationalLimitConfigured = operationalLimitConfigured,
@@ -426,13 +435,7 @@ object SeatAvailabilityEngine {
                 overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
-        val physicalAvailable = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
-        val operational = operationalSeatSummary(trip, bookings, nowMillis)
-        val available = if (operational.operationalLimitConfigured) {
-            minOf(physicalAvailable, operational.availableSeats)
-        } else {
-            physicalAvailable
-        }
+        val available = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
         return SeatAvailability(
             boardingStop = orderedStops[boardingIndex],
             dropoffStop = orderedStops[dropoffIndex],
@@ -471,11 +474,9 @@ object SeatAvailabilityEngine {
         bookings: List<Booking>,
         nowMillis: Long = System.currentTimeMillis(),
     ): Int {
-        val physical = segmentLoads(trip, bookings, nowMillis)
+        return segmentLoads(trip, bookings, nowMillis)
             .minOfOrNull(SegmentLoad::availableSeats)
             ?: trip.capacity
-        val operational = operationalSeatSummary(trip, bookings, nowMillis)
-        return if (operational.operationalLimitConfigured) minOf(physical, operational.availableSeats) else physical
     }
 
     fun availableSeatRange(
@@ -483,13 +484,7 @@ object SeatAvailabilityEngine {
         bookings: List<Booking>,
         nowMillis: Long = System.currentTimeMillis(),
     ): SeatAvailabilityRange {
-        val physical = segmentLoads(trip, bookings, nowMillis).map(SegmentLoad::availableSeats)
-        val operational = operationalSeatSummary(trip, bookings, nowMillis)
-        val available = if (operational.operationalLimitConfigured) {
-            physical.map { minOf(it, operational.availableSeats) }
-        } else {
-            physical
-        }
+        val available = segmentLoads(trip, bookings, nowMillis).map(SegmentLoad::availableSeats)
         return SeatAvailabilityRange(
             minimum = available.minOrNull() ?: trip.capacity,
             maximum = available.maxOrNull() ?: trip.capacity,
