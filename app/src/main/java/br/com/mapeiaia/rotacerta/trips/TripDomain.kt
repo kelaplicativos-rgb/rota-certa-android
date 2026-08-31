@@ -78,8 +78,6 @@ data class Trip(
     val departureAtMillis: Long,
     /** Physical simultaneous passenger capacity of the vehicle. */
     val capacity: Int = 3,
-    /** Operational Rota Certa allocation for this trip; never a physical capacity. */
-    val rotaCertaSeatAllocation: Int? = null,
     val status: TripStatus = TripStatus.DRAFT,
     val stops: List<TripStop>,
     val publicToken: String = UUID.randomUUID().toString().replace("-", ""),
@@ -103,6 +101,8 @@ data class Trip(
     val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
+    /** Operational Rota Certa allocation for this trip; never a physical capacity. */
+    val rotaCertaSeatAllocation: Int? = null,
 )
 
 @Serializable
