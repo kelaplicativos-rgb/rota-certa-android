@@ -48,8 +48,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val monthFormatter = DateTimeFormatter.ofPattern("MMMM 'de' yyyy", Locale.forLanguageTag("pt-BR"))
-
 @Composable
 fun RotaCertaDateSelectionField(
     selection: RotaCertaDateSelection,
@@ -57,6 +55,7 @@ fun RotaCertaDateSelectionField(
     modifier: Modifier = Modifier,
     label: String = "Datas da consulta",
     emptySummary: String = "Nenhuma data selecionada • começa hoje",
+    locale: Locale = Locale.forLanguageTag("pt-BR"),
 ) {
     Card(
         onClick = onClick,
@@ -83,7 +82,7 @@ fun RotaCertaDateSelectionField(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    rotaCertaDateSelectionSummary(selection, emptySummary = emptySummary),
+                    rotaCertaDateSelectionSummary(selection, emptySummary = emptySummary, locale = locale),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -102,16 +101,21 @@ fun RotaCertaDatePickerDialog(
     selection: RotaCertaDateSelection,
     onDismiss: () -> Unit,
     onConfirm: (RotaCertaDateSelection) -> Unit,
-    minDate: LocalDate = LocalDate.now(),
+    minDate: LocalDate? = LocalDate.now(),
     allowedModes: Set<RotaCertaDateSelectionMode> = RotaCertaDateSelectionMode.entries.toSet(),
     allowEmptySelection: Boolean = true,
     emptyConfirmLabel: String = "Continuar a partir de hoje",
     title: String = "Datas da consulta",
     description: String = "Escolha uma, várias datas, um período ou o mês inteiro. Dias passados ficam indisponíveis.",
+    locale: Locale = Locale.forLanguageTag("pt-BR"),
 ) {
+    val monthFormatter = remember(locale) { DateTimeFormatter.ofPattern("MMMM 'de' yyyy", locale) }
     var draft by remember(selection) { mutableStateOf(selection.copy(dates = selection.normalizedDates)) }
     var visibleMonth by remember(selection, minDate) {
-        mutableStateOf(draft.normalizedDates.firstOrNull()?.let(YearMonth::from) ?: YearMonth.from(minDate))
+        mutableStateOf(
+            draft.normalizedDates.firstOrNull()?.let(YearMonth::from)
+                ?: YearMonth.from(minDate ?: LocalDate.now()),
+        )
     }
 
     Dialog(
@@ -199,7 +203,7 @@ fun RotaCertaDatePickerDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         TextButton(
-                            enabled = visibleMonth > YearMonth.from(minDate),
+                            enabled = minDate == null || visibleMonth > YearMonth.from(minDate),
                             onClick = { visibleMonth = visibleMonth.minusMonths(1) },
                         ) { Text("‹") }
                         Text(
@@ -245,7 +249,7 @@ fun RotaCertaDatePickerDialog(
                     }
 
                     Text(
-                        rotaCertaDateSelectionSummary(draft),
+                        rotaCertaDateSelectionSummary(draft, locale = locale),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -257,7 +261,7 @@ fun RotaCertaDatePickerDialog(
 @Composable
 private fun CalendarMonthGrid(
     month: YearMonth,
-    minDate: LocalDate,
+    minDate: LocalDate?,
     selectedDates: Set<LocalDate>,
     onDateClick: (LocalDate) -> Unit,
 ) {
@@ -282,7 +286,7 @@ private fun CalendarMonthGrid(
                 if (date == null) {
                     Box(Modifier.weight(1f).aspectRatio(1f))
                 } else {
-                    val enabled = !date.isBefore(minDate)
+                    val enabled = minDate == null || !date.isBefore(minDate)
                     val selected = date in selectedDates
                     val background = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
                     val foreground = when {
