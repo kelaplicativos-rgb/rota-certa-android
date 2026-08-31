@@ -138,12 +138,41 @@ internal fun createPublicAgendaSyncCoordinator0373(
     },
     syncAction = { allocation ->
         withContext(Dispatchers.IO) {
-            PublicAgendaAutoSync0300.sync(
-                context = context,
-                store = store,
-                configuredVehicleCapacity = 0,
-                configuredRotaCertaSeatAllocation = allocation,
+            val traceId = AgendaTrace.currentTraceId()
+            val operation = AgendaTrace.operationStart(
+                context,
+                "CAPACITY_PUBLIC_SYNC",
+                "TripApp.publicAgendaCoordinator",
+                traceId,
             )
+            try {
+                PublicAgendaAutoSync0300.sync(
+                    context = context,
+                    store = store,
+                    configuredVehicleCapacity = 0,
+                    configuredRotaCertaSeatAllocation = allocation,
+                ).also { result ->
+                    AgendaTrace.operationEnd(
+                        context,
+                        operation,
+                        result = if (result.failures == 0) "completed" else "partial",
+                        processedCount = result.localPublished + result.externalPublished,
+                    )
+                    AgendaTrace.event(
+                        context,
+                        "CAPACITY_PUBLIC_AGENDA_SYNC_RESULT",
+                        "source=single_flight completed=${result.failures == 0} published=${result.localPublished + result.externalPublished} claims=${result.seatClaimsSynced} remoteBlaBlaMutationConfirmed=false",
+                        traceId,
+                        operation.operationId,
+                    )
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                AgendaTrace.operationCancelled(context, operation)
+                throw cancelled
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(context, operation, error)
+                throw error
+            }
         }
     },
     eventSink = { event, details ->
