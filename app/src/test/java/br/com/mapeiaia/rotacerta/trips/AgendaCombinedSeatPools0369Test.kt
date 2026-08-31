@@ -211,23 +211,22 @@ class AgendaCombinedSeatPools0369Test {
     }
 
     @Test
-    fun architectureUsesSeatEditorAsFreeSeatEvidenceAndKeepsPhysicalCapacitySeparate() {
+    fun architectureUsesSeatEditorAsRemainingSeatEvidenceAndRemovesLegacyPhysicalCapacity() {
         val agenda = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         val domain = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt").readText()
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
         assertTrue(agenda.contains("blablaAvailable"))
         assertTrue(agenda.contains("rotaCertaAvailable"))
-        assertTrue(agenda.contains("totalAvailable"))
-        assertTrue(agenda.contains("capacity = physicalCapacity"))
-        assertTrue(agenda.contains("capacitySource=channel_free_seats_plus_physical_separate"))
-        assertTrue(domain.contains("blablaAvailableSeats"))
-        assertTrue(domain.contains("rotaCertaAvailableSeats"))
+        assertTrue(agenda.contains("operationalInventory"))
+        assertTrue(agenda.contains("capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa"))
+        assertTrue(domain.contains("operationalInventoryCapacity"))
+        assertTrue(domain.contains("bookingOccupancyIdentityKey"))
         assertTrue(domain.contains("EXTERNAL_OCCUPANCY"))
-        assertTrue(ui.contains("Capacidade de passageiros"))
+        assertFalse(ui.contains("Capacidade de passageiros"))
+        assertFalse(ui.contains("Capacidade do veículo"))
         assertTrue(ui.contains("Vagas disponibilizadas no Rota Certa"))
         assertTrue(ui.contains("Total disponível"))
-        assertFalse(ui.contains("Capacidade do veículo"))
     }
 
     @Test
