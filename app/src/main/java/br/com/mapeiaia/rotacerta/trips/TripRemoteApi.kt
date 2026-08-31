@@ -332,6 +332,41 @@ data class DriverBookingUpsertResponse(
 )
 
 @Serializable
+data class DriverCapacitySnapshotClaim(
+    val id: String,
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String = BookingStatus.CONFIRMED.name,
+    val source: BookingSource = BookingSource.OTHER,
+    val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+    val holdExpiresAtMillis: Long? = null,
+)
+
+@Serializable
+data class DriverCapacitySnapshotRequest(
+    val trip: Trip,
+    val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
+    val claimNamespace: String,
+    val snapshotRevision: String,
+    val sourceComplete: Boolean = true,
+)
+
+@Serializable
+data class DriverCapacitySnapshotResponse(
+    val tripId: String,
+    val publicToken: String,
+    val availableSeatsMinimum: Int = 0,
+    val availableSeatsMaximum: Int = 0,
+    val occupancyRevision: Long = 0L,
+    val changed: Boolean = false,
+)
+
+@Serializable
 data class DriverOperationalStatusRequest(
     val selection: String,
 )
@@ -449,6 +484,42 @@ class TripRemoteApi(
         method = "PUT",
         path = "/v1/driver/trips/${trip.remoteId ?: trip.id}",
         body = json.encodeToString(trip),
+        requireDriverToken = true,
+    )
+
+    suspend fun reconcileCapacitySnapshot(
+        remoteTripId: String,
+        trip: Trip,
+        claims: List<Booking>,
+        claimNamespace: String,
+        snapshotRevision: String,
+    ): DriverCapacitySnapshotResponse = request(
+        method = "PUT",
+        path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
+        body = json.encodeToString(
+            DriverCapacitySnapshotRequest(
+                trip = trip.copy(remoteId = remoteTripId, capacityReliable = true),
+                claims = claims.map { booking ->
+                    DriverCapacitySnapshotClaim(
+                        id = booking.id,
+                        passengerName = booking.passengerName,
+                        passengerContact = booking.passengerContact,
+                        boardingStopId = booking.boardingStopId,
+                        dropoffStopId = booking.dropoffStopId,
+                        seats = booking.seats,
+                        status = booking.status.name,
+                        source = booking.source,
+                        capacityClaimType = booking.capacityClaimType,
+                        sourceReference = booking.sourceReference,
+                        occupancyGroupId = booking.occupancyGroupId,
+                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                    )
+                },
+                claimNamespace = claimNamespace,
+                snapshotRevision = snapshotRevision,
+                sourceComplete = true,
+            ),
+        ),
         requireDriverToken = true,
     )
 

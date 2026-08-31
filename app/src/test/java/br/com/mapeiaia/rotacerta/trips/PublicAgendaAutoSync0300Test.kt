@@ -226,10 +226,10 @@ class PublicAgendaAutoSync0300Test {
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
         ).readText()
 
-        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY"))
+        assertTrue(source.contains("EXTERNAL_CAPACITY_SNAPSHOT"))
         assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED"))
-        assertTrue(source.contains("failureStage = \"update_after_publish_failure\""))
-        assertTrue(source.contains("failureStage = \"capacity_claims\""))
+        assertTrue(source.contains("PUBLIC_CAPACITY_FAIL_CLOSED"))
+        assertTrue(source.contains("PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED"))
         assertTrue(source.contains("reason=\${error.javaClass.simpleName}"))
         assertTrue(source.contains("tripKey=\$diagnosticTripKey"))
         assertTrue(source.contains("failures++"))
@@ -316,9 +316,9 @@ class PublicAgendaAutoSync0300Test {
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
         ).readText()
         assertTrue(source.contains("catch (error: CancellationException)"))
-        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SYNC_CANCELLED"))
+        assertTrue(source.contains("AgendaTrace.operationCancelled"))
         assertTrue(source.contains("throw error"))
-        assertTrue(source.contains("PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED"))
+        assertTrue(source.contains("shapePreserved = true"))
     }
 
     @Test

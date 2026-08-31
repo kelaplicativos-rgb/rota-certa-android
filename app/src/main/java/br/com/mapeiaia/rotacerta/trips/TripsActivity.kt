@@ -193,6 +193,7 @@ private fun TripApp(
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var publicAgendaSyncRevision by remember { mutableStateOf(0) }
+    var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var refreshAllRunning by remember { mutableStateOf(false) }
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
@@ -257,18 +258,52 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
+        val beforeTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
         val (changedTrips, _) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             store.reconcileOperationalInventory(
                 rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
             )
         }
         if (changedTrips > 0) {
-            trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+            val reconciledTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+            trips = reconciledTrips
+            val beforeById = beforeTrips.associateBy(Trip::id)
+            val changedLocalIds = reconciledTrips
+                .filter(Trip::isCanonicalLocalPublishSource)
+                .filter { trip ->
+                    val before = beforeById[trip.id]
+                    before == null || before.capacity != trip.capacity || before.rotaCertaSeatAllocation != trip.rotaCertaSeatAllocation
+                }
+                .map(Trip::id)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                changedLocalIds.forEach { tripId ->
+                    runCatching {
+                        PublicAgendaAutoSync0300.syncLocalTripIncremental(
+                            context = activity,
+                            store = store,
+                            localTripId = tripId,
+                            configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        )
+                    }
+                }
+                BlaBlaCollectorStateStore(activity).lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+                    .filterNot(BlaBlaCollectorTrip::identity_conflict)
+                    .forEach { source ->
+                        runCatching {
+                            PublicAgendaAutoSync0300.syncExternalTripIncremental(
+                                context = activity,
+                                store = store,
+                                source = source,
+                                configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                            )
+                        }
+                    }
+            }
             publicAgendaSyncRevision++
             UnifiedDebugEventStore.record(
                 "OPERATIONAL_INVENTORY_RECONCILED",
                 activity.packageName,
-                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips legacyVehicleCapacityIgnored=true",
+                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips incrementalLocal=${changedLocalIds.size} incrementalExternal=true legacyVehicleCapacityIgnored=true",
             )
         }
         AgendaTrace.event(
@@ -430,6 +465,42 @@ private fun TripApp(
         } catch (error: Throwable) {
             AgendaTrace.operationError(activity, timelineStartupOperation, error)
             throw error
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
+        if (!settingsLoaded) return@LaunchedEffect
+        val current = trips
+            .filter(Trip::isCanonicalLocalPublishSource)
+            .associate { trip ->
+                trip.id to PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
+                    trip = trip,
+                    bookings = bookings.filter { it.tripId == trip.id },
+                    rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                )
+            }
+        val previous = localCapacityIncrementalBaseline
+        localCapacityIncrementalBaseline = current
+        if (previous.isNotEmpty()) {
+            val changedIds = current.entries
+                .filter { (tripId, revision) -> previous[tripId] != revision }
+                .map { it.key }
+            changedIds.forEach { tripId ->
+                runCatching {
+                    PublicAgendaAutoSync0300.syncLocalTripIncremental(
+                        context = activity,
+                        store = store,
+                        localTripId = tripId,
+                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    )
+                }.onFailure { error ->
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
+                        activity.packageName,
+                        "tripKey=${seatSyncDiagnosticKey(tripId)} reason=${error.javaClass.simpleName} fullSyncRequested=false failClosed=true",
+                    )
+                }
+            }
         }
     }
 

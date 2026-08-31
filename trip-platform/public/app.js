@@ -231,6 +231,23 @@ function isFullTrip(item) {
     (range.minimum === 0 && range.maximum === 0);
 }
 
+function exactAvailabilityLabel(available, suffix = "") {
+  const count = Math.max(0, Number(available || 0));
+  if (count === 0) return "🪑 LOTADO";
+  return count === 1
+    ? `🪑 1 vaga disponível${suffix}`
+    : `🪑 ${count} vagas disponíveis${suffix}`;
+}
+
+function publicAvailabilityLabel(item, available = null, filtered = false) {
+  if (item?.capacityReliable !== true) return "Disponibilidade sendo atualizada";
+  if (filtered && Number.isFinite(Number(available))) return exactAvailabilityLabel(available, " neste trecho");
+  const range = seatRange(item);
+  if (range.minimum === 0 && range.maximum === 0) return "🪑 LOTADO";
+  if (range.minimum === range.maximum) return exactAvailabilityLabel(range.maximum);
+  return `🪑 ${range.minimum}–${range.maximum} vagas disponíveis por trecho`;
+}
+
 function fullFareFor(item) {
   const stops = orderedStops(item);
   return stops.slice(0, -1).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
@@ -846,7 +863,7 @@ function openTripSeatPicker(auto = false, intentOverride = null, capacityChanged
 }
 
 function openWhatsappSeatPicker(source, fromIndex = 0, toIndex = null, returnView = "searchResults") {
-  if (!source) return;
+  if (!source || source.capacityReliable !== true) return;
   const stops = orderedStops(source);
   const resolvedTo = Number.isInteger(toIndex) ? toIndex : stops.length - 1;
   if (fromIndex < 0 || resolvedTo <= fromIndex || resolvedTo >= stops.length) return;
@@ -854,6 +871,7 @@ function openWhatsappSeatPicker(source, fromIndex = 0, toIndex = null, returnVie
     showQuickBookingNotice("Trecho indisponível", "Esse trecho ainda não foi confirmado pela fonte da viagem.", true);
     return;
   }
+  if (availableForTripSegment(source, fromIndex, resolvedTo) < 1) return;
   trip = source;
   seatPickerMode = "booking";
   seatPickerChannel = "whatsapp";
@@ -1463,13 +1481,7 @@ function renderAgendaCards(entries, container, filtered = false) {
     time.textContent = `🕘 ${formatTime(item.departureAtMillis)}`;
     const seats = document.createElement("span");
     seats.className = "bigPill";
-    if (item.capacityReliable !== true) {
-      seats.textContent = "🪑 Vagas em confirmação";
-    } else if (filtered) {
-      seats.textContent = segmentAvailable === 0 ? "🪑 Lotado" : `🪑 ${segmentAvailable} vaga(s) neste trecho`;
-    } else {
-      seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
-    }
+    seats.textContent = publicAvailabilityLabel(item, segmentAvailable, filtered);
     meta.append(time, seats);
     if (item.capacityReliable === true) {
       const passengers = document.createElement("span");
@@ -1524,35 +1536,35 @@ function renderAgendaCards(entries, container, filtered = false) {
     if (soldOut || full) {
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
-      fullWord.textContent = "Lotado";
+      fullWord.textContent = "LOTADO";
       bottom.appendChild(fullWord);
     }
 
-    const choices = document.createElement("div");
-    choices.className = "reservationChoices";
+    if (actionsEnabled) {
+      const choices = document.createElement("div");
+      choices.className = "reservationChoices";
 
-    const whatsapp = document.createElement("button");
-    whatsapp.type = "button";
-    whatsapp.className = "bookingChoice bookingWhatsapp";
-    whatsapp.textContent = actionsEnabled ? "Reservar pelo WhatsApp" : (soldOut || full ? "WhatsApp — Lotado" : "WhatsApp — vagas em confirmação");
-    whatsapp.disabled = !actionsEnabled;
-    whatsapp.addEventListener("click", () => openWhatsappSeatPicker(item, fromIndex, toIndex, filtered ? "searchResults" : "agenda"));
+      const whatsapp = document.createElement("button");
+      whatsapp.type = "button";
+      whatsapp.className = "bookingChoice bookingWhatsapp";
+      whatsapp.textContent = "Reservar pelo WhatsApp";
+      whatsapp.addEventListener("click", () => openWhatsappSeatPicker(item, fromIndex, toIndex, filtered ? "searchResults" : "agenda"));
 
-    const blablaUrl = safeBlaBlaPublicUrl(item);
-    const blabla = document.createElement("a");
-    blabla.className = "bookingChoice bookingBlabla";
-    blabla.textContent = blablaUrl && actionsEnabled ? "Reservar na BlaBlaCar" : (blablaUrl ? "BlaBlaCar — indisponível" : "BlaBlaCar — link indisponível");
-    if (blablaUrl && actionsEnabled) {
-      blabla.href = blablaUrl;
-      blabla.target = "_blank";
-      blabla.rel = "noopener noreferrer";
-      blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED", { fromIndex, toIndex }));
-    } else {
-      blabla.setAttribute("aria-disabled", "true");
+      const blablaUrl = safeBlaBlaPublicUrl(item);
+      const blabla = document.createElement("a");
+      blabla.className = "bookingChoice bookingBlabla";
+      blabla.textContent = "Reservar na BlaBlaCar";
+      if (blablaUrl) {
+        blabla.href = blablaUrl;
+        blabla.target = "_blank";
+        blabla.rel = "noopener noreferrer";
+        blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED", { fromIndex, toIndex }));
+        choices.append(whatsapp, blabla);
+      } else {
+        choices.appendChild(whatsapp);
+      }
+      card.appendChild(choices);
     }
-
-    choices.append(whatsapp, blabla);
-    card.appendChild(choices);
     container.appendChild(card);
   });
 }
@@ -1590,8 +1602,9 @@ function renderTrip() {
   const { from, to } = routeLabel(trip);
   const fare = fullFareFor(trip);
 
-  $("status").textContent = full ? "Cheio" : "Disponível";
-  $("status").classList.toggle("statusFull", full);
+  const reliable = trip.capacityReliable === true;
+  $("status").textContent = reliable ? (full ? "LOTADO" : "Disponível") : "Atualizando";
+  $("status").classList.toggle("statusFull", reliable && full);
   $("tripDate").textContent = formatDateOnly(trip.departureAtMillis);
   $("tripRouteTitle").innerHTML = "";
   const fromNode = document.createElement("div");
@@ -1603,11 +1616,7 @@ function renderTrip() {
   toNode.textContent = to;
   $("tripRouteTitle").append(fromNode, arrow, toNode);
 
-  $("tripAvailability").textContent = full
-    ? "🪑 Cheio • 0 vagas"
-    : (range.minimum === range.maximum
-      ? `🪑 ${range.maximum} vaga(s) disponível(is)`
-      : `🪑 ${range.minimum}–${range.maximum} vagas por trecho`);
+  $("tripAvailability").textContent = publicAvailabilityLabel(trip);
 
   $("tripPrice").textContent = fare > 0 ? `A partir de ${formatMoney(fare)} no trajeto completo` : "";
 
@@ -1632,11 +1641,9 @@ function renderTrip() {
     : 0;
   const canUseExternalActions = trip.capacityReliable === true && actionAvailable > 0;
 
-  show("tripSticky", true);
+  show("tripSticky", canUseExternalActions);
   $("startBooking").disabled = !canUseExternalActions;
-  $("startBooking").textContent = canUseExternalActions
-    ? "Reservar pelo WhatsApp"
-    : (actionAvailable === 0 && trip.capacityReliable === true ? "WhatsApp — Lotado" : "WhatsApp — vagas em confirmação");
+  $("startBooking").textContent = "Reservar pelo WhatsApp";
 
   const blablaUrl = safeBlaBlaPublicUrl(trip);
   const blabla = $("bookBlaBla");
@@ -1939,7 +1946,7 @@ function defaultBookingIntent() {
 }
 
 function startQuickReservation(auto = false) {
-  if (!trip || isFullTrip(trip) || trip.canReserve === false || bookingRequestInFlight) return;
+  if (!trip || trip.capacityReliable !== true || isFullTrip(trip) || trip.canReserve === false || bookingRequestInFlight) return;
   return openTripSeatPicker(auto);
 }
 
@@ -1947,24 +1954,22 @@ function refreshTripAvailabilitySummary() {
   if (!trip) return;
   const full = isFullTrip(trip);
   const range = seatRange(trip);
-  $("status").textContent = full ? "Cheio" : "Disponível";
-  $("status").classList.toggle("statusFull", full);
-  $("tripAvailability").textContent = full
-    ? "🪑 Cheio • 0 vagas"
-    : (range.minimum === range.maximum
-      ? `🪑 ${range.maximum} vaga(s) disponível(is)`
-      : `🪑 ${range.minimum}–${range.maximum} vagas por trecho`);
+  const reliable = trip.capacityReliable === true;
+  $("status").textContent = reliable ? (full ? "LOTADO" : "Disponível") : "Atualizando";
+  $("status").classList.toggle("statusFull", reliable && full);
+  $("tripAvailability").textContent = publicAvailabilityLabel(trip);
   if (confirmedBooking) {
     show("tripSticky", false);
   } else {
-    show("tripSticky", !full && trip.canReserve !== false);
-    $("startBooking").disabled = full || trip.canReserve === false;
-    $("adjustBooking").disabled = full || trip.canReserve === false;
+    const canReserveNow = reliable && !full && trip.canReserve !== false;
+    show("tripSticky", canReserveNow);
+    $("startBooking").disabled = !canReserveNow;
+    $("adjustBooking").disabled = !canReserveNow;
   }
 }
 
 function openBookingFlow() {
-  if (!trip || isFullTrip(trip) || trip.canReserve === false) return;
+  if (!trip || trip.capacityReliable !== true || isFullTrip(trip) || trip.canReserve === false) return;
   editingExistingBooking = false;
   $("confirmReserve").textContent = "Fazer pedido de reserva";
   if (passengerSessionContact) {

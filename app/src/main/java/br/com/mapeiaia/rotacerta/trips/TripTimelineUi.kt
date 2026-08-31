@@ -52,6 +52,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Composable
 fun TripTimelineScreen(
@@ -77,6 +79,8 @@ fun TripTimelineScreen(
     reservationPendingOnly: Boolean = false,
 ) {
     val context = LocalContext.current
+    val incrementalPublishScope = rememberCoroutineScope()
+    val incrementalPublishMutex = remember { Mutex() }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
     val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
@@ -462,7 +466,63 @@ fun TripTimelineScreen(
             trips = trips,
             stateStore = collectorStore,
             currentResponse = collectorResponse,
-            onResult = { collectorResponse = it },
+            onResult = { nextResponse ->
+                val previousByIdentity = collectorResponse?.trips.orEmpty()
+                    .mapNotNull { previous ->
+                        canonicalExternalTripIdentityKey(
+                            previous.profile_uuid,
+                            previous.trip_id,
+                            previous.trip_href,
+                        )?.let { key ->
+                            key to PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                previous,
+                                appSettings.rotaCertaSeatAllocation,
+                            )
+                        }
+                    }
+                    .toMap()
+                collectorResponse = nextResponse
+                if (settingsLoaded) {
+                    val changed = nextResponse.trips
+                        .asSequence()
+                        .filterNot(BlaBlaCollectorTrip::identity_conflict)
+                        .filter { current ->
+                            val key = canonicalExternalTripIdentityKey(
+                                current.profile_uuid,
+                                current.trip_id,
+                                current.trip_href,
+                            ) ?: return@filter false
+                            val revision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                current,
+                                appSettings.rotaCertaSeatAllocation,
+                            )
+                            previousByIdentity[key] != revision
+                        }
+                        .toList()
+                    if (changed.isNotEmpty()) {
+                        incrementalPublishScope.launch {
+                            incrementalPublishMutex.withLock {
+                                changed.forEach { source ->
+                                    runCatching {
+                                        PublicAgendaAutoSync0300.syncExternalTripIncremental(
+                                            context = context,
+                                            store = store,
+                                            source = source,
+                                            configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                                        )
+                                    }.onFailure { error ->
+                                        UnifiedDebugEventStore.record(
+                                            "PUBLIC_AGENDA_INCREMENTAL_FAILED",
+                                            context.packageName,
+                                            "tripKey=${seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty())} reason=${error.javaClass.simpleName} fullSyncRequested=false failClosed=true",
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             onChanged = onChanged,
             autoSyncToken = autoSyncToken,
             autoSyncProfileUuid = if (forceAllSyncActive) null else autoSyncProfileUuid,
