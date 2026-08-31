@@ -60,16 +60,17 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun operationalSummaryThreePlusFourMinusFiveEqualsTwo() {
-        val trip = trip(capacity = 7, publishedSeats = 3, rotaCertaSeatAllocation = 4)
+    fun blablaFreeSeatsAreNotSubtractedByAlreadyConfirmedBlaBlaPassengers() {
+        val trip = trip(capacity = 7, publishedSeats = 2, rotaCertaSeatAllocation = 4)
         val claims = listOf(
             booking("bb", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY, "bb"),
-            booking("rc", trip, 2, BookingSource.ROTA_CERTA, CapacityClaimType.PASSENGER, "rc"),
         )
         val summary = operationalSeatSummary(trip, claims)
-        assertEquals(7, summary.totalConsideredSeats)
-        assertEquals(5, summary.confirmedPassengerSeats)
-        assertEquals(2, summary.availableSeats)
+        assertEquals(2, summary.blablaAvailableSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(6, summary.totalAvailableSeats)
+        assertEquals(3, summary.confirmedPassengerSeats)
+        assertEquals(6, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
     }
 
@@ -82,7 +83,8 @@ class BlaBlaPublishedCapacity0366Test {
         )
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(7, summary.availableSeats)
     }
 
     @Test
@@ -120,12 +122,12 @@ class BlaBlaPublishedCapacity0366Test {
     fun publicAgendaSourceNeverAddsChannelNumbersIntoPhysicalCapacity() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertFalse(source.contains("combinedAgendaAvailableSeats"))
-        assertFalse(source.contains("blablaAvailableSeats"))
         assertFalse(source.contains("rotaCertaSeatPool"))
         assertTrue(source.contains("capacity = physicalCapacity"))
-        assertTrue(source.contains("rotaCertaSeatAllocation"))
-        assertTrue(source.contains("totalConsidered"))
-        assertTrue(source.contains("capacitySource=physical_plus_operational_separated"))
+        assertTrue(source.contains("blablaAvailable"))
+        assertTrue(source.contains("rotaCertaAvailable"))
+        assertTrue(source.contains("totalAvailable"))
+        assertTrue(source.contains("capacitySource=channel_free_seats_plus_physical_separate"))
     }
 
     private fun entry(
