@@ -167,7 +167,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun publicProjectionKeepsPublishedAllocationAndExternalPassengersSeparate() {
+    fun publicProjectionKeepsBlaBlaFreeSeatsAndExternalPassengersSeparate() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile",
             date = "2030-09-13",
@@ -196,9 +196,11 @@ class PublicAgendaAutoSync0300Test {
         assertEquals(3, external.capacityClaims.sumOf(Booking::seats))
         assertTrue(external.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
         val summary = operationalSeatSummary(external.trip, external.capacityClaims)
-        assertEquals(7, summary.totalConsideredSeats)
+        assertEquals(3, summary.blablaAvailableSeats)
+        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(7, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(4, summary.availableSeats)
+        assertEquals(7, summary.availableSeats)
     }
 
     @Test
