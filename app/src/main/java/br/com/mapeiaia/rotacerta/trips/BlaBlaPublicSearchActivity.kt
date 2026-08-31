@@ -303,6 +303,24 @@ class BlaBlaPublicSearchActivity : Activity() {
                 taskCards.isNotEmpty() -> "PARTIAL"
                 else -> "PENDING_UNKNOWN"
             }
+            val diagnostic = when (coverage) {
+                "FAILED" -> Triple(
+                    "QUERY_VALIDATION",
+                    "RouteOrDateMismatch",
+                    "A página final não confirmou exatamente rota e data.",
+                )
+                "PARTIAL" -> Triple(
+                    "PAGE_INCOMPLETE",
+                    "IncompletePublicResultSet",
+                    "Cards foram obtidos, mas a página não forneceu evidência terminal de cobertura completa.",
+                )
+                "PENDING_UNKNOWN" -> Triple(
+                    "EVIDENCE_INCONCLUSIVE",
+                    "InconclusivePublicSearch",
+                    "A consulta terminou sem evidência suficiente para afirmar presença ou ausência de viagens.",
+                )
+                else -> null
+            }
             finalizeQuery(
                 task = task,
                 coverageStatus = coverage,
@@ -310,9 +328,9 @@ class BlaBlaPublicSearchActivity : Activity() {
                 zeroResults = zeroResults,
                 terminal = terminal || zeroResults,
                 bodyText = evidence.bodyText,
-                errorStage = if (coverage == "FAILED") "QUERY_VALIDATION" else null,
-                exceptionClass = if (coverage == "FAILED") "RouteOrDateMismatch" else null,
-                exceptionMessage = if (coverage == "FAILED") "A página final não confirmou exatamente rota e data." else null,
+                errorStage = diagnostic?.first,
+                exceptionClass = diagnostic?.second,
+                exceptionMessage = diagnostic?.third,
             )
         }
     }
