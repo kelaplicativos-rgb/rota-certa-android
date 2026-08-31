@@ -147,16 +147,10 @@ class TripStore(context: Context) {
         val prepared = distinctIncoming.map { booking ->
             prepareBookingForPersistence(booking, existingById[booking.id])
         }
-        val strongPassengerIds = passengerIdentityStore.ensureStrongLocalBookingProfilesBatch(prepared)
+        val passengerIds = passengerIdentityStore.ensureLocalBookingProfilesBatch(prepared)
         val now = System.currentTimeMillis()
         val normalized = prepared.map { invariantState ->
-            val passengerId = strongPassengerIds[invariantState.id]
-                ?: if (invariantState.passengerId.isBlank()) {
-                    passengerIdentityStore.ensureLocalBookingProfile(invariantState)?.id
-                } else {
-                    invariantState.passengerId
-                }
-                ?: invariantState.passengerId
+            val passengerId = passengerIds[invariantState.id] ?: invariantState.passengerId
             invariantState.copy(
                 passengerId = passengerId,
                 updatedAtMillis = if (preserveSourceUpdatedAt) {
