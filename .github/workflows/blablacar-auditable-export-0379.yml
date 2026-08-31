@@ -1,0 +1,121 @@
+name: BlaBlaCar auditable collection 0.1.379
+
+on:
+  pull_request:
+    branches:
+      - agent/tester-exclusive-link-0.1.378
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blablacar-auditable-0379-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'agent/blablacar-auditable-export-0.1.379'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOOGLE_MAPS_API_KEY: auditable_collection_ci_dummy_key
+
+    steps:
+      - name: Checkout triggering direct source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record exact source and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | tee source_head.txt
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
+          sha256sum "$FAROL" | tee farol-before.sha256
+          grep -Fq 'versionCode = 5672' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.379"' app/build.gradle.kts
+
+      - name: Prove feature source boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          FEATURE_FILES=(
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt
+          )
+          grep -Fq 'BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS' "${FEATURE_FILES[1]}"
+          grep -Fq 'BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL' "${FEATURE_FILES[1]}"
+          ! grep -Fq 'executeRemoteWrite(' "${FEATURE_FILES[1]}"
+          grep -Fq 'operationalSeatSummary' "${FEATURE_FILES[3]}"
+          grep -Fq 'SeatAvailabilityEngine.segmentLoads' "${FEATURE_FILES[3]}"
+          grep -Fq 'FileProvider.getUriForFile' "${FEATURE_FILES[3]}"
+          grep -Fq 'Intent.FLAG_GRANT_READ_URI_PERMISSION' "${FEATURE_FILES[3]}"
+          grep -Fq 'application/json' "${FEATURE_FILES[3]}"
+          grep -Fq 'BlaBlaAuditableCollectionActions' "${FEATURE_FILES[2]}"
+          if grep -Eiq 'Ezequiel|Barbosa|Santo André|São Thomé das Letras|"BRL"' "${FEATURE_FILES[@]}"; then
+            echo "Personal scenario hardcode detected" >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run auditable collection and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/auditable-collection-sample.json
+          python3 -m json.tool app/build/auditable-collection-sample.json >/dev/null
+
+      - name: Assemble installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify source, FAROL and output identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee farol-after.sha256
+          cmp -s farol-before.sha256 farol-after.sha256
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+          if git status --porcelain --untracked-files=no | grep -q .; then
+            echo "Tracked source changed during validation" >&2
+            git status --short
+            exit 1
+          fi
+
+      - name: Upload APK and audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.379-auditable-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/auditable-collection-sample.json
+            source_head.txt
+            app-version.txt
+            farol-before.sha256
+            farol-after.sha256
+            apk.sha256
