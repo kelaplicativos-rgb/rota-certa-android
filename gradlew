@@ -45,7 +45,7 @@ case "$distribution_sha256" in
     exit 1
     ;;
 esac
-if [ "\${#distribution_sha256}" -ne 64 ]; then
+if [ "${#distribution_sha256}" -ne 64 ]; then
   echo "Invalid distributionSha256Sum length in $PROPERTIES" >&2
   exit 1
 fi
@@ -67,7 +67,7 @@ case "$distribution_url" in
 esac
 
 distribution_file=$(basename "$distribution_url")
-distribution_name=\${distribution_file%.zip}
+distribution_name=${distribution_file%.zip}
 gradle_version=$(printf "%s" "$distribution_name" | sed 's/^gradle-\(.*\)-bin$/\1/')
 if [ -z "$gradle_version" ] || [ "$gradle_version" = "$distribution_name" ]; then
   echo "Unsupported Gradle distribution name: $distribution_file" >&2
