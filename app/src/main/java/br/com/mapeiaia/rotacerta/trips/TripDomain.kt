@@ -95,7 +95,7 @@ data class Trip(
     val publicBookingEnabled: Boolean = false,
     /** True only when intermediate stops are complete/authoritative for this published trip. */
     val itineraryAuthoritative: Boolean = true,
-    /** BlaBlaCar seat-editor observation only. It is channel metadata, never physical vehicle capacity. */
+    /** Current free seats observed in BlaBlaCar "Opções de passageiros". Legacy field name kept for persistence compatibility. */
     val publishedSeats: Int? = null,
     /** External trips stay fail-closed until physical capacity and occupancy claims are reconciled. */
     val capacityReliable: Boolean = true,
@@ -178,8 +178,15 @@ data class SeatAvailabilityRange(
 }
 data class TripOperationalSeatSummary(
     val operationalLimitConfigured: Boolean,
-    val blablaPublishedSeats: Int,
+    /** Current free seats reported by BlaBlaCar. */
+    val blablaAvailableSeats: Int,
+    /** Configured Rota Certa pool before local occupancy. */
     val rotaCertaAllocatedSeats: Int,
+    /** Current free seats remaining in the Rota Certa pool. */
+    val rotaCertaAvailableSeats: Int,
+    /** Current free seats across both channels. */
+    val totalAvailableSeats: Int,
+    /** Legacy alias retained for callers that still render a total field. */
     val totalConsideredSeats: Int,
     val confirmedPassengerSeats: Int,
     val blockedSeats: Int,
@@ -200,11 +207,15 @@ fun operationalSeatSummary(
     val blablaConfigured = trip.publishedSeats?.takeIf { it in 0..999 }
     val rotaCertaConfigured = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
     val operationalLimitConfigured = blablaConfigured != null || rotaCertaConfigured != null
-    val blabla = blablaConfigured ?: 0
-    val rotaCerta = rotaCertaConfigured ?: 0
-    val total = if (operationalLimitConfigured) (blabla + rotaCerta).coerceAtMost(999) else 0
+    val blablaAvailable = blablaConfigured ?: 0
+    val rotaCertaAllocated = rotaCertaConfigured ?: 0
 
-    data class Group(var confirmed: Int = 0, var blocked: Int = 0)
+    data class Group(
+        var externalConfirmed: Int = 0,
+        var localConfirmed: Int = 0,
+        var localBlocked: Int = 0,
+    )
+
     val groups = mutableMapOf<String, Group>()
     bookings.asSequence()
         .filter { it.tripId == trip.id && it.seats > 0 }
@@ -225,39 +236,65 @@ fun operationalSeatSummary(
                 ?.let { "group:$it" }
                 ?: "booking:${booking.id}"
             val group = groups.getOrPut(key) { Group() }
+            val external = booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY ||
+                booking.source == BookingSource.BLABLACAR
+
             when (booking.capacityClaimType) {
                 CapacityClaimType.PASSENGER,
                 CapacityClaimType.EXTERNAL_OCCUPANCY,
                 -> when (booking.status) {
-                    BookingStatus.CONFIRMED -> group.confirmed = maxOf(group.confirmed, booking.seats)
+                    BookingStatus.CONFIRMED -> {
+                        if (external) {
+                            group.externalConfirmed = maxOf(group.externalConfirmed, booking.seats)
+                        } else {
+                            group.localConfirmed = maxOf(group.localConfirmed, booking.seats)
+                        }
+                    }
                     BookingStatus.REQUESTED,
                     BookingStatus.HELD,
-                    -> group.blocked = maxOf(group.blocked, booking.seats)
+                    -> if (!external) {
+                        group.localBlocked = maxOf(group.localBlocked, booking.seats)
+                    }
                     BookingStatus.REJECTED,
                     BookingStatus.CANCELLED,
                     BookingStatus.EXPIRED,
                     -> Unit
                 }
-                CapacityClaimType.RESERVED_SEAT -> group.blocked = maxOf(group.blocked, booking.seats)
+                CapacityClaimType.RESERVED_SEAT -> if (!external) {
+                    group.localBlocked = maxOf(group.localBlocked, booking.seats)
+                }
             }
         }
 
-    var confirmed = 0
-    var blocked = 0
+    var confirmedPassengers = 0
+    var blockedSeats = 0
+    var rotaCertaConsumed = 0
+
     groups.values.forEach { group ->
-        confirmed += group.confirmed.coerceAtLeast(0)
-        blocked += (maxOf(group.confirmed, group.blocked) - group.confirmed).coerceAtLeast(0)
+        val confirmed = maxOf(group.externalConfirmed, group.localConfirmed).coerceAtLeast(0)
+        val localDemand = maxOf(group.localConfirmed, group.localBlocked).coerceAtLeast(0)
+        val extraLocalBeyondExternal = (localDemand - group.externalConfirmed).coerceAtLeast(0)
+
+        confirmedPassengers += confirmed
+        blockedSeats += (group.localBlocked - maxOf(group.externalConfirmed, group.localConfirmed)).coerceAtLeast(0)
+        rotaCertaConsumed += if (group.externalConfirmed > 0) extraLocalBeyondExternal else localDemand
     }
-    val consumed = confirmed + blocked
+
+    val rotaCertaAvailable = (rotaCertaAllocated - rotaCertaConsumed).coerceAtLeast(0)
+    val totalAvailable = (blablaAvailable + rotaCertaAvailable).coerceAtMost(999)
+    val overbooking = (rotaCertaConsumed - rotaCertaAllocated).coerceAtLeast(0)
+
     return TripOperationalSeatSummary(
         operationalLimitConfigured = operationalLimitConfigured,
-        blablaPublishedSeats = blabla,
-        rotaCertaAllocatedSeats = rotaCerta,
-        totalConsideredSeats = total,
-        confirmedPassengerSeats = confirmed,
-        blockedSeats = blocked,
-        availableSeats = if (operationalLimitConfigured) (total - consumed).coerceAtLeast(0) else Int.MAX_VALUE,
-        overbookingSeats = if (operationalLimitConfigured) (consumed - total).coerceAtLeast(0) else 0,
+        blablaAvailableSeats = blablaAvailable,
+        rotaCertaAllocatedSeats = rotaCertaAllocated,
+        rotaCertaAvailableSeats = rotaCertaAvailable,
+        totalAvailableSeats = totalAvailable,
+        totalConsideredSeats = totalAvailable,
+        confirmedPassengerSeats = confirmedPassengers,
+        blockedSeats = blockedSeats,
+        availableSeats = if (operationalLimitConfigured) totalAvailable else Int.MAX_VALUE,
+        overbookingSeats = if (operationalLimitConfigured) overbooking else 0,
     )
 }
 
