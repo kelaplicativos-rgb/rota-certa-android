@@ -9,7 +9,7 @@ class AgendaCapacityLoadedState0346Test {
     private fun source(path: String): String = File("src/main/java/$path").readText()
 
     @Test
-    fun capacityUiDoesNotRenderProvisionalDefaultAsEmptyField() {
+    fun inventoryUiDoesNotRenderProvisionalDefaultAsEmptyField() {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         val online = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt")
 
@@ -32,7 +32,7 @@ class AgendaCapacityLoadedState0346Test {
         assertTrue(activity.contains("reason=local_settings_not_loaded"))
 
         val effectStart = activity.indexOf("androidx.compose.runtime.LaunchedEffect(")
-        assertTrue(activity.indexOf("appSettings.vehicleCapacity", effectStart) > effectStart)
+        assertFalse(activity.substring(effectStart).contains("appSettings.vehicleCapacity"))
         assertTrue(activity.indexOf("appSettings.rotaCertaSeatAllocation", effectStart) > effectStart)
         val deferred = activity.indexOf("CAPACITY_PUBLIC_SYNC_DEFERRED", effectStart)
         val onlineRead = activity.indexOf("val online = store.onlineSettings()", effectStart)
@@ -49,8 +49,9 @@ class AgendaCapacityLoadedState0346Test {
         val effect = activity.substring(effectStart, effectEnd)
 
         assertTrue(effect.contains("if (!settingsLoaded)"))
-        assertFalse(effect.contains("if (appSettings.vehicleCapacity !in 1..999) return@LaunchedEffect"))
-        assertTrue(effect.contains("configuredVehicleCapacity = appSettings.vehicleCapacity"))
+        assertFalse(effect.contains("appSettings.vehicleCapacity"))
+        assertTrue(effect.contains("configuredVehicleCapacity = 0"))
+        assertTrue(effect.contains("configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation"))
     }
 
     @Test
@@ -58,8 +59,8 @@ class AgendaCapacityLoadedState0346Test {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         assertTrue(activity.contains("awaiting_local_settings"))
-        assertTrue(activity.contains("local_settings_unconfigured"))
+        assertTrue(activity.contains("awaiting_local_settings"))
         assertTrue(timeline.contains("awaiting_local_settings"))
-        assertTrue(timeline.contains("local_settings_unconfigured"))
+        assertTrue(timeline.contains("rota_certa_allocation"))
     }
 }
