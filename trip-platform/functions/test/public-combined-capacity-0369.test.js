@@ -8,7 +8,7 @@ const publicApp = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
 const backend = fs.readFileSync(path.join(root, "functions", "index.js"), "utf8");
 
 test("public UI shows current free seats by channel and their direct total", () => {
-  assert.match(publicApp, /Capacidade de passageiros/);
+  assert.doesNotMatch(publicApp, /Capacidade de passageiros/);
   assert.match(publicApp, /Passageiros confirmados/);
   assert.match(publicApp, /Vagas disponíveis/);
   assert.match(publicApp, /BlaBlaCar/);
@@ -25,10 +25,11 @@ test("BlaBla seat editor value is accepted independently from physical vehicle c
   assert.doesNotMatch(backend, /rawPublishedSeats >= 0 && rawPublishedSeats <= capacity/);
 });
 
-test("operational availability is BlaBla free seats plus remaining Rota Certa free seats", () => {
+test("operational availability is the canonical per-segment bottleneck of the unified inventory", () => {
   assert.match(backend, /const blablaAvailableSeats/);
   assert.match(backend, /const rotaCertaAvailableSeats/);
-  assert.match(backend, /const totalAvailableSeats = Math\.min\(999, blablaAvailableSeats \+ rotaCertaAvailableSeats\)/);
+  assert.match(backend, /const capacityState = reconciledSegmentCapacity\(trip, records, now\)/);
+  assert.match(backend, /const totalAvailableSeats = segmentAvailable\.length \? Math\.min\(\.\.\.segmentAvailable\) : derivedCapacity/);
   assert.match(backend, /operationalAvailableSeats: totalAvailableSeats/);
 });
 
@@ -49,15 +50,15 @@ test("public payload exposes the exact free-seat breakdown", () => {
   assert.match(backend, /physicalAvailableSeatsMaximum/);
 });
 
-test("transactional booking validation still keeps physical segment and operational guards", () => {
+test("transactional booking validation uses the same canonical segment inventory", () => {
   assert.match(backend, /function availableForBooking\(trip, records, loads, fromIndex, toIndex/);
-  assert.match(backend, /Math\.min\(physical, operational\)/);
+  assert.match(backend, /return availableForSegmentRange\(trip, loads, fromIndex, toIndex\)/);
   assert.match(backend, /assertNoOperationalOverbooking/);
   assert.match(backend, /assertNoOverbooking/);
 });
 
-test("existing external BlaBla trip may refresh configured data without weakening stop protection", () => {
-  assert.match(backend, /const externalBlaBlaProjection = isExternalBlaBlaTrip\("", previous\);/);
-  assert.match(backend, /protectedCapacityChange = capacity !== Number\(previous\.capacity \|\| 0\) && !externalBlaBlaProjection/);
+test("derived inventory may refresh after bookings while stop protection stays strict", () => {
+  assert.doesNotMatch(backend, /protectedCapacityChange/);
   assert.match(backend, /oldStopIds !== newStopIds/);
+  assert.match(backend, /A estrutura de paradas não pode mudar depois da primeira reserva/);
 });
