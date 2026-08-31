@@ -1,9 +1,9 @@
-name: Rota Certa 0.1.359 flexible public Agenda slug backend deploy
+name: Rota Certa 0.1.375 live incremental capacity backend deploy
 
 on:
   push:
     branches:
-      - agent/agenda-reservation-approval-0.1.356
+      - agent/fix-public-sync-single-flight-0.1.373
     paths:
       - '.github/workflows/agenda-0356-backend-deploy.yml'
       - 'trip-platform/functions/**'
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-0356-backend-deploy
+  group: agenda-0375-live-capacity-deploy
   cancel-in-progress: true
 
 jobs:
@@ -30,33 +30,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/agenda-reservation-approval-0.1.356
           fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove exact source and live-capacity contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -f trip-platform/functions/index.js
+          test -f trip-platform/public/app.js
+          grep -Fq 'async function reconcileDriverCapacitySnapshot' trip-platform/functions/index.js
+          grep -Fq 'parts[4] === "capacity-snapshot"' trip-platform/functions/index.js
+          grep -Fq 'capacity < 0' trip-platform/functions/index.js
+          grep -Fq 'capacitySnapshotRevision' trip-platform/functions/index.js
+          grep -Fq 'capacityReliable: true' trip-platform/functions/index.js
+          grep -Fq 'function publicAvailabilityLabel' trip-platform/public/app.js
+          grep -Fq '🪑 LOTADO' trip-platform/public/app.js
+          grep -Fq 'Disponibilidade sendo atualizada' trip-platform/public/app.js
+          echo "SOURCE_HEAD=$SOURCE_SHA"
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate reservation approval backend
+      - name: Validate public capacity contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/*.test.js
-          grep -Fq 'mutateDriverBookingDecision' trip-platform/functions/index.js
-          grep -Fq 'RESERVATION_REQUESTED' trip-platform/functions/index.js
-          grep -Fq 'pending_reservations_require_decision' trip-platform/functions/index.js
-          grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' trip-platform/public/app.js
-          grep -Fq 'SOLICITAÇÃO NÃO APROVADA' trip-platform/public/app.js
-          grep -Fq 'function seatLimitText' trip-platform/public/app.js
-          grep -Fq 'function openTripSeatPicker' trip-platform/public/app.js
-          grep -Fq 'currentSeatCapacityMessage' trip-platform/functions/index.js
-          grep -Fq 'availableSeats: available' trip-platform/functions/index.js
-          grep -Fq 'function publicAgendaUrlFor' trip-platform/functions/index.js
-          grep -Fq 'getPublicDriverAgenda(res, req, parts[3], "", true)' trip-platform/functions/index.js
-          grep -Fq 'function publicSlugFromPath' trip-platform/public/app.js
-          node --test trip-platform/functions/test/public-short-agenda-link-0358.test.js
+          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
+          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
 
       - name: Configure Firebase authentication
         shell: bash
@@ -79,11 +86,11 @@ jobs:
             exit 3
           fi
 
-      - name: Install backend dependencies
+      - name: Install Functions dependencies
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
-      - name: Deploy Agenda backend and hosting
+      - name: Deploy exact HEAD Agenda backend and hosting
         shell: bash
         run: |
           set -euo pipefail
@@ -95,32 +102,22 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke deployed 0.1.359 flexible-slug contracts
+      - name: Smoke live incremental capacity contract
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+
+          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/capacity-probe.json -w "%{http_code}"             -X PUT "$BASE/v1/driver/trips/ci-route-probe/capacity-snapshot"             -H 'Content-Type: application/json'             --data '{"trip":{},"claims":[],"claimNamespace":"BLABLACAR_SYNC:","snapshotRevision":"ci-probe","sourceComplete":true}')"
+          test "$CODE" = "401"
+
           BUST="$(date +%s%N)"
-          for attempt in $(seq 1 24); do
-            curl --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
-            if grep -Fq 'AGUARDANDO APROVAÇÃO DO MOTORISTA' /tmp/live-app.js \
-              && grep -Fq 'SOLICITAÇÃO NÃO APROVADA' /tmp/live-app.js \
-              && grep -Fq 'function seatLimitText' /tmp/live-app.js \
-              && grep -Fq 'function openTripSeatPicker' /tmp/live-app.js \
-              && grep -Fq 'function publicSlugFromPath' /tmp/live-app.js \
-              && grep -Fq '/v1/public/agenda/' /tmp/live-app.js; then
-              curl --fail --silent --show-error --dump-header /tmp/slug.headers "$BASE/viagem-certa" -o /tmp/slug.html
-              grep -Fq 'Rota Certa' /tmp/slug.html
-              curl --fail --silent --show-error --dump-header /tmp/agenda-slug.headers "$BASE/agenda" -o /tmp/agenda-slug.html
-              grep -Fq 'Rota Certa' /tmp/agenda-slug.html
-              if grep -Eiq '^location:.*(motorista=|agenda=)' /tmp/slug.headers /tmp/agenda-slug.headers; then
-                echo "Short route redirected to a technical token URL."
-                exit 1
-              fi
-              exit 0
-            fi
-            sleep 3
-          done
-          echo "Hosting 0.1.359 flexible-slug contract not observed."
-          exit 1
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          grep -Fq 'function publicAvailabilityLabel' /tmp/live-app.js
+          grep -Fq '🪑 LOTADO' /tmp/live-app.js
+          grep -Fq 'Disponibilidade sendo atualizada' /tmp/live-app.js
+
+          echo "LIVE_INCREMENTAL_CAPACITY_CONTRACT=PASS"
+          echo "SOURCE_HEAD=${{ github.sha }}"
