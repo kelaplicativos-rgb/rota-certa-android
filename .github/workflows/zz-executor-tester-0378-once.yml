@@ -1,0 +1,255 @@
+name: Rota Certa 0.1.378 tester validation build deploy
+
+on:
+  push:
+    branches:
+      - agent/tester-exclusive-link-0.1.378
+    paths:
+      - '.github/workflows/zz-executor-tester-0378-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-tester-0378
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Finalize clean source HEAD before validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/zz-executor-tester-0378-once.yml
+          git commit -m 'ci: finalize tester 0.1.378 validated source'
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "$SOURCE_SHA" | tee /tmp/source-head.txt
+          git push origin HEAD:agent/tester-exclusive-link-0.1.378
+
+      - name: Prove exact scope version and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=258d304dad908223d665d20d8aa7ea8de143c782
+          EXPECTED_FAROL=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git merge-base --is-ancestor "$BASE" HEAD
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$EXPECTED_FAROL"
+          grep -Fq 'versionCode = 5671' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.378"' app/build.gradle.kts
+          grep -Fq '🧪 Link exclusivo de teste' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          grep -Fq '/v1/driver/test-link/generate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq '/v1/public/tester/bootstrap' trip-platform/functions/index.js
+          grep -Fq 'X-Rota-Certa-Tester-Session' trip-platform/functions/index.js
+          grep -Fq 'bootstrapTesterExperience' trip-platform/public/app.js
+          grep -Fq '🧪 MODO TESTE' trip-platform/public/index.html
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TesterExclusiveLink0378Test.kt
+          test -f trip-platform/functions/test/tester-exclusive-link-0378.test.js
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          test "$(git diff --name-only "$BASE"..HEAD | wc -l)" -eq 8
+          ! git diff --name-only "$BASE"..HEAD | grep -Fq 'LiveRideAccessibilityService.kt'
+          ! git diff --name-only "$BASE"..HEAD | grep -Fq '.github/'
+          git diff --check "$BASE"..HEAD
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate tester and production regression contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/tester-exclusive-link-0378.test.js | tee /tmp/tester-tests.txt
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
+          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
+          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
+
+          git worktree add --detach /tmp/base-0377 258d304dad908223d665d20d8aa7ea8de143c782
+          set +e
+          (cd /tmp/base-0377 && node --test --test-reporter=tap trip-platform/functions/test/*.test.js) > /tmp/base-node-suite.txt 2>&1
+          BASE_RC=$?
+          node --test --test-reporter=tap trip-platform/functions/test/*.test.js > /tmp/head-node-suite.txt 2>&1
+          HEAD_RC=$?
+          set -e
+          BASE_FAIL="$(awk '/^# fail /{v=$3} END{print v+0}' /tmp/base-node-suite.txt)"
+          HEAD_FAIL="$(awk '/^# fail /{v=$3} END{print v+0}' /tmp/head-node-suite.txt)"
+          BASE_PASS="$(awk '/^# pass /{v=$3} END{print v+0}' /tmp/base-node-suite.txt)"
+          HEAD_PASS="$(awk '/^# pass /{v=$3} END{print v+0}' /tmp/head-node-suite.txt)"
+          echo "BASE_NODE_RC=$BASE_RC BASE_PASS=$BASE_PASS BASE_FAIL=$BASE_FAIL"
+          echo "HEAD_NODE_RC=$HEAD_RC HEAD_PASS=$HEAD_PASS HEAD_FAIL=$HEAD_FAIL"
+          test "$HEAD_FAIL" -le "$BASE_FAIL"
+          {
+            echo "baselinePass=$BASE_PASS"
+            echo "baselineFail=$BASE_FAIL"
+            echo "headPass=$HEAD_PASS"
+            echo "headFail=$HEAD_FAIL"
+          } > /tmp/node-suite-summary.txt
+          git worktree remove /tmp/base-0377 --force
+
+      - name: Configure Firebase auth and Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Android unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace | tee /tmp/unit-tests.txt
+
+      - name: Build and prove installable APK from final HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH='agent/tester-exclusive-link-0.1.378'
+          gradle clean :app:assembleDebug --no-daemon --stacktrace | tee /tmp/assemble.txt
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5671'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.378'" /tmp/aapt.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex-strings.txt
+          grep -Fq 'Link exclusivo de teste' /tmp/dex-strings.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+          mkdir -p /tmp/0378
+          cp "$APK" /tmp/0378/rota-certa-0.1.378-tester-link.apk
+          sha256sum /tmp/0378/rota-certa-0.1.378-tester-link.apk | tee /tmp/0378/apk.sha256
+          cp /tmp/unit-tests.txt /tmp/0378/unit-tests.txt
+          cp /tmp/assemble.txt /tmp/0378/assemble.txt
+          cp /tmp/aapt.txt /tmp/0378/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0378/apksigner.txt
+          cp /tmp/changed-files.txt /tmp/0378/changed-files.txt
+          cp /tmp/source-head.txt /tmp/0378/source-head.txt
+          cp /tmp/tester-tests.txt /tmp/0378/tester-tests.txt
+          cp /tmp/node-suite-summary.txt /tmp/0378/node-suite-summary.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/0378/farol.sha256
+          {
+            echo 'branch=agent/tester-exclusive-link-0.1.378'
+            echo "commit=$SOURCE_SHA"
+            echo 'versionName=0.1.378'
+            echo 'versionCode=5671'
+          } > /tmp/0378/build-metadata.txt
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy exact final HEAD backend and Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Validate live tester security surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          BUST="$(date +%s%N)"
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
+          grep -Fq 'bootstrapTesterExperience' /tmp/live-app.js
+          grep -Fq '/v1/public/tester/bootstrap' /tmp/live-app.js
+          grep -Fq '🧪 MODO TESTE' /tmp/live-index.html
+          grep -Fq 'passengerSessionToken' /tmp/live-app.js
+          grep -Fq '/v1/public/passenger-access' /tmp/live-app.js
+
+          DRIVER_CODE="$(curl --silent --show-error -o /tmp/driver-test-link.json -w '%{http_code}' "$BASE/v1/driver/test-link")"
+          echo "UNAUTH_DRIVER_TEST_LINK_HTTP=$DRIVER_CODE"
+          test "$DRIVER_CODE" = "401"
+
+          INVALID_CODE="$(curl --silent --show-error -o /tmp/invalid-bootstrap.json -w '%{http_code}' -X POST "$BASE/v1/public/tester/bootstrap" -H 'Content-Type: application/json' --data '{"bootstrapToken":"invalid_ci_bootstrap_token"}')"
+          echo "INVALID_BOOTSTRAP_HTTP=$INVALID_CODE"
+          case "$INVALID_CODE" in 2*) echo "Invalid bootstrap unexpectedly accepted"; exit 1;; esac
+
+          {
+            echo "health=PASS"
+            echo "hostingTesterAssets=PASS"
+            echo "normalPassengerFlowMarkers=PASS"
+            echo "unauthDriverEndpoint=$DRIVER_CODE"
+            echo "invalidBootstrap=$INVALID_CODE"
+            echo "sourceHead=$SOURCE_SHA"
+          } > /tmp/0378/live-smoke.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.378-tester-link
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0378
