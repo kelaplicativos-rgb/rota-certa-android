@@ -106,6 +106,24 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
+    fun clearedExternalSourceMayLeaveHistoryBackingButEffectiveLocalPublishSetIsEmpty() {
+        val backing = buildTimelineExternalBackingTrip(externalEntry("clear-reload"), 4)
+        val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+        val reloadedPersistedTrips = listOf(
+            json.decodeFromString<Trip>(json.encodeToString(backing)),
+        )
+        val clearedCollectorTrips = emptyList<BlaBlaCollectorTrip>()
+
+        assertEquals(1, reloadedPersistedTrips.size)
+        assertTrue(clearedCollectorTrips.isEmpty())
+        assertTrue(reloadedPersistedTrips.none(Trip::isCanonicalLocalPublishSource))
+        assertEquals(
+            TripRecordOrigin.EXTERNAL_BACKING,
+            resolvedTripRecordOrigin(reloadedPersistedTrips.single()),
+        )
+    }
+
+    @Test
     fun illegalStateExceptionBoundaryIsNotReachableForExternalBackingThroughLocalDiscovery() {
         val backing = buildTimelineExternalBackingTrip(externalEntry("illegal-state-regression"), 4)
         val remoteApi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
@@ -138,6 +156,35 @@ class PublicAgendaSyncRegression0373Test {
             withTimeout(2_000L) { completion.await() }
             delay(150L)
             assertEquals(1, executions.get())
+        } finally {
+            workerScope.cancel()
+        }
+    }
+
+    @Test
+    fun partialFailedSyncIsNotMemorizedAsIdenticalSuccess(): Unit = runBlocking {
+        val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val executions = AtomicInteger(0)
+            val coordinator = PublicAgendaSyncCoordinator0373(
+                scope = workerScope,
+                signatureProvider = { "stable-failed-input" },
+                syncAction = {
+                    if (executions.incrementAndGet() == 1) {
+                        PublicAgendaAutoSyncResult(failures = 1)
+                    } else {
+                        PublicAgendaAutoSyncResult(localPublished = 1)
+                    }
+                },
+            )
+            val completions = async { coordinator.completions.take(2).toList() }
+            coordinator.request(4, "first-partial")
+            withTimeout(2_000L) {
+                while (executions.get() < 1) delay(10L)
+            }
+            coordinator.request(4, "explicit-retry")
+            withTimeout(2_000L) { completions.await() }
+            assertEquals(2, executions.get())
         } finally {
             workerScope.cancel()
         }
