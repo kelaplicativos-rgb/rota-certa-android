@@ -21,6 +21,8 @@ data class BlaBlaPublicSearchRequest(
     val includeReverse: Boolean = true,
     val selectedDates: List<String> = emptyList(),
     val captureDemand: Boolean = false,
+    /** Unique execution identity; generated for every new auditable collection. */
+    val collectionId: String = "",
 )
 
 @Serializable
@@ -40,6 +42,31 @@ data class BlaBlaPublicSearchCard(
     val flags: List<String> = emptyList(),
     val availability: String = "available_or_unspecified",
     val tripHref: String? = null,
+    val queryId: String = "",
+    val direction: String = "",
+    val tripId: String? = null,
+    val profileUuid: String? = null,
+    val profileUuidEvidence: String? = null,
+    val currency: String? = null,
+    val capturedAtMillis: Long? = null,
+    val captureIndex: Int = -1,
+)
+
+@Serializable
+data class BlaBlaPublicSearchQueryEvidence(
+    val requestedDateConfirmed: Boolean = false,
+    val requestedRouteConfirmed: Boolean = false,
+    val terminalEvidence: Boolean = false,
+    val stableAtBottom: Boolean = false,
+)
+
+@Serializable
+data class BlaBlaPublicSearchErrorDetail(
+    val stage: String = "",
+    val exceptionClass: String? = null,
+    val exceptionMessage: String? = null,
+    val rootCauseClass: String? = null,
+    val rootCauseMessage: String? = null,
 )
 
 @Serializable
@@ -51,6 +78,13 @@ data class BlaBlaPublicSearchQueryResult(
     val cardCount: Int = 0,
     val zeroResultsConfirmed: Boolean = false,
     val error: String? = null,
+    val queryId: String = "",
+    val direction: String = "",
+    val coverageStatus: String = "PENDING_UNKNOWN",
+    val startedAtMillis: Long = 0L,
+    val finishedAtMillis: Long = 0L,
+    val evidence: BlaBlaPublicSearchQueryEvidence = BlaBlaPublicSearchQueryEvidence(),
+    val errorDetail: BlaBlaPublicSearchErrorDetail? = null,
 )
 
 @Serializable
@@ -75,8 +109,11 @@ data class BlaBlaPublicSearchResponse(
     val queries: List<BlaBlaPublicSearchQueryResult> = emptyList(),
     val demands: List<BlaBlaPublicSearchDemand> = emptyList(),
 ) {
-    val validatedQueries: Int get() = queries.count { it.status == "validated" }
-    val failedQueries: Int get() = queries.count { it.status != "validated" }
+    val validatedQueries: Int get() = queries.count {
+        it.coverageStatus == "COMPLETE" || (it.coverageStatus.isBlank() && it.status == "validated")
+    }
+    val completeQueries: Int get() = validatedQueries
+    val failedQueries: Int get() = queries.count { it.coverageStatus == "FAILED" }
 }
 
 data class BlaBlaPublicSearchTask(
@@ -226,38 +263,41 @@ internal fun publicSearchDemandFor(
     )
 }
 
+internal fun publicSearchDirectionName(
+    request: BlaBlaPublicSearchRequest,
+    task: BlaBlaPublicSearchTask,
+): String = when (BlaBlaPublicSearchPlanner.direction(task.from, task.to, request)) {
+    BlaBlaPublicSearchDirection.PRIMARY -> "OUTBOUND"
+    BlaBlaPublicSearchDirection.REVERSE -> "RETURN"
+    BlaBlaPublicSearchDirection.UNKNOWN -> "UNKNOWN"
+}
+
+internal fun publicSearchQueryId(
+    request: BlaBlaPublicSearchRequest,
+    task: BlaBlaPublicSearchTask,
+): String = "q-${task.date}-${publicSearchDirectionName(request, task).lowercase()}"
+
 object BlaBlaPublicPlaceDirectory {
-    private val placeIds = mapOf(
-        "santo andre" to "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "sao paulo" to "eyJpIjoiQ2hJSjBXR2tnNEZFenBRUnJsc3pfd2hMcVpzIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "extrema" to "eyJpIjoiQ2hJSkc5Q1pfWG1yenBRUkg5N0xSejRQVkV3IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "camanducaia" to "eyJpIjoiQ2hJSm1kSFpyYjhBekpRUmYwSnpYYWt6T184IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "pouso alegre" to "eyJpIjoiQ2hJSlYyNFBheDdIeTVRUlV0ZU5EWDhWN0wwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "tres coracoes" to "eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "varginha" to "eyJpIjoiQ2hJSlBUM2hEME9OeXBRUl9ad3hYeFEwTmVNIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "campanha" to "eyJpIjoiQ2hJSkhaclc1TExqeXBRUk9qVWt6ZEFkRFVjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "cambuquira" to "eyJpIjoiQ2hJSlJfOTNLaGdneTVRUmJ6QkU3emJ6X25vIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "sao thome das letras" to "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-        "sao tome das letras" to "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-    )
-
-    fun placeId(address: String): String? = placeIds[BlaBlaPublicSearchPlanner.normalizePlace(address)]
-
-    fun supported(address: String): Boolean = placeId(address) != null
+    /**
+     * Global route resolution: names come from user selection. BlaBlaCar may enrich
+     * the loaded URL with provider-specific place IDs; Rota Certa never hardcodes
+     * a personal corridor or promotes search/place IDs to canonical identity.
+     */
+    fun supported(address: String): Boolean =
+        BlaBlaPublicSearchPlanner.normalizePlace(address).isNotBlank()
 
     fun searchUrl(task: BlaBlaPublicSearchTask): String? {
-        val fromId = placeId(task.from) ?: return null
-        val toId = placeId(task.to) ?: return null
-        fun enc(value: String) = URLEncoder.encode(value, StandardCharsets.UTF_8.name())
-        return "https://www.blablacar.com.br/search" +
-            "?fn=${enc(task.from)}" +
-            "&tn=${enc(task.to)}" +
-            "&db=${task.date}" +
-            "&seats=1" +
-            "&search_origin=SEARCH" +
-            "&from_place_id=${enc(fromId)}" +
-            "&to_place_id=${enc(toId)}" +
-            "&p0%5Bac%5D=adult"
+        if (!supported(task.from) || !supported(task.to)) return null
+        fun encoded(value: String): String =
+            java.net.URLEncoder.encode(value.trim(), Charsets.UTF_8.name())
+        return buildString {
+            append("https://www.blablacar.com.br/search")
+            append("?fn=").append(encoded(task.from))
+            append("&tn=").append(encoded(task.to))
+            append("&db=").append(task.date)
+            append("&seats=1")
+            append("&search_origin=SEARCH")
+        }
     }
 }
 
@@ -281,14 +321,25 @@ class BlaBlaPublicSearchStore(context: Context) {
         prefs.edit().putString(KEY_RESPONSE, json.encodeToString(response)).apply()
     }
 
+    fun lastSnapshot(): BlaBlaAuditableCollectionSnapshot? = runCatching {
+        prefs.getString(KEY_AUDIT_SNAPSHOT, null)?.let {
+            json.decodeFromString<BlaBlaAuditableCollectionSnapshot>(it)
+        }
+    }.getOrNull()
+
+    fun saveSnapshot(snapshot: BlaBlaAuditableCollectionSnapshot) {
+        prefs.edit().putString(KEY_AUDIT_SNAPSHOT, json.encodeToString(snapshot)).apply()
+    }
+
     fun clearResponse() {
-        prefs.edit().remove(KEY_RESPONSE).apply()
+        prefs.edit().remove(KEY_RESPONSE).remove(KEY_AUDIT_SNAPSHOT).apply()
     }
 
     companion object {
         private const val PREFS = "rota_certa_blablacar_public_search_v1"
         private const val KEY_REQUEST = "request"
         private const val KEY_RESPONSE = "response"
+        private const val KEY_AUDIT_SNAPSHOT = "audit_snapshot_v1"
     }
 }
 
