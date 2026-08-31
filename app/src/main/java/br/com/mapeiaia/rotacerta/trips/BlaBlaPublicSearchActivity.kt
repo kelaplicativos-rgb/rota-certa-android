@@ -203,6 +203,7 @@ class BlaBlaPublicSearchActivity : Activity() {
                 super.onReceivedError(view, requestError, error)
                 if (!requestError.isForMainFrame || taskIndex >= tasks.size) return
                 val task = tasks[taskIndex]
+                if (!exactSearchUrl(requestError.url.toString(), task)) return
                 finalizeQuery(
                     task = task,
                     coverageStatus = "FAILED",
