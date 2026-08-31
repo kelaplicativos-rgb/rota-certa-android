@@ -1,0 +1,96 @@
+name: Agenda 0.1.375 materialize incremental availability
+
+on:
+  push:
+    branches:
+      - agent/fix-public-sync-single-flight-0.1.373
+    paths:
+      - 'ci/agenda-0375-patch/**'
+      - '.github/workflows/agenda-0375-materialize.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0375-materialize
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/fix-public-sync-single-flight-0.1.373
+
+      - name: Prove exact staging baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=5b2304314a3dc047b703953a24be84624c9d5edc
+          git cat-file -e "$BASE^{commit}"
+          mapfile -t changed < <(git diff --name-only "$BASE"..HEAD)
+          for path in "${changed[@]}"; do
+            case "$path" in
+              ci/agenda-0375-patch/*|.github/workflows/agenda-0375-materialize.yml) ;;
+              *)
+                echo "Unexpected pre-materialization change: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+          for n in 00 01 02 03; do
+            test -s "ci/agenda-0375-patch/part-$n"
+          done
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Reconstruct and apply validated patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/agenda-0375-patch/part-* > /tmp/agenda-0375.patch.gz.b64
+          test "$(sha256sum /tmp/agenda-0375.patch.gz.b64 | cut -d' ' -f1)" = "7326754fe43c80309885591d94210ff4c9c0ae41804ca1ce339ed7bbac467dce"
+          base64 -d /tmp/agenda-0375.patch.gz.b64 | gzip -dc > /tmp/agenda-0375.patch
+          git apply --check /tmp/agenda-0375.patch
+          git apply /tmp/agenda-0375.patch
+          git diff --check
+
+          grep -Fq 'versionCode = 5668' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.375"' app/build.gradle.kts
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaIncrementalAvailability0375Test.kt
+          test -f trip-platform/functions/test/public-incremental-capacity-0375.test.js
+          grep -Fq 'incremental' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'LOTADO' trip-platform/public/app.js
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Focused fail-closed regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
+          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
+          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
+
+      - name: Commit exact functional source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ci/agenda-0375-patch
+          rm -f .github/workflows/agenda-0375-materialize.yml
+          git diff --check
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(agenda): publish incremental fail-closed availability 0.1.375'
+          FINAL_SHA="$(git rev-parse HEAD)"
+          echo "$FINAL_SHA" | tee /tmp/final-source-head.txt
+
+          test -z "$(git status --porcelain)"
+          test "$(git diff --name-only 5b2304314a3dc047b703953a24be84624c9d5edc..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | wc -l)" -eq 0
+          git push origin HEAD:agent/fix-public-sync-single-flight-0.1.373
