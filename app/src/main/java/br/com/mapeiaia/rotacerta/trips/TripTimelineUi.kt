@@ -865,7 +865,6 @@ internal fun TripDriverDefaultsCard(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Salvar veículo e vagas") }                modifier = Modifier.fillMaxWidth(),
             ) { Text("Salvar veículo e vagas") }
         }
     }
