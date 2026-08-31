@@ -62,7 +62,7 @@ jobs:
           grep -Fq 'versionName = "0.1.375"' app/build.gradle.kts
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaIncrementalAvailability0375Test.kt
           test -f trip-platform/functions/test/public-incremental-capacity-0375.test.js
-          grep -Fq 'incremental' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'syncExternalTripIncremental' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'LOTADO' trip-platform/public/app.js
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
