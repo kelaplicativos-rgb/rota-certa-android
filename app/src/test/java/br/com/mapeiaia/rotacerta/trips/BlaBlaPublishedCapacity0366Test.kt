@@ -11,24 +11,24 @@ class BlaBlaPublishedCapacity0366Test {
     private val profileB = "175a7068-50d8-40c3-a27a-214b9c6e0461"
 
     @Test
-    fun physicalCapacityNeverBecomesPublishedBlaBlaSeatCount() {
+    fun derivedInventoryRemainsSeparateFromBlaBlaRemainingMetadata() {
         val resolved = timelinePublicCapacityResolution(entry(profileA, "trip-a", published = 3, blablaOccupied = 0))
         assertEquals(4, resolved.physicalVehicleCapacity)
         assertEquals(3, resolved.remotePublishedCapacity)
         assertEquals(4, resolved.effectiveCapacity)
         assertEquals(4, resolved.availableSeats)
-        assertEquals("vehicle_physical_capacity", resolved.capacitySource)
+        assertEquals("trip_operational_inventory", resolved.capacitySource)
     }
 
     @Test
-    fun physicalAvailabilityUsesRealOccupancyNotPublishedMetadata() {
+    fun operationalAvailabilityUsesDerivedInventoryAndRealOccupancy() {
         assertEquals(1, timelinePublicCapacityResolution(entry(profileA, "trip-a", 3, 3)).availableSeats)
         assertEquals(2, timelinePublicCapacityResolution(entry(profileA, "trip-a", 3, 2)).availableSeats)
         assertEquals(4, timelinePublicCapacityResolution(entry(profileA, "trip-a", 3, 0)).effectiveCapacity)
     }
 
     @Test
-    fun changingPublishedSeatsDoesNotRewritePhysicalCapacity() {
+    fun changingRemainingSeatsNeedsInventoryReconciliationBeforeChangingCapacity() {
         val before = entry(profileA, "trip-a", 4, 2)
         val after = before.copy(blablaPublishedSeats = 3)
         assertEquals(4, timelinePublicCapacityResolution(before).effectiveCapacity)
@@ -47,7 +47,7 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun channelAllocationThreePlusFourBuildsTotalSevenWithoutChangingVehicleCapacity() {
+    fun channelAllocationThreePlusFourBuildsTotalSeven() {
         val breakdown = tripChannelAllocationBreakdown(
             physicalPassengerCapacity = 7,
             blablaPublishedSeats = 3,
@@ -88,7 +88,7 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun publishedSeatCountDoesNotClampSegmentPhysicalReuse() {
+    fun remainingSeatCountDoesNotClampSegmentReuse() {
         val e = entry(profileA, "trip-a", published = 2, blablaOccupied = 0)
         val stops = trip(capacity = 4).stops
         val physicalLoads = listOf(
@@ -100,12 +100,12 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun missingPhysicalCapacityFailsClosedInsteadOfUsingPublishedSeatsAsCapacity() {
+    fun explicitZeroInventoryIsAValidZeroState() {
         val unresolved = entry(profileA, "trip-a", published = 3, blablaOccupied = 0).copy(capacity = 0)
         val resolved = timelinePublicCapacityResolution(unresolved)
-        assertEquals(null, resolved.effectiveCapacity)
-        assertEquals(null, resolved.availableSeats)
-        assertEquals("unavailable", resolved.capacitySource)
+        assertEquals(0, resolved.effectiveCapacity)
+        assertEquals(0, resolved.availableSeats)
+        assertEquals("trip_operational_inventory", resolved.capacitySource)
     }
 
     @Test
@@ -119,15 +119,15 @@ class BlaBlaPublishedCapacity0366Test {
     }
 
     @Test
-    fun publicAgendaSourceNeverAddsChannelNumbersIntoPhysicalCapacity() {
+    fun publicAgendaSourceDerivesInventoryFromBlaBlaRemainingAndRotaCerta() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertFalse(source.contains("combinedAgendaAvailableSeats"))
         assertFalse(source.contains("rotaCertaSeatPool"))
-        assertTrue(source.contains("capacity = physicalCapacity"))
+        assertTrue(source.contains("derivedInventory"))
         assertTrue(source.contains("blablaAvailable"))
         assertTrue(source.contains("rotaCertaAvailable"))
         assertTrue(source.contains("totalAvailable"))
-        assertTrue(source.contains("capacitySource=channel_free_seats_plus_physical_separate"))
+        assertTrue(source.contains("capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa"))
     }
 
     private fun entry(
