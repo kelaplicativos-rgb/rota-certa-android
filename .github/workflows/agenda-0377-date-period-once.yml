@@ -1,0 +1,190 @@
+name: Rota Certa 0.1.377 Date period collector validation
+
+on:
+  push:
+    branches:
+      - agent/sync-date-period-0.1.377
+    paths:
+      - '.github/workflows/agenda-0377-date-period-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-date-period-0377
+  cancel-in-progress: true
+
+jobs:
+  validate-build-materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Prove validated source and decode scoped patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=a89050539a5867f1092142829b23eaf9a6f14c10
+          EXPECTED_FAROL=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
+          PATCH_SHA=1b6dc9296a955d638a959063ed99a7443eeb81e4225afc10dc721b464dd20718
+          git merge-base --is-ancestor "$BASE" HEAD
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$EXPECTED_FAROL"
+          base64 -d .github/patches/agenda-0377-date-period.patch.gz.b64 | gzip -dc > /tmp/date-period-0377.patch
+          test "$(sha256sum /tmp/date-period-0377.patch | awk '{print $1}')" = "$PATCH_SHA"
+          git apply --check /tmp/date-period-0377.patch
+          git apply /tmp/date-period-0377.patch
+          git diff --check
+
+          grep -Fq 'versionCode = 5670' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.377"' app/build.gradle.kts
+          grep -Fq '📅 Sincronizar por data/período' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          ! grep -R -Fq 'Sincronizar só hoje' app/src/main app/src/test
+          grep -Fq 'RotaCertaDatePickerDialog' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'rotaCertaInclusiveDates' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'syncDates(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'authoritativeDateScope' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt
+          grep -Fq 'dateScope = targetDates.takeIf' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'outOfScopeCardOpened=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDatePeriodSync0377Test.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$EXPECTED_FAROL"
+
+      - name: Public capacity backend regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test trip-platform/functions/test/public-search-capacity-0356.test.js
+          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
+          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
+
+      - name: Configure Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Android unit tests on patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace | tee /tmp/unit-tests.txt
+
+      - name: Commit exact validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=a89050539a5867f1092142829b23eaf9a6f14c10
+          EXPECTED_FAROL=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
+          git config user.name 'kelaplicativos-rgb'
+          git config user.email 'kel.aplicativos@gmail.com'
+          git rm .github/patches/agenda-0377-date-period.patch.gz.b64 .github/workflows/agenda-0377-date-period-once.yml
+          git add \
+            app/build.gradle.kts \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDatePeriodSync0377Test.kt
+          git diff --cached --check
+          git commit -m 'feat: add date period collector sync 0.1.377'
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          printf '%s\n' "$SOURCE_SHA" > /tmp/source-head.txt
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          test "$(git diff --name-only "$BASE"..HEAD | wc -l)" -eq 9
+          ! git diff --name-only "$BASE"..HEAD | grep -Fq 'LiveRideAccessibilityService.kt'
+          ! git diff --name-only "$BASE"..HEAD | grep -Fq '.github/'
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$EXPECTED_FAROL"
+
+      - name: Build and validate APK from final source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH='agent/sync-date-period-0.1.377'
+          gradle clean :app:assembleDebug --no-daemon --stacktrace | tee /tmp/assemble.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5670'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.377'" /tmp/aapt.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex-strings.txt
+          mkdir -p /tmp/0377
+          cp "$APK" /tmp/0377/rota-certa-0.1.377-date-period-sync.apk
+          sha256sum /tmp/0377/rota-certa-0.1.377-date-period-sync.apk | tee /tmp/0377/apk.sha256
+          cp /tmp/unit-tests.txt /tmp/0377/unit-tests.txt
+          cp /tmp/assemble.txt /tmp/0377/assemble.txt
+          cp /tmp/aapt.txt /tmp/0377/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0377/apksigner.txt
+          cp /tmp/changed-files.txt /tmp/0377/changed-files.txt
+          cp /tmp/source-head.txt /tmp/0377/source-head.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/0377/farol.sha256
+          {
+            echo 'branch=agent/sync-date-period-0.1.377'
+            echo "commit=$SOURCE_SHA"
+            echo 'versionName=0.1.377'
+            echo 'versionCode=5670'
+          } > /tmp/0377/build-metadata.txt
+
+      - name: Push validated source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git push origin HEAD:agent/sync-date-period-0.1.377
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.377-date-period-sync
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0377
