@@ -36,8 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "f48a4b601be6747a73d3b370746bfe6b1d150f06"
-          git show 693e753f5670354fe8d210137a9e6bbf0b2148ca:.github/workflows/agenda-0369-combined-seat-pools.yml > .github/workflows/agenda-0369-combined-seat-pools.yml
+          test "$(git rev-parse HEAD^)" = "037b7da796eb4fa5a71bbd090ae34c2fc8a2ed4a"
           gzip -t .github/diag-0376.patch.gz
           gzip -dc .github/diag-0376.patch.gz > /tmp/diag0376.patch
           git apply --check -p2 /tmp/diag0376.patch
@@ -48,7 +47,7 @@ jobs:
           sed -i 's/tripKey = sha256(trip.id).take(12),/tripKey = seatSyncDiagnosticKey(trip.id),/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           sed -i 's/tripKey = sha256(target.localTripId).take(12),/tripKey = seatSyncDiagnosticKey(target.localTripId),/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           python3 -c 'from pathlib import Path; import base64; p=Path("app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncRegression0373Test.kt"); s=p.read_text(); old=base64.b64decode("ICAgICAgICBhc3NlcnRUcnVlKHJlbW90ZUFwaS5jb250YWlucygidGhyb3cgSWxsZWdhbFN0YXRlRXhjZXB0aW9uKFwiU2Vydmlkb3IgcmVzcG9uZGV1IEhUVFAiKSk=").decode(); new=base64.b64decode("ICAgICAgICBhc3NlcnRUcnVlKHJlbW90ZUFwaS5jb250YWlucygiaW50ZXJuYWwgY2xhc3MgVHJpcFJlbW90ZUFwaUV4Y2VwdGlvbigiKSkKICAgICAgICBhc3NlcnRUcnVlKHJlbW90ZUFwaS5jb250YWlucygiKSA6IElsbGVnYWxTdGF0ZUV4Y2VwdGlvbigiKSkKICAgICAgICBhc3NlcnRUcnVlKHJlbW90ZUFwaS5jb250YWlucygidGhyb3cgVHJpcFJlbW90ZUFwaUV4Y2VwdGlvbigiKSk=").decode(); assert old in s, "legacy TripRemoteApi boundary assertion not found"; p.write_text(s.replace(old,new))'
-          rm -f .github/diag-0376.patch.gz .github/workflows/diag-0376-materialize.yml
+          rm -f .github/diag-0376.patch.gz
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           grep -Fq 'versionCode = 5669' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.376"' app/build.gradle.kts
