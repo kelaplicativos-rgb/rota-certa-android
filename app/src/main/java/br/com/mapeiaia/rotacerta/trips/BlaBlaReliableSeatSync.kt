@@ -152,6 +152,8 @@ internal class BlaBlaPublicationSeatSyncStateStore(context: Context) {
         it.profileUuid.equals(profileUuid, ignoreCase = true) && it.tripId == tripId
     }
 
+    fun snapshot(): List<BlaBlaPublicationSeatSyncState> = list()
+
     fun markDesired(profileUuid: String, tripId: String, desired: Int, message: String) = update(
         BlaBlaPublicationSeatSyncState(
             profileUuid = profileUuid,

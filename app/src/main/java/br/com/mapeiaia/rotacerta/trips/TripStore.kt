@@ -28,6 +28,8 @@ class TripStore(context: Context) {
     private val passengerIdentityStore = PassengerIdentityStore(appContext)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
+    internal fun bookingReconcileScopeKey(): String = tenantScope.tenantId
+
     fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null)).orEmpty()
         .sortedByDescending(Trip::departureAtMillis)
 
@@ -122,9 +124,80 @@ class TripStore(context: Context) {
      */
     fun clearTimelineLocalData(): Pair<Int, Int> = 0 to 0
 
-    fun saveBooking(booking: Booking): Booking {
-        val all = bookings()
-        val existing = all.firstOrNull { it.id == booking.id }
+    fun saveBooking(booking: Booking): Booking =
+        saveBookingsBatch(listOf(booking), preserveSourceUpdatedAt = false).single()
+
+    /**
+     * Persists a reconcile diff as one coherent booking snapshot. Remote imports keep
+     * the server updatedAt value so an unchanged reservation compares equal on the
+     * next pull instead of being imported again only because the local clock changed.
+     */
+    internal fun saveBookingsBatch(
+        bookingsToSave: List<Booking>,
+        preserveSourceUpdatedAt: Boolean,
+    ): List<Booking> {
+        if (bookingsToSave.isEmpty()) return emptyList()
+
+        val existingAll = bookings()
+        val existingById = existingAll.associateBy(Booking::id)
+        val distinctIncoming = LinkedHashMap<String, Booking>().apply {
+            bookingsToSave.forEach { put(it.id, it) }
+        }.values.toList()
+
+        val prepared = distinctIncoming.map { booking ->
+            prepareBookingForPersistence(booking, existingById[booking.id])
+        }
+        val passengerIds = passengerIdentityStore.ensureLocalBookingProfilesBatch(prepared)
+        val now = System.currentTimeMillis()
+        val normalized = prepared.map { invariantState ->
+            val passengerId = passengerIds[invariantState.id] ?: invariantState.passengerId
+            invariantState.copy(
+                passengerId = passengerId,
+                updatedAtMillis = if (preserveSourceUpdatedAt) {
+                    invariantState.updatedAtMillis.takeIf { it > 0L } ?: now
+                } else {
+                    now
+                },
+            )
+        }
+
+        val next = mergeBookingBatch0380(existingAll, normalized)
+        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
+        refreshTripStatusesBatch(
+            tripIds = normalized.map(Booking::tripId).toSet(),
+            bookingSnapshot = next,
+            nowMillis = now,
+        )
+        return normalized
+    }
+
+    internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int {
+        if (tripIds.isEmpty()) return 0
+        val allBookings = bookings()
+        val bookingsByTrip = allBookings.groupBy(Booking::tripId)
+        val currentTrips = trips()
+        val now = System.currentTimeMillis()
+        var changed = 0
+        val nextTrips = currentTrips.map { trip ->
+            if (trip.id !in tripIds) {
+                trip
+            } else {
+                val derived = operationalInventoryCapacity(trip, bookingsByTrip[trip.id].orEmpty())
+                if (trip.capacity == derived) {
+                    trip
+                } else {
+                    changed++
+                    trip.copy(capacity = derived, updatedAtMillis = now)
+                }
+            }
+        }
+        if (changed > 0) {
+            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+        }
+        return changed
+    }
+
+    private fun prepareBookingForPersistence(booking: Booking, existing: Booking?): Booking {
         val withPreservedLocalMetadata = if (
             existing?.localMetadataTouched == true && !booking.localMetadataTouched
         ) {
@@ -139,9 +212,6 @@ class TripStore(context: Context) {
         } else {
             booking
         }
-        // Collector refreshes have no lastDriverSelection. Preserve an explicit local
-        // operational/payment choice against those refreshes, while still accepting a real
-        // server-side driver mutation (which always carries lastDriverSelection).
         val withPreservedOperationalState = existing?.let { current ->
             val explicitCancellationTombstone =
                 current.status == BookingStatus.CANCELLED && current.lastDriverSelection == "CANCELLED"
@@ -167,7 +237,7 @@ class TripStore(context: Context) {
                 },
             )
         } ?: withPreservedLocalMetadata
-        val invariantState = if (withPreservedOperationalState.status == BookingStatus.CANCELLED) {
+        return if (withPreservedOperationalState.status == BookingStatus.CANCELLED) {
             withPreservedOperationalState.copy(
                 operationalStatus = PassengerOperationalStatus.CANCELLED,
                 lastDriverSelection = "CANCELLED",
@@ -175,21 +245,47 @@ class TripStore(context: Context) {
         } else {
             withPreservedOperationalState
         }
-        val identity = passengerIdentityStore.ensureLocalBookingProfile(invariantState)
-        val normalized = invariantState.copy(
-            passengerId = identity?.id ?: invariantState.passengerId,
-            updatedAtMillis = System.currentTimeMillis(),
-        )
-        val current = all.filterNot { it.id == normalized.id }
-        prefs.edit().putString(bookingsKey, json.encodeToString(listOf(normalized) + current)).apply()
-        refreshTripStatus(normalized.tripId)
-        return normalized
+    }
+
+    private fun refreshTripStatusesBatch(
+        tripIds: Set<String>,
+        bookingSnapshot: List<Booking>,
+        nowMillis: Long,
+    ) {
+        if (tripIds.isEmpty()) return
+        val bookingsByTrip = bookingSnapshot.groupBy(Booking::tripId)
+        val currentTrips = trips()
+        var changed = false
+        val nextTrips = currentTrips.map { trip ->
+            if (trip.id !in tripIds) {
+                trip
+            } else {
+                val status = SeatAvailabilityEngine.suggestedStatus(trip, bookingsByTrip[trip.id].orEmpty())
+                if (status == trip.status) {
+                    trip
+                } else {
+                    changed = true
+                    trip.copy(status = status, updatedAtMillis = nowMillis)
+                }
+            }
+        }
+        if (changed) {
+            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+        }
     }
 
     fun deleteBooking(id: String) {
-        val booking = bookings().firstOrNull { it.id == id }
-        prefs.edit().putString(bookingsKey, json.encodeToString(bookings().filterNot { it.id == id })).apply()
-        booking?.let { refreshTripStatus(it.tripId) }
+        val current = bookings()
+        val booking = current.firstOrNull { it.id == id }
+        val next = current.filterNot { it.id == id }
+        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
+        booking?.let {
+            refreshTripStatusesBatch(
+                tripIds = setOf(it.tripId),
+                bookingSnapshot = next,
+                nowMillis = System.currentTimeMillis(),
+            )
+        }
     }
 
     fun onlineSettings(): TripOnlineSettings {
@@ -227,12 +323,6 @@ class TripStore(context: Context) {
         .filter { it.departureAtMillis >= nowMillis }
         .filter { it.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING) }
         .minByOrNull(Trip::departureAtMillis)
-
-    private fun refreshTripStatus(tripId: String) {
-        val trip = getTrip(tripId) ?: return
-        val status = SeatAvailabilityEngine.suggestedStatus(trip, bookingsFor(tripId))
-        if (status != trip.status) saveTrip(trip.copy(status = status))
-    }
 
     private inline fun <reified T> decode(value: String?): T? = runCatching {
         if (value.isNullOrBlank()) null else json.decodeFromString<T>(value)
@@ -462,4 +552,17 @@ private class TripSecretStore(
         private const val KEY_CIPHERTEXT = "driver_token_ciphertext"
         private const val KEY_IV = "driver_token_iv"
     }
+}
+
+
+internal fun mergeBookingBatch0380(
+    existing: List<Booking>,
+    updated: List<Booking>,
+): List<Booking> {
+    if (updated.isEmpty()) return existing
+    val distinctUpdated = LinkedHashMap<String, Booking>().apply {
+        updated.forEach { put(it.id, it) }
+    }.values.toList()
+    val updatedIds = distinctUpdated.map(Booking::id).toSet()
+    return distinctUpdated.asReversed() + existing.filterNot { it.id in updatedIds }
 }

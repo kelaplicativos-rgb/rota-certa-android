@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 class PublicBooking0296Test {
@@ -49,4 +50,48 @@ class PublicBooking0296Test {
         assertEquals(2, local.seats)
         assertEquals(BookingStatus.CONFIRMED, local.status)
     }
+    @Test
+    fun remoteRefreshPreservesLocalMetadataMarkersForIdempotentCompare() {
+        val existing = Booking(
+            id = "booking-1",
+            tripId = "local-trip",
+            passengerName = "Passenger",
+            passengerContact = "11999999999",
+            boardingStopId = "a",
+            dropoffStopId = "b",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            passengerId = "passenger-strong-id",
+            fareMinorUnits = 1234L,
+            fareCurrencyCode = "BRL",
+            boardingAddress = "Pickup",
+            dropoffAddress = "Dropoff",
+            cancellationToken = "local-token",
+            localMetadataTouched = true,
+            updatedAtMillis = 123456L,
+        )
+        val remote = RemoteBooking(
+            id = existing.id,
+            passengerName = existing.passengerName,
+            passengerContact = existing.passengerContact,
+            boardingStopId = existing.boardingStopId,
+            dropoffStopId = existing.dropoffStopId,
+            seats = existing.seats,
+            source = existing.source,
+            status = existing.status.name,
+            passengerId = existing.passengerId,
+            updatedAtMillis = existing.updatedAtMillis,
+        )
+
+        val mapped = remote.toLocalBooking(existing.tripId, existing)
+
+        assertEquals(existing.passengerId, mapped.passengerId)
+        assertEquals(existing.fareMinorUnits, mapped.fareMinorUnits)
+        assertEquals(existing.fareCurrencyCode, mapped.fareCurrencyCode)
+        assertEquals(existing.boardingAddress, mapped.boardingAddress)
+        assertEquals(existing.dropoffAddress, mapped.dropoffAddress)
+        assertEquals(existing.cancellationToken, mapped.cancellationToken)
+        assertTrue(mapped.localMetadataTouched)
+    }
+
 }

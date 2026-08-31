@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,8 +51,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -77,6 +80,8 @@ fun TripTimelineScreen(
     focusedTripId: String? = null,
     focusedBookingId: String? = null,
     reservationPendingOnly: Boolean = false,
+    listModifier: Modifier = Modifier,
+    onFirstUsableFrame: (Int) -> Unit = {},
 ) {
     val context = LocalContext.current
     val incrementalPublishScope = rememberCoroutineScope()
@@ -144,17 +149,19 @@ fun TripTimelineScreen(
         }
         .joinToString("|")
     LaunchedEffect(collectedIdentityKey) {
-        collectorResponse?.trips.orEmpty().forEach { collectedTrip ->
-            collectedTrip.passengers.forEach { passenger ->
-                val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
-                passengerIdentityStore.observeExternalPassenger(
-                    displayName = passenger.name,
-                    whatsapp = passenger.phone,
-                    externalPassengerId = externalId,
-                    reservationKey = externalPassengerReservationKey(collectedTrip.profile_uuid, passenger.booking_href),
-                    externalTripId = collectedTrip.trip_id,
-                    driverProfileUuid = collectedTrip.profile_uuid,
-                )
+        withContext(Dispatchers.IO) {
+            collectorResponse?.trips.orEmpty().forEach { collectedTrip ->
+                collectedTrip.passengers.forEach { passenger ->
+                    val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+                    passengerIdentityStore.observeExternalPassenger(
+                        displayName = passenger.name,
+                        whatsapp = passenger.phone,
+                        externalPassengerId = externalId,
+                        reservationKey = externalPassengerReservationKey(collectedTrip.profile_uuid, passenger.booking_href),
+                        externalTripId = collectedTrip.trip_id,
+                        driverProfileUuid = collectedTrip.profile_uuid,
+                    )
+                }
             }
         }
     }
@@ -229,6 +236,17 @@ fun TripTimelineScreen(
             throw error
         }
     }
+    val tripById = remember(trips) { trips.associateBy(Trip::id) }
+    val timelineTripByEntryId = remember(entries, trips, publicExternalBindings) {
+        entries.associate { entry ->
+            val trip = entry.localTripId?.let(tripById::get)
+                ?: tripById[entry.tripId]
+                ?: publicExternalBindings.firstOrNull { it.matches(entry) }?.asTrip()
+                ?: findExistingTimelineBackingTrip(entry, trips)
+            entry.tripId to trip
+        }
+    }
+
     val capacityAuditKey = remember(entries) {
         entries.joinToString("|") { entry ->
             listOf(
@@ -244,30 +262,35 @@ fun TripTimelineScreen(
         }
     }
     LaunchedEffect(capacityAuditKey) {
-        entries.asSequence()
-            .filter { entry ->
-                !entry.blablaTripId.isNullOrBlank() ||
-                    !entry.blablaTripHref.isNullOrBlank() ||
-                    !entry.blablaProfileUuid.isNullOrBlank()
-            }
-            .forEach { entry ->
-                val resolution = timelinePublicCapacityResolution(entry)
-                val tripKey = seatSyncDiagnosticKey(
-                    entry.blablaProfileUuid.orEmpty() + "|" + (entry.blablaTripId ?: entry.tripId),
-                )
-                UnifiedDebugEventStore.record(
-                    "TIMELINE_CAPACITY_RESOLVED",
-                    context.packageName,
-                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.blablaQuota ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.operationalInventory ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
-                )
-            }
+        withContext(Dispatchers.Default) {
+            entries.asSequence()
+                .filter { entry ->
+                    !entry.blablaTripId.isNullOrBlank() ||
+                        !entry.blablaTripHref.isNullOrBlank() ||
+                        !entry.blablaProfileUuid.isNullOrBlank()
+                }
+                .forEach { entry ->
+                    val resolution = timelinePublicCapacityResolution(entry)
+                    val tripKey = seatSyncDiagnosticKey(
+                        entry.blablaProfileUuid.orEmpty() + "|" + (entry.blablaTripId ?: entry.tripId),
+                    )
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CAPACITY_RESOLVED",
+                        context.packageName,
+                        "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.blablaQuota ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.operationalInventory ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
+                    )
+                }
+        }
     }
 
+    val seatSyncStates = seatSyncStateStore.snapshot().associateBy { state ->
+        state.profileUuid.trim().lowercase() + "|" + state.tripId
+    }
     val pendingSyncEntries = entries.filter { entry ->
         val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
         val tripId = entry.blablaTripId?.trim().orEmpty()
         if (profileUuid.isBlank() || tripId.isBlank()) false
-        else externalSyncStateIsPending(seatSyncStateStore.get(profileUuid, tripId)?.state)
+        else externalSyncStateIsPending(seatSyncStates[profileUuid.lowercase() + "|" + tripId]?.state)
     }
     val searchedEntries = remember(entries, trips, bookings, searchQuery) {
         filterTimelineEntries(entries, trips, bookings, searchQuery)
@@ -311,7 +334,9 @@ fun TripTimelineScreen(
             publicCards = publicTimelineCards,
         )
     }
-    val registeredProfileUuids = BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
+    val registeredProfileUuids = remember(entries, collectorResponse) {
+        BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
+    }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
         timelineProfileColorSlots(
             registeredProfileUuids = registeredProfileUuids,
@@ -326,6 +351,7 @@ fun TripTimelineScreen(
     androidx.compose.runtime.SideEffect {
         if (renderEnded.compareAndSet(false, true)) {
             AgendaTrace.operationEnd(context, renderOperation, processedCount = visibleEntries.size)
+            onFirstUsableFrame(visibleEntries.size + publicTimelineCards.size)
         }
     }
     LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
@@ -621,73 +647,95 @@ fun TripTimelineScreen(
         Text("Nenhum card corresponde à busca.")
     }
 
-    timelineCalendarDays.forEach { day ->
-        val dayPublicCards = publicTimelineCards.filter { card ->
-            runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
-        }
-        AgendaCalendarDayLine(day.date)
-        var publicCardIndex = 0
-        day.items.forEach { entry ->
-            while (
-                publicCardIndex < dayPublicCards.size &&
-                publicSearchCardDepartureSortMillis(dayPublicCards[publicCardIndex]) <= entry.departureAtMillis
-            ) {
-                BlaBlaPublicTimelineCard(
-                    card = dayPublicCards[publicCardIndex],
-                    response = publicResponseForTimeline,
-                )
+    LazyColumn(
+        modifier = listModifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        timelineCalendarDays.forEach { day ->
+            val dayPublicCards = publicTimelineCards.filter { card ->
+                runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
+            }
+            item(key = "day:${day.date}") {
+                AgendaCalendarDayLine(day.date)
+            }
+            var publicCardIndex = 0
+            day.items.forEach { entry ->
+                while (
+                    publicCardIndex < dayPublicCards.size &&
+                    publicSearchCardDepartureSortMillis(dayPublicCards[publicCardIndex]) <= entry.departureAtMillis
+                ) {
+                    val publicCard = dayPublicCards[publicCardIndex]
+                    item {
+                        BlaBlaPublicTimelineCard(
+                            card = publicCard,
+                            response = publicResponseForTimeline,
+                        )
+                    }
+                    publicCardIndex++
+                }
+                item(key = timelineLazyItemKey0380(entry)) {
+                    val trip = timelineTripByEntryId[entry.tripId]
+                    val archived = showArchived
+                    TimelineEntryCard(
+                        entry = entry,
+                        trip = trip,
+                        store = store,
+                        formatter = formatter,
+                        profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
+                        archived = archived,
+                        onManageLocal = onManageLocal,
+                        onChanged = onChanged,
+                        referenceCoordinate = directionReference.coordinate,
+                        referenceRadiusKm = directionReference.radiusKm,
+                        directionGeo = directionGeo,
+                        currentCoordinate = currentCoordinate,
+                        onManualSeatSyncRequested = {
+                            autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
+                            autoSyncTripId = null
+                            onRequestBlaBlaSync()
+                        },
+                        onSyncExactCard = {
+                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+                            val tripId = entry.blablaTripId?.trim().orEmpty()
+                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
+                                autoSyncProfileUuid = profileUuid
+                                autoSyncTripId = tripId
+                                onRequestBlaBlaSync()
+                            } else {
+                                onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
+                            }
+                        },
+                        focusedBookingId = focusedBookingId,
+                    ) {
+                        archiveStore.setArchived(entry, !archived)
+                        archiveRevision++
+                        onChanged(if (archived) "Viagem restaurada." else "Viagem arquivada sem cancelar a publicação.")
+                    }
+                }
+            }
+            while (publicCardIndex < dayPublicCards.size) {
+                val publicCard = dayPublicCards[publicCardIndex]
+                item {
+                    BlaBlaPublicTimelineCard(
+                        card = publicCard,
+                        response = publicResponseForTimeline,
+                    )
+                }
                 publicCardIndex++
             }
-        val trip = entry.localTripId?.let(store::getTrip)
-            ?: store.getTrip(entry.tripId)
-            ?: store.publicExternalBindingFor(entry)?.asTrip()
-            ?: findExistingTimelineBackingTrip(entry, store.trips())
-        val archived = archiveStore.isArchived(entry)
-        TimelineEntryCard(
-            entry = entry,
-            trip = trip,
-            store = store,
-            formatter = formatter,
-            profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
-            archived = archived,
-            onManageLocal = onManageLocal,
-            onChanged = onChanged,
-            referenceCoordinate = directionReference.coordinate,
-            referenceRadiusKm = directionReference.radiusKm,
-            directionGeo = directionGeo,
-            currentCoordinate = currentCoordinate,
-            onManualSeatSyncRequested = {
-                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
-                autoSyncTripId = null
-                onRequestBlaBlaSync()
-            },
-            onSyncExactCard = {
-                val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-                val tripId = entry.blablaTripId?.trim().orEmpty()
-                if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
-                    autoSyncProfileUuid = profileUuid
-                    autoSyncTripId = tripId
-                    onRequestBlaBlaSync()
-                } else {
-                    onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
-                }
-            },
-            focusedBookingId = focusedBookingId,
-        ) {
-            archiveStore.setArchived(entry, !archived)
-            archiveRevision++
-            onChanged(if (archived) "Viagem restaurada." else "Viagem arquivada sem cancelar a publicação.")
-        }
-        }
-        while (publicCardIndex < dayPublicCards.size) {
-            BlaBlaPublicTimelineCard(
-                card = dayPublicCards[publicCardIndex],
-                response = publicResponseForTimeline,
-            )
-            publicCardIndex++
         }
     }
 }
+
+internal fun timelineLazyItemKey0380(entry: TripTimelineEntry): String =
+    "timeline:" + (
+        canonicalExternalTripIdentityKey(
+            entry.blablaProfileUuid,
+            entry.blablaTripId,
+            entry.blablaTripHref,
+        ) ?: entry.localTripId ?: entry.tripId
+    )
+
 
 internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
     BlaBlaPublicationSeatSyncVisualState.PENDING,

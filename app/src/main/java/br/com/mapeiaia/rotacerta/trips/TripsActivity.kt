@@ -83,6 +83,7 @@ class TripsActivity : ComponentActivity() {
         TripShortcutInstaller.installDynamic(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
         AgendaTrace.event(this, "TRIPS_ACTIVITY_BEFORE_SET_CONTENT", "savedInstanceStatePresent=${savedInstanceState != null}", traceId)
+        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         val contentOperation = AgendaTrace.operationStart(this, "AGENDA_SET_CONTENT", "TripsActivity.onCreate", traceId)
         try {
             setContent {
@@ -104,7 +105,6 @@ class TripsActivity : ComponentActivity() {
             AgendaTrace.operationError(this, contentOperation, error)
             throw error
         }
-        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
         val createDurationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - createStartedNs).coerceAtLeast(0L)) / 1_000_000L
         AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
@@ -142,6 +142,18 @@ private fun TripApp(
     val firstCompositionEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val timelineStartupOperation = remember {
         AgendaTrace.operationStart(activity, "TIMELINE_STARTUP", "TripApp", traceId)
+    }
+    val timelineStartupEnded = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    androidx.compose.runtime.DisposableEffect(timelineStartupOperation) {
+        onDispose {
+            if (timelineStartupEnded.compareAndSet(false, true)) {
+                AgendaTrace.operationCancelled(
+                    activity,
+                    timelineStartupOperation,
+                    result = "activity_disposed_before_visual_ready",
+                )
+            }
+        }
     }
     val store = remember { TripStore(activity) }
     val settingsRepository = remember(activity) { SettingsRepository(activity) }
@@ -314,6 +326,17 @@ private fun TripApp(
         )
     }
 
+    androidx.compose.runtime.LaunchedEffect(screen) {
+        if (screen != TripScreen.TIMELINE && timelineStartupEnded.compareAndSet(false, true)) {
+            AgendaTrace.operationEnd(
+                activity,
+                timelineStartupOperation,
+                result = "non_timeline_destination",
+                processedCount = trips.size + bookings.size,
+            )
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             activity,
@@ -444,13 +467,13 @@ private fun TripApp(
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
-        AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup", traceId)
+        AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup background=true", traceId)
         try {
             val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
             AgendaTrace.event(
                 activity,
                 "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                "source=startup imported=${result.importedCount} seatSyncQueued=${result.seatSyncQueued}",
+                "source=startup result=ok imported=${result.importedCount} seatSyncQueued=${result.seatSyncQueued} background=true",
                 traceId,
             )
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
@@ -460,23 +483,35 @@ private fun TripApp(
                 if (result.seatSyncQueued > 0) {
                     autoBlaBlaSyncToken++
                 } else {
-                    // A alteração pontual de vagas não depende de republicar todas as viagens.
-                    // Full sync fica como recuperação quando nenhuma mutação exata pôde ser enfileirada.
                     publicAgendaSyncRevision++
                 }
             }
-            AgendaTrace.operationEnd(
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            AgendaTrace.event(
                 activity,
-                timelineStartupOperation,
-                result = "ready",
-                processedCount = trips.size + bookings.size,
+                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                "source=startup result=caller_cancelled sharedFlightMayContinue=true background=true",
+                traceId,
             )
-        } catch (error: kotlinx.coroutines.CancellationException) {
-            AgendaTrace.operationCancelled(activity, timelineStartupOperation)
-            throw error
+            throw cancelled
         } catch (error: Throwable) {
-            AgendaTrace.operationError(activity, timelineStartupOperation, error)
-            throw error
+            AgendaTrace.event(
+                activity,
+                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
+                "source=startup result=error background=true errorClass=${error.javaClass.simpleName}",
+                traceId,
+            )
+            UnifiedDebugEventStore.record(
+                "PUBLIC_BOOKING_RECONCILE_FAILED",
+                activity.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "BOOKING_RECONCILE",
+                    component = "TripsActivity",
+                    method = "startupBackgroundReconcile",
+                ),
+            )
+            message = "Agenda local pronta. A atualização de reservas públicas falhou em background e poderá ser repetida."
         }
     }
 
@@ -587,10 +622,16 @@ private fun TripApp(
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
+                modifier = if (screen == TripScreen.TIMELINE) {
+                    Modifier
+                        .padding(16.dp)
+                        .fillMaxSize()
+                } else {
+                    Modifier
+                        .padding(16.dp)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
             Row(
@@ -745,6 +786,23 @@ private fun TripApp(
                         ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
                     focusedBookingId = focusedBookingId,
                     reservationPendingOnly = reservationPendingOnly,
+                    listModifier = Modifier.weight(1f),
+                    onFirstUsableFrame = { renderedItems ->
+                        AgendaTrace.reportTimelineFirstUsableFrame(
+                            activity = activity,
+                            traceId = traceId,
+                            renderedItems = renderedItems,
+                        ) {
+                            if (timelineStartupEnded.compareAndSet(false, true)) {
+                                AgendaTrace.operationEnd(
+                                    activity,
+                                    timelineStartupOperation,
+                                    result = "visual_ready",
+                                    processedCount = renderedItems,
+                                )
+                            }
+                        }
+                    },
                 )
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,

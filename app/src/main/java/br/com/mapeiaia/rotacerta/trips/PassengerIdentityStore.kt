@@ -359,6 +359,165 @@ class PassengerIdentityStore(context: Context) {
     }
 
     /**
+     * Fast path for reconcile batches that already carry the canonical passengerId from
+     * the server. Profiles, observations and ride occurrences are updated in memory and
+     * each backing collection is serialized once for the whole batch.
+     */
+    internal fun ensureLocalBookingProfilesBatch(
+        bookings: List<Booking>,
+    ): Map<String, String> {
+        val eligible = bookings.filter {
+            it.capacityClaimType == CapacityClaimType.PASSENGER &&
+                it.passengerName.isNotBlank()
+        }
+        if (eligible.isEmpty()) return emptyMap()
+
+        val now = System.currentTimeMillis()
+        val profileById = LinkedHashMap<String, PassengerProfile>().apply {
+            profiles().forEach { put(it.id, it) }
+        }
+        val observationList = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+            .orEmpty()
+            .toMutableList()
+        val observationsByProfile = observationList
+            .groupBy(PassengerIdentityObservation::passengerId)
+            .mapValues { (_, items) -> items.toMutableList() }
+            .toMutableMap()
+        val rideByKey = LinkedHashMap<String, PassengerRideRecord>().apply {
+            decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
+                .orEmpty()
+                .forEach { put(it.passengerId + "|" + it.rideKey, it) }
+        }
+        val resolved = LinkedHashMap<String, String>()
+
+        eligible.forEach { booking ->
+            val explicitPassengerId = booking.passengerId.trim()
+            val name = booking.passengerName.trim().take(120)
+            val phone = booking.passengerContact.trim().take(40)
+            val contactKey = passengerContactKey(phone)
+            val profilesSnapshot = profileById.values.toList()
+            val historicalContacts = observationsByProfile.mapValues { (_, items) ->
+                items.map(PassengerIdentityObservation::whatsapp).toSet()
+            }
+
+            val existing = when {
+                explicitPassengerId.isNotBlank() -> selectCanonicalPassenger(
+                    profiles = profilesSnapshot,
+                    historicalContactsByProfile = historicalContacts,
+                    passengerId = explicitPassengerId,
+                    whatsapp = phone,
+                )
+                contactKey.isBlank() -> null
+                else -> {
+                    val exactMatches = profilesSnapshot.filter { profile ->
+                        passengerContactKey(profile.whatsapp) == contactKey ||
+                            passengerContactKey(profile.agendaAccessContact()) == contactKey ||
+                            historicalContacts[profile.id].orEmpty().any { passengerContactKey(it) == contactKey }
+                    }.distinctBy(PassengerProfile::id)
+                    when (exactMatches.size) {
+                        0 -> null
+                        1 -> exactMatches.single()
+                        else -> buildPassengerPickerSnapshot(
+                            exactMatches,
+                            exactMatches.associate { profile ->
+                                profile.id to observationsByProfile[profile.id].orEmpty()
+                            },
+                        ).profiles.singleOrNull()
+                    }
+                }
+            }
+
+            val ambiguousWithoutStrongId = explicitPassengerId.isBlank() &&
+                contactKey.isNotBlank() &&
+                existing == null &&
+                profilesSnapshot.count { profile ->
+                    passengerContactKey(profile.whatsapp) == contactKey ||
+                        passengerContactKey(profile.agendaAccessContact()) == contactKey ||
+                        historicalContacts[profile.id].orEmpty().any { passengerContactKey(it) == contactKey }
+                } > 1
+            if (ambiguousWithoutStrongId) {
+                AgendaTrace.event(
+                    appContext,
+                    "PASSENGER_IDENTITY_AMBIGUOUS",
+                    "source=local_booking_batch action=preserve_without_new_profile",
+                )
+                return@forEach
+            }
+
+            val passengerId = existing?.id
+                ?: explicitPassengerId.takeIf(String::isNotBlank)
+                ?: UUID.randomUUID().toString()
+            val base = existing ?: PassengerProfile(
+                id = passengerId,
+                displayName = name,
+                whatsapp = phone,
+                createdAtMillis = booking.createdAtMillis,
+            )
+            val saved = base.copy(
+                displayName = name,
+                whatsapp = phone.ifBlank { base.whatsapp },
+                updatedAtMillis = now,
+            )
+            profileById[passengerId] = saved
+            resolved[booking.id] = passengerId
+
+            val latestObservation = observationsByProfile[passengerId]
+                .orEmpty()
+                .maxByOrNull(PassengerIdentityObservation::observedAtMillis)
+            if (
+                latestObservation == null ||
+                latestObservation.displayName != name ||
+                latestObservation.whatsapp != phone ||
+                latestObservation.photoUrl.isNotBlank() ||
+                latestObservation.externalPassengerId.isNotBlank()
+            ) {
+                val observation = PassengerIdentityObservation(
+                    passengerId = passengerId,
+                    displayName = name,
+                    whatsapp = phone,
+                    source = "LOCAL_${booking.source.name}",
+                    observedAtMillis = now,
+                )
+                observationList.add(0, observation)
+                observationsByProfile.getOrPut(passengerId) { mutableListOf() }.add(observation)
+            }
+
+            val rideKey = "local:${booking.id}"
+            val mapKey = passengerId + "|" + rideKey
+            val existingRide = rideByKey[mapKey]
+            val requestedStatus = when (booking.status) {
+                BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.EXPIRED ->
+                    PassengerOccurrenceStatus.CANCELLED
+                BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED ->
+                    PassengerOccurrenceStatus.RESERVED
+            }
+            val mergedStatus = mergePassengerOccurrenceStatus(existingRide?.status, requestedStatus)
+            rideByKey[mapKey] = (existingRide ?: PassengerRideRecord(
+                passengerId = passengerId,
+                rideKey = rideKey,
+                observedAtMillis = now,
+            )).copy(
+                status = mergedStatus,
+                tripId = booking.tripId.trim().take(160).ifBlank { existingRide?.tripId.orEmpty() },
+                source = booking.source.name,
+                seats = booking.seats.coerceAtLeast(1),
+                completedAtMillis = when (mergedStatus) {
+                    PassengerOccurrenceStatus.COMPLETED -> existingRide?.completedAtMillis ?: now
+                    else -> null
+                },
+                updatedAtMillis = now,
+            )
+        }
+
+        prefs.edit()
+            .putString(profilesKey, json.encodeToString(profileById.values.toList()))
+            .putString(observationsKey, json.encodeToString(observationList))
+            .putString(rideRecordsKey, json.encodeToString(rideByKey.values.toList()))
+            .apply()
+        return resolved
+    }
+
+    /**
      * BlaBlaCar identity is automatically persisted only from a strong stable passenger UUID/id.
      * Name, phone and future photo changes become observations; they never create a new person
      * while the same external UUID is present.
