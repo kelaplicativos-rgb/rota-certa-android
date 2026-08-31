@@ -63,10 +63,10 @@ class SettingsRepository(private val context: Context) {
             homeAddress = prefs[homeAddress].orEmpty(),
             alternativeAddress = prefs[alternativeAddress].orEmpty(),
             tripDepartureAddress = prefs[tripDepartureAddress].orEmpty(),
+            // Read-only legacy compatibility. This value no longer participates in trip inventory.
             vehicleCapacity = (prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
-            // Legacy compatibility: before the semantic split, the same value was
-            // also being used as the Rota Certa operational allocation.
-            rotaCertaSeatAllocation = (prefs[rotaCertaSeatAllocation] ?: prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
+            // Explicit 0 is a valid configured value. Never fall back to the legacy capacity key.
+            rotaCertaSeatAllocation = (prefs[rotaCertaSeatAllocation] ?: 0).coerceIn(0, 999),
             homeRadiusKm = prefs[homeRadiusKm] ?: 10.0,
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
@@ -129,11 +129,8 @@ class SettingsRepository(private val context: Context) {
             prefs[homeAddress] = settings.homeAddress
             prefs[alternativeAddress] = settings.alternativeAddress
             prefs[tripDepartureAddress] = settings.tripDepartureAddress.trim()
-            if (settings.vehicleCapacity in 1..999) {
-                prefs[vehicleCapacity] = settings.vehicleCapacity
-            } else {
-                prefs.remove(vehicleCapacity)
-            }
+            // vehicle_capacity intentionally stays untouched for old-installation compatibility.
+            // New saves never create, rewrite or remove that legacy value.
             if (settings.rotaCertaSeatAllocation in 0..999) {
                 prefs[rotaCertaSeatAllocation] = settings.rotaCertaSeatAllocation
             } else {
