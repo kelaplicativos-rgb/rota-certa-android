@@ -1,133 +1,276 @@
-name: Rota Certa infra Gradle 8.10.2 mirror
+name: Rota Certa infra Gradle 8.10.2 mirror validation
 
 on:
   push:
     branches:
       - agent/gradle-mirror-8.10.2-0.1.374
     paths:
+      - 'gradle/wrapper/gradle-wrapper.properties'
+      - '.github/workflows/infra-gradle-8.10.2-mirror.yml'
+  pull_request:
+    paths:
+      - 'gradle/wrapper/gradle-wrapper.properties'
       - '.github/workflows/infra-gradle-8.10.2-mirror.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: infra-gradle-8.10.2-mirror
-  cancel-in-progress: false
+  group: infra-gradle-8.10.2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  ensure-mirror:
+  validate-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       GRADLE_VERSION: '8.10.2'
       GRADLE_ASSET: gradle-8.10.2-bin.zip
       GRADLE_SHA256: 31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
       INFRA_TAG: infra-gradle-8.10.2
-      UPSTREAM_URL: https://github.com/gradle/gradle-distributions/releases/download/v8.10.2/gradle-8.10.2-bin.zip
+      MIRROR_URL: https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/infra-gradle-8.10.2/gradle-8.10.2-bin.zip
+      FAROL_SHA256: 884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Ensure immutable-by-policy mirror asset
+      - name: Prove source and infrastructure-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$FAROL_SHA256"
+          grep -Fq 'versionCode = 5667' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.374"' app/build.gradle.kts
+
+          BASE=5b2304314a3dc047b703953a24be84624c9d5edc
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          test "$(git diff --name-only "$BASE"..HEAD -- app/src | wc -l)" -eq 0
+          test "$(git diff --name-only "$BASE"..HEAD -- . ':!gradle/wrapper/gradle-wrapper.properties' ':!.github/workflows/infra-gradle-8.10.2-mirror.yml' | wc -l)" -eq 0
+
+          LEGACY_HOST_FOR_SCAN="$(printf '%s.%s.%s' services gradle org)"
+          if grep -RIl --exclude-dir=.git --exclude-dir=.gradle --exclude-dir=build --fixed-strings "$LEGACY_HOST_FOR_SCAN" . >/tmp/legacy-versioned-refs.txt; then
+            cat /tmp/legacy-versioned-refs.txt >&2
+            exit 52
+          fi
+          grep -Fq 'distributionUrl=https\://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/infra-gradle-8.10.2/gradle-8.10.2-bin.zip' gradle/wrapper/gradle-wrapper.properties
+          grep -Fq "distributionSha256Sum=$GRADLE_SHA256" gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'networkTimeout=60000' gradle/wrapper/gradle-wrapper.properties
+          grep -Fq 'validateDistributionUrl=true' gradle/wrapper/gradle-wrapper.properties
+
+          {
+            echo "SOURCE_BRANCH=$SOURCE_BRANCH"
+            echo "SOURCE_HEAD=$SOURCE_SHA"
+            echo "FAROL_SHA256=$FAROL_SHA256"
+            echo "SERVICES_GRADLE_ORG_VERSIONED_REFERENCES=0"
+          } | tee /tmp/source-proof.txt
+
+      - name: Validate permanent mirror and SHA-256
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           REPO="$GITHUB_REPOSITORY"
-          MIRROR_URL="https://github.com/${REPO}/releases/download/${INFRA_TAG}/${GRADLE_ASSET}"
-          LATEST_BEFORE="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
-          echo "LATEST_BEFORE=${LATEST_BEFORE}"
+          gh api "repos/${REPO}/releases/tags/${INFRA_TAG}" >/tmp/infra-release.json
+          test "$(jq -r '.draft' /tmp/infra-release.json)" = "false"
+          test "$(jq -r '.prerelease' /tmp/infra-release.json)" = "true"
+          jq -e --arg name "$GRADLE_ASSET" '.assets[] | select(.name == $name)' /tmp/infra-release.json >/tmp/mirror-asset.json
+          ASSET_DIGEST="$(jq -r '.digest // empty' /tmp/mirror-asset.json)"
+          test "$ASSET_DIGEST" = "sha256:${GRADLE_SHA256}"
 
-          release_exists=false
-          if gh api "repos/${REPO}/releases/tags/${INFRA_TAG}" >/tmp/infra-release.json 2>/dev/null; then
-            release_exists=true
-          fi
-
-          asset_id=""
-          asset_digest=""
-          if [ "$release_exists" = true ]; then
-            asset_id="$(jq -r --arg name "$GRADLE_ASSET" '.assets[]? | select(.name == $name) | .id' /tmp/infra-release.json | head -1)"
-            asset_digest="$(jq -r --arg name "$GRADLE_ASSET" '.assets[]? | select(.name == $name) | .digest // empty' /tmp/infra-release.json | head -1)"
-            if [ -n "$asset_id" ]; then
-              if [ -n "$asset_digest" ] && [ "$asset_digest" != "sha256:${GRADLE_SHA256}" ]; then
-                echo "Existing mirror asset digest is unexpected: ${asset_digest}" >&2
-                exit 41
-              fi
-              echo "Mirror asset already exists; refusing replacement/clobber."
-            fi
-          fi
-
-          if [ -z "$asset_id" ]; then
-            curl --fail --location --retry 3 --retry-all-errors \
-              --output "/tmp/${GRADLE_ASSET}" \
-              "$UPSTREAM_URL"
-            ACTUAL="$(sha256sum "/tmp/${GRADLE_ASSET}" | awk '{print $1}')"
-            echo "UPSTREAM_DOWNLOADED_SHA256=${ACTUAL}"
-            test "$ACTUAL" = "$GRADLE_SHA256"
-
-            if [ "$release_exists" = false ]; then
-              cat >/tmp/release-notes.txt <<EOF
-          Technical infrastructure mirror for the Rota Certa build.
-
-          Asset: ${GRADLE_ASSET}
-          Gradle: ${GRADLE_VERSION} (-bin)
-          SHA-256: ${GRADLE_SHA256}
-          Upstream source used for bootstrap: ${UPSTREAM_URL}
-
-          This is infrastructure only. It is a prerelease, is not the application's latest release,
-          and the asset must never be silently replaced. A different byte stream requires a new tag.
-          EOF
-              gh release create "$INFRA_TAG" "/tmp/${GRADLE_ASSET}#Gradle ${GRADLE_VERSION} binary distribution mirror" \
-                --repo "$REPO" \
-                --title "Infrastructure mirror — Gradle ${GRADLE_VERSION}" \
-                --notes-file /tmp/release-notes.txt \
-                --prerelease \
-                --latest=false \
-                --target "$GITHUB_SHA"
-            else
-              gh release upload "$INFRA_TAG" "/tmp/${GRADLE_ASSET}#Gradle ${GRADLE_VERSION} binary distribution mirror" \
-                --repo "$REPO"
-            fi
-          fi
-
-          gh api "repos/${REPO}/releases/tags/${INFRA_TAG}" >/tmp/infra-release-after.json
-          jq -e --arg name "$GRADLE_ASSET" '.assets[] | select(.name == $name)' /tmp/infra-release-after.json >/tmp/asset.json
-          test "$(jq -r '.draft' /tmp/infra-release-after.json)" = "false"
-          test "$(jq -r '.prerelease' /tmp/infra-release-after.json)" = "true"
-
-          LATEST_AFTER="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
-          echo "LATEST_AFTER=${LATEST_AFTER}"
-          test "$LATEST_AFTER" = "$LATEST_BEFORE"
+          LATEST_TAG="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
+          test "$LATEST_TAG" != "$INFRA_TAG"
 
           curl --fail --silent --show-error --location --head "$MIRROR_URL" >/tmp/mirror-headers.txt
-          ! grep -qi 'services\.gradle\.org' /tmp/mirror-headers.txt
+          LEGACY_PATTERN='services[.]gradle[.]org'
+          ! grep -Eqi "$LEGACY_PATTERN" /tmp/mirror-headers.txt
 
           HTTP_RESULT="$(curl --fail --silent --show-error --location \
-            --output "/tmp/mirror-${GRADLE_ASSET}" \
+            --output "/tmp/${GRADLE_ASSET}" \
             --write-out '%{http_code} %{url_effective}' \
             "$MIRROR_URL")"
-          MIRROR_SHA="$(sha256sum "/tmp/mirror-${GRADLE_ASSET}" | awk '{print $1}')"
+          MIRROR_SHA="$(sha256sum "/tmp/${GRADLE_ASSET}" | awk '{print $1}')"
           test "$MIRROR_SHA" = "$GRADLE_SHA256"
 
           {
-            echo "MIRROR_URL=${MIRROR_URL}"
-            echo "MIRROR_HTTP_RESULT=${HTTP_RESULT}"
-            echo "MIRROR_DOWNLOADED_SHA256=${MIRROR_SHA}"
-            echo "GRADLE_ZIP_SHA256=${MIRROR_SHA}"
-            echo "LATEST_RELEASE_UNCHANGED=true"
+            echo "MIRROR_URL=$MIRROR_URL"
+            echo "MIRROR_HTTP_RESULT=$HTTP_RESULT"
+            echo "MIRROR_DOWNLOADED_SHA256=$MIRROR_SHA"
+            echo "GRADLE_ZIP_SHA256=$MIRROR_SHA"
+            echo "LATEST_RELEASE_TAG=$LATEST_TAG"
           } | tee /tmp/mirror-validation.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - name: Setup Gradle cache
+        id: setup-gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Record setup-gradle cache state before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          NORMAL_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          DIST_REUSED=false
+          if find "$NORMAL_HOME/wrapper/dists" -type f -path '*/gradle-8.10.2/bin/gradle' -print -quit 2>/dev/null | grep -q .; then
+            DIST_REUSED=true
+          fi
+          {
+            echo "GRADLE_CACHE_CONFIGURED=true"
+            echo "GRADLE_USER_HOME=$NORMAL_HOME"
+            echo "WRAPPER_DISTRIBUTION_REUSED_BEFORE_BUILD=$DIST_REUSED"
+          } | tee /tmp/cache-before.txt
+
+      - name: Fresh wrapper and full build with legacy host unavailable
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
+
+          FRESH_HOME="$RUNNER_TEMP/gradle-home-fresh-services-blocked"
+          rm -rf "$FRESH_HOME"
+          mkdir -p "$FRESH_HOME"
+          test ! -e "$FRESH_HOME/wrapper/dists"
+          export GRADLE_USER_HOME="$FRESH_HOME"
+
+          LEGACY_HOST="$(printf '%s.%s.%s' services gradle org)"
+          sudo cp /etc/hosts /tmp/hosts.before-gradle-distribution-test
+          restore_hosts() {
+            sudo sh -c 'cat /tmp/hosts.before-gradle-distribution-test > /etc/hosts'
+          }
+          trap restore_hosts EXIT
+          printf '127.0.0.1 %s\n::1 %s\n' "$LEGACY_HOST" "$LEGACY_HOST" | sudo tee -a /etc/hosts >/dev/null
+          export NO_PROXY="${NO_PROXY:+$NO_PROXY,}$LEGACY_HOST"
+          export no_proxy="${no_proxy:+$no_proxy,}$LEGACY_HOST"
+          getent hosts "$LEGACY_HOST" | tee /tmp/legacy-host-block.txt
+          if curl --noproxy "$LEGACY_HOST" --silent --show-error --connect-timeout 3 --max-time 5 --head "https://${LEGACY_HOST}/" >/tmp/legacy-host-curl.txt 2>&1; then
+            echo "Legacy host unexpectedly reachable during block test" >&2
+            exit 51
+          fi
+
+          ./gradlew --version 2>&1 | tee /tmp/fresh-wrapper-version.txt
+          grep -Fq "$MIRROR_URL" /tmp/fresh-wrapper-version.txt
+          grep -Fq 'Gradle 8.10.2' /tmp/fresh-wrapper-version.txt
+          test -d "$FRESH_HOME/wrapper/dists"
+
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/blocked-build.txt
+          grep -Fq 'BUILD SUCCESSFUL' /tmp/blocked-build.txt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$FAROL_SHA256"
+
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          mkdir -p /tmp/gradle-mirror-result
+          cp "$APK" /tmp/gradle-mirror-result/rota-certa-0.1.374-gradle-mirror.apk
+
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs /tmp/gradle-mirror-result/rota-certa-0.1.374-gradle-mirror.apk | tee /tmp/gradle-mirror-result/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging /tmp/gradle-mirror-result/rota-certa-0.1.374-gradle-mirror.apk | tee /tmp/gradle-mirror-result/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/gradle-mirror-result/aapt.txt
+          grep -Fq "versionCode='5667'" /tmp/gradle-mirror-result/aapt.txt
+          grep -Fq "versionName='0.1.374'" /tmp/gradle-mirror-result/aapt.txt
+          sha256sum /tmp/gradle-mirror-result/rota-certa-0.1.374-gradle-mirror.apk | tee /tmp/gradle-mirror-result/apk.sha256
+          java -version 2>&1 | tee /tmp/gradle-mirror-result/java-version.txt
+          cp /tmp/fresh-wrapper-version.txt /tmp/gradle-mirror-result/fresh-wrapper-version.txt
+          cp /tmp/blocked-build.txt /tmp/gradle-mirror-result/blocked-build.txt
+          cp /tmp/legacy-host-block.txt /tmp/gradle-mirror-result/legacy-host-block.txt
+          cp /tmp/source-proof.txt /tmp/gradle-mirror-result/source-proof.txt
+          cp /tmp/mirror-validation.txt /tmp/gradle-mirror-result/mirror-validation.txt
+          cp /tmp/cache-before.txt /tmp/gradle-mirror-result/cache-before.txt
+          cp /tmp/changed-files.txt /tmp/gradle-mirror-result/changed-files.txt
+          git rev-parse HEAD > /tmp/gradle-mirror-result/source-head.txt
+
+          restore_hosts
+          trap - EXIT
+
+      - name: Populate normal setup-gradle cache from corrected wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          NORMAL_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          export GRADLE_USER_HOME="$NORMAL_HOME"
+          ./gradlew --version 2>&1 | tee /tmp/normal-wrapper-version.txt
+          grep -Fq 'Gradle 8.10.2' /tmp/normal-wrapper-version.txt
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/normal-build.txt
+          grep -Fq 'BUILD SUCCESSFUL' /tmp/normal-build.txt
+          find "$NORMAL_HOME/wrapper/dists" -type f -path '*/gradle-8.10.2/bin/gradle' -print -quit | tee /tmp/wrapper-cache-path.txt
+          test -s /tmp/wrapper-cache-path.txt
+          test -d "$NORMAL_HOME/caches"
+          {
+            echo "GRADLE_CACHE_CONFIGURED=true"
+            echo "GRADLE_CACHE_POPULATED=true"
+            echo "WRAPPER_DISTRIBUTION_PRESENT_AFTER_BUILD=true"
+          } | tee /tmp/cache-after.txt
+          cp /tmp/normal-wrapper-version.txt /tmp/gradle-mirror-result/normal-wrapper-version.txt
+          cp /tmp/normal-build.txt /tmp/gradle-mirror-result/normal-build.txt
+          cp /tmp/wrapper-cache-path.txt /tmp/gradle-mirror-result/wrapper-cache-path.txt
+          cp /tmp/cache-after.txt /tmp/gradle-mirror-result/cache-after.txt
+
+      - name: Final source and FAROL integrity proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "$FAROL_SHA256"
+          test "$(git status --porcelain --untracked-files=no | wc -l)" -eq 0
+          LEGACY_HOST_FOR_SCAN="$(printf '%s.%s.%s' services gradle org)"
+          if grep -RIl --exclude-dir=.git --exclude-dir=.gradle --exclude-dir=build --fixed-strings "$LEGACY_HOST_FOR_SCAN" . >/tmp/legacy-versioned-refs.txt; then
+            cat /tmp/legacy-versioned-refs.txt >&2
+            exit 52
+          fi
+          {
+            echo "FAROL_SHA256_AFTER=$FAROL_SHA256"
+            echo "SERVICES_GRADLE_ORG_REQUIRED=false"
+            echo "GRADLE_DISTRIBUTION_SOURCE=$MIRROR_URL"
+          } | tee /tmp/final-proof.txt
+          cp /tmp/final-proof.txt /tmp/gradle-mirror-result/final-proof.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gradle-8.10.2-mirror-bootstrap-evidence
+          name: rota-certa-0.1.374-gradle-mirror-validation
           retention-days: 30
           if-no-files-found: error
-          path: |
-            /tmp/mirror-validation.txt
-            /tmp/mirror-headers.txt
-            /tmp/infra-release-after.json
-            /tmp/asset.json
+          path: /tmp/gradle-mirror-result
