@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "c9a330c2413921b7dfebe27450d09a4b2c0c02a7"
+          test "$(git rev-parse HEAD^)" = "68b5fcd325b58035f2016741313f3bab952b767d"
           git show 693e753f5670354fe8d210137a9e6bbf0b2148ca:.github/workflows/agenda-0369-combined-seat-pools.yml > .github/workflows/agenda-0369-combined-seat-pools.yml
           gzip -t .github/diag-0376.patch.gz
           gzip -dc .github/diag-0376.patch.gz > /tmp/diag0376.patch
@@ -47,6 +47,17 @@ jobs:
           git apply /tmp/extra0376.patch
           sed -i 's/tripKey = sha256(trip.id).take(12),/tripKey = seatSyncDiagnosticKey(trip.id),/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           sed -i 's/tripKey = sha256(target.localTripId).take(12),/tripKey = seatSyncDiagnosticKey(target.localTripId),/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncRegression0373Test.kt")
+          source = path.read_text()
+          old = '        assertTrue(remoteApi.contains("throw IllegalStateException(\\\"Servidor respondeu HTTP"))'
+          new = '''        assertTrue(remoteApi.contains("internal class TripRemoteApiException("))
+        assertTrue(remoteApi.contains(") : IllegalStateException("))
+        assertTrue(remoteApi.contains("throw TripRemoteApiException("))'''
+          assert old in source, "legacy TripRemoteApi boundary assertion not found"
+          path.write_text(source.replace(old, new))
+          PY
           rm -f .github/diag-0376.patch.gz .github/workflows/diag-0376-materialize.yml
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | awk '{print $1}')" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
           grep -Fq 'versionCode = 5669' app/build.gradle.kts
