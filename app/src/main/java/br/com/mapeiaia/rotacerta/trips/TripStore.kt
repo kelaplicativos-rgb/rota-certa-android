@@ -281,9 +281,17 @@ class TripStore(context: Context) {
     }
 
     fun deleteBooking(id: String) {
-        val booking = bookings().firstOrNull { it.id == id }
-        prefs.edit().putString(bookingsKey, json.encodeToString(bookings().filterNot { it.id == id })).apply()
-        booking?.let { refreshTripStatus(it.tripId) }
+        val current = bookings()
+        val booking = current.firstOrNull { it.id == id }
+        val next = current.filterNot { it.id == id }
+        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
+        booking?.let {
+            refreshTripStatusesBatch(
+                tripIds = setOf(it.tripId),
+                bookingSnapshot = next,
+                nowMillis = System.currentTimeMillis(),
+            )
+        }
     }
 
     fun onlineSettings(): TripOnlineSettings {
