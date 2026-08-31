@@ -114,7 +114,7 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
-    fun repeatedIdenticalRequestsRunOnlyOneEffectiveSync() = runBlocking {
+    fun repeatedIdenticalRequestsRunOnlyOneEffectiveSync(): Unit = runBlocking {
         val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val entered = CompletableDeferred<Unit>()
@@ -144,7 +144,7 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
-    fun realSourceChangeDuringSyncProducesExactlyOneFollowUpPass() = runBlocking {
+    fun realSourceChangeDuringSyncProducesExactlyOneFollowUpPass(): Unit = runBlocking {
         val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val version = AtomicInteger(1)
@@ -178,7 +178,7 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
-    fun tenantScopedCoordinatorsDoNotBlockEachOther() = runBlocking {
+    fun tenantScopedCoordinatorsDoNotBlockEachOther(): Unit = runBlocking {
         val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val scopeB = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
