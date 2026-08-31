@@ -79,7 +79,7 @@ class GlobalPassengerFlow0256Test {
     }
 
     @Test
-    fun sixExternalSeatsInFourteenLeaveEightAndRemainReservedSeatClaims() {
+    fun sixExternalSeatsInFourteenLeaveEightAndRemainExternalOccupancyClaims() {
         val passengers = listOf(
             BlaBlaCollectorPassenger(
                 name = "P1",
@@ -100,7 +100,7 @@ class GlobalPassengerFlow0256Test {
         val trip = buildTimelineExternalBackingTrip(entry, 14)
         val claims = planTimelineExternalCapacityClaims(entry, trip, emptyList())
         assertEquals(6, claims.sumOf(Booking::seats))
-        assertTrue(claims.all { it.capacityClaimType == CapacityClaimType.RESERVED_SEAT })
+        assertTrue(claims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
         assertTrue(claims.all { it.source == BookingSource.BLABLACAR })
         val stops = trip.stops.sortedBy(TripStop::order)
         val availability = SeatAvailabilityEngine.availability(
@@ -149,7 +149,7 @@ class GlobalPassengerFlow0256Test {
         )
         val trip = buildTimelineExternalBackingTrip(entry, 14)
         val claim = planTimelineExternalCapacityClaims(entry, trip, emptyList()).single()
-        assertEquals(CapacityClaimType.RESERVED_SEAT, claim.capacityClaimType)
+        assertEquals(CapacityClaimType.EXTERNAL_OCCUPANCY, claim.capacityClaimType)
         assertFalse(claim.passengerName.isBlank())
     }
 
