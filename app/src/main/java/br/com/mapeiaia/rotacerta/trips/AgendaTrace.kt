@@ -292,6 +292,8 @@ internal object AgendaTrace {
                 contentMounted = false,
                 loadingIntentional = false,
                 emptyStartedNs = 0L,
+                interactiveScheduled = false,
+                interactiveReported = false,
             )
         }
 
@@ -319,20 +321,66 @@ internal object AgendaTrace {
                     traceId,
                 )
             }
-            decor.post {
-                val totalMs = ((SystemClock.elapsedRealtimeNanos() - openStartedNs).coerceAtLeast(0L)) / 1_000_000L
-                event(
-                    activity,
-                    "AGENDA_FIRST_INTERACTIVE_FRAME",
-                    "screen=${screenKey(activity)} totalMs=$totalMs",
-                    traceId,
-                )
-                event(
-                    activity,
-                    "AGENDA_OPEN_TOTAL_MS",
-                    "value=$totalMs unit=ms",
-                    traceId,
-                )
+            event(
+                activity,
+                "AGENDA_FIRST_FRAME_CALLBACK_COMPLETE",
+                "screen=${screenKey(activity)} interactive=false source=activity_first_frame",
+                traceId,
+            )
+        }
+    }
+
+    fun reportTimelineFirstUsableFrame(
+        activity: Activity,
+        traceId: String,
+        renderedItems: Int,
+        onInteractive: () -> Unit,
+    ) {
+        val shouldSchedule = synchronized(visualStates) {
+            val state = visualStates[activity] ?: return
+            if (state.interactiveScheduled || state.interactiveReported) {
+                false
+            } else {
+                state.interactiveScheduled = true
+                true
+            }
+        }
+        if (!shouldSchedule) return
+
+        val decor = activity.window.decorView
+        decor.postOnAnimation {
+            Choreographer.getInstance().postFrameCallback {
+                decor.post {
+                    val shouldReport = synchronized(visualStates) {
+                        val state = visualStates[activity]
+                        if (
+                            state == null ||
+                            state.traceId != traceId ||
+                            state.interactiveReported
+                        ) {
+                            false
+                        } else {
+                            state.interactiveReported = true
+                            true
+                        }
+                    }
+                    if (!shouldReport) return@post
+                    onInteractive()
+                    val openStartedNs = traceStartNs[traceId] ?: SystemClock.elapsedRealtimeNanos()
+                    val totalMs = ((SystemClock.elapsedRealtimeNanos() - openStartedNs).coerceAtLeast(0L)) / 1_000_000L
+                    event(
+                        activity,
+                        "AGENDA_FIRST_INTERACTIVE_FRAME",
+                        "screen=${screenKey(activity)} totalMs=$totalMs renderedItems=${renderedItems.coerceAtLeast(0)} source=passive_timeline_frame controlsEnabled=true",
+                        traceId,
+                    )
+                    event(
+                        activity,
+                        "AGENDA_OPEN_TOTAL_MS",
+                        "value=$totalMs unit=ms source=passive_timeline_frame",
+                        traceId,
+                    )
+                }
             }
         }
     }
@@ -631,5 +679,7 @@ internal object AgendaTrace {
         var contentMounted: Boolean,
         var loadingIntentional: Boolean,
         var emptyStartedNs: Long,
+        var interactiveScheduled: Boolean,
+        var interactiveReported: Boolean,
     )
 }

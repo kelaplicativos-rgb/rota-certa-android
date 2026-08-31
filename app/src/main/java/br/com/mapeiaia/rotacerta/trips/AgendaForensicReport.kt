@@ -61,18 +61,20 @@ internal object AgendaForensicReportBuilder {
             }
 
         val capacityInitial = agendaEvents.firstOrNull { it.stage == "CAPACITY_INITIAL_STATE" }
-        val capacityFirstValue = agendaEvents.firstOrNull {
-            it.stage in setOf("CAPACITY_LOCAL_SETTINGS_RECEIVED", "CAPACITY_RENDER_UPDATED") &&
-                detail(it, "valuePresent") == "true"
+        val localSettingsCapacity = agendaEvents.firstOrNull {
+            it.stage in setOf("INVENTORY_LOCAL_SETTINGS_RECEIVED", "CAPACITY_LOCAL_SETTINGS_RECEIVED")
         }
-        val capacityDelayMs = agendaEvents
-            .lastOrNull { it.stage == "CAPACITY_FIRST_VALUE_MS" }
-            ?.let { detailLong(it, "value") }
-            ?: if (capacityInitial != null && capacityFirstValue != null) {
-                ((capacityFirstValue.monotonicNs - capacityInitial.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
-            } else {
-                null
-            }
+        val resolvedCapacity = agendaEvents.firstOrNull {
+            it.stage == "TIMELINE_CAPACITY_RESOLVED" &&
+                (detailLong(it, "operationalInventory") ?: -1L) >= 0L &&
+                (detailLong(it, "availableSeats") ?: -1L) >= 0L
+        }
+        val capacityFirstValue = resolvedCapacity
+        val capacityDelayMs = if (openRequested != null && resolvedCapacity != null) {
+            ((resolvedCapacity.monotonicNs - openRequested.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
+        } else {
+            null
+        }
 
         val jankDurations = agendaEvents
             .filter { it.stage.startsWith("AGENDA_JANK_") }
@@ -121,16 +123,33 @@ internal object AgendaForensicReportBuilder {
                     (longestOperation?.let { "${it.name} — ${it.durationMs} ms" } ?: "não registrada"),
             )
             appendLine(
-                "- capacidade inicial: " +
+                "- capacidade inicial/settings: " +
                     if (capacityInitial == null) "não registrada"
                     else if (detail(capacityInitial, "valuePresent") == "true") detail(capacityInitial, "value").ifBlank { "presente" }
-                    else "ausente",
+                    else "aguardando settings locais",
+            )
+            appendLine(
+                "- settings locais carregados: " +
+                    (localSettingsCapacity?.let { event ->
+                        "sim • rotaCertaAllocation=" + detail(event, "value").ifBlank {
+                            detail(event, "rotaCertaAllocation").ifBlank { "registrada" }
+                        }
+                    } ?: "não registrado"),
+            )
+            appendLine(
+                "- capacidade/inventário operacional resolvido: " +
+                    (resolvedCapacity?.let { event ->
+                        "operationalInventory=" + detail(event, "operationalInventory") +
+                            " • availableSeats=" + detail(event, "availableSeats") +
+                            " • source=" + detail(event, "capacitySource").ifBlank { "canônica por viagem" }
+                    } ?: "não registrado"),
             )
             appendLine(
                 "- capacidade recebida: " +
-                    (capacityFirstValue?.let { detail(it, "value").ifBlank { "presente" } } ?: "não registrada"),
+                    (capacityFirstValue?.let { detail(it, "operationalInventory").ifBlank { "presente" } } ?: "não registrada"),
             )
-            appendLine("- atraso até capacidade aparecer: ${capacityDelayMs?.let { "$it ms" } ?: "não calculado"}")
+            appendLine("- primeira capacidade válida: ${resolvedCapacity?.let { formatWall(it.atMillis) } ?: "não registrada"}")
+            appendLine("- atraso desde AGENDA_OPEN_REQUESTED até capacidade válida: ${capacityDelayMs?.let { "$it ms" } ?: "não calculado"}")
             appendLine("- frames >100 ms: $over100")
             appendLine("- frames >250 ms: $over250")
             appendLine("- frames >500 ms: $over500")

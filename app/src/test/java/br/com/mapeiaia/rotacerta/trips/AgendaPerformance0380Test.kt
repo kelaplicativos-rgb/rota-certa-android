@@ -113,4 +113,28 @@ class AgendaPerformance0380Test {
         assertTrue(store.contains("mergeBookingBatch0380"))
         assertTrue(store.contains("refreshTripStatusesBatch"))
     }
+    @Test
+    fun timelineUsesLazyViewportAndDoesNotReadTripStorePerRenderedCard() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("LazyColumn("))
+        assertTrue(source.contains("item(key = timelineLazyItemKey0380(entry))"))
+        assertTrue(source.contains("timelineTripByEntryId"))
+        assertFalse(source.contains("val trip = entry.localTripId?.let(store::getTrip)"))
+        assertTrue(source.contains("seatSyncStateStore.snapshot()"))
+    }
+
+    @Test
+    fun visualStartupAndCapacityForensicsAreIndependentFromRemoteReconcile() {
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        val trace = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt").readText()
+        val report = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaForensicReport.kt").readText()
+        assertTrue(activity.contains("reportTimelineFirstUsableFrame"))
+        assertTrue(activity.contains("result = \"visual_ready\""))
+        assertFalse(activity.contains("result = \"ready\",\n                processedCount = trips.size + bookings.size"))
+        assertTrue(trace.contains("source=passive_timeline_frame"))
+        assertTrue(report.contains("TIMELINE_CAPACITY_RESOLVED"))
+        assertTrue(report.contains("operationalInventory"))
+        assertTrue(report.contains("atraso desde AGENDA_OPEN_REQUESTED"))
+    }
+
 }
