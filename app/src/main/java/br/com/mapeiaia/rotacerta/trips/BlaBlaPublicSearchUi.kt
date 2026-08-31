@@ -32,6 +32,7 @@ import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
 import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionField
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
+import br.com.mapeiaia.rotacerta.date.rotaCertaInclusiveDates
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -50,22 +51,20 @@ fun BlaBlaPublicSearchPanel(
 ) {
     val context = LocalContext.current
     val store = remember(context) { BlaBlaPublicSearchStore(context) }
-    val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val previous = remember { store.lastRequest() }
-    val knownNames = remember {
-        registry.list().mapNotNull { account ->
-            account.profileName?.trim()?.takeIf(String::isNotEmpty)
-                ?: account.displayLabel.trim().takeIf(String::isNotEmpty)
-        }.distinct()
-    }
     val initialDateSelection = remember(previous) {
         val persistedDates = previous?.selectedDates.orEmpty()
             .mapNotNull { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
             .distinct()
             .sorted()
+        val normalizedDates = if (persistedDates.size <= 1) {
+            persistedDates
+        } else {
+            rotaCertaInclusiveDates(persistedDates.first(), persistedDates.last())
+        }
         RotaCertaDateSelection(
-            mode = if (persistedDates.size == 1) RotaCertaDateSelectionMode.SINGLE else RotaCertaDateSelectionMode.MULTIPLE,
-            dates = persistedDates,
+            mode = if (normalizedDates.size <= 1) RotaCertaDateSelectionMode.SINGLE else RotaCertaDateSelectionMode.RANGE,
+            dates = normalizedDates,
         )
     }
     var dateSelection by remember { mutableStateOf(initialDateSelection) }
@@ -76,15 +75,9 @@ fun BlaBlaPublicSearchPanel(
     val agendaRoute = remember(trips, agendaPeriod) {
         BlaBlaCollectorScope.fromAgenda(trips, agendaPeriod, maxRoutes = 4).firstOrNull()
     }
-    var names by remember {
-        mutableStateOf(
-            if (previous != null) previous.targetNames.joinToString(", ") else knownNames.joinToString(", "),
-        )
-    }
     var from by remember { mutableStateOf(previous?.from.orEmpty()) }
     var to by remember { mutableStateOf(previous?.to.orEmpty()) }
-    var captureDemand by remember { mutableStateOf(previous?.captureDemand ?: false) }
-    var includeReverse by remember { mutableStateOf(previous?.includeReverse ?: true) }
+    var captureDemand by remember { mutableStateOf(previous?.captureDemand ?: true) }
     var running by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -111,20 +104,8 @@ fun BlaBlaPublicSearchPanel(
         ) {
             Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Somente leitura. Nomes são opcionais: se o campo ficar vazio, a busca traz todos os motoristas encontrados para a Timeline.",
+                "Somente leitura e auditável. Todos os cards públicos encontrados são preservados; perfis configurados são usados apenas para confirmar propriedade por UUID.",
                 style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedTextField(
-                value = names,
-                onValueChange = { names = it },
-                label = { Text("Nomes dos motoristas/perfis") },
-                supportingText = {
-                    Text(
-                        if (knownNames.isEmpty()) "Opcional. Vazio = todos os motoristas encontrados." else
-                            "Opcional. Vazio = todos. Perfis conhecidos: ${knownNames.joinToString(", ")}",
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -176,25 +157,19 @@ fun BlaBlaPublicSearchPanel(
                 modifier = Modifier.fillMaxWidth(),
                 label = "Datas da consulta",
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Pesquisar também o sentido inverso")
-                    Text("Varre também destino → origem.", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(checked = includeReverse, onCheckedChange = { includeReverse = it })
-            }
+            Text(
+                "Cada data executa obrigatoriamente duas consultas independentes: IDA (origem → destino) e VOLTA (destino → origem).",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
-            val plannedTasks = remember(from, to, dateSelection, includeReverse) {
+            val plannedTasks = remember(from, to, dateSelection) {
                 BlaBlaPublicSearchPlanner.tasks(
                     BlaBlaPublicSearchRequest(
                         targetNames = emptyList(),
                         from = from,
                         to = to,
                         period = "",
-                        includeReverse = includeReverse,
+                        includeReverse = true,
                         selectedDates = dateSelection.isoDateKeys,
                     ),
                 ).size
@@ -207,32 +182,27 @@ fun BlaBlaPublicSearchPanel(
                 enabled = !running,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    val targets = names.split(',', ';', '\n').map(String::trim).filter(String::isNotBlank).distinct()
                     val req = BlaBlaPublicSearchRequest(
-                        targetNames = targets,
+                        targetNames = emptyList(),
                         from = from.trim(),
                         to = to.trim(),
                         period = "",
-                        includeReverse = includeReverse,
+                        includeReverse = true,
                         selectedDates = dateSelection.isoDateKeys,
                         captureDemand = captureDemand,
+                        collectionId = java.util.UUID.randomUUID().toString(),
                     )
                     error = when {
                         req.from.isBlank() || req.to.isBlank() -> "Informe origem e destino."
                         BlaBlaPublicSearchPlanner.tasks(req).isEmpty() -> "Nenhuma data futura está disponível para esta consulta."
-                        !BlaBlaPublicPlaceDirectory.supported(req.from) -> "Origem ainda não reconhecida pela Consulta Pública."
-                        !BlaBlaPublicPlaceDirectory.supported(req.to) -> "Destino ainda não reconhecido pela Consulta Pública."
+                        dateSelection.normalizedDates.isEmpty() -> "Selecione uma data ou um período."
                         else -> null
                     }
                     if (error == null) {
                         running = true
                         store.saveRequest(req)
                         onChanged(
-                            if (targets.isEmpty()) {
-                                "Consulta pública iniciada • todos os motoristas encontrados • ${BlaBlaPublicSearchPlanner.tasks(req).size} busca(s)."
-                            } else {
-                                "Consulta pública iniciada • ${targets.size} perfil(is) filtrado(s) • ${BlaBlaPublicSearchPlanner.tasks(req).size} busca(s)."
-                            },
+                            "Coleta pública auditável iniciada • todos os cards • ${BlaBlaPublicSearchPlanner.tasks(req).size} consultas (IDA/VOLTA por data).",
                         )
                         launcher.launch(BlaBlaPublicSearchIntents.search(context, req))
                     }
@@ -241,6 +211,7 @@ fun BlaBlaPublicSearchPanel(
                 Text(if (running) "Buscando…" else "Buscar")
             }
             if (currentResponse != null) {
+                val auditSnapshot = store.lastSnapshot()
                 if (currentResponse.request.captureDemand) {
                     val found = currentResponse.demands.count { it.indicadorDemandaEncontrado }
                     Text(
@@ -248,6 +219,10 @@ fun BlaBlaPublicSearchPanel(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                BlaBlaAuditableCollectionActions(
+                    snapshot = auditSnapshot,
+                    onChanged = onChanged,
+                )
                 OutlinedButton(
                     onClick = {
                         store.clearResponse()
@@ -270,6 +245,13 @@ fun BlaBlaPublicSearchPanel(
                 showDatePicker = false
             },
             minDate = LocalDate.now(),
+            allowedModes = setOf(
+                RotaCertaDateSelectionMode.SINGLE,
+                RotaCertaDateSelectionMode.RANGE,
+            ),
+            allowEmptySelection = false,
+            title = "Uma data ou período",
+            description = "Escolha uma única data ou um período inclusivo. Para cada dia serão executadas IDA e VOLTA separadamente.",
         )
     }
 }
@@ -310,7 +292,7 @@ internal fun validatedQueryCoversAgendaTrip(
     val tripFrom = BlaBlaPublicSearchPlanner.normalizePlace(stops.first().name)
     val tripTo = BlaBlaPublicSearchPlanner.normalizePlace(stops.last().name)
     return response.queries.any { query ->
-        query.status == "validated" &&
+        (query.coverageStatus == "COMPLETE" || query.status == "validated") &&
             query.date == date &&
             BlaBlaPublicSearchPlanner.normalizePlace(query.from) == tripFrom &&
             BlaBlaPublicSearchPlanner.normalizePlace(query.to) == tripTo
