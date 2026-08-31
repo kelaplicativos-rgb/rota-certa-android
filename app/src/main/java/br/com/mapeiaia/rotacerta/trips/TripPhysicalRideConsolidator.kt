@@ -142,7 +142,11 @@ object TripPhysicalRideConsolidator {
                 BookingSource.PRIVATE, BookingSource.OTHER -> values.sum()
             }
         }.toMap()
-        val occupied = sources.values.sum()
+        val blockedSeats = group.maxOfOrNull(TripTimelineEntry::operationalBlockedSeats) ?: 0
+        // Whole-trip passenger totals may exceed simultaneous vehicle capacity when
+        // people use non-overlapping segments. Physical overbooking must therefore
+        // use the segment-derived occupancy, never the whole-trip passenger count.
+        val physicalOccupied = group.maxOfOrNull(TripTimelineEntry::maximumOccupiedSeats) ?: 0
         val capacity = group.maxOfOrNull(TripTimelineEntry::capacity) ?: 0
         val external = group.firstOrNull {
             !it.blablaTripHref.isNullOrBlank() ||
@@ -156,9 +160,9 @@ object TripPhysicalRideConsolidator {
             TripTimelineIssue.DUPLICATE,
             TripTimelineIssue.OVERBOOKING,
         )
-        val issues = if (capacity > 0 && occupied > capacity) cleanIssues + TripTimelineIssue.OVERBOOKING else cleanIssues
+        val issues = if (capacity > 0 && physicalOccupied > capacity) cleanIssues + TripTimelineIssue.OVERBOOKING else cleanIssues
         val status = when {
-            capacity > 0 && occupied >= capacity -> TripStatus.FULL
+            capacity > 0 && physicalOccupied >= capacity -> TripStatus.FULL
             local != null -> local.status
             else -> canonical.status
         }
@@ -177,25 +181,29 @@ object TripPhysicalRideConsolidator {
             profileId = external?.profileId ?: canonical.profileId,
             profileLabel = external?.profileLabel ?: canonical.profileLabel,
             capacity = capacity,
-            minimumOccupiedSeats = occupied,
-            maximumOccupiedSeats = occupied,
+            rotaCertaSeatAllocation = group.mapNotNull(TripTimelineEntry::rotaCertaSeatAllocation).maxOrNull()
+                ?: canonical.rotaCertaSeatAllocation,
+            minimumOccupiedSeats = group.minOfOrNull(TripTimelineEntry::minimumOccupiedSeats) ?: physicalOccupied,
+            maximumOccupiedSeats = physicalOccupied,
             sourcePassengerSeats = sources,
+            operationalBlockedSeats = blockedSeats,
             issues = issues,
         )
     }
 
     private fun recalculateOccupancy(entry: TripTimelineEntry): TripTimelineEntry {
-        val occupied = entry.sourcePassengerSeats.values.sum()
-        if (entry.sourcePassengerSeats.isEmpty()) return entry
         val cleanIssues = entry.issues - TripTimelineIssue.OVERBOOKING
-        val issues = if (entry.capacity > 0 && occupied > entry.capacity) cleanIssues + TripTimelineIssue.OVERBOOKING else cleanIssues
-        val status = if (entry.capacity > 0 && occupied >= entry.capacity) TripStatus.FULL else entry.status
-        return entry.copy(
-            minimumOccupiedSeats = occupied,
-            maximumOccupiedSeats = occupied,
-            status = status,
-            issues = issues,
-        )
+        val issues = if (entry.capacity > 0 && entry.maximumOccupiedSeats > entry.capacity) {
+            cleanIssues + TripTimelineIssue.OVERBOOKING
+        } else {
+            cleanIssues
+        }
+        val status = if (entry.capacity > 0 && entry.maximumOccupiedSeats >= entry.capacity) {
+            TripStatus.FULL
+        } else {
+            entry.status
+        }
+        return entry.copy(status = status, issues = issues)
     }
 
     private fun validate(entriesRaw: List<TripTimelineEntry>, geo: Map<String, TimelineGeoPoint>): List<TripTimelineEntry> {

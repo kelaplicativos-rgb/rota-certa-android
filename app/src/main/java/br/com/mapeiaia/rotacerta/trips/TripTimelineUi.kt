@@ -187,8 +187,12 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val merged = remember(mergedRaw, appSettings.vehicleCapacity) {
-        applyConfiguredVehicleCapacity(mergedRaw, appSettings.vehicleCapacity)
+    val merged = remember(mergedRaw, appSettings.rotaCertaSeatAllocation) {
+        applyConfiguredVehicleCapacity(
+            entries = mergedRaw,
+            vehicleCapacity = 0, // legacy argument intentionally ignored
+            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+        )
     }
     val directionGeo = remember(merged, trips, appSettings) {
         TripTimelineGeoResolver.resolveTrustedStops(
@@ -250,7 +254,7 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CAPACITY_RESOLVED",
                     context.packageName,
-                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} remotePublishedCapacity=${resolution.remotePublishedCapacity ?: -1} occupiedSeats=${entry.maximumOccupiedSeats} segmentOccupiedSeats=${entry.maximumOccupiedSeats} effectiveCapacity=${resolution.effectiveCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} capacitySource=${resolution.capacitySource} physicalVehicleCapacity=${resolution.physicalVehicleCapacity ?: -1}",
+                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.remotePublishedCapacity ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.physicalVehicleCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
                 )
             }
     }
@@ -320,17 +324,17 @@ fun TripTimelineScreen(
             AgendaTrace.operationEnd(context, renderOperation, processedCount = visibleEntries.size)
         }
     }
-    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.vehicleCapacity) {
+    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             context,
             "TIMELINE_RENDER_STATE",
-            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$showSync",
+            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} inventorySettingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} syncRunning=$showSync",
             traceId,
         )
         AgendaTrace.event(
             context,
-            "CAPACITY_RENDER_STATE",
-            "loading=${!settingsLoaded} empty=${settingsLoaded && appSettings.vehicleCapacity !in 1..999} items=1 capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$showSync source=${when { !settingsLoaded -> "awaiting_local_settings"; appSettings.vehicleCapacity in 1..999 -> "local_settings"; else -> "local_settings_unconfigured" }}",
+            "INVENTORY_RENDER_STATE",
+            "loading=${!settingsLoaded} settingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} source=${if (settingsLoaded) "rota_certa_allocation" else "awaiting_local_settings"}",
             traceId,
         )
     }
@@ -350,20 +354,13 @@ fun TripTimelineScreen(
         formatter = formatter,
         onChanged = onChanged,
         onNewTrip = onCreateTripForPassenger,
-        onTargetSync = { entry, selectedTrip ->
-            val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
-                context = context,
-                entry = entry,
-                trip = selectedTrip,
-                store = store,
-                reason = "automatic_global_passenger_change",
+        onTargetSync = { entry, _ ->
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_SEAT_WRITE_SKIPPED",
+                context.packageName,
+                "reason=independent_channel_inventory source=automatic_global_passenger_change trip=${entry.tripId}",
             )
-            onChanged(result.message)
-            if (result.shouldSync) {
-                autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
-                autoSyncTripId = null
-                onRequestBlaBlaSync()
-            }
+            onChanged("Passageiro atualizado. As vagas do Rota Certa foram recalculadas sem alterar a cota BlaBlaCar.")
         },
         resumeRequestToken = addPassengerResumeToken,
         resumePassengerId = addPassengerResumePassengerId,
@@ -731,29 +728,16 @@ internal fun TripDriverDefaultsCard(
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
     val traceId = AgendaTrace.currentTraceId()
-    var capacity by remember(settings.vehicleCapacity) {
-        mutableStateOf(settings.vehicleCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
+    var rotaCertaAllocation by remember(settings.rotaCertaSeatAllocation) {
+        mutableStateOf(settings.rotaCertaSeatAllocation.takeIf { it in 0..999 }?.toString() ?: "0")
     }
-    val capacityOpenedNs = remember { android.os.SystemClock.elapsedRealtimeNanos() }
-    val capacityRenderCount = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     LaunchedEffect(Unit) {
         AgendaTrace.event(
             context,
-            "CAPACITY_SCREEN_OPENED",
-            "source=timeline_defaults valuePresent=${capacity.isNotBlank()}",
+            "ROTA_CERTA_SEAT_ALLOCATION_OPENED",
+            "source=vehicle_settings value=${rotaCertaAllocation.toIntOrNull() ?: 0}",
             traceId,
         )
-    }
-    androidx.compose.runtime.SideEffect {
-        val count = capacityRenderCount.incrementAndGet()
-        if (count == 1L || count == 2L || count == 4L || count == 8L) {
-            AgendaTrace.event(
-                context,
-                "CAPACITY_FIELD_RENDERED",
-                "source=${if (settings.vehicleCapacity in 1..999) "local_settings" else "default"} valuePresent=${capacity.isNotBlank()} value=${capacity.toIntOrNull() ?: 0} recompositionCount=$count sinceOpenMs=${(android.os.SystemClock.elapsedRealtimeNanos() - capacityOpenedNs).coerceAtLeast(0L) / 1_000_000L}",
-                traceId,
-            )
-        }
     }
     var locating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -825,24 +809,12 @@ internal fun TripDriverDefaultsCard(
             }
 
             OutlinedTextField(
-                value = capacity,
-                onValueChange = { raw ->
-                    val next = raw.filter(Char::isDigit).take(3)
-                    capacity = next
-                    AgendaTrace.event(
-                        context,
-                        "USER_CHANGE_CAPACITY",
-                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
-                        traceId,
-                    )
-                    AgendaTrace.event(
-                        context,
-                        "CAPACITY_FIELD_CHANGED_BY_USER",
-                        "source=user valuePresent=${next.isNotBlank()} value=${next.toIntOrNull() ?: 0}",
-                        traceId,
-                    )
+                value = rotaCertaAllocation,
+                onValueChange = { raw -> rotaCertaAllocation = raw.filter(Char::isDigit).take(3) },
+                label = { Text("Vagas disponibilizadas no Rota Certa") },
+                supportingText = {
+                    Text("Única cota manual desta viagem. O valor 0 é válido.")
                 },
-                label = { Text("Capacidade do veículo") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -850,47 +822,39 @@ internal fun TripDriverDefaultsCard(
                 "A origem de referência é fixa até ser redefinida. O GPS atual continua separado e serve apenas para progresso da rota e próximo embarque.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Text(
-                "A capacidade física informada aqui é a referência do Rota Certa. A leitura externa de lugares publicados não define essa capacidade.",
-                style = MaterialTheme.typography.bodySmall,
-            )
             error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Button(
                 onClick = {
-                    val parsed = capacity.toIntOrNull()
-                    if (parsed == null || parsed !in 1..999) {
-                        error = "Informe uma capacidade entre 1 e 999 lugares."
+                    val parsedRotaCerta = rotaCertaAllocation.toIntOrNull()
+                    if (parsedRotaCerta == null || parsedRotaCerta !in 0..999) {
+                        error = "Informe as vagas do Rota Certa entre 0 e 999."
                         return@Button
                     }
                     error = null
                     AgendaTrace.event(
                         context,
-                        "USER_SAVE_CAPACITY",
-                        "source=user valuePresent=true value=$parsed",
-                        traceId,
-                    )
-                    AgendaTrace.event(
-                        context,
-                        "CAPACITY_SAVE_REQUESTED",
-                        "source=user valuePresent=true value=$parsed",
+                        "ROTA_CERTA_SEAT_ALLOCATION_SAVE_REQUESTED",
+                        "source=user value=$parsedRotaCerta",
                         traceId,
                     )
                     scope.launch {
                         val saveOperation = AgendaTrace.operationStart(
                             context,
-                            "CAPACITY_LOCAL_SAVE",
+                            "ROTA_CERTA_SEAT_ALLOCATION_SAVE",
                             "TripDriverDefaultsCard",
                             traceId,
                         )
                         try {
-                            repository.saveSettings(settings.copy(vehicleCapacity = parsed))
+                            repository.saveSettings(
+                                settings.copy(rotaCertaSeatAllocation = parsedRotaCerta),
+                            )
                             AgendaTrace.operationEnd(context, saveOperation, result = "saved", processedCount = 1)
                             UnifiedDebugEventStore.record(
                                 "TRIP_DRIVER_DEFAULTS_SAVED",
                                 context.packageName,
-                                "vehicleCapacity=$parsed externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
+                                "rotaCertaSeatAllocation=$parsedRotaCerta legacyVehicleCapacityIgnored=true externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
                             )
-                            onChanged("Capacidade do veículo salva.")
+                            onChanged("Vagas disponibilizadas no Rota Certa salvas.")
                         } catch (failure: kotlinx.coroutines.CancellationException) {
                             AgendaTrace.operationCancelled(context, saveOperation)
                             throw failure
@@ -901,7 +865,7 @@ internal fun TripDriverDefaultsCard(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Salvar capacidade") }
+            ) { Text("Salvar veículo e vagas") }
         }
     }
 }
@@ -940,27 +904,47 @@ internal fun applyPublicExternalBookingsToTimeline(
 
     val publicTrip = binding.asTrip()
     val publicLoads = SeatAvailabilityEngine.segmentLoads(publicTrip, active, nowMillis)
-    val publicOccupied = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
+    val publicConsumed = publicLoads.maxOfOrNull(SegmentLoad::occupiedSeats)
         ?: active.sumOf(Booking::seats)
+    val publicOperational = operationalSeatSummary(publicTrip, active, nowMillis)
+    val publicPassengers = publicOperational.confirmedPassengerSeats
+    val publicBlocked = publicOperational.blockedSeats
     val externalRosterSeats = enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
-    val combinedPhysical = externalRosterSeats + publicOccupied
+    val combinedPhysical = externalRosterSeats + publicConsumed
     val sources = enriched.sourcePassengerSeats.toMutableMap().apply {
-        this[BookingSource.ROTA_CERTA] = publicOccupied
+        this[BookingSource.ROTA_CERTA] = publicPassengers
     }
 
     enriched.copy(
         minimumOccupiedSeats = maxOf(enriched.minimumOccupiedSeats, combinedPhysical),
         maximumOccupiedSeats = maxOf(enriched.maximumOccupiedSeats, combinedPhysical),
         sourcePassengerSeats = sources.filterValues { it > 0 },
+        operationalBlockedSeats = maxOf(enriched.operationalBlockedSeats, publicBlocked),
     )
 }
 
+/**
+ * Legacy function name retained for binary/source compatibility with existing tests and callers.
+ * vehicleCapacity is intentionally ignored. The segment ceiling is reconstructed per trip as:
+ * BlaBlaCar current free seats + BlaBlaCar current occupied peak + Rota Certa allocation.
+ */
 internal fun applyConfiguredVehicleCapacity(
     entries: List<TripTimelineEntry>,
-    vehicleCapacity: Int,
+    @Suppress("UNUSED_PARAMETER") vehicleCapacity: Int,
+    rotaCertaSeatAllocation: Int = 0,
 ): List<TripTimelineEntry> {
-    if (vehicleCapacity !in 1..999) return entries
-    return entries.map { entry -> if (entry.capacity == vehicleCapacity) entry else entry.copy(capacity = vehicleCapacity) }
+    val localAllocation = rotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+    return entries.map { entry ->
+        val blablaRemaining = entry.blablaPublishedSeats?.takeIf { it in 0..999 } ?: 0
+        val blablaOccupiedPeak = entry.sourcePassengerSeats[BookingSource.BLABLACAR]
+            ?.coerceAtLeast(0)
+            ?: 0
+        val derivedInventory = (blablaRemaining + blablaOccupiedPeak + localAllocation).coerceIn(0, 999)
+        entry.copy(
+            capacity = derivedInventory,
+            rotaCertaSeatAllocation = localAllocation,
+        )
+    }
 }
 
 internal enum class TimelineOccupancyReadState {
@@ -977,13 +961,17 @@ private fun hasExternalPublication(entry: TripTimelineEntry): Boolean =
         !entry.blablaPublicHref.isNullOrBlank() ||
         !entry.blablaProfileUuid.isNullOrBlank()
 
-internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState = when {
-    entry.capacity > 0 && hasExternalPublication(entry) && entry.blablaPassengerRosterComplete != true && entry.maximumOccupiedSeats <= 0 ->
-        TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING
-    entry.capacity > 0 -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
-    entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
-    entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
-    else -> TimelineOccupancyReadState.PENDING
+internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState {
+    val inventoryKnown = entry.blablaPublishedSeats?.let { it in 0..999 } == true ||
+        entry.rotaCertaSeatAllocation?.let { it in 0..999 } == true
+    return when {
+        inventoryKnown && hasExternalPublication(entry) && entry.blablaPassengerRosterComplete != true && entry.maximumOccupiedSeats <= 0 ->
+            TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING
+        inventoryKnown -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
+        entry.maximumOccupiedSeats > 0 -> TimelineOccupancyReadState.RESERVED
+        entry.blablaPassengerRosterComplete == true -> TimelineOccupancyReadState.COMPLETE_EMPTY
+        else -> TimelineOccupancyReadState.PENDING
+    }
 }
 
 internal fun timelineProfileIdentity(entry: TripTimelineEntry): String =
@@ -1061,16 +1049,14 @@ private fun TimelineEntryCard(
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
 
-    fun requestSeatOnlySync(selectedTrip: Trip?, reason: String) {
-        val result = BlaBlaReliableSeatSyncBridge.enqueueDesiredStateForTimeline(
-            context = context,
-            entry = entry,
-            trip = selectedTrip,
-            store = store,
-            reason = reason,
+    fun requestSeatOnlySync(@Suppress("UNUSED_PARAMETER") selectedTrip: Trip?, reason: String) {
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_WRITE_SKIPPED",
+            context.packageName,
+            "reason=independent_channel_inventory source=$reason trip=${entry.tripId}",
         )
-        onChanged(result.message)
-        if (result.shouldSync) onManualSeatSyncRequested()
+        onChanged("Sincronizando a leitura BlaBlaCar sem alterar vagas externas.")
+        onManualSeatSyncRequested()
     }
 
     Card(
@@ -1109,32 +1095,65 @@ private fun TimelineEntryCard(
             val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
             if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
 
-            entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                Text("BlaBlaCar publica: $published vaga(s) • capacidade pública remota desta viagem", style = MaterialTheme.typography.bodySmall)
+            val allocation = tripChannelAllocationBreakdown(
+                entry.capacity,
+                entry.blablaPublishedSeats,
+                entry.rotaCertaSeatAllocation,
+            )
+            val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+            val localConfirmed = entry.sourcePassengerSeats
+                .filterKeys { it != BookingSource.BLABLACAR }
+                .values
+                .sumOf { it.coerceAtLeast(0) }
+            val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
+            val blablaFree = allocation.blablaPublishedAllocation ?: 0
+            val localDemand = (localConfirmed + blocked).coerceAtLeast(0)
+            val rotaCertaFree = allocation.rotaCertaAllocation
+                ?.let { (it - localDemand).coerceAtLeast(0) }
+            val combinedConfiguredFree = if (
+                allocation.blablaPublishedAllocation != null || allocation.rotaCertaAllocation != null
+            ) {
+                (blablaFree + (allocation.rotaCertaAllocation ?: 0)).coerceAtMost(999)
+            } else {
+                null
+            }
+            val operationalFree = combinedConfiguredFree
+                ?.let { (it - localDemand).coerceAtLeast(0) }
+
+            if (allocation.blablaPublishedAllocation != null && rotaCertaFree != null && operationalFree != null) {
+                Text(
+                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} vaga(s) atuais • Rota Certa: $rotaCertaFree vaga(s) • Total disponível: $operationalFree",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { available ->
+                    Text("BlaBlaCar: $available vaga(s) disponíveis • aguardando vagas do Rota Certa", style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val occupied = publicLoads?.maxOfOrNull(SegmentLoad::occupiedSeats) ?: entry.maximumOccupiedSeats
-            val effectiveCapacity = publicCapacity.effectiveCapacity ?: entry.capacity
+            val segmentFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+                ?: publicCapacity.availableSeats
+            val free = segmentFree ?: operationalFree
+            val operationalInventory = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val free = (effectiveCapacity - occupied).coerceAtLeast(0)
-                    Text("$occupied/$effectiveCapacity ocupadas • $free livre(s) ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
+                    if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
-                    Text("Capacidade pública: $effectiveCapacity • reservas aguardando leitura ⏳")
+                    Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED ->
-                    Text("BlaBlaCar: $occupied lugar(es) reservado(s) ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.COMPLETE_EMPTY ->
-                    Text("BlaBlaCar: 0 lugares reservados ${statusMark(entry)}")
+                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: ${free ?: operationalInventory ?: 0} ${statusMark(entry)}")
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
 
             TextButton(onClick = { showSeatDetails = true }) {
-                val publicMinimum = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
-                Text(if (publicMinimum != null) "💺 $publicMinimum" else "💺 ⏳")
+                Text(if (free != null) "💺 $free" else "💺 ⏳")
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
@@ -1143,7 +1162,7 @@ private fun TimelineEntryCard(
             if (sourceLine.isNotBlank()) Text(sourceLine, style = MaterialTheme.typography.bodySmall)
 
             when {
-                TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros acima da capacidade física.")
+                TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros confirmados + vagas bloqueadas ultrapassam o inventário operacional da viagem.")
                 TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> Text("❌ Conflito real de horário/local.")
                 TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
                 TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
@@ -1214,12 +1233,12 @@ private fun TimelineEntryCard(
                     } else {
                         val publicLoads = timelinePublicSegmentLoads(entry, seatPlan.loads)
                         publicLoads.forEach { load ->
-                            Text("${load.from.name} → ${load.to.name}    ${load.availableSeats} vaga(s)")
+                            Text("${load.from.name} → ${load.to.name}    👥 ${load.passengerSeats} • 🚫 ${load.blockedSeats} • 🪑 ${load.availableSeats}")
                         }
                         entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
                             Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("💺 ${publicLoads.minOf(SegmentLoad::availableSeats)} = menor disponibilidade pública relevante", style = MaterialTheme.typography.bodySmall)
+                        Text("🪑 ${publicLoads.minOf(SegmentLoad::availableSeats)} = disponibilidade física mínima entre os trechos", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -1272,7 +1291,7 @@ internal fun findExistingTimelineBackingTrip(entry: TripTimelineEntry, trips: Li
 
 /** Compatibility helper kept for older source-contract tests. New external flow uses buildTimelineExternalBackingTrip. */
 internal fun buildTimelineBackingTrip(entry: TripTimelineEntry, capacity: Int): Trip {
-    require(capacity > 0) { "Informe uma capacidade física válida." }
+    require(capacity > 0) { "Não há vagas disponíveis nesta viagem." }
     val origin = entry.origin.trim()
     val destination = entry.destination.trim()
     require(origin.isNotBlank() && destination.isNotBlank()) { "Origem e destino precisam estar disponíveis." }

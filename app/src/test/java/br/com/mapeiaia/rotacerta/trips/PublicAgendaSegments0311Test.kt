@@ -48,12 +48,14 @@ class PublicAgendaSegments0311Test {
         assertEquals(3, published.bookedSeats)
 
         val loads = SeatAvailabilityEngine.segmentLoads(published.trip, published.capacityClaims)
-        assertEquals(listOf(1, 3, 1), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(1, 3, 1), loads.map(SegmentLoad::passengerSeats))
+        assertEquals(listOf(0, 0, 0), loads.map(SegmentLoad::blockedSeats))
         assertEquals(listOf(3, 1, 3), loads.map(SegmentLoad::availableSeats))
+        assertTrue(published.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
     }
 
     @Test
-    fun fullTripWithoutRosterUsesObservedFullStateWithoutInventingStops() {
+    fun blablaFullFlagWithoutRosterDoesNotInventOccupiedAgendaSeats() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile-test",
             date = "2030-10-05",
@@ -67,8 +69,8 @@ class PublicAgendaSegments0311Test {
         val published = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
         assertNotNull(published)
         assertEquals(2, published.trip.stops.size)
-        assertEquals(4, published.bookedSeats)
-        assertEquals(1, published.capacityClaims.size)
-        assertEquals(4, published.capacityClaims.single().seats)
+        assertEquals(TripStatus.PUBLISHED, published.trip.status)
+        assertEquals(0, published.bookedSeats)
+        assertTrue(published.capacityClaims.isEmpty())
     }
 }

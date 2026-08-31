@@ -62,34 +62,28 @@ class AgendaForensicBlackBox0345Test {
     }
 
     @Test
-    fun capacityWaitingToPersistedValueAndSaveAreObservable() {
+    fun inventoryWaitingPersistedValueAndSaveAreObservable() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        val reliableSeatSync = source("br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt")
+        val bookingSync = source("br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt")
         assertTrue(activity.contains("collectAsState(initial = null)"))
-        assertTrue(activity.contains("CAPACITY_INITIAL_STATE"))
-        assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_REQUEST"))
-        assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_WAITING"))
-        assertTrue(activity.contains("CAPACITY_LOCAL_SETTINGS_RECEIVED"))
-        assertTrue(activity.contains("CAPACITY_FIRST_VALUE_MS"))
-        assertTrue(activity.contains("CAPACITY_RENDER_UPDATED"))
-        assertTrue(timeline.contains("CAPACITY_SCREEN_OPENED"))
-        assertTrue(timeline.contains("CAPACITY_FIELD_RENDERED"))
-        assertTrue(timeline.contains("CAPACITY_FIELD_CHANGED_BY_USER"))
-        assertTrue(timeline.contains("CAPACITY_SAVE_REQUESTED"))
-        assertTrue(timeline.contains("CAPACITY_LOCAL_SAVE"))
+        assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_WAITING"))
+        assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_RECEIVED"))
+        assertTrue(activity.contains("OPERATIONAL_INVENTORY_RECONCILED"))
+        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_OPENED"))
+        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_SAVE_REQUESTED"))
+        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_SAVE"))
+        assertTrue(timeline.contains("Vagas disponibilizadas no Rota Certa"))
+        assertFalse(timeline.contains("Capacidade de passageiros"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
-        assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
-        assertFalse(activity.contains("\"CAPACITY_REMOTE_CONFIRMATION\""))
-        assertTrue(reliableSeatSync.contains("\"CAPACITY_REMOTE_CONFIRMATION\""))
-        assertTrue(reliableSeatSync.contains("remoteReadback="))
-        assertTrue(reliableSeatSync.contains("confirmed=true"))
+        assertTrue(bookingSync.contains("BOOKING_INVENTORY_RECALCULATED"))
+        assertTrue(bookingSync.contains("externalSeatMutation=false"))
     }
 
     @Test
-    fun bookingReconcileHasPhasesDurationsSeatQueueAndSlowThresholds() {
+    fun bookingReconcileHasPhasesInventoryRecalculationAndSlowThresholds() {
         val source = source("br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt")
         listOf(
             "BOOKING_RECONCILE",
@@ -97,7 +91,8 @@ class AgendaForensicBlackBox0345Test {
             "BOOKING_LOCAL_READ",
             "BOOKING_COMPARE",
             "BOOKING_IMPORT",
-            "BOOKING_SEAT_SYNC_QUEUE",
+            "BOOKING_INVENTORY_RECALCULATED",
+            "externalSeatMutation=false",
             "1_000L, 2_000L, 5_000L, 10_000L",
         ).forEach { assertTrue(source.contains(it)) }
     }

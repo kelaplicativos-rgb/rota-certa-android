@@ -143,7 +143,7 @@ internal fun timelineExternalRoutePointLabels(entry: TripTimelineEntry): List<St
 }
 
 internal fun buildTimelineExternalBackingTrip(entry: TripTimelineEntry, capacity: Int): Trip {
-    require(capacity in 1..999) { "Capacidade física inválida." }
+    require(capacity in 1..999) { "Inventário operacional indisponível." }
     val id = timelineExternalBackingTripId(entry)
         ?: throw IllegalArgumentException("Publicação sem identidade externa forte; não criei viagem duplicada.")
     val labels = timelineExternalRoutePointLabels(entry).ifEmpty { listOf(entry.origin, entry.destination) }
@@ -163,9 +163,15 @@ internal fun buildTimelineExternalBackingTrip(entry: TripTimelineEntry, capacity
         title = "${labels.first()} → ${labels.last()}",
         departureAtMillis = entry.departureAtMillis,
         capacity = capacity,
+        rotaCertaSeatAllocation = entry.rotaCertaSeatAllocation,
         status = if (entry.status == TripStatus.FULL) TripStatus.FULL else TripStatus.PUBLISHED,
         stops = stops,
         notes = "Backing local de publicação externa; identidade estável preservada pelo Rota Certa.",
+        blablaProfileUuid = entry.blablaProfileUuid,
+        blablaTripId = entry.blablaTripId,
+        blablaManageUrl = entry.blablaTripHref,
+        blablaPublicUrl = entry.blablaPublicHref,
+        publishedSeats = entry.blablaPublishedSeats,
     )
 }
 
@@ -287,7 +293,7 @@ internal fun planTimelineExternalCapacityClaims(
                     seats = seats,
                     status = BookingStatus.CONFIRMED,
                     source = BookingSource.BLABLACAR,
-                    capacityClaimType = CapacityClaimType.RESERVED_SEAT,
+                    capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
                     sourceReference = "$EXTERNAL_CAPACITY_PREFIX$refHash",
                     createdAtMillis = now,
                     updatedAtMillis = now,
@@ -298,7 +304,7 @@ internal fun planTimelineExternalCapacityClaims(
 }
 
 internal fun isTimelineExternalCapacityClaim(booking: Booking): Boolean =
-    booking.capacityClaimType == CapacityClaimType.RESERVED_SEAT &&
+    booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY &&
         booking.sourceReference.startsWith(EXTERNAL_CAPACITY_PREFIX)
 
 internal data class TimelineSeatSyncPlan(
@@ -309,7 +315,7 @@ internal data class TimelineSeatSyncPlan(
 
 /**
  * Computes the single publication target from the bottleneck of the already-existing
- * per-segment physical engine. External roster must be complete; otherwise we fail
+ * per-segment inventory engine. External roster must be complete; otherwise we fail
  * closed instead of inventing segment availability.
  */
 internal fun timelineDesiredSeatSyncPlan(
@@ -358,7 +364,7 @@ internal fun prepareTimelineTripForPassenger(
     var created = false
     if (trip == null) {
         require(strongExternal != null) { "Selecione uma viagem interna existente ou crie uma nova viagem particular." }
-        require(entry.capacity in 1..999) { "Configure primeiro a capacidade física do veículo." }
+        require(entry.capacity in 1..999) { "Não há vagas disponíveis nesta viagem." }
         trip = buildTimelineExternalBackingTrip(entry, entry.capacity)
         created = true
     }
@@ -366,7 +372,17 @@ internal fun prepareTimelineTripForPassenger(
     if (strongExternal != null) {
         trip = augmentExternalBackingStops(trip, entry)
         if (trip.status == TripStatus.DRAFT) trip = trip.copy(status = if (entry.status == TripStatus.FULL) TripStatus.FULL else TripStatus.PUBLISHED)
-        if (entry.capacity in 1..999 && trip.capacity != entry.capacity) trip = trip.copy(capacity = entry.capacity)
+        if (entry.capacity in 1..999) {
+            trip = trip.copy(
+                capacity = entry.capacity,
+                rotaCertaSeatAllocation = entry.rotaCertaSeatAllocation ?: trip.rotaCertaSeatAllocation,
+                blablaProfileUuid = entry.blablaProfileUuid ?: trip.blablaProfileUuid,
+                blablaTripId = entry.blablaTripId ?: trip.blablaTripId,
+                blablaManageUrl = entry.blablaTripHref ?: trip.blablaManageUrl,
+                blablaPublicUrl = entry.blablaPublicHref ?: trip.blablaPublicUrl,
+                publishedSeats = entry.blablaPublishedSeats ?: trip.publishedSeats,
+            )
+        }
         trip = store.saveTrip(trip)
 
         val previousClaims = store.bookingsFor(trip.id).filter(::isTimelineExternalCapacityClaim)

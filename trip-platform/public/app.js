@@ -242,6 +242,8 @@ function availableFor(fromIndex, toIndex) {
   for (let i = fromIndex; i < toIndex; i += 1) {
     available = Math.min(available, Number(trip.capacity || 0) - Number((trip.segmentLoads || [])[i] || 0));
   }
+  const operational = Number(trip.operationalAvailableSeats);
+  if (Number.isFinite(operational)) available = Math.min(available, Math.max(0, operational));
   return Math.max(0, available);
 }
 
@@ -686,6 +688,25 @@ function normalizedSeatCount(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
+function segmentLoadRange(item, field, fromIndex = 0, toIndex = null) {
+  const stops = orderedStops(item);
+  const end = Number.isInteger(toIndex) ? toIndex : Math.max(0, stops.length - 1);
+  const fallbackLoads = Array.isArray(item && item.segmentLoads) ? item.segmentLoads.map(normalizedSeatCount) : [];
+  let loads = Array.isArray(item && item[field]) ? item[field].map(normalizedSeatCount) : [];
+  if (!loads.length && field === "segmentPassengerLoads") loads = fallbackLoads;
+  if (!loads.length && field === "segmentBlockedLoads") loads = fallbackLoads.map(() => 0);
+  const selected = loads.slice(Math.max(0, fromIndex), Math.max(0, end));
+  if (!selected.length) return { minimum: 0, maximum: 0 };
+  return { minimum: Math.min(...selected), maximum: Math.max(...selected) };
+}
+
+function rangeText(range, singular, plural) {
+  if (range.minimum === range.maximum) {
+    return `${range.maximum} ${range.maximum === 1 ? singular : plural}`;
+  }
+  return `${range.minimum}–${range.maximum} ${plural} por trecho`;
+}
+
 function seatAvailabilityText(available) {
   const seats = normalizedSeatCount(available);
   if (seats === 0) return "Nenhuma vaga disponível para este trecho.";
@@ -1032,6 +1053,8 @@ function availableForTripSegment(item, fromIndex, toIndex) {
   for (let index = fromIndex; index < toIndex; index += 1) {
     available = Math.min(available, Number(item.capacity || 0) - Number((item.segmentLoads || [])[index] || 0));
   }
+  const operational = Number(item.operationalAvailableSeats);
+  if (Number.isFinite(operational)) available = Math.min(available, Math.max(0, operational));
   return Math.max(0, available);
 }
 
@@ -1448,6 +1471,30 @@ function renderAgendaCards(entries, container, filtered = false) {
       seats.textContent = full ? "🪑 Lotado" : (range.minimum === range.maximum ? `🪑 ${range.maximum} vaga(s)` : `🪑 ${range.minimum}–${range.maximum} vagas`);
     }
     meta.append(time, seats);
+    if (item.capacityReliable === true) {
+      const passengers = document.createElement("span");
+      passengers.className = "bigPill";
+      passengers.textContent = `👥 Passageiros confirmados: ${normalizedSeatCount(item.confirmedPassengerSeats)}`;
+      meta.appendChild(passengers);
+
+      const blockedTotal = normalizedSeatCount(item.blockedSeats);
+      if (blockedTotal > 0) {
+        const blocked = document.createElement("span");
+        blocked.className = "bigPill";
+        blocked.textContent = `🚫 Vagas bloqueadas: ${blockedTotal}`;
+        meta.appendChild(blocked);
+      }
+
+      const blablaAvailable = item.blablaAvailableSeats == null ? null : normalizedSeatCount(item.blablaAvailableSeats);
+      const rotaAvailable = item.rotaCertaAvailableSeats == null ? null : normalizedSeatCount(item.rotaCertaAvailableSeats);
+      const totalAvailable = item.totalAvailableSeats == null ? null : normalizedSeatCount(item.totalAvailableSeats);
+      if (blablaAvailable != null && rotaAvailable != null && totalAvailable != null) {
+        const availability = document.createElement("span");
+        availability.className = "bigPill";
+        availability.textContent = `BlaBlaCar ${blablaAvailable} vaga(s) • Rota Certa ${rotaAvailable} vaga(s) • Total disponível ${totalAvailable}`;
+        meta.appendChild(availability);
+      }
+    }
     const duration = durationFor(item);
     if (duration) {
       const durationPill = document.createElement("span");
@@ -1790,7 +1837,17 @@ function renderTripFacts() {
   };
 
   addFact("Saída", formatDate(trip.departureAtMillis));
-  addFact("Capacidade", `${trip.capacity} lugar(es)`);
+  if (trip.blablaAvailableSeats != null) addFact("Vagas BlaBlaCar", `${normalizedSeatCount(trip.blablaAvailableSeats)} disponíveis`);
+  if (trip.rotaCertaAvailableSeats != null) addFact("Vagas Rota Certa", `${normalizedSeatCount(trip.rotaCertaAvailableSeats)} disponíveis`);
+  if (trip.totalAvailableSeats != null) addFact("Total disponível", `${normalizedSeatCount(trip.totalAvailableSeats)} vaga(s)`);
+  if (trip.capacityReliable === true) {
+    const available = seatRange(trip);
+    addFact("Passageiros confirmados", normalizedSeatCount(trip.confirmedPassengerSeats));
+    if (normalizedSeatCount(trip.blockedSeats) > 0) addFact("Vagas bloqueadas", normalizedSeatCount(trip.blockedSeats));
+    addFact("Vagas disponíveis", rangeText(available, "vaga", "vagas"));
+  } else {
+    addFact("Ocupação", "aguardando sincronização");
+  }
   const duration = durationFor(trip);
   if (duration) addFact("Duração prevista", duration);
 

@@ -155,7 +155,7 @@ private fun TripApp(
     val capacityFirstValueReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val capacityInitialReported = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     if (capacityInitialReported.compareAndSet(false, true)) {
-        val present = settingsLoaded && appSettings.vehicleCapacity in 1..999
+        val present = settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999
         val source = when {
             !settingsLoaded -> "awaiting_local_settings"
             present -> "local_settings"
@@ -164,7 +164,7 @@ private fun TripApp(
         AgendaTrace.event(
             activity,
             "CAPACITY_INITIAL_STATE",
-            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
+            "source=$source valuePresent=$present value=${appSettings.rotaCertaSeatAllocation.takeIf { present } ?: 0}",
             traceId,
         )
     }
@@ -247,41 +247,41 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity) {
+    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         if (!settingsLoaded) {
             AgendaTrace.event(
                 activity,
-                "CAPACITY_LOCAL_SETTINGS_WAITING",
-                "source=awaiting_local_settings valuePresent=false",
+                "INVENTORY_LOCAL_SETTINGS_WAITING",
+                "source=awaiting_local_settings",
                 traceId,
             )
             return@LaunchedEffect
         }
-        val present = appSettings.vehicleCapacity in 1..999
-        val source = if (present) "local_settings" else "local_settings_unconfigured"
-        AgendaTrace.event(
-            activity,
-            "CAPACITY_LOCAL_SETTINGS_RECEIVED",
-            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
-            traceId,
+        val (changedTrips, _) = store.reconcileOperationalInventory(
+            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
         )
-        AgendaTrace.event(
-            activity,
-            "CAPACITY_RENDER_UPDATED",
-            "source=$source valuePresent=$present value=${appSettings.vehicleCapacity.takeIf { present } ?: 0}",
-            traceId,
-        )
-        if (present && capacityFirstValueReported.compareAndSet(false, true)) {
-            val delayMs = ((android.os.SystemClock.elapsedRealtimeNanos() - settingsObservationStartedNs).coerceAtLeast(0L)) / 1_000_000L
-            AgendaTrace.event(activity, "CAPACITY_FIRST_VALUE_MS", "value=$delayMs unit=ms source=local_settings", traceId)
+        if (changedTrips > 0) {
+            trips = store.trips()
+            publicAgendaSyncRevision++
+            UnifiedDebugEventStore.record(
+                "OPERATIONAL_INVENTORY_RECONCILED",
+                activity.packageName,
+                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips legacyVehicleCapacityIgnored=true",
+            )
         }
+        AgendaTrace.event(
+            activity,
+            "INVENTORY_LOCAL_SETTINGS_RECEIVED",
+            "source=rota_certa_allocation value=${appSettings.rotaCertaSeatAllocation}",
+            traceId,
+        )
     }
 
-    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.vehicleCapacity) {
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
-            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.vehicleCapacity in 1..999} settingsLoaded=$settingsLoaded syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
             traceId,
         )
     }
@@ -404,7 +404,12 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision) {
+    androidx.compose.runtime.LaunchedEffect(
+        settingsLoaded,
+        appSettings.rotaCertaSeatAllocation,
+        appSettings.rotaCertaSeatAllocation,
+        publicAgendaSyncRevision,
+    ) {
         if (!settingsLoaded) {
             AgendaTrace.event(
                 activity,
@@ -423,7 +428,7 @@ private fun TripApp(
             AgendaTrace.event(
                 activity,
                 "CAPACITY_PUBLIC_SYNC_TRIGGERED",
-                "source=${if (appSettings.vehicleCapacity in 1..999) "local_settings" else "local_settings_unconfigured"} valuePresent=${appSettings.vehicleCapacity in 1..999} value=${appSettings.vehicleCapacity}",
+                "source=rota_certa_allocation rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} legacyVehicleCapacityIgnored=true",
                 traceId,
             )
             val capacityPublicSyncOperation = AgendaTrace.operationStart(
@@ -436,7 +441,8 @@ private fun TripApp(
                 PublicAgendaAutoSync0300.sync(
                     context = activity,
                     store = store,
-                    configuredVehicleCapacity = appSettings.vehicleCapacity,
+                    configuredVehicleCapacity = 0,
+                    configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                 ).also { syncResult ->
                     AgendaTrace.operationEnd(
                         activity,
@@ -581,7 +587,7 @@ private fun TripApp(
             when (screen) {
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
-                    defaultCapacity = appSettings.vehicleCapacity,
+                    defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     onCancel = {
                         pendingCreateForPassengerId = ""
                         screen = TripScreen.TIMELINE
@@ -755,7 +761,7 @@ internal fun tripEditorDepartureMillis(
 @Composable
 private fun TripEditor(
     defaultOrigin: String,
-    defaultCapacity: Int,
+    defaultRotaCertaSeatAllocation: Int,
     onCancel: () -> Unit,
     onSave: (Trip) -> Unit,
 ) {
@@ -777,9 +783,6 @@ private fun TripEditor(
     }
     var departureTime by remember { mutableStateOf(initialDeparture.second.format(DateTimeFormatter.ofPattern("HH:mm"))) }
     var showDepartureDatePicker by remember { mutableStateOf(false) }
-    var capacity by remember(defaultCapacity) {
-        mutableStateOf(defaultCapacity.takeIf { it in 1..999 }?.toString().orEmpty())
-    }
     var notes by remember { mutableStateOf("") }
     var segmentPrices by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -819,7 +822,6 @@ private fun TripEditor(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    OutlinedTextField(capacity, { capacity = it.filter(Char::isDigit).take(3) }, label = { Text("Capacidade do veículo") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(notes, { notes = it }, label = { Text("Observações públicas opcionais") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
     val planningNames = buildList {
         if (origin.isNotBlank()) add(origin.trim())
@@ -838,8 +840,7 @@ private fun TripEditor(
             runCatching {
                 require(origin.isNotBlank()) { "Informe a origem." }
                 require(destination.isNotBlank()) { "Informe o destino." }
-                val seats = capacity.toIntOrNull() ?: throw IllegalArgumentException("Informe uma quantidade de vagas válida.")
-                require(seats in 1..999) { "Informe uma capacidade entre 1 e 999 lugares." }
+                val allocatedSeats = defaultRotaCertaSeatAllocation.coerceIn(0, 999)
                 val departureMillis = tripEditorDepartureMillis(departureDate, departureTime)
                     ?: throw IllegalArgumentException("Selecione a data e informe o horário da saída no formato HH:mm.")
                 val names = buildList {
@@ -871,7 +872,8 @@ private fun TripEditor(
                 Trip(
                     title = "${origin.trim()} → ${destination.trim()}",
                     departureAtMillis = departureMillis,
-                    capacity = seats,
+                    capacity = allocatedSeats,
+                    rotaCertaSeatAllocation = allocatedSeats,
                     stops = stops,
                     notes = notes.trim(),
                 )

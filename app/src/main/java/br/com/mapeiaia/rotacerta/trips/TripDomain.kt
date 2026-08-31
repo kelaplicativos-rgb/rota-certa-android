@@ -50,7 +50,11 @@ enum class BookingSource {
 
 @Serializable
 enum class CapacityClaimType {
+    /** A real passenger/reservation that occupies the trip inventory on its traveled segments. */
     PASSENGER,
+    /** Real external occupancy captured without creating a duplicate local passenger identity. */
+    EXTERNAL_OCCUPANCY,
+    /** A seat deliberately unavailable for booking. If linked to a passenger by occupancyGroupId it is a mirror, not an extra seat. */
     RESERVED_SEAT,
 }
 
@@ -72,7 +76,8 @@ data class Trip(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val departureAtMillis: Long,
-    val capacity: Int = 3,
+    /** Derived simultaneous operational inventory ceiling for this trip. Never sourced from legacy vehicleCapacity. */
+    val capacity: Int = 0,
     val status: TripStatus = TripStatus.DRAFT,
     val stops: List<TripStop>,
     val publicToken: String = UUID.randomUUID().toString().replace("-", ""),
@@ -90,12 +95,14 @@ data class Trip(
     val publicBookingEnabled: Boolean = false,
     /** True only when intermediate stops are complete/authoritative for this published trip. */
     val itineraryAuthoritative: Boolean = true,
-    /** BlaBlaCar seat-editor observation. Null for trips without an external publication. */
+    /** Current free seats observed in BlaBlaCar "Opções de passageiros". Legacy field name kept for persistence compatibility. */
     val publishedSeats: Int? = null,
-    /** External trips stay fail-closed until published seats and capacity claims are reconciled. */
+    /** External trips stay fail-closed until the channel inventory and occupancy claims are reconciled. */
     val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
+    /** Seats allocated to the Rota Certa channel for this trip. Explicit zero is valid. */
+    val rotaCertaSeatAllocation: Int? = null,
 )
 
 @Serializable
@@ -139,11 +146,74 @@ data class Booking(
     val localMetadataTouched: Boolean = false,
 )
 
+internal fun bookingOccupancyIdentityKey(booking: Booking): String =
+    booking.occupancyGroupId?.trim()?.takeIf(String::isNotEmpty)?.let { "group:$it" }
+        ?: booking.sourceReference.trim().takeIf(String::isNotEmpty)?.let { "reference:$it" }
+        ?: booking.passengerId.trim().takeIf(String::isNotEmpty)?.let { "passenger:$it" }
+        ?: "booking:${booking.id}"
+
+internal fun externalConfirmedPeakSeats(
+    trip: Trip,
+    bookings: List<Booking>,
+): Int {
+    val stops = trip.stops.sortedBy(TripStop::order)
+    if (stops.size < 2) return 0
+    val external = bookings.asSequence()
+        .filter { it.tripId == trip.id && it.seats > 0 && it.status == BookingStatus.CONFIRMED }
+        .filter { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
+        .toList()
+    if (external.isEmpty()) return 0
+
+    val wholeTrip = mutableMapOf<String, Int>()
+    val perSegment = Array(stops.size - 1) { mutableMapOf<String, Int>() }
+    var unresolved = false
+    external.forEach { booking ->
+        val key = bookingOccupancyIdentityKey(booking)
+        wholeTrip[key] = maxOf(wholeTrip[key] ?: 0, booking.seats)
+        val fromIndex = stops.indexOfFirst { it.id == booking.boardingStopId }
+        val toIndex = stops.indexOfFirst { it.id == booking.dropoffStopId }
+        if (fromIndex < 0 || toIndex <= fromIndex) {
+            unresolved = true
+        } else {
+            for (segment in fromIndex until toIndex) {
+                perSegment[segment][key] = maxOf(perSegment[segment][key] ?: 0, booking.seats)
+            }
+        }
+    }
+    val peak = perSegment.maxOfOrNull { groups -> groups.values.sum() } ?: 0
+    return if (unresolved) maxOf(peak, wholeTrip.values.sum()) else peak
+}
+
+/**
+ * Technical simultaneous ceiling used by the existing segment engine.
+ *
+ * BlaBlaCar publishedSeats is the CURRENT remaining-seat value from the seat editor,
+ * so its already-confirmed external passengers are added back only to reconstruct
+ * the underlying segment ceiling. Rota Certa allocation is independent. Local
+ * passengers are deliberately not added here; they consume this ceiling later.
+ */
+fun operationalInventoryCapacity(
+    trip: Trip,
+    bookings: List<Booking>,
+): Int {
+    val blablaRemaining = trip.publishedSeats?.takeIf { it in 0..999 } ?: 0
+    val blablaConfirmedPeak = externalConfirmedPeakSeats(trip, bookings)
+    val rotaCertaAllocated = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+    return (blablaRemaining + blablaConfirmedPeak + rotaCertaAllocated).coerceIn(0, 999)
+}
+
 data class SegmentLoad(
     val from: TripStop,
     val to: TripStop,
+    /** Total inventory consumed on this segment: confirmed passengers + blocked/held seats. */
     val occupiedSeats: Int,
     val availableSeats: Int,
+    /** Confirmed real passengers on this segment, after occupancyGroupId deduplication. */
+    val passengerSeats: Int = occupiedSeats,
+    /** Seats unavailable but not yet a confirmed passenger: explicit blocks, holds and pending requests. */
+    val blockedSeats: Int = 0,
+    /** Positive only when confirmed + blocked exceeds this trip's derived operational ceiling. */
+    val overbookingSeats: Int = 0,
 )
 
 data class SeatAvailability(
@@ -161,6 +231,131 @@ data class SeatAvailabilityRange(
 ) {
     val variesBySegment: Boolean
         get() = minimum != maximum
+}
+data class TripOperationalSeatSummary(
+    val operationalLimitConfigured: Boolean,
+    /** Current free seats reported by BlaBlaCar. */
+    val blablaAvailableSeats: Int,
+    /** Configured Rota Certa pool before local occupancy. */
+    val rotaCertaAllocatedSeats: Int,
+    /** Current free seats remaining in the Rota Certa pool. */
+    val rotaCertaAvailableSeats: Int,
+    /** Current free seats across both channels. */
+    val totalAvailableSeats: Int,
+    /** Legacy alias retained for callers that still render a total field. */
+    val totalConsideredSeats: Int,
+    val confirmedPassengerSeats: Int,
+    val blockedSeats: Int,
+    val availableSeats: Int,
+    val overbookingSeats: Int,
+)
+
+/**
+ * Canonical whole-trip channel availability.
+ *
+ * BlaBlaCar contributes the CURRENT free-seat value captured from its seat editor.
+ * External BlaBlaCar occupants therefore remain visible as passengers but are NOT
+ * subtracted from that free-seat value a second time. Only local Rota Certa demand
+ * consumes the configured Rota Certa allocation.
+ */
+fun operationalSeatSummary(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long = System.currentTimeMillis(),
+): TripOperationalSeatSummary {
+    val blablaConfigured = trip.publishedSeats?.takeIf { it in 0..999 }
+    val rotaCertaConfigured = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+    val operationalLimitConfigured = blablaConfigured != null || rotaCertaConfigured != null
+    val blablaAvailable = blablaConfigured ?: 0
+    val rotaCertaAllocated = rotaCertaConfigured ?: 0
+
+    data class Group(
+        var externalConfirmed: Int = 0,
+        var localConfirmed: Int = 0,
+        var localBlocked: Int = 0,
+    )
+
+    val groups = mutableMapOf<String, Group>()
+    bookings.asSequence()
+        .filter { it.tripId == trip.id && it.seats > 0 }
+        .filter { booking ->
+            when (booking.status) {
+                BookingStatus.CONFIRMED,
+                BookingStatus.REQUESTED,
+                -> true
+                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+                BookingStatus.REJECTED,
+                BookingStatus.CANCELLED,
+                BookingStatus.EXPIRED,
+                -> false
+            }
+        }
+        .forEach { booking ->
+            val group = groups.getOrPut(bookingOccupancyIdentityKey(booking)) { Group() }
+            val external = booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY ||
+                booking.source == BookingSource.BLABLACAR
+
+            when (booking.capacityClaimType) {
+                CapacityClaimType.PASSENGER,
+                CapacityClaimType.EXTERNAL_OCCUPANCY,
+                -> when (booking.status) {
+                    BookingStatus.CONFIRMED -> {
+                        if (external) group.externalConfirmed = maxOf(group.externalConfirmed, booking.seats)
+                        else group.localConfirmed = maxOf(group.localConfirmed, booking.seats)
+                    }
+                    BookingStatus.REQUESTED,
+                    BookingStatus.HELD,
+                    -> if (!external) group.localBlocked = maxOf(group.localBlocked, booking.seats)
+                    BookingStatus.REJECTED,
+                    BookingStatus.CANCELLED,
+                    BookingStatus.EXPIRED,
+                    -> Unit
+                }
+                CapacityClaimType.RESERVED_SEAT -> if (!external) {
+                    group.localBlocked = maxOf(group.localBlocked, booking.seats)
+                }
+            }
+        }
+
+    var confirmedPassengers = 0
+    var blockedSeats = 0
+
+    groups.values.forEach { group ->
+        val confirmed = maxOf(group.externalConfirmed, group.localConfirmed).coerceAtLeast(0)
+        confirmedPassengers += confirmed
+        blockedSeats += (group.localBlocked - maxOf(group.externalConfirmed, group.localConfirmed)).coerceAtLeast(0)
+    }
+
+    // Reconstruct the simultaneous ceiling from the current BlaBlaCar free-seat
+    // value, the external passengers already represented by that value and the
+    // Rota Certa allocation. Then use the existing segment engine as the canonical
+    // availability source. This preserves seat reuse after an intermediate drop-off.
+    val derivedCapacity = operationalInventoryCapacity(trip, bookings)
+    val derivedTrip = trip.copy(capacity = derivedCapacity)
+    val canonicalLoads = SeatAvailabilityEngine.segmentLoads(derivedTrip, bookings, nowMillis)
+    val totalAvailable = canonicalLoads.minOfOrNull(SegmentLoad::availableSeats)
+        ?: derivedCapacity
+    val overbooking = canonicalLoads.maxOfOrNull(SegmentLoad::overbookingSeats) ?: 0
+
+    // Channel attribution after local occupancy is informational only. The booking
+    // guard uses the combined per-segment inventory above, so local reservations may
+    // consume any seat that is genuinely free in the combined inventory.
+    val combinedBeforeLocal = (blablaAvailable + rotaCertaAllocated).coerceAtMost(999)
+    val localConsumptionAtBottleneck = (combinedBeforeLocal - totalAvailable).coerceAtLeast(0)
+    val rotaCertaAvailable = (rotaCertaAllocated - localConsumptionAtBottleneck).coerceAtLeast(0)
+
+    return TripOperationalSeatSummary(
+        operationalLimitConfigured = operationalLimitConfigured,
+        blablaAvailableSeats = blablaAvailable,
+        rotaCertaAllocatedSeats = rotaCertaAllocated,
+        rotaCertaAvailableSeats = rotaCertaAvailable,
+        totalAvailableSeats = totalAvailable,
+        totalConsideredSeats = totalAvailable,
+        confirmedPassengerSeats = confirmedPassengers,
+        blockedSeats = blockedSeats,
+        availableSeats = if (operationalLimitConfigured) totalAvailable else 0,
+        overbookingSeats = if (operationalLimitConfigured) overbooking else 0,
+    )
 }
 
 object DriverIdentityRules {
@@ -214,7 +409,7 @@ object SeatAvailabilityEngine {
         requestedSeats: Int = 1,
         nowMillis: Long = System.currentTimeMillis(),
     ): SeatAvailability {
-        require(trip.capacity > 0) { "Trip capacity must be positive" }
+        require(trip.capacity >= 0) { "Trip inventory cannot be negative" }
         require(requestedSeats > 0) { "Requested seats must be positive" }
         val orderedStops = trip.stops.sortedBy(TripStop::order)
         require(orderedStops.size >= 2) { "Trip must have at least two stops" }
@@ -229,11 +424,15 @@ object SeatAvailabilityEngine {
 
         val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         val loads = (boardingIndex until dropoffIndex).map { index ->
+            val state = occupancy[index]
             SegmentLoad(
                 from = orderedStops[index],
                 to = orderedStops[index + 1],
-                occupiedSeats = occupancy[index],
-                availableSeats = (trip.capacity - occupancy[index]).coerceAtLeast(0),
+                occupiedSeats = state.consumedSeats,
+                availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
+                passengerSeats = state.passengerSeats,
+                blockedSeats = state.blockedSeats,
+                overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
         val available = loads.minOfOrNull(SegmentLoad::availableSeats) ?: trip.capacity
@@ -257,11 +456,15 @@ object SeatAvailabilityEngine {
         if (orderedStops.size < 2) return emptyList()
         val occupancy = reconciledOccupancy(trip, bookings, orderedStops, nowMillis)
         return occupancy.indices.map { index ->
+            val state = occupancy[index]
             SegmentLoad(
                 from = orderedStops[index],
                 to = orderedStops[index + 1],
-                occupiedSeats = occupancy[index],
-                availableSeats = (trip.capacity - occupancy[index]).coerceAtLeast(0),
+                occupiedSeats = state.consumedSeats,
+                availableSeats = (trip.capacity - state.consumedSeats).coerceAtLeast(0),
+                passengerSeats = state.passengerSeats,
+                blockedSeats = state.blockedSeats,
+                overbookingSeats = (state.consumedSeats - trip.capacity).coerceAtLeast(0),
             )
         }
     }
@@ -270,9 +473,11 @@ object SeatAvailabilityEngine {
         trip: Trip,
         bookings: List<Booking>,
         nowMillis: Long = System.currentTimeMillis(),
-    ): Int = segmentLoads(trip, bookings, nowMillis)
-        .minOfOrNull(SegmentLoad::availableSeats)
-        ?: trip.capacity
+    ): Int {
+        return segmentLoads(trip, bookings, nowMillis)
+            .minOfOrNull(SegmentLoad::availableSeats)
+            ?: trip.capacity
+    }
 
     fun availableSeatRange(
         trip: Trip,
@@ -295,20 +500,36 @@ object SeatAvailabilityEngine {
             return trip.status
         }
         val loads = segmentLoads(trip, bookings, nowMillis)
-        return if (loads.isNotEmpty() && loads.all { it.availableSeats == 0 }) {
+        val operational = operationalSeatSummary(trip, bookings, nowMillis)
+        return if ((operational.operationalLimitConfigured && operational.availableSeats == 0) ||
+            (loads.isNotEmpty() && loads.all { it.availableSeats == 0 })
+        ) {
             TripStatus.FULL
         } else {
             TripStatus.PUBLISHED
         }
     }
 
+    private data class SegmentOccupancyState(
+        val passengerSeats: Int,
+        val blockedSeats: Int,
+    ) {
+        val consumedSeats: Int
+            get() = passengerSeats + blockedSeats
+    }
+
+    private data class OccupancyGroupClaims(
+        var passengerSeats: Int = 0,
+        var reservedSeats: Int = 0,
+    )
+
     private fun reconciledOccupancy(
         trip: Trip,
         bookings: List<Booking>,
         orderedStops: List<TripStop>,
         nowMillis: Long,
-    ): IntArray {
-        val claimsBySegment = Array(orderedStops.size - 1) { mutableMapOf<String, Int>() }
+    ): List<SegmentOccupancyState> {
+        val claimsBySegment = Array(orderedStops.size - 1) { mutableMapOf<String, OccupancyGroupClaims>() }
         bookings.asSequence()
             .filter { it.tripId == trip.id }
             .filter { it.seats > 0 }
@@ -317,19 +538,42 @@ object SeatAvailabilityEngine {
                 val fromIndex = orderedStops.indexOfFirst { it.id == booking.boardingStopId }
                 val toIndex = orderedStops.indexOfFirst { it.id == booking.dropoffStopId }
                 if (fromIndex >= 0 && toIndex > fromIndex) {
-                    val explicitGroup = booking.occupancyGroupId?.trim()?.takeIf { it.isNotEmpty() }
-                    val claimKey = explicitGroup?.let { "group:$it" } ?: "booking:${booking.id}"
+                    val claimKey = bookingOccupancyIdentityKey(booking)
                     for (segment in fromIndex until toIndex) {
-                        val previous = claimsBySegment[segment][claimKey] ?: 0
-                        if (booking.seats > previous) {
-                            claimsBySegment[segment][claimKey] = booking.seats
+                        val group = claimsBySegment[segment].getOrPut(claimKey) { OccupancyGroupClaims() }
+                        when (booking.capacityClaimType) {
+                            CapacityClaimType.PASSENGER,
+                            CapacityClaimType.EXTERNAL_OCCUPANCY,
+                            -> when (booking.status) {
+                                BookingStatus.CONFIRMED ->
+                                    if (booking.seats > group.passengerSeats) group.passengerSeats = booking.seats
+                                BookingStatus.REQUESTED,
+                                BookingStatus.HELD,
+                                -> if (booking.seats > group.reservedSeats) group.reservedSeats = booking.seats
+                                BookingStatus.REJECTED,
+                                BookingStatus.CANCELLED,
+                                BookingStatus.EXPIRED,
+                                -> Unit
+                            }
+                            CapacityClaimType.RESERVED_SEAT ->
+                                if (booking.seats > group.reservedSeats) group.reservedSeats = booking.seats
                         }
                     }
                 }
             }
-        return IntArray(claimsBySegment.size) { index -> claimsBySegment[index].values.sum() }
-    }
 
+        return claimsBySegment.map { groups ->
+            var passengers = 0
+            var blocked = 0
+            groups.values.forEach { group ->
+                val passenger = group.passengerSeats.coerceAtLeast(0)
+                val consumedByGroup = maxOf(passenger, group.reservedSeats.coerceAtLeast(0))
+                passengers += passenger
+                blocked += (consumedByGroup - passenger).coerceAtLeast(0)
+            }
+            SegmentOccupancyState(passengerSeats = passengers, blockedSeats = blocked)
+        }
+    }
     private fun occupiesCapacity(booking: Booking, nowMillis: Long): Boolean = when (booking.status) {
         BookingStatus.REQUESTED,
         BookingStatus.CONFIRMED,

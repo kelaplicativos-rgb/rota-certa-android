@@ -19,6 +19,7 @@ data class TripTimelineEntry(
     val origin: String,
     val destination: String,
     val status: TripStatus,
+    /** Derived simultaneous operational inventory ceiling. */
     val capacity: Int,
     val minimumOccupiedSeats: Int,
     val maximumOccupiedSeats: Int,
@@ -33,11 +34,15 @@ data class TripTimelineEntry(
     val blablaAvailability: String? = null,
     /** Ordered stops observed on the exact BlaBlaCar publication. */
     val blablaItineraryStops: List<String> = emptyList(),
-    /** External publication setting only; never used as the vehicle's physical capacity. */
+    /** External publication setting only; never used as the trip's operational inventory. */
     val blablaPublishedSeats: Int? = null,
     val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val blablaPassengerRosterComplete: Boolean? = null,
     val issues: Set<TripTimelineIssue> = emptySet(),
+    /** Operational Rota Certa allocation; separate from physical capacity. */
+    val rotaCertaSeatAllocation: Int? = null,
+    /** Whole-trip operational blocks/holds that are not confirmed passengers. */
+    val operationalBlockedSeats: Int = 0,
 ) {
     val minimumAvailableSeats: Int
         get() = (capacity - maximumOccupiedSeats).coerceAtLeast(0)
@@ -47,64 +52,95 @@ data class TripTimelineEntry(
 }
 
 /**
- * Resolves the passenger-facing capacity without changing the vehicle's physical
- * capacity. BlaBlaCar's exact publication setting is authoritative when present.
- *
- * Rota Certa/private passenger claims are added back only because the existing
- * reliable seat writer deliberately reduces the BlaBlaCar publication by those
- * exact seats. This prevents double-decrementing a seat already committed through
- * Rota Certa while still honoring a driver/family seat removed directly in
- * BlaBlaCar.
+ * Resolves public availability from the operational inventory ceiling only.
+ * BlaBlaCar published seats remain channel metadata and NEVER redefine or add
+ * to the trip's operational inventory.
  */
 internal data class TimelinePublicCapacityResolution(
     val physicalVehicleCapacity: Int?,
     val remotePublishedCapacity: Int?,
-    val nonBlaBlaOccupiedSeats: Int,
+    val passengerSeats: Int,
+    val blockedSeats: Int,
     val effectiveCapacity: Int?,
     val availableSeats: Int?,
+    val overbookingSeats: Int,
     val capacitySource: String,
 )
+
+internal fun resolveTimelinePublicCapacity(
+    physicalVehicleCapacity: Int?,
+    remotePublishedCapacity: Int?,
+    passengerSeats: Int,
+    blockedSeats: Int = 0,
+): TimelinePublicCapacityResolution {
+    val physical = physicalVehicleCapacity?.takeIf { it in 0..999 }
+    val remote = remotePublishedCapacity?.takeIf { it in 0..999 }
+    val passengers = passengerSeats.coerceAtLeast(0)
+    val blocked = blockedSeats.coerceAtLeast(0)
+    val consumed = passengers + blocked
+    val overbooking = physical?.let { (consumed - it).coerceAtLeast(0) } ?: 0
+    return TimelinePublicCapacityResolution(
+        physicalVehicleCapacity = physical,
+        remotePublishedCapacity = remote,
+        passengerSeats = passengers,
+        blockedSeats = blocked,
+        effectiveCapacity = physical,
+        availableSeats = physical?.let { (it - consumed).coerceAtLeast(0) },
+        overbookingSeats = overbooking,
+        capacitySource = if (physical != null) "trip_operational_inventory" else "unavailable",
+    )
+}
 
 internal fun timelinePublicCapacityResolution(
     entry: TripTimelineEntry,
     occupiedSeats: Int = entry.maximumOccupiedSeats,
 ): TimelinePublicCapacityResolution {
-    val physical = entry.capacity.takeIf { it in 1..999 }
-    val remote = entry.blablaPublishedSeats?.takeIf { it in 0..999 }
-    val nonBlaBlaOccupied = entry.sourcePassengerSeats
-        .filterKeys { it != BookingSource.BLABLACAR }
-        .values
-        .sumOf { it.coerceAtLeast(0) }
-
-    val remoteWithLocalClaims = remote?.let { (it + nonBlaBlaOccupied).coerceAtMost(999) }
-    val effective = when {
-        remoteWithLocalClaims != null && physical != null -> minOf(remoteWithLocalClaims, physical)
-        remoteWithLocalClaims != null -> remoteWithLocalClaims
-        else -> physical
-    }
-    val source = when {
-        remote != null -> "blablacar_remote_published"
-        physical != null -> "vehicle_fallback_remote_unavailable"
-        else -> "unavailable"
-    }
-    return TimelinePublicCapacityResolution(
-        physicalVehicleCapacity = physical,
-        remotePublishedCapacity = remote,
-        nonBlaBlaOccupiedSeats = nonBlaBlaOccupied,
-        effectiveCapacity = effective,
-        availableSeats = effective?.let { (it - occupiedSeats.coerceAtLeast(0)).coerceAtLeast(0) },
-        capacitySource = source,
+    val confirmedWholeTrip = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+    val passengers = minOf(occupiedSeats.coerceAtLeast(0), confirmedWholeTrip)
+    val blocked = (occupiedSeats.coerceAtLeast(0) - passengers).coerceAtLeast(0)
+    return resolveTimelinePublicCapacity(
+        physicalVehicleCapacity = entry.capacity,
+        remotePublishedCapacity = entry.blablaPublishedSeats,
+        passengerSeats = passengers,
+        blockedSeats = blocked,
     )
 }
 
 internal fun timelinePublicSegmentLoads(
-    entry: TripTimelineEntry,
+    @Suppress("UNUSED_PARAMETER") entry: TripTimelineEntry,
     physicalLoads: List<SegmentLoad>,
-): List<SegmentLoad> {
-    val publicCapacity = timelinePublicCapacityResolution(entry).effectiveCapacity ?: return physicalLoads
-    return physicalLoads.map { load ->
-        load.copy(availableSeats = (publicCapacity - load.occupiedSeats).coerceAtLeast(0))
+): List<SegmentLoad> = physicalLoads
+
+internal data class TripChannelAllocationBreakdown(
+    val physicalPassengerCapacity: Int?,
+    val blablaPublishedAllocation: Int?,
+    val rotaCertaAllocation: Int?,
+    val totalConsidered: Int?,
+)
+
+/**
+ * Channel allocations form a whole-trip operational total. They never replace
+ * the simultaneous physical capacity; the per-segment engine still enforces it.
+ */
+internal fun tripChannelAllocationBreakdown(
+    physicalPassengerCapacity: Int?,
+    blablaPublishedSeats: Int?,
+    rotaCertaSeatAllocation: Int?,
+): TripChannelAllocationBreakdown {
+    val physical = physicalPassengerCapacity?.takeIf { it in 1..999 }
+    val blabla = blablaPublishedSeats?.takeIf { it in 0..999 }
+    val rotaCerta = rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+    val total = if (blabla != null || rotaCerta != null) {
+        ((blabla ?: 0) + (rotaCerta ?: 0)).coerceAtMost(999)
+    } else {
+        null
     }
+    return TripChannelAllocationBreakdown(
+        physicalPassengerCapacity = physical,
+        blablaPublishedAllocation = blabla,
+        rotaCertaAllocation = rotaCerta,
+        totalConsidered = total,
+    )
 }
 
 enum class TripTimelineIssue {
@@ -142,9 +178,11 @@ object TripTimelineEngine {
                     destination = stops.last().name,
                     status = trip.status,
                     capacity = trip.capacity,
+                    rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation,
                     minimumOccupiedSeats = occupied.minOrNull() ?: 0,
                     maximumOccupiedSeats = occupied.maxOrNull() ?: 0,
                     sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
+                    operationalBlockedSeats = operationalSeatSummary(trip, tripBookings, nowMillis).blockedSeats,
                     localTripId = trip.id,
                     blablaTripId = trip.blablaTripId,
                     blablaTripHref = trip.blablaManageUrl,
@@ -200,29 +238,30 @@ object TripTimelineEngine {
         }
     }
 
-    private fun passengerSeatsBySource(bookings: List<Booking>, nowMillis: Long): Map<BookingSource, Int> {
+    private fun passengerSeatsBySource(bookings: List<Booking>, @Suppress("UNUSED_PARAMETER") nowMillis: Long): Map<BookingSource, Int> {
         val activePassengers = bookings.filter { booking ->
-            booking.capacityClaimType == CapacityClaimType.PASSENGER && when (booking.status) {
-                BookingStatus.REQUESTED,
-                BookingStatus.CONFIRMED,
-                -> true
-                BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
-                BookingStatus.REJECTED,
-                BookingStatus.CANCELLED,
-                BookingStatus.EXPIRED,
-                -> false
+            booking.capacityClaimType in setOf(CapacityClaimType.PASSENGER, CapacityClaimType.EXTERNAL_OCCUPANCY) &&
+                booking.status == BookingStatus.CONFIRMED
+        }
+        val result = mutableMapOf<BookingSource, Int>()
+        activePassengers.groupBy(::bookingOccupancyIdentityKey).values.forEach { group ->
+            val external = group
+                .filter { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
+                .maxByOrNull(Booking::seats)
+            val local = group
+                .filterNot { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
+                .maxByOrNull(Booking::seats)
+            val externalSeats = external?.seats?.coerceAtLeast(0) ?: 0
+            if (externalSeats > 0) {
+                result[BookingSource.BLABLACAR] = (result[BookingSource.BLABLACAR] ?: 0) + externalSeats
+            }
+            val localSeats = local?.seats?.coerceAtLeast(0) ?: 0
+            val localExtra = (localSeats - externalSeats).coerceAtLeast(0)
+            if (localExtra > 0 && local != null) {
+                result[local.source] = (result[local.source] ?: 0) + localExtra
             }
         }
-        val grouped = activePassengers.groupBy { it.occupancyGroupId?.trim()?.takeIf(String::isNotEmpty) }
-        val result = mutableMapOf<BookingSource, Int>()
-        grouped[null].orEmpty().forEach { booking ->
-            result[booking.source] = (result[booking.source] ?: 0) + booking.seats
-        }
-        grouped.filterKeys { it != null }.values.forEach { group ->
-            val representative = group.maxByOrNull(Booking::seats) ?: return@forEach
-            result[representative.source] = (result[representative.source] ?: 0) + representative.seats
-        }
-        return result.toMap()
+        return result.filterValues { it > 0 }
     }
 
     private fun duplicateKey(entry: TripTimelineEntry): String = listOf(

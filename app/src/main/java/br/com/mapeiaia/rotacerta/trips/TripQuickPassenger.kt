@@ -171,7 +171,7 @@ object QuickPassengerEngine {
             .plus(plan.writes())
         val projectedLoads = SeatAvailabilityEngine.segmentLoads(trip, projected, nowMillis)
         require(projectedLoads.none { it.occupiedSeats > trip.capacity }) {
-            "A inclusão ultrapassaria a capacidade física do veículo."
+            "A inclusão ultrapassaria as vagas disponíveis da viagem."
         }
         return plan
     }

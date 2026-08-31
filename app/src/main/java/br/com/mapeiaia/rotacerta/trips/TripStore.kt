@@ -61,6 +61,54 @@ class TripStore(context: Context) {
         return normalized
     }
 
+    /**
+     * Reconciles active/future trips to the channel-derived inventory. The old
+     * vehicle_capacity preference is intentionally absent from this calculation.
+     */
+    fun reconcileOperationalInventory(
+        rotaCertaSeatAllocation: Int,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Pair<Int, Int> {
+        require(rotaCertaSeatAllocation in 0..999) { "Vagas do Rota Certa inválidas." }
+        val activeStatuses = setOf(
+            TripStatus.DRAFT,
+            TripStatus.PUBLISHED,
+            TripStatus.FULL,
+            TripStatus.STARTING,
+            TripStatus.ACTIVE,
+        )
+        val allBookings = bookings()
+        val currentTrips = trips()
+        var changedTrips = 0
+        val reconciledTrips = currentTrips.map { trip ->
+            val shouldApply = trip.status in activeStatuses &&
+                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
+            if (!shouldApply) {
+                trip
+            } else {
+                val withAllocation = trip.copy(rotaCertaSeatAllocation = rotaCertaSeatAllocation)
+                val derivedCapacity = operationalInventoryCapacity(withAllocation, allBookings)
+                if (trip.capacity != derivedCapacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation) {
+                    changedTrips++
+                    withAllocation.copy(capacity = derivedCapacity, updatedAtMillis = nowMillis)
+                } else {
+                    trip
+                }
+            }
+        }
+        if (changedTrips > 0) {
+            prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).apply()
+        }
+        return changedTrips to 0
+    }
+
+    @Deprecated("Legacy compatibility only; vehicle capacity no longer drives trip inventory.")
+    fun reconcilePhysicalPassengerCapacity(
+        @Suppress("UNUSED_PARAMETER") capacity: Int,
+        rotaCertaSeatAllocation: Int = 0,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Pair<Int, Int> = reconcileOperationalInventory(rotaCertaSeatAllocation, nowMillis)
+
     fun deleteTrip(id: String) {
         prefs.edit()
             .putString(tripsKey, json.encodeToString(trips().filterNot { it.id == id }))

@@ -17,7 +17,7 @@ const PUBLIC_STATUSES = new Set(["PUBLISHED", "FULL", "STARTING", "ACTIVE"]);
 const DRIVER_MUTABLE_STATUSES = new Set(["DRAFT", "PUBLISHED", "FULL", "STARTING", "ACTIVE", "COMPLETED", "CANCELLED"]);
 const CAPACITY_BOOKING_STATUSES = new Set(["REQUESTED", "HELD", "CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"]);
 const DRIVER_BOOKING_SOURCES = new Set(["BLABLACAR", "PRIVATE", "OTHER"]);
-const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "RESERVED_SEAT"]);
+const CAPACITY_CLAIM_TYPES = new Set(["PASSENGER", "EXTERNAL_OCCUPANCY", "RESERVED_SEAT"]);
 const PASSENGER_AUTHORIZED_ACCESS_STATUSES = new Set(["ACTIVE", "AUTHORIZED"]);
 const PASSENGER_RESTRICTED_ACCESS_STATUSES = new Set(["SUSPENDED", "BLOCKED"]);
 
@@ -316,6 +316,9 @@ function tripRelevantChanges(previous, updated) {
     changedField("status", previous && previous.status, updated && updated.status),
     changedField("title", previous && previous.title, updated && updated.title),
     changedField("stops", previous && previous.stops, updated && updated.stops),
+    changedField("capacity", Number(previous && previous.capacity || 0), Number(updated && updated.capacity || 0)),
+    changedField("rotaCertaSeatAllocation", Number(previous && previous.rotaCertaSeatAllocation || 0), Number(updated && updated.rotaCertaSeatAllocation || 0)),
+    changedField("publishedSeats", previous && previous.publishedSeats, updated && updated.publishedSeats),
   ].filter(Boolean);
 }
 
@@ -642,7 +645,7 @@ function normalizeStops(rawStops) {
 
 function normalizeDriverTrip(raw, previous = null) {
   const capacity = Number(raw.capacity);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 999) throw new Error("Capacidade inválida.");
+  if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
   const departureAtMillis = Number(raw.departureAtMillis);
   if (!Number.isFinite(departureAtMillis) || departureAtMillis <= 0) throw new Error("Horário de saída inválido.");
   const status = cleanText(raw.status, 24) || "DRAFT";
@@ -651,12 +654,18 @@ function normalizeDriverTrip(raw, previous = null) {
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
-    if (capacity !== previous.capacity || oldStopIds !== newStopIds) {
-      throw new Error("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.");
+    if (oldStopIds !== newStopIds) {
+      throw new Error("A estrutura de paradas não pode mudar depois da primeira reserva.");
     }
   }
+  const rawRotaCertaSeatAllocation = raw.rotaCertaSeatAllocation == null
+    ? Number(previous && previous.rotaCertaSeatAllocation != null ? previous.rotaCertaSeatAllocation : 0)
+    : Number(raw.rotaCertaSeatAllocation);
+  const rotaCertaSeatAllocation = Number.isInteger(rawRotaCertaSeatAllocation) && rawRotaCertaSeatAllocation >= 0 && rawRotaCertaSeatAllocation <= 999
+    ? rawRotaCertaSeatAllocation
+    : 0;
   const rawPublishedSeats = raw.publishedSeats == null ? null : Number(raw.publishedSeats);
-  const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
+  const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= 999
     ? rawPublishedSeats
     : null;
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
@@ -677,6 +686,7 @@ function normalizeDriverTrip(raw, previous = null) {
     publicBookingEnabled: raw.publicBookingEnabled === true,
     itineraryAuthoritative: raw.itineraryAuthoritative !== false,
     publishedSeats,
+    rotaCertaSeatAllocation,
     capacityReliable: raw.capacityReliable !== false,
     notes: cleanText(raw.notes, 1200),
   };
@@ -704,9 +714,72 @@ function safePublicTrip(token, data) {
   const segmentLoads = Array.isArray(data.segmentLoads)
     ? data.segmentLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
     : [];
-  const availability = capacityAvailabilityRange({ capacity }, segmentLoads);
-  const fullyOccupied = data.status === "FULL" || (segmentLoads.length === expectedSegments && expectedSegments > 0 && segmentLoads.every((load) => load >= capacity));
-  const capacityReliable = capacityIsReliable(token, data);
+  const rawPassengerLoads = Array.isArray(data.segmentPassengerLoads)
+    ? data.segmentPassengerLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
+    : [];
+  const rawBlockedLoads = Array.isArray(data.segmentBlockedLoads)
+    ? data.segmentBlockedLoads.slice(0, expectedSegments).map((load) => Math.max(0, Number(load || 0)))
+    : [];
+  const segmentPassengerLoads = segmentLoads.map((load, index) => {
+    const raw = rawPassengerLoads.length === segmentLoads.length ? rawPassengerLoads[index] : load;
+    return Math.min(load, Math.max(0, Number(raw || 0)));
+  });
+  const segmentBlockedLoads = segmentLoads.map((load, index) => {
+    const passenger = segmentPassengerLoads[index] || 0;
+    const raw = rawBlockedLoads.length === segmentLoads.length ? rawBlockedLoads[index] : 0;
+    return Math.min(Math.max(0, load - passenger), Math.max(0, Number(raw || 0)));
+  });
+  const physicalAvailability = capacityAvailabilityRange({ capacity }, segmentLoads);
+  const confirmedPassengerSeats = Math.max(0, Number(data.confirmedPassengerSeats || 0));
+  const blockedSeats = Math.max(0, Number(data.blockedSeats || 0));
+  const blablaAvailableSeats = Math.max(
+    0,
+    Number(
+      data.blablaAvailableSeats != null
+        ? data.blablaAvailableSeats
+        : (data.publishedSeats != null ? data.publishedSeats : 0),
+    ),
+  );
+  const rotaCertaAllocatedSeats = Math.max(
+    0,
+    Number(
+      data.rotaCertaAllocatedSeats != null
+        ? data.rotaCertaAllocatedSeats
+        : (data.rotaCertaSeatAllocation != null ? data.rotaCertaSeatAllocation : 0),
+    ),
+  );
+  const rotaCertaAvailableSeats = Math.max(
+    0,
+    Number(
+      data.rotaCertaAvailableSeats != null
+        ? data.rotaCertaAvailableSeats
+        : rotaCertaAllocatedSeats,
+    ),
+  );
+  const operationalAvailableSeats = Math.max(
+    0,
+    Number(
+      data.operationalAvailableSeats != null
+        ? data.operationalAvailableSeats
+        : blablaAvailableSeats + rotaCertaAvailableSeats,
+    ),
+  );
+  const totalAvailableSeats = Math.max(
+    0,
+    Number(data.totalAvailableSeats != null ? data.totalAvailableSeats : operationalAvailableSeats),
+  );
+  const totalConsideredSeats = totalAvailableSeats;
+  const operationalOverbookingSeats = Math.max(0, Number(data.operationalOverbookingSeats || 0));
+  const operationalBreakdownReliable =
+    Number.isInteger(Number(data.operationalAvailableSeats)) &&
+    Number.isInteger(Number(data.blablaAvailableSeats)) &&
+    Number.isInteger(Number(data.rotaCertaAvailableSeats));
+  const availableMinimum = operationalBreakdownReliable ? operationalAvailableSeats : 0;
+  const availableMaximum = operationalBreakdownReliable ? operationalAvailableSeats : 0;
+  const physicallyFull = segmentLoads.length === expectedSegments && expectedSegments > 0 &&
+    segmentLoads.every((load) => load >= capacity);
+  const fullyOccupied = data.status === "FULL" || operationalAvailableSeats === 0 || operationalOverbookingSeats > 0;
+  const capacityReliable = capacityIsReliable(token, data) && operationalBreakdownReliable && operationalOverbookingSeats === 0;
   const itineraryAuthoritative = itineraryIsAuthoritative(token, data);
   return {
     tripId: token,
@@ -717,10 +790,25 @@ function safePublicTrip(token, data) {
     status: fullyOccupied ? "FULL" : data.status,
     stops: data.stops,
     segmentLoads,
-    availableSeatsMinimum: fullyOccupied ? 0 : availability.minimum,
-    availableSeatsMaximum: fullyOccupied ? 0 : availability.maximum,
+    segmentPassengerLoads,
+    segmentBlockedLoads,
+    availableSeatsMinimum: fullyOccupied ? 0 : availableMinimum,
+    availableSeatsMaximum: fullyOccupied ? 0 : availableMaximum,
     isFull: fullyOccupied,
-    canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availability.maximum > 0,
+    canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availableMaximum > 0,
+    confirmedPassengerSeats,
+    blockedSeats,
+    rotaCertaSeatAllocation: Math.max(0, Number(data.rotaCertaSeatAllocation || 0)),
+    blablaAvailableSeats,
+    rotaCertaAllocatedSeats,
+    rotaCertaAvailableSeats,
+    totalAvailableSeats,
+    totalConsideredSeats,
+    operationalAvailableSeats,
+    physicalAvailableSeatsMinimum: physicalAvailability.minimum,
+    physicalAvailableSeatsMaximum: physicalAvailability.maximum,
+    operationalOverbookingSeats,
+    operationalBreakdownReliable,
     publicBookingEnabled: data.publicBookingEnabled === true,
     itineraryAuthoritative,
     publishedSeats: data.publishedSeats == null ? null : (Number.isInteger(Number(data.publishedSeats)) ? Number(data.publishedSeats) : null),
@@ -922,7 +1010,7 @@ function recordOccupiesCapacity(record, now = Date.now()) {
   return !expiry || expiry > now;
 }
 
-function reconciledSegmentLoads(trip, records, now = Date.now()) {
+function reconciledSegmentCapacity(trip, records, now = Date.now()) {
   const stops = trip.stops || [];
   const claims = Array.from({ length: Math.max(0, stops.length - 1) }, () => new Map());
   for (const record of records) {
@@ -931,20 +1019,185 @@ function reconciledSegmentLoads(trip, records, now = Date.now()) {
     const toIndex = stops.findIndex((stop) => stop.id === record.dropoffStopId);
     if (fromIndex < 0 || toIndex <= fromIndex) continue;
     const group = cleanText(record.occupancyGroupId, 120);
-    const key = group ? `group:${group}` : `booking:${cleanText(record.id, 120)}`;
+    const sourceReference = cleanText(record.sourceReference, 240);
+    const passengerId = cleanText(record.passengerId, 120);
+    const key = group ? `group:${group}`
+      : sourceReference ? `reference:${sourceReference}`
+        : passengerId ? `passenger:${passengerId}`
+          : `booking:${cleanText(record.id, 120)}`;
+    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const seats = Math.max(0, Number(record.seats || 0));
     for (let index = fromIndex; index < toIndex; index += 1) {
-      const previous = Number(claims[index].get(key) || 0);
-      const seats = Number(record.seats || 0);
-      if (seats > previous) claims[index].set(key, seats);
+      const current = claims[index].get(key) || { passengerSeats: 0, reservedSeats: 0 };
+      if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
+        if (record.status === "CONFIRMED") current.passengerSeats = Math.max(current.passengerSeats, seats);
+        else current.reservedSeats = Math.max(current.reservedSeats, seats);
+      } else if (claimType === "RESERVED_SEAT") {
+        current.reservedSeats = Math.max(current.reservedSeats, seats);
+      }
+      claims[index].set(key, current);
     }
   }
-  return claims.map((segment) => Array.from(segment.values()).reduce((sum, seats) => sum + Number(seats || 0), 0));
+  const passengerLoads = [];
+  const blockedLoads = [];
+  const loads = [];
+  claims.forEach((segment) => {
+    let passengers = 0;
+    let blocked = 0;
+    for (const group of segment.values()) {
+      const passenger = Math.max(0, Number(group.passengerSeats || 0));
+      const consumed = Math.max(passenger, Math.max(0, Number(group.reservedSeats || 0)));
+      passengers += passenger;
+      blocked += Math.max(0, consumed - passenger);
+    }
+    passengerLoads.push(passengers);
+    blockedLoads.push(blocked);
+    loads.push(passengers + blocked);
+  });
+  return { loads, passengerLoads, blockedLoads };
+}
+
+function reconciledSegmentLoads(trip, records, now = Date.now()) {
+  return reconciledSegmentCapacity(trip, records, now).loads;
+}
+
+function segmentCapacityPersistence(capacityState) {
+  return {
+    segmentLoads: capacityState.loads,
+    segmentPassengerLoads: capacityState.passengerLoads,
+    segmentBlockedLoads: capacityState.blockedLoads,
+  };
+}
+function operationalSeatLimit(trip) {
+  const blablaAvailable = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
+    ? Number(trip.publishedSeats)
+    : 0;
+  const configuredLocal = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
+  const rotaCertaAllocated = Number.isInteger(configuredLocal) && configuredLocal >= 0
+    ? configuredLocal
+    : 0;
+  return Math.min(999, blablaAvailable + rotaCertaAllocated);
+}
+
+function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
+  const groups = new Map();
+  for (const record of records || []) {
+    if (!record || Number(record.seats || 0) <= 0 || !recordOccupiesCapacity(record, now)) continue;
+    const groupId = cleanText(record.occupancyGroupId, 120);
+    const sourceReference = cleanText(record.sourceReference, 240);
+    const passengerId = cleanText(record.passengerId, 120);
+    const key = groupId ? `group:${groupId}`
+      : sourceReference ? `reference:${sourceReference}`
+        : passengerId ? `passenger:${passengerId}`
+          : `booking:${cleanText(record.id, 120)}`;
+    const current = groups.get(key) || { externalConfirmed: 0, localConfirmed: 0, localBlocked: 0 };
+    const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const source = cleanText(record.source, 24).toUpperCase();
+    const seats = Math.max(0, Number(record.seats || 0));
+    const external = claimType === "EXTERNAL_OCCUPANCY" || source === "BLABLACAR";
+
+    if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
+      if (record.status === "CONFIRMED") {
+        if (external) current.externalConfirmed = Math.max(current.externalConfirmed, seats);
+        else current.localConfirmed = Math.max(current.localConfirmed, seats);
+      } else if (!external) {
+        current.localBlocked = Math.max(current.localBlocked, seats);
+      }
+    } else if (claimType === "RESERVED_SEAT" && !external) {
+      current.localBlocked = Math.max(current.localBlocked, seats);
+    }
+    groups.set(key, current);
+  }
+
+  let confirmedPassengerSeats = 0;
+  let blockedSeats = 0;
+  let rotaCertaConsumedSeats = 0;
+
+  for (const group of groups.values()) {
+    const externalConfirmed = Math.max(0, Number(group.externalConfirmed || 0));
+    const localConfirmed = Math.max(0, Number(group.localConfirmed || 0));
+    const localBlocked = Math.max(0, Number(group.localBlocked || 0));
+    const confirmed = Math.max(externalConfirmed, localConfirmed);
+    const localDemand = Math.max(localConfirmed, localBlocked);
+    const extraLocalBeyondExternal = Math.max(0, localDemand - externalConfirmed);
+
+    confirmedPassengerSeats += confirmed;
+    blockedSeats += Math.max(0, localBlocked - Math.max(externalConfirmed, localConfirmed));
+    rotaCertaConsumedSeats += externalConfirmed > 0 ? extraLocalBeyondExternal : localDemand;
+  }
+
+  const blablaAvailableSeats = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
+    ? Math.min(999, Number(trip.publishedSeats))
+    : 0;
+  const rawRota = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
+  const rotaCertaAllocatedSeats = Number.isInteger(rawRota) && rawRota >= 0 ? Math.min(999, rawRota) : 0;
+  const rotaCertaAvailableSeats = Math.max(0, rotaCertaAllocatedSeats - rotaCertaConsumedSeats);
+  const capacityState = reconciledSegmentCapacity(trip, records, now);
+  const derivedCapacity = Math.max(0, Number(trip && trip.capacity || 0));
+  const segmentAvailable = capacityState.loads.map((load) => Math.max(0, derivedCapacity - Number(load || 0)));
+  const totalAvailableSeats = segmentAvailable.length ? Math.min(...segmentAvailable) : derivedCapacity;
+  const operationalOverbookingSeats = capacityState.loads.reduce(
+    (max, load) => Math.max(max, Math.max(0, Number(load || 0) - derivedCapacity)),
+    0,
+  );
+
+  return {
+    confirmedPassengerSeats,
+    blockedSeats,
+    blablaAvailableSeats,
+    rotaCertaAllocatedSeats,
+    rotaCertaAvailableSeats,
+    totalAvailableSeats,
+    totalConsideredSeats: totalAvailableSeats,
+    operationalAvailableSeats: totalAvailableSeats,
+    operationalOverbookingSeats,
+  };
+}
+
+function operationalSeatPersistence(summary) {
+  return {
+    confirmedPassengerSeats: summary.confirmedPassengerSeats,
+    blockedSeats: summary.blockedSeats,
+    blablaAvailableSeats: summary.blablaAvailableSeats,
+    rotaCertaAllocatedSeats: summary.rotaCertaAllocatedSeats,
+    rotaCertaAvailableSeats: summary.rotaCertaAvailableSeats,
+    totalAvailableSeats: summary.totalAvailableSeats,
+    totalConsideredSeats: summary.totalAvailableSeats,
+    operationalAvailableSeats: summary.totalAvailableSeats,
+    operationalOverbookingSeats: summary.operationalOverbookingSeats,
+  };
+}
+
+function canonicalCapacityPersistence(trip, records, capacityState = null, now = Date.now()) {
+  const segments = capacityState || reconciledSegmentCapacity(trip, records, now);
+  const operational = reconciledOperationalSeatSummary(trip, records, now);
+  return {
+    ...segmentCapacityPersistence(segments),
+    ...operationalSeatPersistence(operational),
+  };
+}
+
+function assertNoOperationalOverbooking(trip, records, now = Date.now()) {
+  const summary = reconciledOperationalSeatSummary(trip, records, now);
+  if (summary.operationalOverbookingSeats > 0) {
+    throw Object.assign(
+      new Error("O total confirmado/bloqueado ultrapassaria o limite operacional da viagem."),
+      { httpStatus: 409, code: "operational_overbooking", operationalOverbookingSeats: summary.operationalOverbookingSeats },
+    );
+  }
+  return summary;
+}
+
+function availableForBooking(trip, records, loads, fromIndex, toIndex, now = Date.now()) {
+  void records;
+  void now;
+  return availableForSegmentRange(trip, loads, fromIndex, toIndex);
 }
 
 function assertNoOverbooking(trip, loads) {
   const capacity = Number(trip.capacity || 0);
   if (loads.some((load) => Number(load || 0) > capacity)) {
-    throw Object.assign(new Error("A conciliação ultrapassaria a capacidade física do veículo."), { httpStatus: 409, code: "overbooking" });
+    throw Object.assign(new Error("A conciliação ultrapassaria o inventário operacional disponível nesse trecho."), { httpStatus: 409, code: "overbooking" });
   }
 }
 
@@ -1472,6 +1725,9 @@ async function createDriverTrip(req, res) {
         driverUsername: driver.username,
         driverDisplayName: driver.displayName,
         segmentLoads: new Array(normalized.stops.length - 1).fill(0),
+        segmentPassengerLoads: new Array(normalized.stops.length - 1).fill(0),
+        segmentBlockedLoads: new Array(normalized.stops.length - 1).fill(0),
+        ...operationalSeatPersistence(reconciledOperationalSeatSummary(normalized, [], now)),
         bookingsCount: 0,
         createdAtMillis: now,
         updatedAtMillis: now,
@@ -1665,7 +1921,21 @@ async function updateDriverTrip(req, res, token) {
       }
       const normalized = normalizeDriverTrip(req.body || {}, previous);
       const changes = tripRelevantChanges(previous, normalized);
-      const bookingsSnap = changes.length ? await tx.get(ref.collection("bookings")) : null;
+      const capacityChanged = Number(previous.capacity || 0) !== Number(normalized.capacity || 0);
+      const externalCapacityChanged = capacityChanged && isExternalBlaBlaTrip(token, previous);
+      const bookingsSnap = (changes.length || externalCapacityChanged)
+        ? await tx.get(ref.collection("bookings"))
+        : null;
+      let capacityPersistence = {};
+      if (bookingsSnap) {
+        const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const candidateTrip = { ...previous, ...normalized };
+        const capacityState = reconciledSegmentCapacity(candidateTrip, records);
+        const loads = capacityState.loads;
+        assertNoOverbooking(candidateTrip, loads);
+        assertNoOperationalOverbooking(candidateTrip, records);
+        capacityPersistence = canonicalCapacityPersistence(candidateTrip, records, capacityState);
+      }
       const structuralPendingChange = changes.some((change) =>
         ["departureAtMillis", "stops", "status"].includes(cleanText(change && change.field, 64))
       );
@@ -1687,6 +1957,7 @@ async function updateDriverTrip(req, res, token) {
       const now = Date.now();
       tx.update(ref, {
         ...normalized,
+        ...capacityPersistence,
         publicUrl,
         driverUsername: ownerUsername,
         driverDisplayName: ownerDisplayName,
@@ -2340,7 +2611,8 @@ async function cancelActiveBookingsForBlockedPassenger(driverUsername, passenger
       const updatedRecords = records.map((record) => (
         activeSet.has(record.id) ? { ...record, status: "CANCELLED", updatedAtMillis: now } : record
       ));
-      const loads = reconciledSegmentLoads(trip, updatedRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, updatedRecords, now);
+      const loads = capacityState.loads;
       activeIds.forEach((bookingId) => {
         tx.set(tripRef.collection("bookings").doc(bookingId), {
           status: "CANCELLED",
@@ -2348,7 +2620,7 @@ async function cancelActiveBookingsForBlockedPassenger(driverUsername, passenger
         }, { merge: true });
       });
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, updatedRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3093,7 +3365,7 @@ async function createBooking(req, res, token) {
         throw Object.assign(new Error("Esse trecho intermediário ainda não foi confirmado pela fonte da viagem."), { httpStatus: 409, code: "itinerary_unconfirmed" });
       }
       const currentLoads = reconciledSegmentLoads(trip, existing);
-      const available = availableForSegmentRange(trip, currentLoads, fromIndex, toIndex);
+      const available = availableForBooking(trip, existing, currentLoads, fromIndex, toIndex);
       if (seats > available) {
         throw Object.assign(
           new Error(currentSeatCapacityMessage(available)),
@@ -3134,8 +3406,11 @@ async function createBooking(req, res, token) {
         createdAtMillis: now,
         updatedAtMillis: now,
       };
-      const reconciled = reconciledSegmentLoads(trip, [...existing, candidate], now);
+      const candidateRecords = [...existing, candidate];
+      const reconciledCapacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      const reconciled = reconciledCapacityState.loads;
       assertNoOverbooking(trip, reconciled);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const candidatePersisted = { ...candidate };
       delete candidatePersisted.id;
       tx.create(bookingRef, candidatePersisted);
@@ -3159,7 +3434,7 @@ async function createBooking(req, res, token) {
       }
       writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
       tx.update(tripRef, {
-        segmentLoads: reconciled,
+        ...canonicalCapacityPersistence(trip, candidateRecords, reconciledCapacityState, now),
         bookingsCount: existing.length + 1,
         status: statusForReconciledLoads(trip, reconciled),
         updatedAtMillis: now,
@@ -3182,7 +3457,7 @@ async function createBooking(req, res, token) {
       return {
         replayed: false,
         eventId,
-        availableSeats: availableForSegmentRange(trip, reconciled, fromIndex, toIndex),
+        availableSeats: availableForBooking(trip, candidateRecords, reconciled, fromIndex, toIndex, now),
         farePerSeatCents,
         totalFareCents,
         creditAppliedCents,
@@ -3309,7 +3584,8 @@ async function cancelPublicBooking(req, res, token, bookingId) {
       const changeVersion = Math.max(0, Number(booking.changeVersion || 0)) + 1;
       const updated = { ...booking, status: "CANCELLED", changeVersion, updatedAtMillis: now };
       const reconciledRecords = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, reconciledRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, reconciledRecords, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
       tx.update(bookingRef, {
         status: "CANCELLED",
@@ -3319,7 +3595,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         updatedAtMillis: now,
       });
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, reconciledRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3439,7 +3715,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const capacityCheckAtMillis = Date.now();
       const otherRecords = records.filter((record) => record.id !== bookingId);
       const currentLoads = reconciledSegmentLoads(trip, otherRecords, capacityCheckAtMillis);
-      const available = availableForSegmentRange(trip, currentLoads, fromIndex, toIndex);
+      const available = availableForBooking(trip, otherRecords, currentLoads, fromIndex, toIndex, capacityCheckAtMillis);
       if (seats > available) {
         throw Object.assign(
           new Error(currentSeatCapacityMessage(available)),
@@ -3463,15 +3739,17 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       const now = changes.length ? Date.now() : Number(previous.updatedAtMillis || Date.now());
       const updated = { ...draft, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const updatedPersisted = { ...updated };
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
       movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
       if (changes.length) {
         tx.update(tripRef, {
-          segmentLoads: loads,
+          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           updatedAtMillis: now,
         });
@@ -3490,7 +3768,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       }
       return {
         booking: updated,
-        availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+        availableSeats: availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now),
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
         changed: changes.length > 0,
@@ -3613,13 +3891,15 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       };
       const candidates = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, candidates, now);
+      const capacityState = reconciledSegmentCapacity(trip, candidates, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidates, now);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3651,7 +3931,7 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
       const safe = { ...updated, passengerId };
       delete safe.cancellationHash;
       delete safe.idempotencyFingerprint;
-      return { booking: safe, changed: true, segmentLoads: loads, eventType };
+      return { booking: safe, changed: true, ...canonicalCapacityPersistence(trip, candidates, capacityState, now), eventType };
     });
 
     if (result.changed && result.eventType === "RESERVATION_REJECTED") {
@@ -3767,10 +4047,12 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         const bookingsSnap = await tx.get(tripRef.collection("bookings"));
         const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const candidates = records.map((record) => record.id === bookingId ? updated : record);
-        const loads = reconciledSegmentLoads(trip, candidates, now);
+        const capacityState = reconciledSegmentCapacity(trip, candidates, now);
+      const loads = capacityState.loads;
         assertNoOverbooking(trip, loads);
+        assertNoOperationalOverbooking(trip, candidates, now);
         tx.update(tripRef, {
-          segmentLoads: loads,
+          ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           updatedAtMillis: now,
         });
@@ -3953,8 +4235,10 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         : Math.max(0, Number(previous.changeVersion || 0));
       updated = { ...updated, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
@@ -3962,7 +4246,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         movePassengerBookingIndex(tx, previous.passengerContact, updated.passengerContact, token, bookingId, now);
       }
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -3993,8 +4277,8 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       delete safeBooking.idempotencyFingerprint;
       return {
         booking: safeBooking,
-        segmentLoads: loads,
-        availableSeats: fromIndex >= 0 ? availableForSegmentRange(trip, loads, fromIndex, toIndex) : null,
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
+        availableSeats: fromIndex >= 0 ? availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now) : null,
         notified: relevantChanges.length > 0,
         changed: true,
       };
@@ -4063,15 +4347,17 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       const now = changes.length ? Date.now() : Number(previous.updatedAtMillis || Date.now());
       const updated = { ...draft, changeVersion, updatedAtMillis: now };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const persisted = { ...updated };
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       if (changes.length) {
         tx.update(tripRef, {
-          segmentLoads: loads,
+          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           updatedAtMillis: now,
         });
@@ -4093,7 +4379,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete safeBooking.idempotencyFingerprint;
       return {
         booking: safeBooking,
-        availableSeats: availableForSegmentRange(trip, loads, fromIndex, toIndex),
+        availableSeats: availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now),
         driverUsername,
         tripTitle: cleanText(trip.title, 180),
         changed: changes.length > 0,
@@ -4167,7 +4453,8 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       };
       const candidateRecords = records.map((record) => record.id === bookingId ? updated : record);
-      const loads = reconciledSegmentLoads(trip, candidateRecords, now);
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
       tx.update(bookingRef, {
         status: "CANCELLED",
@@ -4178,7 +4465,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
       });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: now,
       });
@@ -4238,19 +4525,21 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
       const candidateRecords = previous
         ? records.map((record) => record.id === bookingId ? normalized : record)
         : [...records, normalized];
-      const loads = reconciledSegmentLoads(trip, candidateRecords);
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords);
+      const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidateRecords);
       const range = capacityAvailabilityRange(trip, loads);
       const normalizedPersisted = { ...normalized };
       delete normalizedPersisted.id;
       tx.set(bookingRef, normalizedPersisted, { merge: true });
       tx.update(tripRef, {
-        segmentLoads: loads,
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState),
         bookingsCount: candidateRecords.length,
         status: statusForReconciledLoads(trip, loads),
         updatedAtMillis: Date.now(),
       });
-      return { booking: normalized, segmentLoads: loads, range };
+      return { booking: normalized, ...canonicalCapacityPersistence(trip, candidateRecords, capacityState), range };
     });
     return json(res, 200, {
       booking: result.booking,
