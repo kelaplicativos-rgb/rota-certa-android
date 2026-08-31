@@ -86,6 +86,21 @@ function cleanPrice(text) {
   return match ? match[0].replace(/\s+/g, ' ').trim() : null;
 }
 
+function extractDemand(text = '') {
+  const normalized = String(text).replace(/\\s+/g, ' ').trim();
+  const busy = normalized.match(/Trecho\\s+concorrido!?\\s*(?:É|E)\\s+bom\\s+reservar\\s+logo\\.?/i)?.[0]?.trim() || null;
+  const reserved = normalized.match(/(\\d{1,3})\\s*%\\s*das\\s+viagens\\s+(?:já\\s+)?estão\\s+reservadas\\.?/i);
+  const parsed = reserved?.[1] ? Number(reserved[1]) : null;
+  const percentualReservado = Number.isInteger(parsed) && parsed >= 0 && parsed <= 100 ? parsed : null;
+  const messages = [busy, percentualReservado !== null ? reserved?.[0]?.trim() : null].filter(Boolean);
+  return {
+    indicador_demanda_encontrado: messages.length > 0,
+    trecho_concorrido: busy ? true : null,
+    percentual_reservado: percentualReservado,
+    mensagem_demanda: messages.length ? [...new Set(messages)].join(' ') : null,
+  };
+}
+
 function markdown(result) {
   const lines = [
     '# BlaBlaCar — busca pública renderizada',
@@ -96,6 +111,9 @@ function markdown(result) {
     `- Motoristas visíveis: **${result.driver_cards_count}**`,
     `- Ezequiel S: **${result.ezequiel_s_visible ? 'VISÍVEL' : 'NÃO VISÍVEL'}**`,
     `- Barbosa: **${result.barbosa_visible ? 'VISÍVEL' : 'NÃO VISÍVEL'}**`,
+    `- Indicador de demanda: **${result.demand?.indicador_demanda_encontrado ? 'ENCONTRADO' : 'NÃO ENCONTRADO'}**`,
+    `- Trecho concorrido: **${result.demand?.trecho_concorrido === true ? 'SIM' : result.demand?.trecho_concorrido === false ? 'NÃO' : 'NÃO INFORMADO'}**`,
+    `- Percentual reservado: **${result.demand?.percentual_reservado ?? 'NÃO INFORMADO'}${result.demand?.percentual_reservado != null ? '%' : ''}**`,
     '',
   ];
   if (!result.trips.length) {
@@ -144,6 +162,7 @@ try {
   const final = new URL(page.url());
   const body = await page.locator('body').innerText({ timeout: 10_000 });
   const zeroResults = /Ainda não existem viagens entre essas cidades/i.test(body) || /0 viagem disponível/i.test(body);
+  const demand = extractDemand(body);
 
   const rawCards = await page.locator('[data-testid="e2e-srp-card"]').evaluateAll((cards) => cards.map((card) => {
     const text = (selector) => card.querySelector(selector)?.textContent?.trim() || null;
@@ -184,7 +203,7 @@ try {
   const names = trips.map((trip) => fold(trip.driver_name));
 
   const result = {
-    schema_version: 4,
+    schema_version: 5,
     request_id: request.request_id ?? null,
     collected_at: new Date().toISOString(),
     status: exactDate && exactFrom && exactTo && routeVisible && contentConfirmed ? 'validated' : 'mismatch',
@@ -206,6 +225,7 @@ try {
     driver_cards_count: trips.length,
     ezequiel_s_visible: names.includes('ezequiel s'),
     barbosa_visible: names.includes('barbosa'),
+    demand,
     trips,
   };
 
@@ -217,7 +237,7 @@ try {
   if (result.status !== 'validated') process.exitCode = 2;
 } catch (error) {
   const result = {
-    schema_version: 4,
+    schema_version: 5,
     request_id: request.request_id ?? null,
     collected_at: new Date().toISOString(),
     status: 'error',
