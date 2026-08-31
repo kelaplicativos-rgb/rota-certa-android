@@ -83,6 +83,7 @@ class TripsActivity : ComponentActivity() {
         TripShortcutInstaller.installDynamic(this)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_before_set_content")
         AgendaTrace.event(this, "TRIPS_ACTIVITY_BEFORE_SET_CONTENT", "savedInstanceStatePresent=${savedInstanceState != null}", traceId)
+        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         val contentOperation = AgendaTrace.operationStart(this, "AGENDA_SET_CONTENT", "TripsActivity.onCreate", traceId)
         try {
             setContent {
@@ -104,7 +105,6 @@ class TripsActivity : ComponentActivity() {
             AgendaTrace.operationError(this, contentOperation, error)
             throw error
         }
-        AgendaTrace.installFirstRenderObservers(this, traceId, openStartedNs)
         AgendaSyncCrashTraceStore.checkpoint(this, "timeline_after_set_content")
         val createDurationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - createStartedNs).coerceAtLeast(0L)) / 1_000_000L
         AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
