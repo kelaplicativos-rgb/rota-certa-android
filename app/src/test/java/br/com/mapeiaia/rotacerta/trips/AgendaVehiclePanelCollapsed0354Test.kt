@@ -44,9 +44,9 @@ class AgendaVehiclePanelCollapsed0354Test {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         assertTrue(timeline.contains("internal fun TripDriverDefaultsCard("))
         assertTrue(timeline.contains("repository.saveSettings("))
-        assertTrue(timeline.contains("vehicleCapacity = parsed"))
+        assertFalse(timeline.contains("vehicleCapacity = parsed"))
         assertTrue(timeline.contains("rotaCertaSeatAllocation = parsedRotaCerta"))
-        assertTrue(timeline.contains("Capacidade de passageiros"))
+        assertFalse(timeline.contains("Capacidade de passageiros"))
         assertTrue(timeline.contains("Vagas disponibilizadas no Rota Certa"))
         assertTrue(timeline.contains("referenceStore.save(origin)"))
     }
