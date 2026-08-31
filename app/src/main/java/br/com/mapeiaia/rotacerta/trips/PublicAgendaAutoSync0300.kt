@@ -425,7 +425,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).occupiedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
+            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
         )
         response.changed
     }
