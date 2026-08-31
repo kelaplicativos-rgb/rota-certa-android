@@ -33,7 +33,7 @@ internal object PublicAgendaAutoSync0300 {
         context: Context,
         store: TripStore,
         configuredVehicleCapacity: Int,
-        configuredRotaCertaSeatAllocation: Int = configuredVehicleCapacity,
+        configuredRotaCertaSeatAllocation: Int = 0,
         nowMillis: Long = System.currentTimeMillis(),
     ): PublicAgendaAutoSyncResult {
         val settings = store.onlineSettings()
@@ -145,22 +145,16 @@ internal object PublicAgendaAutoSync0300 {
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
 
         localTrips.forEach { original ->
-            val physicalCapacity = configuredVehicleCapacity.takeIf { it in 1..999 }
-            if (physicalCapacity == null) {
-                failures++
-                UnifiedDebugEventStore.record(
-                    "CAPACITY_PUBLIC_SYNC_SKIPPED",
-                    context.packageName,
-                    "localTrip=${original.id} capacitySource=vehicle_unconfigured failClosed=true",
-                )
-                return@forEach
-            }
-            val publicTrip = original.copy(
-                capacity = physicalCapacity,
-                rotaCertaSeatAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 },
+            val localBookings = store.bookingsFor(original.id)
+            val rotaCertaAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+            val withAllocation = original.copy(
+                rotaCertaSeatAllocation = rotaCertaAllocation,
                 publicBookingEnabled = true,
             )
-            val localPublishOperation = AgendaTrace.operationStart(
+            val publicTrip = withAllocation.copy(
+                capacity = operationalInventoryCapacity(withAllocation, localBookings),
+            )
+            val localPublishOperation = AgendaTrace.operationStart(            val localPublishOperation = AgendaTrace.operationStart(
                 context,
                 "LOCAL_TRIP_PUBLISH",
                 "PublicAgendaAutoSync0300",
@@ -234,10 +228,9 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
-        // Vehicle capacity is only the physical envelope/fallback. Never invent
-        // four seats when neither vehicle settings nor this publication provide evidence.
-        val configuredCapacity = configuredVehicleCapacity.takeIf { it in 1..999 }
-        val configuredRotaCertaAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 }
+        @Suppress("UNUSED_VARIABLE")
+        val legacyVehicleCapacityIgnored = configuredVehicleCapacity
+        val configuredRotaCertaAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
         val connectedAccountsOperation = AgendaTrace.operationStart(
             context,
             "CONNECTED_ACCOUNTS_READ",
@@ -281,35 +274,25 @@ internal object PublicAgendaAutoSync0300 {
             .asSequence()
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { source ->
-                val physicalCapacity = configuredCapacity
-                if (physicalCapacity == null) {
-                    UnifiedDebugEventStore.record(
-                        "CAPACITY_PUBLIC_SYNC_SKIPPED",
-                        context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} publishedSeats=${source.published_seats ?: -1} capacitySource=vehicle_unconfigured failClosed=true",
-                    )
-                    null
-                } else {
-                    val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
-                    val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
-                    val overbookingSeats = (observedOccupiedSeats - physicalCapacity).coerceAtLeast(0)
-                    val blablaAvailable = source.published_seats?.takeIf { it in 0..999 } ?: 0
-                    val rotaCertaAvailable = configuredRotaCertaAllocation ?: 0
-                    val totalAvailable = (blablaAvailable + rotaCertaAvailable).coerceAtMost(999)
-                    UnifiedDebugEventStore.record(
-                        "CAPACITY_PUBLIC_SOURCE_RESOLVED",
-                        context.packageName,
-                        "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} physicalPassengerCapacity=$physicalCapacity blablaAvailable=$blablaAvailable rotaCertaAvailable=$rotaCertaAvailable totalAvailable=$totalAvailable externalConfirmed=$observedOccupiedSeats physicalOverbookingSeats=$overbookingSeats capacitySource=channel_free_seats_plus_physical_separate",
-                    )
-                    toPublicTrip(
-                        source = source,
-                        capacity = physicalCapacity,
-                        rotaCertaSeatAllocation = rotaCertaAvailable,
-                        nowMillis = nowMillis,
-                    )
-                }
+                val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
+                val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
+                val blablaAvailable = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                val rotaCertaAvailable = configuredRotaCertaAllocation
+                val totalAvailable = (blablaAvailable + rotaCertaAvailable).coerceAtMost(999)
+                val derivedInventory = (blablaAvailable + observedOccupiedSeats + rotaCertaAvailable).coerceIn(0, 999)
+                UnifiedDebugEventStore.record(
+                    "CAPACITY_PUBLIC_SOURCE_RESOLVED",
+                    context.packageName,
+                    "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaAvailable=$blablaAvailable rotaCertaAvailable=$rotaCertaAvailable totalAvailable=$totalAvailable externalConfirmedPeak=$observedOccupiedSeats operationalInventory=$derivedInventory capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa",
+                )
+                toPublicTrip(
+                    source = source,
+                    capacity = derivedInventory,
+                    rotaCertaSeatAllocation = rotaCertaAvailable,
+                    nowMillis = nowMillis,
+                )
             }
-            .filterNot { synthesized ->
+            .filterNot { synthesized ->            .filterNot { synthesized ->
                 localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
             }
             .distinctBy { it.trip.publicToken }
@@ -455,7 +438,7 @@ internal object PublicAgendaAutoSync0300 {
                         "PUBLIC_CAPACITY_RECONCILE_RESULT",
                         context.packageName,
                         "tripKey=" + diagnosticTripKey +
-                            " physicalCapacity=" + effectiveTrip.capacity +
+                            " operationalInventory=" + effectiveTrip.capacity +
                             " publishedSeats=" + synthesized.publishedSeats +
                             " capacityReliable=true claimsSynced=" + syncedClaims,
                     )
@@ -654,9 +637,8 @@ internal object PublicAgendaAutoSync0300 {
         claims: List<Booking>,
     ): Int {
         val remoteBookings = api.listBookings(remoteTripId).bookings
-        // The public trip capacity is the physical vehicle capacity. External
-        // BlaBlaCar occupancy is mirrored as occupancy claims so the same segment
-        // engine used by Rota Certa derives remaining seats without channel capacity.
+        // External BlaBlaCar occupancy is mirrored only for passenger/segment placement.
+        // The free-seat number already comes from BlaBlaCar, so it is never subtracted twice.
         val desiredClaims = claims
         val currentIds = desiredClaims.map(Booking::id).toSet()
         val legacyId = "blablacar-" + publicTrip.publicToken.take(40)
@@ -691,7 +673,7 @@ internal object PublicAgendaAutoSync0300 {
         capacity: Int,
         nowMillis: Long = System.currentTimeMillis(),
         zoneId: ZoneId = ZoneId.systemDefault(),
-        rotaCertaSeatAllocation: Int = capacity,
+        rotaCertaSeatAllocation: Int = 0,
     ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
         if (departure <= nowMillis) return null
@@ -709,7 +691,7 @@ internal object PublicAgendaAutoSync0300 {
 
         val identity = stableIdentity(source)
         val token = "bb${sha256(identity).take(30)}"
-        val safeCapacity = capacity.coerceIn(1, 999)
+        val safeCapacity = capacity.coerceIn(0, 999)
         val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..999 }
         val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
         val observedBooked = source.booked_seats.coerceAtLeast(passengerSeats)
