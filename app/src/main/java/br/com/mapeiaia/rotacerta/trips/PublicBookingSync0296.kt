@@ -12,7 +12,12 @@ internal data class PublicBookingPullResult(
 )
 
 internal object PublicBookingRemoteSync0296 {
-    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult {
+    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            pullAndReconcileOnIo(context, store)
+        }
+
+    private suspend fun pullAndReconcileOnIo(context: Context, store: TripStore): PublicBookingPullResult {
         val traceId = AgendaTrace.currentTraceId()
         val reconcileStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
         val reconcileOperation = AgendaTrace.operationStart(
@@ -36,8 +41,20 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
-        val candidates = store.trips().filter { !it.remoteId.isNullOrBlank() }
+        val persistedTrips = store.trips()
+        val candidates = persistedTrips.filter {
+            it.isCanonicalLocalPublishSource() && !it.remoteId.isNullOrBlank()
+        }
+        val excludedExternalBackings = persistedTrips.count {
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && !it.remoteId.isNullOrBlank()
+        }
         val externalBindings = store.publicExternalBindings()
+        UnifiedDebugEventStore.record(
+            "BOOKING_RECONCILE_SOURCE_CLASSIFIED",
+            context.packageName,
+            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings",
+        )
+        val bookingSnapshot = store.bookings().associateBy(Booking::id).toMutableMap()
         AgendaTrace.operationEnd(
             context,
             localReadOperation,
@@ -85,10 +102,11 @@ internal object PublicBookingRemoteSync0296 {
                 }
             remoteFetched += remote.size
             remote.forEach { incoming ->
-                val existing = store.bookings().firstOrNull { it.id == incoming.id }
+                val existing = bookingSnapshot[incoming.id]
                 val mapped = incoming.toLocalBooking(trip.id, existing)
                 if (existing != mapped) {
-                    store.saveBooking(mapped)
+                    val saved = store.saveBooking(mapped)
+                    bookingSnapshot[saved.id] = saved
                     imported++
                     changed += trip.id
                 }
@@ -112,10 +130,11 @@ internal object PublicBookingRemoteSync0296 {
                         incoming.sourceReference.startsWith("PUBLIC_LINK:")
                 }
                 .forEach { incoming ->
-                    val existing = store.bookings().firstOrNull { it.id == incoming.id }
+                    val existing = bookingSnapshot[incoming.id]
                     val mapped = incoming.toLocalBooking(binding.bookingTripId, existing)
                     if (existing != mapped) {
-                        store.saveBooking(mapped)
+                        val saved = store.saveBooking(mapped)
+                        bookingSnapshot[saved.id] = saved
                         imported++
                         changed += binding.bookingTripId
                     }
