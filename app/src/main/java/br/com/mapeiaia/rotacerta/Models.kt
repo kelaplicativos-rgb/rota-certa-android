@@ -7,7 +7,7 @@ data class AppSettings(
     val homeAddress: String = "",
     val alternativeAddress: String = "",
     val tripDepartureAddress: String = "",
-    /** Physical simultaneous passenger capacity of the vehicle. */
+    /** Legacy persisted field kept only so older settings/backups still deserialize. Never use it for trip inventory. */
     val vehicleCapacity: Int = 0,
     val homeRadiusKm: Double = 10.0,
     val alternativeRadiusKm: Double = 10.0,
@@ -30,7 +30,7 @@ data class AppSettings(
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
-    /** Operational Rota Certa allocation per trip. Separate from physical capacity. */
+    /** Only manual seat input: seats explicitly allocated to the Rota Certa channel for each trip. Zero is valid. */
     val rotaCertaSeatAllocation: Int = 0,
 )
 
