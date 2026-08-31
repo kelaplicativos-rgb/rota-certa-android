@@ -115,41 +115,17 @@ class BookingExternalSeatSync0353Test {
     }
 
     @Test
-    fun queueAndRemoteConfirmationContractsAreCausal() {
+    fun publicAndManualBookingsDoNotMutateBlaBlaCarSeatEditor() {
         val bookingSync = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt").readText()
         val reliable = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt").readText()
-        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
-        val collector = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
+        val manual = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaManualSeatAutomation.kt").readText()
 
-        listOf(
-            "BOOKING_SEAT_SYNC_REQUESTED",
-            "BOOKING_SEAT_SYNC_IDENTITY_RESOLVED",
-            "BOOKING_SEAT_SYNC_ENQUEUED",
-            "BOOKING_SEAT_SYNC_BLOCKED",
-        ).forEach { assertTrue(bookingSync.contains(it)) }
-
-        listOf(
-            "BOOKING_SEAT_SYNC_EXECUTING",
-            "BOOKING_SEAT_SYNC_REMOTE_MUTATION_SENT",
-            "BOOKING_SEAT_SYNC_REMOTE_CONFIRMED",
-            "SEAT_SYNC_TRIGGER",
-            "SEAT_SYNC_TRIP_RESOLUTION",
-            "SEAT_SYNC_ACCOUNT_RESOLUTION",
-            "SEAT_SYNC_BEFORE",
-            "SEAT_SYNC_DESIRED",
-            "SEAT_SYNC_MUTATION_START",
-            "SEAT_SYNC_MUTATION_RESULT",
-            "SEAT_SYNC_READBACK_START",
-            "SEAT_SYNC_READBACK_RESULT",
-            "SEAT_SYNC_CONFIRMED",
-            "SEAT_SYNC_FAILED",
-            "CAPACITY_REMOTE_CONFIRMATION",
-        ).forEach { assertTrue(reliable.contains(it)) }
-
-        assertFalse(activity.contains("\"CAPACITY_REMOTE_CONFIRMATION\""))
-        assertTrue(activity.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
-        assertTrue(collector.contains("automatic_queue_continuation"))
-        assertTrue(collector.contains("requestedProfile == null ||"))
+        assertTrue(bookingSync.contains("externalSeatMutation=false"))
+        assertTrue(bookingSync.contains("BOOKING_INVENTORY_RECALCULATED"))
+        assertFalse(bookingSync.contains("enqueuePublicBookingDelta("))
+        assertTrue(reliable.contains("EXTERNAL_SEAT_WRITE_SKIPPED"))
+        assertTrue(manual.contains("EXTERNAL_SEAT_WRITE_SKIPPED"))
+        assertTrue(manual.contains("request.source == PUBLIC_BOOKING_SEAT_SYNC_SOURCE"))
     }
 
     private fun booking(id: String, seats: Int, status: BookingStatus) = Booking(
