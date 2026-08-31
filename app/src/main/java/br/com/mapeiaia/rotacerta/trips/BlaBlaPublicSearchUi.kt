@@ -32,6 +32,7 @@ import br.com.mapeiaia.rotacerta.ui.RotaCertaDatePickerDialog
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
 import br.com.mapeiaia.rotacerta.ui.RotaCertaDateSelectionField
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelectionMode
+import br.com.mapeiaia.rotacerta.date.rotaCertaInclusiveDates
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -56,9 +57,14 @@ fun BlaBlaPublicSearchPanel(
             .mapNotNull { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
             .distinct()
             .sorted()
+        val normalizedDates = if (persistedDates.size <= 1) {
+            persistedDates
+        } else {
+            rotaCertaInclusiveDates(persistedDates.first(), persistedDates.last())
+        }
         RotaCertaDateSelection(
-            mode = if (persistedDates.size <= 1) RotaCertaDateSelectionMode.SINGLE else RotaCertaDateSelectionMode.RANGE,
-            dates = persistedDates,
+            mode = if (normalizedDates.size <= 1) RotaCertaDateSelectionMode.SINGLE else RotaCertaDateSelectionMode.RANGE,
+            dates = normalizedDates,
         )
     }
     var dateSelection by remember { mutableStateOf(initialDateSelection) }
