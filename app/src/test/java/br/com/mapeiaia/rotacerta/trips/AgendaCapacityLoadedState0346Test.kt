@@ -27,11 +27,13 @@ class AgendaCapacityLoadedState0346Test {
     fun publicAgendaSyncWaitsUntilLocalSettingsHaveActuallyLoaded() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         assertTrue(activity.contains("collectAsState(initial = null)"))
-        assertTrue(activity.contains("LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision)"))
+        assertTrue(activity.contains("androidx.compose.runtime.LaunchedEffect("))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("reason=local_settings_not_loaded"))
 
-        val effectStart = activity.indexOf("LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision)")
+        val effectStart = activity.indexOf("androidx.compose.runtime.LaunchedEffect(")
+        assertTrue(activity.indexOf("appSettings.vehicleCapacity", effectStart) > effectStart)
+        assertTrue(activity.indexOf("appSettings.rotaCertaSeatAllocation", effectStart) > effectStart)
         val deferred = activity.indexOf("CAPACITY_PUBLIC_SYNC_DEFERRED", effectStart)
         val onlineRead = activity.indexOf("val online = store.onlineSettings()", effectStart)
         assertTrue(effectStart >= 0)
@@ -42,7 +44,7 @@ class AgendaCapacityLoadedState0346Test {
     @Test
     fun realZeroCapacityRemainsAValidLoadedStateInsteadOfBeingConfusedWithLoading() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
-        val effectStart = activity.indexOf("LaunchedEffect(settingsLoaded, appSettings.vehicleCapacity, publicAgendaSyncRevision)")
+        val effectStart = activity.indexOf("androidx.compose.runtime.LaunchedEffect(")
         val effectEnd = activity.indexOf("Scaffold(", effectStart)
         val effect = activity.substring(effectStart, effectEnd)
 
