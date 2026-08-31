@@ -140,6 +140,23 @@ test("expired tester sessions never fall back into passenger password login", ()
   }
 });
 
+test("tester mutations are transactional and keep simulated notifications and credits in the tester session only", () => {
+  const create = block(api, "async function createTesterBooking", "async function updateTesterBooking");
+  const update = block(api, "async function updateTesterBooking", "async function cancelTesterBooking");
+  const cancel = block(api, "async function cancelTesterBooking", "async function listTesterBookings");
+  const reset = block(api, "async function resetTesterSimulation", "async function blockTesterFromRealPassengerMutation");
+  for (const source of [create, update, cancel, reset]) assert.match(source, /db\.runTransaction/);
+  assert.match(create, /shadowCredits: creditResult\.credits/);
+  assert.match(create, /shadowNotifications: notifications/);
+  assert.match(update, /shadowCredits: credits/);
+  assert.match(cancel, /refundTesterCredits/);
+  assert.match(reset, /shadowNotifications: \[\]/);
+  assert.match(reset, /initialTesterCredits/);
+  assert.match(api, /async function getTesterCredits/);
+  assert.match(api, /async function listTesterNotifications/);
+  assert.match(api, /async function markTesterNotification/);
+});
+
 test("normal passenger access and Android admin integration remain alongside tester contracts", () => {
   assert.match(web, /passengerSessionToken/);
   assert.match(web, /passengerAgendaViewToken/);

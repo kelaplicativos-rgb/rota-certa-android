@@ -385,6 +385,8 @@ async function resetTesterSimulation() {
       const prefix = bookingStoragePrefix();
       Object.keys(localStorage).filter((key) => key.startsWith(prefix + "booking-") || key.startsWith(prefix + "booking-intent-")).forEach((key) => localStorage.removeItem(key));
     } catch (_) {}
+    await loadPassengerNotifications({ silent: true });
+    await loadPassengerCredits();
     if (tripToken) await loadTrip();
     else await loadAgenda();
   } catch (error) {
@@ -427,9 +429,9 @@ function saveAgendaViewSession(token) {
 
 function updateAuthenticatedChrome() {
   show("openPassengerPortal", Boolean(isTesterMode() || passengerAgendaViewToken || passengerSessionToken));
-  show("passengerNotificationsBell", Boolean(passengerSessionToken && !isTesterMode()));
+  show("passengerNotificationsBell", Boolean(isTesterMode() || passengerSessionToken));
   show("portalLogout", Boolean(!isTesterMode()));
-  if (!passengerSessionToken || isTesterMode()) {
+  if (!hasPrivatePortalSession()) {
     passengerUnreadNotificationCount = 0;
     show("passengerNotificationBadge", false);
   }
@@ -2348,6 +2350,10 @@ async function reserve() {
       : `Reserva solicitada para ${confirmedBooking.seats} lugar(es).${fareText}`;
 
     passengerCreditBalanceCents = Math.max(0, passengerCreditBalanceCents - credits);
+    if (isTesterMode()) {
+      await loadPassengerNotifications({ silent: true });
+      await loadPassengerCredits();
+    }
     clearPendingBookingIntent();
     pendingBooking = null;
     editingExistingBooking = false;
@@ -2798,7 +2804,7 @@ function setPassengerNotificationBadge(count) {
   passengerUnreadNotificationCount = Math.max(0, Number(count || 0));
   const badge = $("passengerNotificationBadge");
   badge.textContent = passengerUnreadNotificationCount > 99 ? "99+" : String(passengerUnreadNotificationCount);
-  show("passengerNotificationBadge", passengerSessionToken && passengerUnreadNotificationCount > 0);
+  show("passengerNotificationBadge", hasPrivatePortalSession() && passengerUnreadNotificationCount > 0);
   show("portalMarkAllNotificationsRead", passengerUnreadNotificationCount > 0);
 }
 
@@ -2840,11 +2846,14 @@ function renderPassengerNotifications(entries, unreadCount) {
       if (!hasPrivatePortalSession()) return showPrivateAuthGate("portal");
       try {
         if (!item.read) {
-          await fetch("/v1/passenger/me/notifications/" + encodeURIComponent(item.id) + "/read", {
+          await fetch(
+            (isTesterMode() ? "/v1/tester/me/notifications/" : "/v1/passenger/me/notifications/") + encodeURIComponent(item.id) + "/read",
+            {
             method: "POST",
             headers: portalHeaders(),
             body: "{}",
-          });
+            },
+          );
         }
       } catch (_) {}
       const target = passengerNotificationTarget(item);
@@ -2859,12 +2868,7 @@ function renderPassengerNotifications(entries, unreadCount) {
 }
 
 async function loadPassengerNotifications(options = {}) {
-  if (isTesterMode()) {
-    setPassengerNotificationBadge(0);
-    if ($("portalNotifications")) $("portalNotifications").innerHTML = '<p class="muted">🧪 Notificações reais ficam desativadas no Modo Teste.</p>';
-    return;
-  }
-  if (!passengerSessionToken) {
+  if (!hasPrivatePortalSession()) {
     setPassengerNotificationBadge(0);
     return;
   }
@@ -2873,10 +2877,16 @@ async function loadPassengerNotifications(options = {}) {
     $("portalNotifications").innerHTML = '<p class="muted">Carregando notificações…</p>';
   }
   try {
-    const response = await fetch("/v1/passenger/me/notifications", { headers: portalHeaders() });
+    const endpoint = isTesterMode() ? "/v1/tester/me/notifications" : "/v1/passenger/me/notifications";
+    const response = await fetch(endpoint, { headers: portalHeaders() });
     const body = await response.json();
     if (response.status === 401) {
-      savePassengerSession("");
+      if (isTesterMode()) {
+        saveTesterSession("");
+        setError(body.message || "Sessão de teste encerrada.");
+      } else {
+        savePassengerSession("");
+      }
       return;
     }
     if (!response.ok) throw new Error(body.message || "Não foi possível carregar as notificações.");
@@ -2889,10 +2899,11 @@ async function loadPassengerNotifications(options = {}) {
 }
 
 async function markAllPassengerNotificationsRead() {
-  if (!passengerSessionToken) return;
+  if (!hasPrivatePortalSession()) return;
   $("portalMarkAllNotificationsRead").disabled = true;
   try {
-    const response = await fetch("/v1/passenger/me/notifications/read-all", {
+    const endpoint = isTesterMode() ? "/v1/tester/me/notifications/read-all" : "/v1/passenger/me/notifications/read-all";
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: portalHeaders(),
       body: "{}",
@@ -2941,7 +2952,7 @@ function openPassengerPortal() {
   } else if (passengerMustChangePassword) {
     $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
   }
-  if (!isTesterMode()) loadPassengerCredits();
+  loadPassengerCredits();
   loadPassengerBookings();
   loadPassengerNotifications();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3021,25 +3032,25 @@ function portalStopName(tripItem, stopId) {
 
 
 async function loadPassengerCredits() {
-  if (isTesterMode()) {
-    passengerCreditBalanceCents = 0;
-    if ($("portalCreditBalance")) $("portalCreditBalance").textContent = formatMoney(0);
-    if ($("bookingCreditBalance")) $("bookingCreditBalance").textContent = formatMoney(0);
-    show("bookingCreditBox", false);
-    if ($("portalCreditEntries")) $("portalCreditEntries").innerHTML = '<p class="muted">🧪 Créditos reais não são usados na simulação.</p>';
-    if ($("portalReferralInfo")) $("portalReferralInfo").textContent = "Indicações reais ficam desativadas no Modo Teste.";
-    return;
-  }
-  if (!passengerSessionToken || !driverUsername) return;
+  if (!hasPrivatePortalSession() || (!isTesterMode() && !driverUsername)) return;
   try {
-    const response = await fetch(`/v1/passenger/me/credits?driverUsername=${encodeURIComponent(driverUsername)}`, { headers: portalHeaders() });
+    const endpoint = isTesterMode()
+      ? "/v1/tester/me/credits"
+      : `/v1/passenger/me/credits?driverUsername=${encodeURIComponent(driverUsername)}`;
+    const response = await fetch(endpoint, { headers: portalHeaders() });
     const body = await response.json();
+    if (response.status === 401 && isTesterMode()) {
+      saveTesterSession("");
+      return setError(body.message || "Sessão de teste encerrada.");
+    }
     if (!response.ok) throw new Error(body.message || "Não foi possível carregar seus créditos.");
     passengerCreditBalanceCents = Math.max(0, Number(body.balanceCents || 0));
     $("portalCreditBalance").textContent = formatMoney(passengerCreditBalanceCents);
-    $("portalReferralInfo").textContent = Number(body.referralCreditCents || 0) > 0
-      ? `Cada indicação elegível concluída rende ${formatMoney(body.referralCreditCents)} em créditos.`
-      : "O motorista ainda não definiu créditos por indicação.";
+    $("portalReferralInfo").textContent = isTesterMode()
+      ? "🧪 Saldo e movimentações abaixo existem somente nesta simulação."
+      : (Number(body.referralCreditCents || 0) > 0
+        ? `Cada indicação elegível concluída rende ${formatMoney(body.referralCreditCents)} em créditos.`
+        : "O motorista ainda não definiu créditos por indicação.");
     $("bookingCreditBalance").textContent = formatMoney(passengerCreditBalanceCents);
     show("bookingCreditBox", passengerCreditBalanceCents > 0);
     const entries = $("portalCreditEntries");
@@ -3050,11 +3061,13 @@ async function loadPassengerCredits() {
       const amount = Number(entry.amountCents || 0);
       const label = entry.type === "REFERRAL_EARNED"
         ? `Indicação concluída${entry.referredPassengerName ? ` • ${entry.referredPassengerName}` : ""}`
-        : entry.type === "BOOKING_CREDIT_USED"
+        : entry.type === "BOOKING_CREDIT_USED" || entry.type === "TESTER_BOOKING_CREDIT_USED"
           ? "Créditos usados em viagem"
-          : entry.type === "BOOKING_CREDIT_REFUND"
+          : entry.type === "BOOKING_CREDIT_REFUND" || entry.type === "TESTER_BOOKING_CREDIT_REFUND"
             ? "Créditos devolvidos"
-            : "Movimentação de créditos";
+            : entry.type === "TESTER_BASELINE"
+              ? "Saldo inicial da simulação"
+              : "Movimentação de créditos";
       p.textContent = `${amount >= 0 ? "+" : "−"} ${formatMoney(Math.abs(amount))} • ${label}`;
       entries.appendChild(p);
     });
@@ -3392,7 +3405,7 @@ async function loadPassengerBookings(options = {}) {
     }
     if (!response.ok) throw new Error(body.message || "Não foi possível carregar as reservas.");
     renderPassengerBookings(Array.isArray(body.bookings) ? body.bookings : []);
-    if (!isTesterMode()) await loadPassengerCredits();
+    await loadPassengerCredits();
   } catch (error) {
     container.innerHTML = "";
     const message = document.createElement("p");

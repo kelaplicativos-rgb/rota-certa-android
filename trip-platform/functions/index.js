@@ -8,6 +8,16 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
+const {
+  initialTesterCredits,
+  normalizeTesterCredits,
+  applyTesterCredits,
+  refundTesterCredits,
+  normalizeTesterNotifications,
+  appendTesterNotification,
+  markTesterNotificationRead,
+  markAllTesterNotificationsRead,
+} = require("./tester-shadow-state");
 
 initializeApp();
 const db = getFirestore();
@@ -1496,6 +1506,10 @@ async function exchangeTesterBootstrap(req, res) {
   const testSessionId = crypto.randomUUID();
   const testPassengerId = `tester_${sha256Hex(testSessionId).slice(0, 32)}`;
   const expiresAtMillis = Math.min(Number(link.expiresAtMillis || now), now + TESTER_SESSION_TTL_MILLIS);
+  const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get();
+  const shadowCreditSeedCents = driverSnap.exists ? Math.max(0, Number(driverSnap.data().referralCreditCents || 0)) : 0;
+  const shadowCredits = initialTesterCredits(shadowCreditSeedCents);
+  shadowCredits.entries = shadowCredits.entries.map((entry) => ({ ...entry, createdAtMillis: now }));
   await testerSessionRef(sessionToken).set({
     driverUsername,
     publicUsername: normalizeUsername(bootstrap.publicUsername || driverUsername) || driverUsername,
@@ -1504,6 +1518,9 @@ async function exchangeTesterBootstrap(req, res) {
     testPassengerId,
     sessionType: "TESTER",
     shadowBookings: {},
+    shadowNotifications: [],
+    shadowCreditSeedCents,
+    shadowCredits,
     createdAtMillis: now,
     updatedAtMillis: now,
     expiresAtMillis,
@@ -1600,187 +1617,299 @@ async function createTesterBooking(req, res, token) {
   const tester = await requireTesterSession(req, res);
   if (!tester) return;
   const tripRef = db.collection("trips").doc(token);
-  const [tripSnap, realBookingsSnap, sessionSnap] = await Promise.all([
-    tripRef.get(),
-    tripRef.collection("bookings").get(),
-    tester.ref.get(),
-  ]);
-  if (!tripSnap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
-  const trip = tripSnap.data();
-  if (normalizeUsername(trip.driverUsername || "") !== tester.driverUsername) return fail(res, 403, "tester_tenant_mismatch", "Esta viagem pertence a outra Agenda de Viagens.");
-  if (!PUBLIC_STATUSES.has(trip.status)) return fail(res, 409, "trip_closed", "Esta viagem não aceita reservas pelo link.");
-  if (Number(trip.departureAtMillis || 0) <= Date.now()) return fail(res, 409, "trip_departed", "Esta viagem já saiu.");
-  if (!capacityIsReliable(token, trip)) return fail(res, 409, "capacity_unconfirmed", "A capacidade desta viagem ainda não foi confirmada.");
-  if (trip.publicBookingEnabled !== true) return fail(res, 409, "public_booking_disabled", "Reservas pelo Rota Certa não estão habilitadas nesta viagem.");
-  const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
-  const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
-  const seats = Number(req.body && req.body.seats);
-  if (!Number.isInteger(seats) || seats < 1 || seats > 999) return fail(res, 400, "invalid_seats", "Quantidade de lugares inválida.");
-  let idempotencyKey;
-  try { idempotencyKey = publicBookingIdempotencyKey(req); } catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_booking", error.message); }
-  const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
-  const lastStopIndex = Math.max(0, (trip.stops || []).length - 1);
-  if (!itineraryIsAuthoritative(token, trip) && !(fromIndex === 0 && toIndex === lastStopIndex)) {
-    return fail(res, 409, "itinerary_unconfirmed", "Esse trecho intermediário ainda não foi confirmado pela fonte da viagem.");
-  }
-  const bookingId = `tester_${sha256Hex(`${tester.testSessionId}:${token}:${idempotencyKey}`).slice(0, 40)}`;
-  const currentData = sessionSnap.exists ? sessionSnap.data() : tester.data;
-  const shadowMap = { ...((currentData && currentData.shadowBookings) || {}) };
-  const fingerprint = publicBookingFingerprint({ boardingStopId, dropoffStopId, seats });
-  const existingAttempt = shadowMap[bookingId];
-  if (existingAttempt) {
-    if (!safeEqual(existingAttempt.idempotencyFingerprint || "", fingerprint)) return fail(res, 409, "idempotency_conflict", "Esta tentativa já foi usada para outra reserva simulada.");
-    return json(res, 200, {
-      bookingId,
-      cancellationToken: "TESTER_SESSION",
-      availableSeats: null,
-      farePerSeatCents: Number(existingAttempt.farePerSeatCents || 0),
-      totalFareCents: Number(existingAttempt.totalFareCents || 0),
-      creditAppliedCents: 0,
-      amountDueCents: Number(existingAttempt.totalFareCents || 0),
-      status: existingAttempt.status || "REQUESTED",
-      operationalStatus: existingAttempt.operationalStatus || "PENDING",
-      replayed: true,
-      testMode: true,
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const [tripSnap, realBookingsSnap, sessionSnap] = await Promise.all([
+        tx.get(tripRef),
+        tx.get(tripRef.collection("bookings")),
+        tx.get(tester.ref),
+      ]);
+      if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      if (!sessionSnap.exists) throw Object.assign(new Error("Sessão de teste inválida."), { httpStatus: 401, code: "tester_session_invalid" });
+      const trip = tripSnap.data();
+      if (normalizeUsername(trip.driverUsername || "") !== tester.driverUsername) throw Object.assign(new Error("Esta viagem pertence a outra Agenda de Viagens."), { httpStatus: 403, code: "tester_tenant_mismatch" });
+      if (!PUBLIC_STATUSES.has(trip.status)) throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
+      if (Number(trip.departureAtMillis || 0) <= Date.now()) throw Object.assign(new Error("Esta viagem já saiu."), { httpStatus: 409, code: "trip_departed" });
+      if (!capacityIsReliable(token, trip)) throw Object.assign(new Error("A capacidade desta viagem ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
+      if (trip.publicBookingEnabled !== true) throw Object.assign(new Error("Reservas pelo Rota Certa não estão habilitadas nesta viagem."), { httpStatus: 409, code: "public_booking_disabled" });
+
+      const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
+      const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
+      const seats = Number(req.body && req.body.seats);
+      if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+      const creditToUseCents = Math.max(0, Number(req.body && req.body.creditToUseCents || 0));
+      const idempotencyKey = publicBookingIdempotencyKey(req);
+      const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const lastStopIndex = Math.max(0, (trip.stops || []).length - 1);
+      if (!itineraryIsAuthoritative(token, trip) && !(fromIndex === 0 && toIndex === lastStopIndex)) {
+        throw Object.assign(new Error("Esse trecho intermediário ainda não foi confirmado pela fonte da viagem."), { httpStatus: 409, code: "itinerary_unconfirmed" });
+      }
+
+      const bookingId = `tester_${sha256Hex(`${tester.testSessionId}:${token}:${idempotencyKey}`).slice(0, 40)}`;
+      const data = sessionSnap.data();
+      const shadowMap = { ...((data && data.shadowBookings) || {}) };
+      const fingerprint = publicBookingFingerprint({ boardingStopId, dropoffStopId, seats, creditToUseCents });
+      const existingAttempt = shadowMap[bookingId];
+      if (existingAttempt) {
+        if (!safeEqual(existingAttempt.idempotencyFingerprint || "", fingerprint)) {
+          throw Object.assign(new Error("Esta tentativa já foi usada para outra reserva simulada."), { httpStatus: 409, code: "idempotency_conflict" });
+        }
+        return {
+          bookingId,
+          cancellationToken: "TESTER_SESSION",
+          availableSeats: null,
+          farePerSeatCents: Number(existingAttempt.farePerSeatCents || 0),
+          totalFareCents: Number(existingAttempt.totalFareCents || 0),
+          creditAppliedCents: Number(existingAttempt.creditAppliedCents || 0),
+          amountDueCents: Number(existingAttempt.amountDueCents || 0),
+          status: existingAttempt.status || "REQUESTED",
+          operationalStatus: existingAttempt.operationalStatus || "PENDING",
+          replayed: true,
+          testMode: true,
+        };
+      }
+      if (Object.keys(shadowMap).length >= TESTER_MAX_SHADOW_BOOKINGS) {
+        throw Object.assign(new Error("Reinicie a simulação antes de criar novas reservas de teste."), { httpStatus: 409, code: "tester_shadow_limit" });
+      }
+
+      const realRecords = realBookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const shadowRecords = Object.values(shadowMap);
+      const existingRecords = [...realRecords, ...shadowRecords];
+      const currentLoads = reconciledSegmentLoads(trip, existingRecords);
+      const available = availableForBooking(trip, existingRecords, currentLoads, fromIndex, toIndex);
+      if (seats > available) throw Object.assign(new Error(currentSeatCapacityMessage(available)), { httpStatus: 409, code: "insufficient_seats", availableSeats: available });
+
+      const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+      const totalFareCents = farePerSeatCents * seats;
+      const now = Date.now();
+      const seedCents = Math.max(0, Number(data.shadowCreditSeedCents || 0));
+      const credits = normalizeTesterCredits(data.shadowCredits, seedCents);
+      const creditResult = applyTesterCredits(credits, creditToUseCents, totalFareCents, {
+        id: `use_${bookingId}_v1`,
+        type: "TESTER_BOOKING_CREDIT_USED",
+        bookingId,
+        tripId: token,
+        createdAtMillis: now,
+      });
+      const candidate = {
+        id: bookingId,
+        tripToken: token,
+        tripId: token,
+        passengerId: tester.testPassengerId,
+        passengerName: "🧪 Passageiro de teste",
+        passengerContact: "",
+        boardingStopId,
+        dropoffStopId,
+        seats,
+        status: "REQUESTED",
+        operationalStatus: "PENDING",
+        paymentStatus: "UNPAID",
+        source: "ROTA_CERTA",
+        capacityClaimType: "PASSENGER",
+        sourceReference: `TESTER:${tester.testSessionId}:${bookingId}`,
+        occupancyGroupId: bookingId,
+        idempotencyFingerprint: fingerprint,
+        farePerSeatCents,
+        totalFareCents,
+        creditAppliedCents: creditResult.appliedCents,
+        amountDueCents: creditResult.amountDueCents,
+        changeVersion: 1,
+        createdAtMillis: now,
+        updatedAtMillis: now,
+      };
+      const candidateRecords = [...existingRecords, candidate];
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      assertNoOverbooking(trip, capacityState.loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
+      shadowMap[bookingId] = candidate;
+      const nextAvailable = availableForBooking(trip, candidateRecords, capacityState.loads, fromIndex, toIndex, now);
+      const notifications = appendTesterNotification(data.shadowNotifications, {
+        id: `tester_booking_created_${bookingId}_v1`,
+        type: "TESTER_BOOKING_CREATED",
+        title: "🧪 Reserva simulada criada",
+        message: "Esta notificação existe somente nesta simulação.",
+        bookingId,
+        tripId: token,
+        driverUsername: tester.driverUsername,
+        read: false,
+        createdAtMillis: now,
+      });
+      tx.set(tester.ref, {
+        shadowBookings: shadowMap,
+        shadowCredits: creditResult.credits,
+        shadowNotifications: notifications,
+        updatedAtMillis: now,
+      }, { merge: true });
+      return {
+        bookingId,
+        cancellationToken: "TESTER_SESSION",
+        availableSeats: nextAvailable,
+        farePerSeatCents,
+        totalFareCents,
+        creditAppliedCents: creditResult.appliedCents,
+        amountDueCents: creditResult.amountDueCents,
+        status: "REQUESTED",
+        operationalStatus: "PENDING",
+        replayed: false,
+        testMode: true,
+      };
     });
+    if (!result.replayed) await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_CREATED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
+    return json(res, result.replayed ? 200 : 201, result);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "tester_booking_failed", error.message || "Falha ao criar reserva simulada.", Number.isInteger(error.availableSeats) ? { availableSeats: error.availableSeats } : null);
   }
-  if (Object.keys(shadowMap).length >= TESTER_MAX_SHADOW_BOOKINGS) return fail(res, 409, "tester_shadow_limit", "Reinicie a simulação antes de criar novas reservas de teste.");
-  const realRecords = realBookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const shadowRecords = Object.values(shadowMap);
-  const existingRecords = [...realRecords, ...shadowRecords];
-  const currentLoads = reconciledSegmentLoads(trip, existingRecords);
-  const available = availableForBooking(trip, existingRecords, currentLoads, fromIndex, toIndex);
-  if (seats > available) return fail(res, 409, "insufficient_seats", currentSeatCapacityMessage(available), { availableSeats: available });
-  const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
-  const totalFareCents = farePerSeatCents * seats;
-  const now = Date.now();
-  const candidate = {
-    id: bookingId,
-    tripToken: token,
-    tripId: token,
-    passengerId: tester.testPassengerId,
-    passengerName: "🧪 Passageiro de teste",
-    passengerContact: "",
-    boardingStopId,
-    dropoffStopId,
-    seats,
-    status: "REQUESTED",
-    operationalStatus: "PENDING",
-    paymentStatus: "UNPAID",
-    source: "ROTA_CERTA",
-    capacityClaimType: "PASSENGER",
-    sourceReference: `TESTER:${tester.testSessionId}:${bookingId}`,
-    occupancyGroupId: bookingId,
-    idempotencyFingerprint: fingerprint,
-    farePerSeatCents,
-    totalFareCents,
-    creditAppliedCents: 0,
-    amountDueCents: totalFareCents,
-    changeVersion: 1,
-    createdAtMillis: now,
-    updatedAtMillis: now,
-  };
-  const candidateRecords = [...existingRecords, candidate];
-  const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
-  assertNoOverbooking(trip, capacityState.loads);
-  assertNoOperationalOverbooking(trip, candidateRecords, now);
-  shadowMap[bookingId] = candidate;
-  await tester.ref.set({ shadowBookings: shadowMap, updatedAtMillis: now }, { merge: true });
-  const nextAvailable = availableForBooking(trip, candidateRecords, capacityState.loads, fromIndex, toIndex, now);
-  await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_CREATED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
-  return json(res, 201, {
-    bookingId,
-    cancellationToken: "TESTER_SESSION",
-    availableSeats: nextAvailable,
-    farePerSeatCents,
-    totalFareCents,
-    creditAppliedCents: 0,
-    amountDueCents: totalFareCents,
-    status: "REQUESTED",
-    operationalStatus: "PENDING",
-    replayed: false,
-    testMode: true,
-  });
 }
 
 async function updateTesterBooking(req, res, token, bookingId) {
   const tester = await requireTesterSession(req, res);
   if (!tester) return;
-  const [tripSnap, realBookingsSnap, sessionSnap] = await Promise.all([
-    db.collection("trips").doc(token).get(),
-    db.collection("trips").doc(token).collection("bookings").get(),
-    tester.ref.get(),
-  ]);
-  if (!tripSnap.exists) return fail(res, 404, "booking_not_found", "Reserva simulada não encontrada.");
-  const trip = tripSnap.data();
-  if (normalizeUsername(trip.driverUsername || "") !== tester.driverUsername) return fail(res, 403, "tester_tenant_mismatch", "Esta viagem pertence a outra Agenda de Viagens.");
-  const data = sessionSnap.exists ? sessionSnap.data() : tester.data;
-  const shadowMap = { ...((data && data.shadowBookings) || {}) };
-  const previous = shadowMap[bookingId];
-  if (!previous || cleanText(previous.tripToken, 120) !== token) return fail(res, 404, "booking_not_found", "Reserva simulada não encontrada.");
-  if (["CANCELLED", "EXPIRED"].includes(cleanText(previous.status, 24))) return fail(res, 409, "booking_closed", "Esta reserva simulada não pode mais ser alterada.");
-  const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
-  const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
-  const seats = Number(req.body && req.body.seats);
-  if (!Number.isInteger(seats) || seats < 1 || seats > 999) return fail(res, 400, "invalid_seats", "Quantidade de lugares inválida.");
-  const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
-  const realRecords = realBookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const otherShadow = Object.values(shadowMap).filter((entry) => entry.id !== bookingId);
-  const baseRecords = [...realRecords, ...otherShadow];
-  const currentLoads = reconciledSegmentLoads(trip, baseRecords);
-  const available = availableForBooking(trip, baseRecords, currentLoads, fromIndex, toIndex);
-  if (seats > available) return fail(res, 409, "insufficient_seats", currentSeatCapacityMessage(available), { availableSeats: available });
-  const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
-  const now = Date.now();
-  const updated = {
-    ...previous,
-    boardingStopId,
-    dropoffStopId,
-    seats,
-    farePerSeatCents,
-    totalFareCents: farePerSeatCents * seats,
-    amountDueCents: farePerSeatCents * seats,
-    changeVersion: Math.max(1, Number(previous.changeVersion || 1)) + 1,
-    updatedAtMillis: now,
-  };
-  const candidateRecords = [...baseRecords, updated];
-  const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
-  assertNoOverbooking(trip, capacityState.loads);
-  assertNoOperationalOverbooking(trip, candidateRecords, now);
-  shadowMap[bookingId] = updated;
-  await tester.ref.set({ shadowBookings: shadowMap, updatedAtMillis: now }, { merge: true });
-  await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_UPDATED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
-  return json(res, 200, {
-    bookingId,
-    farePerSeatCents,
-    totalFareCents: updated.totalFareCents,
-    status: updated.status,
-    operationalStatus: updated.operationalStatus,
-    testMode: true,
-  });
+  const tripRef = db.collection("trips").doc(token);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const [tripSnap, realBookingsSnap, sessionSnap] = await Promise.all([
+        tx.get(tripRef),
+        tx.get(tripRef.collection("bookings")),
+        tx.get(tester.ref),
+      ]);
+      if (!tripSnap.exists) throw Object.assign(new Error("Reserva simulada não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (!sessionSnap.exists) throw Object.assign(new Error("Sessão de teste inválida."), { httpStatus: 401, code: "tester_session_invalid" });
+      const trip = tripSnap.data();
+      if (normalizeUsername(trip.driverUsername || "") !== tester.driverUsername) throw Object.assign(new Error("Esta viagem pertence a outra Agenda de Viagens."), { httpStatus: 403, code: "tester_tenant_mismatch" });
+      const data = sessionSnap.data();
+      const shadowMap = { ...((data && data.shadowBookings) || {}) };
+      const previous = shadowMap[bookingId];
+      if (!previous || cleanText(previous.tripToken, 120) !== token) throw Object.assign(new Error("Reserva simulada não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      if (["CANCELLED", "EXPIRED"].includes(cleanText(previous.status, 24))) throw Object.assign(new Error("Esta reserva simulada não pode mais ser alterada."), { httpStatus: 409, code: "booking_closed" });
+
+      const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80);
+      const dropoffStopId = cleanText(req.body && req.body.dropoffStopId, 80);
+      const seats = Number(req.body && req.body.seats);
+      if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
+      const { fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId);
+      const realRecords = realBookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const otherShadow = Object.values(shadowMap).filter((entry) => entry.id !== bookingId);
+      const baseRecords = [...realRecords, ...otherShadow];
+      const currentLoads = reconciledSegmentLoads(trip, baseRecords);
+      const available = availableForBooking(trip, baseRecords, currentLoads, fromIndex, toIndex);
+      if (seats > available) throw Object.assign(new Error(currentSeatCapacityMessage(available)), { httpStatus: 409, code: "insufficient_seats", availableSeats: available });
+
+      const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+      const totalFareCents = farePerSeatCents * seats;
+      const previousApplied = Math.max(0, Number(previous.creditAppliedCents || 0));
+      const nextApplied = Math.min(previousApplied, totalFareCents);
+      const seedCents = Math.max(0, Number(data.shadowCreditSeedCents || 0));
+      let credits = normalizeTesterCredits(data.shadowCredits, seedCents);
+      const changeVersion = Math.max(1, Number(previous.changeVersion || 1)) + 1;
+      if (previousApplied > nextApplied) {
+        credits = refundTesterCredits(credits, previousApplied - nextApplied, {
+          id: `refund_adjust_${bookingId}_v${changeVersion}`,
+          type: "TESTER_BOOKING_CREDIT_REFUND",
+          bookingId,
+          tripId: token,
+          createdAtMillis: Date.now(),
+        }).credits;
+      }
+      const now = Date.now();
+      const updated = {
+        ...previous,
+        boardingStopId,
+        dropoffStopId,
+        seats,
+        farePerSeatCents,
+        totalFareCents,
+        creditAppliedCents: nextApplied,
+        amountDueCents: Math.max(0, totalFareCents - nextApplied),
+        changeVersion,
+        updatedAtMillis: now,
+      };
+      const candidateRecords = [...baseRecords, updated];
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
+      assertNoOverbooking(trip, capacityState.loads);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
+      shadowMap[bookingId] = updated;
+      const notifications = appendTesterNotification(data.shadowNotifications, {
+        id: `tester_booking_updated_${bookingId}_v${changeVersion}`,
+        type: "TESTER_BOOKING_UPDATED",
+        title: "🧪 Reserva simulada alterada",
+        message: "A alteração existe somente nesta simulação.",
+        bookingId,
+        tripId: token,
+        driverUsername: tester.driverUsername,
+        read: false,
+        createdAtMillis: now,
+      });
+      tx.set(tester.ref, { shadowBookings: shadowMap, shadowCredits: credits, shadowNotifications: notifications, updatedAtMillis: now }, { merge: true });
+      return {
+        bookingId,
+        farePerSeatCents,
+        totalFareCents,
+        creditAppliedCents: nextApplied,
+        amountDueCents: updated.amountDueCents,
+        status: updated.status,
+        operationalStatus: updated.operationalStatus,
+        testMode: true,
+      };
+    });
+    await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_UPDATED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
+    return json(res, 200, result);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "tester_booking_update_failed", error.message || "Falha ao alterar reserva simulada.", Number.isInteger(error.availableSeats) ? { availableSeats: error.availableSeats } : null);
+  }
 }
 
 async function cancelTesterBooking(req, res, token, bookingId) {
   const tester = await requireTesterSession(req, res);
   if (!tester) return;
-  const sessionSnap = await tester.ref.get();
-  const data = sessionSnap.exists ? sessionSnap.data() : tester.data;
-  const shadowMap = { ...((data && data.shadowBookings) || {}) };
-  const previous = shadowMap[bookingId];
-  if (!previous || cleanText(previous.tripToken, 120) !== token) return fail(res, 404, "booking_not_found", "Reserva simulada não encontrada.");
-  const changed = !["CANCELLED", "EXPIRED"].includes(cleanText(previous.status, 24));
-  if (changed) {
-    shadowMap[bookingId] = {
-      ...previous,
-      status: "CANCELLED",
-      operationalStatus: "CANCELLED",
-      changeVersion: Math.max(1, Number(previous.changeVersion || 1)) + 1,
-      updatedAtMillis: Date.now(),
-    };
-    await tester.ref.set({ shadowBookings: shadowMap, updatedAtMillis: Date.now() }, { merge: true });
-    await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_CANCELLED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(tester.ref);
+      if (!snap.exists) throw Object.assign(new Error("Sessão de teste inválida."), { httpStatus: 401, code: "tester_session_invalid" });
+      const data = snap.data();
+      const shadowMap = { ...((data && data.shadowBookings) || {}) };
+      const previous = shadowMap[bookingId];
+      if (!previous || cleanText(previous.tripToken, 120) !== token) throw Object.assign(new Error("Reserva simulada não encontrada."), { httpStatus: 404, code: "booking_not_found" });
+      const changed = !["CANCELLED", "EXPIRED"].includes(cleanText(previous.status, 24));
+      if (!changed) return { cancelled: true, changed: false, testMode: true };
+      const now = Date.now();
+      const seedCents = Math.max(0, Number(data.shadowCreditSeedCents || 0));
+      const currentCredits = normalizeTesterCredits(data.shadowCredits, seedCents);
+      const refundable = Math.max(0, Number(previous.creditAppliedCents || 0));
+      const refunded = refundTesterCredits(currentCredits, refundable, refundable > 0 ? {
+        id: `refund_cancel_${bookingId}`,
+        type: "TESTER_BOOKING_CREDIT_REFUND",
+        bookingId,
+        tripId: token,
+        createdAtMillis: now,
+      } : null);
+      const changeVersion = Math.max(1, Number(previous.changeVersion || 1)) + 1;
+      shadowMap[bookingId] = {
+        ...previous,
+        status: "CANCELLED",
+        operationalStatus: "CANCELLED",
+        changeVersion,
+        creditRefundedAtMillis: refundable > 0 ? now : Number(previous.creditRefundedAtMillis || 0),
+        updatedAtMillis: now,
+      };
+      const notifications = appendTesterNotification(data.shadowNotifications, {
+        id: `tester_booking_cancelled_${bookingId}_v${changeVersion}`,
+        type: "TESTER_BOOKING_CANCELLED",
+        title: "🧪 Reserva simulada cancelada",
+        message: "A vaga e os créditos foram restaurados somente nesta simulação.",
+        bookingId,
+        tripId: token,
+        driverUsername: tester.driverUsername,
+        read: false,
+        createdAtMillis: now,
+      });
+      tx.set(tester.ref, { shadowBookings: shadowMap, shadowCredits: refunded.credits, shadowNotifications: notifications, updatedAtMillis: now }, { merge: true });
+      return { cancelled: true, changed: true, testMode: true };
+    });
+    if (result.changed) await appendTesterAuditEvent({ operation: "TEST_SHADOW_BOOKING_CANCELLED", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
+    return json(res, 200, result);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "tester_booking_cancel_failed", error.message || "Falha ao cancelar reserva simulada.");
   }
-  return json(res, 200, { cancelled: true, changed, testMode: true });
 }
 
 async function listTesterBookings(req, res) {
@@ -1801,12 +1930,77 @@ async function listTesterBookings(req, res) {
   return json(res, 200, { bookings: entries, sessionType: "TESTER" });
 }
 
+async function getTesterCredits(req, res) {
+  const tester = await requireTesterSession(req, res);
+  if (!tester) return;
+  const snap = await tester.ref.get();
+  const data = snap.exists ? snap.data() : tester.data;
+  const seedCents = Math.max(0, Number(data.shadowCreditSeedCents || 0));
+  const credits = normalizeTesterCredits(data.shadowCredits, seedCents);
+  return json(res, 200, {
+    balanceCents: credits.balanceCents,
+    earnedCents: credits.earnedCents,
+    spentCents: credits.spentCents,
+    referralCreditCents: seedCents,
+    entries: [...credits.entries].sort((a, b) => Number(b.createdAtMillis || 0) - Number(a.createdAtMillis || 0)),
+    sessionType: "TESTER",
+  });
+}
+
+async function listTesterNotifications(req, res) {
+  const tester = await requireTesterSession(req, res);
+  if (!tester) return;
+  const snap = await tester.ref.get();
+  const data = snap.exists ? snap.data() : tester.data;
+  const notifications = normalizeTesterNotifications(data.shadowNotifications)
+    .sort((a, b) => Number(b.createdAtMillis || 0) - Number(a.createdAtMillis || 0));
+  return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length, sessionType: "TESTER" });
+}
+
+async function markTesterNotification(req, res, notificationIdRaw = "", all = false) {
+  const tester = await requireTesterSession(req, res);
+  if (!tester) return;
+  const notificationId = cleanText(notificationIdRaw, 120);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(tester.ref);
+      if (!snap.exists) throw Object.assign(new Error("Sessão de teste inválida."), { httpStatus: 401, code: "tester_session_invalid" });
+      const current = normalizeTesterNotifications(snap.data().shadowNotifications);
+      if (!all && !current.some((item) => cleanText(item.id, 120) === notificationId)) throw Object.assign(new Error("Notificação simulada não encontrada."), { httpStatus: 404, code: "notification_not_found" });
+      const next = all ? markAllTesterNotificationsRead(current) : markTesterNotificationRead(current, notificationId);
+      tx.set(tester.ref, { shadowNotifications: next, updatedAtMillis: Date.now() }, { merge: true });
+      return next;
+    });
+    return json(res, 200, { changed: true, unreadCount: result.filter((item) => !item.read).length, sessionType: "TESTER" });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "tester_notification_failed", error.message || "Falha ao atualizar notificação simulada.");
+  }
+}
+
 async function resetTesterSimulation(req, res) {
   const tester = await requireTesterSession(req, res);
   if (!tester) return;
-  await tester.ref.set({ shadowBookings: {}, updatedAtMillis: Date.now() }, { merge: true });
-  await appendTesterAuditEvent({ operation: "TEST_SHADOW_RESET", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
-  return json(res, 200, { reset: true, sessionType: "TESTER" });
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(tester.ref);
+      if (!snap.exists) throw Object.assign(new Error("Sessão de teste inválida."), { httpStatus: 401, code: "tester_session_invalid" });
+      const data = snap.data();
+      const seedCents = Math.max(0, Number(data.shadowCreditSeedCents || 0));
+      const credits = initialTesterCredits(seedCents);
+      const now = Date.now();
+      credits.entries = credits.entries.map((entry) => ({ ...entry, createdAtMillis: now }));
+      tx.set(tester.ref, {
+        shadowBookings: {},
+        shadowNotifications: [],
+        shadowCredits: credits,
+        updatedAtMillis: now,
+      }, { merge: true });
+    });
+    await appendTesterAuditEvent({ operation: "TEST_SHADOW_RESET", driverUsername: tester.driverUsername, testSessionId: tester.testSessionId }).catch(() => {});
+    return json(res, 200, { reset: true, sessionType: "TESTER" });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "tester_reset_failed", error.message || "Falha ao reiniciar a simulação.");
+  }
 }
 
 async function blockTesterFromRealPassengerMutation(req, res) {
@@ -5264,6 +5458,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/public/tester/bootstrap") return await exchangeTesterBootstrap(req, res);
     if (req.method === "GET" && path === "/v1/tester/session") return await getTesterContext(req, res);
     if (req.method === "GET" && path === "/v1/tester/me/bookings") return await listTesterBookings(req, res);
+    if (req.method === "GET" && path === "/v1/tester/me/credits") return await getTesterCredits(req, res);
+    if (req.method === "GET" && path === "/v1/tester/me/notifications") return await listTesterNotifications(req, res);
+    if (req.method === "POST" && path === "/v1/tester/me/notifications/read-all") return await markTesterNotification(req, res, "", true);
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
@@ -5298,6 +5495,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && req.method === "GET") {
       return await getPublicTrip(res, req, parts[3]);
+    }
+    if (parts.length === 6 && parts[0] === "v1" && parts[1] === "tester" && parts[2] === "me" && parts[3] === "notifications" && parts[5] === "read" && req.method === "POST") {
+      return await markTesterNotification(req, res, parts[4], false);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "tester" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "POST") {
       return await createTesterBooking(req, res, parts[3]);
