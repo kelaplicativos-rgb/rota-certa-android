@@ -277,7 +277,7 @@ private fun TripApp(
         )
     }
 
-    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
