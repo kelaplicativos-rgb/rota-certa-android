@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.370 Agenda mirrors Timeline real seats
+name: Rota Certa 0.1.371 Agenda mirrors channel free seats
 
 on:
   push:
@@ -39,8 +39,8 @@ jobs:
           BASE=736705c5a8297d553a6d17e01856886bf228492d
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5663' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.370"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5664' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.371"' app/build.gradle.kts
           grep -Fq 'timelinePublicCapacityResolution' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
           grep -Fq 'capacitySource = if (physical != null) "vehicle_physical_capacity" else "unavailable"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
           grep -Fq 'tripChannelAllocationBreakdown' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
@@ -52,9 +52,9 @@ jobs:
           grep -Fq 'published_seats = current.published_seats ?: previous?.published_seats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
           grep -Fq 'CAPACITY_PUBLIC_SOURCE_RESOLVED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'CAPACITY_PUBLIC_SYNC_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'capacitySource=physical_plus_operational_separated' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'capacitySource=channel_free_seats_plus_physical_separate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'capacity = physicalCapacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'rotaCertaSeatAllocation = rotaCertaAllocation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'rotaCertaSeatAllocation = rotaCertaAvailable' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           ! grep -Fq 'combinedAgendaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           ! grep -Fq 'blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           ! grep -Fq 'rotaCertaSeatPool' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
@@ -66,14 +66,24 @@ jobs:
           grep -Fq 'operationalOverbookingSeats' trip-platform/functions/index.js
           grep -Fq 'segmentPassengerLoads' trip-platform/functions/index.js
           grep -Fq 'segmentBlockedLoads' trip-platform/functions/index.js
-          ! grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
-          ! grep -Fq 'rotaCertaSeatPool' trip-platform/functions/index.js
+          grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
+          grep -Fq 'rotaCertaAvailableSeats' trip-platform/functions/index.js
           grep -Fq 'Passageiros confirmados' trip-platform/public/app.js
-          grep -Fq 'Total considerado' trip-platform/public/app.js
+          grep -Fq 'Total disponível' trip-platform/public/app.js
           grep -Fq 'Capacidade de passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Vagas disponibilizadas no Rota Certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Passageiros confirmados' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Vagas disponíveis' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Total disponível' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'rotaCertaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'totalAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..999 }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'blablaAvailable=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'rotaCertaAvailable=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'totalAvailable=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'BlaBlaCar ${allocation.blablaPublishedAllocation} vaga(s) disponíveis' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Total disponível ${totalAvailable}' trip-platform/public/app.js
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCombinedSeatPools0369Test.kt
           test -f trip-platform/functions/test/public-combined-capacity-0369.test.js
           grep -Fq 'handledSeatQueueContinuationToken' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -152,24 +162,24 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5663'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.370'" /tmp/aapt.txt
+          grep -Fq "versionCode='5664'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.371'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0370
-          cp "$APK" /tmp/0370/rota-certa-0.1.370-agenda-timeline-real-seats.apk
-          sha256sum /tmp/0370/rota-certa-0.1.370-agenda-timeline-real-seats.apk | tee /tmp/0370/apk.sha256
-          cp /tmp/aapt.txt /tmp/0370/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0370/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0370/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0370/changed-files.txt
-          git rev-parse HEAD > /tmp/0370/source-head.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0370/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0370/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0370/dex-strings.txt
+          mkdir -p /tmp/0371
+          cp "$APK" /tmp/0371/rota-certa-0.1.371-agenda-channel-free-seats.apk
+          sha256sum /tmp/0371/rota-certa-0.1.371-agenda-channel-free-seats.apk | tee /tmp/0371/apk.sha256
+          cp /tmp/aapt.txt /tmp/0371/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0371/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0371/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0371/changed-files.txt
+          git rev-parse HEAD > /tmp/0371/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0371/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0371/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0371/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.370-agenda-timeline-real-seats
+          name: rota-certa-0.1.371-agenda-channel-free-seats
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0370
+          path: /tmp/0371
