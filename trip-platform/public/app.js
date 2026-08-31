@@ -1485,14 +1485,14 @@ function renderAgendaCards(entries, container, filtered = false) {
         meta.appendChild(blocked);
       }
 
-      const blablaAllocation = item.publishedSeats == null ? null : normalizedSeatCount(item.publishedSeats);
-      const rotaAllocation = item.rotaCertaSeatAllocation == null ? null : normalizedSeatCount(item.rotaCertaSeatAllocation);
-      const totalConsidered = item.totalConsideredSeats == null ? null : normalizedSeatCount(item.totalConsideredSeats);
-      if (blablaAllocation != null && rotaAllocation != null && totalConsidered != null) {
-        const allocation = document.createElement("span");
-        allocation.className = "bigPill";
-        allocation.textContent = `BlaBlaCar ${blablaAllocation} • Rota Certa ${rotaAllocation} • Total ${totalConsidered}`;
-        meta.appendChild(allocation);
+      const blablaAvailable = item.blablaAvailableSeats == null ? null : normalizedSeatCount(item.blablaAvailableSeats);
+      const rotaAvailable = item.rotaCertaAvailableSeats == null ? null : normalizedSeatCount(item.rotaCertaAvailableSeats);
+      const totalAvailable = item.totalAvailableSeats == null ? null : normalizedSeatCount(item.totalAvailableSeats);
+      if (blablaAvailable != null && rotaAvailable != null && totalAvailable != null) {
+        const availability = document.createElement("span");
+        availability.className = "bigPill";
+        availability.textContent = `BlaBlaCar ${blablaAvailable} vaga(s) • Rota Certa ${rotaAvailable} vaga(s) • Total disponível ${totalAvailable}`;
+        meta.appendChild(availability);
       }
     }
     const duration = durationFor(item);
@@ -1838,9 +1838,9 @@ function renderTripFacts() {
 
   addFact("Saída", formatDate(trip.departureAtMillis));
   addFact("Capacidade de passageiros", `${trip.capacity} lugar(es) físicos simultâneos`);
-  if (trip.publishedSeats != null) addFact("BlaBlaCar", `${normalizedSeatCount(trip.publishedSeats)} lugar(es) publicados`);
-  if (trip.rotaCertaSeatAllocation != null) addFact("Rota Certa", `${normalizedSeatCount(trip.rotaCertaSeatAllocation)} lugar(es) disponibilizados`);
-  if (trip.totalConsideredSeats != null) addFact("Total considerado", `${normalizedSeatCount(trip.totalConsideredSeats)} lugar(es)`);
+  if (trip.blablaAvailableSeats != null) addFact("Vagas BlaBlaCar", `${normalizedSeatCount(trip.blablaAvailableSeats)} disponíveis`);
+  if (trip.rotaCertaAvailableSeats != null) addFact("Vagas Rota Certa", `${normalizedSeatCount(trip.rotaCertaAvailableSeats)} disponíveis`);
+  if (trip.totalAvailableSeats != null) addFact("Total disponível", `${normalizedSeatCount(trip.totalAvailableSeats)} vaga(s)`);
   if (trip.capacityReliable === true) {
     const available = seatRange(trip);
     addFact("Passageiros confirmados", normalizedSeatCount(trip.confirmedPassengerSeats));
