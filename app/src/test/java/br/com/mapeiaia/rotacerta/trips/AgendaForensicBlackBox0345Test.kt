@@ -66,6 +66,7 @@ class AgendaForensicBlackBox0345Test {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         val bookingSync = source("br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt")
+        val publicSyncCoordinator = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt")
         assertTrue(activity.contains("collectAsState(initial = null)"))
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_WAITING"))
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_RECEIVED"))
@@ -77,7 +78,7 @@ class AgendaForensicBlackBox0345Test {
         assertFalse(timeline.contains("Capacidade de passageiros"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
-        assertTrue(activity.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
+        assertTrue(publicSyncCoordinator.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
         assertTrue(bookingSync.contains("BOOKING_INVENTORY_RECALCULATED"))
         assertTrue(bookingSync.contains("externalSeatMutation=false"))
     }
