@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-01**
-- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,15 +12,15 @@
 
 ## Motoristas
 
-1. **Vinicius** — 01:00 — São Paulo → Três Corações — R$ 92,00
-2. **Rosilda** — 05:00 — São Paulo → Três Corações — R$ 91,00 — Esgotará em breve · Super Driver
-3. **Vitor** — 06:00 — São Paulo → Minas Gerais — R$ 69,00
-4. **Eduardo** — 06:30 — Guarulhos → Três Corações — sem preço — Cheio
-5. **Francisco** — 07:00 — São Paulo → São Thomé das Letras — sem preço — Cheio
-6. **Daniel** — 08:00 — São Paulo → São Thomé das Letras — sem preço — Cheio
-7. **Tom** — 08:00 — Suzano → Três Corações — R$ 102,00 — Esgotará em breve · Super Driver
-8. **Rômulo** — 09:30 — São Paulo → Minas Gerais — R$ 105,00 — Super Driver
-9. **Antonio** — 10:00 — São Paulo → Minas Gerais — R$ 82,00 — Super Driver
-10. **Danubia** — 10:00 — São Paulo → Minas Gerais — R$ 94,00
+1. **Wagner** — 03:50 — Três Corações → São Paulo — R$ 76,00 — Esgotará em breve
+2. **Michelle** — 04:10 — Três Corações → São Paulo — R$ 76,00
+3. **Jeam** — 06:30 — Carmo da Cachoeira → São Paulo — R$ 113,00 — Esgotará em breve
+4. **Rodolfo** — 06:40 — Três Corações → São Paulo — R$ 77,00 — Esgotará em breve
+5. **Jose** — 07:50 — Carmo da Cachoeira → São Paulo — sem preço — Cheio
+6. **Kauane** — 07:50 — Três Corações → São Paulo — sem preço — Cheio · Super Driver
+7. **Arthur** — 08:00 — São Lourenço → São Paulo — sem preço — Cheio
+8. **Oberom** — 09:00 — São Lourenço → São Paulo — R$ 90,00 — Esgotará em breve
+9. **Denis** — 16:00 — Varginha → São Paulo — R$ 83,00
+10. **Samuel** — 17:30 — Campanha → São Paulo — R$ 85,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
