@@ -75,7 +75,10 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf ci/agenda-0375-patch
-          rm -f .github/workflows/agenda-0375-materialize.yml
+          # GITHUB_TOKEN cannot modify workflow files without the workflows scope.
+          # Keep both workflows byte-identical to the remote staging HEAD here;
+          # the authorized GitHub API updates them after this source commit lands.
+          git checkout HEAD -- .github/workflows/agenda-0369-combined-seat-pools.yml
           git diff --check
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
 
