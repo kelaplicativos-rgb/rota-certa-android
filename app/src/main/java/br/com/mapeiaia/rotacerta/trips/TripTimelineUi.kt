@@ -739,7 +739,7 @@ internal fun TripDriverDefaultsCard(
             traceId,
         )
     }
-    var locating by remember { mutableStateOf(false) }    var locating by remember { mutableStateOf(false) }
+    var locating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun captureReferenceOrigin() {
@@ -822,7 +822,7 @@ internal fun TripDriverDefaultsCard(
                 "A origem de referência é fixa até ser redefinida. O GPS atual continua separado e serve apenas para progresso da rota e próximo embarque.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }            error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Button(
                 onClick = {
                     val parsedRotaCerta = rotaCertaAllocation.toIntOrNull()
