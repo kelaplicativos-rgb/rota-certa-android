@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.374 Inventory source truth + public sync single-flight
+name: Rota Certa 0.1.375 Incremental public availability fail-closed
 
 on:
   push:
@@ -39,8 +39,8 @@ jobs:
           BASE=3533dfa1b2d54a863b07d42f43974242fcf94ccf
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5667' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.374"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5668' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.375"' app/build.gradle.kts
 
           # Canonical rule: quota creates inventory; occupancy consumes it once per segment.
           grep -Fq 'bookingOccupancyIdentityKey' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
@@ -98,6 +98,7 @@ jobs:
           node --test trip-platform/functions/test/public-search-capacity-0356.test.js
           node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
           node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
+          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
       - name: Configure Firebase Android config
         shell: bash
         run: |
@@ -151,31 +152,31 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5667'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.374'" /tmp/aapt.txt
+          grep -Fq "versionCode='5668'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.375'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0374
-          cp "$APK" /tmp/0374/rota-certa-0.1.374-inventory-source-truth.apk
-          sha256sum /tmp/0374/rota-certa-0.1.374-inventory-source-truth.apk | tee /tmp/0374/apk.sha256
-          cp /tmp/aapt.txt /tmp/0374/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0374/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0374/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0374/changed-files.txt
-          cp /tmp/farol.sha256 /tmp/0374/farol.sha256
-          git rev-parse HEAD > /tmp/0374/source-head.txt
+          mkdir -p /tmp/0375
+          cp "$APK" /tmp/0375/rota-certa-0.1.375-incremental-public-availability.apk
+          sha256sum /tmp/0375/rota-certa-0.1.375-incremental-public-availability.apk | tee /tmp/0375/apk.sha256
+          cp /tmp/aapt.txt /tmp/0375/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0375/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0375/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0375/changed-files.txt
+          cp /tmp/farol.sha256 /tmp/0375/farol.sha256
+          git rev-parse HEAD > /tmp/0375/source-head.txt
           {
             echo "branch=$SOURCE_BRANCH"
             echo "commit=$SOURCE_SHA"
-            echo "versionName=0.1.374"
-            echo "versionCode=5667"
-          } > /tmp/0374/build-metadata.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0374/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0374/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0374/dex-strings.txt
+            echo "versionName=0.1.375"
+            echo "versionCode=5668"
+          } > /tmp/0375/build-metadata.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0375/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0375/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0375/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.374-inventory-source-truth
+          name: rota-certa-0.1.375-incremental-public-availability
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0374
+          path: /tmp/0375
