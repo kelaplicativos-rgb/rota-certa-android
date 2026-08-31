@@ -30,14 +30,20 @@ jobs:
       - name: Checkout triggering direct source
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Record exact source and protected FAROL
         shell: bash
         run: |
           set -euo pipefail
-          git rev-parse HEAD | tee source_head.txt
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          printf '%s\n' "$SOURCE_SHA" | tee source_head.txt
+          printf '%s\n' "$SOURCE_BRANCH" | tee source_branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test -s "$FAROL"
           sha256sum "$FAROL" | tee farol-before.sha256
@@ -149,13 +155,14 @@ jobs:
       - name: Upload APK and audit evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.379-auditable-${{ github.sha }}
+          name: rota-certa-0.1.379-auditable-${{ github.event.pull_request.head.sha || github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/auditable-collection-sample.json
             source_head.txt
+            source_branch.txt
             app-version.txt
             farol-before.sha256
             farol-after.sha256
