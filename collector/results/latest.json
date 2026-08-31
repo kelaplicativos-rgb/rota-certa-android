@@ -1,7 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "request_id": "check-2026-08-31-stl-sa",
-  "collected_at": "2026-08-31T19:29:38.026Z",
+  "collected_at": "2026-08-31T19:31:38.238Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
@@ -26,9 +26,15 @@
     "page_title": "Caronas e viagens para Santo André, SP, Brasil"
   },
   "zero_results_confirmed": false,
-  "driver_cards_count": 3,
+  "driver_cards_count": 4,
   "ezequiel_s_visible": false,
   "barbosa_visible": false,
+  "demand": {
+    "indicador_demanda_encontrado": false,
+    "trecho_concorrido": null,
+    "percentual_reservado": null,
+    "mensagem_demanda": null
+  },
   "trips": [
     {
       "driver_name": "Marco Luiz Pereira Loureiro",
@@ -39,7 +45,7 @@
       "price": "R$ 90,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=X1Frz0LlT1GrPc_wV3g_KgtzvAuVuYS3Gwj5PDvbldDA&requested_seats=1&search_origin=SEARCH&search_uuid=5f516bcf-42e5-4f51-ab3d-cff057783f2a"
+      "trip_href": "/trip?source=CARPOOLING&id=PC_zUwBCQjSJ0IrFmfFwQQiBBq1_JoQfqeVJbbXAMNVw&requested_seats=1&search_origin=SEARCH&search_uuid=3c2ff353-0042-4234-89d0-8ac599f17041"
     },
     {
       "driver_name": "Gilson",
@@ -50,7 +56,7 @@
       "price": "R$ 89,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=X1Frz0LlT1GrPc_wV3g_KgthyLuRW-Swi00jSF2uFrKQ&requested_seats=1&search_origin=SEARCH&search_uuid=5f516bcf-42e5-4f51-ab3d-cff057783f2a"
+      "trip_href": "/trip?source=CARPOOLING&id=PC_zUwBCQjSJ0IrFmfFwQQPOMg7tP7QF-jYwFGvDijOQ&requested_seats=1&search_origin=SEARCH&search_uuid=3c2ff353-0042-4234-89d0-8ac599f17041"
     },
     {
       "driver_name": "Luciano",
@@ -63,7 +69,18 @@
         "Super Driver"
       ],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=X1Frz0LlT1GrPc_wV3g_Kg-zmPsUjwQXeCJLeVghBGRA&requested_seats=1&search_origin=SEARCH&search_uuid=5f516bcf-42e5-4f51-ab3d-cff057783f2a"
+      "trip_href": "/trip?source=CARPOOLING&id=PC_zUwBCQjSJ0IrFmfFwQQP7xG1u4eRgSE3LzWAkSRaw&requested_seats=1&search_origin=SEARCH&search_uuid=3c2ff353-0042-4234-89d0-8ac599f17041"
+    },
+    {
+      "driver_name": "Guilherme",
+      "departure_time": "22:50",
+      "arrival_time": "02:30+1",
+      "actual_departure": "Minas Gerais",
+      "actual_arrival": "São Paulo",
+      "price": "R$ 91,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=PC_zUwBCQjSJ0IrFmfFwQQPJwU2oSJSyCSySf3ZpvofQ&requested_seats=1&search_origin=SEARCH&search_uuid=3c2ff353-0042-4234-89d0-8ac599f17041"
     }
   ]
 }
