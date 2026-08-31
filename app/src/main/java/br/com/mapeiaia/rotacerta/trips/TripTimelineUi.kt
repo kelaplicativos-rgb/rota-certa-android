@@ -378,6 +378,9 @@ fun TripTimelineScreen(
         } else {
             0
         }
+        val externalBackingHistoryPreserved = store.trips().count {
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING
+        }
         val externalClear = collectorStore.clearSynchronizedTimelineData()
         collectorResponse = externalClear.response
 
@@ -397,7 +400,7 @@ fun TripTimelineScreen(
         UnifiedDebugEventStore.record(
             "TIMELINE_VISUAL_CLEARED_BY_USER",
             context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards manualVisualHidden=$manualVisualHidden publicSearchCleared=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
+            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards manualVisualHidden=$manualVisualHidden publicSearchCleared=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true externalBackingHistoryPreserved=$externalBackingHistoryPreserved externalBackingPublishableAsLocal=false sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
         )
         onChanged(
             if (includeManualCards) {
