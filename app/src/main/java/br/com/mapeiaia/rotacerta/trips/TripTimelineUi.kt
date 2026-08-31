@@ -1107,19 +1107,22 @@ private fun TimelineEntryCard(
                 .sumOf { it.coerceAtLeast(0) }
             val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
             val blablaFree = allocation.blablaPublishedAllocation ?: 0
+            val localDemand = (localConfirmed + blocked).coerceAtLeast(0)
             val rotaCertaFree = allocation.rotaCertaAllocation
-                ?.let { (it - localConfirmed - blocked).coerceAtLeast(0) }
-            val operationalFree = if (
-                allocation.blablaPublishedAllocation != null || rotaCertaFree != null
+                ?.let { (it - localDemand).coerceAtLeast(0) }
+            val combinedConfiguredFree = if (
+                allocation.blablaPublishedAllocation != null || allocation.rotaCertaAllocation != null
             ) {
-                (blablaFree + (rotaCertaFree ?: 0)).coerceAtMost(999)
+                (blablaFree + (allocation.rotaCertaAllocation ?: 0)).coerceAtMost(999)
             } else {
                 null
             }
+            val operationalFree = combinedConfiguredFree
+                ?.let { (it - localDemand).coerceAtLeast(0) }
 
             if (allocation.blablaPublishedAllocation != null && rotaCertaFree != null && operationalFree != null) {
                 Text(
-                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} vaga(s) disponíveis • Rota Certa: $rotaCertaFree vaga(s) disponíveis • Total disponível: $operationalFree",
+                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} vaga(s) atuais • Rota Certa: $rotaCertaFree vaga(s) • Total disponível: $operationalFree",
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else {
@@ -1130,9 +1133,9 @@ private fun TimelineEntryCard(
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val physicalFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+            val segmentFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
                 ?: publicCapacity.availableSeats
-            val free = operationalFree ?: physicalFree
+            val free = segmentFree ?: operationalFree
             val operationalInventory = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
