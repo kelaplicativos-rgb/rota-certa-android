@@ -44,14 +44,16 @@ class AgendaCapacityLoadedState0346Test {
     @Test
     fun realZeroCapacityRemainsAValidLoadedStateInsteadOfBeingConfusedWithLoading() {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
+        val coordinator = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt")
         val effectStart = activity.indexOf("androidx.compose.runtime.LaunchedEffect(")
         val effectEnd = activity.indexOf("Scaffold(", effectStart)
         val effect = activity.substring(effectStart, effectEnd)
 
         assertTrue(effect.contains("if (!settingsLoaded)"))
         assertFalse(effect.contains("appSettings.vehicleCapacity"))
-        assertTrue(effect.contains("configuredVehicleCapacity = 0"))
-        assertTrue(effect.contains("configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation"))
+        assertTrue(effect.contains("rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation"))
+        assertTrue(coordinator.contains("configuredVehicleCapacity = 0"))
+        assertTrue(coordinator.contains("configuredRotaCertaSeatAllocation = allocation"))
     }
 
     @Test
