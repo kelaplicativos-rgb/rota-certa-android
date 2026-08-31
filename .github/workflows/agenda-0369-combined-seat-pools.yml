@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.371 Agenda mirrors channel free seats
+name: Rota Certa 0.1.372 Unified trip inventory
 
 on:
   push:
@@ -39,15 +39,22 @@ jobs:
           BASE=736705c5a8297d553a6d17e01856886bf228492d
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5664' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.371"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5665' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.372"' app/build.gradle.kts
 
-          # Canonical rule: BlaBla current free seats + Rota Certa current free seats.
+          # Canonical rule: BlaBla current remaining seats + Rota Certa allocation,
+          # normalized into one trip inventory and one segment engine.
+          grep -Fq 'bookingOccupancyIdentityKey' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'operationalInventoryCapacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'rotaCertaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'totalAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'capacitySource=channel_free_seats_plus_physical_separate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'source.published_seats?.takeIf { it in 0..999 }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'Vagas disponibilizadas no Rota Certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'Capacidade de passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'Capacidade do veículo' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'prefs[rotaCertaSeatAllocation] ?: 0' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
+          ! grep -Fq 'prefs[rotaCertaSeatAllocation] ?: prefs[vehicleCapacity]' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
           grep -Fq 'Total disponível' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Total disponível' trip-platform/public/app.js
           grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
@@ -61,9 +68,12 @@ jobs:
           ! grep -Fq 'BlaBlaBrowserRequest.SEAT_CHANGE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           ! grep -Fq 'BlaBlaBrowserRequest.SEAT_SAVE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
 
-          # No return to additive physical-capacity semantics.
+          # No return to the removed physical-capacity authority or double external write.
           ! grep -Fq 'combinedAgendaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           ! grep -Fq 'capacity = binding.capacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'externalSeatMutation=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
+          grep -Fq 'EXTERNAL_SEAT_WRITE_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0372Test.kt
 
           # FAROL remains outside this PR.
           test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
@@ -130,24 +140,24 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5664'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.371'" /tmp/aapt.txt
+          grep -Fq "versionCode='5665'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.372'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0371
-          cp "$APK" /tmp/0371/rota-certa-0.1.371-agenda-channel-free-seats.apk
-          sha256sum /tmp/0371/rota-certa-0.1.371-agenda-channel-free-seats.apk | tee /tmp/0371/apk.sha256
-          cp /tmp/aapt.txt /tmp/0371/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0371/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0371/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0371/changed-files.txt
-          git rev-parse HEAD > /tmp/0371/source-head.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0371/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0371/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0371/dex-strings.txt
+          mkdir -p /tmp/0372
+          cp "$APK" /tmp/0372/rota-certa-0.1.372-unified-trip-inventory.apk
+          sha256sum /tmp/0372/rota-certa-0.1.372-unified-trip-inventory.apk | tee /tmp/0372/apk.sha256
+          cp /tmp/aapt.txt /tmp/0372/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0372/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0372/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0372/changed-files.txt
+          git rev-parse HEAD > /tmp/0372/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0372/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0372/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0372/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.371-agenda-channel-free-seats
+          name: rota-certa-0.1.372-unified-trip-inventory
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0371
+          path: /tmp/0372
