@@ -9,8 +9,6 @@ data class AppSettings(
     val tripDepartureAddress: String = "",
     /** Physical simultaneous passenger capacity of the vehicle. */
     val vehicleCapacity: Int = 0,
-    /** Operational Rota Certa allocation per trip. Separate from physical capacity. */
-    val rotaCertaSeatAllocation: Int = 0,
     val homeRadiusKm: Double = 10.0,
     val alternativeRadiusKm: Double = 10.0,
     val desiredKeywords: String = "",
@@ -32,6 +30,8 @@ data class AppSettings(
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
+    /** Operational Rota Certa allocation per trip. Separate from physical capacity. */
+    val rotaCertaSeatAllocation: Int = 0,
 )
 
 @Serializable
