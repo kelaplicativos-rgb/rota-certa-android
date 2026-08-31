@@ -62,15 +62,13 @@ class TripStore(context: Context) {
     }
 
     /**
-     * Migrates active/future trips to the explicitly configured physical passenger capacity.
-     * Reservations never call this method; only vehicle configuration may change this value.
+     * Reconciles active/future trips to the channel-derived inventory. The old
+     * vehicle_capacity preference is intentionally absent from this calculation.
      */
-    fun reconcilePhysicalPassengerCapacity(
-        capacity: Int,
-        rotaCertaSeatAllocation: Int = capacity,
+    fun reconcileOperationalInventory(
+        rotaCertaSeatAllocation: Int,
         nowMillis: Long = System.currentTimeMillis(),
     ): Pair<Int, Int> {
-        require(capacity in 1..999) { "Capacidade de passageiros inválida." }
         require(rotaCertaSeatAllocation in 0..999) { "Vagas do Rota Certa inválidas." }
         val activeStatuses = setOf(
             TripStatus.DRAFT,
@@ -79,42 +77,37 @@ class TripStore(context: Context) {
             TripStatus.STARTING,
             TripStatus.ACTIVE,
         )
+        val allBookings = bookings()
         val currentTrips = trips()
         var changedTrips = 0
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
-            if (shouldApply && (trip.capacity != capacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation)) {
-                changedTrips++
-                trip.copy(
-                    capacity = capacity,
-                    rotaCertaSeatAllocation = rotaCertaSeatAllocation,
-                    updatedAtMillis = nowMillis,
-                )
-            } else {
+            if (!shouldApply) {
                 trip
-            }
-        }
-
-        val currentBindings = publicExternalBindings()
-        var changedBindings = 0
-        val reconciledBindings = currentBindings.map { binding ->
-            if (binding.departureAtMillis >= nowMillis && binding.capacity != capacity) {
-                changedBindings++
-                binding.copy(capacity = capacity, updatedAtMillis = nowMillis)
             } else {
-                binding
+                val withAllocation = trip.copy(rotaCertaSeatAllocation = rotaCertaSeatAllocation)
+                val derivedCapacity = operationalInventoryCapacity(withAllocation, allBookings)
+                if (trip.capacity != derivedCapacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation) {
+                    changedTrips++
+                    withAllocation.copy(capacity = derivedCapacity, updatedAtMillis = nowMillis)
+                } else {
+                    trip
+                }
             }
         }
-
-        if (changedTrips > 0 || changedBindings > 0) {
-            prefs.edit()
-                .putString(tripsKey, json.encodeToString(reconciledTrips))
-                .putString(publicExternalBindingsKey, json.encodeToString(reconciledBindings))
-                .apply()
+        if (changedTrips > 0) {
+            prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).apply()
         }
-        return changedTrips to changedBindings
+        return changedTrips to 0
     }
+
+    @Deprecated("Legacy compatibility only; vehicle capacity no longer drives trip inventory.")
+    fun reconcilePhysicalPassengerCapacity(
+        @Suppress("UNUSED_PARAMETER") capacity: Int,
+        rotaCertaSeatAllocation: Int = 0,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Pair<Int, Int> = reconcileOperationalInventory(rotaCertaSeatAllocation, nowMillis)
 
     fun deleteTrip(id: String) {
         prefs.edit()
