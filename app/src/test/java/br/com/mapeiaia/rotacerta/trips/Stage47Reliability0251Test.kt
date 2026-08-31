@@ -11,23 +11,37 @@ class Stage47Reliability0251Test {
     }
 
     @Test
-    fun configuredVehicleCapacityIsPhysicalAuthorityForAllTimelineEntries() {
-        val external = entry(id = "external", capacity = 0, rosterComplete = true)
-        val staleOrExternal = entry(id = "local", capacity = 6, rosterComplete = true)
-        val updated = applyConfiguredVehicleCapacity(listOf(external, staleOrExternal), 4)
-        assertEquals(4, updated[0].capacity)
+    fun legacyVehicleCapacityIsIgnoredAndChannelInventoryDrivesTimelineEntries() {
+        val external = entry(id = "external", capacity = 99, rosterComplete = true).copy(blablaPublishedSeats = 3)
+        val second = entry(id = "local", capacity = 77, rosterComplete = true).copy(blablaPublishedSeats = 2)
+        val updated = applyConfiguredVehicleCapacity(
+            entries = listOf(external, second),
+            vehicleCapacity = 999,
+            rotaCertaSeatAllocation = 2,
+        )
+        assertEquals(5, updated[0].capacity)
         assertEquals(4, updated[1].capacity)
     }
 
     @Test
-    fun invalidConfiguredVehicleCapacityDoesNotInventCapacity() {
-        val external = entry(id = "external", capacity = 0, rosterComplete = true)
-        assertEquals(0, applyConfiguredVehicleCapacity(listOf(external), 0).single().capacity)
+    fun legacyVehicleCapacityCannotInventInventoryWithoutChannelEvidence() {
+        val external = entry(id = "external", capacity = 8, rosterComplete = true)
+        assertEquals(
+            0,
+            applyConfiguredVehicleCapacity(
+                entries = listOf(external),
+                vehicleCapacity = 999,
+                rotaCertaSeatAllocation = 0,
+            ).single().capacity,
+        )
     }
 
     @Test
-    fun configuredCapacityDoesNotPretendZeroReservationsWhenRosterIsIncomplete() {
-        val external = entry(id = "external", capacity = 4, rosterComplete = false)
+    fun knownInventoryDoesNotPretendZeroReservationsWhenRosterIsIncomplete() {
+        val external = entry(id = "external", capacity = 3, rosterComplete = false).copy(
+            blablaPublishedSeats = 3,
+            rotaCertaSeatAllocation = 0,
+        )
         assertEquals(
             TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING,
             timelineOccupancyReadState(external),
@@ -35,8 +49,11 @@ class Stage47Reliability0251Test {
     }
 
     @Test
-    fun completeEmptyRosterWithConfiguredCapacityCanShowZeroOccupied() {
-        val external = entry(id = "external", capacity = 4, rosterComplete = true)
+    fun completeEmptyRosterWithKnownInventoryCanShowZeroOccupied() {
+        val external = entry(id = "external", capacity = 3, rosterComplete = true).copy(
+            blablaPublishedSeats = 3,
+            rotaCertaSeatAllocation = 0,
+        )
         assertEquals(TimelineOccupancyReadState.CAPACITY_CONFIGURED, timelineOccupancyReadState(external))
     }
 
